@@ -1,8 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { anthropicText } from "./anthropic.server";
 
 // Blog posts are the SEO Autopilot product: the goal is always organic
 // search traffic — rank for buyer-intent keywords, then convert.
@@ -47,13 +45,12 @@ Return ONLY the HTML body content (h1, h2, p, ul tags only — no html/head/body
   while (attempts < 3) {
     attempts++;
     try {
-      const msg = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 2048,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const html =
-        msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+      const html = (
+        await anthropicText(prompt, {
+          model: "claude-3-5-sonnet-20241022",
+          maxTokens: 2048,
+        })
+      ).trim();
 
       const asset = await db.asset.create({
         data: {

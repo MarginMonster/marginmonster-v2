@@ -1,8 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { db } from "../db.server";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { anthropicText } from "./anthropic.server";
 
 const PLAN_CTA: Record<string, string[]> = {
   GROW_SALES: ["Shop Now", "Get Yours", "Buy Today"],
@@ -55,12 +53,7 @@ All copy must sound like this brand, not generic ad copy.`;
   while (attempts < 3) {
     attempts++;
     try {
-      const msg = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 512,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const text = msg.content[0].type === "text" ? msg.content[0].text : "";
+      const text = await anthropicText(prompt, { maxTokens: 512 });
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("No JSON in response");
       copyData = JSON.parse(match[0]) as AdCopySet;

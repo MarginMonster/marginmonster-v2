@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db.server";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { anthropicText } from "./anthropic.server";
 
 interface ShopifyProduct {
   title: string;
@@ -121,12 +119,7 @@ Return ONLY a JSON object with this exact structure:
   while (attempts < 3) {
     attempts++;
     try {
-      const msg = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const text = msg.content[0].type === "text" ? msg.content[0].text : "";
+      const text = await anthropicText(prompt, { maxTokens: 1024 });
       voiceData = safeParseJSON(text);
       break;
     } catch (e) {
