@@ -15,7 +15,6 @@ interface ShopifyStorefront {
   name: string;
   description: string;
   primaryDomain: { url: string };
-  brand?: { logo?: { image?: { url: string } | null } | null } | null;
 }
 
 async function fetchStoreContent(
@@ -34,7 +33,6 @@ async function fetchStoreContent(
           name
           description
           primaryDomain { url }
-          brand { logo { image { url } } }
         }
         products(first: 20, sortKey: BEST_SELLING) {
           edges {
@@ -144,7 +142,6 @@ Return ONLY a JSON object with this exact structure:
 
   const enrichedVisual = {
     ...visual,
-    logoUrl: storefront.brand?.logo?.image?.url || null,
     productImages,
   };
   const enrichedProducts = {

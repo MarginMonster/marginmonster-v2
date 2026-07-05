@@ -1,77 +1,94 @@
 // Single source of truth for pricing, quotas, and credits.
-// Land-grab pricing: cheap entry, expand via add-ons + metered video credits.
-// Margin note: blog/image are ~99% margin; video is the only real cost
-// (~$2-4/video) so it is always metered — never unlimited.
+// A good/better/best/pro ladder modeled on successful AI marketing apps
+// (Zeely, faceless.ai): cheap entry, a highlighted "most popular" middle,
+// and a high anchor. Video is the only real cost so it is always metered.
 
-export type PlanTypeKey = "SEO_AUTOPILOT" | "VIDEO_AUTOPILOT";
+export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
 
 export interface PlanTier {
-  key: PlanTypeKey;
+  key: PlanKey;
   name: string;
   price: number; // USD / month
+  tagline: string;
+  highlight?: boolean; // renders the "Most popular" ribbon
   blogQuota: number;
   videoQuota: number;
-  tagline: string;
+  imageQuota: number; // image ads / month
+  campaignAutopilot: boolean;
   features: string[];
 }
 
-export const PLAN_TIERS: Record<PlanTypeKey, PlanTier> = {
-  SEO_AUTOPILOT: {
-    key: "SEO_AUTOPILOT",
-    name: "SEO Autopilot",
+export const PLAN_TIERS: PlanTier[] = [
+  {
+    key: "STARTER",
+    name: "Starter",
     price: 19,
+    tagline: "Get found on Google. SEO blog posts that pull in free traffic — written and published for you.",
     blogQuota: 15,
     videoQuota: 0,
-    tagline:
-      "We write and publish SEO blog articles to your store every month — targeting what your customers Google, so free traffic finds you.",
+    imageQuota: 0,
+    campaignAutopilot: false,
     features: [
-      "15 keyword-optimized blog posts a month, written for you",
-      "Each one targets real search terms your buyers use → ranks on Google → brings in free organic traffic",
-      "Auto-published to your store blog on a schedule you set (e.g. every 2 days)",
-      "Set-and-forget, or review & edit each post before it publishes",
-      "You never write a word — but every article sounds like your brand",
+      "15 SEO blog posts / month",
+      "Targets what your buyers search → ranks on Google",
+      "Auto-published to your store on your schedule",
+      "Review-first or set-and-forget",
     ],
   },
-  VIDEO_AUTOPILOT: {
-    key: "VIDEO_AUTOPILOT",
-    name: "Video Autopilot",
-    price: 79,
-    blogQuota: 0,
-    videoQuota: 10,
-    tagline:
-      "Scroll-stopping product videos made for you every month — the content that actually sells on TikTok, Reels & Shorts.",
-    features: [
-      "10 ready-to-post product videos a month",
-      "Pick per video: an AI avatar hyping your product (UGC-style), or a slick product-highlight reel",
-      "Built automatically from your store products — or upload your own",
-      "Formatted vertical for TikTok, Instagram Reels & YouTube Shorts",
-      "Autopilot or manual — always yours to review before it goes live",
-    ],
-  },
-};
-
-export interface AddOn {
-  key: "adCreativePack" | "campaignAutopilot";
-  name: string;
-  price: number;
-  description: string;
-}
-
-export const ADDONS: Record<string, AddOn> = {
-  adCreativePack: {
-    key: "adCreativePack",
-    name: "Ad Creative Pack",
-    price: 29,
-    description: "60 AI image ads + Meta/TikTok ad copy every month.",
-  },
-  campaignAutopilot: {
-    key: "campaignAutopilot",
-    name: "Campaign Autopilot",
+  {
+    key: "GROWTH",
+    name: "Growth",
     price: 49,
-    description:
-      "We launch and optimize your ads automatically — kill losers, scale winners. The full closed loop.",
+    tagline: "Content + ads. Everything in Starter, plus scroll-stopping image ads and copy for Meta & TikTok.",
+    highlight: true,
+    blogQuota: 30,
+    videoQuota: 0,
+    imageQuota: 30,
+    campaignAutopilot: false,
+    features: [
+      "30 SEO blog posts / month",
+      "30 AI image ads + Meta/TikTok ad copy",
+      "All content built from your real products",
+      "Review-first or set-and-forget",
+    ],
   },
-};
+  {
+    key: "PRO",
+    name: "Pro",
+    price: 99,
+    tagline: "Add video that sells. Product videos + we launch and optimize your ads automatically.",
+    blogQuota: 30,
+    videoQuota: 8,
+    imageQuota: 40,
+    campaignAutopilot: true,
+    features: [
+      "Everything in Growth",
+      "8 AI product videos / month (avatar or highlight)",
+      "Campaign Autopilot — auto-launch, kill losers, scale winners",
+      "Vertical-formatted for TikTok, Reels & Shorts",
+    ],
+  },
+  {
+    key: "SCALE",
+    name: "Scale",
+    price: 199,
+    tagline: "Full firepower for stores going all-in on growth.",
+    blogQuota: 60,
+    videoQuota: 20,
+    imageQuota: 80,
+    campaignAutopilot: true,
+    features: [
+      "60 blog posts + 80 image ads / month",
+      "20 AI product videos / month",
+      "Campaign Autopilot across Meta & TikTok",
+      "Priority generation + best margins on credits",
+    ],
+  },
+];
+
+export const PLAN_BY_KEY: Record<PlanKey, PlanTier> = Object.fromEntries(
+  PLAN_TIERS.map((t) => [t.key, t])
+) as Record<PlanKey, PlanTier>;
 
 // Overage credits (top up without upgrading).
 export const CREDIT_PRICES = {
@@ -80,20 +97,9 @@ export const CREDIT_PRICES = {
   video: 15, // ~$2-4 cost — the margin protector
 };
 
-// Credit top-up packs shown in the UI.
 export const CREDIT_PACKS = [
   { type: "video" as const, qty: 5, price: 5 * CREDIT_PRICES.video, label: "5 extra videos" },
   { type: "video" as const, qty: 10, price: 10 * CREDIT_PRICES.video, label: "10 extra videos" },
   { type: "blog" as const, qty: 10, price: 10 * CREDIT_PRICES.blog, label: "10 extra blog posts" },
   { type: "image" as const, qty: 30, price: 30 * CREDIT_PRICES.image, label: "30 extra image ads" },
 ];
-
-export function monthlyTotal(
-  planKey: PlanTypeKey,
-  addons: { adCreativePack?: boolean; campaignAutopilot?: boolean }
-): number {
-  let total = PLAN_TIERS[planKey].price;
-  if (addons.adCreativePack) total += ADDONS.adCreativePack.price;
-  if (addons.campaignAutopilot) total += ADDONS.campaignAutopilot.price;
-  return total;
-}

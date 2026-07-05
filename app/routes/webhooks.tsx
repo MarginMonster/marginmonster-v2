@@ -28,15 +28,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const desc = product.body_html?.replace(/<[^>]+>/g, "") || "";
         const jobs: Promise<string>[] = [];
 
-        // Core deliverable follows the selected plan.
-        if (plan.type === "SEO_AUTOPILOT") {
+        // Enqueue whatever the plan's quotas include.
+        if (plan.blogQuota > 0) {
           jobs.push(
             enqueueJob(shopRecord.id, "GENERATE_BLOG_POST", {
               productTitle: product.title,
               productDescription: desc.slice(0, 500),
             })
           );
-        } else if (plan.type === "VIDEO_AUTOPILOT") {
+        }
+        if (plan.videoQuota > 0) {
           jobs.push(
             enqueueJob(shopRecord.id, "GENERATE_VIDEO_AD", {
               productTitle: product.title,
@@ -46,9 +47,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             })
           );
         }
-
-        // Ad Creative Pack add-on: also generate image ads + copy.
-        if (plan.adCreativePack) {
+        if (plan.imageQuota > 0) {
           jobs.push(
             enqueueJob(shopRecord.id, "GENERATE_IMAGE_AD", {
               productTitle: product.title,

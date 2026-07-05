@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -72,9 +72,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function Dashboard() {
   const { shop, pendingAssets, brandJobError } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
   const building = nav.state !== "idle";
+  const liveError = (actionData && "error" in actionData ? actionData.error : null) || brandJobError;
 
   if (!shop) {
     return (
@@ -201,9 +203,9 @@ export default function Dashboard() {
                   brand voice and visual style — everything we create will sound
                   and look like you. Takes about a minute.
                 </Text>
-                {brandJobError && (
+                {liveError && (
                   <Banner tone="warning" title="Last attempt hit a snag">
-                    <p>{brandJobError}</p>
+                    <p>{liveError}</p>
                   </Banner>
                 )}
                 <Box>

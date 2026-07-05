@@ -2,11 +2,21 @@ import "@shopify/shopify-app-remix/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
+  BillingInterval,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { db } from "./db.server";
 import "./worker.server"; // starts the in-process job worker on server boot
+
+// Subscription plans — amounts must match app/lib/plan-config.ts.
+// These names are the `plan` keys passed to billing.request().
+export const BILLING_PLANS = {
+  STARTER: { amount: 19, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  GROWTH: { amount: 49, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  PRO: { amount: 99, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  SCALE: { amount: 199, currencyCode: "USD", interval: BillingInterval.Every30Days },
+} as const;
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY!,
@@ -17,6 +27,7 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(db),
   distribution: AppDistribution.AppStore,
+  billing: BILLING_PLANS,
   webhooks: {
     APP_UNINSTALLED: {
       deliveryMethod: "http" as const,

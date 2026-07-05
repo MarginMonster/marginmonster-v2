@@ -39,6 +39,11 @@ body {
   background: var(--mm-cream) !important;
 }
 
+/* Breathing room at the bottom so content isn't cut off in the iframe */
+.Polaris-Page {
+  padding-bottom: 96px !important;
+}
+
 /* Headings in Poppins for that bold, catchy brand feel */
 .Polaris-Text--headingXl,
 .Polaris-Text--heading2xl,

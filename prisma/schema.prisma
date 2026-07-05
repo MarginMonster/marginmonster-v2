@@ -54,8 +54,10 @@ model BrandProfile {
 }
 
 enum PlanType {
-  SEO_AUTOPILOT
-  VIDEO_AUTOPILOT
+  STARTER
+  GROWTH
+  PRO
+  SCALE
 }
 
 enum ReviewMode {
@@ -85,6 +87,7 @@ model Plan {
   // Monthly quotas (seeded from the tier at selection time)
   blogQuota         Int        @default(0)
   videoQuota        Int        @default(0)
+  imageQuota        Int        @default(0)
 
   // Usage in the current billing period
   blogUsed          Int        @default(0)
