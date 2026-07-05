@@ -10,7 +10,6 @@ import type {
   LoaderFunctionArgs,
   HeadersFunction,
 } from "@remix-run/node";
-import { json } from "@remix-run/node";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
 export const links: LinksFunction = () => [];
@@ -18,7 +17,7 @@ export const links: LinksFunction = () => [];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
   await addDocumentResponseHeaders(request, headers);
-  return json(null, { headers });
+  return new Response(null, { status: 200, headers });
 };
 
 export const headers: HeadersFunction = ({ loaderHeaders }) => loaderHeaders;
