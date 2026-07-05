@@ -139,6 +139,23 @@ body {
   margin-bottom: 10px;
   display: block;
 }
+.mm-hero-cta {
+  display: inline-block;
+  margin-top: 18px;
+  background: linear-gradient(180deg, #C9972B 0%, #A87D1E 100%);
+  color: #fff !important;
+  font-family: "Poppins", sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  padding: 11px 22px;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(201, 151, 43, 0.4);
+  transition: transform 0.1s ease;
+}
+.mm-hero-cta:hover {
+  transform: translateY(-1px);
+}
 
 /* Trust / value-prop band ("palms raised") */
 .mm-trust {

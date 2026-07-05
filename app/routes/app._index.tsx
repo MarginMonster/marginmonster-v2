@@ -56,14 +56,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return json({ error: "Shop not found" });
 
-  // Build the profile synchronously so it actually completes and any error
-  // surfaces immediately instead of silently sitting in the queue.
+  // Use the authenticated admin client (fresh session token) rather than a
+  // stored token — far more reliable. Build the profile synchronously so any
+  // error surfaces immediately instead of sitting silently in the queue.
+  const graphql = async (query: string) => {
+    const res = await admin.graphql(query);
+    const jsonRes = await res.json();
+    if (jsonRes.errors) {
+      throw new Error("Shopify API: " + JSON.stringify(jsonRes.errors));
+    }
+    return jsonRes.data;
+  };
+
   try {
-    await generateBrandProfile(shop.id, shop.domain, shop.accessToken);
+    await generateBrandProfile(shop.id, graphql);
     return json({ ok: true });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) });
@@ -111,7 +121,10 @@ export default function Dashboard() {
   const buildProfile = () => submit({}, { method: "post" });
 
   return (
-    <Page>
+    <Page
+      primaryAction={{ content: hasPlan ? "Review content" : "View plans", url: hasPlan ? "/app/assets" : "/app/plans" }}
+      secondaryActions={hasPlan ? [{ content: "View plans", url: "/app/plans" }] : undefined}
+    >
       <Layout>
         {/* Aspirational hero */}
         <Layout.Section>
@@ -123,6 +136,9 @@ export default function Dashboard() {
               quietly produces the blogs, videos, and ads that bring customers
               in — so your business grows whether you're working or not.
             </p>
+            <a href="/app/plans" className="mm-hero-cta">
+              {hasPlan ? "View plans" : "See plans & pricing →"}
+            </a>
           </div>
         </Layout.Section>
 

@@ -17,43 +17,40 @@ interface ShopifyStorefront {
   primaryDomain: { url: string };
 }
 
-async function fetchStoreContent(
-  shop: string,
-  accessToken: string
-): Promise<{ storefront: ShopifyStorefront; products: ShopifyProduct[] }> {
-  const res = await fetch(`https://${shop}/admin/api/2025-01/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken,
-    },
-    body: JSON.stringify({
-      query: `{
-        shop {
-          name
-          description
-          primaryDomain { url }
-        }
-        products(first: 20, sortKey: BEST_SELLING) {
-          edges {
-            node {
-              title
-              description(truncateAt: 300)
-              productType
-              priceRange { minVariantPrice { amount } }
-              featuredImage { url }
-            }
-          }
-        }
-      }`,
-    }),
-  });
+// A GraphQL runner that returns the `data` object (or throws a clear error).
+// Injected by the caller so we can use either the authenticated admin client
+// (dashboard) or a stored-token fetch (background worker).
+export type GraphQLRunner = (query: string) => Promise<any>;
 
-  if (!res.ok) throw new Error(`Shopify API ${res.status}`);
-  const json = await res.json() as { data: { shop: ShopifyStorefront; products: { edges: { node: ShopifyProduct }[] } } };
+const STORE_QUERY = `{
+  shop {
+    name
+    description
+    primaryDomain { url }
+  }
+  products(first: 20, sortKey: BEST_SELLING) {
+    edges {
+      node {
+        title
+        description(truncateAt: 300)
+        productType
+        priceRange { minVariantPrice { amount } }
+        featuredImage { url }
+      }
+    }
+  }
+}`;
+
+async function fetchStoreContent(
+  graphql: GraphQLRunner
+): Promise<{ storefront: ShopifyStorefront; products: ShopifyProduct[] }> {
+  const data = await graphql(STORE_QUERY);
+  if (!data || !data.shop) {
+    throw new Error("Shopify returned no store data — check app scopes are approved.");
+  }
   return {
-    storefront: json.data.shop,
-    products: json.data.products.edges.map((e) => e.node),
+    storefront: data.shop,
+    products: (data.products?.edges || []).map((e: { node: ShopifyProduct }) => e.node),
   };
 }
 
@@ -65,10 +62,9 @@ function safeParseJSON(text: string): Record<string, unknown> {
 
 export async function generateBrandProfile(
   shopId: string,
-  shop: string,
-  accessToken: string
+  graphql: GraphQLRunner
 ): Promise<void> {
-  const { storefront, products } = await fetchStoreContent(shop, accessToken);
+  const { storefront, products } = await fetchStoreContent(graphql);
 
   const productSummary = products
     .map((p) => `${p.title} (${p.productType || "General"}, $${parseFloat(p.priceRange.minVariantPrice.amount).toFixed(2)}): ${p.description?.slice(0, 150) || ""}`)

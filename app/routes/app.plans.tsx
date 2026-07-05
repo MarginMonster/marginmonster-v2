@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
 import { useState } from "react";
 import {
   Page,
@@ -15,6 +15,7 @@ import {
   Divider,
   ChoiceList,
   Icon,
+  Banner,
 } from "@shopify/polaris";
 import { CheckIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
@@ -74,17 +75,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Real purchase: redirect to Shopify's charge-approval screen.
   // isTest keeps it free during development — flip to false to charge for real.
   const appUrl = process.env.SHOPIFY_APP_URL || "";
-  await billing.request({
-    plan: planKey,
-    isTest: true,
-    returnUrl: `${appUrl}/app?billing=confirmed`,
-  });
+  try {
+    await billing.request({
+      plan: planKey,
+      isTest: true,
+      returnUrl: `${appUrl}/app?billing=confirmed`,
+    });
+  } catch (e) {
+    // billing.request signals the redirect by THROWING a Response — let that
+    // through. Only genuine errors get reported back to the UI.
+    if (e instanceof Response) throw e;
+    return json({ error: e instanceof Error ? e.message : String(e) });
+  }
 
   return json({ ok: true });
 };
 
 export default function Plans() {
   const { currentPlan, currentReview } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const billingError = actionData && "error" in actionData ? actionData.error : null;
   const submit = useSubmit();
   const nav = useNavigation();
   const [reviewMode, setReviewMode] = useState<string>(currentReview);
@@ -113,6 +123,14 @@ export default function Plans() {
             </p>
           </div>
         </Layout.Section>
+
+        {billingError && (
+          <Layout.Section>
+            <Banner tone="critical" title="Couldn't start checkout">
+              <p>{billingError}</p>
+            </Banner>
+          </Layout.Section>
+        )}
 
         {/* Review mode — applies to whichever plan you buy */}
         <Layout.Section>

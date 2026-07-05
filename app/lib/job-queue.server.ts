@@ -77,7 +77,24 @@ async function runJob(
   switch (type) {
     case "GENERATE_BRAND_PROFILE": {
       if (!shop) throw new Error("Shop not found");
-      await generateBrandProfile(shopId, shop.domain, shop.accessToken);
+      const graphql = async (query: string) => {
+        const res = await fetch(
+          `https://${shop.domain}/admin/api/2025-01/graphql.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": shop.accessToken,
+            },
+            body: JSON.stringify({ query }),
+          }
+        );
+        if (!res.ok) throw new Error(`Shopify API HTTP ${res.status}`);
+        const j = await res.json();
+        if (j.errors) throw new Error("Shopify API: " + JSON.stringify(j.errors));
+        return j.data;
+      };
+      await generateBrandProfile(shopId, graphql);
       break;
     }
 
