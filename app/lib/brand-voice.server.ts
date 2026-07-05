@@ -124,12 +124,7 @@ Return ONLY a JSON object with this exact structure:
       break;
     } catch (e) {
       if (attempts === 3) {
-        const detail = e instanceof Error ? e.message : String(e);
-        const status = (e as { status?: number })?.status;
-        throw new Error(
-          `Couldn't reach the AI service (${detail}${status ? `, status ${status}` : ""}). ` +
-            `This usually means ANTHROPIC_API_KEY is missing or invalid on the server.`
-        );
+        throw e instanceof Error ? e : new Error(String(e));
       }
       await new Promise((r) => setTimeout(r, 1000 * attempts));
     }
