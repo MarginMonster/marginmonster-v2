@@ -8,7 +8,7 @@
     "dev": "shopify app dev",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "setup": "prisma generate && prisma db push",
-    "start": "node build/server/index.js",
+    "start": "remix-serve ./build/server/index.js",
     "worker": "node --loader ts-node/esm worker.ts",
     "prisma": "prisma"
   },
