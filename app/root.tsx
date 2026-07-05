@@ -5,19 +5,23 @@ import {
   Scripts,
   ScrollRestoration,
 } from "@remix-run/react";
-import type { LinksFunction, LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
+import type {
+  LinksFunction,
+  LoaderFunctionArgs,
+  HeadersFunction,
+} from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
 export const links: LinksFunction = () => [];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await addDocumentResponseHeaders(request, new Headers());
-  return null;
+  const headers = new Headers();
+  await addDocumentResponseHeaders(request, headers);
+  return json(null, { headers });
 };
 
-export const headers: HeadersFunction = ({ loaderHeaders }) => {
-  return loaderHeaders;
-};
+export const headers: HeadersFunction = ({ loaderHeaders }) => loaderHeaders;
 
 export default function App() {
   return (
