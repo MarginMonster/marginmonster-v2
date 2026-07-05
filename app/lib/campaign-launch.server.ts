@@ -30,10 +30,10 @@ export async function launchCampaign(params: LaunchParams): Promise<string> {
   const adAccount = shop.adAccounts.find((a) => a.platform === platform);
   if (!adAccount) throw new Error(`No ${platform} ad account connected`);
 
-  const config = getPlatformConfig(shop.activePlan.type);
+  const config = getPlatformConfig(shop.activePlan.campaignGoal);
   const body = JSON.parse(asset.bodyJson);
   const meta_ = JSON.parse(asset.metaJson);
-  const campaignName = `MM-${shop.activePlan.type}-${asset.id.slice(-6)}-${Date.now()}`;
+  const campaignName = `MM-${shop.activePlan.campaignGoal}-${asset.id.slice(-6)}-${Date.now()}`;
 
   let externalCampaignId: string;
 

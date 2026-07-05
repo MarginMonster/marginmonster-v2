@@ -17,7 +17,7 @@ export async function generateImageAd(
 ): Promise<string> {
   const visual = JSON.parse(brandProfile.visualJson);
   const direction =
-    PLAN_VISUAL_DIRECTION[plan.type] || PLAN_VISUAL_DIRECTION.GROW_SALES;
+    PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;
 
   const prompt = `${direction}, ${visual.imageStyle || "clean product photography"}, for product: ${productTitle}, professional advertising quality, 1:1 aspect ratio, vibrant colors, no text overlay`;
 
@@ -78,7 +78,7 @@ export async function generateImageAd(
       status: "PENDING",
       title: `Ad image for ${productTitle}`,
       bodyJson: JSON.stringify({ imageUrl, prompt }),
-      metaJson: JSON.stringify({ planType: plan.type, productTitle }),
+      metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle }),
     },
   });
 

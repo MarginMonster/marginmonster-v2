@@ -23,22 +23,45 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
 
       if (shopRecord?.activePlan && shopRecord?.brandProfile) {
+        const plan = shopRecord.activePlan;
         const product = payload as { title: string; body_html: string; images: { src: string }[] };
-        // Enqueue all three content types for the new product
-        await Promise.all([
-          enqueueJob(shopRecord.id, "GENERATE_BLOG_POST", {
-            productTitle: product.title,
-            productDescription: product.body_html?.replace(/<[^>]+>/g, "").slice(0, 500),
-          }),
-          enqueueJob(shopRecord.id, "GENERATE_IMAGE_AD", {
-            productTitle: product.title,
-            productImageUrl: product.images?.[0]?.src,
-          }),
-          enqueueJob(shopRecord.id, "GENERATE_AD_COPY", {
-            productTitle: product.title,
-            productDescription: product.body_html?.replace(/<[^>]+>/g, "").slice(0, 300),
-          }),
-        ]);
+        const desc = product.body_html?.replace(/<[^>]+>/g, "") || "";
+        const jobs: Promise<string>[] = [];
+
+        // Core deliverable follows the selected plan.
+        if (plan.type === "SEO_AUTOPILOT") {
+          jobs.push(
+            enqueueJob(shopRecord.id, "GENERATE_BLOG_POST", {
+              productTitle: product.title,
+              productDescription: desc.slice(0, 500),
+            })
+          );
+        } else if (plan.type === "VIDEO_AUTOPILOT") {
+          jobs.push(
+            enqueueJob(shopRecord.id, "GENERATE_VIDEO_AD", {
+              productTitle: product.title,
+              productDescription: desc.slice(0, 300),
+              productImageUrl: product.images?.[0]?.src,
+              style: "PRODUCT_HIGHLIGHT",
+            })
+          );
+        }
+
+        // Ad Creative Pack add-on: also generate image ads + copy.
+        if (plan.adCreativePack) {
+          jobs.push(
+            enqueueJob(shopRecord.id, "GENERATE_IMAGE_AD", {
+              productTitle: product.title,
+              productImageUrl: product.images?.[0]?.src,
+            }),
+            enqueueJob(shopRecord.id, "GENERATE_AD_COPY", {
+              productTitle: product.title,
+              productDescription: desc.slice(0, 300),
+            })
+          );
+        }
+
+        await Promise.all(jobs);
       }
       break;
     }

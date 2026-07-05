@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Layout,
@@ -12,48 +13,19 @@ import {
   Badge,
   Box,
   Divider,
+  ChoiceList,
+  Checkbox,
+  Icon,
 } from "@shopify/polaris";
+import { CheckIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
-
-const PLANS = [
-  {
-    type: "GROW_SALES",
-    title: "Grow Sales",
-    description: "Maximize purchase volume and ROAS. Best for established stores looking to scale what's already working.",
-    optimizes: "Purchases / ROAS",
-    audience: "Warm retargeting first",
-    pacing: "Conservative — test then scale",
-    badge: "Most Popular",
-  },
-  {
-    type: "LAUNCH_PRODUCT",
-    title: "Launch New Product",
-    description: "Build excitement and early traction for a new SKU. Front-loads spend in launch week to maximize early signals.",
-    optimizes: "Add to Cart",
-    audience: "Cold interest stacks",
-    pacing: "Front-loaded — heavy launch week",
-    badge: null,
-  },
-  {
-    type: "CLEAR_INVENTORY",
-    title: "Clear Inventory",
-    description: "Move slow-selling stock fast. Targets warm audiences with urgency messaging on low-velocity SKUs.",
-    optimizes: "Purchases on flagged SKUs",
-    audience: "Warm retargeting",
-    pacing: "Aggressive — time-boxed",
-    badge: null,
-  },
-  {
-    type: "BUILD_AWARENESS",
-    title: "Build Brand Awareness",
-    description: "Grow reach and brand recognition without ROAS pressure. Ideal for new brands or entering new markets.",
-    optimizes: "Reach / Video Views",
-    audience: "Cold broad",
-    pacing: "Even / steady",
-    badge: null,
-  },
-];
+import {
+  PLAN_TIERS,
+  ADDONS,
+  monthlyTotal,
+  type PlanTypeKey,
+} from "../lib/plan-config";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -61,85 +33,236 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { domain: session.shop },
     include: { activePlan: true },
   });
-  return json({ currentPlan: shop?.activePlan?.type || null });
+  return json({ current: shop?.activePlan || null });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const planType = formData.get("planType") as string;
-  const weeklyBudget = parseFloat(formData.get("weeklyBudget") as string) || 100;
+  const form = await request.formData();
+
+  const type = form.get("planType") as PlanTypeKey;
+  const reviewMode = form.get("reviewMode") as "SET_AND_FORGET" | "REVIEW_FIRST";
+  const adCreativePack = form.get("adCreativePack") === "true";
+  const campaignAutopilot = form.get("campaignAutopilot") === "true";
+
+  const tier = PLAN_TIERS[type];
+  if (!tier) throw new Error("Invalid plan");
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) throw new Error("Shop not found");
 
   await db.plan.upsert({
     where: { shopId: shop.id },
-    create: { shopId: shop.id, type: planType as any, weeklyBudget },
-    update: { type: planType as any, weeklyBudget, active: true },
+    create: {
+      shopId: shop.id,
+      type,
+      reviewMode,
+      adCreativePack,
+      campaignAutopilot,
+      blogQuota: tier.blogQuota,
+      videoQuota: tier.videoQuota,
+      periodStart: new Date(),
+    },
+    update: {
+      type,
+      reviewMode,
+      adCreativePack,
+      campaignAutopilot,
+      blogQuota: tier.blogQuota,
+      videoQuota: tier.videoQuota,
+      active: true,
+    },
   });
 
+  // NOTE: real billing goes through Shopify's Billing API — see BILLING.md.
   return redirect("/app");
 };
 
 export default function Plans() {
-  const { currentPlan } = useLoaderData<typeof loader>();
+  const { current } = useLoaderData<typeof loader>();
   const submit = useSubmit();
   const navigation = useNavigation();
 
-  const selectPlan = (planType: string) => {
-    const budget = prompt("Weekly budget ($):", "150");
-    if (!budget) return;
-    submit({ planType, weeklyBudget: budget }, { method: "post" });
+  const [selected, setSelected] = useState<PlanTypeKey>(
+    (current?.type as PlanTypeKey) || "SEO_AUTOPILOT"
+  );
+  const [reviewMode, setReviewMode] = useState<string>(
+    current?.reviewMode || "REVIEW_FIRST"
+  );
+  const [adCreativePack, setAdCreativePack] = useState(
+    current?.adCreativePack || false
+  );
+  const [campaignAutopilot, setCampaignAutopilot] = useState(
+    current?.campaignAutopilot || false
+  );
+
+  const total = monthlyTotal(selected, { adCreativePack, campaignAutopilot });
+
+  const activate = () => {
+    submit(
+      {
+        planType: selected,
+        reviewMode,
+        adCreativePack: String(adCreativePack),
+        campaignAutopilot: String(campaignAutopilot),
+      },
+      { method: "post" }
+    );
   };
 
   return (
-    <Page title="Choose Your Marketing Autopilot" subtitle="Pick one goal. We handle everything else.">
+    <Page
+      title="Build your autopilot"
+      subtitle="Pick your engine, choose how hands-on you want to be, then let it run."
+    >
       <Layout>
+        {/* Core plan choice */}
         <Layout.Section>
           <InlineStack gap="400" wrap align="start">
-            {PLANS.map((plan) => (
-              <Box key={plan.type} minWidth="280px" maxWidth="340px">
-                <Card>
-                  <BlockStack gap="400">
-                    <InlineStack align="space-between">
-                      <Text variant="headingMd" as="h3">{plan.title}</Text>
-                      {plan.badge && <Badge tone="success">{plan.badge}</Badge>}
-                      {currentPlan === plan.type && <Badge tone="info">Active</Badge>}
-                    </InlineStack>
-
-                    <Text variant="bodyMd" as="p" tone="subdued">{plan.description}</Text>
-
-                    <Divider />
-
-                    <BlockStack gap="200">
-                      <InlineStack gap="200">
-                        <Text variant="bodySm" as="span" fontWeight="bold">Optimizes for:</Text>
-                        <Text variant="bodySm" as="span">{plan.optimizes}</Text>
-                      </InlineStack>
-                      <InlineStack gap="200">
-                        <Text variant="bodySm" as="span" fontWeight="bold">Audience:</Text>
-                        <Text variant="bodySm" as="span">{plan.audience}</Text>
-                      </InlineStack>
-                      <InlineStack gap="200">
-                        <Text variant="bodySm" as="span" fontWeight="bold">Pacing:</Text>
-                        <Text variant="bodySm" as="span">{plan.pacing}</Text>
-                      </InlineStack>
-                    </BlockStack>
-
-                    <Button
-                      variant={currentPlan === plan.type ? "secondary" : "primary"}
-                      onClick={() => selectPlan(plan.type)}
-                      loading={navigation.state === "submitting"}
-                      fullWidth
+            {(Object.values(PLAN_TIERS) as (typeof PLAN_TIERS)[PlanTypeKey][]).map(
+              (tier) => {
+                const isSel = selected === tier.key;
+                return (
+                  <Box key={tier.key} minWidth="320px" maxWidth="380px">
+                    <div
+                      onClick={() => setSelected(tier.key)}
+                      style={{
+                        cursor: "pointer",
+                        border: isSel
+                          ? "2px solid var(--mm-gold, #C9972B)"
+                          : "2px solid transparent",
+                        borderRadius: 16,
+                      }}
                     >
-                      {currentPlan === plan.type ? "Switch to This Plan" : "Activate This Plan"}
-                    </Button>
-                  </BlockStack>
-                </Card>
-              </Box>
-            ))}
+                      <Card>
+                        <BlockStack gap="400">
+                          <InlineStack align="space-between" blockAlign="center">
+                            <Text variant="headingLg" as="h3">
+                              {tier.name}
+                            </Text>
+                            {isSel && <Badge tone="success">Selected</Badge>}
+                          </InlineStack>
+
+                          <InlineStack blockAlign="end" gap="100">
+                            <Text variant="heading2xl" as="p">
+                              ${tier.price}
+                            </Text>
+                            <Text variant="bodyMd" as="span" tone="subdued">
+                              /month
+                            </Text>
+                          </InlineStack>
+
+                          <Text variant="bodyMd" as="p" tone="subdued">
+                            {tier.tagline}
+                          </Text>
+
+                          <Divider />
+
+                          <BlockStack gap="200">
+                            {tier.features.map((f) => (
+                              <InlineStack key={f} gap="200" blockAlign="start" wrap={false}>
+                                <div style={{ color: "var(--mm-green, #4B7B4E)", flexShrink: 0 }}>
+                                  <Icon source={CheckIcon} />
+                                </div>
+                                <Text variant="bodyMd" as="span">
+                                  {f}
+                                </Text>
+                              </InlineStack>
+                            ))}
+                          </BlockStack>
+                        </BlockStack>
+                      </Card>
+                    </div>
+                  </Box>
+                );
+              }
+            )}
           </InlineStack>
+        </Layout.Section>
+
+        {/* Review mode */}
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h3">
+                How hands-on do you want to be?
+              </Text>
+              <ChoiceList
+                title=""
+                titleHidden
+                choices={[
+                  {
+                    label: "Set-and-forget — content publishes automatically",
+                    value: "SET_AND_FORGET",
+                    helpText:
+                      "We generate and publish on schedule. Zero effort. You can still edit anything after it's live.",
+                  },
+                  {
+                    label: "Review first — approve or edit before anything publishes",
+                    value: "REVIEW_FIRST",
+                    helpText:
+                      "Every post/video waits in your queue with a 24h notice. Full editing control before it goes live.",
+                  },
+                ]}
+                selected={[reviewMode]}
+                onChange={(v) => setReviewMode(v[0])}
+              />
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        {/* Add-ons */}
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h3">
+                Supercharge it (optional)
+              </Text>
+              <Checkbox
+                label={`${ADDONS.adCreativePack.name} — +$${ADDONS.adCreativePack.price}/mo`}
+                helpText={ADDONS.adCreativePack.description}
+                checked={adCreativePack}
+                onChange={setAdCreativePack}
+              />
+              <Checkbox
+                label={`${ADDONS.campaignAutopilot.name} — +$${ADDONS.campaignAutopilot.price}/mo`}
+                helpText={ADDONS.campaignAutopilot.description}
+                checked={campaignAutopilot}
+                onChange={setCampaignAutopilot}
+              />
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        {/* Summary + activate */}
+        <Layout.Section>
+          <Card>
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text variant="headingLg" as="p">
+                  ${total}
+                  <Text as="span" variant="bodyMd" tone="subdued">
+                    {" "}
+                    /month
+                  </Text>
+                </Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {PLAN_TIERS[selected].name}
+                  {adCreativePack ? " + Ad Creative Pack" : ""}
+                  {campaignAutopilot ? " + Campaign Autopilot" : ""}
+                  {" · need more? top up with credits anytime."}
+                </Text>
+              </BlockStack>
+              <Button
+                variant="primary"
+                size="large"
+                onClick={activate}
+                loading={navigation.state === "submitting"}
+              >
+                {current ? "Update my plan" : "Activate autopilot"}
+              </Button>
+            </InlineStack>
+          </Card>
         </Layout.Section>
       </Layout>
     </Page>

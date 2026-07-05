@@ -54,6 +54,16 @@ model BrandProfile {
 }
 
 enum PlanType {
+  SEO_AUTOPILOT
+  VIDEO_AUTOPILOT
+}
+
+enum ReviewMode {
+  SET_AND_FORGET
+  REVIEW_FIRST
+}
+
+enum CampaignGoal {
   GROW_SALES
   LAUNCH_PRODUCT
   CLEAR_INVENTORY
@@ -61,14 +71,40 @@ enum PlanType {
 }
 
 model Plan {
-  id        String   @id @default(cuid())
-  shopId    String   @unique
-  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  type      PlanType
-  active    Boolean  @default(true)
-  weeklyBudget Float @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String     @id @default(cuid())
+  shopId            String     @unique
+  shop              Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type              PlanType
+  reviewMode        ReviewMode @default(REVIEW_FIRST)
+  active            Boolean    @default(true)
+
+  // Add-ons
+  adCreativePack    Boolean    @default(false)
+  campaignAutopilot Boolean    @default(false)
+
+  // Monthly quotas (seeded from the tier at selection time)
+  blogQuota         Int        @default(0)
+  videoQuota        Int        @default(0)
+
+  // Usage in the current billing period
+  blogUsed          Int        @default(0)
+  videoUsed         Int        @default(0)
+  periodStart       DateTime   @default(now())
+
+  // Purchased overage credits
+  blogCredits       Int        @default(0)
+  imageCredits      Int        @default(0)
+  videoCredits      Int        @default(0)
+
+  // Days between auto-published blog posts
+  postIntervalDays  Int        @default(3)
+
+  // Only used when the Campaign Autopilot add-on is enabled
+  campaignGoal      CampaignGoal @default(GROW_SALES)
+  weeklyBudget      Float      @default(0)
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 }
 
 enum AssetType {
@@ -108,6 +144,7 @@ enum JobType {
   GENERATE_BRAND_PROFILE
   GENERATE_BLOG_POST
   GENERATE_IMAGE_AD
+  GENERATE_VIDEO_AD
   GENERATE_AD_COPY
   LAUNCH_CAMPAIGN
   DECISIONING_PASS

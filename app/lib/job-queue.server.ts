@@ -5,6 +5,7 @@ import { db } from "../db.server";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd } from "./image-generation.server";
+import { generateVideoAd } from "./video-generation.server";
 import { generateAdCopy } from "./ad-copy-generation.server";
 import { launchCampaign } from "./campaign-launch.server";
 import { runDecisioningPass } from "./decisioning-engine.server";
@@ -105,6 +106,22 @@ async function runJob(
         payload.productTitle as string,
         payload.productImageUrl as string | undefined
       );
+      break;
+    }
+
+    case "GENERATE_VIDEO_AD": {
+      if (!shop?.brandProfile || !shop?.activePlan) {
+        throw new Error("Shop missing brand profile or active plan");
+      }
+      await generateVideoAd({
+        shopId,
+        brandProfile: shop.brandProfile,
+        plan: shop.activePlan,
+        productTitle: payload.productTitle as string,
+        productDescription: payload.productDescription as string | undefined,
+        productImageUrl: payload.productImageUrl as string | undefined,
+        style: (payload.style as "PRODUCT_HIGHLIGHT" | "AI_AVATAR") || "PRODUCT_HIGHLIGHT",
+      });
       break;
     }
 

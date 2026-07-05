@@ -4,12 +4,12 @@ import type { BrandProfile, Plan } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const PLAN_BLOG_INTENT: Record<string, string> = {
-  GROW_SALES: "drive purchase conversions by showcasing product value and social proof",
-  LAUNCH_PRODUCT: "build excitement and early-adopter interest for a new product",
-  CLEAR_INVENTORY: "create urgency around limited availability and clearance pricing",
-  BUILD_AWARENESS: "educate readers on the brand story and lifestyle, not selling directly",
-};
+// Blog posts are the SEO Autopilot product: the goal is always organic
+// search traffic — rank for buyer-intent keywords, then convert.
+const SEO_BLOG_INTENT =
+  "rank in Google for buyer-intent keywords related to this product, " +
+  "capture organic search traffic, and convert readers with a natural " +
+  "product CTA. Write genuinely useful, keyword-rich content — not thin filler.";
 
 export async function generateBlogPost(
   shopId: string,
@@ -20,7 +20,7 @@ export async function generateBlogPost(
 ): Promise<string> {
   const voice = JSON.parse(brandProfile.voiceJson);
   const products = JSON.parse(brandProfile.productJson);
-  const intent = PLAN_BLOG_INTENT[plan.type] || PLAN_BLOG_INTENT.GROW_SALES;
+  const intent = SEO_BLOG_INTENT;
 
   const prompt = `Write a Shopify blog post for the store with this brand profile:
 

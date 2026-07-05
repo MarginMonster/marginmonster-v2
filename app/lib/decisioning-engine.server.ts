@@ -32,12 +32,12 @@ async function evaluateCampaign(campaign: {
   platform: "META" | "TIKTOK";
   budgetCents: number;
   spentCents: number;
-  shop: { activePlan: { type: string; weeklyBudget: number } | null };
+  shop: { activePlan: { campaignGoal: string; weeklyBudget: number } | null };
   adAccount: { externalId: string; accessToken: string };
 }): Promise<void> {
   if (!campaign.externalId || !campaign.shop.activePlan) return;
 
-  const config = getPlatformConfig(campaign.shop.activePlan.type);
+  const config = getPlatformConfig(campaign.shop.activePlan.campaignGoal);
   const weeklyBudgetCents = Math.round(campaign.shop.activePlan.weeklyBudget * 100);
 
   // Pull fresh performance from platform

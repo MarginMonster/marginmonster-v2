@@ -26,7 +26,7 @@ export async function generateAdCopy(
 ): Promise<string> {
   const voice = JSON.parse(brandProfile.voiceJson);
   const products = JSON.parse(brandProfile.productJson);
-  const ctas = PLAN_CTA[plan.type] || PLAN_CTA.GROW_SALES;
+  const ctas = PLAN_CTA[plan.campaignGoal] || PLAN_CTA.GROW_SALES;
 
   const prompt = `Write Meta/TikTok ad copy for this product with these constraints:
 
@@ -34,7 +34,7 @@ Brand tone: ${voice.tone}
 Brand vocabulary: ${voice.vocabulary?.join(", ")}
 Product: ${productTitle}
 Description: ${productDescription?.slice(0, 200) || ""}
-Goal: ${plan.type.replace(/_/g, " ").toLowerCase()}
+Goal: ${plan.campaignGoal.replace(/_/g, " ").toLowerCase()}
 Positioning: ${products.positioning}
 
 Return ONLY a JSON object:
@@ -78,7 +78,7 @@ All copy must sound like this brand, not generic ad copy.`;
       status: "PENDING",
       title: `Ad copy for ${productTitle}`,
       bodyJson: JSON.stringify(copyData),
-      metaJson: JSON.stringify({ planType: plan.type, productTitle }),
+      metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle }),
     },
   });
 
