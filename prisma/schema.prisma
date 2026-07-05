@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model Shop {
+  id          String   @id @default(cuid())
+  domain      String   @unique
+  accessToken String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  brandProfile   BrandProfile?
+  activePlan     Plan?
+  assets         Asset[]
+  jobs           Job[]
+  adAccounts     AdAccount[]
+  campaigns      Campaign[]
+}
+
+model BrandProfile {
+  id          String   @id @default(cuid())
+  shopId      String   @unique
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // AI-generated brand intelligence
+  voiceJson   String   // JSON: tone, vocabulary, values, sample phrases
+  visualJson  String   // JSON: primaryColor, accentColor, fontStyle, imageStyle
+  productJson String   // JSON: top products, categories, price range, AOV
+}
+
+enum PlanType {
+  GROW_SALES
+  LAUNCH_PRODUCT
+  CLEAR_INVENTORY
+  BUILD_AWARENESS
+}
+
+model Plan {
+  id        String   @id @default(cuid())
+  shopId    String   @unique
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type      PlanType
+  active    Boolean  @default(true)
+  weeklyBudget Float @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AssetType {
+  IMAGE_AD
+  VIDEO_AD
+  BLOG_POST
+  AD_COPY
+  EMAIL
+}
+
+enum AssetStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PUBLISHED
+  FAILED
+}
+
+model Asset {
+  id          String      @id @default(cuid())
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type        AssetType
+  status      AssetStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Content
+  title       String?
+  bodyJson    String      // JSON: varies by type (imageUrl, blogHtml, adCopy, etc.)
+  metaJson    String      // JSON: targetProductId, planType, generationPrompt
+
+  campaigns   Campaign[]
+}
+
+enum JobType {
+  GENERATE_BRAND_PROFILE
+  GENERATE_BLOG_POST
+  GENERATE_IMAGE_AD
+  GENERATE_AD_COPY
+  LAUNCH_CAMPAIGN
+  DECISIONING_PASS
+}
+
+enum JobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type        JobType
+  status      JobStatus @default(PENDING)
+  payload     String    // JSON
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+}
+
+enum AdPlatform {
+  META
+  TIKTOK
+}
+
+model AdAccount {
+  id              String     @id @default(cuid())
+  shopId          String
+  shop            Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  platform        AdPlatform
+  externalId      String
+  name            String
+  accessToken     String
+  tokenExpiresAt  DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  campaigns       Campaign[]
+
+  @@unique([shopId, platform])
+}
+
+enum CampaignStatus {
+  DRAFT
+  PAUSED
+  ACTIVE
+  KILLED
+  COMPLETED
+}
+
+model Campaign {
+  id              String         @id @default(cuid())
+  shopId          String
+  shop            Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  adAccountId     String
+  adAccount       AdAccount      @relation(fields: [adAccountId], references: [id])
+  assetId         String
+  asset           Asset          @relation(fields: [assetId], references: [id])
+  platform        AdPlatform
+  externalId      String?        // platform campaign ID (null until launched)
+  status          CampaignStatus @default(DRAFT)
+  budgetCents     Int
+  spentCents      Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  metrics         PerformanceMetric[]
+}
+
+model PerformanceMetric {
+  id              String   @id @default(cuid())
+  campaignId      String
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recordedAt      DateTime @default(now())
+
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  conversions     Int      @default(0)
+  spendCents      Int      @default(0)
+  revenueCents    Int      @default(0)
+  roas            Float    @default(0)
+}

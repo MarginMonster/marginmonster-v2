@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: marginmonster
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: SHOPIFY_APP_URL
+        sync: false
+      - key: SCOPES
+        value: read_orders,read_customers,read_products,write_marketing_events
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marginmonster-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: REPLICATE_API_TOKEN
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_PAGE_ID
+        sync: false
+      - key: TIKTOK_APP_ID
+        sync: false
+      - key: TIKTOK_APP_SECRET
+        sync: false
+
+databases:
+  - name: marginmonster-db
+    databaseName: marginmonster
+    plan: free

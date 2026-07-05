@@ -1,0 +1,37 @@
+name = "MarginMonster"
+client_id = "8898f9f186fd62058a311b372e2252b8"
+application_url = "https://YOUR_HOST"
+embedded = true
+
+[access_scopes]
+# read_orders + read_customers: profit-tracker features (existing)
+# write_pixels + read_pixels: attribution/analytics
+# write_marketing_events: campaign tracking
+scopes = "read_orders,read_customers,read_products,write_marketing_events"
+
+[auth]
+redirect_urls = [
+  "https://YOUR_HOST/auth/callback",
+  "https://YOUR_HOST/auth/shopify/callback",
+  "http://localhost:3000/auth/callback",
+  "http://localhost:3000/auth/shopify/callback"
+]
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = ["products/create"]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/webhooks"
+
+[app_proxy]
+url = "https://YOUR_HOST/proxy"
+subpath = "profit-tracker"
+prefix = "apps"
+
+[pos]
+embedded = false
