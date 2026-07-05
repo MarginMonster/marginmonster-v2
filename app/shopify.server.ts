@@ -6,6 +6,7 @@ import {
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { db } from "./db.server";
+import "./worker.server"; // starts the in-process job worker on server boot
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY!,
