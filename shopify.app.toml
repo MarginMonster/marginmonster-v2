@@ -1,6 +1,6 @@
 name = "MarginMonster"
 client_id = "8898f9f186fd62058a311b372e2252b8"
-application_url = "https://YOUR_HOST"
+application_url = "https://marginmonster-fiew.onrender.com"
 embedded = true
 
 [access_scopes]
@@ -11,8 +11,8 @@ scopes = "read_orders,read_customers,read_products,write_marketing_events"
 
 [auth]
 redirect_urls = [
-  "https://YOUR_HOST/auth/callback",
-  "https://YOUR_HOST/auth/shopify/callback",
+  "https://marginmonster-fiew.onrender.com/auth/callback",
+  "https://marginmonster-fiew.onrender.com/auth/shopify/callback",
   "http://localhost:3000/auth/callback",
   "http://localhost:3000/auth/shopify/callback"
 ]
@@ -29,7 +29,7 @@ api_version = "2025-01"
   uri = "/webhooks"
 
 [app_proxy]
-url = "https://YOUR_HOST/proxy"
+url = "https://marginmonster-fiew.onrender.com/proxy"
 subpath = "profit-tracker"
 prefix = "apps"
 
