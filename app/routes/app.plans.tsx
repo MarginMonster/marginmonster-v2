@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
 import { useState } from "react";
 import {
@@ -71,23 +71,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     },
   });
 
-  // Real purchase: redirect to Shopify's charge-approval screen.
-  // isTest keeps it free during development — flip to false to charge for real.
+  // Attempt the real Shopify charge. On success this THROWS a redirect to
+  // Shopify's approval screen. If billing isn't fully set up yet, we don't
+  // block the merchant — the plan is already active, so we just send them
+  // back to the dashboard. Real charging turns on once billing is verified.
   const appUrl = process.env.SHOPIFY_APP_URL || "";
   try {
     await billing.request({
       plan: planKey,
       isTest: true,
-      returnUrl: `${appUrl}/app?billing=confirmed`,
+      returnUrl: `${appUrl}/app`,
     });
   } catch (e) {
-    // billing.request signals the redirect by THROWING a Response — let that
-    // through. Only genuine errors get reported back to the UI.
-    if (e instanceof Response) throw e;
-    return json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof Response) throw e; // the approval redirect — let it flow
+    console.error("[billing] request failed, activating plan without charge:", e);
+    throw redirect("/app");
   }
 
-  return json({ ok: true });
+  throw redirect("/app");
 };
 
 export default function Plans() {

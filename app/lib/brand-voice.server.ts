@@ -64,6 +64,12 @@ export async function generateBrandProfile(
   shopId: string,
   graphql: GraphQLRunner
 ): Promise<void> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      "The server is missing ANTHROPIC_API_KEY. Add it in Render → your service → Environment, then redeploy."
+    );
+  }
+
   const { storefront, products } = await fetchStoreContent(graphql);
 
   const productSummary = products
@@ -124,7 +130,14 @@ Return ONLY a JSON object with this exact structure:
       voiceData = safeParseJSON(text);
       break;
     } catch (e) {
-      if (attempts === 3) throw e;
+      if (attempts === 3) {
+        const detail = e instanceof Error ? e.message : String(e);
+        const status = (e as { status?: number })?.status;
+        throw new Error(
+          `Couldn't reach the AI service (${detail}${status ? `, status ${status}` : ""}). ` +
+            `This usually means ANTHROPIC_API_KEY is missing or invalid on the server.`
+        );
+      }
       await new Promise((r) => setTimeout(r, 1000 * attempts));
     }
   }
