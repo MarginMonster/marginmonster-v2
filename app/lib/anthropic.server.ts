@@ -14,10 +14,19 @@ export async function anthropicText(
   prompt: string,
   opts: AnthropicOptions = {}
 ): Promise<string> {
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) {
     throw new Error(
       "Server is missing ANTHROPIC_API_KEY. Add it in Render → Environment, then redeploy."
+    );
+  }
+  // Guard against a masked/hidden value being pasted (bullets, smart quotes,
+  // etc.) — API keys are plain ASCII. This produces a clear message instead of
+  // a cryptic ByteString error.
+  if (!/^[\x20-\x7E]+$/.test(key)) {
+    throw new Error(
+      "ANTHROPIC_API_KEY contains non-standard characters (it looks like the masked •••• value was copied). " +
+        "Go to console.anthropic.com/settings/keys, copy the REAL key, and paste it into Render → Environment."
     );
   }
 
