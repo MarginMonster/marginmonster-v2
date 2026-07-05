@@ -8,12 +8,14 @@ interface ShopifyProduct {
   description: string;
   productType: string;
   priceRange: { minVariantPrice: { amount: string } };
+  featuredImage?: { url: string } | null;
 }
 
 interface ShopifyStorefront {
   name: string;
   description: string;
   primaryDomain: { url: string };
+  brand?: { logo?: { image?: { url: string } | null } | null } | null;
 }
 
 async function fetchStoreContent(
@@ -28,7 +30,12 @@ async function fetchStoreContent(
     },
     body: JSON.stringify({
       query: `{
-        shop { name description primaryDomain { url } }
+        shop {
+          name
+          description
+          primaryDomain { url }
+          brand { logo { image { url } } }
+        }
         products(first: 20, sortKey: BEST_SELLING) {
           edges {
             node {
@@ -36,6 +43,7 @@ async function fetchStoreContent(
               description(truncateAt: 300)
               productType
               priceRange { minVariantPrice { amount } }
+              featuredImage { url }
             }
           }
         }
@@ -127,18 +135,37 @@ Return ONLY a JSON object with this exact structure:
   const visual = voiceData!.visual as Record<string, unknown>;
   const productsMeta = voiceData!.products as Record<string, unknown>;
 
+  // Attach real store graphics so the dashboard can render the merchant's
+  // actual brand, not generic placeholders.
+  const productImages = products
+    .map((p) => p.featuredImage?.url)
+    .filter((u): u is string => !!u)
+    .slice(0, 8);
+
+  const enrichedVisual = {
+    ...visual,
+    logoUrl: storefront.brand?.logo?.image?.url || null,
+    productImages,
+  };
+  const enrichedProducts = {
+    ...productsMeta,
+    storeName: storefront.name,
+    storeUrl: storefront.primaryDomain?.url || null,
+    productCount: products.length,
+  };
+
   await db.brandProfile.upsert({
     where: { shopId },
     create: {
       shopId,
       voiceJson: JSON.stringify(voice),
-      visualJson: JSON.stringify(visual),
-      productJson: JSON.stringify(productsMeta),
+      visualJson: JSON.stringify(enrichedVisual),
+      productJson: JSON.stringify(enrichedProducts),
     },
     update: {
       voiceJson: JSON.stringify(voice),
-      visualJson: JSON.stringify(visual),
-      productJson: JSON.stringify(productsMeta),
+      visualJson: JSON.stringify(enrichedVisual),
+      productJson: JSON.stringify(enrichedProducts),
     },
   });
 }

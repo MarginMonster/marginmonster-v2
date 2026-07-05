@@ -22,12 +22,14 @@ export const PLAN_TIERS: Record<PlanTypeKey, PlanTier> = {
     price: 19,
     blogQuota: 15,
     videoQuota: 0,
-    tagline: "High-SEO blog posts that pull in free organic traffic — on autopilot.",
+    tagline:
+      "We write and publish SEO blog articles to your store every month — targeting what your customers Google, so free traffic finds you.",
     features: [
-      "15 SEO blog posts every month",
-      "Keyword-targeted & linked to your products",
-      "Auto-published to your store on a schedule you set",
-      "Set-and-forget, or review & edit every post before it goes live",
+      "15 keyword-optimized blog posts a month, written for you",
+      "Each one targets real search terms your buyers use → ranks on Google → brings in free organic traffic",
+      "Auto-published to your store blog on a schedule you set (e.g. every 2 days)",
+      "Set-and-forget, or review & edit each post before it publishes",
+      "You never write a word — but every article sounds like your brand",
     ],
   },
   VIDEO_AUTOPILOT: {
@@ -36,12 +38,14 @@ export const PLAN_TIERS: Record<PlanTypeKey, PlanTier> = {
     price: 79,
     blogQuota: 0,
     videoQuota: 10,
-    tagline: "Scroll-stopping product videos, generated from your catalog.",
+    tagline:
+      "Scroll-stopping product videos made for you every month — the content that actually sells on TikTok, Reels & Shorts.",
     features: [
-      "10 AI product videos every month",
-      "Choose per video: AI avatar (UGC) or product highlight",
-      "Built from your store products or your own uploads",
-      "Autopilot or manual — always reviewable before publishing",
+      "10 ready-to-post product videos a month",
+      "Pick per video: an AI avatar hyping your product (UGC-style), or a slick product-highlight reel",
+      "Built automatically from your store products — or upload your own",
+      "Formatted vertical for TikTok, Instagram Reels & YouTube Shorts",
+      "Autopilot or manual — always yours to review before it goes live",
     ],
   },
 };

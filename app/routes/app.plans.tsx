@@ -112,10 +112,24 @@ export default function Plans() {
 
   return (
     <Page
+      backAction={{ content: "Home", url: "/app" }}
       title="Build your autopilot"
       subtitle="Pick your engine, choose how hands-on you want to be, then let it run."
     >
       <Layout>
+        {/* Aspirational framing */}
+        <Layout.Section>
+          <div className="mm-hero">
+            <span className="mm-eyebrow">Marketing freedom</span>
+            <h1>Let your store sell for you.</h1>
+            <p>
+              You didn't start a business to spend nights writing blog posts and
+              editing videos. Pick a plan and hand the content grind to us —
+              grow faster, and take your time back.
+            </p>
+          </div>
+        </Layout.Section>
+
         {/* Core plan choice */}
         <Layout.Section>
           <InlineStack gap="400" wrap align="start">
