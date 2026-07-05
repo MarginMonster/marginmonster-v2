@@ -89,6 +89,18 @@ export default function Dashboard() {
       }
     >
       <Layout>
+        <Layout.Section>
+          <div className="mm-hero">
+            <span className="mm-eyebrow">Marketing Autopilot</span>
+            <h1>Your store markets itself.</h1>
+            <p>
+              MarginMonster learns your brand, generates content, launches
+              campaigns on Meta & TikTok, and reallocates budget toward what
+              actually sells — all on autopilot.
+            </p>
+          </div>
+        </Layout.Section>
+
         {!hasBrandProfile && (
           <Layout.Section>
             <Banner
