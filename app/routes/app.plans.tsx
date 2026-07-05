@@ -11,7 +11,6 @@ import {
   InlineStack,
   Button,
   Badge,
-  Box,
   Divider,
   ChoiceList,
   Icon,
@@ -107,6 +106,7 @@ export default function Plans() {
 
   return (
     <Page
+      fullWidth
       backAction={{ content: "Home", url: "/app" }}
       title="Choose your plan"
       subtitle="Pick a plan, choose how hands-on you want to be, and start growing today."
@@ -142,14 +142,16 @@ export default function Plans() {
                 titleHidden
                 choices={[
                   {
-                    label: "Set-and-forget — content publishes automatically",
+                    label: "Set-and-forget — publishes automatically, no review needed",
                     value: "SET_AND_FORGET",
-                    helpText: "Zero effort. You can still edit anything after it's live.",
+                    helpText:
+                      "Content goes live on your store the moment it's ready. You can still edit or remove anything after it's live. Don't worry — you can switch to review mode anytime.",
                   },
                   {
-                    label: "Review first — approve or edit before anything publishes",
+                    label: "Review first — you approve or edit before it goes live",
                     value: "REVIEW_FIRST",
-                    helpText: "Everything waits in your queue with a 24h notice. Full control.",
+                    helpText:
+                      "Nothing publishes until you say so. Each piece waits in your queue with a 24h heads-up. Don't worry — you can change your mind and switch modes whenever you like.",
                   },
                 ]}
                 selected={[reviewMode]}
@@ -159,91 +161,63 @@ export default function Plans() {
           </Card>
         </Layout.Section>
 
-        {/* Four plan cards */}
+        {/* Four plan cards — even grid */}
         <Layout.Section>
-          <InlineStack gap="400" wrap align="center">
+          <div className="mm-plan-grid">
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
               return (
-                <Box key={tier.key} minWidth="250px" maxWidth="290px">
-                  <div
-                    style={{
-                      position: "relative",
-                      border: tier.highlight
-                        ? "2px solid var(--mm-gold, #C9972B)"
-                        : "1px solid var(--mm-line, #E6DCC3)",
-                      borderRadius: 16,
-                      background: "#fff",
-                      height: "100%",
-                    }}
-                  >
-                    {tier.highlight && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: -12,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          background: "var(--mm-gold, #C9972B)",
-                          color: "#fff",
-                          fontFamily: "Poppins, sans-serif",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: "0.08em",
-                          textTransform: "uppercase",
-                          padding: "4px 12px",
-                          borderRadius: 999,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Most popular
-                      </div>
-                    )}
-                    <Box padding="400">
-                      <BlockStack gap="300">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text variant="headingMd" as="h3">{tier.name}</Text>
-                          {isCurrent && <Badge tone="success">Current</Badge>}
+                <div
+                  key={tier.key}
+                  className={`mm-plan-card${tier.highlight ? " is-featured" : ""}`}
+                >
+                  {tier.highlight && <div className="mm-plan-ribbon">Most popular</div>}
+
+                  <BlockStack gap="300">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text variant="headingMd" as="h3">{tier.name}</Text>
+                      {isCurrent && <Badge tone="success">Current</Badge>}
+                    </InlineStack>
+
+                    <p className="mm-plan-price">
+                      ${tier.price}
+                      <small> /mo</small>
+                    </p>
+
+                    <Text variant="bodySm" as="p" tone="subdued">
+                      {tier.tagline}
+                    </Text>
+
+                    <Divider />
+
+                    <BlockStack gap="200">
+                      {tier.features.map((f) => (
+                        <InlineStack key={f} gap="150" blockAlign="start" wrap={false}>
+                          <div style={{ color: "var(--mm-green, #4B7B4E)", flexShrink: 0 }}>
+                            <Icon source={CheckIcon} />
+                          </div>
+                          <Text variant="bodySm" as="span">{f}</Text>
                         </InlineStack>
+                      ))}
+                    </BlockStack>
+                  </BlockStack>
 
-                        <InlineStack blockAlign="end" gap="100">
-                          <Text variant="heading2xl" as="p">${tier.price}</Text>
-                          <Text variant="bodySm" as="span" tone="subdued">/mo</Text>
-                        </InlineStack>
-
-                        <Text variant="bodySm" as="p" tone="subdued">
-                          {tier.tagline}
-                        </Text>
-
-                        <Divider />
-
-                        <BlockStack gap="200">
-                          {tier.features.map((f) => (
-                            <InlineStack key={f} gap="150" blockAlign="start" wrap={false}>
-                              <div style={{ color: "var(--mm-green, #4B7B4E)", flexShrink: 0 }}>
-                                <Icon source={CheckIcon} />
-                              </div>
-                              <Text variant="bodySm" as="span">{f}</Text>
-                            </InlineStack>
-                          ))}
-                        </BlockStack>
-
-                        <Button
-                          variant={tier.highlight ? "primary" : "secondary"}
-                          fullWidth
-                          size="large"
-                          loading={nav.state !== "idle" && pending === tier.key}
-                          onClick={() => buy(tier.key)}
-                        >
-                          {isCurrent ? "Current plan" : `Get ${tier.name}`}
-                        </Button>
-                      </BlockStack>
-                    </Box>
+                  <div style={{ flexGrow: 1 }} />
+                  <div style={{ marginTop: 16 }}>
+                    <Button
+                      variant={tier.highlight ? "primary" : "secondary"}
+                      fullWidth
+                      size="large"
+                      loading={nav.state !== "idle" && pending === tier.key}
+                      onClick={() => buy(tier.key)}
+                    >
+                      {isCurrent ? "Current plan" : `Get ${tier.name}`}
+                    </Button>
                   </div>
-                </Box>
+                </div>
               );
             })}
-          </InlineStack>
+          </div>
         </Layout.Section>
 
         <Layout.Section>

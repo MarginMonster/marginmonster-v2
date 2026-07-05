@@ -57,7 +57,7 @@ export default function Connect() {
     useLoaderData<typeof loader>();
 
   return (
-    <Page title="Connect Ad Accounts" subtitle="Link your Meta and TikTok ad accounts to start publishing campaigns.">
+    <Page title="Connect Ad Accounts" backAction={{ content: "Home", url: "/app" }} subtitle="Link your Meta and TikTok ad accounts to start publishing campaigns.">
       <Layout>
         <Layout.Section>
           <Banner tone="info" title="Ad accounts required to launch campaigns">

@@ -93,7 +93,7 @@ export default function Assets() {
 
   if (!hasPlan) {
     return (
-      <Page title="Content Queue">
+      <Page title="Content Queue" backAction={{ content: "Home", url: "/app" }}>
         <EmptyState heading="No plan selected yet" image="">
           <p>Choose a marketing plan first and we'll start generating content automatically.</p>
           <Button url="/app/plans" variant="primary">Choose Plan</Button>
@@ -103,7 +103,7 @@ export default function Assets() {
   }
 
   return (
-    <Page title="Content Queue" subtitle="Review and approve AI-generated content before it goes live.">
+    <Page title="Content Queue" backAction={{ content: "Home", url: "/app" }} subtitle="Review and approve AI-generated content before it goes live.">
       <Layout>
         <Layout.Section>
           <Card>

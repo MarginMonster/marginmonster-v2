@@ -90,7 +90,7 @@ export default function Campaigns() {
 
   if (campaigns.length === 0) {
     return (
-      <Page title="Campaigns">
+      <Page title="Campaigns" backAction={{ content: "Home", url: "/app" }}>
         <EmptyState heading="No campaigns yet" image="">
           <p>Approve content in the Content Queue, then launch it as a campaign.</p>
           <Button url="/app/assets" variant="primary">Go to Content Queue</Button>
@@ -100,7 +100,7 @@ export default function Campaigns() {
   }
 
   return (
-    <Page title="Campaigns" subtitle="All campaigns are created paused — activate when ready.">
+    <Page title="Campaigns" backAction={{ content: "Home", url: "/app" }} subtitle="All campaigns are created paused — activate when ready.">
       <Layout>
         <Layout.Section>
           <Card>

@@ -28,7 +28,7 @@ const STORE_QUERY = `{
     description
     primaryDomain { url }
   }
-  products(first: 20, sortKey: BEST_SELLING) {
+  products(first: 20, sortKey: UPDATED_AT, reverse: true) {
     edges {
       node {
         title
@@ -77,14 +77,18 @@ export async function generateBrandProfile(
     ? prices.reduce((a, b) => a + b, 0) / prices.length
     : 0;
 
+  const hasProducts = products.length > 0;
+  const productBlock = hasProducts
+    ? `Top products:\n${productSummary}`
+    : `This store has no products listed yet. Infer a sensible brand direction from the store name and description alone, and keep it flexible — the merchant will add products soon.`;
+
   const prompt = `You are a brand strategist analyzing a Shopify store to build a brand intelligence profile for AI-driven marketing.
 
 Store: ${storefront.name}
 Description: ${storefront.description || "N/A"}
 URL: ${storefront.primaryDomain?.url || ""}
 
-Top products:
-${productSummary}
+${productBlock}
 
 Return ONLY a JSON object with this exact structure:
 {

@@ -166,11 +166,20 @@ export default function Dashboard() {
                   </Text>
                 )}
 
+                {productMeta?.positioning && (
+                  <Text variant="bodyMd" as="p" tone="subdued">
+                    {productMeta.positioning}
+                  </Text>
+                )}
+
                 <InlineStack gap="200" wrap>
                   {voice?.tone && <Badge tone="info">{`Voice: ${voice.tone}`}</Badge>}
                   {visual?.imageStyle && <Badge>{`Look: ${visual.imageStyle}`}</Badge>}
-                  {productMeta?.avgPrice != null && (
+                  {Number(productMeta?.avgPrice) > 0 && (
                     <Badge>{`Avg price: $${Number(productMeta.avgPrice).toFixed(0)}`}</Badge>
+                  )}
+                  {productMeta?.storeUrl && (
+                    <Badge>{String(productMeta.storeUrl).replace(/^https?:\/\//, "")}</Badge>
                   )}
                 </InlineStack>
 
@@ -182,7 +191,7 @@ export default function Dashboard() {
                   </InlineStack>
                 )}
 
-                {productImages.length > 0 && (
+                {productImages.length > 0 ? (
                   <>
                     <Divider />
                     <Text variant="bodySm" as="p" tone="subdued">
@@ -204,6 +213,15 @@ export default function Dashboard() {
                         />
                       ))}
                     </InlineStack>
+                  </>
+                ) : (
+                  <>
+                    <Divider />
+                    <Text variant="bodySm" as="p" tone="subdued">
+                      No products in your store yet — we've built your brand
+                      direction from your store details. Add products and hit
+                      “Re-analyze” to sharpen it.
+                    </Text>
                   </>
                 )}
               </BlockStack>

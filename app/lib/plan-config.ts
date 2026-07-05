@@ -38,7 +38,7 @@ export const PLAN_TIERS: PlanTier[] = [
   {
     key: "GROWTH",
     name: "Growth",
-    price: 49,
+    price: 39,
     tagline: "Content + ads. Everything in Starter, plus scroll-stopping image ads and copy for Meta & TikTok.",
     highlight: true,
     blogQuota: 30,
@@ -55,7 +55,7 @@ export const PLAN_TIERS: PlanTier[] = [
   {
     key: "PRO",
     name: "Pro",
-    price: 99,
+    price: 79,
     tagline: "Add video that sells. Product videos + we launch and optimize your ads automatically.",
     blogQuota: 30,
     videoQuota: 8,
@@ -71,7 +71,7 @@ export const PLAN_TIERS: PlanTier[] = [
   {
     key: "SCALE",
     name: "Scale",
-    price: 199,
+    price: 149,
     tagline: "Full firepower for stores going all-in on growth.",
     blogQuota: 60,
     videoQuota: 20,

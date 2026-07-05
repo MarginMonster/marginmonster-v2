@@ -13,9 +13,9 @@ import "./worker.server"; // starts the in-process job worker on server boot
 // These names are the `plan` keys passed to billing.request().
 export const BILLING_PLANS = {
   STARTER: { amount: 19, currencyCode: "USD", interval: BillingInterval.Every30Days },
-  GROWTH: { amount: 49, currencyCode: "USD", interval: BillingInterval.Every30Days },
-  PRO: { amount: 99, currencyCode: "USD", interval: BillingInterval.Every30Days },
-  SCALE: { amount: 199, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  GROWTH: { amount: 39, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  PRO: { amount: 79, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  SCALE: { amount: 149, currencyCode: "USD", interval: BillingInterval.Every30Days },
 } as const;
 
 const shopify = shopifyApp({
