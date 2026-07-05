@@ -18,9 +18,7 @@ services:
       - key: SCOPES
         value: read_orders,read_customers,read_products,write_marketing_events
       - key: DATABASE_URL
-        fromDatabase:
-          name: marginmonster-db
-          property: connectionString
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: REPLICATE_API_TOKEN
@@ -35,8 +33,3 @@ services:
         sync: false
       - key: TIKTOK_APP_SECRET
         sync: false
-
-databases:
-  - name: marginmonster-db
-    databaseName: marginmonster
-    plan: free
