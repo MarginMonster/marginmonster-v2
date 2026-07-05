@@ -47,7 +47,7 @@ Return ONLY the HTML body content (h1, h2, p, ul tags only — no html/head/body
     try {
       const html = (
         await anthropicText(prompt, {
-          model: "claude-3-5-sonnet-20241022",
+          model: "claude-sonnet-5",
           maxTokens: 2048,
         })
       ).trim();

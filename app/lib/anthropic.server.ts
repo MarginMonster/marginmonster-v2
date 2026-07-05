@@ -30,7 +30,7 @@ export async function anthropicText(
     );
   }
 
-  const model = opts.model || "claude-3-5-haiku-20241022";
+  const model = opts.model || "claude-haiku-4-5-20251001";
   const maxTokens = opts.maxTokens || 1024;
 
   let res: Response;
