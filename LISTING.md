@@ -1,15 +1,15 @@
-# MarginMonster — Shopify App Store Listing Copy
+# AdArcade — Shopify App Store Listing Copy
 
 Fill these into the Partner Dashboard → App listing. Character limits noted where Shopify enforces them.
 
 ---
 
 ## App name
-**MarginMonster: AI Marketing**
-*(alt if name taken: "MarginMonster — Ads & Content AI")*
+**AdArcade: AI Marketing**
+*(alt if name taken: "AdArcade — Ads & Content AI")*
 
 ## App icon
-`marginmonster-icon.png` (1200×1200) — gold M-monster on deep ink.
+`adarcade-icon-1200.png` — cyan play button glowing inside a retro CRT arcade screen on deep space-indigo. (Vector master: `public/adarcade-icon.svg`.)
 
 ## Primary category
 Marketing and conversion → **Advertising**
@@ -23,13 +23,13 @@ SEO · Content marketing · Social media marketing · Marketing analytics
 **Your store's marketing, fully on autopilot.**
 
 Alternates:
+- The marketing arcade: AI content, videos, ads & ROI
 - AI writes, publishes & optimizes your ads and content
-- Blogs, videos, ads & ROI tracking — all automatic
 
 ---
 
 ## App introduction  (≤ 100 chars — the one-liner in search)
-MarginMonster generates content, launches ads, and tracks ROI automatically — grounded in your store.
+AdArcade generates content, launches ads, and tracks ROI automatically — grounded in your store.
 
 ---
 
@@ -37,9 +37,9 @@ MarginMonster generates content, launches ads, and tracks ROI automatically — 
 
 **Grow your store while you live your life.**
 
-You didn't start a business to spend nights writing blog posts, editing videos, and babysitting ad campaigns. MarginMonster studies your brand and quietly does the marketing for you — so your store grows whether you're working or not.
+You didn't start a business to spend nights writing blog posts, editing videos, and babysitting ad campaigns. AdArcade studies your brand and quietly does the marketing for you — so your store grows whether you're working or not.
 
-Unlike generic AI tools, MarginMonster is grounded in *your* real products and brand voice. Everything it makes sounds and looks like you.
+Unlike generic AI tools, AdArcade is grounded in *your* real products and brand voice. Everything it makes sounds and looks like you.
 
 **What it does, on autopilot:**
 
@@ -49,7 +49,7 @@ Unlike generic AI tools, MarginMonster is grounded in *your* real products and b
 
 📣 **Ads that run themselves** — Generates image ads and copy, launches campaigns on Meta & TikTok, then kills the losers and scales the winners automatically. The closed loop most tools don't have.
 
-📊 **Performance & ROI tracking** — See exactly where every dollar goes: ad spend, revenue, ROI, ROAS, traffic sources, and conversions — all in one clear dashboard.
+📊 **Performance & ROI tracking** — See exactly where every dollar goes: ad spend, revenue, ROI, ROAS, traffic sources, and conversions — all on one clear HI-SCORE dashboard.
 
 🧭 **AI marketing plan** — A custom 4-week growth strategy from your brand and goal: channels, budget split, content themes, and KPIs.
 
@@ -59,15 +59,15 @@ Unlike generic AI tools, MarginMonster is grounded in *your* real products and b
 
 🎛️ **You're always in control** — Review everything before it publishes, or set it and forget it. Switch modes anytime.
 
-**Pick a goal, we handle the rest:**
+**Choose your plan — we handle the rest:**
 - **Starter — $19/mo:** 15 SEO blog posts a month
 - **Growth — $39/mo:** + AI image ads & Meta/TikTok copy
 - **Pro — $79/mo:** + product videos & auto-optimized campaigns
 - **Scale — $149/mo:** full firepower for stores going all-in
 
-Need more? Top up with credits anytime. Cancel or switch whenever you like.
+Need more? Top up with tokens anytime. Cancel or switch whenever you like.
 
-**Why merchants choose MarginMonster:**
+**Why merchants choose AdArcade:**
 - Set-and-forget marketing that runs 24/7
 - Every post, video, and ad built from your actual products
 - Real ROI tracking, not vanity metrics
@@ -80,7 +80,7 @@ Get your time back. Let your store sell for you.
 ## Key benefits  (3 bullets Shopify shows prominently)
 1. **Content on autopilot** — SEO blogs & product videos generated and published for you, in your brand voice.
 2. **Ads that optimize themselves** — Auto-launch on Meta & TikTok, then scale winners and cut losers automatically.
-3. **See your real ROI** — Ad spend, revenue, ROAS, traffic sources & conversions in one dashboard.
+3. **See your real ROI** — Ad spend, revenue, ROAS, traffic sources & conversions on one dashboard.
 
 ---
 
@@ -90,11 +90,11 @@ ai marketing, marketing automation, seo blog, blog posts, ai content, product vi
 ---
 
 ## Demo store / screenshots to capture (in order)
-1. Dashboard — hero + brand profile ("We've studied your store") with real product thumbnails
-2. Plan picker — the 4-tier grid with "Most popular"
+1. Dashboard — AdArcade hero + brand profile ("We've studied your store") with real product thumbnails
+2. Choose your plan — the arcade "Choose Your Fighter" tier grid with "Most popular"
 3. Content queue — a generated blog post + image ad awaiting review
 4. Video Studio — prompt + style picker + a generated video
-5. **Performance & ROI** — the KPI cards (spend, revenue, ROI, ROAS) + traffic sources table
+5. **Performance & ROI** — the HI-SCORE KPI cards (spend, revenue, ROI, ROAS) + traffic sources table
 6. Campaigns — a live Meta/TikTok campaign with status
 
 ---
@@ -102,5 +102,5 @@ ai marketing, marketing automation, seo blog, blog posts, ai content, product vi
 ## Support & compliance fields
 - **Support email:** magicmonstermarket@gmail.com
 - **Privacy policy URL:** https://marginmonster-fiew.onrender.com/privacy  (live)
-- **Pricing:** Recurring subscription (Starter $19 / Growth $39 / Pro $79 / Scale $149) + usage credits
+- **Pricing:** Recurring subscription (Starter $19 / Growth $39 / Pro $79 / Scale $149) + usage tokens
 - **Works with:** Meta Ads, TikTok Ads

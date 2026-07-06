@@ -87,6 +87,13 @@ body::before {
 .mm-hero h1 { font-family: var(--font-heading); font-size: 40px; font-weight: 800; line-height: 1.08; margin: 0 0 12px; letter-spacing: -0.03em; max-width: 640px; color: #ECEAFB; }
 .mm-hero p { font-family: var(--font-body); font-size: 16px; color: #A8A2D0; margin: 0; max-width: 560px; line-height: 1.6; }
 .mm-hero .mm-eyebrow { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.26em; color: var(--mm-cyan); margin-bottom: 20px; display: block; }
+
+/* brand lockup (dashboard hero) */
+.mm-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.mm-brand-mark { width: 44px; height: 44px; filter: drop-shadow(0 2px 8px rgba(52,231,228,0.5)); }
+.mm-brand-word { font-family: var(--font-heading); font-weight: 800; font-size: 24px; color: #ECEAFB; letter-spacing: -0.01em; }
+.mm-brand-word .c { color: #34E7E4; }
+.mm-brand-word .io { color: #F5C451; font-size: 15px; }
 .mm-hero-cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; background: var(--mm-cyan); color: #06231F !important; font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 24px; border-radius: 11px; box-shadow: 0 8px 26px rgba(52,231,228,0.3); transition: transform .15s ease; }
 .mm-hero-cta:hover { transform: translateY(-2px); }
 .mm-pixel { font-family: var(--font-pixel) !important; }

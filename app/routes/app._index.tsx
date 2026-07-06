@@ -437,6 +437,22 @@ function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boo
   return (
     <>
       <div className="mm-hero">
+        <div className="mm-brand">
+          <svg className="mm-brand-mark" viewBox="0 0 512 512" role="img" aria-label="AdArcade">
+            <defs>
+              <linearGradient id="mmcy" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#7bf3f1" /><stop offset="100%" stopColor="#1fb6b3" />
+              </linearGradient>
+            </defs>
+            <rect x="16" y="16" width="480" height="480" rx="112" fill="#12101E" stroke="#34E7E4" strokeWidth="10" />
+            <rect x="120" y="120" width="272" height="272" rx="36" fill="#05131B" stroke="#34E7E4" strokeWidth="6" />
+            <g stroke="#34E7E4" strokeWidth="4" opacity="0.12">
+              <line x1="132" y1="168" x2="380" y2="168" /><line x1="132" y1="212" x2="380" y2="212" /><line x1="132" y1="256" x2="380" y2="256" /><line x1="132" y1="300" x2="380" y2="300" /><line x1="132" y1="344" x2="380" y2="344" />
+            </g>
+            <path d="M214 186 L344 256 L214 326 Z" fill="url(#mmcy)" />
+          </svg>
+          <span className="mm-brand-word">Ad<span className="c">Arcade</span><span className="io">.io</span></span>
+        </div>
         <span className="mm-eyebrow">THE MARKETING ARCADE</span>
         <h1>Your store's marketing, on autopilot.</h1>
         <p>
