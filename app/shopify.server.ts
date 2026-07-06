@@ -40,28 +40,33 @@ const shopify = shopifyApp({
   },
   hooks: {
     afterAuth: async ({ session }) => {
-      shopify.registerWebhooks({ session });
-
-      // Upsert shop record and kick off brand profile generation
-      const existing = await db.shop.findUnique({
-        where: { domain: session.shop },
-      });
-      if (!existing) {
-        await db.shop.create({
-          data: { domain: session.shop, accessToken: session.accessToken },
-        });
-        await db.job.create({
-          data: {
-            shop: { connect: { domain: session.shop } },
-            type: "GENERATE_BRAND_PROFILE",
-            payload: JSON.stringify({ shop: session.shop }),
-          },
-        });
-      } else if (existing.accessToken !== session.accessToken) {
-        await db.shop.update({
+      // Webhooks declared in the app config are auto-registered by Shopify —
+      // calling registerWebhooks manually can 403 under the new auth strategy,
+      // so we skip it. Everything here is wrapped so a hiccup never blocks
+      // the install.
+      try {
+        const existing = await db.shop.findUnique({
           where: { domain: session.shop },
-          data: { accessToken: session.accessToken },
         });
+        if (!existing) {
+          await db.shop.create({
+            data: { domain: session.shop, accessToken: session.accessToken },
+          });
+          await db.job.create({
+            data: {
+              shop: { connect: { domain: session.shop } },
+              type: "GENERATE_BRAND_PROFILE",
+              payload: JSON.stringify({ shop: session.shop }),
+            },
+          });
+        } else if (existing.accessToken !== session.accessToken) {
+          await db.shop.update({
+            where: { domain: session.shop },
+            data: { accessToken: session.accessToken },
+          });
+        }
+      } catch (e) {
+        console.error("[afterAuth] non-fatal setup error:", e);
       }
     },
   },
