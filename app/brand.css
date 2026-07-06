@@ -155,12 +155,11 @@ body::before {
   color: var(--fx); text-shadow: 0 0 10px color-mix(in srgb, var(--fx) 60%, transparent);
   margin-bottom: 8px;
 }
-.mm-fighter-avatar {
-  font-size: 64px; line-height: 1; display: inline-block;
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--fx) 70%, transparent));
-  animation: mm-fighter-float 3.4s ease-in-out infinite;
+.mm-fighter-svg {
+  width: 118px; height: auto; display: inline-block;
+  filter: drop-shadow(0 3px 10px color-mix(in srgb, var(--fx) 55%, transparent));
+  animation: mm-fighter-float 3.6s ease-in-out infinite;
 }
-.mm-fighter-avatar[data-p="4"] { font-size: 74px; }
 @keyframes mm-fighter-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
 .mm-fighter-power { display: flex; gap: 5px; justify-content: center; margin-top: 12px; }
@@ -195,8 +194,6 @@ body::before {
 .mm-fighter-select.loading { opacity: .8; }
 
 /* price sits on the dark fighter card — force it bright */
-.mm-fighter-card .mm-fighter-avatar { font-size: 88px; }
-.mm-fighter-card .mm-fighter-avatar[data-p="4"] { font-size: 96px; }
 .mm-fighter-card .mm-plan-price { color: #fff; }
 .mm-fighter-card .mm-plan-price small { color: var(--fx); }
 
@@ -229,8 +226,10 @@ body::before {
     #050411;
   border: 1px solid rgba(255,255,255,0.06);
 }
-.mm-fighter-you { font-size: 62px; filter: drop-shadow(0 0 16px rgba(52,231,228,0.7)); animation: mm-lunge 3.6s ease-in-out infinite; }
-.mm-fighter-foe { font-size: 44px; filter: grayscale(0.4) drop-shadow(0 0 8px rgba(229,57,125,0.4)); animation: mm-recoil 3.6s ease-in-out infinite; transform-origin: bottom center; }
+.mm-fighter-you { animation: mm-lunge 3.6s ease-in-out infinite; }
+.mm-fighter-you .mm-fighter-svg { width: 96px; animation: none; filter: drop-shadow(0 0 16px rgba(52,231,228,0.7)); }
+.mm-fighter-foe { animation: mm-recoil 3.6s ease-in-out infinite; transform-origin: bottom center; }
+.mm-fighter-foe .mm-fighter-svg { width: 74px; animation: none; filter: drop-shadow(0 0 8px rgba(229,57,125,0.35)); }
 @keyframes mm-lunge { 0%,20% { transform: translateX(0) scale(1);} 42% { transform: translateX(26px) scale(1.06);} 60%,100% { transform: translateX(0) scale(1);} }
 @keyframes mm-recoil { 0%,38% { transform: translateX(0) rotate(0);} 46% { transform: translateX(20px) rotate(9deg);} 54% { transform: translateX(8px) rotate(4deg);} 70%,100% { transform: translateX(0) rotate(0);} }
 .mm-fight-hit {

@@ -87,17 +87,90 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app");
 };
 
-type Fighter = { title: string; avatar: string; rank: string; power: number; accent: string; stats: { label: string; v: number }[] };
+type Fighter = { title: string; rank: string; power: number; accent: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "The Hustler", avatar: "🥷", rank: "TIER I", power: 1, accent: "#34E7E4",
+  STARTER: { title: "Striker", rank: "TIER I", power: 1, accent: "#34E7E4",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 0 }] },
-  GROWTH: { title: "The Closer", avatar: "🤺", rank: "TIER II", power: 2, accent: "#E5397D",
+  GROWTH: { title: "Bruiser", rank: "TIER II", power: 2, accent: "#E5397D",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 1 }] },
-  PRO: { title: "The Champion", avatar: "🦸", rank: "TIER III", power: 3, accent: "#F5C451",
+  PRO: { title: "Warlord", rank: "TIER III", power: 3, accent: "#F5C451",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 4 }] },
-  SCALE: { title: "The Titan", avatar: "🧙", rank: "TIER IV", power: 4, accent: "#B77BFF",
+  SCALE: { title: "Titan", rank: "TIER IV", power: 4, accent: "#B77BFF",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
+
+/**
+ * Parametric neon fighter — a full-body martial silhouette that bulks up
+ * and gains gear/aura as `power` (tier) climbs. Drawn in the tier accent.
+ */
+function FighterArt({ power, accent, className }: { power: number; accent: string; className?: string }) {
+  const Sh = 20 + power * 3;       // shoulder half-width
+  const torsoW = 13 + power * 3;   // torso bulk
+  const limbW = 8 + power * 2;     // arm/leg thickness
+  const body = "#F1EFFC";
+  const lf = { x: 70 - 18, y: 62 };
+  const rf = { x: 70 + 16, y: 56 };
+  return (
+    <svg viewBox="0 0 140 190" className={`mm-fighter-svg${className ? " " + className : ""}`} aria-hidden="true">
+      {/* aura */}
+      <ellipse cx="70" cy="98" rx={30 + power * 8} ry="82" fill={accent} opacity={0.06 + power * 0.035} />
+      {/* cape (higher tiers) */}
+      {power >= 3 && <path d="M50 52 Q28 122 44 178 L70 150 L96 178 Q112 122 90 52 Z" fill={accent} opacity="0.22" />}
+      {/* limbs */}
+      <g fill="none" stroke={body} strokeWidth={limbW} strokeLinecap="round" strokeLinejoin="round">
+        <polyline points={`70,100 ${70 - 24},140 ${70 - 34},178`} />
+        <polyline points={`70,100 ${70 + 22},138 ${70 + 34},176`} />
+        <polyline points={`${70 - Sh},52 ${70 - Sh - 6},74 ${lf.x},${lf.y}`} />
+        <polyline points={`${70 + Sh},52 ${70 + Sh + 4},76 ${rf.x},${rf.y}`} />
+      </g>
+      {/* torso + shoulders */}
+      <line x1="70" y1="44" x2="70" y2="102" stroke={body} strokeWidth={torsoW} strokeLinecap="round" />
+      <line x1={70 - Sh} y1="52" x2={70 + Sh} y2="52" stroke={body} strokeWidth={limbW} strokeLinecap="round" />
+      {/* shoulder pads */}
+      {power >= 3 && (
+        <>
+          <path d={`M${70 - Sh - 10} 52 a10 10 0 0 1 20 0 z`} fill={accent} opacity="0.9" />
+          <path d={`M${70 + Sh - 10} 52 a10 10 0 0 1 20 0 z`} fill={accent} opacity="0.9" />
+        </>
+      )}
+      {/* head + headband */}
+      <circle cx="70" cy="30" r="13" fill={body} />
+      <path d="M56 27 H84" stroke={accent} strokeWidth="4" strokeLinecap="round" />
+      <path d="M84 26 l11 -3 M84 30 l11 3" stroke={accent} strokeWidth="2.5" strokeLinecap="round" />
+      {/* crown (top tier) */}
+      {power === 4 && <path d="M56 18 l4 -13 5 9 5 -13 5 13 5 -9 4 13 z" fill={accent} />}
+      {/* chest emblem */}
+      {power >= 2 && <circle cx="70" cy="68" r={4 + power} fill={accent} />}
+      {/* fists (glowing on high tiers) */}
+      {power >= 3 && (
+        <>
+          <circle cx={lf.x} cy={lf.y} r={limbW} fill={accent} opacity="0.55" />
+          <circle cx={rf.x} cy={rf.y} r={limbW} fill={accent} opacity="0.55" />
+        </>
+      )}
+      <circle cx={lf.x} cy={lf.y} r={limbW / 1.5} fill={body} />
+      <circle cx={rf.x} cy={rf.y} r={limbW / 1.5} fill={body} />
+    </svg>
+  );
+}
+
+/** The weaker "solo" opponent for the fight scene — thin, grey, no gear. */
+function FoeArt() {
+  const body = "#7C7796";
+  return (
+    <svg viewBox="0 0 140 190" className="mm-fighter-svg foe" aria-hidden="true">
+      <g fill="none" stroke={body} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="70,100 58,142 52,178" />
+        <polyline points="70,100 84,142 90,178" />
+        <polyline points="56,54 48,78 62,72" />
+        <polyline points="84,54 92,80 80,74" />
+      </g>
+      <line x1="70" y1="46" x2="70" y2="102" stroke={body} strokeWidth="11" strokeLinecap="round" />
+      <line x1="56" y1="54" x2="84" y2="54" stroke={body} strokeWidth="7" strokeLinecap="round" />
+      <circle cx="70" cy="32" r="12" fill={body} />
+    </svg>
+  );
+}
 
 export default function Plans() {
   const { currentPlan, currentReview } = useLoaderData<typeof loader>();
@@ -157,9 +230,9 @@ export default function Plans() {
             </div>
 
             <div className="mm-fight-stage">
-              <div className="mm-fighter-you">🦸</div>
+              <div className="mm-fighter-you"><FighterArt power={4} accent="#34E7E4" /></div>
               <div className="mm-fight-hit">POW!</div>
-              <div className="mm-fighter-foe">🧑‍💼</div>
+              <div className="mm-fighter-foe"><FoeArt /></div>
             </div>
 
             <p className="mm-fight-caption">
@@ -205,7 +278,7 @@ export default function Plans() {
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
-                    <div className="mm-fighter-avatar" data-p={f.power}>{f.avatar}</div>
+                    <FighterArt power={f.power} accent={f.accent} />
                     <div className="mm-fighter-power">
                       {[1, 2, 3, 4].map((n) => (
                         <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
