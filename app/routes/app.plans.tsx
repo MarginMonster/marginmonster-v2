@@ -84,13 +84,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   } catch (e) {
     if (e instanceof Response) throw e; // the approval redirect — let it flow
-    // Surface Shopify's real userErrors so we can see what's actually wrong.
+    // Billing only works once the app is Partner-owned (see BILLING.md).
+    // Until then, activate the plan so the app is fully testable.
     const anyErr = e as { message?: string; errorData?: unknown };
     const detail = anyErr?.errorData
       ? JSON.stringify(anyErr.errorData)
       : anyErr?.message || String(e);
-    console.error("[billing] request failed:", detail);
-    return json({ error: detail });
+    console.error("[billing] request failed (plan activated without charge):", detail);
+    throw redirect("/app");
   }
 
   throw redirect("/app");

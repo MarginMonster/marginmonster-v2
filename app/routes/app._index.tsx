@@ -20,7 +20,20 @@ import { db } from "../db.server";
 import { generateBrandProfile } from "../lib/brand-voice.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, billing } = await authenticate.admin(request);
+
+  // Ground-truth billing status (test mode).
+  let billingStatus: { active: boolean; plan: string | null } = { active: false, plan: null };
+  try {
+    const check = await billing.check({
+      plans: ["STARTER", "GROWTH", "PRO", "SCALE"],
+      isTest: true,
+    });
+    const sub = check.appSubscriptions?.[0];
+    billingStatus = { active: !!check.hasActivePayment, plan: sub?.name || null };
+  } catch (e) {
+    console.error("[billing] check failed:", e);
+  }
 
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
@@ -52,6 +65,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     pendingAssets,
     brandJobStatus: brandJob?.status ?? null,
     brandJobError: brandJob?.lastError ?? null,
+    billingStatus,
   });
 };
 
@@ -81,7 +95,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Dashboard() {
-  const { shop, pendingAssets, brandJobError } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, brandJobError, billingStatus } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -279,6 +293,11 @@ export default function Dashboard() {
                 ) : (
                   <Badge tone="attention">None yet</Badge>
                 )}
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {billingStatus?.active
+                    ? `Billing: active (${billingStatus.plan})`
+                    : "Billing: not charging yet"}
+                </Text>
               </BlockStack>
             </Card>
             <Card>
