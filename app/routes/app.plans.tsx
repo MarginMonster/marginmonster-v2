@@ -84,14 +84,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   } catch (e) {
     if (e instanceof Response) throw e; // the approval redirect — let it flow
-    // Billing only works once the app is Partner-owned (see BILLING.md).
-    // Until then, activate the plan so the app is fully testable.
+    // Surface the real billing error so we can see what Shopify says.
     const anyErr = e as { message?: string; errorData?: unknown };
     const detail = anyErr?.errorData
       ? JSON.stringify(anyErr.errorData)
       : anyErr?.message || String(e);
-    console.error("[billing] request failed (plan activated without charge):", detail);
-    throw redirect("/app");
+    console.error("[billing] request failed:", detail);
+    return json({ error: detail });
   }
 
   throw redirect("/app");

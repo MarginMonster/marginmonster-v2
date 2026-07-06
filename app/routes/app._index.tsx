@@ -78,10 +78,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // stored token — far more reliable. Build the profile synchronously so any
   // error surfaces immediately instead of sitting silently in the queue.
   const graphql = async (query: string) => {
-    const res = await admin.graphql(query);
-    const jsonRes = await res.json();
+    let res: Response;
+    try {
+      res = await admin.graphql(query);
+    } catch (thrown) {
+      // admin.graphql throws a Response on HTTP errors (e.g. 403) — read it.
+      if (thrown instanceof Response) {
+        const body = await thrown.text().catch(() => "");
+        throw new Error(`Shopify ${thrown.status}: ${body.slice(0, 400) || "(no body)"}`);
+      }
+      throw thrown;
+    }
+    const bodyText = await res.text();
+    if (!res.ok) throw new Error(`Shopify ${res.status}: ${bodyText.slice(0, 400)}`);
+    const jsonRes = JSON.parse(bodyText);
     if (jsonRes.errors) {
-      throw new Error("Shopify API: " + JSON.stringify(jsonRes.errors));
+      throw new Error("Shopify GraphQL: " + JSON.stringify(jsonRes.errors).slice(0, 400));
     }
     return jsonRes.data;
   };
