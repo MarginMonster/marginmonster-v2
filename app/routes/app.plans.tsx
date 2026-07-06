@@ -8,15 +8,9 @@ import {
   Card,
   Text,
   BlockStack,
-  InlineStack,
-  Button,
-  Badge,
-  Divider,
   ChoiceList,
-  Icon,
   Banner,
 } from "@shopify/polaris";
-import { CheckIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
@@ -96,6 +90,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app");
 };
 
+type Fighter = { title: string; avatar: string; rank: string; power: number; accent: string; stats: { label: string; v: number }[] };
+const FIGHTERS: Record<string, Fighter> = {
+  STARTER: { title: "The Rookie", avatar: "👾", rank: "TIER I", power: 1, accent: "#34E7E4",
+    stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 0 }] },
+  GROWTH: { title: "The Challenger", avatar: "👹", rank: "TIER II", power: 2, accent: "#E5397D",
+    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 1 }] },
+  PRO: { title: "The Warrior", avatar: "👺", rank: "TIER III", power: 3, accent: "#F5C451",
+    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 4 }] },
+  SCALE: { title: "The Boss", avatar: "🐲", rank: "TIER IV", power: 4, accent: "#B77BFF",
+    stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
+};
+
 export default function Plans() {
   const { currentPlan, currentReview } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -167,59 +173,66 @@ export default function Plans() {
           </Card>
         </Layout.Section>
 
-        {/* Four plan cards — even grid */}
+        {/* Character-select — each tier is a stronger fighter */}
         <Layout.Section>
-          <div className="mm-plan-grid">
+          <span className="mm-section-label">▶ SELECT YOUR FIGHTER</span>
+          <div className="mm-fighter-grid">
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
+              const f = FIGHTERS[tier.key];
               return (
                 <div
                   key={tier.key}
-                  className={`mm-plan-card${tier.highlight ? " is-featured" : ""}`}
+                  className={`mm-fighter-card${tier.highlight ? " is-featured" : ""}`}
+                  style={{ ["--fx" as string]: f.accent }}
                 >
                   {tier.highlight && <div className="mm-plan-ribbon">Most popular</div>}
 
-                  <BlockStack gap="300">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text variant="headingMd" as="h3">{tier.name}</Text>
-                      {isCurrent && <Badge tone="success">Current</Badge>}
-                    </InlineStack>
-
-                    <p className="mm-plan-price">
-                      ${tier.price}
-                      <small> /mo</small>
-                    </p>
-
-                    <Text variant="bodySm" as="p" tone="subdued">
-                      {tier.tagline}
-                    </Text>
-
-                    <Divider />
-
-                    <BlockStack gap="200">
-                      {tier.features.map((f) => (
-                        <InlineStack key={f} gap="150" blockAlign="start" wrap={false}>
-                          <div style={{ color: "var(--mm-green, #4B7B4E)", flexShrink: 0 }}>
-                            <Icon source={CheckIcon} />
-                          </div>
-                          <Text variant="bodySm" as="span">{f}</Text>
-                        </InlineStack>
+                  <div className="mm-fighter-portrait">
+                    <div className="mm-fighter-rank">{f.rank}</div>
+                    <div className="mm-fighter-avatar" data-p={f.power}>{f.avatar}</div>
+                    <div className="mm-fighter-power">
+                      {[1, 2, 3, 4].map((n) => (
+                        <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
                       ))}
-                    </BlockStack>
-                  </BlockStack>
+                    </div>
+                  </div>
+
+                  <div className="mm-fighter-name">{f.title}</div>
+                  <div className="mm-fighter-plan">
+                    {tier.name}{isCurrent && <span className="mm-fighter-current">SELECTED</span>}
+                  </div>
+                  <p className="mm-plan-price" style={{ margin: "6px 0 12px" }}>
+                    ${tier.price}<small> /mo</small>
+                  </p>
+
+                  <div className="mm-fighter-stats">
+                    {f.stats.map((s) => (
+                      <div className="mm-stat" key={s.label}>
+                        <span className="sl">{s.label}</span>
+                        <span className="sb">
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <i key={n} className={n <= s.v ? "on" : ""} />
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mm-fighter-features">
+                    {tier.features.slice(0, 4).map((ft) => (
+                      <div className="ff" key={ft}><span>▸</span>{ft}</div>
+                    ))}
+                  </div>
 
                   <div style={{ flexGrow: 1 }} />
-                  <div style={{ marginTop: 16 }}>
-                    <Button
-                      variant={tier.highlight ? "primary" : "secondary"}
-                      fullWidth
-                      size="large"
-                      loading={nav.state !== "idle" && pending === tier.key}
-                      onClick={() => buy(tier.key)}
-                    >
-                      {isCurrent ? "Current plan" : `Get ${tier.name}`}
-                    </Button>
-                  </div>
+                  <button
+                    className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
+                    onClick={() => buy(tier.key)}
+                    disabled={isCurrent}
+                  >
+                    {isCurrent ? "SELECTED" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SELECT"}
+                  </button>
                 </div>
               );
             })}
