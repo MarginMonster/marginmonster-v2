@@ -100,23 +100,32 @@ const FIGHTERS: Record<string, Fighter> = {
 };
 
 /* Real generated pixel-art sprites (public/fighters/*.png), each on a pure
- * black background. `mix-blend-mode: lighten` (in CSS) drops the black so the
- * fighter floats on the dark portrait/stage. */
+ * black background. Two frames per fighter ({img}.png + {img}_b.png) hard-cut
+ * on a step animation = an arcade idle flipbook. `mix-blend-mode: lighten`
+ * (in CSS) drops the black so the fighter floats on the dark stage. */
+function Sprite({ img, className }: { img: string; className: string }) {
+  return (
+    <div className={className}>
+      <img className="frame f1" src={`/fighters/${img}.png`} alt="" aria-hidden="true" draggable={false} />
+      <img className="frame f2" src={`/fighters/${img}_b.png`} alt="" aria-hidden="true" draggable={false} />
+    </div>
+  );
+}
+
 function PixelFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
   return (
-    <img
-      src={`/fighters/${img}.png`}
-      className={`mm-pixel${context === "fight" ? " in-fight" : ""}`}
-      style={{ ["--fx" as string]: accent }}
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-    />
+    <div className={`mm-pixel${context === "fight" ? " in-fight" : ""}`} style={{ ["--fx" as string]: accent }}>
+      <Sprite img={img} className="mm-sprite" />
+    </div>
   );
 }
 
 function PixelFoe() {
-  return <img src="/fighters/foe.png" className="mm-pixel foe" alt="" aria-hidden="true" draggable={false} />;
+  return (
+    <div className="mm-pixel foe">
+      <Sprite img="foe" className="mm-sprite" />
+    </div>
+  );
 }
 
 export default function Plans() {

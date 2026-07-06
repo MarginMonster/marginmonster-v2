@@ -155,13 +155,22 @@ body::before {
   color: var(--fx); text-shadow: 0 0 10px color-mix(in srgb, var(--fx) 60%, transparent);
   margin-bottom: 8px;
 }
-/* ---- Real pixel-art sprites (PNG on black -> lighten drops the black) ---- */
+/* ---- Real pixel-art sprites: 2-frame flipbook (PNG on black) ---- */
 .mm-pixel {
-  width: 150px; height: 150px; object-fit: contain; display: block; margin: 0 auto -6px;
-  mix-blend-mode: lighten;
+  position: relative; width: 150px; height: 150px; display: block; margin: 0 auto -6px;
   filter: drop-shadow(0 4px 12px color-mix(in srgb, var(--fx, #34E7E4) 55%, transparent));
   animation: mm-pixel-bob 2.2s ease-in-out infinite;
 }
+.mm-sprite { position: absolute; inset: 0; }
+.mm-sprite .frame {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  object-position: bottom center; mix-blend-mode: lighten;
+}
+/* hard-cut between the two frames = arcade idle animation */
+.mm-sprite .f1 { animation: mm-frameA 0.9s steps(1, end) infinite; }
+.mm-sprite .f2 { animation: mm-frameB 0.9s steps(1, end) infinite; }
+@keyframes mm-frameA { 0%,49.9% { opacity: 1; } 50%,100% { opacity: 0; } }
+@keyframes mm-frameB { 0%,49.9% { opacity: 0; } 50%,100% { opacity: 1; } }
 @keyframes mm-pixel-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 
 .mm-fighter-portrait { cursor: pointer; }
@@ -285,8 +294,8 @@ body::before {
 @media (max-width: 620px) { .mm-seg { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   .mm-hp-fill.foe, .mm-fighter-you, .mm-fighter-foe, .mm-fight-hit,
-  .mm-pixel, .mm-fireball { animation: none; }
-  .mm-fight-hit, .mm-fireball { opacity: 0; }
+  .mm-pixel, .mm-fireball, .mm-sprite .f1, .mm-sprite .f2 { animation: none; }
+  .mm-fight-hit, .mm-fireball, .mm-sprite .f2 { opacity: 0; }
 }
 
 .mm-trust { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
