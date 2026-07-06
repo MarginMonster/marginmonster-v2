@@ -15,7 +15,15 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
-import { getContentCalendar, typeLabel } from "../lib/calendar.server";
+import { getContentCalendar } from "../lib/calendar.server";
+
+const TYPE_LABEL: Record<string, string> = {
+  BLOG_POST: "Blog post",
+  VIDEO_AD: "Product video",
+  IMAGE_AD: "Image ad",
+  AD_COPY: "Ad copy",
+};
+const typeLabel = (t: string) => TYPE_LABEL[t] || t;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
