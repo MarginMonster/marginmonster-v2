@@ -5,10 +5,7 @@ import { useState } from "react";
 import {
   Page,
   Layout,
-  Card,
   Text,
-  BlockStack,
-  ChoiceList,
   Banner,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
@@ -92,13 +89,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 type Fighter = { title: string; avatar: string; rank: string; power: number; accent: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "The Rookie", avatar: "👾", rank: "TIER I", power: 1, accent: "#34E7E4",
+  STARTER: { title: "The Hustler", avatar: "🥷", rank: "TIER I", power: 1, accent: "#34E7E4",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 0 }] },
-  GROWTH: { title: "The Challenger", avatar: "👹", rank: "TIER II", power: 2, accent: "#E5397D",
+  GROWTH: { title: "The Closer", avatar: "🤺", rank: "TIER II", power: 2, accent: "#E5397D",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 1 }] },
-  PRO: { title: "The Warrior", avatar: "👺", rank: "TIER III", power: 3, accent: "#F5C451",
+  PRO: { title: "The Champion", avatar: "🦸", rank: "TIER III", power: 3, accent: "#F5C451",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 4 }] },
-  SCALE: { title: "The Boss", avatar: "🐲", rank: "TIER IV", power: 4, accent: "#B77BFF",
+  SCALE: { title: "The Titan", avatar: "🧙", rank: "TIER IV", power: 4, accent: "#B77BFF",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
@@ -144,33 +141,51 @@ export default function Plans() {
           </Layout.Section>
         )}
 
-        {/* Review mode — applies to whichever plan you buy */}
+        {/* Animated fight — an Arcade-powered owner vs. going it alone */}
         <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
-              <Text variant="headingMd" as="h3">How hands-on do you want to be?</Text>
-              <ChoiceList
-                title=""
-                titleHidden
-                choices={[
-                  {
-                    label: "Set-and-forget — publishes automatically, no review needed",
-                    value: "SET_AND_FORGET",
-                    helpText:
-                      "Content goes live on your store the moment it's ready. You can still edit or remove anything after it's live. Don't worry — you can switch to review mode anytime.",
-                  },
-                  {
-                    label: "Review first — you approve or edit before it goes live",
-                    value: "REVIEW_FIRST",
-                    helpText:
-                      "Nothing publishes until you say so. Each piece waits in your queue with a 24h heads-up. Don't worry — you can change your mind and switch modes whenever you like.",
-                  },
-                ]}
-                selected={[reviewMode]}
-                onChange={(v) => setReviewMode(v[0])}
-              />
-            </BlockStack>
-          </Card>
+          <div className="mm-fight">
+            <div className="mm-fight-hud">
+              <div className="mm-hp-block">
+                <div className="mm-hp-name">MARKET ARCADE OWNER</div>
+                <div className="mm-hp"><span className="mm-hp-fill you" /></div>
+              </div>
+              <div className="mm-fight-vs">VS</div>
+              <div className="mm-hp-block right">
+                <div className="mm-hp-name">GOING IT ALONE</div>
+                <div className="mm-hp"><span className="mm-hp-fill foe" /></div>
+              </div>
+            </div>
+
+            <div className="mm-fight-stage">
+              <div className="mm-fighter-you">🦸</div>
+              <div className="mm-fight-hit">POW!</div>
+              <div className="mm-fighter-foe">🧑‍💼</div>
+            </div>
+
+            <p className="mm-fight-caption">
+              With the arcade running your marketing, you fight in a different
+              weight class. <strong>Choose how hands-on you want to be:</strong>
+            </p>
+
+            <div className="mm-seg" role="group" aria-label="Publishing mode">
+              <button
+                type="button"
+                className={`mm-seg-btn${reviewMode === "SET_AND_FORGET" ? " on" : ""}`}
+                onClick={() => setReviewMode("SET_AND_FORGET")}
+              >
+                ⚡ Set &amp; forget
+                <small>Publishes automatically</small>
+              </button>
+              <button
+                type="button"
+                className={`mm-seg-btn${reviewMode === "REVIEW_FIRST" ? " on" : ""}`}
+                onClick={() => setReviewMode("REVIEW_FIRST")}
+              >
+                ✓ Review first
+                <small>You approve before it goes live</small>
+              </button>
+            </div>
+          </div>
         </Layout.Section>
 
         {/* Character-select — each tier is a stronger fighter */}
