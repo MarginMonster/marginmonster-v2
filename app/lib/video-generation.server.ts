@@ -9,17 +9,13 @@ import type { BrandProfile, Plan } from "@prisma/client";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
 
-// Replicate model versions. Swap these for whichever provider you standardize on.
-const MODELS = {
-  // Image-to-video product highlight (e.g. Kling / Stable Video Diffusion family)
-  PRODUCT_HIGHLIGHT: {
-    version: "REPLACE_WITH_KLING_OR_SVD_VERSION",
-  },
-  // Talking AI avatar / UGC (e.g. an avatar TTS+lipsync model)
-  AI_AVATAR: {
-    version: "REPLACE_WITH_AVATAR_MODEL_VERSION",
-  },
-};
+// Replicate model slugs (using the model-predictions endpoint so we never
+// have to chase version hashes). minimax/video-01 is a strong text+image →
+// video model that works for both styles.
+//   PRODUCT_HIGHLIGHT — seeds with the product image when available.
+//   AI_AVATAR         — presenter-style prompt. (True script lip-sync needs a
+//                       dedicated avatar provider like HeyGen; drop it in here.)
+const VIDEO_MODEL = "minimax/video-01";
 
 interface GenerateVideoParams {
   shopId: string;
@@ -50,53 +46,41 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
 
-  const model = MODELS[style];
-
   // Build the input per style — a merchant-written prompt overrides the default.
   const defaultPrompt =
     style === "PRODUCT_HIGHLIGHT"
-      ? `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, 9:16 vertical, no text overlay.`
-      : `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, 9:16 vertical.`;
+      ? `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`
+      : `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, vertical.`;
   const prompt = params.customPrompt?.trim() || defaultPrompt;
 
-  // If the model versions aren't configured yet, create a PENDING asset that
-  // records the request so the flow works end-to-end and video wiring is a
-  // drop-in later (swap the MODELS versions above and this branch is skipped).
-  if (model.version.startsWith("REPLACE_WITH")) {
-    const asset = await db.asset.create({
-      data: {
-        shopId,
-        type: "VIDEO_AD",
-        status: "PENDING",
-        title: `${style === "AI_AVATAR" ? "Avatar" : "Product"} video — ${productTitle}`,
-        bodyJson: JSON.stringify({ style, prompt, status: "awaiting_video_provider" }),
-        metaJson: JSON.stringify({ style, productTitle }),
-      },
-    });
-    return asset.id;
+  // Only seed with the product image for the highlight style.
+  const input: Record<string, unknown> = { prompt, prompt_optimizer: true };
+  if (style === "PRODUCT_HIGHLIGHT" && productImageUrl) {
+    input.first_frame_image = productImageUrl;
   }
 
-  // Real generation path.
-  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${replicateToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      version: model.version,
-      input: {
-        prompt,
-        ...(productImageUrl ? { image: productImageUrl } : {}),
+  // Create the prediction via the model endpoint (no version hash needed).
+  const createRes = await fetch(
+    `https://api.replicate.com/v1/models/${VIDEO_MODEL}/predictions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${replicateToken}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
-  if (!createRes.ok) throw new Error(`Replicate video create failed: ${createRes.status}`);
+      body: JSON.stringify({ input }),
+    }
+  );
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`Replicate video create failed (${createRes.status}): ${errText.slice(0, 200)}`);
+  }
 
   const prediction = (await createRes.json()) as { id: string };
 
+  // Video gen can take a couple minutes — poll up to ~5 min.
   let videoUrl: string | null = null;
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 100; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     const poll = await fetch(
       `https://api.replicate.com/v1/predictions/${prediction.id}`,
@@ -107,7 +91,9 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       videoUrl = Array.isArray(data.output) ? data.output[0] : data.output;
       break;
     }
-    if (data.status === "failed") throw new Error(`Replicate video failed: ${data.error}`);
+    if (data.status === "failed" || data.status === "canceled") {
+      throw new Error(`Replicate video ${data.status}: ${data.error || "unknown"}`);
+    }
   }
   if (!videoUrl) throw new Error("Replicate video timed out");
 
