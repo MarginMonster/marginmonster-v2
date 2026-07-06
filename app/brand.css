@@ -70,11 +70,26 @@
   --p-color-border-secondary: #EBEBF0;
 }
 
-/* Belt-and-suspenders: force readable dark text inside every white card. */
+/* GUARANTEED fix: set the color tokens ON the white card itself (closest
+   ancestor to the text), so every Polaris component inside inherits dark text
+   regardless of the merchant's dark-mode theme wrapper higher up. */
+.Polaris-Card, .Polaris-Card .Polaris-ShadowBevel {
+  --p-color-text: #1A1730 !important;
+  --p-color-text-secondary: #6B6790 !important;
+  --p-color-text-emphasis: var(--mm-magenta-deep) !important;
+  --p-color-text-disabled: #8C9196 !important;
+  --p-color-icon: #4A4A57 !important;
+  --p-color-icon-secondary: #8A85A8 !important;
+  --p-color-bg-surface: #ffffff !important;
+}
 .Polaris-Card .Polaris-Text--root,
 .Polaris-Card p, .Polaris-Card span, .Polaris-Card li,
-.Polaris-Card label, .Polaris-Card td, .Polaris-Card th { color: #1A1730; }
+.Polaris-Card label, .Polaris-Card td, .Polaris-Card th,
+.Polaris-Card .Polaris-Choice__Label,
+.Polaris-Card [class*="Polaris-Text"] { color: #1A1730 !important; }
 .Polaris-Card .Polaris-Text--subdued, .Polaris-Card .Polaris-Text--tone-subdued { color: #6B6790 !important; }
+.Polaris-Card .Polaris-Text--heading2xl { color: var(--mm-magenta-deep) !important; }
+.Polaris-Card .Polaris-Button--variantPrimary span, .Polaris-Card .Polaris-Button--variantPrimary { color: #ffffff !important; }
 
 /* Deep-space canvas behind everything */
 body { background: var(--mm-space) !important; }
