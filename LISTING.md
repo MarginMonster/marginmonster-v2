@@ -51,6 +51,12 @@ Unlike generic AI tools, MarginMonster is grounded in *your* real products and b
 
 📊 **Performance & ROI tracking** — See exactly where every dollar goes: ad spend, revenue, ROI, ROAS, traffic sources, and conversions — all in one clear dashboard.
 
+🧭 **AI marketing plan** — A custom 4-week growth strategy from your brand and goal: channels, budget split, content themes, and KPIs.
+
+🛍️ **AI product descriptions** — SEO-ready product copy, bullets, and meta tags in your brand voice.
+
+🗓️ **Content calendar** — See exactly what's publishing and when, on autopilot.
+
 🎛️ **You're always in control** — Review everything before it publishes, or set it and forget it. Switch modes anytime.
 
 **Pick a goal, we handle the rest:**
@@ -95,6 +101,6 @@ ai marketing, marketing automation, seo blog, blog posts, ai content, product vi
 
 ## Support & compliance fields
 - **Support email:** magicmonstermarket@gmail.com
-- **Privacy policy URL:** (add a policy page before submitting — e.g. https://marginmonster-fiew.onrender.com/privacy)
+- **Privacy policy URL:** https://marginmonster-fiew.onrender.com/privacy  (live)
 - **Pricing:** Recurring subscription (Starter $19 / Growth $39 / Pro $79 / Scale $149) + usage credits
 - **Works with:** Meta Ads, TikTok Ads
