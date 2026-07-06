@@ -4,10 +4,11 @@ application_url = "https://marginmonster-fiew.onrender.com"
 embedded = true
 
 [access_scopes]
-# read_orders + read_customers: profit-tracker features (existing)
-# write_pixels + read_pixels: attribution/analytics
+# read_products: brand profile + content generation
 # write_marketing_events: campaign tracking
-scopes = "read_orders,read_customers,read_products,write_marketing_events"
+# NOTE: read_orders/read_customers removed — they are "protected customer data"
+# scopes that 403 all Admin API access for public apps until PCD approval.
+scopes = "read_products,write_marketing_events"
 
 [auth]
 redirect_urls = [
