@@ -103,7 +103,7 @@ const FIGHTERS: Record<string, Fighter> = {
  * black background. Two frames per fighter ({img}.png + {img}_b.png) hard-cut
  * on a step animation = an arcade idle flipbook. `mix-blend-mode: lighten`
  * (in CSS) drops the black so the fighter floats on the dark stage. */
-const SPRITE_V = "3"; // bump to bust browser cache when sprites change
+const SPRITE_V = "4"; // bump to bust browser cache when sprites change
 function Sprite({ img, className }: { img: string; className: string }) {
   return (
     <div className={className}>
