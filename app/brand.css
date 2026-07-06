@@ -7,8 +7,8 @@
 :root {
   --mm-space: #07060F;
   --mm-space-2: #0C0A18;
-  --mm-panel: rgba(19,17,30,0.72);
-  --mm-panel-solid: #13111E;
+  --mm-panel: rgba(21,19,33,0.94);
+  --mm-panel-solid: #15131F;
   --mm-cyan: #34E7E4;
   --mm-gold: #F5C451;
   --mm-magenta: #E5397D;
@@ -76,21 +76,22 @@ body::before {
 }
 @keyframes mm-twinkle { 0%,100%{opacity:.85} 50%{opacity:1} }
 
-/* Floating vector asteroids */
-body::after {
-  content: ""; position: fixed; z-index: 0; pointer-events: none;
-  top: 14%; right: 6%; width: 120px; height: 120px; opacity: .12;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,6 78,20 92,48 80,80 46,94 14,74 8,40 26,16' fill='none' stroke='white' stroke-width='2'/></svg>") no-repeat center / contain;
-  animation: mm-drift 60s linear infinite;
-}
-@keyframes mm-drift { to { transform: rotate(360deg); } }
+/* Asteroid field (Asteroids-style wireframe rocks drifting in space) */
+.mm-asteroids { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.mm-asteroids .ast { position: absolute; fill: none; stroke: #C9C5E8; stroke-width: 2; opacity: 0.16; }
+.mm-asteroids .a1 { top: 12%; left: 8%; width: 110px; height: 110px; animation: mm-ast1 90s linear infinite; }
+.mm-asteroids .a2 { top: 62%; left: 78%; width: 150px; height: 150px; opacity: 0.12; animation: mm-ast2 120s linear infinite; }
+.mm-asteroids .a3 { top: 78%; left: 14%; width: 74px; height: 74px; opacity: 0.2; stroke: var(--mm-cyan); animation: mm-ast3 70s linear infinite; }
+.mm-asteroids .a4 { top: 26%; left: 88%; width: 56px; height: 56px; opacity: 0.18; stroke: var(--mm-gold); animation: mm-ast1 60s linear infinite reverse; }
+@keyframes mm-ast1 { from { transform: translate(0,0) rotate(0deg); } to { transform: translate(40px,60px) rotate(360deg); } }
+@keyframes mm-ast2 { from { transform: translate(0,0) rotate(0deg); } to { transform: translate(-70px,-40px) rotate(-360deg); } }
+@keyframes mm-ast3 { from { transform: translate(0,0) rotate(0deg); } to { transform: translate(50px,-30px) rotate(360deg); } }
 
 .Polaris-Card, .Polaris-ShadowBevel::before {
   background: var(--mm-panel) !important;
   border: 1px solid var(--mm-line) !important;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.35) !important;
+  box-shadow: 0 2px 24px rgba(0,0,0,0.5) !important;
   border-radius: 16px !important;
-  backdrop-filter: blur(8px);
 }
 
 .Polaris-Text--headingXl, .Polaris-Text--heading2xl, .Polaris-Text--headingLg,
@@ -183,5 +184,5 @@ textarea.Polaris-TextField__Input {
 .mm-ach { border: 1px solid var(--mm-line); border-radius: 14px; padding: 16px 12px; text-align: center; background: var(--mm-panel); }
 .mm-ach.earned { border-color: var(--mm-magenta); background: rgba(229,57,125,0.12); }
 .mm-ach .ic { font-size: 24px; line-height: 1; }
-.mm-ach .nm { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 0.02em; margin-top: 8px; color: var(--mm-muted); }
-.mm-ach.earned .nm { color: #FF7BA6; }
+.mm-ach .nm { font-family: var(--font-pixel); font-size: 8px; letter-spacing: 0.02em; line-height: 1.5; margin-top: 8px; color: #B8B2E0; }
+.mm-ach.earned .nm { color: #FF8FB4; }

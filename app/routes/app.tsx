@@ -34,6 +34,12 @@ export default function App() {
         <Link to="/app/campaigns">Campaigns</Link>
         <Link to="/app/performance">Performance & ROI</Link>
       </NavMenu>
+      <div className="mm-asteroids" aria-hidden="true">
+        <svg className="ast a1" viewBox="0 0 100 100"><polygon points="50,4 74,14 92,40 86,68 66,92 38,90 12,70 6,40 22,16" /></svg>
+        <svg className="ast a2" viewBox="0 0 100 100"><polygon points="48,6 70,10 90,34 94,58 78,82 52,94 26,86 8,62 10,32 28,14" /></svg>
+        <svg className="ast a3" viewBox="0 0 100 100"><polygon points="50,8 78,22 90,50 76,82 44,92 16,72 10,42 26,18" /></svg>
+        <svg className="ast a4" viewBox="0 0 100 100"><polygon points="50,6 80,26 88,56 68,86 36,88 12,62 14,30 32,12" /></svg>
+      </div>
       <Outlet />
     </AppProvider>
   );
