@@ -54,11 +54,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         orderBy: { createdAt: "desc" },
         take: 1,
       },
+      adAccounts: true,
     },
   });
 
   const pendingAssets = shop?.assets.filter((a) => a.status === "PENDING").length ?? 0;
   const brandJob = shop?.jobs[0] || null;
+
+  // Onboarding checklist state.
+  const steps = {
+    analyzed: !!shop?.brandProfile,
+    planned: !!shop?.activePlan,
+    connected: (shop?.adAccounts.length ?? 0) > 0,
+    reviewed: (shop?.assets.some((a) => a.status === "APPROVED" || a.status === "PUBLISHED")) ?? false,
+  };
 
   return json({
     shop,
@@ -66,6 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandJobStatus: brandJob?.status ?? null,
     brandJobError: brandJob?.lastError ?? null,
     billingStatus,
+    steps,
   });
 };
 
@@ -107,7 +117,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Dashboard() {
-  const { shop, pendingAssets, brandJobError, billingStatus } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, brandJobError, billingStatus, steps } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -167,6 +177,25 @@ export default function Dashboard() {
             </Link>
           </div>
         </Layout.Section>
+
+        {steps && !(steps.analyzed && steps.planned && steps.connected && steps.reviewed) && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="headingMd" as="h2">Get set up</Text>
+                  <Badge tone="info">
+                    {`${[steps.analyzed, steps.planned, steps.connected, steps.reviewed].filter(Boolean).length} of 4 done`}
+                  </Badge>
+                </InlineStack>
+                <SetupStep done={steps.analyzed} title="Analyze your store" desc="Learn your brand voice & products" href="/app" />
+                <SetupStep done={steps.planned} title="Choose a plan" desc="Pick your marketing goal" href="/app/plans" />
+                <SetupStep done={steps.connected} title="Connect an ad account" desc="Link Meta or TikTok to publish" href="/app/connect" />
+                <SetupStep done={steps.reviewed} title="Approve your first content" desc="Review what we generate" href="/app/assets" />
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
 
         {/* Brand profile: the "we understand your store" moment */}
         <Layout.Section>
@@ -375,5 +404,31 @@ export default function Dashboard() {
         )}
       </Layout>
     </Page>
+  );
+}
+
+function SetupStep({ done, title, desc, href }: { done: boolean; title: string; desc: string; href: string }) {
+  return (
+    <Link to={href} style={{ textDecoration: "none" }}>
+      <InlineStack gap="300" blockAlign="center" wrap={false}>
+        <div
+          style={{
+            width: 26, height: 26, borderRadius: 13, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: done ? "var(--mm-green,#4B7B4E)" : "transparent",
+            border: done ? "none" : "2px solid var(--mm-line,#E6DCC3)",
+            color: "#fff", fontSize: 15, fontWeight: 700,
+          }}
+        >
+          {done ? "✓" : ""}
+        </div>
+        <BlockStack gap="0">
+          <Text variant="bodyMd" as="span" fontWeight="semibold" tone={done ? "subdued" : undefined}>
+            {title}
+          </Text>
+          <Text variant="bodySm" as="span" tone="subdued">{desc}</Text>
+        </BlockStack>
+      </InlineStack>
+    </Link>
   );
 }
