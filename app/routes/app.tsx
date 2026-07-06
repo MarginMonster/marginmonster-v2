@@ -25,6 +25,7 @@ export default function App() {
         <Link to="/app" rel="home">Dashboard</Link>
         <Link to="/app/plans">Choose Plan</Link>
         <Link to="/app/assets">Content Queue</Link>
+        <Link to="/app/videos">Video Studio</Link>
         <Link to="/app/connect">Ad Accounts</Link>
         <Link to="/app/campaigns">Campaigns</Link>
       </NavMenu>

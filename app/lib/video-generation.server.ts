@@ -30,6 +30,7 @@ interface GenerateVideoParams {
   productImageUrl?: string;
   style: VideoStyle;
   script?: string; // for AI_AVATAR; auto-written if omitted
+  customPrompt?: string; // merchant-written prompt override
 }
 
 export async function generateVideoAd(params: GenerateVideoParams): Promise<string> {
@@ -51,11 +52,12 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
 
   const model = MODELS[style];
 
-  // Build the input per style.
-  const prompt =
+  // Build the input per style — a merchant-written prompt overrides the default.
+  const defaultPrompt =
     style === "PRODUCT_HIGHLIGHT"
       ? `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, 9:16 vertical, no text overlay.`
       : `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, 9:16 vertical.`;
+  const prompt = params.customPrompt?.trim() || defaultPrompt;
 
   // If the model versions aren't configured yet, create a PENDING asset that
   // records the request so the flow works end-to-end and video wiring is a

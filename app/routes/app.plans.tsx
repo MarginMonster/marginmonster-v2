@@ -84,8 +84,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   } catch (e) {
     if (e instanceof Response) throw e; // the approval redirect — let it flow
-    console.error("[billing] request failed, activating plan without charge:", e);
-    throw redirect("/app");
+    // Surface Shopify's real userErrors so we can see what's actually wrong.
+    const anyErr = e as { message?: string; errorData?: unknown };
+    const detail = anyErr?.errorData
+      ? JSON.stringify(anyErr.errorData)
+      : anyErr?.message || String(e);
+    console.error("[billing] request failed:", detail);
+    return json({ error: detail });
   }
 
   throw redirect("/app");
