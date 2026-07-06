@@ -87,15 +87,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app");
 };
 
-type Fighter = { title: string; rank: string; power: number; accent: string; img: string; stats: { label: string; v: number }[] };
+type Fighter = { title: string; ref: string; rank: string; power: number; accent: string; img: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "Striker", rank: "TIER I", power: 1, accent: "#34E7E4", img: "striker",
+  STARTER: { title: "Striker", ref: "Starter", rank: "TIER I", power: 1, accent: "#34E7E4", img: "striker",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  GROWTH: { title: "Bruiser", rank: "TIER II", power: 2, accent: "#E5397D", img: "bruiser",
+  GROWTH: { title: "Bruiser", ref: "Pro", rank: "TIER II", power: 2, accent: "#E5397D", img: "bruiser",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  PRO: { title: "Warlord", rank: "TIER III", power: 3, accent: "#F5C451", img: "warlord",
+  PRO: { title: "Warlord", ref: "Master", rank: "TIER III", power: 3, accent: "#F5C451", img: "warlord",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
-  SCALE: { title: "Titan", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "titan",
+  SCALE: { title: "Titan", ref: "Grandmaster", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "titan",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
@@ -158,8 +158,8 @@ export default function Plans() {
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">▶ SELECT YOUR LEVEL</span>
-            <h1>Pick your level. Let your store sell for you.</h1>
+            <span className="mm-eyebrow">▶ CHOOSE YOUR PLAN</span>
+            <h1>Choose your plan. Let your store sell for you.</h1>
             <p>
               You didn't start a business to spend nights writing blog posts and
               editing videos. Pick a plan and hand the content grind to us — grow
@@ -254,7 +254,8 @@ export default function Plans() {
 
                   <div className="mm-fighter-name">{f.title}</div>
                   <div className="mm-fighter-plan">
-                    {tier.name}{isCurrent && <span className="mm-fighter-current">SELECTED</span>}
+                    <span className="mm-fighter-ref">"{f.ref}"</span>
+                    {isCurrent && <span className="mm-fighter-current">SELECTED</span>}
                   </div>
                   <p className="mm-plan-price" style={{ margin: "6px 0 12px" }}>
                     ${tier.price}<small> /mo</small>

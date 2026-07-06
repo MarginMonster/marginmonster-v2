@@ -164,7 +164,7 @@ body::before {
 .mm-sprite { position: absolute; inset: 0; }
 .mm-sprite .frame {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
-  object-position: bottom center; mix-blend-mode: lighten;
+  object-position: bottom center;
 }
 /* hard-cut between the two frames = arcade idle animation */
 .mm-sprite .f1 { animation: mm-frameA 0.9s steps(1, end) infinite; }
@@ -189,6 +189,7 @@ body::before {
 
 .mm-fighter-name { font-family: var(--font-heading); font-weight: 800; font-size: 19px; color: #fff; }
 .mm-fighter-plan { font-size: 13px; color: #A9A3D6; margin-top: 2px; display: flex; align-items: center; gap: 8px; }
+.mm-fighter-ref { font-style: italic; font-weight: 600; color: var(--fx); }
 .mm-fighter-current { font-family: var(--font-pixel); font-size: 7px; letter-spacing: .12em; color: #0B0A17; background: var(--fx); padding: 3px 6px; border-radius: 4px; }
 
 .mm-fighter-stats { display: flex; flex-direction: column; gap: 7px; margin: 4px 0 14px; }
