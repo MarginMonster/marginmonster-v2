@@ -155,21 +155,27 @@ body::before {
   color: var(--fx); text-shadow: 0 0 10px color-mix(in srgb, var(--fx) 60%, transparent);
   margin-bottom: 8px;
 }
-.mm-fighter-svg {
-  width: 118px; height: auto; display: inline-block;
-  filter: drop-shadow(0 3px 10px color-mix(in srgb, var(--fx) 55%, transparent));
-  animation: mm-fighter-float 3.6s ease-in-out infinite;
+/* ---- Pixel sprite ---- */
+.mm-pixel {
+  width: 108px; height: auto; display: block; margin: 0 auto;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  filter: drop-shadow(0 3px 8px color-mix(in srgb, var(--fx, #34E7E4) 55%, transparent));
 }
-@keyframes mm-fighter-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* two frames cross-fade with hard steps -> arcade sprite cadence */
+.mm-pixel .pf-idle  { animation: mm-frame-idle  1.25s steps(1, end) infinite; }
+.mm-pixel .pf-punch { animation: mm-frame-punch 1.25s steps(1, end) infinite; }
+@keyframes mm-frame-idle  { 0%,55% { opacity: 1; } 58%,74% { opacity: 0; } 78%,100% { opacity: 1; } }
+@keyframes mm-frame-punch { 0%,55% { opacity: 0; } 58%,74% { opacity: 1; } 78%,100% { opacity: 0; } }
+/* whole-sprite pixel bob */
+.mm-pixel { animation: mm-pixel-bob 1.25s steps(2, end) infinite; }
+@keyframes mm-pixel-bob { 0%,50% { transform: translateY(0); } 51%,100% { transform: translateY(-2px); } }
 
-/* interactive: the fighter steps forward and jabs while you hover the card */
 .mm-fighter-portrait { cursor: pointer; }
-.mm-fighter-card:hover .mm-fighter-svg { animation: mm-fighter-jab 0.62s ease-in-out infinite; }
-@keyframes mm-fighter-jab {
-  0%,100% { transform: translateX(0) rotate(0) scale(1); }
-  35%     { transform: translateX(11px) rotate(-5deg) scale(1.05); }
-  60%     { transform: translateX(6px) rotate(-2deg) scale(1.03); }
-}
+/* hovering a card makes its fighter attack faster */
+.mm-fighter-card:hover .mm-pixel .pf-idle  { animation-duration: 0.6s; }
+.mm-fighter-card:hover .mm-pixel .pf-punch { animation-duration: 0.6s; }
+.mm-fighter-card:hover .mm-pixel { animation-duration: 0.6s; }
+.mm-fighter-card.is-previewing { border-color: var(--fx); box-shadow: 0 18px 52px rgba(0,0,0,0.6), 0 0 26px color-mix(in srgb, var(--fx) 40%, transparent); }
 
 .mm-fighter-power { display: flex; gap: 5px; justify-content: center; margin-top: 12px; }
 .mm-fighter-power .pw { width: 22px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.10); }
@@ -222,7 +228,7 @@ body::before {
 .mm-hp-fill { display: block; height: 100%; border-radius: 7px; }
 .mm-hp-fill.you { width: 100%; background: linear-gradient(90deg, #7BC80F, #C6FF3D); box-shadow: 0 0 10px rgba(198,255,61,0.6); }
 .mm-hp-fill.foe { width: 100%; background: linear-gradient(90deg, #E5397D, #ff7aa8); animation: mm-drain 3.6s ease-in-out infinite; }
-@keyframes mm-drain { 0%,52% { width: 100%; } 64%,76% { width: 20%; background: linear-gradient(90deg,#E5397D,#F5C451);} 92%,100% { width: 100%; } }
+@keyframes mm-drain { 0%,52% { width: 100%; } 64%,76% { width: var(--dmg, 20%); background: linear-gradient(90deg,#E5397D,#F5C451);} 92%,100% { width: 100%; } }
 .mm-fight-vs { font-family: var(--font-pixel); font-size: 12px; color: #F5C451; text-shadow: 0 0 10px rgba(245,196,81,0.6); }
 
 .mm-fight-stage {
@@ -236,9 +242,14 @@ body::before {
   border: 1px solid rgba(255,255,255,0.06);
 }
 .mm-fighter-you { animation: mm-lunge 3.6s ease-in-out infinite; }
-.mm-fighter-you .mm-fighter-svg { width: 96px; animation: none; filter: drop-shadow(0 0 16px rgba(52,231,228,0.7)); }
+.mm-fighter-you .mm-pixel { width: 92px; animation: none; }
+/* in the fight, the sprite's punch frame is retimed to sync with the lunge */
+.mm-pixel.in-fight .pf-idle  { animation: mm-frame-idle-fight  3.6s steps(1, end) infinite; }
+.mm-pixel.in-fight .pf-punch { animation: mm-frame-punch-fight 3.6s steps(1, end) infinite; }
+@keyframes mm-frame-idle-fight  { 0%,38% { opacity: 1; } 40%,58% { opacity: 0; } 60%,100% { opacity: 1; } }
+@keyframes mm-frame-punch-fight { 0%,38% { opacity: 0; } 40%,58% { opacity: 1; } 60%,100% { opacity: 0; } }
 .mm-fighter-foe { animation: mm-recoil 3.6s ease-in-out infinite; transform-origin: bottom center; will-change: transform; }
-.mm-fighter-foe .mm-fighter-svg { width: 74px; animation: none; filter: drop-shadow(0 0 8px rgba(229,57,125,0.35)); }
+.mm-fighter-foe .mm-pixel { width: 72px; animation: none; filter: drop-shadow(0 0 8px rgba(229,57,125,0.35)); }
 @keyframes mm-lunge { 0%,26% { transform: translateX(0) scale(1);} 40% { transform: translateX(26px) scale(1.06);} 58%,100% { transform: translateX(0) scale(1);} }
 @keyframes mm-recoil { 0%,42% { transform: translateX(0) rotate(0);} 50% { transform: translateX(22px) rotate(10deg);} 58% { transform: translateX(9px) rotate(4deg);} 74%,100% { transform: translateX(0) rotate(0);} }
 .mm-fight-hit {
@@ -266,7 +277,8 @@ body::before {
 @media (max-width: 620px) { .mm-seg { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   .mm-hp-fill.foe, .mm-fighter-you, .mm-fighter-foe, .mm-fight-hit,
-  .mm-fighter-svg, .mm-fighter-card:hover .mm-fighter-svg { animation: none; }
+  .mm-pixel, .mm-pixel .pf-idle, .mm-pixel .pf-punch { animation: none; }
+  .mm-pixel .pf-punch { opacity: 0; }
   .mm-fight-hit { opacity: 0; }
 }
 

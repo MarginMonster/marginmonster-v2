@@ -99,75 +99,108 @@ const FIGHTERS: Record<string, Fighter> = {
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
-/**
- * Parametric neon fighter — a full-body martial silhouette that bulks up
- * and gains gear/aura as `power` (tier) climbs. Drawn in the tier accent.
+/* ---- Pixel-art fighter sprites ----
+ * Each fighter is a 14x18 bitmap. Two frames (idle guard + punch) are drawn
+ * and cross-faded with stepped CSS animation so it reads like a real arcade
+ * sprite that changes pose. Colour keys resolve per-tier via the accent.
  */
-function FighterArt({ power, accent, className }: { power: number; accent: string; className?: string }) {
-  const Sh = 20 + power * 3;       // shoulder half-width
-  const torsoW = 13 + power * 3;   // torso bulk
-  const limbW = 8 + power * 2;     // arm/leg thickness
-  const body = "#F1EFFC";
-  const lf = { x: 70 - 18, y: 62 };
-  const rf = { x: 70 + 16, y: 56 };
+const GRID_W = 14;
+
+// shared body; only the front arm differs between guard and punch
+const F_IDLE = [
+  ".....ooo......",
+  "....oaaao.....",
+  "....okkko.....",
+  "....okeko.....",
+  "....okkko.....",
+  ".....ooo......",
+  "....aaaaa.....",
+  "...oaaaaao....",
+  "...oaaaaao.ff.",
+  "...oaaaaao.ff.",
+  "...odaaado....",
+  "...oaaaaao....",
+  "....ok.ko.....",
+  "....ok.ko.....",
+  "...okk.kko....",
+  "...od...do....",
+  "...od...do....",
+  "..ooo...ooo...",
+];
+const F_PUNCH = F_IDLE.map((row, y) =>
+  y === 8 ? "...oaaaaaaaaff" : y === 9 ? "...oaaaaao...." : row
+);
+
+function pixelRects(map: string[], colorFor: (c: string) => string | null, keyPrefix: string) {
+  const out: JSX.Element[] = [];
+  map.forEach((row, y) => {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = row[x];
+      if (!c || c === "." || c === " ") continue;
+      const fill = colorFor(c);
+      if (!fill) continue;
+      out.push(<rect key={`${keyPrefix}${x}-${y}`} x={x} y={y} width={1.02} height={1.02} fill={fill} />);
+    }
+  });
+  return out;
+}
+
+function PixelFighter({ power, accent, context }: { power: number; accent: string; context?: "fight" }) {
+  const colorFor = (c: string): string | null => {
+    switch (c) {
+      case "o": return "#0B0A17";        // outline
+      case "k": return "#ECC39A";        // skin
+      case "e": return "#0B0A17";        // eye
+      case "d": return "#1C1930";        // belt / boots
+      case "a": return accent;           // suit / armour
+      case "f": return accent;           // glove
+      default: return null;
+    }
+  };
+  // escalating gear overlay drawn on both frames
+  const gear: JSX.Element[] = [];
+  if (power >= 2) gear.push(<rect key="emblem" x={6.2} y={8.2} width={1.6} height={1.6} fill="#FFFFFF" opacity={0.85} />);
+  if (power >= 3) { // shoulder pads
+    gear.push(<rect key="padL" x={2} y={6} width={2} height={2} fill={accent} />);
+    gear.push(<rect key="padR" x={8} y={6} width={2} height={2} fill={accent} />);
+  }
+  if (power === 4) { // crown crest
+    gear.push(<rect key="cr1" x={5} y={-1} width={1} height={1} fill={accent} />);
+    gear.push(<rect key="cr2" x={7} y={-1} width={1} height={1} fill={accent} />);
+    gear.push(<rect key="cr3" x={6} y={0} width={2} height={1} fill={accent} />);
+  }
   return (
-    <svg viewBox="0 0 140 190" className={`mm-fighter-svg${className ? " " + className : ""}`} aria-hidden="true">
-      {/* aura */}
-      <ellipse cx="70" cy="98" rx={30 + power * 8} ry="82" fill={accent} opacity={0.06 + power * 0.035} />
-      {/* cape (higher tiers) */}
-      {power >= 3 && <path d="M50 52 Q28 122 44 178 L70 150 L96 178 Q112 122 90 52 Z" fill={accent} opacity="0.22" />}
-      {/* limbs */}
-      <g fill="none" stroke={body} strokeWidth={limbW} strokeLinecap="round" strokeLinejoin="round">
-        <polyline points={`70,100 ${70 - 24},140 ${70 - 34},178`} />
-        <polyline points={`70,100 ${70 + 22},138 ${70 + 34},176`} />
-        <polyline points={`${70 - Sh},52 ${70 - Sh - 6},74 ${lf.x},${lf.y}`} />
-        <polyline points={`${70 + Sh},52 ${70 + Sh + 4},76 ${rf.x},${rf.y}`} />
-      </g>
-      {/* torso + shoulders */}
-      <line x1="70" y1="44" x2="70" y2="102" stroke={body} strokeWidth={torsoW} strokeLinecap="round" />
-      <line x1={70 - Sh} y1="52" x2={70 + Sh} y2="52" stroke={body} strokeWidth={limbW} strokeLinecap="round" />
-      {/* shoulder pads */}
-      {power >= 3 && (
-        <>
-          <path d={`M${70 - Sh - 10} 52 a10 10 0 0 1 20 0 z`} fill={accent} opacity="0.9" />
-          <path d={`M${70 + Sh - 10} 52 a10 10 0 0 1 20 0 z`} fill={accent} opacity="0.9" />
-        </>
-      )}
-      {/* head + headband */}
-      <circle cx="70" cy="30" r="13" fill={body} />
-      <path d="M56 27 H84" stroke={accent} strokeWidth="4" strokeLinecap="round" />
-      <path d="M84 26 l11 -3 M84 30 l11 3" stroke={accent} strokeWidth="2.5" strokeLinecap="round" />
-      {/* crown (top tier) */}
-      {power === 4 && <path d="M56 18 l4 -13 5 9 5 -13 5 13 5 -9 4 13 z" fill={accent} />}
-      {/* chest emblem */}
-      {power >= 2 && <circle cx="70" cy="68" r={4 + power} fill={accent} />}
-      {/* fists (glowing on high tiers) */}
-      {power >= 3 && (
-        <>
-          <circle cx={lf.x} cy={lf.y} r={limbW} fill={accent} opacity="0.55" />
-          <circle cx={rf.x} cy={rf.y} r={limbW} fill={accent} opacity="0.55" />
-        </>
-      )}
-      <circle cx={lf.x} cy={lf.y} r={limbW / 1.5} fill={body} />
-      <circle cx={rf.x} cy={rf.y} r={limbW / 1.5} fill={body} />
+    <svg
+      viewBox="-1 -2 16 21"
+      className={`mm-pixel${context === "fight" ? " in-fight" : ""}`}
+      shapeRendering="crispEdges"
+      style={{ ["--fx" as string]: accent }}
+      aria-hidden="true"
+    >
+      {/* soft aura scales with power */}
+      <ellipse cx="7" cy="10" rx={5 + power * 0.9} ry="10" fill={accent} opacity={0.05 + power * 0.03} />
+      <g className="pf-idle">{pixelRects(F_IDLE, colorFor, "i")}{gear}</g>
+      <g className="pf-punch">{pixelRects(F_PUNCH, colorFor, "p")}{gear}</g>
     </svg>
   );
 }
 
-/** The weaker "solo" opponent for the fight scene — thin, grey, no gear. */
-function FoeArt() {
-  const body = "#7C7796";
+/** The weaker "solo" opponent — same body, greyed out, no gear. */
+function PixelFoe() {
+  const colorFor = (c: string): string | null => {
+    switch (c) {
+      case "o": return "#0B0A17";
+      case "k": return "#B9B4CE";
+      case "e": return "#0B0A17";
+      case "d": return "#3A3654";
+      case "a": return "#6E6A88";
+      case "f": return "#6E6A88";
+      default: return null;
+    }
+  };
   return (
-    <svg viewBox="0 0 140 190" className="mm-fighter-svg foe" aria-hidden="true">
-      <g fill="none" stroke={body} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="70,100 58,142 52,178" />
-        <polyline points="70,100 84,142 90,178" />
-        <polyline points="56,54 48,78 62,72" />
-        <polyline points="84,54 92,80 80,74" />
-      </g>
-      <line x1="70" y1="46" x2="70" y2="102" stroke={body} strokeWidth="11" strokeLinecap="round" />
-      <line x1="56" y1="54" x2="84" y2="54" stroke={body} strokeWidth="7" strokeLinecap="round" />
-      <circle cx="70" cy="32" r="12" fill={body} />
+    <svg viewBox="-1 -2 16 21" className="mm-pixel foe" shapeRendering="crispEdges" aria-hidden="true">
+      {pixelRects(F_IDLE, colorFor, "f")}
     </svg>
   );
 }
@@ -180,6 +213,12 @@ export default function Plans() {
   const nav = useNavigation();
   const [reviewMode, setReviewMode] = useState<string>(currentReview);
   const [pending, setPending] = useState<PlanKey | null>(null);
+
+  // which plan the fight scene is previewing — hover a card to change it
+  const defaultPreview = (PLAN_TIERS.find((t) => t.highlight)?.key || PLAN_TIERS[0].key) as PlanKey;
+  const [previewKey, setPreviewKey] = useState<PlanKey>(defaultPreview);
+  const champ = FIGHTERS[previewKey];
+  const DMG: Record<number, string> = { 1: "70%", 2: "50%", 3: "28%", 4: "8%" };
 
   const buy = (planKey: PlanKey) => {
     setPending(planKey);
@@ -219,25 +258,27 @@ export default function Plans() {
           <div className="mm-fight">
             <div className="mm-fight-hud">
               <div className="mm-hp-block">
-                <div className="mm-hp-name">MARKET ARCADE OWNER</div>
+                <div className="mm-hp-name" style={{ color: champ.accent }}>{champ.title.toUpperCase()} · ARCADE</div>
                 <div className="mm-hp"><span className="mm-hp-fill you" /></div>
               </div>
               <div className="mm-fight-vs">VS</div>
               <div className="mm-hp-block right">
                 <div className="mm-hp-name">GOING IT ALONE</div>
-                <div className="mm-hp"><span className="mm-hp-fill foe" /></div>
+                <div className="mm-hp"><span className="mm-hp-fill foe" style={{ ["--dmg" as string]: DMG[champ.power] }} /></div>
               </div>
             </div>
 
-            <div className="mm-fight-stage">
-              <div className="mm-fighter-you"><FighterArt power={4} accent="#34E7E4" /></div>
-              <div className="mm-fight-hit">POW!</div>
-              <div className="mm-fighter-foe"><FoeArt /></div>
+            <div className="mm-fight-stage" data-p={champ.power}>
+              <div className="mm-fighter-you"><PixelFighter key={previewKey} power={champ.power} accent={champ.accent} context="fight" /></div>
+              <div className="mm-fight-hit" style={{ color: champ.accent, fontSize: 15 + champ.power * 4 }}>
+                {champ.power >= 4 ? "K.O.!" : champ.power >= 3 ? "BOOM!" : "POW!"}
+              </div>
+              <div className="mm-fighter-foe"><PixelFoe /></div>
             </div>
 
             <p className="mm-fight-caption">
-              With the arcade running your marketing, you fight in a different
-              weight class. <strong>Choose how hands-on you want to be:</strong>
+              Hover a plan below to send that fighter in — <strong>stronger plans
+              hit harder.</strong> Then choose how hands-on you want to be:
             </p>
 
             <div className="mm-seg" role="group" aria-label="Publishing mode">
@@ -271,14 +312,15 @@ export default function Plans() {
               return (
                 <div
                   key={tier.key}
-                  className={`mm-fighter-card${tier.highlight ? " is-featured" : ""}`}
+                  className={`mm-fighter-card${tier.highlight ? " is-featured" : ""}${previewKey === tier.key ? " is-previewing" : ""}`}
                   style={{ ["--fx" as string]: f.accent }}
+                  onMouseEnter={() => setPreviewKey(tier.key as PlanKey)}
                 >
                   {tier.highlight && <div className="mm-plan-ribbon">Most popular</div>}
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
-                    <FighterArt power={f.power} accent={f.accent} />
+                    <PixelFighter power={f.power} accent={f.accent} />
                     <div className="mm-fighter-power">
                       {[1, 2, 3, 4].map((n) => (
                         <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
@@ -317,6 +359,7 @@ export default function Plans() {
                   <button
                     className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
                     onClick={() => buy(tier.key)}
+                    onFocus={() => setPreviewKey(tier.key as PlanKey)}
                     disabled={isCurrent}
                   >
                     {isCurrent ? "SELECTED" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SELECT"}
