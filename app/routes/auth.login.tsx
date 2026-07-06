@@ -48,7 +48,7 @@ export default function Auth() {
           <Form method="post">
             <FormLayout>
               <Text variant="headingMd" as="h2">
-                Log in to MarginMonster
+                Log in to AdArcade
               </Text>
               <TextField
                 type="text"

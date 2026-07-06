@@ -1,0 +1,21 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AdArcade">
+  <defs>
+    <linearGradient id="cy" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7bf3f1"/><stop offset="100%" stop-color="#1fb6b3"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- app-icon rounded square -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#0B0A17"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#34E7E4" stroke-width="8" opacity="0.9"/>
+  <!-- CRT screen -->
+  <rect x="120" y="120" width="272" height="272" rx="36" fill="#05131B" stroke="#34E7E4" stroke-width="5"/>
+  <!-- scanlines -->
+  <g stroke="#34E7E4" stroke-width="3" opacity="0.10">
+    <line x1="132" y1="150" x2="380" y2="150"/><line x1="132" y1="178" x2="380" y2="178"/><line x1="132" y1="206" x2="380" y2="206"/><line x1="132" y1="234" x2="380" y2="234"/><line x1="132" y1="262" x2="380" y2="262"/><line x1="132" y1="290" x2="380" y2="290"/><line x1="132" y1="318" x2="380" y2="318"/><line x1="132" y1="346" x2="380" y2="346"/>
+  </g>
+  <!-- play triangle -->
+  <path d="M214 186 L344 256 L214 326 Z" fill="url(#cy)" filter="url(#glow)"/>
+</svg>

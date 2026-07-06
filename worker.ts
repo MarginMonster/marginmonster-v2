@@ -8,7 +8,7 @@ const POLL_MS = 5000;
 const DECISIONING_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 async function runWorker() {
-  console.log("MarginMonster worker started");
+  console.log("AdArcade worker started");
 
   let lastDecisioningRun = 0;
 

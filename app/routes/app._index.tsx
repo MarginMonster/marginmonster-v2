@@ -126,7 +126,7 @@ export default function Dashboard() {
 
   if (!shop) {
     return (
-      <Page title="MarginMonster">
+      <Page title="AdArcade">
         <Card>
           <Text as="p">Connecting your store… refresh in a moment.</Text>
         </Card>
