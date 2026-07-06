@@ -1,6 +1,6 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -8,15 +8,15 @@ import {
   Text,
   BlockStack,
   InlineStack,
-  Badge,
+  Button,
   DataTable,
   Box,
-  Divider,
   EmptyState,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { getPerformanceSummary } from "../lib/performance.server";
+import { seedDemoData, clearDemoData } from "../lib/demo-seed.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -26,18 +26,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({ summary });
 };
 
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  if (!shop) return json({ ok: false });
+  const intent = (await request.formData()).get("intent");
+  if (intent === "seed") await seedDemoData(shop.id);
+  if (intent === "clear") await clearDemoData(shop.id);
+  return json({ ok: true });
+};
+
 const money = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Performance() {
   const { summary } = useLoaderData<typeof loader>();
+  const submit = useSubmit();
+  const nav = useNavigation();
+  const seed = () => submit({ intent: "seed" }, { method: "post" });
+  const clear = () => submit({ intent: "clear" }, { method: "post" });
 
   if (!summary || !summary.hasData) {
     return (
       <Page title="Performance & ROI" backAction={{ content: "Home", url: "/app" }}>
-        <EmptyState heading="No campaign data yet" image="">
+        <EmptyState
+          heading="No campaign data yet"
+          image=""
+          action={{ content: "Load sample data", onAction: seed, loading: nav.state !== "idle" }}
+        >
           <p>
             Once you launch campaigns, this is where you'll see ad spend,
             revenue, ROI, traffic sources, and conversions — all in one place.
+            (Load sample data to preview it.)
           </p>
         </EmptyState>
       </Page>
@@ -71,6 +90,10 @@ export default function Performance() {
       title="Performance & ROI"
       backAction={{ content: "Home", url: "/app" }}
       subtitle="Every dollar in, every dollar out — ad spend, revenue, ROI, traffic, and conversions."
+      secondaryActions={[
+        { content: "Reload sample data", onAction: seed },
+        { content: "Clear sample data", onAction: clear, destructive: true },
+      ]}
     >
       <Layout>
         {/* Headline KPIs */}
