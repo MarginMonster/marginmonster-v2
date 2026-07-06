@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation, useActionData, Link } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation, useActionData, Link, useNavigate } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Layout,
@@ -164,18 +165,7 @@ export default function Dashboard() {
       <Layout>
         {/* Aspirational hero */}
         <Layout.Section>
-          <div className="mm-hero">
-            <span className="mm-eyebrow">▶ THE MARKETING ARCADE</span>
-            <h1>Insert token. Watch your store grow.</h1>
-            <p>
-              The first marketing arcade. MarginMonster studies your brand and
-              dispenses the blogs, videos, and ads that bring customers in —
-              while your ROI climbs the high-score board. Marketing, minus the grind.
-            </p>
-            <Link to="/app/plans" className="mm-hero-cta">
-              {hasPlan ? "View plans" : "See plans & pricing →"}
-            </Link>
-          </div>
+          <ArcadeCabinet />
         </Layout.Section>
 
         {steps && !(steps.analyzed && steps.planned && steps.connected && steps.reviewed) && (
@@ -421,6 +411,127 @@ export default function Dashboard() {
         )}
       </Layout>
     </Page>
+  );
+}
+
+const VEND_SLOTS = [
+  { em: "📝", lb: "BLOG", cls: "blog", color: "#FF2E97", route: "/app/assets" },
+  { em: "🎬", lb: "VIDEO", cls: "video", color: "#23E5DB", route: "/app/videos" },
+  { em: "🖼️", lb: "ADS", cls: "image", color: "#C6FF3D", route: "/app/assets" },
+  { em: "🛍️", lb: "COPY", cls: "copy", color: "#FFD23F", route: "/app/products" },
+  { em: "🧠", lb: "PLAN", cls: "plan", color: "#B77BFF", route: "/app/strategy" },
+  { em: "🕸️", lb: "PAGE", cls: "page", color: "#FF7BAC", route: "/app/funnels" },
+];
+
+const GAME_TILES = [
+  { ic: "🎯", tt: "PLANS", sb: "Choose your level", c: "c1", route: "/app/plans" },
+  { ic: "🧠", tt: "STRATEGY", sb: "AI marketing plan", c: "c2", route: "/app/strategy" },
+  { ic: "📝", tt: "CONTENT", sb: "Review the queue", c: "c3", route: "/app/assets" },
+  { ic: "🗓️", tt: "CALENDAR", sb: "What's dropping", c: "c4", route: "/app/calendar" },
+  { ic: "🎬", tt: "VIDEO", sb: "Video studio", c: "c5", route: "/app/videos" },
+  { ic: "🛍️", tt: "PRODUCT", sb: "Copy generator", c: "c6", route: "/app/products" },
+  { ic: "🕸️", tt: "PAGES", sb: "Landing pages", c: "c7", route: "/app/funnels" },
+  { ic: "📊", tt: "HI-SCORE", sb: "Performance & ROI", c: "c8", route: "/app/performance" },
+  { ic: "🔌", tt: "AD ACCTS", sb: "Connect Meta/TikTok", c: "c1", route: "/app/connect" },
+  { ic: "🚀", tt: "CAMPAIGNS", sb: "Launch & optimize", c: "c2", route: "/app/campaigns" },
+];
+
+const SPIN_PRIZES = ["+5 TOKENS", "FREE VIDEO", "+1 BLOG POST", "JACKPOT x2", "+3 TOKENS", "SPIN AGAIN"];
+
+function ArcadeCabinet() {
+  const navigate = useNavigate();
+  const [cap, setCap] = useState<{ lb: string; color: string; k: number } | null>(null);
+  const [turn, setTurn] = useState(0);
+  const [prize, setPrize] = useState<string | null>(null);
+  const [spinning, setSpinning] = useState(false);
+
+  const dispense = (s: (typeof VEND_SLOTS)[number]) => {
+    setCap({ lb: s.lb, color: s.color, k: Date.now() });
+    setTimeout(() => navigate(s.route), 820);
+  };
+
+  const spin = () => {
+    if (spinning) return;
+    setSpinning(true);
+    setPrize(null);
+    const idx = Math.floor(Math.random() * SPIN_PRIZES.length);
+    const rot = 360 * 5 - idx * 60 - 30;
+    setTurn((t) => t + rot);
+    setTimeout(() => {
+      setPrize(SPIN_PRIZES[idx]);
+      setSpinning(false);
+    }, 3600);
+  };
+
+  return (
+    <div className="mm-cab">
+      <div className="mm-marquee-wrap">
+        <div className="mm-marquee">
+          ★ WELCOME TO THE <b>MARGINMONSTER ARCADE</b> ★ INSERT TOKEN — WATCH YOUR STORE GROW ★ <i>HI-SCORE = YOUR ROI</i> ★ NEW HIGH SCORE INCOMING ★
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) minmax(220px,1fr)", gap: 20, alignItems: "start" }}>
+        <div>
+          <div className="mm-vend">
+            <div className="mm-vend-led">◄ SELECT · DISPENSE · SHIP ►</div>
+            <div className="mm-vend-glass">
+              {cap && (
+                <div key={cap.k} className="mm-capsule go" style={{ color: cap.color, background: cap.color }}>
+                  {cap.lb}
+                </div>
+              )}
+              {VEND_SLOTS.map((s) => (
+                <button key={s.lb} className={`mm-slot ${s.cls}`} onClick={() => dispense(s)} aria-label={s.lb}>
+                  <span className="em">{s.em}</span>
+                  <span className="lb">{s.lb}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mm-vend-tray">▼ DISPENSE TRAY ▼</div>
+          </div>
+          <p style={{ textAlign: "center", marginTop: 12 }}>
+            <span className="mm-insert">▶ INSERT TOKEN — TAP A SLOT</span>
+          </p>
+        </div>
+
+        <div className="mm-wheel-wrap">
+          <div style={{ fontFamily: "var(--font-pixel)", fontSize: 10, color: "#FFD23F", marginBottom: 10 }}>
+            ◆ DAILY TOKEN SPIN ◆
+          </div>
+          <div className="mm-wheel-pointer" />
+          <div
+            className="mm-wheel"
+            style={{
+              transform: `rotate(${turn}deg)`,
+              background:
+                "conic-gradient(#FF2E97 0 60deg,#23E5DB 60deg 120deg,#C6FF3D 120deg 180deg,#FFD23F 180deg 240deg,#B77BFF 240deg 300deg,#FF7BAC 300deg 360deg)",
+            }}
+          >
+            <div style={{ position: "absolute", inset: 0, margin: "auto", width: 46, height: 46, borderRadius: "50%", background: "#14122A", border: "3px solid #FFD23F", top: "50%", left: "50%", transform: "translate(-50%,-50%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-pixel)", fontSize: 8, color: "#FFD23F" }}>
+              MM
+            </div>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <button className="mm-arcade-btn" onClick={spin}>{spinning ? "SPINNING…" : "▶ SPIN"}</button>
+          </div>
+          <div style={{ marginTop: 12, minHeight: 18, fontFamily: "var(--font-pixel)", fontSize: 10, color: "#C6FF3D" }}>
+            {prize ? `YOU WON: ${prize}!` : ""}
+          </div>
+        </div>
+      </div>
+
+      <h3 className="mm-neon-h">▶ GAME SELECT</h3>
+      <div className="mm-gameselect">
+        {GAME_TILES.map((t) => (
+          <Link key={t.tt} to={t.route} className={`mm-cabtile ${t.c}`}>
+            <div className="ic">{t.ic}</div>
+            <div className="tt">{t.tt}</div>
+            <div className="sb">{t.sb}</div>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
