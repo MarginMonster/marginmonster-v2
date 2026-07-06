@@ -22,7 +22,11 @@ const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
   apiVersion: ApiVersion.January25,
-  scopes: process.env.SCOPES?.split(","),
+  // Hardcoded (not from env) so the app's requested scopes always match the
+  // released app version. read_orders/read_customers are intentionally NOT
+  // here — they are protected customer data that 403-gates all Admin API
+  // access for a public app until PCD approval.
+  scopes: ["read_products", "write_marketing_events"],
   appUrl: process.env.SHOPIFY_APP_URL!,
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(db),
