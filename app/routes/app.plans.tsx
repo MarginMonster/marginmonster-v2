@@ -90,11 +90,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Fighter = { title: string; rank: string; power: number; accent: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
   STARTER: { title: "Striker", rank: "TIER I", power: 1, accent: "#34E7E4",
-    stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 0 }] },
+    stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
   GROWTH: { title: "Bruiser", rank: "TIER II", power: 2, accent: "#E5397D",
-    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 1 }] },
+    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
   PRO: { title: "Warlord", rank: "TIER III", power: 3, accent: "#F5C451",
-    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 4 }] },
+    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
   SCALE: { title: "Titan", rank: "TIER IV", power: 4, accent: "#B77BFF",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
