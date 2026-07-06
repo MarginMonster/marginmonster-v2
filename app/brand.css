@@ -155,26 +155,27 @@ body::before {
   color: var(--fx); text-shadow: 0 0 10px color-mix(in srgb, var(--fx) 60%, transparent);
   margin-bottom: 8px;
 }
-/* ---- Pixel sprite ---- */
+/* ---- Chunky block sprite ---- */
 .mm-pixel {
-  width: 108px; height: auto; display: block; margin: 0 auto;
+  width: 116px; height: auto; display: block; margin: 0 auto;
   image-rendering: pixelated; image-rendering: crisp-edges;
-  filter: drop-shadow(0 3px 8px color-mix(in srgb, var(--fx, #34E7E4) 55%, transparent));
+  filter: drop-shadow(0 4px 9px color-mix(in srgb, var(--fx, #34E7E4) 55%, transparent));
+  animation: mm-pixel-bob 1.15s steps(2, end) infinite;
 }
-/* two frames cross-fade with hard steps -> arcade sprite cadence */
-.mm-pixel .pf-idle  { animation: mm-frame-idle  1.25s steps(1, end) infinite; }
-.mm-pixel .pf-punch { animation: mm-frame-punch 1.25s steps(1, end) infinite; }
-@keyframes mm-frame-idle  { 0%,55% { opacity: 1; } 58%,74% { opacity: 0; } 78%,100% { opacity: 1; } }
-@keyframes mm-frame-punch { 0%,55% { opacity: 0; } 58%,74% { opacity: 1; } 78%,100% { opacity: 0; } }
-/* whole-sprite pixel bob */
-.mm-pixel { animation: mm-pixel-bob 1.25s steps(2, end) infinite; }
 @keyframes mm-pixel-bob { 0%,50% { transform: translateY(0); } 51%,100% { transform: translateY(-2px); } }
+/* front arm thrusts forward = a crisp jab */
+.mm-pixel .pf-arm { animation: mm-jab 1.15s ease-in-out infinite; }
+@keyframes mm-jab {
+  0%,52%   { transform: translateX(-3px); }
+  62%      { transform: translateX(11px); }
+  70%      { transform: translateX(7px); }
+  84%,100% { transform: translateX(-3px); }
+}
 
 .mm-fighter-portrait { cursor: pointer; }
-/* hovering a card makes its fighter attack faster */
-.mm-fighter-card:hover .mm-pixel .pf-idle  { animation-duration: 0.6s; }
-.mm-fighter-card:hover .mm-pixel .pf-punch { animation-duration: 0.6s; }
-.mm-fighter-card:hover .mm-pixel { animation-duration: 0.6s; }
+/* hovering a card makes its fighter attack faster + harder */
+.mm-fighter-card:hover .mm-pixel { animation-duration: 0.62s; }
+.mm-fighter-card:hover .mm-pixel .pf-arm { animation-duration: 0.62s; }
 .mm-fighter-card.is-previewing { border-color: var(--fx); box-shadow: 0 18px 52px rgba(0,0,0,0.6), 0 0 26px color-mix(in srgb, var(--fx) 40%, transparent); }
 
 .mm-fighter-power { display: flex; gap: 5px; justify-content: center; margin-top: 12px; }
@@ -228,7 +229,7 @@ body::before {
 .mm-hp-fill { display: block; height: 100%; border-radius: 7px; }
 .mm-hp-fill.you { width: 100%; background: linear-gradient(90deg, #7BC80F, #C6FF3D); box-shadow: 0 0 10px rgba(198,255,61,0.6); }
 .mm-hp-fill.foe { width: 100%; background: linear-gradient(90deg, #E5397D, #ff7aa8); animation: mm-drain 3.6s ease-in-out infinite; }
-@keyframes mm-drain { 0%,52% { width: 100%; } 64%,76% { width: var(--dmg, 20%); background: linear-gradient(90deg,#E5397D,#F5C451);} 92%,100% { width: 100%; } }
+@keyframes mm-drain { 0%,58% { width: 100%; } 70%,82% { width: var(--dmg, 20%); background: linear-gradient(90deg,#E5397D,#F5C451);} 93%,100% { width: 100%; } }
 .mm-fight-vs { font-family: var(--font-pixel); font-size: 12px; color: #F5C451; text-shadow: 0 0 10px rgba(245,196,81,0.6); }
 
 .mm-fight-stage {
@@ -242,23 +243,26 @@ body::before {
   border: 1px solid rgba(255,255,255,0.06);
 }
 .mm-fighter-you { animation: mm-lunge 3.6s ease-in-out infinite; }
-.mm-fighter-you .mm-pixel { width: 92px; animation: none; }
-/* in the fight, the sprite's punch frame is retimed to sync with the lunge */
-.mm-pixel.in-fight .pf-idle  { animation: mm-frame-idle-fight  3.6s steps(1, end) infinite; }
-.mm-pixel.in-fight .pf-punch { animation: mm-frame-punch-fight 3.6s steps(1, end) infinite; }
-@keyframes mm-frame-idle-fight  { 0%,38% { opacity: 1; } 40%,58% { opacity: 0; } 60%,100% { opacity: 1; } }
-@keyframes mm-frame-punch-fight { 0%,38% { opacity: 0; } 40%,58% { opacity: 1; } 60%,100% { opacity: 0; } }
+.mm-fighter-you .mm-pixel { width: 108px; animation: none; }
+/* in the fight, the jab is retimed to land at ~48% — right before the hit */
+.mm-pixel.in-fight .pf-arm { animation: mm-jab-fight 3.6s ease-in-out infinite; }
+@keyframes mm-jab-fight {
+  0%,40%   { transform: translateX(-3px); }
+  48%      { transform: translateX(13px); }
+  56%      { transform: translateX(8px); }
+  66%,100% { transform: translateX(-3px); }
+}
 .mm-fighter-foe { animation: mm-recoil 3.6s ease-in-out infinite; transform-origin: bottom center; will-change: transform; }
-.mm-fighter-foe .mm-pixel { width: 72px; animation: none; filter: drop-shadow(0 0 8px rgba(229,57,125,0.35)); }
-@keyframes mm-lunge { 0%,26% { transform: translateX(0) scale(1);} 40% { transform: translateX(26px) scale(1.06);} 58%,100% { transform: translateX(0) scale(1);} }
-@keyframes mm-recoil { 0%,42% { transform: translateX(0) rotate(0);} 50% { transform: translateX(22px) rotate(10deg);} 58% { transform: translateX(9px) rotate(4deg);} 74%,100% { transform: translateX(0) rotate(0);} }
+.mm-fighter-foe .mm-pixel { width: 82px; animation: none; filter: drop-shadow(0 0 8px rgba(229,57,125,0.35)); }
+@keyframes mm-lunge { 0%,38% { transform: translateX(0) scale(1);} 48% { transform: translateX(24px) scale(1.06);} 64%,100% { transform: translateX(0) scale(1);} }
+@keyframes mm-recoil { 0%,50% { transform: translateX(0) rotate(0);} 56% { transform: translateX(24px) rotate(12deg);} 64% { transform: translateX(10px) rotate(5deg);} 78%,100% { transform: translateX(0) rotate(0);} }
 .mm-fight-hit {
   position: absolute; left: 50%; top: 34%; transform: translate(-50%,-50%) scale(0);
   font-family: var(--font-pixel); font-size: 20px; color: #F5C451;
   text-shadow: 0 0 12px rgba(245,196,81,0.9); pointer-events: none;
   animation: mm-pow 3.6s ease-in-out infinite;
 }
-@keyframes mm-pow { 0%,44% { transform: translate(-50%,-50%) scale(0); opacity: 0;} 50% { transform: translate(-50%,-50%) scale(1.25) rotate(-8deg); opacity: 1;} 60% { transform: translate(-50%,-50%) scale(1) rotate(-8deg); opacity: 1;} 68%,100% { transform: translate(-50%,-50%) scale(0.6); opacity: 0;} }
+@keyframes mm-pow { 0%,48% { transform: translate(-50%,-50%) scale(0); opacity: 0;} 53% { transform: translate(-50%,-50%) scale(1.3) rotate(-8deg); opacity: 1;} 62% { transform: translate(-50%,-50%) scale(1) rotate(-8deg); opacity: 1;} 70%,100% { transform: translate(-50%,-50%) scale(0.55); opacity: 0;} }
 
 .mm-fight-caption { font-size: 13px; color: #C6C1E6; margin: 14px 2px 12px; line-height: 1.45; }
 .mm-fight-caption strong { color: #fff; }
@@ -277,8 +281,7 @@ body::before {
 @media (max-width: 620px) { .mm-seg { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   .mm-hp-fill.foe, .mm-fighter-you, .mm-fighter-foe, .mm-fight-hit,
-  .mm-pixel, .mm-pixel .pf-idle, .mm-pixel .pf-punch { animation: none; }
-  .mm-pixel .pf-punch { opacity: 0; }
+  .mm-pixel, .mm-pixel .pf-arm { animation: none; }
   .mm-fight-hit { opacity: 0; }
 }
 

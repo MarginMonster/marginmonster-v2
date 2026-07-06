@@ -99,108 +99,97 @@ const FIGHTERS: Record<string, Fighter> = {
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
-/* ---- Pixel-art fighter sprites ----
- * Each fighter is a 14x18 bitmap. Two frames (idle guard + punch) are drawn
- * and cross-faded with stepped CSS animation so it reads like a real arcade
- * sprite that changes pose. Colour keys resolve per-tier via the accent.
+/* ---- Chunky block fighters ----
+ * Built from explicitly-sized muscle blocks (not a thin bitmap) so limbs are
+ * thick and aligned. Every block gets a 1px dark outline via Blk. The front
+ * arm lives in a `.pf-arm` group that thrusts on a transform keyframe = a
+ * crisp, controllable punch (no ghosty frame cross-fade).
  */
-const GRID_W = 14;
-
-// shared body; only the front arm differs between guard and punch
-const F_IDLE = [
-  ".....ooo......",
-  "....oaaao.....",
-  "....okkko.....",
-  "....okeko.....",
-  "....okkko.....",
-  ".....ooo......",
-  "....aaaaa.....",
-  "...oaaaaao....",
-  "...oaaaaao.ff.",
-  "...oaaaaao.ff.",
-  "...odaaado....",
-  "...oaaaaao....",
-  "....ok.ko.....",
-  "....ok.ko.....",
-  "...okk.kko....",
-  "...od...do....",
-  "...od...do....",
-  "..ooo...ooo...",
-];
-const F_PUNCH = F_IDLE.map((row, y) =>
-  y === 8 ? "...oaaaaaaaaff" : y === 9 ? "...oaaaaao...." : row
-);
-
-function pixelRects(map: string[], colorFor: (c: string) => string | null, keyPrefix: string) {
-  const out: JSX.Element[] = [];
-  map.forEach((row, y) => {
-    for (let x = 0; x < GRID_W; x++) {
-      const c = row[x];
-      if (!c || c === "." || c === " ") continue;
-      const fill = colorFor(c);
-      if (!fill) continue;
-      out.push(<rect key={`${keyPrefix}${x}-${y}`} x={x} y={y} width={1.02} height={1.02} fill={fill} />);
-    }
-  });
-  return out;
+const OUT = "#0B0A17";
+function Blk({ x, y, w, h, fill }: { x: number; y: number; w: number; h: number; fill: string }) {
+  return (
+    <>
+      <rect x={x - 1} y={y - 1} width={w + 2} height={h + 2} fill={OUT} />
+      <rect x={x} y={y} width={w} height={h} fill={fill} />
+    </>
+  );
 }
 
 function PixelFighter({ power, accent, context }: { power: number; accent: string; context?: "fight" }) {
-  const colorFor = (c: string): string | null => {
-    switch (c) {
-      case "o": return "#0B0A17";        // outline
-      case "k": return "#ECC39A";        // skin
-      case "e": return "#0B0A17";        // eye
-      case "d": return "#1C1930";        // belt / boots
-      case "a": return accent;           // suit / armour
-      case "f": return accent;           // glove
-      default: return null;
-    }
-  };
-  // escalating gear overlay drawn on both frames
-  const gear: JSX.Element[] = [];
-  if (power >= 2) gear.push(<rect key="emblem" x={6.2} y={8.2} width={1.6} height={1.6} fill="#FFFFFF" opacity={0.85} />);
-  if (power >= 3) { // shoulder pads
-    gear.push(<rect key="padL" x={2} y={6} width={2} height={2} fill={accent} />);
-    gear.push(<rect key="padR" x={8} y={6} width={2} height={2} fill={accent} />);
-  }
-  if (power === 4) { // crown crest
-    gear.push(<rect key="cr1" x={5} y={-1} width={1} height={1} fill={accent} />);
-    gear.push(<rect key="cr2" x={7} y={-1} width={1} height={1} fill={accent} />);
-    gear.push(<rect key="cr3" x={6} y={0} width={2} height={1} fill={accent} />);
-  }
+  const dark = "#141225";
   return (
     <svg
-      viewBox="-1 -2 16 21"
+      viewBox="0 0 80 96"
       className={`mm-pixel${context === "fight" ? " in-fight" : ""}`}
       shapeRendering="crispEdges"
       style={{ ["--fx" as string]: accent }}
       aria-hidden="true"
     >
-      {/* soft aura scales with power */}
-      <ellipse cx="7" cy="10" rx={5 + power * 0.9} ry="10" fill={accent} opacity={0.05 + power * 0.03} />
-      <g className="pf-idle">{pixelRects(F_IDLE, colorFor, "i")}{gear}</g>
-      <g className="pf-punch">{pixelRects(F_PUNCH, colorFor, "p")}{gear}</g>
+      {/* aura + cape behind the body */}
+      <ellipse cx="34" cy="52" rx={22 + power * 3} ry="46" fill={accent} opacity={0.05 + power * 0.03} />
+      {power >= 3 && <Blk x={16} y={30} w={36} h={54} fill={accent} />}
+      {power >= 3 && <rect x={17} y={31} width={34} height={52} fill={accent} opacity={0.35} />}
+
+      {/* rear (cocked) arm + fist */}
+      <Blk x={8} y={32} w={12} h={20} fill={accent} />
+      <Blk x={5} y={50} w={16} h={13} fill={accent} />
+
+      {/* thick legs, wide stance */}
+      <Blk x={20} y={60} w={12} h={26} fill={accent} />
+      <Blk x={36} y={60} w={12} h={26} fill={accent} />
+      <Blk x={18} y={83} w={16} h={9} fill={dark} />
+      <Blk x={34} y={83} w={16} h={9} fill={dark} />
+
+      {/* torso + belt + emblem */}
+      <Blk x={20} y={34} w={28} h={24} fill={accent} />
+      <Blk x={20} y={56} w={28} h={7} fill={dark} />
+      {power >= 2 && <rect x={29} y={40} width={10} height={10} fill="#FFFFFF" opacity={0.9} />}
+
+      {/* huge shoulders + pauldrons */}
+      <Blk x={12} y={26} w={44} h={11} fill={accent} />
+      {power >= 3 && <><Blk x={8} y={24} w={13} h={11} fill={accent} /><Blk x={47} y={24} w={13} h={11} fill={accent} /></>}
+
+      {/* helmet + visor + glowing eyes + horns */}
+      <Blk x={24} y={8} w={20} h={17} fill={accent} />
+      <rect x={26} y={15} width={16} height={6} fill={OUT} />
+      <rect x={28} y={16} width={5} height={4} fill="#FFFFFF" />
+      <rect x={36} y={16} width={5} height={4} fill="#FFFFFF" />
+      {power === 4 && <><rect x={19} y={2} width={5} height={9} fill={accent} /><rect x={44} y={2} width={5} height={9} fill={accent} /></>}
+
+      {/* FRONT ARM — thrusts on the punch */}
+      <g className="pf-arm">
+        <Blk x={42} y={34} w={16} h={11} fill={accent} />
+        <Blk x={54} y={33} w={14} h={14} fill={power >= 4 ? "#FFFFFF" : accent} />
+      </g>
     </svg>
   );
 }
 
-/** The weaker "solo" opponent — same body, greyed out, no gear. */
+/** The weaker "solo" opponent — a plain office guy, greyed out. */
 function PixelFoe() {
-  const colorFor = (c: string): string | null => {
-    switch (c) {
-      case "o": return "#0B0A17";
-      case "k": return "#B9B4CE";
-      case "e": return "#0B0A17";
-      case "d": return "#3A3654";
-      case "a": return "#6E6A88";
-      case "f": return "#6E6A88";
-      default: return null;
-    }
-  };
+  const shirt = "#6E6A88";
+  const dark = "#2C2942";
+  const skin = "#C9B79E";
   return (
-    <svg viewBox="-1 -2 16 21" className="mm-pixel foe" shapeRendering="crispEdges" aria-hidden="true">
-      {pixelRects(F_IDLE, colorFor, "f")}
+    <svg viewBox="0 0 64 96" className="mm-pixel foe" shapeRendering="crispEdges" aria-hidden="true">
+      {/* arms at sides */}
+      <Blk x={14} y={30} w={8} h={22} fill={shirt} />
+      <Blk x={42} y={30} w={8} h={22} fill={shirt} />
+      <Blk x={14} y={50} w={8} h={6} fill={skin} />
+      <Blk x={42} y={50} w={8} h={6} fill={skin} />
+      {/* legs */}
+      <Blk x={24} y={54} w={7} h={32} fill={dark} />
+      <Blk x={33} y={54} w={7} h={32} fill={dark} />
+      <Blk x={22} y={84} w={11} h={7} fill="#111018" />
+      <Blk x={32} y={84} w={11} h={7} fill="#111018" />
+      {/* torso + tie */}
+      <Blk x={22} y={28} w={20} h={26} fill={shirt} />
+      <rect x={30} y={30} width={4} height={16} fill={dark} />
+      {/* head */}
+      <Blk x={24} y={10} w={16} h={15} fill={skin} />
+      <rect x={24} y={10} width={16} height={4} fill={dark} />
+      <rect x={28} y={17} width={3} height={3} fill={OUT} />
+      <rect x={34} y={17} width={3} height={3} fill={OUT} />
     </svg>
   );
 }
@@ -269,7 +258,7 @@ export default function Plans() {
             </div>
 
             <div className="mm-fight-stage" data-p={champ.power}>
-              <div className="mm-fighter-you"><PixelFighter key={previewKey} power={champ.power} accent={champ.accent} context="fight" /></div>
+              <div className="mm-fighter-you"><PixelFighter power={champ.power} accent={champ.accent} context="fight" /></div>
               <div className="mm-fight-hit" style={{ color: champ.accent, fontSize: 15 + champ.power * 4 }}>
                 {champ.power >= 4 ? "K.O.!" : champ.power >= 3 ? "BOOM!" : "POW!"}
               </div>
