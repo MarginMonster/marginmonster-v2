@@ -110,11 +110,64 @@ body::before {
 .Polaris-Button--variantPrimary:hover { background: var(--mm-magenta-deep) !important; }
 .Polaris-Badge--toneSuccess { background: rgba(79,208,138,0.15) !important; color: #7FE6AE !important; }
 
-/* Inputs on dark */
-.Polaris-TextField__Input, .Polaris-Select__Input, .Polaris-TextField__Backdrop,
-textarea.Polaris-TextField__Input {
-  background: rgba(255,255,255,0.05) !important; color: var(--mm-text) !important;
+/* ===== Dark hardening: force all Polaris chrome legible on space ===== */
+.Polaris-Text--root { color: var(--mm-text); }
+.Polaris-Text--subdued, .Polaris-Text--tone-subdued { color: #A8A2D0 !important; }
+.Polaris-Page-Header__TitleWrapper, .Polaris-Page-Header__Title,
+.Polaris-Header-Title, .Polaris-Text--headingLg { color: var(--mm-text) !important; }
+.Polaris-Page__Content, .Polaris-Layout, .Polaris-Layout__Section { color: var(--mm-text); }
+
+/* Buttons — every variant readable */
+.Polaris-Button {
+  background: rgba(255,255,255,0.06) !important;
+  color: var(--mm-text) !important;
+  border: 1px solid rgba(255,255,255,0.16) !important;
+  border-radius: 10px !important;
 }
+.Polaris-Button:hover { background: rgba(255,255,255,0.12) !important; border-color: rgba(255,255,255,0.28) !important; }
+.Polaris-Button__Text, .Polaris-Button__Content, .Polaris-Button span, .Polaris-Button i { color: inherit !important; }
+.Polaris-Button--variantPrimary { background: var(--mm-magenta) !important; border-color: transparent !important; color: #fff !important; box-shadow: 0 6px 20px rgba(229,57,125,0.35) !important; }
+.Polaris-Button--variantPrimary:hover { background: var(--mm-magenta-deep) !important; }
+.Polaris-Button--variantPlain, .Polaris-Button--variantTertiary {
+  background: transparent !important; border: none !important; color: var(--mm-cyan) !important;
+}
+.Polaris-Button--variantPlain:hover, .Polaris-Button--variantTertiary:hover { background: rgba(52,231,228,0.10) !important; }
+.Polaris-Button--toneCritical { color: #FF8FA3 !important; border-color: rgba(255,107,127,0.4) !important; }
+
+/* Badges */
+.Polaris-Badge { background: rgba(255,255,255,0.09) !important; color: var(--mm-text) !important; }
+.Polaris-Badge--toneInfo { background: rgba(52,231,228,0.14) !important; color: #8FF3F0 !important; }
+.Polaris-Badge--toneAttention, .Polaris-Badge--toneWarning { background: rgba(245,196,81,0.14) !important; color: #F7D98A !important; }
+.Polaris-Badge--toneCritical { background: rgba(255,107,127,0.14) !important; color: #FF9FAE !important; }
+
+/* Banners */
+.Polaris-Banner, .Polaris-Banner--withinPage {
+  background: var(--mm-panel) !important; color: var(--mm-text) !important;
+  border: 1px solid var(--mm-line) !important; border-radius: 14px !important;
+}
+.Polaris-Banner p, .Polaris-Banner span, .Polaris-Banner .Polaris-Text--root { color: var(--mm-text) !important; }
+
+/* Inputs, selects, textareas */
+.Polaris-TextField__Input, .Polaris-Select__Input, .Polaris-TextField__Backdrop,
+textarea.Polaris-TextField__Input, .Polaris-Select__Content {
+  background: rgba(255,255,255,0.05) !important; color: var(--mm-text) !important;
+  border-color: rgba(255,255,255,0.16) !important;
+}
+.Polaris-TextField__Input::placeholder { color: #7B76A6 !important; }
+.Polaris-Label__Text, .Polaris-Choice__Label, .Polaris-Choice span { color: var(--mm-text) !important; }
+.Polaris-TextField__Prefix, .Polaris-Select__Icon svg { color: var(--mm-muted) !important; }
+
+/* Tables */
+.Polaris-DataTable, .Polaris-DataTable__Cell, .Polaris-DataTable__Cell--header {
+  background: transparent !important; color: var(--mm-text) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+.Polaris-IndexTable__TableRow, .Polaris-IndexTable td, .Polaris-IndexTable th { color: var(--mm-text) !important; }
+
+/* Dividers, icons */
+.Polaris-Divider { border-color: rgba(255,255,255,0.10) !important; }
+.Polaris-Icon svg, .Polaris-Icon { fill: var(--mm-muted) !important; color: var(--mm-muted) !important; }
+.Polaris-Thumbnail { background: rgba(255,255,255,0.05) !important; border: 1px solid var(--mm-line) !important; }
 
 /* ===== Cinematic hero ===== */
 .mm-hero {
