@@ -143,7 +143,7 @@ export default function Videos() {
           <InlineStack gap="200">
             <Badge tone="success">{`${remaining} videos left this month`}</Badge>
             {plan && plan.videoCredits > 0 && (
-              <Badge>{`+${plan.videoCredits} credit videos`}</Badge>
+              <span className="mm-token">{`+${plan.videoCredits} TOKEN VIDEOS`}</span>
             )}
           </InlineStack>
         </Layout.Section>

@@ -81,7 +81,7 @@ export const PLAN_TIERS: PlanTier[] = [
       "60 blog posts + 80 image ads / month",
       "20 AI product videos / month",
       "Campaign Autopilot across Meta & TikTok",
-      "Priority generation + best margins on credits",
+      "Priority generation + best token value",
     ],
   },
 ];
@@ -90,16 +90,16 @@ export const PLAN_BY_KEY: Record<PlanKey, PlanTier> = Object.fromEntries(
   PLAN_TIERS.map((t) => [t.key, t])
 ) as Record<PlanKey, PlanTier>;
 
-// Overage credits (top up without upgrading).
-export const CREDIT_PRICES = {
+// Arcade tokens — top up to dispense more without upgrading.
+export const TOKEN_PRICES = {
   blog: 3, // ~$0.05 cost
   image: 1, // ~$0.01 cost
   video: 15, // ~$2-4 cost — the margin protector
 };
 
-export const CREDIT_PACKS = [
-  { type: "video" as const, qty: 5, price: 5 * CREDIT_PRICES.video, label: "5 extra videos" },
-  { type: "video" as const, qty: 10, price: 10 * CREDIT_PRICES.video, label: "10 extra videos" },
-  { type: "blog" as const, qty: 10, price: 10 * CREDIT_PRICES.blog, label: "10 extra blog posts" },
-  { type: "image" as const, qty: 30, price: 30 * CREDIT_PRICES.image, label: "30 extra image ads" },
+export const TOKEN_PACKS = [
+  { type: "video" as const, qty: 5, price: 5 * TOKEN_PRICES.video, label: "5 extra videos" },
+  { type: "video" as const, qty: 10, price: 10 * TOKEN_PRICES.video, label: "10 extra videos" },
+  { type: "blog" as const, qty: 10, price: 10 * TOKEN_PRICES.blog, label: "10 extra blog posts" },
+  { type: "image" as const, qty: 30, price: 30 * TOKEN_PRICES.image, label: "30 extra image ads" },
 ];

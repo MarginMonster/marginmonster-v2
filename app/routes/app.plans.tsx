@@ -120,8 +120,8 @@ export default function Plans() {
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">Marketing freedom</span>
-            <h1>Let your store sell for you.</h1>
+            <span className="mm-eyebrow">▶ SELECT YOUR LEVEL</span>
+            <h1>Pick your level. Let your store sell for you.</h1>
             <p>
               You didn't start a business to spend nights writing blog posts and
               editing videos. Pick a plan and hand the content grind to us — grow
@@ -228,7 +228,7 @@ export default function Plans() {
 
         <Layout.Section>
           <Text variant="bodySm" as="p" tone="subdued" alignment="center">
-            Need more than your plan includes? Top up with credits anytime — no
+            Need more than your plan includes? Drop in tokens anytime — no
             upgrade required. Cancel or switch plans whenever you like.
           </Text>
         </Layout.Section>

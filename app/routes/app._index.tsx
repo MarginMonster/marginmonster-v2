@@ -165,12 +165,12 @@ export default function Dashboard() {
         {/* Aspirational hero */}
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">Your marketing, on autopilot</span>
-            <h1>Grow your store while you live your life.</h1>
+            <span className="mm-eyebrow">▶ THE MARKETING ARCADE</span>
+            <h1>Insert token. Watch your store grow.</h1>
             <p>
-              Escape the content grind. MarginMonster studies your brand and
-              quietly produces the blogs, videos, and ads that bring customers
-              in — so your business grows whether you're working or not.
+              The first marketing arcade. MarginMonster studies your brand and
+              dispenses the blogs, videos, and ads that bring customers in —
+              while your ROI climbs the high-score board. Marketing, minus the grind.
             </p>
             <Link to="/app/plans" className="mm-hero-cta">
               {hasPlan ? "View plans" : "See plans & pricing →"}

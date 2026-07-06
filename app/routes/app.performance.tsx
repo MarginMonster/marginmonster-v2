@@ -96,6 +96,13 @@ export default function Performance() {
       ]}
     >
       <Layout>
+        <Layout.Section>
+          <div className="mm-score">
+            <span className="lbl">HI-SCORE · ROI</span>
+            <span className="val">{`${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`}</span>
+          </div>
+        </Layout.Section>
+
         {/* Headline KPIs */}
         <Layout.Section>
           <InlineStack gap="400" wrap>
