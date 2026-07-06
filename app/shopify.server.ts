@@ -74,9 +74,9 @@ const shopify = shopifyApp({
       }
     },
   },
-  // Standard OAuth (authorization code flow) — produces a reliable offline
-  // token. The experimental token-exchange strategy was returning tokens the
-  // Admin API rejected with 403 for this public app.
+  // Managed-install apps (new Dev Dashboard) require the token-exchange
+  // strategy — disabling it breaks auth (401).
+  future: { unstable_newEmbeddedAuthStrategy: true },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
