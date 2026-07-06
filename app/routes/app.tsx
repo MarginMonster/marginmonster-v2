@@ -23,9 +23,12 @@ export default function App() {
       <style dangerouslySetInnerHTML={{ __html: brandStyles }} />
       <NavMenu>
         <Link to="/app" rel="home">Dashboard</Link>
+        <Link to="/app/strategy">Marketing Plan</Link>
         <Link to="/app/plans">Choose Plan</Link>
         <Link to="/app/assets">Content Queue</Link>
+        <Link to="/app/calendar">Content Calendar</Link>
         <Link to="/app/videos">Video Studio</Link>
+        <Link to="/app/products">Product Copy</Link>
         <Link to="/app/connect">Ad Accounts</Link>
         <Link to="/app/campaigns">Campaigns</Link>
         <Link to="/app/performance">Performance & ROI</Link>
