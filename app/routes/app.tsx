@@ -28,6 +28,7 @@ export default function App() {
         <Link to="/app/videos">Video Studio</Link>
         <Link to="/app/connect">Ad Accounts</Link>
         <Link to="/app/campaigns">Campaigns</Link>
+        <Link to="/app/performance">Performance & ROI</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>
