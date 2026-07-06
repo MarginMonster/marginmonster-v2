@@ -360,6 +360,23 @@ export default function Dashboard() {
           </InlineStack>
         </Layout.Section>
 
+        {/* Arcade achievements */}
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h2">Achievements</Text>
+              <div className="mm-ach-grid">
+                <Achievement icon="🕹️" name="POWERED ON" earned />
+                <Achievement icon="🔍" name="BRAND SCANNED" earned={steps?.analyzed} />
+                <Achievement icon="🎯" name="PLAYER 1" earned={steps?.planned} />
+                <Achievement icon="📦" name="FIRST DROP" earned={(shop.assets.length ?? 0) > 0} />
+                <Achievement icon="🚀" name="ON THE BOARD" earned={shop.campaigns.length > 0} />
+                <Achievement icon="🏆" name="HIGH SCORE" earned={shop.campaigns.some((c) => c.status === "ACTIVE")} />
+              </div>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
         {/* Trust / palms-raised band */}
         <Layout.Section>
           <div className="mm-trust">
@@ -404,6 +421,15 @@ export default function Dashboard() {
         )}
       </Layout>
     </Page>
+  );
+}
+
+function Achievement({ icon, name, earned }: { icon: string; name: string; earned?: boolean }) {
+  return (
+    <div className={`mm-ach${earned ? " earned" : ""}`} style={{ filter: earned ? "none" : "grayscale(1) opacity(0.5)" }}>
+      <div className="ic">{icon}</div>
+      <div className="nm">{name}</div>
+    </div>
   );
 }
 

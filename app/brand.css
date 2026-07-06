@@ -191,6 +191,44 @@ body {
   border: 1px solid var(--mm-line); border-radius: 14px; padding: 22px 28px; line-height: 1.5;
 }
 
+/* Arcade achievements */
+.mm-ach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.mm-ach {
+  border: 2px solid var(--mm-line);
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+  background: #fff;
+}
+.mm-ach.earned { border-color: var(--mm-magenta); background: #FFF0F8; }
+.mm-ach .ic { font-size: 26px; line-height: 1; }
+.mm-ach .nm {
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  margin-top: 8px;
+  color: var(--mm-muted);
+}
+.mm-ach.earned .nm { color: var(--mm-magenta-deep); }
+
+/* Dispense loader — vending machine drop */
+@keyframes mm-drop {
+  0% { transform: translateY(-14px); opacity: 0; }
+  60% { transform: translateY(4px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.mm-dispensing {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--mm-magenta-deep);
+  animation: mm-drop .5s ease infinite alternate;
+  display: inline-block;
+}
+
 /* Token chip */
 .mm-token {
   display: inline-flex; align-items: center; gap: 6px;
