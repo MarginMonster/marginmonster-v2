@@ -7,9 +7,7 @@ import type { LandingContent } from "../lib/landing.server";
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const slug = params.slug!;
   const page = await db.landingPage.findUnique({ where: { slug } });
-  if (!page || !page.published) {
-    throw new Response("Not found", { status: 404 });
-  }
+  if (!page || !page.published) throw new Response("Not found", { status: 404 });
   await db.landingPage.update({ where: { id: page.id }, data: { views: { increment: 1 } } });
   return json({
     content: JSON.parse(page.contentJson) as LandingContent,
@@ -20,67 +18,67 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 export default function LandingPagePublic() {
   const { content, productName } = useLoaderData<typeof loader>();
 
-  const page: React.CSSProperties = {
-    fontFamily: "Inter, -apple-system, sans-serif",
-    background: "#F7F1E1",
-    color: "#2B2118",
-    minHeight: "100vh",
-    margin: 0,
-  };
-  const wrap: React.CSSProperties = { maxWidth: 720, margin: "0 auto", padding: "0 24px" };
-  const heroWrap: React.CSSProperties = {
-    background: "linear-gradient(135deg,#2B2118 0%,#3d2f21 100%)",
-    color: "#F7F1E1",
-    padding: "72px 24px 64px",
-    textAlign: "center",
-  };
   const cta: React.CSSProperties = {
     display: "inline-block",
-    background: "linear-gradient(180deg,#C9972B 0%,#A87D1E 100%)",
-    color: "#fff",
+    background: "#34E7E4",
+    color: "#06231F",
     fontFamily: "Poppins, sans-serif",
-    fontWeight: 600,
-    fontSize: 17,
+    fontWeight: 700,
+    fontSize: 16,
     textDecoration: "none",
     padding: "15px 34px",
     borderRadius: 12,
-    boxShadow: "0 4px 14px rgba(201,151,43,.4)",
+    boxShadow: "0 10px 30px rgba(52,231,228,0.35)",
   };
 
   return (
-    <div style={page}>
-      <div style={heroWrap}>
-        <div style={wrap}>
-          <div style={{ fontFamily: "Poppins,sans-serif", fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", color: "#C9972B", marginBottom: 14 }}>
-            {productName}
-          </div>
-          <h1 style={{ fontFamily: "Poppins,sans-serif", fontSize: 40, fontWeight: 800, margin: "0 0 14px", lineHeight: 1.1 }}>
-            {content.hero}
-          </h1>
-          <p style={{ fontSize: 18, opacity: 0.9, maxWidth: 540, margin: "0 auto 30px" }}>{content.subhead}</p>
-          <a href="#buy" style={cta}>{content.ctaText}</a>
-        </div>
-      </div>
+    <div style={{ fontFamily: "Inter, -apple-system, sans-serif", background: "#F6F5FB", color: "#1A1730", margin: 0 }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
+        @keyframes lpglow{0%,100%{opacity:.5}50%{opacity:.9}}
+        a.lp-cta:hover{transform:translateY(-2px);transition:transform .15s}`}</style>
 
-      <div style={wrap}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 20, padding: "48px 0" }}>
+      <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(11,10,20,0.85)", backdropFilter: "blur(10px)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, color: "#EDEBFB", fontSize: 17 }}>{productName}</span>
+          <a href="#buy" style={{ ...cta, padding: "10px 20px", fontSize: 14 }}>{content.ctaText}</a>
+        </div>
+      </header>
+
+      <section style={{ position: "relative", overflow: "hidden", background: "radial-gradient(130% 90% at 50% -20%, #221D3E 0%, #0B0A14 60%)", color: "#EDEBFB", padding: "90px 24px 80px", textAlign: "center" }}>
+        <div style={{ position: "absolute", top: -100, left: "50%", transform: "translateX(-50%)", width: 480, height: 480, background: "radial-gradient(circle, rgba(52,231,228,0.18) 0%, transparent 70%)", animation: "lpglow 5s ease-in-out infinite", pointerEvents: "none" }} />
+        <div style={{ maxWidth: 720, margin: "0 auto", position: "relative" }}>
+          <div style={{ fontFamily: "Poppins, sans-serif", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase", color: "#34E7E4", marginBottom: 20 }}>{productName}</div>
+          <h1 style={{ fontFamily: "Poppins, sans-serif", fontSize: 46, fontWeight: 800, margin: "0 0 18px", lineHeight: 1.08, letterSpacing: "-0.03em" }}>{content.hero}</h1>
+          <p style={{ fontSize: 19, color: "#9A95C4", maxWidth: 560, margin: "0 auto 34px", lineHeight: 1.6 }}>{content.subhead}</p>
+          <a href="#buy" className="lp-cta" style={cta}>{content.ctaText}</a>
+          <div style={{ marginTop: 22, fontSize: 13, color: "#6F6A9C" }}>{content.socialProof}</div>
+        </div>
+      </section>
+
+      <section style={{ maxWidth: 1000, margin: "0 auto", padding: "72px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 20 }}>
           {content.benefits.map((b, i) => (
-            <div key={i} style={{ background: "#fff", border: "1px solid #E6DCC3", borderRadius: 14, padding: 22 }}>
-              <div style={{ fontFamily: "Poppins,sans-serif", fontWeight: 600, fontSize: 17, marginBottom: 6 }}>{b.title}</div>
-              <div style={{ fontSize: 15, color: "#6B5F4F", lineHeight: 1.55 }}>{b.body}</div>
+            <div key={i} style={{ background: "#fff", border: "1px solid #E7E5F2", borderRadius: 18, padding: 28, boxShadow: "0 2px 12px rgba(20,18,42,0.05)" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: "#EAF9F9", color: "#0E8F8B", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Poppins, sans-serif", fontWeight: 800, marginBottom: 16 }}>{i + 1}</div>
+              <div style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{b.title}</div>
+              <div style={{ fontSize: 15, color: "#6B6790", lineHeight: 1.6 }}>{b.body}</div>
             </div>
           ))}
         </div>
+      </section>
 
-        <div style={{ textAlign: "center", fontFamily: "Poppins,sans-serif", fontStyle: "italic", fontSize: 20, color: "#2B2118", background: "linear-gradient(135deg,#FBF7EC,#F3E9CC)", border: "1px solid #E6DCC3", borderRadius: 14, padding: "28px 24px", margin: "0 0 48px" }}>
+      <section style={{ maxWidth: 820, margin: "0 auto", padding: "0 24px 72px" }}>
+        <div style={{ textAlign: "center", fontFamily: "Poppins, sans-serif", fontSize: 26, fontWeight: 700, fontStyle: "italic", lineHeight: 1.4, color: "#1A1730" }}>
           “{content.socialProof}”
         </div>
+      </section>
 
-        <div id="buy" style={{ textAlign: "center", paddingBottom: 72 }}>
-          <a href="#" style={cta}>{content.ctaText}</a>
-          <p style={{ fontSize: 13, color: "#6B5F4F", marginTop: 16 }}>Built with MarginMonster</p>
-        </div>
-      </div>
+      <section id="buy" style={{ background: "radial-gradient(120% 100% at 50% 0%, #221D3E 0%, #0B0A14 60%)", color: "#EDEBFB", padding: "72px 24px", textAlign: "center" }}>
+        <h2 style={{ fontFamily: "Poppins, sans-serif", fontSize: 32, fontWeight: 800, margin: "0 0 14px", letterSpacing: "-0.02em" }}>{content.hero}</h2>
+        <p style={{ color: "#9A95C4", maxWidth: 480, margin: "0 auto 30px", fontSize: 16 }}>{content.subhead}</p>
+        <a href="#" className="lp-cta" style={cta}>{content.ctaText}</a>
+        <div style={{ marginTop: 40, fontSize: 12, color: "#6F6A9C", fontFamily: "Poppins, sans-serif", letterSpacing: "0.06em" }}>BUILT WITH MARGINMONSTER</div>
+      </section>
     </div>
   );
 }

@@ -140,12 +140,17 @@ export default function Videos() {
     >
       <Layout>
         <Layout.Section>
-          <InlineStack gap="200">
-            <Badge tone="success">{`${remaining} videos left this month`}</Badge>
-            {plan && plan.videoCredits > 0 && (
-              <span className="mm-token">{`+${plan.videoCredits} TOKEN VIDEOS`}</span>
-            )}
-          </InlineStack>
+          <div className="mm-hero">
+            <span className="mm-eyebrow">VIDEO STUDIO</span>
+            <h1>Scroll-stopping videos, made for you.</h1>
+            <p>Write a prompt, pick a style, and dispense a ready-to-post product video for TikTok, Reels, and Shorts.</p>
+            <div className="mm-hero-stats">
+              <div className="mm-hero-stat">
+                <div className="k">VIDEOS LEFT</div>
+                <div className="v">{remaining}</div>
+              </div>
+            </div>
+          </div>
         </Layout.Section>
 
         {/* Generation / prompting studio */}
