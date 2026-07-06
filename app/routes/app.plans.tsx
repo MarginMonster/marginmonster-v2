@@ -87,131 +87,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app");
 };
 
-type Fighter = { title: string; rank: string; power: number; accent: string; stats: { label: string; v: number }[] };
+type Fighter = { title: string; rank: string; power: number; accent: string; img: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "Striker", rank: "TIER I", power: 1, accent: "#34E7E4",
+  STARTER: { title: "Striker", rank: "TIER I", power: 1, accent: "#34E7E4", img: "striker",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  GROWTH: { title: "Bruiser", rank: "TIER II", power: 2, accent: "#E5397D",
+  GROWTH: { title: "Bruiser", rank: "TIER II", power: 2, accent: "#E5397D", img: "bruiser",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  PRO: { title: "Warlord", rank: "TIER III", power: 3, accent: "#F5C451",
+  PRO: { title: "Warlord", rank: "TIER III", power: 3, accent: "#F5C451", img: "warlord",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
-  SCALE: { title: "Titan", rank: "TIER IV", power: 4, accent: "#B77BFF",
+  SCALE: { title: "Titan", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "titan",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
-/* ---- Street-Fighter-style martial artists ----
- * A dynamic side-on lunging stance drawn with rounded, muscular vector limbs
- * (thick strokes = volume, not LEGO blocks). Skin head w/ headband, extended
- * front jab. The front arm lives in `.pf-arm` and thrusts on the punch.
- */
-const OUT = "#0B0A17";
-const SKIN = "#E9BA8B";
-
-function PixelFighter({ power, accent, context }: { power: number; accent: string; context?: "fight" }) {
-  const hair = "#231B33";
-  const band = power >= 4 ? "#FFFFFF" : "#EDEAF6";
+/* Real generated pixel-art sprites (public/fighters/*.png), each on a pure
+ * black background. `mix-blend-mode: lighten` (in CSS) drops the black so the
+ * fighter floats on the dark portrait/stage. */
+function PixelFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
   return (
-    <svg
-      viewBox="0 0 140 140"
+    <img
+      src={`/fighters/${img}.png`}
       className={`mm-pixel${context === "fight" ? " in-fight" : ""}`}
       style={{ ["--fx" as string]: accent }}
+      alt=""
       aria-hidden="true"
-    >
-      {/* aura */}
-      <ellipse cx="72" cy="86" rx={34 + power * 4} ry="54" fill={accent} opacity={0.05 + power * 0.03} />
-      {/* cape (higher tiers) */}
-      {power >= 3 && <path d="M60 50 Q38 98 52 130 L72 112 L92 130 Q104 98 82 50 Z" fill={accent} opacity="0.26" />}
-
-      {/* body — thick rounded limbs, dark outline underlay for definition */}
-      <g fill="none" strokeLinecap="round" strokeLinejoin="round" stroke={OUT}>
-        <path d="M64 84 L44 106" strokeWidth="25" />
-        <path d="M44 106 L30 126" strokeWidth="19" />
-        <path d="M72 84 L92 103" strokeWidth="25" />
-        <path d="M92 103 L110 123" strokeWidth="19" />
-        <path d="M60 84 L74 84" strokeWidth="27" />
-        <path d="M67 83 L68 47" strokeWidth="29" />
-        <path d="M59 48 L77 47" strokeWidth="24" />
-        <path d="M62 50 L46 58 L40 68" strokeWidth="17" />
-      </g>
-      <g fill="none" strokeLinecap="round" strokeLinejoin="round" stroke={accent}>
-        <path d="M64 84 L44 106" strokeWidth="21" />
-        <path d="M44 106 L30 126" strokeWidth="15" />
-        <path d="M72 84 L92 103" strokeWidth="21" />
-        <path d="M92 103 L110 123" strokeWidth="15" />
-        <path d="M60 84 L74 84" strokeWidth="23" />
-        <path d="M67 83 L68 47" strokeWidth="25" />
-        <path d="M59 48 L77 47" strokeWidth="20" />
-        <path d="M62 50 L46 58 L40 68" strokeWidth="13" />
-      </g>
-
-      {/* belt */}
-      <path d="M55 80 L79 80" stroke={power >= 4 ? "#F5C451" : "#12101E"} strokeWidth="6" strokeLinecap="round" />
-      {/* chest emblem */}
-      {power >= 2 && <circle cx="68" cy="62" r={3 + power} fill="#FFFFFF" opacity="0.9" />}
-
-      {/* feet + rear fist */}
-      <ellipse cx="27" cy="127" rx="12" ry="5.5" fill={SKIN} stroke={OUT} strokeWidth="1.5" />
-      <ellipse cx="112" cy="124" rx="12" ry="5.5" fill={SKIN} stroke={OUT} strokeWidth="1.5" />
-      <circle cx="40" cy="68" r="8.5" fill={SKIN} stroke={OUT} strokeWidth="2" />
-
-      {/* shoulder pads (higher tiers) */}
-      {power >= 3 && (
-        <>
-          <circle cx="59" cy="48" r="10" fill={accent} stroke={OUT} strokeWidth="2" />
-          <circle cx="77" cy="47" r="10" fill={accent} stroke={OUT} strokeWidth="2" />
-        </>
-      )}
-
-      {/* head, hair, headband, eye */}
-      <circle cx="73" cy="30" r="14.5" fill={SKIN} stroke={OUT} strokeWidth="2" />
-      <path d="M59 27 Q71 12 88 25 Q80 20 73 21 Q65 22 59 27 Z" fill={hair} />
-      <path d="M59 29 Q73 22 88 29" fill="none" stroke={band} strokeWidth="5" strokeLinecap="round" />
-      <path d="M60 30 L48 27 M60 33 L47 35" stroke={band} strokeWidth="3" strokeLinecap="round" />
-      <circle cx="82" cy="30" r="2.3" fill={OUT} />
-      {/* horns (top tier) */}
-      {power === 4 && (
-        <>
-          <path d="M60 19 l-4 -11 9 6 z" fill={accent} stroke={OUT} strokeWidth="1.5" />
-          <path d="M86 19 l4 -11 -9 6 z" fill={accent} stroke={OUT} strokeWidth="1.5" />
-        </>
-      )}
-
-      {/* FRONT ARM + fist — thrusts on the punch */}
-      <g className="pf-arm">
-        <path d="M72 50 L95 51 L114 48" fill="none" stroke={OUT} strokeWidth="17" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M72 50 L95 51 L114 48" fill="none" stroke={accent} strokeWidth="13" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="116" cy="48" r="9.5" fill={power >= 4 ? "#FFFFFF" : SKIN} stroke={OUT} strokeWidth="2" />
-      </g>
-    </svg>
+      draggable={false}
+    />
   );
 }
 
-/** The weaker "solo" opponent — a plain office guy throwing his hands up. */
 function PixelFoe() {
-  const suit = "#6E6A88";
-  const dark = "#2C2942";
-  const skin = "#C9B79E";
-  return (
-    <svg viewBox="0 0 120 140" className="mm-pixel foe" aria-hidden="true">
-      <g fill="none" strokeLinecap="round" strokeLinejoin="round" stroke={suit}>
-        <path d="M52 84 L46 118" strokeWidth="16" />
-        <path d="M66 84 L72 118" strokeWidth="16" />
-        <path d="M59 84 L59 46" strokeWidth="22" />
-        <path d="M50 48 L68 48" strokeWidth="16" />
-        <path d="M50 50 L39 39" strokeWidth="11" />
-        <path d="M68 50 L79 39" strokeWidth="11" />
-      </g>
-      <path d="M59 50 L59 74" stroke={dark} strokeWidth="5" strokeLinecap="round" />
-      <ellipse cx="44" cy="120" rx="10" ry="4.5" fill={dark} />
-      <ellipse cx="74" cy="120" rx="10" ry="4.5" fill={dark} />
-      <circle cx="38" cy="38" r="6.5" fill={skin} />
-      <circle cx="80" cy="38" r="6.5" fill={skin} />
-      <circle cx="59" cy="32" r="12.5" fill={skin} stroke={OUT} strokeWidth="1.5" />
-      <path d="M47 30 Q59 19 71 30 Q65 25 59 26 Q53 25 47 30 Z" fill={dark} />
-      <circle cx="54" cy="33" r="1.9" fill={OUT} />
-      <circle cx="64" cy="33" r="1.9" fill={OUT} />
-    </svg>
-  );
+  return <img src="/fighters/foe.png" className="mm-pixel foe" alt="" aria-hidden="true" draggable={false} />;
 }
 
 export default function Plans() {
@@ -278,7 +183,8 @@ export default function Plans() {
             </div>
 
             <div className="mm-fight-stage" data-p={champ.power}>
-              <div className="mm-fighter-you"><PixelFighter power={champ.power} accent={champ.accent} context="fight" /></div>
+              <div className="mm-fighter-you"><PixelFighter img={champ.img} accent={champ.accent} context="fight" /></div>
+              <div className="mm-fireball" style={{ ["--fireclr" as string]: champ.accent }} />
               <div className="mm-fight-hit" style={{ color: champ.accent, fontSize: 15 + champ.power * 4 }}>
                 {champ.power >= 4 ? "K.O.!" : champ.power >= 3 ? "BOOM!" : "POW!"}
               </div>
@@ -329,7 +235,7 @@ export default function Plans() {
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
-                    <PixelFighter power={f.power} accent={f.accent} />
+                    <PixelFighter img={f.img} accent={f.accent} />
                     <div className="mm-fighter-power">
                       {[1, 2, 3, 4].map((n) => (
                         <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
