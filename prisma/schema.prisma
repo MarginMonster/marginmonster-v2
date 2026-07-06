@@ -38,6 +38,22 @@ model Shop {
   jobs           Job[]
   adAccounts     AdAccount[]
   campaigns      Campaign[]
+  landingPages   LandingPage[]
+}
+
+model LandingPage {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  slug        String   @unique
+  title       String
+  productName String
+  goal        String   @default("BUY")
+  contentJson String   // hero, subhead, benefits[], testimonial, cta, ctaUrl
+  published   Boolean  @default(false)
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model BrandProfile {
