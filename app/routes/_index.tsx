@@ -3,9 +3,11 @@ import { redirect, type LoaderFunctionArgs } from "@remix-run/node";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
-  // Embedded / install traffic always carries a shop param → send to auth.
+  // Embedded / install traffic always carries a shop param → send to the
+  // embedded app area (/app), which performs the App Bridge token exchange.
+  // (Redirecting to /auth here breaks fresh installs — it returns null.)
   if (url.searchParams.get("shop")) {
-    throw redirect(`/auth?${url.searchParams.toString()}`);
+    throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
   // No shop param → this is a health check or a bare visit.
