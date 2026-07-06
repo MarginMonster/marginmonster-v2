@@ -53,21 +53,23 @@
    re-pinning the same tokens on that wrapper (and light-theme wrappers), so
    the app always renders light-content regardless of the merchant's dark mode. */
 :root,
-.p-theme-light,
-.p-theme-dark-experimental,
-.p-theme-light-high-contrast-experimental {
-  --p-color-text: #1A1730;
-  --p-color-text-secondary: #575959;
-  --p-color-text-disabled: #8C9196;
-  --p-color-icon: #4A4A57;
-  --p-color-icon-secondary: #8A85A8;
-  --p-color-bg: transparent;
-  --p-color-bg-surface: #ffffff;
-  --p-color-bg-surface-secondary: #F6F6F8;
-  --p-color-bg-surface-hover: #F1F1F4;
-  --p-color-bg-surface-active: #ECECEF;
-  --p-color-border: #E1E1E8;
-  --p-color-border-secondary: #EBEBF0;
+html,
+body,
+.Polaris-Frame,
+[class*="p-theme"] {
+  --p-color-text: #1A1730 !important;
+  --p-color-text-secondary: #575959 !important;
+  --p-color-text-disabled: #8C9196 !important;
+  --p-color-text-emphasis: #C22A66 !important;
+  --p-color-icon: #4A4A57 !important;
+  --p-color-icon-secondary: #8A85A8 !important;
+  --p-color-bg: transparent !important;
+  --p-color-bg-surface: #ffffff !important;
+  --p-color-bg-surface-secondary: #F6F6F8 !important;
+  --p-color-bg-surface-hover: #F1F1F4 !important;
+  --p-color-bg-surface-active: #ECECEF !important;
+  --p-color-border: #E1E1E8 !important;
+  --p-color-border-secondary: #EBEBF0 !important;
 }
 
 /* GUARANTEED fix: set the color tokens ON the white card itself (closest
