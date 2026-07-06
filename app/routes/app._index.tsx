@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation, useActionData, Link } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -150,9 +150,9 @@ export default function Dashboard() {
               quietly produces the blogs, videos, and ads that bring customers
               in — so your business grows whether you're working or not.
             </p>
-            <a href="/app/plans" className="mm-hero-cta">
+            <Link to="/app/plans" className="mm-hero-cta">
               {hasPlan ? "View plans" : "See plans & pricing →"}
-            </a>
+            </Link>
           </div>
         </Layout.Section>
 
