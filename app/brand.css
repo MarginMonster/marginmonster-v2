@@ -48,8 +48,29 @@
   --p-font-family-sans: var(--font-body);
 }
 
-/* Belt-and-suspenders: force readable dark text inside every white card,
-   overriding any dark-mode inheritance. */
+/* THE fix: Polaris applies dark mode via a `.p-theme-dark-experimental`
+   wrapper whose tokens override :root for its descendants. Neutralize it by
+   re-pinning the same tokens on that wrapper (and light-theme wrappers), so
+   the app always renders light-content regardless of the merchant's dark mode. */
+:root,
+.p-theme-light,
+.p-theme-dark-experimental,
+.p-theme-light-high-contrast-experimental {
+  --p-color-text: #1A1730;
+  --p-color-text-secondary: #575959;
+  --p-color-text-disabled: #8C9196;
+  --p-color-icon: #4A4A57;
+  --p-color-icon-secondary: #8A85A8;
+  --p-color-bg: transparent;
+  --p-color-bg-surface: #ffffff;
+  --p-color-bg-surface-secondary: #F6F6F8;
+  --p-color-bg-surface-hover: #F1F1F4;
+  --p-color-bg-surface-active: #ECECEF;
+  --p-color-border: #E1E1E8;
+  --p-color-border-secondary: #EBEBF0;
+}
+
+/* Belt-and-suspenders: force readable dark text inside every white card. */
 .Polaris-Card .Polaris-Text--root,
 .Polaris-Card p, .Polaris-Card span, .Polaris-Card li,
 .Polaris-Card label, .Polaris-Card td, .Polaris-Card th { color: #1A1730; }
