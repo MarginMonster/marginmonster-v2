@@ -157,12 +157,11 @@ body::before {
 }
 /* ---- Chunky block sprite ---- */
 .mm-pixel {
-  width: 116px; height: auto; display: block; margin: 0 auto;
-  image-rendering: pixelated; image-rendering: crisp-edges;
+  width: 120px; height: auto; display: block; margin: 0 auto;
   filter: drop-shadow(0 4px 9px color-mix(in srgb, var(--fx, #34E7E4) 55%, transparent));
-  animation: mm-pixel-bob 1.15s steps(2, end) infinite;
+  animation: mm-pixel-bob 1.15s ease-in-out infinite;
 }
-@keyframes mm-pixel-bob { 0%,50% { transform: translateY(0); } 51%,100% { transform: translateY(-2px); } }
+@keyframes mm-pixel-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 /* front arm thrusts forward = a crisp jab */
 .mm-pixel .pf-arm { animation: mm-jab 1.15s ease-in-out infinite; }
 @keyframes mm-jab {

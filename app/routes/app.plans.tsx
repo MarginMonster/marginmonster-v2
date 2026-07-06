@@ -99,97 +99,117 @@ const FIGHTERS: Record<string, Fighter> = {
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
-/* ---- Chunky block fighters ----
- * Built from explicitly-sized muscle blocks (not a thin bitmap) so limbs are
- * thick and aligned. Every block gets a 1px dark outline via Blk. The front
- * arm lives in a `.pf-arm` group that thrusts on a transform keyframe = a
- * crisp, controllable punch (no ghosty frame cross-fade).
+/* ---- Street-Fighter-style martial artists ----
+ * A dynamic side-on lunging stance drawn with rounded, muscular vector limbs
+ * (thick strokes = volume, not LEGO blocks). Skin head w/ headband, extended
+ * front jab. The front arm lives in `.pf-arm` and thrusts on the punch.
  */
 const OUT = "#0B0A17";
-function Blk({ x, y, w, h, fill }: { x: number; y: number; w: number; h: number; fill: string }) {
-  return (
-    <>
-      <rect x={x - 1} y={y - 1} width={w + 2} height={h + 2} fill={OUT} />
-      <rect x={x} y={y} width={w} height={h} fill={fill} />
-    </>
-  );
-}
+const SKIN = "#E9BA8B";
 
 function PixelFighter({ power, accent, context }: { power: number; accent: string; context?: "fight" }) {
-  const dark = "#141225";
+  const hair = "#231B33";
+  const band = power >= 4 ? "#FFFFFF" : "#EDEAF6";
   return (
     <svg
-      viewBox="0 0 80 96"
+      viewBox="0 0 140 140"
       className={`mm-pixel${context === "fight" ? " in-fight" : ""}`}
-      shapeRendering="crispEdges"
       style={{ ["--fx" as string]: accent }}
       aria-hidden="true"
     >
-      {/* aura + cape behind the body */}
-      <ellipse cx="34" cy="52" rx={22 + power * 3} ry="46" fill={accent} opacity={0.05 + power * 0.03} />
-      {power >= 3 && <Blk x={16} y={30} w={36} h={54} fill={accent} />}
-      {power >= 3 && <rect x={17} y={31} width={34} height={52} fill={accent} opacity={0.35} />}
+      {/* aura */}
+      <ellipse cx="72" cy="86" rx={34 + power * 4} ry="54" fill={accent} opacity={0.05 + power * 0.03} />
+      {/* cape (higher tiers) */}
+      {power >= 3 && <path d="M60 50 Q38 98 52 130 L72 112 L92 130 Q104 98 82 50 Z" fill={accent} opacity="0.26" />}
 
-      {/* rear (cocked) arm + fist */}
-      <Blk x={8} y={32} w={12} h={20} fill={accent} />
-      <Blk x={5} y={50} w={16} h={13} fill={accent} />
+      {/* body — thick rounded limbs, dark outline underlay for definition */}
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round" stroke={OUT}>
+        <path d="M64 84 L44 106" strokeWidth="25" />
+        <path d="M44 106 L30 126" strokeWidth="19" />
+        <path d="M72 84 L92 103" strokeWidth="25" />
+        <path d="M92 103 L110 123" strokeWidth="19" />
+        <path d="M60 84 L74 84" strokeWidth="27" />
+        <path d="M67 83 L68 47" strokeWidth="29" />
+        <path d="M59 48 L77 47" strokeWidth="24" />
+        <path d="M62 50 L46 58 L40 68" strokeWidth="17" />
+      </g>
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round" stroke={accent}>
+        <path d="M64 84 L44 106" strokeWidth="21" />
+        <path d="M44 106 L30 126" strokeWidth="15" />
+        <path d="M72 84 L92 103" strokeWidth="21" />
+        <path d="M92 103 L110 123" strokeWidth="15" />
+        <path d="M60 84 L74 84" strokeWidth="23" />
+        <path d="M67 83 L68 47" strokeWidth="25" />
+        <path d="M59 48 L77 47" strokeWidth="20" />
+        <path d="M62 50 L46 58 L40 68" strokeWidth="13" />
+      </g>
 
-      {/* thick legs, wide stance */}
-      <Blk x={20} y={60} w={12} h={26} fill={accent} />
-      <Blk x={36} y={60} w={12} h={26} fill={accent} />
-      <Blk x={18} y={83} w={16} h={9} fill={dark} />
-      <Blk x={34} y={83} w={16} h={9} fill={dark} />
+      {/* belt */}
+      <path d="M55 80 L79 80" stroke={power >= 4 ? "#F5C451" : "#12101E"} strokeWidth="6" strokeLinecap="round" />
+      {/* chest emblem */}
+      {power >= 2 && <circle cx="68" cy="62" r={3 + power} fill="#FFFFFF" opacity="0.9" />}
 
-      {/* torso + belt + emblem */}
-      <Blk x={20} y={34} w={28} h={24} fill={accent} />
-      <Blk x={20} y={56} w={28} h={7} fill={dark} />
-      {power >= 2 && <rect x={29} y={40} width={10} height={10} fill="#FFFFFF" opacity={0.9} />}
+      {/* feet + rear fist */}
+      <ellipse cx="27" cy="127" rx="12" ry="5.5" fill={SKIN} stroke={OUT} strokeWidth="1.5" />
+      <ellipse cx="112" cy="124" rx="12" ry="5.5" fill={SKIN} stroke={OUT} strokeWidth="1.5" />
+      <circle cx="40" cy="68" r="8.5" fill={SKIN} stroke={OUT} strokeWidth="2" />
 
-      {/* huge shoulders + pauldrons */}
-      <Blk x={12} y={26} w={44} h={11} fill={accent} />
-      {power >= 3 && <><Blk x={8} y={24} w={13} h={11} fill={accent} /><Blk x={47} y={24} w={13} h={11} fill={accent} /></>}
+      {/* shoulder pads (higher tiers) */}
+      {power >= 3 && (
+        <>
+          <circle cx="59" cy="48" r="10" fill={accent} stroke={OUT} strokeWidth="2" />
+          <circle cx="77" cy="47" r="10" fill={accent} stroke={OUT} strokeWidth="2" />
+        </>
+      )}
 
-      {/* helmet + visor + glowing eyes + horns */}
-      <Blk x={24} y={8} w={20} h={17} fill={accent} />
-      <rect x={26} y={15} width={16} height={6} fill={OUT} />
-      <rect x={28} y={16} width={5} height={4} fill="#FFFFFF" />
-      <rect x={36} y={16} width={5} height={4} fill="#FFFFFF" />
-      {power === 4 && <><rect x={19} y={2} width={5} height={9} fill={accent} /><rect x={44} y={2} width={5} height={9} fill={accent} /></>}
+      {/* head, hair, headband, eye */}
+      <circle cx="73" cy="30" r="14.5" fill={SKIN} stroke={OUT} strokeWidth="2" />
+      <path d="M59 27 Q71 12 88 25 Q80 20 73 21 Q65 22 59 27 Z" fill={hair} />
+      <path d="M59 29 Q73 22 88 29" fill="none" stroke={band} strokeWidth="5" strokeLinecap="round" />
+      <path d="M60 30 L48 27 M60 33 L47 35" stroke={band} strokeWidth="3" strokeLinecap="round" />
+      <circle cx="82" cy="30" r="2.3" fill={OUT} />
+      {/* horns (top tier) */}
+      {power === 4 && (
+        <>
+          <path d="M60 19 l-4 -11 9 6 z" fill={accent} stroke={OUT} strokeWidth="1.5" />
+          <path d="M86 19 l4 -11 -9 6 z" fill={accent} stroke={OUT} strokeWidth="1.5" />
+        </>
+      )}
 
-      {/* FRONT ARM — thrusts on the punch */}
+      {/* FRONT ARM + fist — thrusts on the punch */}
       <g className="pf-arm">
-        <Blk x={42} y={34} w={16} h={11} fill={accent} />
-        <Blk x={54} y={33} w={14} h={14} fill={power >= 4 ? "#FFFFFF" : accent} />
+        <path d="M72 50 L95 51 L114 48" fill="none" stroke={OUT} strokeWidth="17" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M72 50 L95 51 L114 48" fill="none" stroke={accent} strokeWidth="13" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="116" cy="48" r="9.5" fill={power >= 4 ? "#FFFFFF" : SKIN} stroke={OUT} strokeWidth="2" />
       </g>
     </svg>
   );
 }
 
-/** The weaker "solo" opponent — a plain office guy, greyed out. */
+/** The weaker "solo" opponent — a plain office guy throwing his hands up. */
 function PixelFoe() {
-  const shirt = "#6E6A88";
+  const suit = "#6E6A88";
   const dark = "#2C2942";
   const skin = "#C9B79E";
   return (
-    <svg viewBox="0 0 64 96" className="mm-pixel foe" shapeRendering="crispEdges" aria-hidden="true">
-      {/* arms at sides */}
-      <Blk x={14} y={30} w={8} h={22} fill={shirt} />
-      <Blk x={42} y={30} w={8} h={22} fill={shirt} />
-      <Blk x={14} y={50} w={8} h={6} fill={skin} />
-      <Blk x={42} y={50} w={8} h={6} fill={skin} />
-      {/* legs */}
-      <Blk x={24} y={54} w={7} h={32} fill={dark} />
-      <Blk x={33} y={54} w={7} h={32} fill={dark} />
-      <Blk x={22} y={84} w={11} h={7} fill="#111018" />
-      <Blk x={32} y={84} w={11} h={7} fill="#111018" />
-      {/* torso + tie */}
-      <Blk x={22} y={28} w={20} h={26} fill={shirt} />
-      <rect x={30} y={30} width={4} height={16} fill={dark} />
-      {/* head */}
-      <Blk x={24} y={10} w={16} h={15} fill={skin} />
-      <rect x={24} y={10} width={16} height={4} fill={dark} />
-      <rect x={28} y={17} width={3} height={3} fill={OUT} />
-      <rect x={34} y={17} width={3} height={3} fill={OUT} />
+    <svg viewBox="0 0 120 140" className="mm-pixel foe" aria-hidden="true">
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round" stroke={suit}>
+        <path d="M52 84 L46 118" strokeWidth="16" />
+        <path d="M66 84 L72 118" strokeWidth="16" />
+        <path d="M59 84 L59 46" strokeWidth="22" />
+        <path d="M50 48 L68 48" strokeWidth="16" />
+        <path d="M50 50 L39 39" strokeWidth="11" />
+        <path d="M68 50 L79 39" strokeWidth="11" />
+      </g>
+      <path d="M59 50 L59 74" stroke={dark} strokeWidth="5" strokeLinecap="round" />
+      <ellipse cx="44" cy="120" rx="10" ry="4.5" fill={dark} />
+      <ellipse cx="74" cy="120" rx="10" ry="4.5" fill={dark} />
+      <circle cx="38" cy="38" r="6.5" fill={skin} />
+      <circle cx="80" cy="38" r="6.5" fill={skin} />
+      <circle cx="59" cy="32" r="12.5" fill={skin} stroke={OUT} strokeWidth="1.5" />
+      <path d="M47 30 Q59 19 71 30 Q65 25 59 26 Q53 25 47 30 Z" fill={dark} />
+      <circle cx="54" cy="33" r="1.9" fill={OUT} />
+      <circle cx="64" cy="33" r="1.9" fill={OUT} />
     </svg>
   );
 }
