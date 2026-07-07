@@ -22,12 +22,34 @@ import { db } from "../db.server";
 import { generateProductCopy, type ProductCopy } from "../lib/product-copy.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
     include: { brandProfile: true },
   });
-  return json({ hasBrand: !!shop?.brandProfile });
+
+  // Pull the store catalog so the merchant can pick a product instead of
+  // typing a name. read_products, via the request (online) token.
+  let products: { title: string; image: string | null; description: string }[] = [];
+  try {
+    const res = await admin.graphql(
+      `{ products(first: 40, sortKey: UPDATED_AT, reverse: true) {
+        edges { node { title featuredImage { url } description(truncateAt: 220) } }
+      } }`
+    );
+    const j = (await res.json()) as {
+      data?: { products?: { edges?: { node: { title: string; featuredImage?: { url?: string }; description?: string } }[] } };
+    };
+    products = (j.data?.products?.edges || []).map((e) => ({
+      title: e.node.title,
+      image: e.node.featuredImage?.url || null,
+      description: e.node.description || "",
+    }));
+  } catch {
+    /* non-fatal — falls back to manual entry */
+  }
+
+  return json({ hasBrand: !!shop?.brandProfile, products });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -50,7 +72,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Products() {
-  const { hasBrand } = useLoaderData<typeof loader>();
+  const { hasBrand, products } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -60,6 +82,11 @@ export default function Products() {
 
   const [productName, setProductName] = useState("");
   const [notes, setNotes] = useState("");
+
+  const pick = (p: { title: string; description: string }) => {
+    setProductName(p.title);
+    setNotes(p.description?.slice(0, 300) || "");
+  };
 
   const generate = () => submit({ productName, notes }, { method: "post" });
 
@@ -80,6 +107,39 @@ export default function Products() {
       subtitle="SEO-ready product copy in your brand voice — descriptions, bullets, and meta tags."
     >
       <Layout>
+        {products.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingMd" as="h2">Pick a product</Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Tap a product from your store to auto-fill it — or type a name below.
+                </Text>
+                <div className="mm-prodgrid">
+                  {products.map((p) => {
+                    const selected = p.title === productName;
+                    return (
+                      <button
+                        key={p.title}
+                        type="button"
+                        className={`mm-prodcard${selected ? " on" : ""}`}
+                        onClick={() => pick(p)}
+                      >
+                        {p.image ? (
+                          <img src={p.image} alt="" loading="lazy" />
+                        ) : (
+                          <div className="mm-prodph">🛍️</div>
+                        )}
+                        <span className="mm-prodtitle">{p.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
@@ -89,6 +149,7 @@ export default function Products() {
                 onChange={setProductName}
                 autoComplete="off"
                 placeholder="e.g. Blue Razz Gummy Worms"
+                helpText={products.length > 0 ? "Picked from your store above, or type your own." : undefined}
               />
               <TextField
                 label="Notes (optional)"
