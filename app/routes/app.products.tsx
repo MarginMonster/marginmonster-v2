@@ -207,7 +207,7 @@ export default function Products() {
               <video
                 key={busy ? "hammer" : "idle"}
                 className="mm-forge-vid"
-                src={busy ? "/fighters/forge_hammer.mp4?v=2" : "/fighters/forge_idle.mp4?v=2"}
+                src={busy ? "/fighters/forge_hammer.mp4?v=2" : "/fighters/forge_idle.mp4?v=3"}
                 autoPlay
                 loop
                 muted
