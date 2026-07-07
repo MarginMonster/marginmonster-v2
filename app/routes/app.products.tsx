@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, useSubmit, useNavigation, useFetcher } from "@remix-run/react";
+import { useLoaderData, useActionData, useSubmit, useNavigation, useFetcher, Link } from "@remix-run/react";
 import { useState, useRef, useEffect } from "react";
 import {
   Page,
@@ -178,6 +178,17 @@ function escapeHtml(s: string): string {
 type PickItem = { id: string; title: string; description: string };
 type ForgeResult = { id: string | null; title: string; copy?: ProductCopy; error?: string };
 
+const QUICK = [
+  { l: "Dashboard", route: "/app" },
+  { l: "Plans", route: "/app/plans" },
+  { l: "Video Studio", route: "/app/videos" },
+  { l: "Landing Pages", route: "/app/funnels" },
+  { l: "Content Queue", route: "/app/assets" },
+  { l: "Calendar", route: "/app/calendar" },
+  { l: "Ad Accounts", route: "/app/connect" },
+  { l: "Performance", route: "/app/performance" },
+];
+
 export default function Products() {
   const { hasBrand, products, tokens, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -336,7 +347,7 @@ export default function Products() {
                   <span className="mm-smith-lvl">LVL&nbsp;97</span>
                   <div className="mm-smith-hp"><i /></div>
                 </div>
-                <div className="mm-smith-name">MASTER LISTING BLACKSMITH</div>
+                <div className="mm-smith-name">MASTER SEO BLACKSMITH</div>
               </div>
             </div>
           </div>
@@ -536,6 +547,15 @@ export default function Products() {
             </Card>
           </Layout.Section>
         ))}
+
+        <Layout.Section>
+          <span className="mm-section-label">▶ QUICK ACCESS</span>
+          <div className="mm-quick">
+            {QUICK.map((q) => (
+              <Link key={q.l} to={q.route} className="mm-chip">{q.l}</Link>
+            ))}
+          </div>
+        </Layout.Section>
         </Layout>
       </Page>
     </>

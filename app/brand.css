@@ -233,9 +233,15 @@ body::before {
   border-radius: 18px; padding: 26px 28px; min-height: 190px;
   border: 1px solid rgba(255,255,255,0.08);
   background:
-    radial-gradient(120% 120% at 88% 60%, rgba(245,140,40,0.22) 0%, transparent 55%),
-    radial-gradient(90% 90% at 50% 0%, #17142B 0%, #0B0A17 62%);
+    radial-gradient(120% 120% at 88% 60%, rgba(52,231,228,0.20) 0%, transparent 55%),
+    radial-gradient(90% 90% at 50% 0%, #14202b 0%, #0B0A17 62%);
   color: #ECEAFB;
+  transition: background .3s ease;
+}
+.mm-forge-hero.forging {
+  background:
+    radial-gradient(130% 130% at 88% 60%, rgba(52,231,228,0.42) 0%, transparent 58%),
+    radial-gradient(90% 90% at 50% 0%, #163444 0%, #0B0A17 62%);
 }
 .mm-forge-text { flex: 1; min-width: 0; }
 .mm-forge-text .mm-eyebrow { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.24em; color: #F5C451; margin-bottom: 14px; display: block; }
@@ -314,8 +320,8 @@ body::before {
 .mm-smith-card {
   position: relative; flex-shrink: 0; width: 328px; height: 306px; border-radius: 20px;
   overflow: hidden; background: #0A0912;
-  border: 1px solid rgba(255,200,130,0.22);
-  box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 44px rgba(245,140,40,0.10),
+  border: 1px solid rgba(120,220,220,0.26);
+  box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 44px rgba(52,231,228,0.16),
               inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(0,0,0,0.4);
   transition: box-shadow .3s ease, border-color .3s ease;
 }
@@ -338,7 +344,7 @@ body::before {
 .mm-smith-hp i { display: block; height: 100%; width: 100%; border-radius: 6px; background: linear-gradient(90deg, #57b70e, #b6ff3a); box-shadow: 0 0 10px rgba(160,255,60,0.45); }
 .mm-smith-name { font-family: var(--font-pixel); font-size: 8.5px; letter-spacing: .14em; color: #F6E8C6; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
 /* forge state — the bezel warms and glows */
-.mm-forge-hero.forging .mm-smith-card { border-color: rgba(255,170,60,0.55); box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 60px rgba(255,150,40,0.32), inset 0 1px 0 rgba(255,255,255,0.06); }
+.mm-forge-hero.forging .mm-smith-card { border-color: rgba(120,255,250,0.6); box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 68px rgba(52,231,228,0.42), inset 0 1px 0 rgba(255,255,255,0.06); }
 @media (max-width: 720px) { .mm-smith-card { display: none; } }
 
 /* ===== Ember/coal backdrop — ONLY on the Listing Forge page ===== */
@@ -387,13 +393,28 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-ember-bg .em:nth-child(15) { left: 66%; --drift: -18px; animation-duration: 7.9s; animation-delay: 3.8s; }
 .mm-ember-bg .em:nth-child(16) { left: 34%; --drift: 32px;  animation-duration: 5.6s; animation-delay: 5.2s; }
 
-/* FORGING: the whole backdrop comes alive — brighter coals, faster/denser embers */
-.mm-ember-bg.forging { background: radial-gradient(140% 90% at 50% 112%, #0a5866 0%, #073a44 40%, #0a1c2a 70%, #06121c 100%); }
-.mm-ember-bg.forging::after {
-  background: radial-gradient(95% 55% at 50% 104%, rgba(52,231,228,0.5), rgba(31,182,179,0.18) 48%, transparent 74%);
-  animation-duration: 0.16s;
+/* FORGING: the whole backdrop erupts — molten coals, violent flicker, storm of embers */
+.mm-ember-bg.forging {
+  background: radial-gradient(150% 100% at 50% 114%, #12a3ad 0%, #0a6273 32%, #0c2f40 62%, #08131f 88%, #05070f 100%);
+  animation: mm-forge-heat 1.1s ease-in-out infinite alternate;
 }
-.mm-ember-bg.forging .em { animation-duration: 2.6s; box-shadow: 0 0 9px 2px #34E7E4; width: 5px; height: 5px; }
+@keyframes mm-forge-heat { from { filter: brightness(0.92) saturate(1); } to { filter: brightness(1.35) saturate(1.5); } }
+.mm-ember-bg.forging::after {
+  background: radial-gradient(105% 68% at 50% 106%, rgba(120,255,250,0.72), rgba(52,231,228,0.34) 42%, rgba(31,182,179,0.12) 66%, transparent 82%);
+  animation-duration: 0.11s;
+}
+/* second, faster pulse layer for a heat-shimmer flash */
+.mm-ember-bg.forging::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(80% 40% at 50% 108%, rgba(180,255,252,0.55), transparent 60%);
+  mix-blend-mode: screen;
+  animation: mm-coal-flicker 0.08s steps(2) infinite alternate;
+}
+.mm-ember-bg.forging .em {
+  animation-duration: 1.5s;
+  box-shadow: 0 0 16px 4px #34E7E4, 0 0 6px 2px #d7fffb;
+  width: 7px; height: 7px; background: #eafffe;
+}
 @media (prefers-reduced-motion: reduce) {
   .mm-ember-bg::after, .mm-ember-bg .em { animation: none; }
 }
