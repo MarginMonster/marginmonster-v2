@@ -25,7 +25,7 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Starter",
     price: 19,
     tagline: "Get found on Google. SEO blog posts that pull in free traffic — written and published for you.",
-    monthlyTokens: 80,
+    monthlyTokens: 200,
     blogQuota: 15,
     videoQuota: 0,
     imageQuota: 0,
@@ -43,7 +43,7 @@ export const PLAN_TIERS: PlanTier[] = [
     price: 39,
     tagline: "Content + ads. Everything in Starter, plus scroll-stopping image ads and copy for Meta & TikTok.",
     highlight: true,
-    monthlyTokens: 220,
+    monthlyTokens: 550,
     blogQuota: 30,
     videoQuota: 0,
     imageQuota: 30,
@@ -60,7 +60,7 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Pro",
     price: 79,
     tagline: "Add video that sells. Product videos + we launch and optimize your ads automatically.",
-    monthlyTokens: 600,
+    monthlyTokens: 1500,
     blogQuota: 30,
     videoQuota: 8,
     imageQuota: 40,
@@ -77,7 +77,7 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Scale",
     price: 149,
     tagline: "Full firepower for stores going all-in on growth.",
-    monthlyTokens: 1400,
+    monthlyTokens: 3500,
     blogQuota: 60,
     videoQuota: 20,
     imageQuota: 80,
@@ -100,13 +100,13 @@ export const PLAN_BY_KEY: Record<PlanKey, PlanTier> = Object.fromEntries(
 // monthly allowance (monthlyTokens); top up for anything over budget. Video is
 // the real cost driver, so it's the most expensive action (margin protector).
 export const TOKEN_COST = {
-  description: 1, // AI product description
-  adCopy: 1, // Meta/TikTok ad copy
-  image: 2, // AI image ad
-  strategy: 3, // marketing plan
-  blog: 4, // SEO blog post
-  landing: 4, // landing page
-  video: 40, // AI product video (~$2-4 real cost)
+  description: 3, // AI product listing (The Listing Forge)
+  adCopy: 3, // Meta/TikTok ad copy
+  image: 5, // AI image ad
+  strategy: 6, // marketing plan
+  blog: 10, // SEO blog post
+  landing: 10, // landing page
+  video: 60, // AI product video (~$1-2 real cost) — margin protector
 } as const;
 export type TokenAction = keyof typeof TOKEN_COST;
 
@@ -123,7 +123,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
 // Top-up packs — one currency, use on anything. Priced ~$0.10-0.12/token so
 // even a topped-up video ($4) stays margin-positive.
 export const TOKEN_PACKS = [
-  { tokens: 100, price: 12, label: "100 tokens" },
-  { tokens: 300, price: 30, label: "300 tokens", best: false },
-  { tokens: 800, price: 70, label: "800 tokens", best: true },
+  { tokens: 250, price: 25, label: "250 tokens" },
+  { tokens: 750, price: 60, label: "750 tokens", best: false },
+  { tokens: 2000, price: 140, label: "2,000 tokens", best: true },
 ];

@@ -28,7 +28,7 @@ export default function App() {
         <Link to="/app/assets">Content Queue</Link>
         <Link to="/app/calendar">Content Calendar</Link>
         <Link to="/app/videos">Video Studio</Link>
-        <Link to="/app/products">Product Copy</Link>
+        <Link to="/app/products">The Listing Forge</Link>
         <Link to="/app/funnels">Landing Pages</Link>
         <Link to="/app/connect">Ad Accounts</Link>
         <Link to="/app/campaigns">Campaigns</Link>

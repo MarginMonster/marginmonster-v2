@@ -227,6 +227,45 @@ body::before {
 .mm-fighter-card .mm-plan-price small { color: var(--fx); }
 .mm-fighter-tokens { font-family: var(--font-pixel); font-size: 8px; letter-spacing: .06em; color: var(--fx); margin-bottom: 12px; }
 
+/* ---- The Listing Forge (goblin blacksmith) ---- */
+.mm-forge-hero {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 20px;
+  border-radius: 18px; padding: 26px 28px; min-height: 190px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background:
+    radial-gradient(120% 120% at 88% 60%, rgba(245,140,40,0.22) 0%, transparent 55%),
+    radial-gradient(90% 90% at 50% 0%, #17142B 0%, #0B0A17 62%);
+  color: #ECEAFB;
+}
+.mm-forge-text { flex: 1; min-width: 0; }
+.mm-forge-text .mm-eyebrow { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.24em; color: #F5C451; margin-bottom: 14px; display: block; }
+.mm-forge-text h1 { font-family: var(--font-heading); font-size: 30px; font-weight: 800; margin: 0 0 8px; color: #fff; }
+.mm-forge-text p { font-size: 14px; color: #C6C1E6; margin: 0; max-width: 460px; line-height: 1.5; }
+.mm-forge-status { margin-top: 14px; font-family: var(--font-pixel); font-size: 10px; letter-spacing: .12em; color: #F5C451; animation: mm-forge-blink 0.8s steps(2,end) infinite; }
+@keyframes mm-forge-blink { 50% { opacity: 0.35; } }
+
+.mm-forge-anvil { position: relative; flex-shrink: 0; width: 180px; height: 180px; display: flex; align-items: flex-end; justify-content: center; }
+.mm-forge-goblin { width: 180px; height: 180px; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 6px 16px rgba(245,140,40,0.5)); transform-origin: 60% 40%; }
+/* while forging, the smith hammers */
+.mm-forge-hero.forging .mm-forge-goblin { animation: mm-forge-hammer 0.5s ease-in-out infinite; }
+@keyframes mm-forge-hammer { 0%,100% { transform: rotate(0); } 40% { transform: rotate(-3deg); } 60% { transform: rotate(1.5deg); } }
+
+.mm-forge-sparks { position: absolute; left: 42%; bottom: 46%; width: 4px; height: 4px; pointer-events: none; opacity: 0; }
+.mm-forge-hero.forging .mm-forge-sparks { opacity: 1; }
+.mm-forge-sparks i { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #FFD37A; box-shadow: 0 0 6px #F5C451; }
+.mm-forge-hero.forging .mm-forge-sparks i { animation: mm-spark 0.6s ease-out infinite; }
+.mm-forge-sparks i:nth-child(1) { animation-delay: 0s; --sx: -22px; --sy: -20px; }
+.mm-forge-sparks i:nth-child(2) { animation-delay: .1s; --sx: 14px; --sy: -26px; }
+.mm-forge-sparks i:nth-child(3) { animation-delay: .2s; --sx: -30px; --sy: -8px; }
+.mm-forge-sparks i:nth-child(4) { animation-delay: .28s; --sx: 26px; --sy: -12px; }
+.mm-forge-sparks i:nth-child(5) { animation-delay: .36s; --sx: -8px; --sy: -30px; }
+.mm-forge-sparks i:nth-child(6) { animation-delay: .15s; --sx: 6px; --sy: -18px; }
+@keyframes mm-spark { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(var(--sx), var(--sy)) scale(0.2); opacity: 0; } }
+@media (max-width: 620px) { .mm-forge-anvil { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .mm-forge-hero.forging .mm-forge-goblin, .mm-forge-hero.forging .mm-forge-sparks i, .mm-forge-status { animation: none; }
+}
+
 /* ---- Animated fight scene (Market Arcade owner vs. going it alone) ---- */
 .mm-fight {
   border-radius: 18px; overflow: hidden; padding: 18px 18px 20px;

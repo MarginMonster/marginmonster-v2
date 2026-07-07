@@ -121,11 +121,31 @@ export default function Products() {
 
   return (
     <Page
-      title="AI Product Descriptions"
+      title="The Listing Forge"
       backAction={{ content: "Home", url: "/app" }}
-      subtitle="SEO-ready product copy in your brand voice — descriptions, bullets, and meta tags."
+      subtitle="SEO-ready product listings, hammered into your brand voice — titles, descriptions, bullets & meta tags."
     >
       <Layout>
+        <Layout.Section>
+          <div className={`mm-forge-hero${busy ? " forging" : ""}`}>
+            <div className="mm-forge-text">
+              <span className="mm-eyebrow">▶ THE LISTING FORGE</span>
+              <h1>Forge listings that sell.</h1>
+              <p>
+                Feed the smith a product and he hammers it into SEO-ready copy —
+                titles, descriptions, bullets, and meta tags in your brand voice.
+              </p>
+              {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
+            </div>
+            <div className="mm-forge-anvil">
+              <img className="mm-forge-goblin" src="/fighters/goblin.png?v=1" alt="" aria-hidden="true" draggable={false} />
+              <div className="mm-forge-sparks" aria-hidden="true">
+                <i /><i /><i /><i /><i /><i />
+              </div>
+            </div>
+          </div>
+        </Layout.Section>
+
         {products.length > 0 && (
           <Layout.Section>
             <Card>
