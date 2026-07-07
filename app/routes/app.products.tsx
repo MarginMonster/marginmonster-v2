@@ -198,8 +198,9 @@ export default function Products() {
             </div>
             <div className="mm-forge-vid-wrap" aria-hidden="true">
               <video
+                key={busy ? "hammer" : "idle"}
                 className="mm-forge-vid"
-                src="/fighters/forge_idle.mp4?v=2"
+                src={busy ? "/fighters/forge_hammer.mp4?v=2" : "/fighters/forge_idle.mp4?v=2"}
                 autoPlay
                 loop
                 muted
