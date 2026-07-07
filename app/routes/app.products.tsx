@@ -190,20 +190,14 @@ export default function Products() {
               <span className="mm-eyebrow">▶ THE LISTING FORGE</span>
               <h1>Forge listings that sell.</h1>
               <p>
-                Feed the smith a product and he hammers it into SEO-ready copy —
-                titles, descriptions, bullets, and meta tags in your brand voice.
+                Turn any product into SEO-ready copy — titles, descriptions,
+                bullets, and meta tags in your brand voice, then push it live in
+                one click.
               </p>
               {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
             </div>
-            <div className="mm-forge-scene">
-              <div className="mm-forge-station">
-                <img className="mm-forge-fire-img" src="/fighters/forge.png?v=2" alt="" aria-hidden="true" draggable={false} />
-                <div className="mm-forge-embers" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-              </div>
-              <div className="mm-forge-anvil">
-                <img className="mm-forge-goblin" src="/fighters/goblin.png?v=2" alt="" aria-hidden="true" draggable={false} />
-                <div className="mm-forge-sparks" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
-              </div>
+            <div className="mm-forge-badge-wrap" aria-hidden="true">
+              <img className="mm-forge-badge" src="/fighters/mascot.jpg?v=1" alt="Magic Monster" />
             </div>
           </div>
         </Layout.Section>
