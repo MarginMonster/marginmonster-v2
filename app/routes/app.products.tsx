@@ -178,12 +178,19 @@ export default function Products() {
   }
 
   return (
-    <Page
-      title="The Listing Forge"
-      backAction={{ content: "Home", url: "/app" }}
-      subtitle="SEO-ready product listings, hammered into your brand voice — titles, descriptions, bullets & meta tags."
-    >
-      <Layout>
+    <>
+      {/* Ember/coal backdrop — scoped to this page only; intensifies while forging */}
+      <div className={`mm-ember-bg${busy ? " forging" : ""}`} aria-hidden="true">
+        {Array.from({ length: 16 }).map((_, i) => (
+          <span key={i} className="em" />
+        ))}
+      </div>
+      <Page
+        title="The Listing Forge"
+        backAction={{ content: "Home", url: "/app" }}
+        subtitle="SEO-ready product listings, hammered into your brand voice — titles, descriptions, bullets & meta tags."
+      >
+        <Layout>
         <Layout.Section>
           <div className={`mm-forge-hero${busy ? " forging" : ""}`}>
             <div className="mm-forge-text">
@@ -367,7 +374,8 @@ export default function Products() {
             </Layout.Section>
           </>
         )}
-      </Layout>
-    </Page>
+        </Layout>
+      </Page>
+    </>
   );
 }
