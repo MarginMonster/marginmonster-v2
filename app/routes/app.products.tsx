@@ -330,7 +330,13 @@ export default function Products() {
                 muted
                 playsInline
               />
-              <div className="mm-smith-title">MASTER LISTING BLACKSMITH</div>
+              <div className="mm-smith-hud">
+                <div className="mm-smith-toprow">
+                  <span className="mm-smith-lvl">LVL 97</span>
+                  <div className="mm-smith-hp"><i /></div>
+                </div>
+                <div className="mm-smith-title">MASTER LISTING BLACKSMITH</div>
+              </div>
             </div>
           </div>
         </Layout.Section>

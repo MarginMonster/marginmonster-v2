@@ -302,7 +302,12 @@ body::before {
 /* the orc-forge clip — baked over the hero dark color, edges faded so it
    blends in and appears to float */
 .mm-forge-vid-wrap { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
-.mm-smith-title { font-family: var(--font-pixel); font-size: 9px; letter-spacing: .1em; color: #F5C451; text-align: center; margin-top: -6px; text-shadow: 0 0 10px rgba(245,140,40,0.5); }
+.mm-smith-hud { margin-top: -2px; width: 210px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mm-smith-toprow { display: flex; align-items: center; gap: 8px; width: 100%; }
+.mm-smith-lvl { font-family: var(--font-pixel); font-size: 8px; letter-spacing: .06em; color: #0B0A17; background: linear-gradient(180deg, #ffd36b, #f5a623); padding: 3px 6px; border-radius: 4px; box-shadow: 0 0 8px rgba(245,140,40,0.55); flex-shrink: 0; }
+.mm-smith-hp { flex: 1; height: 9px; border-radius: 5px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); overflow: hidden; }
+.mm-smith-hp i { display: block; width: 100%; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #7BC80F, #C6FF3D); box-shadow: 0 0 8px rgba(198,255,61,0.6); }
+.mm-smith-title { font-family: var(--font-pixel); font-size: 9px; letter-spacing: .1em; color: #F5C451; text-align: center; text-shadow: 0 0 10px rgba(245,140,40,0.5); }
 .mm-forge-vid {
   width: 270px; height: 270px; object-fit: contain; display: block;
   -webkit-mask-image: radial-gradient(circle at 50% 52%, #000 60%, transparent 82%);
