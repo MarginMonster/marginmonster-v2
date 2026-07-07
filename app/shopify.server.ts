@@ -29,6 +29,10 @@ const shopify = shopifyApp({
   scopes: ["read_products", "write_marketing_events"],
   appUrl: process.env.SHOPIFY_APP_URL!,
   authPathPrefix: "/auth",
+  // Public apps created on/after 2026-04-01 MUST use expiring tokens — Shopify
+  // 403-rejects non-expiring offline tokens. Online tokens expire, satisfying
+  // the requirement; the SDK re-exchanges them automatically when they lapse.
+  useOnlineTokens: true,
   sessionStorage: new PrismaSessionStorage(db),
   distribution: AppDistribution.AppStore,
   billing: BILLING_PLANS,
