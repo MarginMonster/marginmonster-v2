@@ -225,6 +225,7 @@ body::before {
 /* price sits on the dark fighter card — force it bright */
 .mm-fighter-card .mm-plan-price { color: #fff; }
 .mm-fighter-card .mm-plan-price small { color: var(--fx); }
+.mm-fighter-tokens { font-family: var(--font-pixel); font-size: 8px; letter-spacing: .06em; color: var(--fx); margin-bottom: 12px; }
 
 /* ---- Animated fight scene (Market Arcade owner vs. going it alone) ---- */
 .mm-fight {

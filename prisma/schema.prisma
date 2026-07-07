@@ -110,6 +110,11 @@ model Plan {
   videoUsed         Int        @default(0)
   periodStart       DateTime   @default(now())
 
+  // Unified token wallet — every AI action spends from here
+  tokensIncluded    Int        @default(0) // monthly allowance from the tier
+  tokensUsed        Int        @default(0) // spent this billing period
+  tokensExtra       Int        @default(0) // purchased top-up (does not reset)
+
   // Purchased overage credits
   blogCredits       Int        @default(0)
   imageCredits      Int        @default(0)

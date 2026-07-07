@@ -20,13 +20,18 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { generateProductCopy, type ProductCopy } from "../lib/product-copy.server";
+import { chargeTokens, tokensRemaining, InsufficientTokensError } from "../lib/tokens.server";
+import { TOKEN_COST } from "../lib/plan-config";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
-    include: { brandProfile: true },
+    include: { brandProfile: true, activePlan: true },
   });
+  const tokens = shop?.activePlan
+    ? { remaining: tokensRemaining(shop.activePlan), included: shop.activePlan.tokensIncluded }
+    : null;
 
   // Pull the store catalog so the merchant can pick a product instead of
   // typing a name. read_products, via the request (online) token.
@@ -49,31 +54,45 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     /* non-fatal — falls back to manual entry */
   }
 
-  return json({ hasBrand: !!shop?.brandProfile, products });
+  return json({ hasBrand: !!shop?.brandProfile, products, tokens, cost: TOKEN_COST.description });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
-    include: { brandProfile: true },
+    include: { brandProfile: true, activePlan: true },
   });
   if (!shop?.brandProfile) return json({ error: "Analyze your store on the dashboard first." });
+  if (!shop.activePlan) return json({ error: "Choose a plan first to get tokens.", outOfTokens: true });
+
+  const cost = TOKEN_COST.description;
+  if (tokensRemaining(shop.activePlan) < cost) {
+    return json({
+      error: `Not enough tokens — this needs ${cost}, you have ${tokensRemaining(shop.activePlan)}. Top up on the Plans page.`,
+      outOfTokens: true,
+    });
+  }
+
   const form = await request.formData();
   const productName = (form.get("productName") as string)?.trim();
   const notes = (form.get("notes") as string)?.trim() || "";
   if (!productName) return json({ error: "Enter a product name." });
   try {
     const copy = await generateProductCopy(shop.brandProfile, productName, notes);
-    return json({ copy });
+    // Only charge on success.
+    const { remaining } = await chargeTokens(shop.id, "description");
+    return json({ copy, remaining });
   } catch (e) {
+    if (e instanceof InsufficientTokensError) return json({ error: e.message, outOfTokens: true });
     return json({ error: e instanceof Error ? e.message : String(e) });
   }
 };
 
 export default function Products() {
-  const { hasBrand, products } = useLoaderData<typeof loader>();
+  const { hasBrand, products, tokens, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const outOfTokens = actionData && "outOfTokens" in actionData && actionData.outOfTokens;
   const submit = useSubmit();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -159,10 +178,20 @@ export default function Products() {
                 multiline={2}
                 placeholder="Key features, ingredients, who it's for, what makes it special…"
               />
-              <InlineStack>
-                <Button variant="primary" onClick={generate} loading={busy} disabled={!productName.trim()}>
+              <InlineStack gap="300" blockAlign="center">
+                <Button
+                  variant="primary"
+                  onClick={generate}
+                  loading={busy}
+                  disabled={!productName.trim() || (tokens != null && tokens.remaining < cost)}
+                >
                   Generate copy
                 </Button>
+                {tokens != null && (
+                  <Badge tone={tokens.remaining < cost ? "critical" : "info"}>
+                    {`⚡ ${cost} token${cost > 1 ? "s" : ""} · ${tokens.remaining} left`}
+                  </Badge>
+                )}
               </InlineStack>
             </BlockStack>
           </Card>
@@ -170,7 +199,13 @@ export default function Products() {
 
         {error && (
           <Layout.Section>
-            <Banner tone="warning" title="Couldn't generate copy"><p>{error}</p></Banner>
+            <Banner
+              tone={outOfTokens ? "critical" : "warning"}
+              title={outOfTokens ? "Out of tokens" : "Couldn't generate copy"}
+              action={outOfTokens ? { content: "Top up tokens", url: "/app/plans" } : undefined}
+            >
+              <p>{error}</p>
+            </Banner>
           </Layout.Section>
         )}
 

@@ -137,6 +137,11 @@ export default function Dashboard() {
   const building = nav.state !== "idle";
   const liveError = (actionData && "error" in actionData ? actionData.error : null) || brandJobError;
 
+  const ap = shop?.activePlan;
+  const tokRemaining = ap ? Math.max(0, ap.tokensIncluded - ap.tokensUsed) + ap.tokensExtra : 0;
+  const tokIncluded = ap?.tokensIncluded ?? 0;
+  const tokExtra = ap?.tokensExtra ?? 0;
+
   if (!shop) {
     return (
       <Page title="AdArcade">
@@ -344,6 +349,21 @@ export default function Dashboard() {
                   {billingStatus?.active
                     ? `Billing: active (${billingStatus.plan})`
                     : "Billing: not charging yet"}
+                </Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="100">
+                <Text variant="headingMd" as="h3">Tokens</Text>
+                {hasPlan ? (
+                  <Badge tone={tokRemaining > 0 ? "success" : "critical"}>{`⚡ ${tokRemaining.toLocaleString()} left`}</Badge>
+                ) : (
+                  <Badge tone="attention">No plan yet</Badge>
+                )}
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {hasPlan
+                    ? `${tokIncluded.toLocaleString()}/mo included${tokExtra ? ` · +${tokExtra.toLocaleString()} top-up` : ""}`
+                    : "Pick a plan to get tokens"}
                 </Text>
               </BlockStack>
             </Card>

@@ -49,6 +49,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       adCreativePack: tier.imageQuota > 0,
       campaignAutopilot: tier.campaignAutopilot,
       periodStart: new Date(),
+      tokensIncluded: tier.monthlyTokens,
+      tokensUsed: 0,
     },
     update: {
       type: planKey,
@@ -59,6 +61,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       adCreativePack: tier.imageQuota > 0,
       campaignAutopilot: tier.campaignAutopilot,
       active: true,
+      // new tier → fresh allowance + period; keep purchased top-up (tokensExtra)
+      tokensIncluded: tier.monthlyTokens,
+      tokensUsed: 0,
+      periodStart: new Date(),
     },
   });
 
@@ -291,9 +297,10 @@ export default function Plans() {
                     <span className="mm-fighter-ref">"{f.ref}"</span>
                     {isCurrent && <span className="mm-fighter-current">SELECTED</span>}
                   </div>
-                  <p className="mm-plan-price" style={{ margin: "6px 0 12px" }}>
+                  <p className="mm-plan-price" style={{ margin: "6px 0 4px" }}>
                     ${tier.price}<small> /mo</small>
                   </p>
+                  <div className="mm-fighter-tokens">⚡ {tier.monthlyTokens.toLocaleString()} tokens / mo</div>
 
                   <div className="mm-fighter-stats">
                     {f.stats.map((s) => (

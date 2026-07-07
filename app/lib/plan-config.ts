@@ -11,6 +11,7 @@ export interface PlanTier {
   price: number; // USD / month
   tagline: string;
   highlight?: boolean; // renders the "Most popular" ribbon
+  monthlyTokens: number; // included token allowance per billing period
   blogQuota: number;
   videoQuota: number;
   imageQuota: number; // image ads / month
@@ -24,6 +25,7 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Starter",
     price: 19,
     tagline: "Get found on Google. SEO blog posts that pull in free traffic — written and published for you.",
+    monthlyTokens: 80,
     blogQuota: 15,
     videoQuota: 0,
     imageQuota: 0,
@@ -41,6 +43,7 @@ export const PLAN_TIERS: PlanTier[] = [
     price: 39,
     tagline: "Content + ads. Everything in Starter, plus scroll-stopping image ads and copy for Meta & TikTok.",
     highlight: true,
+    monthlyTokens: 220,
     blogQuota: 30,
     videoQuota: 0,
     imageQuota: 30,
@@ -57,6 +60,7 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Pro",
     price: 79,
     tagline: "Add video that sells. Product videos + we launch and optimize your ads automatically.",
+    monthlyTokens: 600,
     blogQuota: 30,
     videoQuota: 8,
     imageQuota: 40,
@@ -73,6 +77,7 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Scale",
     price: 149,
     tagline: "Full firepower for stores going all-in on growth.",
+    monthlyTokens: 1400,
     blogQuota: 60,
     videoQuota: 20,
     imageQuota: 80,
@@ -90,16 +95,35 @@ export const PLAN_BY_KEY: Record<PlanKey, PlanTier> = Object.fromEntries(
   PLAN_TIERS.map((t) => [t.key, t])
 ) as Record<PlanKey, PlanTier>;
 
-// Arcade tokens — top up to dispense more without upgrading.
-export const TOKEN_PRICES = {
-  blog: 3, // ~$0.05 cost
-  image: 1, // ~$0.01 cost
-  video: 15, // ~$2-4 cost — the margin protector
+// ---- Unified token wallet ----
+// Every AI action spends tokens from one shared balance. Each plan includes a
+// monthly allowance (monthlyTokens); top up for anything over budget. Video is
+// the real cost driver, so it's the most expensive action (margin protector).
+export const TOKEN_COST = {
+  description: 1, // AI product description
+  adCopy: 1, // Meta/TikTok ad copy
+  image: 2, // AI image ad
+  strategy: 3, // marketing plan
+  blog: 4, // SEO blog post
+  landing: 4, // landing page
+  video: 40, // AI product video (~$2-4 real cost)
+} as const;
+export type TokenAction = keyof typeof TOKEN_COST;
+
+export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
+  description: "Product description",
+  adCopy: "Ad copy",
+  image: "Image ad",
+  strategy: "Marketing plan",
+  blog: "Blog post",
+  landing: "Landing page",
+  video: "Product video",
 };
 
+// Top-up packs — one currency, use on anything. Priced ~$0.10-0.12/token so
+// even a topped-up video ($4) stays margin-positive.
 export const TOKEN_PACKS = [
-  { type: "video" as const, qty: 5, price: 5 * TOKEN_PRICES.video, label: "5 extra videos" },
-  { type: "video" as const, qty: 10, price: 10 * TOKEN_PRICES.video, label: "10 extra videos" },
-  { type: "blog" as const, qty: 10, price: 10 * TOKEN_PRICES.blog, label: "10 extra blog posts" },
-  { type: "image" as const, qty: 30, price: 30 * TOKEN_PRICES.image, label: "30 extra image ads" },
+  { tokens: 100, price: 12, label: "100 tokens" },
+  { tokens: 300, price: 30, label: "300 tokens", best: false },
+  { tokens: 800, price: 70, label: "800 tokens", best: true },
 ];
