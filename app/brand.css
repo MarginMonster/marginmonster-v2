@@ -301,7 +301,8 @@ body::before {
 .mm-forge-badge-wrap { flex-shrink: 0; position: relative; }
 /* the orc-forge clip — baked over the hero dark color, edges faded so it
    blends in and appears to float */
-.mm-forge-vid-wrap { flex-shrink: 0; }
+.mm-forge-vid-wrap { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+.mm-smith-title { font-family: var(--font-pixel); font-size: 9px; letter-spacing: .1em; color: #F5C451; text-align: center; margin-top: -6px; text-shadow: 0 0 10px rgba(245,140,40,0.5); }
 .mm-forge-vid {
   width: 270px; height: 270px; object-fit: contain; display: block;
   -webkit-mask-image: radial-gradient(circle at 50% 52%, #000 60%, transparent 82%);

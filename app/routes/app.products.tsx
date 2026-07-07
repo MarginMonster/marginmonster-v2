@@ -330,6 +330,7 @@ export default function Products() {
                 muted
                 playsInline
               />
+              <div className="mm-smith-title">MASTER LISTING BLACKSMITH</div>
             </div>
           </div>
         </Layout.Section>
@@ -367,7 +368,7 @@ export default function Products() {
                 {tokens != null && (
                   <span className={`mm-credits${!canAfford ? " low" : ""}`}>
                     <b>CREDITS</b> ⚡ {remaining.toLocaleString()}
-                    {forgeCount > 0 && <em> · −{totalCost}</em>}
+                    {forgeCount > 0 && <em> · Cost {totalCost} Tokens</em>}
                   </span>
                 )}
               </div>
