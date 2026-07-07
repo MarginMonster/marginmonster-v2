@@ -8,7 +8,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   switch (topic) {
     case "APP_UNINSTALLED": {
-      // Clean up shop data on uninstall
+      // Clean up shop data AND the SDK session on uninstall. Deleting the
+      // session is critical: otherwise a reinstall reuses the stale grant
+      // (old scopes / deprecated token), which 403-gates the Admin API.
+      await db.session.deleteMany({ where: { shop } });
       const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
       if (shopRecord) {
         await db.shop.delete({ where: { id: shopRecord.id } });

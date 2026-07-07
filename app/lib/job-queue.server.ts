@@ -77,20 +77,14 @@ async function runJob(
   switch (type) {
     case "GENERATE_BRAND_PROFILE": {
       if (!shop) throw new Error("Shop not found");
+      // Use the SDK's session-managed admin client (token exchange) instead of
+      // the raw stored offline token — Shopify now 403-rejects deprecated
+      // offline tokens. Lazy import avoids a circular dependency with the worker.
+      const { unauthenticated } = await import("../shopify.server");
+      const { admin } = await unauthenticated.admin(shop.domain);
       const graphql = async (query: string) => {
-        const res = await fetch(
-          `https://${shop.domain}/admin/api/2025-01/graphql.json`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Access-Token": shop.accessToken,
-            },
-            body: JSON.stringify({ query }),
-          }
-        );
-        if (!res.ok) throw new Error(`Shopify API HTTP ${res.status}`);
-        const j = await res.json();
+        const res = await admin.graphql(query);
+        const j = (await res.json()) as { data?: unknown; errors?: unknown };
         if (j.errors) throw new Error("Shopify API: " + JSON.stringify(j.errors));
         return j.data;
       };
