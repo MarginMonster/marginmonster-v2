@@ -470,9 +470,9 @@ export default function Products() {
                   <Button variant="tertiary" onClick={scrollToResults}>Review each first ↓</Button>
                 </InlineStack>
                 <Box paddingBlockStart="100">
-                  <Text variant="bodySm" as="p" tone="subdued">
+                  <p className="mm-forge-note">
                     "Apply all" pushes the first variant of every listing live. Prefer picking variants? Review each below.
-                  </Text>
+                  </p>
                 </Box>
               </Box>
             )}

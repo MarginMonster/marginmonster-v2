@@ -285,6 +285,9 @@ body::before {
 
 /* FORGED! stamp on the results header */
 .mm-forged-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+/* these sit directly on the dark ember bg (no card) → force light text */
+.mm-forged-head h1, .mm-forged-head h2, .mm-forged-head h3 { color: #ECEAFB !important; }
+.mm-forge-note { color: #C6C1E6; font-size: 13px; line-height: 1.45; margin: 0; }
 .mm-forged-stamp {
   font-family: var(--font-pixel); font-size: 13px; letter-spacing: .06em; color: #0B0A17;
   background: linear-gradient(180deg, #7bf3f1, #1fb6b3); padding: 8px 14px; border-radius: 8px;
