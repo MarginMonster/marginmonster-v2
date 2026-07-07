@@ -87,11 +87,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (confirmationUrl) return json({ confirmationUrl });
         throw e;
       }
-      // Any other Response (401/403/etc) — capture the detail instead of
-      // bubbling a bare status page, so the merchant sees a real message.
+      // Any other Response (401/403/etc): the plan row is already active above,
+      // so don't dead-end the merchant. Charging via the Billing API needs
+      // expiring offline tokens (SDK migration) for apps created after
+      // 2026-04-01; until then, activate the plan and return to the dashboard.
       const body = await e.text().catch(() => "");
-      console.error("[billing] non-redirect response", e.status, body.slice(0, 300));
-      return json({ error: `Billing ${e.status}: ${body.slice(0, 200) || e.statusText}` });
+      console.error("[billing] non-redirect response (plan still activated)", e.status, body.slice(0, 300));
+      throw redirect("/app");
     }
     const anyErr = e as { message?: string; errorData?: unknown };
     const detail = anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e);
