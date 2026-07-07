@@ -244,11 +244,26 @@ body::before {
 .mm-forge-status { margin-top: 14px; font-family: var(--font-pixel); font-size: 10px; letter-spacing: .12em; color: #F5C451; animation: mm-forge-blink 0.8s steps(2,end) infinite; }
 @keyframes mm-forge-blink { 50% { opacity: 0.35; } }
 
-.mm-forge-anvil { position: relative; flex-shrink: 0; width: 180px; height: 180px; display: flex; align-items: flex-end; justify-content: center; }
-.mm-forge-goblin { width: 180px; height: 180px; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 6px 16px rgba(245,140,40,0.5)); transform-origin: 60% 40%; }
-/* while forging, the smith hammers */
+.mm-forge-scene { display: flex; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.mm-forge-station { position: relative; width: 128px; height: 150px; display: flex; align-items: flex-end; justify-content: center; }
+.mm-forge-fire-img { width: 128px; height: 128px; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 0 18px rgba(245,120,30,0.55)); animation: mm-fire-flicker 0.28s ease-in-out infinite alternate; }
+@keyframes mm-fire-flicker { from { filter: drop-shadow(0 0 14px rgba(245,120,30,0.45)) brightness(0.97); } to { filter: drop-shadow(0 0 22px rgba(255,160,50,0.7)) brightness(1.06); } }
+.mm-forge-embers { position: absolute; left: 50%; bottom: 46%; width: 2px; height: 2px; pointer-events: none; }
+.mm-forge-embers i { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #FFC24A; box-shadow: 0 0 6px #F5871F; animation: mm-ember 1.4s ease-out infinite; }
+.mm-forge-embers i:nth-child(1) { --ex: -10px; animation-delay: 0s; }
+.mm-forge-embers i:nth-child(2) { --ex: 8px; animation-delay: .3s; }
+.mm-forge-embers i:nth-child(3) { --ex: -4px; animation-delay: .6s; }
+.mm-forge-embers i:nth-child(4) { --ex: 12px; animation-delay: .9s; }
+.mm-forge-embers i:nth-child(5) { --ex: -14px; animation-delay: 1.15s; }
+@keyframes mm-ember { 0% { transform: translate(0,0) scale(1); opacity: 0.9; } 100% { transform: translate(var(--ex,0), -60px) scale(0.2); opacity: 0; } }
+
+.mm-forge-anvil { position: relative; flex-shrink: 0; width: 168px; height: 168px; display: flex; align-items: flex-end; justify-content: center; }
+.mm-forge-goblin { width: 168px; height: 168px; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 6px 16px rgba(245,140,40,0.5)); transform-origin: 55% 80%; animation: mm-goblin-idle 3s ease-in-out infinite; }
+/* while forging, the smith hammers faster + harder */
 .mm-forge-hero.forging .mm-forge-goblin { animation: mm-forge-hammer 0.5s ease-in-out infinite; }
-@keyframes mm-forge-hammer { 0%,100% { transform: rotate(0); } 40% { transform: rotate(-3deg); } 60% { transform: rotate(1.5deg); } }
+@keyframes mm-goblin-idle { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-1deg); } }
+@keyframes mm-forge-hammer { 0%,100% { transform: translateY(0) rotate(0); } 35% { transform: translateY(-2px) rotate(-4deg); } 60% { transform: translateY(1px) rotate(2deg); } }
+@media (max-width: 700px) { .mm-forge-station { display: none; } }
 
 .mm-forge-sparks { position: absolute; left: 42%; bottom: 46%; width: 4px; height: 4px; pointer-events: none; opacity: 0; }
 .mm-forge-hero.forging .mm-forge-sparks { opacity: 1; }
@@ -261,8 +276,9 @@ body::before {
 .mm-forge-sparks i:nth-child(5) { animation-delay: .36s; --sx: -8px; --sy: -30px; }
 .mm-forge-sparks i:nth-child(6) { animation-delay: .15s; --sx: 6px; --sy: -18px; }
 @keyframes mm-spark { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(var(--sx), var(--sy)) scale(0.2); opacity: 0; } }
-@media (max-width: 620px) { .mm-forge-anvil { display: none; } }
+@media (max-width: 560px) { .mm-forge-scene { display: none; } }
 @media (prefers-reduced-motion: reduce) {
+  .mm-forge-goblin, .mm-forge-fire-img, .mm-forge-embers i,
   .mm-forge-hero.forging .mm-forge-goblin, .mm-forge-hero.forging .mm-forge-sparks i, .mm-forge-status { animation: none; }
 }
 

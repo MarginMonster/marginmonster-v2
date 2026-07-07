@@ -137,47 +137,18 @@ export default function Products() {
               </p>
               {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
             </div>
-            <div className="mm-forge-anvil">
-              <img className="mm-forge-goblin" src="/fighters/goblin.png?v=1" alt="" aria-hidden="true" draggable={false} />
-              <div className="mm-forge-sparks" aria-hidden="true">
-                <i /><i /><i /><i /><i /><i />
+            <div className="mm-forge-scene">
+              <div className="mm-forge-station">
+                <img className="mm-forge-fire-img" src="/fighters/forge.png?v=2" alt="" aria-hidden="true" draggable={false} />
+                <div className="mm-forge-embers" aria-hidden="true"><i /><i /><i /><i /><i /></div>
+              </div>
+              <div className="mm-forge-anvil">
+                <img className="mm-forge-goblin" src="/fighters/goblin.png?v=2" alt="" aria-hidden="true" draggable={false} />
+                <div className="mm-forge-sparks" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
               </div>
             </div>
           </div>
         </Layout.Section>
-
-        {products.length > 0 && (
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Pick a product</Text>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  Tap a product from your store to auto-fill it — or type a name below.
-                </Text>
-                <div className="mm-prodgrid">
-                  {products.map((p) => {
-                    const selected = p.title === productName;
-                    return (
-                      <button
-                        key={p.title}
-                        type="button"
-                        className={`mm-prodcard${selected ? " on" : ""}`}
-                        onClick={() => pick(p)}
-                      >
-                        {p.image ? (
-                          <img src={p.image} alt="" loading="lazy" />
-                        ) : (
-                          <div className="mm-prodph">🛍️</div>
-                        )}
-                        <span className="mm-prodtitle">{p.title}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        )}
 
         <Layout.Section>
           <Card>
@@ -188,7 +159,7 @@ export default function Products() {
                 onChange={setProductName}
                 autoComplete="off"
                 placeholder="e.g. Blue Razz Gummy Worms"
-                helpText={products.length > 0 ? "Picked from your store above, or type your own." : undefined}
+                helpText={products.length > 0 ? "Pick from your store below, or type your own." : undefined}
               />
               <TextField
                 label="Notes (optional)"
@@ -216,6 +187,39 @@ export default function Products() {
             </BlockStack>
           </Card>
         </Layout.Section>
+
+        {products.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingMd" as="h2">Pick a product</Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Tap a product from your store to auto-fill it above — or type a name yourself.
+                </Text>
+                <div className="mm-prodgrid">
+                  {products.map((p) => {
+                    const selected = p.title === productName;
+                    return (
+                      <button
+                        key={p.title}
+                        type="button"
+                        className={`mm-prodcard${selected ? " on" : ""}`}
+                        onClick={() => pick(p)}
+                      >
+                        {p.image ? (
+                          <img src={p.image} alt="" loading="lazy" />
+                        ) : (
+                          <div className="mm-prodph">🛍️</div>
+                        )}
+                        <span className="mm-prodtitle">{p.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
 
         {error && (
           <Layout.Section>
