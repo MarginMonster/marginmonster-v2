@@ -304,20 +304,36 @@ body::before {
 .mm-forge-badge-wrap { flex-shrink: 0; position: relative; }
 /* the orc-forge clip — baked over the hero dark color, edges faded so it
    blends in and appears to float */
-.mm-forge-vid-wrap { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
-.mm-smith-hud { margin-top: -2px; width: 210px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.mm-smith-toprow { display: flex; align-items: center; gap: 8px; width: 100%; }
-.mm-smith-lvl { font-family: var(--font-pixel); font-size: 8px; letter-spacing: .06em; color: #0B0A17; background: linear-gradient(180deg, #ffd36b, #f5a623); padding: 3px 6px; border-radius: 4px; box-shadow: 0 0 8px rgba(245,140,40,0.55); flex-shrink: 0; }
-.mm-smith-hp { flex: 1; height: 9px; border-radius: 5px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); overflow: hidden; }
-.mm-smith-hp i { display: block; width: 100%; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #7BC80F, #C6FF3D); box-shadow: 0 0 8px rgba(198,255,61,0.6); }
-.mm-smith-title { font-family: var(--font-pixel); font-size: 9px; letter-spacing: .1em; color: #F5C451; text-align: center; text-shadow: 0 0 10px rgba(245,140,40,0.5); }
-.mm-forge-vid {
-  width: 270px; height: 270px; object-fit: contain; display: block;
-  -webkit-mask-image: radial-gradient(circle at 50% 52%, #000 60%, transparent 82%);
-  mask-image: radial-gradient(circle at 50% 52%, #000 60%, transparent 82%);
-  filter: drop-shadow(0 6px 16px rgba(245,140,40,0.4));
+/* premium framed character card (crisp bezel + integrated nameplate) */
+.mm-smith-card {
+  position: relative; flex-shrink: 0; width: 328px; height: 306px; border-radius: 20px;
+  overflow: hidden; background: #0A0912;
+  border: 1px solid rgba(255,200,130,0.22);
+  box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 44px rgba(245,140,40,0.10),
+              inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(0,0,0,0.4);
+  transition: box-shadow .3s ease, border-color .3s ease;
 }
-@media (max-width: 640px) { .mm-forge-vid-wrap { display: none; } }
+.mm-smith-vid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 56% 40%; }
+/* subtle top glass sheen for depth */
+.mm-smith-sheen { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,0.07), transparent 22%); }
+/* integrated nameplate at the bottom */
+.mm-smith-plate {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 16px 14px;
+  background: linear-gradient(180deg, transparent, rgba(6,5,12,0.5) 42%, rgba(6,5,12,0.92));
+  display: flex; flex-direction: column; gap: 9px;
+}
+.mm-smith-row { display: flex; align-items: center; gap: 10px; }
+.mm-smith-lvl {
+  font-family: var(--font-pixel); font-size: 8px; letter-spacing: .04em; color: #2a1600;
+  background: linear-gradient(180deg, #ffe19a, #eea52a); padding: 4px 8px; border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.5); flex-shrink: 0;
+}
+.mm-smith-hp { flex: 1; height: 9px; border-radius: 6px; background: rgba(255,255,255,0.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), inset 0 2px 4px rgba(0,0,0,0.5); overflow: hidden; }
+.mm-smith-hp i { display: block; height: 100%; width: 100%; border-radius: 6px; background: linear-gradient(90deg, #57b70e, #b6ff3a); box-shadow: 0 0 10px rgba(160,255,60,0.45); }
+.mm-smith-name { font-family: var(--font-pixel); font-size: 8.5px; letter-spacing: .14em; color: #F6E8C6; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
+/* forge state — the bezel warms and glows */
+.mm-forge-hero.forging .mm-smith-card { border-color: rgba(255,170,60,0.55); box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 60px rgba(255,150,40,0.32), inset 0 1px 0 rgba(255,255,255,0.06); }
+@media (max-width: 720px) { .mm-smith-card { display: none; } }
 
 /* ===== Ember/coal backdrop — ONLY on the Listing Forge page ===== */
 /* hide the space theme wherever the ember backdrop is mounted */

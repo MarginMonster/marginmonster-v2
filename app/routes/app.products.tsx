@@ -320,22 +320,23 @@ export default function Products() {
                 </button>
               )}
             </div>
-            <div className="mm-forge-vid-wrap" aria-hidden="true">
+            <div className="mm-smith-card" aria-hidden="true">
               <video
                 key={busy ? "hammer" : "idle"}
-                className="mm-forge-vid"
+                className="mm-smith-vid"
                 src={busy ? "/fighters/forge_hammer.mp4?v=2" : "/fighters/forge_idle.mp4?v=3"}
                 autoPlay
                 loop
                 muted
                 playsInline
               />
-              <div className="mm-smith-hud">
-                <div className="mm-smith-toprow">
-                  <span className="mm-smith-lvl">LVL 97</span>
+              <div className="mm-smith-sheen" />
+              <div className="mm-smith-plate">
+                <div className="mm-smith-row">
+                  <span className="mm-smith-lvl">LVL&nbsp;97</span>
                   <div className="mm-smith-hp"><i /></div>
                 </div>
-                <div className="mm-smith-title">MASTER LISTING BLACKSMITH</div>
+                <div className="mm-smith-name">MASTER LISTING BLACKSMITH</div>
               </div>
             </div>
           </div>
