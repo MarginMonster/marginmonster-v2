@@ -26,7 +26,7 @@ const shopify = shopifyApp({
   // released app version. read_orders/read_customers are intentionally NOT
   // here — they are protected customer data that 403-gates all Admin API
   // access for a public app until PCD approval.
-  scopes: ["read_products", "write_marketing_events"],
+  scopes: ["read_products", "write_products", "write_marketing_events"],
   appUrl: process.env.SHOPIFY_APP_URL!,
   authPathPrefix: "/auth",
   // Public apps created on/after 2026-04-01 MUST use expiring tokens — Shopify

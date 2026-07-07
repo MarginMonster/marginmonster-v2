@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, useSubmit, useNavigation } from "@remix-run/react";
+import { useLoaderData, useActionData, useSubmit, useNavigation, useFetcher } from "@remix-run/react";
 import { useState } from "react";
 import {
   Page,
@@ -35,17 +35,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // Pull the store catalog so the merchant can pick a product instead of
   // typing a name. read_products, via the request (online) token.
-  let products: { title: string; image: string | null; description: string }[] = [];
+  let products: { id: string; title: string; image: string | null; description: string }[] = [];
   try {
     const res = await admin.graphql(
       `{ products(first: 40, sortKey: UPDATED_AT, reverse: true) {
-        edges { node { title featuredImage { url } description(truncateAt: 220) } }
+        edges { node { id title featuredImage { url } description(truncateAt: 220) } }
       } }`
     );
     const j = (await res.json()) as {
-      data?: { products?: { edges?: { node: { title: string; featuredImage?: { url?: string }; description?: string } }[] } };
+      data?: { products?: { edges?: { node: { id: string; title: string; featuredImage?: { url?: string }; description?: string } }[] } };
     };
     products = (j.data?.products?.edges || []).map((e) => ({
+      id: e.node.id,
       title: e.node.title,
       image: e.node.featuredImage?.url || null,
       description: e.node.description || "",
@@ -58,11 +59,40 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
     include: { brandProfile: true, activePlan: true },
   });
+  const form = await request.formData();
+  const intent = (form.get("intent") as string) || "generate";
+
+  // ---- Autopilot: write the generated SEO copy back to the Shopify product ----
+  if (intent === "apply") {
+    const productId = (form.get("productId") as string) || "";
+    const descriptionHtml = (form.get("descriptionHtml") as string) || "";
+    const seoTitle = (form.get("seoTitle") as string) || "";
+    const seoDescription = (form.get("seoDescription") as string) || "";
+    if (!productId) return json({ applyError: "Pick a product from your store (not a typed name) to apply automatically." });
+    try {
+      const res = await admin.graphql(
+        `mutation ForgeApply($input: ProductInput!) {
+          productUpdate(input: $input) { product { id title } userErrors { field message } }
+        }`,
+        { variables: { input: { id: productId, descriptionHtml, seo: { title: seoTitle, description: seoDescription } } } }
+      );
+      const j = (await res.json()) as {
+        data?: { productUpdate?: { product?: { title?: string }; userErrors?: { message: string }[] } };
+      };
+      const errs = j.data?.productUpdate?.userErrors || [];
+      if (errs.length) return json({ applyError: errs.map((e) => e.message).join("; ") });
+      return json({ applied: true, appliedTitle: j.data?.productUpdate?.product?.title || "" });
+    } catch (e) {
+      return json({ applyError: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  // ---- Generate ----
   if (!shop?.brandProfile) return json({ error: "Analyze your store on the dashboard first." });
   if (!shop.activePlan) return json({ error: "Choose a plan first to get tokens.", outOfTokens: true });
 
@@ -74,7 +104,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   }
 
-  const form = await request.formData();
   const productName = (form.get("productName") as string)?.trim();
   const notes = (form.get("notes") as string)?.trim() || "";
   if (!productName) return json({ error: "Enter a product name." });
@@ -89,6 +118,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export default function Products() {
   const { hasBrand, products, tokens, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -101,13 +137,35 @@ export default function Products() {
 
   const [productName, setProductName] = useState("");
   const [notes, setNotes] = useState("");
+  const [productId, setProductId] = useState("");
 
-  const pick = (p: { title: string; description: string }) => {
+  // Apply runs through its own fetcher so it doesn't wipe the generated copy.
+  const applyFetcher = useFetcher<{ applied?: boolean; applyError?: string }>();
+  const applied = applyFetcher.data?.applied || false;
+  const applyError = applyFetcher.data?.applyError || null;
+  const applying = applyFetcher.state !== "idle";
+
+  const pick = (p: { id: string; title: string; description: string }) => {
     setProductName(p.title);
     setNotes(p.description?.slice(0, 300) || "");
+    setProductId(p.id);
   };
 
-  const generate = () => submit({ productName, notes }, { method: "post" });
+  const generate = () => submit({ intent: "generate", productName, notes }, { method: "post" });
+
+  // Autopilot: push a chosen description variant (+ bullets) and SEO meta
+  // straight onto the Shopify product listing.
+  const applyToStore = (descriptionText: string) => {
+    if (!copy) return;
+    const bulletsHtml = copy.bullets?.length
+      ? `<ul>${copy.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
+      : "";
+    const descriptionHtml = `<p>${escapeHtml(descriptionText)}</p>${bulletsHtml}`;
+    applyFetcher.submit(
+      { intent: "apply", productId, descriptionHtml, seoTitle: copy.seoTitle, seoDescription: copy.metaDescription },
+      { method: "post" }
+    );
+  };
 
   if (!hasBrand) {
     return (
@@ -233,6 +291,19 @@ export default function Products() {
           </Layout.Section>
         )}
 
+        {applied && (
+          <Layout.Section>
+            <Banner tone="success" title="Listing updated on your store">
+              <p>Your product description and SEO meta are now live on Shopify. 🔨</p>
+            </Banner>
+          </Layout.Section>
+        )}
+        {applyError && (
+          <Layout.Section>
+            <Banner tone="critical" title="Couldn't update the listing"><p>{applyError}</p></Banner>
+          </Layout.Section>
+        )}
+
         {copy && (
           <>
             <Layout.Section>
@@ -256,14 +327,30 @@ export default function Products() {
                 {copy.descriptions.map((d, i) => (
                   <Box key={i} minWidth="320px" maxWidth="420px">
                     <Card>
-                      <BlockStack gap="200">
+                      <BlockStack gap="300">
                         <Badge>{`Variant ${i + 1}`}</Badge>
                         <Text variant="bodyMd" as="p">{d}</Text>
+                        <Button
+                          size="slim"
+                          variant="primary"
+                          onClick={() => applyToStore(d)}
+                          loading={applying}
+                          disabled={!productId || applying}
+                        >
+                          ⚙️ Autopilot: apply this to my listing
+                        </Button>
                       </BlockStack>
                     </Card>
                   </Box>
                 ))}
               </InlineStack>
+              {!productId && (
+                <Box paddingBlockStart="200">
+                  <Text variant="bodySm" as="p" tone="subdued">
+                    Pick a product from your store (above) to enable one-click apply — typed names can't be matched to a listing.
+                  </Text>
+                </Box>
+              )}
             </Layout.Section>
 
             <Layout.Section>
