@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Page,
   Layout,
@@ -78,12 +78,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       returnUrl,
     });
   } catch (e) {
-    if (e instanceof Response) throw e; // the approval redirect — let it flow
-    // Surface the real billing error so we can see what Shopify says.
+    if (e instanceof Response) {
+      // A 3xx is the real approval redirect. Embedded apps CANNOT follow a
+      // server redirect to admin.shopify.com inside the iframe (that 401s), so
+      // hand the confirmation URL back to the client for a TOP-LEVEL redirect.
+      if (e.status >= 300 && e.status < 400) {
+        const confirmationUrl = e.headers.get("location");
+        if (confirmationUrl) return json({ confirmationUrl });
+        throw e;
+      }
+      // Any other Response (401/403/etc) — capture the detail instead of
+      // bubbling a bare status page, so the merchant sees a real message.
+      const body = await e.text().catch(() => "");
+      console.error("[billing] non-redirect response", e.status, body.slice(0, 300));
+      return json({ error: `Billing ${e.status}: ${body.slice(0, 200) || e.statusText}` });
+    }
     const anyErr = e as { message?: string; errorData?: unknown };
-    const detail = anyErr?.errorData
-      ? JSON.stringify(anyErr.errorData)
-      : anyErr?.message || String(e);
+    const detail = anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e);
     console.error("[billing] request failed:", detail);
     return json({ error: detail });
   }
@@ -137,8 +148,24 @@ export default function Plans() {
   const { currentPlan, currentReview } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const billingError = actionData && "error" in actionData ? actionData.error : null;
+  const confirmationUrl = actionData && "confirmationUrl" in actionData ? actionData.confirmationUrl : null;
   const submit = useSubmit();
   const nav = useNavigation();
+
+  // Billing approval must be a TOP-LEVEL redirect (the confirmation page lives
+  // on admin.shopify.com and can't load inside the embedded iframe → 401).
+  useEffect(() => {
+    if (!confirmationUrl) return;
+    try {
+      if (window.top) {
+        window.top.location.href = confirmationUrl;
+        return;
+      }
+    } catch {
+      /* cross-origin — fall through */
+    }
+    window.open(confirmationUrl, "_top");
+  }, [confirmationUrl]);
   const [reviewMode, setReviewMode] = useState<string>(currentReview);
   const [pending, setPending] = useState<PlanKey | null>(null);
 
