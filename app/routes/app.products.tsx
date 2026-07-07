@@ -92,6 +92,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // ---- Autopilot: apply MANY listings at once ----
+  if (intent === "applyAll") {
+    let batch: { productId: string; descriptionHtml: string; seoTitle: string; seoDescription: string }[] = [];
+    try {
+      batch = JSON.parse((form.get("items") as string) || "[]");
+    } catch {
+      batch = [];
+    }
+    batch = batch.filter((b) => b.productId).slice(0, 12);
+    if (!batch.length) return json({ applyError: "No catalog listings to apply (typed products can't be matched)." });
+    let ok = 0;
+    const failed: string[] = [];
+    for (const b of batch) {
+      try {
+        const res = await admin.graphql(
+          `mutation ForgeApply($input: ProductInput!) {
+            productUpdate(input: $input) { product { id } userErrors { field message } }
+          }`,
+          { variables: { input: { id: b.productId, descriptionHtml: b.descriptionHtml, seo: { title: b.seoTitle, description: b.seoDescription } } } }
+        );
+        const j = (await res.json()) as { data?: { productUpdate?: { userErrors?: { message: string }[] } } };
+        const errs = j.data?.productUpdate?.userErrors || [];
+        if (errs.length) failed.push(errs[0].message);
+        else ok++;
+      } catch (e) {
+        failed.push(e instanceof Error ? e.message : String(e));
+      }
+    }
+    return json({ appliedAll: ok, appliedTotal: batch.length, applyError: failed.length ? `${failed.length} failed: ${failed[0]}` : null });
+  }
+
   // ---- Generate (one or many listings in a single batch) ----
   if (!shop?.brandProfile) return json({ error: "Analyze your store on the dashboard first." });
   if (!shop.activePlan) return json({ error: "Choose a plan first to get tokens.", outOfTokens: true });
@@ -180,17 +211,31 @@ export default function Products() {
   const canAfford = tokens == null || remaining >= totalCost;
 
   // Apply runs through its own fetcher so it doesn't wipe the forged results.
-  const applyFetcher = useFetcher<{ applied?: boolean; applyError?: string }>();
+  const applyFetcher = useFetcher<{ applied?: boolean; applyError?: string; appliedAll?: number; appliedTotal?: number }>();
   const applied = applyFetcher.data?.applied || false;
+  const appliedAll = applyFetcher.data?.appliedAll;
   const applyError = applyFetcher.data?.applyError || null;
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const applyingAll = applyingId === "__all__" && applyFetcher.state !== "idle";
   useEffect(() => {
     if (applyFetcher.state === "idle") setApplyingId(null);
   }, [applyFetcher.state]);
 
   const resultsRef = useRef<HTMLDivElement>(null);
-  const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const scrollTop = () => {
+    // robust across the embedded frame's scroll container(s)
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* */ }
+    try { document.scrollingElement?.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* */ }
+    try { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch { /* */ }
+  };
   const scrollToResults = () => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const descHtml = (c: ProductCopy, text: string) => {
+    const bulletsHtml = c.bullets?.length
+      ? `<ul>${c.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
+      : "";
+    return `<p>${escapeHtml(text)}</p>${bulletsHtml}`;
+  };
 
   const forge = () => {
     if (!forgeCount) return;
@@ -203,15 +248,31 @@ export default function Products() {
     if (!r.id || !r.copy) return;
     setApplyingId(r.id);
     const c = r.copy;
-    const bulletsHtml = c.bullets?.length
-      ? `<ul>${c.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
-      : "";
-    const descriptionHtml = `<p>${escapeHtml(descriptionText)}</p>${bulletsHtml}`;
     applyFetcher.submit(
-      { intent: "apply", productId: r.id, descriptionHtml, seoTitle: c.seoTitle, seoDescription: c.metaDescription },
+      { intent: "apply", productId: r.id, descriptionHtml: descHtml(c, descriptionText), seoTitle: c.seoTitle, seoDescription: c.metaDescription },
       { method: "post" }
     );
   };
+
+  // catalog listings that CAN be auto-applied (have a product id + copy)
+  const applicable = (results || []).filter((r) => r.id && r.copy) as (ForgeResult & { id: string; copy: ProductCopy })[];
+  const applyAll = () => {
+    if (!applicable.length) return;
+    setApplyingId("__all__");
+    const items = applicable.map((r) => ({
+      productId: r.id,
+      descriptionHtml: descHtml(r.copy, r.copy.descriptions[0]),
+      seoTitle: r.copy.seoTitle,
+      seoDescription: r.copy.metaDescription,
+    }));
+    applyFetcher.submit({ intent: "applyAll", items: JSON.stringify(items) }, { method: "post" });
+  };
+
+  // ensure we're at the top the moment forging kicks off (watch the hammer)
+  useEffect(() => {
+    if (busy) scrollTop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
 
   if (!hasBrand) {
     return (
@@ -368,10 +429,13 @@ export default function Products() {
           </Layout.Section>
         )}
 
-        {applied && (
+        {(applied || appliedAll != null) && (
           <Layout.Section>
-            <Banner tone="success" title="Listing updated on your store">
-              <p>Your product description and SEO meta are now live on Shopify. 🔨</p>
+            <Banner
+              tone="success"
+              title={appliedAll != null ? `${appliedAll} listing${appliedAll === 1 ? "" : "s"} updated on your store` : "Listing updated on your store"}
+            >
+              <p>Your product copy and SEO are now live on Shopify. 🔨</p>
             </Banner>
           </Layout.Section>
         )}
@@ -390,6 +454,21 @@ export default function Products() {
                 {forgedCount} listing{forgedCount === 1 ? "" : "s"} ready
               </Text>
             </div>
+            {applicable.length > 0 && (
+              <Box paddingBlockStart="200">
+                <InlineStack gap="300" blockAlign="center" wrap>
+                  <Button variant="primary" onClick={applyAll} loading={applyingAll} disabled={applyFetcher.state !== "idle"}>
+                    {`⚙️ Autopilot: apply all ${applicable.length} to my store`}
+                  </Button>
+                  <Button variant="tertiary" onClick={scrollToResults}>Review each first ↓</Button>
+                </InlineStack>
+                <Box paddingBlockStart="100">
+                  <Text variant="bodySm" as="p" tone="subdued">
+                    "Apply all" pushes the first variant of every listing live. Prefer picking variants? Review each below.
+                  </Text>
+                </Box>
+              </Box>
+            )}
           </Layout.Section>
         )}
 
