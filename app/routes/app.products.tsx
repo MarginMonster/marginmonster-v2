@@ -287,7 +287,7 @@ export default function Products() {
 
   if (!hasBrand) {
     return (
-      <Page title="The Listing Forge" backAction={{ content: "Home", url: "/app" }}>
+      <Page title="SEO Forge" backAction={{ content: "Home", url: "/app" }}>
         <EmptyState heading="Analyze your store first" image="" action={{ content: "Go to dashboard", url: "/app" }}>
           <p>We learn your brand voice first, so every description sounds like you.</p>
         </EmptyState>
@@ -304,7 +304,7 @@ export default function Products() {
         ))}
       </div>
       <Page
-        title="The Listing Forge"
+        title="SEO Forge"
         backAction={{ content: "Home", url: "/app" }}
         subtitle="SEO-ready product listings, hammered into your brand voice — titles, descriptions, bullets & meta tags."
       >
@@ -312,7 +312,7 @@ export default function Products() {
         <Layout.Section>
           <div className={`mm-forge-hero${busy ? " forging" : ""}`}>
             <div className="mm-forge-text">
-              <span className="mm-eyebrow">▶ THE LISTING FORGE</span>
+              <span className="mm-eyebrow">▶ SEO FORGE</span>
               <h1>Forge listings that sell.</h1>
               <p>
                 Turn any product into SEO-ready copy — titles, descriptions,
@@ -385,7 +385,7 @@ export default function Products() {
                 </button>
                 {tokens != null && (
                   <span className={`mm-credits${!canAfford ? " low" : ""}`}>
-                    <b>CREDITS</b> ⚡ {remaining.toLocaleString()}
+                    <b>TOKENS</b> ⚡ {remaining.toLocaleString()}
                     {forgeCount > 0 && <em> · Cost {totalCost} Tokens</em>}
                   </span>
                 )}

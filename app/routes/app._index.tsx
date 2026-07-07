@@ -459,7 +459,7 @@ const MODES = [
 const QUICK = [
   { l: "Plans", route: "/app/plans" },
   { l: "Video Studio", route: "/app/videos" },
-  { l: "The Listing Forge", route: "/app/products" },
+  { l: "SEO Forge", route: "/app/products" },
   { l: "Landing Pages", route: "/app/funnels" },
   { l: "Content Queue", route: "/app/assets" },
   { l: "Calendar", route: "/app/calendar" },

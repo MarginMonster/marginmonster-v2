@@ -7,20 +7,108 @@ import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import brandStyles from "../brand.css?raw";
 import { authenticate } from "../shopify.server";
+import { db } from "../db.server";
+import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
+import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
+// Avatar (arcade fighter) + display name per plan tier.
+const PLAN_AVATAR: Record<PlanKey, { icon: string; label: string }> = {
+  STARTER: { icon: "🥊", label: "Starter" },
+  GROWTH: { icon: "⚔️", label: "Growth" },
+  PRO: { icon: "🛡️", label: "Pro" },
+  SCALE: { icon: "👑", label: "Scale" },
+};
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-  return json({ apiKey: process.env.SHOPIFY_API_KEY || "" });
+  const { session } = await authenticate.admin(request);
+
+  // Player name = the Shopify staff member who signed in (online token),
+  // falling back to the store handle.
+  const user = (session as any).onlineAccessInfo?.associated_user;
+  const playerName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
+    session.shop.replace(/\.myshopify\.com$/, "");
+
+  // Player stats — token wallet + video/ad generation balance.
+  let hud: {
+    name: string;
+    planKey: PlanKey | null;
+    planLabel: string;
+    avatar: string;
+    tokens: number;
+    tokensMax: number;
+    videos: number;
+    ads: number;
+  } = {
+    name: playerName,
+    planKey: null,
+    planLabel: "No Plan",
+    avatar: "🎮",
+    tokens: 0,
+    tokensMax: 0,
+    videos: 0,
+    ads: 0,
+  };
+
+  try {
+    const shop = await db.shop.findUnique({
+      where: { domain: session.shop },
+      include: { activePlan: true },
+    });
+    let plan = shop?.activePlan ?? null;
+    if (plan) {
+      plan = await refreshPeriod(plan);
+      const remaining = tokensRemaining(plan);
+      const tier = PLAN_AVATAR[plan.type as PlanKey];
+      hud = {
+        name: playerName,
+        planKey: plan.type as PlanKey,
+        planLabel: tier?.label ?? plan.type,
+        avatar: tier?.icon ?? "🎮",
+        tokens: remaining,
+        tokensMax: Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra),
+        videos: Math.max(0, plan.videoQuota - plan.videoUsed),
+        ads: Math.floor(remaining / TOKEN_COST.image),
+      };
+    }
+  } catch (e) {
+    console.error("[app hud] failed to load player stats:", e);
+  }
+
+  return json({ apiKey: process.env.SHOPIFY_API_KEY || "", hud });
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, hud } = useLoaderData<typeof loader>();
+  const hpPct = Math.max(0, Math.min(100, Math.round((hud.tokens / hud.tokensMax) * 100)));
+  const hpTone = hpPct <= 20 ? " low" : hpPct <= 50 ? " mid" : "";
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <style dangerouslySetInnerHTML={{ __html: brandStyles }} />
+      {/* Player HUD — sticky top-right, like an arcade name/health bar */}
+      <div className="mm-hud" aria-label="Player status">
+        <div className="mm-hud-avatar" title={hud.planLabel}>
+          <span className="mm-hud-face">{hud.avatar}</span>
+        </div>
+        <div className="mm-hud-body">
+          <div className="mm-hud-top">
+            <span className="mm-hud-name">{hud.name}</span>
+            <span className="mm-hud-plan">{hud.planLabel}</span>
+          </div>
+          <div className={`mm-hud-hp${hpTone}`} title={`${hud.tokens.toLocaleString()} / ${hud.tokensMax.toLocaleString()} tokens`}>
+            <i style={{ width: `${hpPct}%` }} />
+            <span className="mm-hud-hp-txt">{hud.tokens.toLocaleString()} ⚡</span>
+          </div>
+          <div className="mm-hud-stats">
+            <span title="Tokens remaining">⚡ {hud.tokens.toLocaleString()}</span>
+            <span title="Video generations left">🎬 {hud.videos}</span>
+            <span title="Ad generations you can afford">🖼 {hud.ads}</span>
+          </div>
+        </div>
+      </div>
       <NavMenu>
         <Link to="/app" rel="home">Dashboard</Link>
         <Link to="/app/strategy">Marketing Plan</Link>
@@ -28,7 +116,7 @@ export default function App() {
         <Link to="/app/assets">Content Queue</Link>
         <Link to="/app/calendar">Content Calendar</Link>
         <Link to="/app/videos">Video Studio</Link>
-        <Link to="/app/products">The Listing Forge</Link>
+        <Link to="/app/products">SEO Forge</Link>
         <Link to="/app/funnels">Landing Pages</Link>
         <Link to="/app/connect">Ad Accounts</Link>
         <Link to="/app/campaigns">Campaigns</Link>
