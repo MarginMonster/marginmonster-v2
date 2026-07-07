@@ -252,6 +252,49 @@ body::before {
 .mm-forge-jump:hover { filter: brightness(1.08); }
 .mm-forge-jump:active { transform: translateY(4px); box-shadow: 0 2px 0 #b06a00, 0 4px 12px rgba(245,140,40,0.5); }
 @keyframes mm-jump-pop { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
+
+/* forging progress bar (in the status line) */
+.mm-forge-status { display: flex; align-items: center; gap: 12px; }
+.mm-forge-bar { display: inline-block; width: 150px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; }
+.mm-forge-bar i { display: block; width: 42%; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #F5C451, #ff8a3d); animation: mm-bar-run 1.05s ease-in-out infinite; }
+@keyframes mm-bar-run { 0% { margin-left: -42%; } 100% { margin-left: 100%; } }
+
+/* the FORGE IT arcade button + CREDITS readout */
+.mm-forge-cta { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.mm-arcade-btn {
+  cursor: pointer; font-family: var(--font-pixel); font-size: 12px; letter-spacing: .05em; color: #0B0A17;
+  background: linear-gradient(180deg, #ffd36b, #f5a623); border: none; border-radius: 12px;
+  padding: 16px 26px; box-shadow: 0 6px 0 #b06a00, 0 10px 22px rgba(245,140,40,0.42);
+  transition: filter .12s ease, transform .08s ease, box-shadow .08s ease;
+}
+.mm-arcade-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.mm-arcade-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #b06a00, 0 4px 14px rgba(245,140,40,0.42); }
+.mm-arcade-btn:disabled { background: linear-gradient(180deg, #34314a, #26233b); color: #6f6a8e; box-shadow: none; cursor: default; }
+.mm-credits { font-family: var(--font-pixel); font-size: 10px; letter-spacing: .06em; color: #34E7E4; }
+.mm-credits b { color: #8A84B6; margin-right: 7px; font-weight: 400; }
+.mm-credits em { color: #F5C451; font-style: normal; margin-left: 4px; }
+.mm-credits.low { color: #E5397D; }
+
+/* multi-select checkmark on a product card */
+.mm-prodcard { position: relative; }
+.mm-prodcheck {
+  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--mm-magenta, #E5397D); color: #fff; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0a17;
+}
+
+/* FORGED! stamp on the results header */
+.mm-forged-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+.mm-forged-stamp {
+  font-family: var(--font-pixel); font-size: 13px; letter-spacing: .06em; color: #0B0A17;
+  background: linear-gradient(180deg, #7bf3f1, #1fb6b3); padding: 8px 14px; border-radius: 8px;
+  transform: rotate(-4deg); box-shadow: 0 4px 14px rgba(52,231,228,0.4);
+  animation: mm-stamp-in .45s cubic-bezier(.2, 1.4, .4, 1);
+}
+@keyframes mm-stamp-in { 0% { transform: rotate(-4deg) scale(0); opacity: 0; } 70% { transform: rotate(-4deg) scale(1.12); } 100% { transform: rotate(-4deg) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .mm-forge-bar i, .mm-forged-stamp, .mm-forge-jump { animation: none; }
+}
 @keyframes mm-forge-blink { 50% { opacity: 0.35; } }
 
 /* brand emblem — the real Magic Monster logo, framed */

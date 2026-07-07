@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useActionData, useSubmit, useNavigation, useFetcher } from "@remix-run/react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Page,
   Layout,
@@ -92,30 +92,49 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  // ---- Generate ----
+  // ---- Generate (one or many listings in a single batch) ----
   if (!shop?.brandProfile) return json({ error: "Analyze your store on the dashboard first." });
   if (!shop.activePlan) return json({ error: "Choose a plan first to get tokens.", outOfTokens: true });
 
-  const cost = TOKEN_COST.description;
-  if (tokensRemaining(shop.activePlan) < cost) {
+  let items: { id?: string | null; title: string; notes?: string }[] = [];
+  try {
+    items = JSON.parse((form.get("items") as string) || "[]");
+  } catch {
+    items = [];
+  }
+  items = items.filter((it) => it.title?.trim()).slice(0, 12); // cap a batch at 12
+  if (!items.length) return json({ error: "Pick or type at least one product to forge." });
+
+  const perCost = TOKEN_COST.description;
+  const totalCost = perCost * items.length;
+  const have = tokensRemaining(shop.activePlan);
+  if (have < totalCost) {
     return json({
-      error: `Not enough tokens — this needs ${cost}, you have ${tokensRemaining(shop.activePlan)}. Top up on the Plans page.`,
+      error: `Not enough tokens — forging ${items.length} listing${items.length > 1 ? "s" : ""} needs ${totalCost}, you have ${have}. Top up on the Plans page.`,
       outOfTokens: true,
     });
   }
 
-  const productName = (form.get("productName") as string)?.trim();
-  const notes = (form.get("notes") as string)?.trim() || "";
-  if (!productName) return json({ error: "Enter a product name." });
-  try {
-    const copy = await generateProductCopy(shop.brandProfile, productName, notes);
-    // Only charge on success.
-    const { remaining } = await chargeTokens(shop.id, "description");
-    return json({ copy, remaining });
-  } catch (e) {
-    if (e instanceof InsufficientTokensError) return json({ error: e.message, outOfTokens: true });
-    return json({ error: e instanceof Error ? e.message : String(e) });
+  // Forge them all in parallel, then charge only for the ones that succeeded.
+  const settled = await Promise.allSettled(
+    items.map((it) => generateProductCopy(shop.brandProfile!, it.title.trim(), (it.notes || "").trim()))
+  );
+  const results = items.map((it, i) => {
+    const s = settled[i];
+    if (s.status === "fulfilled") return { id: it.id ?? null, title: it.title, copy: s.value };
+    return { id: it.id ?? null, title: it.title, error: s.reason instanceof Error ? s.reason.message : String(s.reason) };
+  });
+
+  let remaining = have;
+  const forged = results.filter((r) => "copy" in r).length;
+  for (let i = 0; i < forged; i++) {
+    try {
+      remaining = (await chargeTokens(shop.id, "description")).remaining;
+    } catch {
+      break;
+    }
   }
+  return json({ results, remaining, forged });
 };
 
 function escapeHtml(s: string): string {
@@ -125,6 +144,9 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+type PickItem = { id: string; title: string; description: string };
+type ForgeResult = { id: string | null; title: string; copy?: ProductCopy; error?: string };
+
 export default function Products() {
   const { hasBrand, products, tokens, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -132,51 +154,68 @@ export default function Products() {
   const submit = useSubmit();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const copy = actionData && "copy" in actionData ? (actionData.copy as ProductCopy) : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
+  const results = (actionData && "results" in actionData ? actionData.results : null) as ForgeResult[] | null;
+  const forgedCount = actionData && "forged" in actionData ? (actionData.forged as number) : 0;
 
-  const [productName, setProductName] = useState("");
-  const [notes, setNotes] = useState("");
-  const [productId, setProductId] = useState("");
+  // multi-select from the catalog + one optional manual entry
+  const [selected, setSelected] = useState<Record<string, PickItem>>({});
+  const [manualName, setManualName] = useState("");
+  const [manualNotes, setManualNotes] = useState("");
+  const toggle = (p: PickItem) =>
+    setSelected((prev) => {
+      const n = { ...prev };
+      if (n[p.id]) delete n[p.id];
+      else n[p.id] = p;
+      return n;
+    });
+  const selectedList = Object.values(selected);
+  const batch = [
+    ...selectedList.map((p) => ({ id: p.id, title: p.title, notes: (p.description || "").slice(0, 300) })),
+    ...(manualName.trim() ? [{ id: null, title: manualName.trim(), notes: manualNotes.trim() }] : []),
+  ];
+  const forgeCount = batch.length;
+  const totalCost = cost * forgeCount;
+  const remaining = tokens?.remaining ?? 0;
+  const canAfford = tokens == null || remaining >= totalCost;
 
-  // Apply runs through its own fetcher so it doesn't wipe the generated copy.
+  // Apply runs through its own fetcher so it doesn't wipe the forged results.
   const applyFetcher = useFetcher<{ applied?: boolean; applyError?: string }>();
   const applied = applyFetcher.data?.applied || false;
   const applyError = applyFetcher.data?.applyError || null;
-  const applying = applyFetcher.state !== "idle";
-
-  const pick = (p: { id: string; title: string; description: string }) => {
-    setProductName(p.title);
-    setNotes(p.description?.slice(0, 300) || "");
-    setProductId(p.id);
-  };
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (applyFetcher.state === "idle") setApplyingId(null);
+  }, [applyFetcher.state]);
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
   const scrollToResults = () => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  const generate = () => {
-    submit({ intent: "generate", productName, notes }, { method: "post" });
+  const forge = () => {
+    if (!forgeCount) return;
+    submit({ intent: "generate", items: JSON.stringify(batch) }, { method: "post" });
     scrollTop(); // pop up to the forge so the hammer animation is in view
   };
 
-  // Autopilot: push a chosen description variant (+ bullets) and SEO meta
-  // straight onto the Shopify product listing.
-  const applyToStore = (descriptionText: string) => {
-    if (!copy) return;
-    const bulletsHtml = copy.bullets?.length
-      ? `<ul>${copy.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
+  // Autopilot: write a chosen variant (+ bullets) and SEO meta to one product.
+  const applyOne = (r: ForgeResult, descriptionText: string) => {
+    if (!r.id || !r.copy) return;
+    setApplyingId(r.id);
+    const c = r.copy;
+    const bulletsHtml = c.bullets?.length
+      ? `<ul>${c.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
       : "";
     const descriptionHtml = `<p>${escapeHtml(descriptionText)}</p>${bulletsHtml}`;
     applyFetcher.submit(
-      { intent: "apply", productId, descriptionHtml, seoTitle: copy.seoTitle, seoDescription: copy.metaDescription },
+      { intent: "apply", productId: r.id, descriptionHtml, seoTitle: c.seoTitle, seoDescription: c.metaDescription },
       { method: "post" }
     );
   };
 
   if (!hasBrand) {
     return (
-      <Page title="AI Product Descriptions" backAction={{ content: "Home", url: "/app" }}>
+      <Page title="The Listing Forge" backAction={{ content: "Home", url: "/app" }}>
         <EmptyState heading="Analyze your store first" image="" action={{ content: "Go to dashboard", url: "/app" }}>
           <p>We learn your brand voice first, so every description sounds like you.</p>
         </EmptyState>
@@ -208,10 +247,15 @@ export default function Products() {
                 bullets, and meta tags in your brand voice, then push it live in
                 one click.
               </p>
-              {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
-              {copy && !busy && (
+              {busy && (
+                <div className="mm-forge-status">
+                  <span>🔨 FORGING {forgeCount > 1 ? `${forgeCount} LISTINGS` : "YOUR LISTING"}…</span>
+                  <span className="mm-forge-bar"><i /></span>
+                </div>
+              )}
+              {results && !busy && forgedCount > 0 && (
                 <button type="button" className="mm-forge-jump" onClick={scrollToResults}>
-                  ✅ LISTING FORGED — VIEW IT ↓
+                  ✅ {forgedCount} LISTING{forgedCount > 1 ? "S" : ""} FORGED — VIEW ↓
                 </button>
               )}
             </div>
@@ -232,37 +276,45 @@ export default function Products() {
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
+              {selectedList.length > 0 && (
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {selectedList.length} product{selectedList.length > 1 ? "s" : ""} selected from your catalog below.
+                </Text>
+              )}
               <TextField
-                label="Product name"
-                value={productName}
-                onChange={setProductName}
+                label="Add a custom product (optional)"
+                value={manualName}
+                onChange={setManualName}
                 autoComplete="off"
                 placeholder="e.g. Blue Razz Gummy Worms"
-                helpText={products.length > 0 ? "Pick from your store below, or type your own." : undefined}
+                helpText={products.length > 0 ? "Or select several from your catalog below." : "Type the product to forge."}
               />
-              <TextField
-                label="Notes (optional)"
-                value={notes}
-                onChange={setNotes}
-                autoComplete="off"
-                multiline={2}
-                placeholder="Key features, ingredients, who it's for, what makes it special…"
-              />
-              <InlineStack gap="300" blockAlign="center">
-                <Button
-                  variant="primary"
-                  onClick={generate}
-                  loading={busy}
-                  disabled={!productName.trim() || (tokens != null && tokens.remaining < cost)}
-                >
-                  Generate copy
-                </Button>
+              {manualName.trim() !== "" && (
+                <TextField
+                  label="Notes for custom product (optional)"
+                  value={manualNotes}
+                  onChange={setManualNotes}
+                  autoComplete="off"
+                  multiline={2}
+                  placeholder="Key features, who it's for, what makes it special…"
+                />
+              )}
+              <div className="mm-forge-cta">
+                <button type="button" className="mm-arcade-btn" onClick={forge} disabled={busy || !forgeCount || !canAfford}>
+                  {busy ? "FORGING…" : `▶ FORGE ${forgeCount > 0 ? forgeCount + " " : ""}LISTING${forgeCount === 1 ? "" : "S"}`}
+                </button>
                 {tokens != null && (
-                  <Badge tone={tokens.remaining < cost ? "critical" : "info"}>
-                    {`⚡ ${cost} token${cost > 1 ? "s" : ""} · ${tokens.remaining} left`}
-                  </Badge>
+                  <span className={`mm-credits${!canAfford ? " low" : ""}`}>
+                    <b>CREDITS</b> ⚡ {remaining.toLocaleString()}
+                    {forgeCount > 0 && <em> · −{totalCost}</em>}
+                  </span>
                 )}
-              </InlineStack>
+              </div>
+              {!canAfford && forgeCount > 0 && (
+                <Text variant="bodySm" as="p" tone="critical">
+                  Not enough tokens for {forgeCount} — need {totalCost}. Top up on the Plans page.
+                </Text>
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>
@@ -271,20 +323,24 @@ export default function Products() {
           <Layout.Section>
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Pick a product</Text>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="headingMd" as="h2">Pick products to forge</Text>
+                  {selectedList.length > 0 && <Badge tone="success">{`${selectedList.length} selected`}</Badge>}
+                </InlineStack>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Tap a product from your store to auto-fill it above — or type a name yourself.
+                  Tap to select — pick as many as you like, then hit Forge. Each listing costs {cost} ⚡.
                 </Text>
                 <div className="mm-prodgrid">
                   {products.map((p) => {
-                    const selected = p.title === productName;
+                    const on = !!selected[p.id];
                     return (
                       <button
-                        key={p.title}
+                        key={p.id}
                         type="button"
-                        className={`mm-prodcard${selected ? " on" : ""}`}
-                        onClick={() => pick(p)}
+                        className={`mm-prodcard${on ? " on" : ""}`}
+                        onClick={() => toggle(p)}
                       >
+                        {on && <span className="mm-prodcheck">✓</span>}
                         {p.image ? (
                           <img src={p.image} alt="" loading="lazy" />
                         ) : (
@@ -325,68 +381,74 @@ export default function Products() {
           </Layout.Section>
         )}
 
-        {copy && (
-          <>
-            <Layout.Section>
-              <div ref={resultsRef} style={{ scrollMarginTop: 12 }} />
-              <Card>
-                <BlockStack gap="300">
-                  <Text variant="headingMd" as="h2">🔨 Freshly forged listing</Text>
-                  <BlockStack gap="100">
-                    <Text variant="bodySm" as="p" tone="subdued">Title tag</Text>
-                    <Text variant="bodyMd" as="p" fontWeight="semibold">{copy.seoTitle}</Text>
-                  </BlockStack>
-                  <BlockStack gap="100">
-                    <Text variant="bodySm" as="p" tone="subdued">Meta description</Text>
-                    <Text variant="bodyMd" as="p">{copy.metaDescription}</Text>
-                  </BlockStack>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-
-            <Layout.Section>
-              <InlineStack gap="400" wrap>
-                {copy.descriptions.map((d, i) => (
-                  <Box key={i} minWidth="320px" maxWidth="420px">
-                    <Card>
-                      <BlockStack gap="300">
-                        <Badge>{`Variant ${i + 1}`}</Badge>
-                        <Text variant="bodyMd" as="p">{d}</Text>
-                        <Button
-                          size="slim"
-                          variant="primary"
-                          onClick={() => applyToStore(d)}
-                          loading={applying}
-                          disabled={!productId || applying}
-                        >
-                          ⚙️ Autopilot: apply this to my listing
-                        </Button>
-                      </BlockStack>
-                    </Card>
-                  </Box>
-                ))}
-              </InlineStack>
-              {!productId && (
-                <Box paddingBlockStart="200">
-                  <Text variant="bodySm" as="p" tone="subdued">
-                    Pick a product from your store (above) to enable one-click apply — typed names can't be matched to a listing.
-                  </Text>
-                </Box>
-              )}
-            </Layout.Section>
-
-            <Layout.Section>
-              <Card>
-                <BlockStack gap="200">
-                  <Text variant="headingMd" as="h2">Selling points</Text>
-                  {copy.bullets.map((b) => (
-                    <Text key={b} variant="bodyMd" as="p">• {b}</Text>
-                  ))}
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-          </>
+        {results && !busy && (
+          <Layout.Section>
+            <div ref={resultsRef} style={{ scrollMarginTop: 12 }} />
+            <div className="mm-forged-head">
+              <span className="mm-forged-stamp">FORGED!</span>
+              <Text variant="headingMd" as="h2">
+                {forgedCount} listing{forgedCount === 1 ? "" : "s"} ready
+              </Text>
+            </div>
+          </Layout.Section>
         )}
+
+        {results && !busy && results.map((r, ri) => (
+          <Layout.Section key={ri}>
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingMd" as="h3">{r.title}</Text>
+                {r.error ? (
+                  <Banner tone="warning"><p>Couldn't forge this one: {r.error}</p></Banner>
+                ) : r.copy ? (
+                  <>
+                    <BlockStack gap="100">
+                      <Text variant="bodySm" as="p" tone="subdued">Title tag</Text>
+                      <Text variant="bodyMd" as="p" fontWeight="semibold">{r.copy.seoTitle}</Text>
+                    </BlockStack>
+                    <BlockStack gap="100">
+                      <Text variant="bodySm" as="p" tone="subdued">Meta description</Text>
+                      <Text variant="bodyMd" as="p">{r.copy.metaDescription}</Text>
+                    </BlockStack>
+                    <Divider />
+                    <InlineStack gap="300" wrap>
+                      {r.copy.descriptions.map((d, i) => (
+                        <Box key={i} minWidth="300px" maxWidth="400px">
+                          <Card>
+                            <BlockStack gap="300">
+                              <Badge>{`Variant ${i + 1}`}</Badge>
+                              <Text variant="bodyMd" as="p">{d}</Text>
+                              <Button
+                                size="slim"
+                                variant="primary"
+                                onClick={() => applyOne(r, d)}
+                                loading={applyingId === r.id}
+                                disabled={!r.id || applyingId !== null}
+                              >
+                                ⚙️ Autopilot: apply to my listing
+                              </Button>
+                            </BlockStack>
+                          </Card>
+                        </Box>
+                      ))}
+                    </InlineStack>
+                    <BlockStack gap="050">
+                      <Text variant="headingSm" as="h4">Selling points</Text>
+                      {r.copy.bullets.map((b) => (
+                        <Text key={b} variant="bodyMd" as="p">• {b}</Text>
+                      ))}
+                    </BlockStack>
+                    {!r.id && (
+                      <Text variant="bodySm" as="p" tone="subdued">
+                        Typed products can't auto-apply — no store listing to match.
+                      </Text>
+                    )}
+                  </>
+                ) : null}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        ))}
         </Layout>
       </Page>
     </>
