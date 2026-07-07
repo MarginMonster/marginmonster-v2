@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useActionData, useSubmit, useNavigation, useFetcher } from "@remix-run/react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Page,
   Layout,
@@ -151,7 +151,14 @@ export default function Products() {
     setProductId(p.id);
   };
 
-  const generate = () => submit({ intent: "generate", productName, notes }, { method: "post" });
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const scrollToResults = () => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const generate = () => {
+    submit({ intent: "generate", productName, notes }, { method: "post" });
+    scrollTop(); // pop up to the forge so the hammer animation is in view
+  };
 
   // Autopilot: push a chosen description variant (+ bullets) and SEO meta
   // straight onto the Shopify product listing.
@@ -202,6 +209,11 @@ export default function Products() {
                 one click.
               </p>
               {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
+              {copy && !busy && (
+                <button type="button" className="mm-forge-jump" onClick={scrollToResults}>
+                  ✅ LISTING FORGED — VIEW IT ↓
+                </button>
+              )}
             </div>
             <div className="mm-forge-vid-wrap" aria-hidden="true">
               <video
@@ -316,9 +328,10 @@ export default function Products() {
         {copy && (
           <>
             <Layout.Section>
+              <div ref={resultsRef} style={{ scrollMarginTop: 12 }} />
               <Card>
                 <BlockStack gap="300">
-                  <Text variant="headingMd" as="h2">SEO meta</Text>
+                  <Text variant="headingMd" as="h2">🔨 Freshly forged listing</Text>
                   <BlockStack gap="100">
                     <Text variant="bodySm" as="p" tone="subdued">Title tag</Text>
                     <Text variant="bodyMd" as="p" fontWeight="semibold">{copy.seoTitle}</Text>
