@@ -66,12 +66,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Shopify's approval screen. If billing isn't fully set up yet, we don't
   // block the merchant — the plan is already active, so we just send them
   // back to the dashboard. Real charging turns on once billing is verified.
-  const appUrl = process.env.SHOPIFY_APP_URL || "";
+  // returnUrl MUST re-enter the EMBEDDED admin context, otherwise Shopify
+  // redirects to the bare app URL outside admin → no session → 401.
+  const storeHandle = session.shop.replace(/\.myshopify\.com$/, "");
+  const appHandle = process.env.SHOPIFY_APP_HANDLE || "marginmonster-1";
+  const returnUrl = `https://admin.shopify.com/store/${storeHandle}/apps/${appHandle}/app`;
   try {
     await billing.request({
       plan: planKey,
       isTest: true,
-      returnUrl: `${appUrl}/app`,
+      returnUrl,
     });
   } catch (e) {
     if (e instanceof Response) throw e; // the approval redirect — let it flow
