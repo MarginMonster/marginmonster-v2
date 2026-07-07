@@ -38,8 +38,26 @@ Return ONLY a JSON object:
 
 Every line must sound like this brand — never generic.`;
 
-  const text = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 1400 });
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Could not parse product copy.");
-  return JSON.parse(match[0]) as ProductCopy;
+  const strict =
+    prompt +
+    `\n\nIMPORTANT: Respond with ONLY the raw JSON object. No markdown, no code fences, no commentary before or after.`;
+
+  const tryOnce = async (p: string): Promise<ProductCopy | null> => {
+    const raw = (await anthropicText(p, { model: "claude-sonnet-5", maxTokens: 2200 })) || "";
+    // strip markdown code fences, then take the outermost { ... }
+    const cleaned = raw.replace(/```(?:json)?/gi, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) return null;
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1)) as ProductCopy;
+    } catch {
+      return null;
+    }
+  };
+
+  let copy = await tryOnce(prompt);
+  if (!copy) copy = await tryOnce(strict); // one retry with a stricter instruction
+  if (!copy) throw new Error("Could not parse product copy. Please try again.");
+  return copy;
 }
