@@ -197,7 +197,7 @@ export default function Products() {
               {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
             </div>
             <div className="mm-forge-badge-wrap" aria-hidden="true">
-              <img className="mm-forge-badge" src="/fighters/mascot.jpg?v=1" alt="Magic Monster" />
+              <img className="mm-forge-smith" src="/fighters/goblin.png?v=3" alt="" draggable={false} />
             </div>
           </div>
         </Layout.Section>

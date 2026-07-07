@@ -246,19 +246,17 @@ body::before {
 
 /* brand emblem — the real Magic Monster logo, framed */
 .mm-forge-badge-wrap { flex-shrink: 0; position: relative; }
-.mm-forge-badge {
-  width: 152px; height: 152px; border-radius: 22px; object-fit: cover; display: block;
-  border: 2px solid rgba(245,196,81,0.55);
-  box-shadow: 0 10px 30px rgba(245,140,40,0.35), inset 0 0 0 1px rgba(0,0,0,0.3);
+.mm-forge-smith {
+  width: 190px; height: 190px; object-fit: contain; object-position: bottom center; display: block;
+  filter: drop-shadow(0 8px 18px rgba(245,140,40,0.45));
+  animation: mm-smith-idle 3s ease-in-out infinite;
 }
-.mm-forge-hero.forging .mm-forge-badge { animation: mm-badge-pulse 0.9s ease-in-out infinite; }
-@keyframes mm-badge-pulse {
-  0%,100% { box-shadow: 0 10px 30px rgba(245,140,40,0.35), inset 0 0 0 1px rgba(0,0,0,0.3); }
-  50% { box-shadow: 0 10px 38px rgba(255,175,60,0.65), inset 0 0 0 1px rgba(0,0,0,0.3); }
-}
+.mm-forge-hero.forging .mm-forge-smith { animation: mm-smith-hammer 0.55s ease-in-out infinite; transform-origin: 55% 85%; }
+@keyframes mm-smith-idle { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-1deg); } }
+@keyframes mm-smith-hammer { 0%,100% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-2px) rotate(-4deg); } 65% { transform: translateY(1px) rotate(2deg); } }
 @media (max-width: 560px) { .mm-forge-badge-wrap { display: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .mm-forge-hero.forging .mm-forge-badge, .mm-forge-status { animation: none; }
+  .mm-forge-smith, .mm-forge-hero.forging .mm-forge-smith, .mm-forge-status { animation: none; }
 }
 
 /* ---- Animated fight scene (Market Arcade owner vs. going it alone) ---- */
