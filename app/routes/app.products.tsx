@@ -196,16 +196,9 @@ export default function Products() {
               </p>
               {busy && <div className="mm-forge-status">🔨 FORGING YOUR LISTING…</div>}
             </div>
-            <div className="mm-forge-video-wrap" aria-hidden="true">
-              <video
-                key={busy ? "hammer" : "idle"}
-                className="mm-forge-video"
-                src={busy ? "/fighters/forge_hammer.mp4?v=1" : "/fighters/forge_idle.mp4?v=1"}
-                autoPlay
-                loop
-                muted
-                playsInline
-              />
+            <div className="mm-forge-scene-frame" aria-hidden="true">
+              <img className="mm-forge-scene-img" src="/fighters/forge_scene.jpg?v=1" alt="" draggable={false} />
+              <span className="mm-forge-scene-glow" />
             </div>
           </div>
         </Layout.Section>

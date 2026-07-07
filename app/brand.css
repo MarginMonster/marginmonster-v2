@@ -246,14 +246,33 @@ body::before {
 
 /* brand emblem — the real Magic Monster logo, framed */
 .mm-forge-badge-wrap { flex-shrink: 0; position: relative; }
-.mm-forge-video-wrap { flex-shrink: 0; }
-.mm-forge-video {
-  width: 232px; height: 232px; object-fit: cover; display: block; border-radius: 18px;
-  border: 2px solid rgba(245,196,81,0.5);
-  box-shadow: 0 10px 30px rgba(245,140,40,0.4);
+/* real forge illustration, brought to life with CSS: slow cinematic zoom +
+   a flickering forge glow that intensifies while forging */
+.mm-forge-scene-frame {
+  position: relative; flex-shrink: 0; width: 300px; height: 220px; border-radius: 18px;
+  overflow: hidden; border: 2px solid rgba(245,196,81,0.5);
+  box-shadow: 0 12px 34px rgba(245,140,40,0.4);
 }
-.mm-forge-hero.forging .mm-forge-video { border-color: rgba(255,175,60,0.85); box-shadow: 0 10px 40px rgba(255,160,50,0.6); }
-@media (max-width: 620px) { .mm-forge-video-wrap { display: none; } }
+.mm-forge-scene-img {
+  width: 100%; height: 100%; object-fit: cover; object-position: 58% 55%; display: block;
+  transform-origin: 60% 55%;
+  animation: mm-scene-zoom 16s ease-in-out infinite alternate;
+}
+@keyframes mm-scene-zoom { from { transform: scale(1.02); } to { transform: scale(1.14); } }
+/* warm forge glow overlay, flickering like firelight */
+.mm-forge-scene-glow {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(60% 55% at 62% 46%, rgba(255,150,40,0.30), transparent 70%);
+  mix-blend-mode: screen; animation: mm-scene-flicker 0.3s ease-in-out infinite alternate;
+}
+@keyframes mm-scene-flicker { from { opacity: 0.55; } to { opacity: 0.95; } }
+.mm-forge-hero.forging .mm-forge-scene-frame { border-color: rgba(255,175,60,0.9); box-shadow: 0 12px 44px rgba(255,160,50,0.65); }
+.mm-forge-hero.forging .mm-forge-scene-img { animation: mm-scene-zoom 6s ease-in-out infinite alternate; }
+.mm-forge-hero.forging .mm-forge-scene-glow { background: radial-gradient(60% 55% at 62% 46%, rgba(255,170,60,0.5), transparent 72%); animation-duration: 0.18s; }
+@media (max-width: 640px) { .mm-forge-scene-frame { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .mm-forge-scene-img, .mm-forge-scene-glow { animation: none; }
+}
 @media (max-width: 560px) { .mm-forge-badge-wrap { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .mm-forge-status { animation: none; }
