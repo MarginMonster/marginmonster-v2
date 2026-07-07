@@ -116,6 +116,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
+// Fighter / rank labels so the dashboard reflects the arcade plan names
+// (kept in sync with FIGHTERS in app.plans.tsx).
+const PLAN_LABELS: Record<string, { fighter: string; rank: string }> = {
+  STARTER: { fighter: "Striker", rank: "Starter" },
+  GROWTH: { fighter: "Bruiser", rank: "Pro" },
+  PRO: { fighter: "Warlord", rank: "Master" },
+  SCALE: { fighter: "Titan", rank: "Grandmaster" },
+};
+const planLabel = (type: string) => {
+  const l = PLAN_LABELS[type];
+  return l ? `${l.fighter} · ${l.rank}` : type.replace(/_/g, " ");
+};
+
 export default function Dashboard() {
   const { shop, pendingAssets, brandJobError, billingStatus, steps } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -323,7 +336,7 @@ export default function Dashboard() {
               <BlockStack gap="100">
                 <Text variant="headingMd" as="h3">Active plan</Text>
                 {hasPlan ? (
-                  <Badge tone="success">{shop.activePlan!.type.replace(/_/g, " ")}</Badge>
+                  <Badge tone="success">{planLabel(shop.activePlan!.type)}</Badge>
                 ) : (
                   <Badge tone="attention">None yet</Badge>
                 )}
