@@ -288,6 +288,12 @@ body::before {
 /* these sit directly on the dark ember bg (no card) → force light text */
 .mm-forged-head h1, .mm-forged-head h2, .mm-forged-head h3 { color: #ECEAFB !important; }
 .mm-forge-note { color: #C6C1E6; font-size: 13px; line-height: 1.45; margin: 0; }
+.mm-ghost-btn {
+  cursor: pointer; background: rgba(255,255,255,0.06); color: #ECEAFB;
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 10px;
+  font-size: 13px; font-weight: 600; padding: 9px 15px; transition: border-color .15s ease, background .15s ease;
+}
+.mm-ghost-btn:hover { border-color: rgba(52,231,228,0.55); background: rgba(52,231,228,0.08); }
 .mm-forged-stamp {
   font-family: var(--font-pixel); font-size: 13px; letter-spacing: .06em; color: #0B0A17;
   background: linear-gradient(180deg, #7bf3f1, #1fb6b3); padding: 8px 14px; border-radius: 8px;
@@ -343,19 +349,19 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-ember-bg {
   position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
   background:
-    radial-gradient(135% 85% at 50% 112%, #4a1706 0%, #260c06 38%, #120806 66%, #0a0507 100%);
+    radial-gradient(135% 85% at 50% 112%, #06323a 0%, #08202e 38%, #070f1a 66%, #05070f 100%);
 }
-/* flickering coal glow rising from the bottom */
+/* flickering cyan forge glow rising from the bottom */
 .mm-ember-bg::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(90% 45% at 50% 104%, rgba(255,95,20,0.30), rgba(255,60,10,0.08) 45%, transparent 72%);
+  background: radial-gradient(90% 45% at 50% 104%, rgba(52,231,228,0.26), rgba(31,182,179,0.08) 45%, transparent 72%);
   animation: mm-coal-flicker 0.45s ease-in-out infinite alternate;
 }
 @keyframes mm-coal-flicker { from { opacity: 0.6; } to { opacity: 1; } }
 
 .mm-ember-bg .em {
   position: absolute; bottom: -12px; width: 4px; height: 4px; border-radius: 50%;
-  background: #ffbf57; box-shadow: 0 0 7px 1px #ff7a18; opacity: 0;
+  background: #a9f7f4; box-shadow: 0 0 7px 1px #34E7E4; opacity: 0;
   animation: mm-ember-rise 6s linear infinite;
 }
 @keyframes mm-ember-rise {
@@ -382,12 +388,12 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-ember-bg .em:nth-child(16) { left: 34%; --drift: 32px;  animation-duration: 5.6s; animation-delay: 5.2s; }
 
 /* FORGING: the whole backdrop comes alive — brighter coals, faster/denser embers */
-.mm-ember-bg.forging { background: radial-gradient(140% 90% at 50% 112%, #7a2408 0%, #3a1206 40%, #1a0a07 70%, #0d0608 100%); }
+.mm-ember-bg.forging { background: radial-gradient(140% 90% at 50% 112%, #0a5866 0%, #073a44 40%, #0a1c2a 70%, #06121c 100%); }
 .mm-ember-bg.forging::after {
-  background: radial-gradient(95% 55% at 50% 104%, rgba(255,130,30,0.55), rgba(255,80,15,0.18) 48%, transparent 74%);
+  background: radial-gradient(95% 55% at 50% 104%, rgba(52,231,228,0.5), rgba(31,182,179,0.18) 48%, transparent 74%);
   animation-duration: 0.16s;
 }
-.mm-ember-bg.forging .em { animation-duration: 2.6s; box-shadow: 0 0 9px 2px #ff6a10; width: 5px; height: 5px; }
+.mm-ember-bg.forging .em { animation-duration: 2.6s; box-shadow: 0 0 9px 2px #34E7E4; width: 5px; height: 5px; }
 @media (prefers-reduced-motion: reduce) {
   .mm-ember-bg::after, .mm-ember-bg .em { animation: none; }
 }

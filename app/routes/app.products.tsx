@@ -324,7 +324,7 @@ export default function Products() {
               <video
                 key={busy ? "hammer" : "idle"}
                 className="mm-smith-vid"
-                src={busy ? "/fighters/forge_hammer.mp4?v=2" : "/fighters/forge_idle.mp4?v=3"}
+                src={busy ? "/fighters/forge_hammer.mp4?v=4" : "/fighters/forge_idle.mp4?v=3"}
                 autoPlay
                 loop
                 muted
@@ -468,7 +468,7 @@ export default function Products() {
                   <Button variant="primary" onClick={applyAll} loading={applyingAll} disabled={applyFetcher.state !== "idle"}>
                     {`⚙️ Autopilot: apply all ${applicable.length} to my store`}
                   </Button>
-                  <Button variant="tertiary" onClick={scrollToResults}>Review each first ↓</Button>
+                  <button type="button" className="mm-ghost-btn" onClick={scrollToResults}>Review each first ↓</button>
                 </InlineStack>
                 <Box paddingBlockStart="100">
                   <p className="mm-forge-note">
