@@ -11,6 +11,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
+import { Mech } from "../components/Mech";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -110,15 +111,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app");
 };
 
-type Fighter = { title: string; ref: string; rank: string; power: number; accent: string; img: string; stats: { label: string; v: number }[] };
+type Fighter = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "Striker", ref: "Starter", rank: "TIER I", power: 1, accent: "#34E7E4", img: "striker",
+  STARTER: { title: "SPARK-01", ref: "Recon Unit", rank: "TIER I", power: 1, accent: "#34E7E4",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  GROWTH: { title: "Bruiser", ref: "Pro", rank: "TIER II", power: 2, accent: "#E5397D", img: "bruiser",
+  GROWTH: { title: "HAVOC", ref: "Assault Mech", rank: "TIER II", power: 2, accent: "#FF3D8B",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  PRO: { title: "Warlord", ref: "Master", rank: "TIER III", power: 3, accent: "#F5C451", img: "warlord",
+  PRO: { title: "OVERLORD", ref: "Siege Titan", rank: "TIER III", power: 3, accent: "#FFB020",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
-  SCALE: { title: "Titan", ref: "Grandmaster", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "titan",
+  SCALE: { title: "OMEGA", ref: "Omega Prime", rank: "TIER IV", power: 4, accent: "#B77BFF",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
@@ -136,10 +137,10 @@ function Sprite({ img, className }: { img: string; className: string }) {
   );
 }
 
-function PixelFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
+function MechFighter({ tier, accent, context }: { tier: 1 | 2 | 3 | 4; accent: string; context?: "fight" }) {
   return (
-    <div className={`mm-pixel${context === "fight" ? " in-fight" : ""}`} style={{ ["--fx" as string]: accent }}>
-      <Sprite img={img} className="mm-sprite" />
+    <div className={`mm-pixel mm-mech-wrap${context === "fight" ? " in-fight" : ""}`} style={{ ["--fx" as string]: accent }}>
+      <Mech tier={tier} accent={accent} className={context === "fight" ? "in-fight" : ""} />
     </div>
   );
 }
@@ -232,7 +233,7 @@ export default function Plans() {
             </div>
 
             <div className="mm-fight-stage" data-p={champ.power}>
-              <div className="mm-fighter-you"><PixelFighter img={champ.img} accent={champ.accent} context="fight" /></div>
+              <div className="mm-fighter-you"><MechFighter tier={champ.power} accent={champ.accent} context="fight" /></div>
               <div className="mm-fireball" style={{ ["--fireclr" as string]: champ.accent }} />
               <div className="mm-fight-hit" style={{ color: champ.accent, fontSize: 15 + champ.power * 4 }}>
                 {champ.power >= 4 ? "K.O.!" : champ.power >= 3 ? "BOOM!" : "POW!"}
@@ -284,7 +285,7 @@ export default function Plans() {
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
-                    <PixelFighter img={f.img} accent={f.accent} />
+                    <MechFighter tier={f.power} accent={f.accent} />
                     <div className="mm-fighter-power">
                       {[1, 2, 3, 4].map((n) => (
                         <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />

@@ -10,17 +10,17 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
 import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
+import { Mech, MECH_BY_PLAN } from "../components/Mech";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
-// Avatar (arcade fighter sprite) + display name per plan tier. `sprite` maps to
-// the real 2-frame pixel fighters in public/fighters ({sprite}.png + {sprite}_b.png),
-// matching the character shown on the Plans page for that tier.
-const PLAN_AVATAR: Record<PlanKey, { icon: string; label: string; sprite: string }> = {
-  STARTER: { icon: "🥊", label: "Starter", sprite: "striker" },
-  GROWTH: { icon: "⚔️", label: "Growth", sprite: "bruiser" },
-  PRO: { icon: "🛡️", label: "Pro", sprite: "warlord" },
-  SCALE: { icon: "👑", label: "Scale", sprite: "titan" },
+// Display name per plan tier. The avatar itself is the matching combat mech
+// (see MECH_BY_PLAN), so the HUD stays in sync with the Plans select screen.
+const PLAN_AVATAR: Record<PlanKey, { label: string }> = {
+  STARTER: { label: "Starter" },
+  GROWTH: { label: "Growth" },
+  PRO: { label: "Pro" },
+  SCALE: { label: "Scale" },
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -38,8 +38,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     name: string;
     planKey: PlanKey | null;
     planLabel: string;
-    avatar: string;
-    sprite: string | null;
+    tier: 1 | 2 | 3 | 4 | null;
+    accent: string;
     tokens: number;
     tokensMax: number;
     videos: number;
@@ -48,8 +48,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     name: playerName,
     planKey: null,
     planLabel: "No Plan",
-    avatar: "🎮",
-    sprite: null,
+    tier: null,
+    accent: "#34E7E4",
     tokens: 0,
     tokensMax: 0,
     videos: 0,
@@ -65,13 +65,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (plan) {
       plan = await refreshPeriod(plan);
       const remaining = tokensRemaining(plan);
-      const tier = PLAN_AVATAR[plan.type as PlanKey];
+      const mech = MECH_BY_PLAN[plan.type as PlanKey];
       hud = {
         name: playerName,
         planKey: plan.type as PlanKey,
-        planLabel: tier?.label ?? plan.type,
-        avatar: tier?.icon ?? "🎮",
-        sprite: tier?.sprite ?? null,
+        planLabel: PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type,
+        tier: mech?.tier ?? null,
+        accent: mech?.accent ?? "#34E7E4",
         tokens: remaining,
         tokensMax: Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra),
         videos: Math.max(0, plan.videoQuota - plan.videoUsed),
@@ -93,14 +93,13 @@ export default function App() {
       <style dangerouslySetInnerHTML={{ __html: brandStyles }} />
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
       <div className="mm-hud" aria-label="Player status">
-        <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`}>
-          {hud.sprite ? (
+        <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>
+          {hud.tier ? (
             <span className="mm-hud-sprite" aria-hidden="true">
-              <img className="hf f1" src={`/fighters/${hud.sprite}.png?v=4`} alt="" draggable={false} />
-              <img className="hf f2" src={`/fighters/${hud.sprite}_b.png?v=4`} alt="" draggable={false} />
+              <Mech tier={hud.tier} accent={hud.accent} />
             </span>
           ) : (
-            <span className="mm-hud-face">{hud.avatar}</span>
+            <span className="mm-hud-face">🎮</span>
           )}
         </Link>
         <div className="mm-hud-body">

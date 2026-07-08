@@ -180,6 +180,41 @@ body::before {
 @keyframes mm-frameB { 0%,49.9% { opacity: 0; } 50%,100% { opacity: 1; } }
 @keyframes mm-pixel-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 
+/* ---- SVG combat mechs (parametric, per-tier) ---- */
+.mm-mech { width: 100%; height: 100%; display: block; overflow: visible; }
+.mm-mech-wrap { display: block; }
+.mm-mech .mm-mech-core { transform-box: fill-box; transform-origin: center; animation: mm-mech-core 1.9s ease-in-out infinite; }
+.mm-mech .mm-mech-optic { animation: mm-mech-flicker 2.8s steps(1, end) infinite; }
+.mm-mech .mm-mech-wings { transform-box: fill-box; transform-origin: 50% 70%; animation: mm-mech-wings 2.6s ease-in-out infinite; }
+@keyframes mm-mech-core { 0%,100% { opacity: .7; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes mm-mech-flicker { 0%,90% { opacity: 1; } 92% { opacity: .35; } 94% { opacity: 1; } 97% { opacity: .55; } 99% { opacity: 1; } }
+@keyframes mm-mech-wings { 0%,100% { opacity: .5; transform: scaleX(.96); } 50% { opacity: .95; transform: scaleX(1.04); } }
+@media (prefers-reduced-motion: reduce) {
+  .mm-mech .mm-mech-core, .mm-mech .mm-mech-optic, .mm-mech .mm-mech-wings { animation: none; }
+}
+
+/* premium "containment pod" — rotating energy ring + sheen behind the mech */
+.mm-fighter-portrait::before {
+  content: ""; position: absolute; left: 50%; top: 46%; width: 150%; aspect-ratio: 1;
+  transform: translate(-50%, -50%); pointer-events: none; z-index: 0;
+  background: conic-gradient(from 0deg, transparent 0deg, color-mix(in srgb, var(--fx) 55%, transparent) 60deg, transparent 130deg, transparent 240deg, color-mix(in srgb, var(--fx) 40%, transparent) 300deg, transparent 360deg);
+  opacity: 0.35; border-radius: 50%;
+  -webkit-mask: radial-gradient(circle, transparent 38%, #000 40%, #000 58%, transparent 60%);
+  mask: radial-gradient(circle, transparent 38%, #000 40%, #000 58%, transparent 60%);
+  animation: mm-pod-spin 9s linear infinite;
+}
+.mm-fighter-portrait::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,0.10) 48%, transparent 58%);
+  transform: translateX(-120%); animation: mm-pod-sheen 5.5s ease-in-out infinite;
+}
+.mm-fighter-portrait .mm-pixel, .mm-fighter-portrait .mm-fighter-rank, .mm-fighter-portrait .mm-fighter-power { position: relative; z-index: 3; }
+@keyframes mm-pod-spin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+@keyframes mm-pod-sheen { 0%,55% { transform: translateX(-120%); } 80%,100% { transform: translateX(120%); } }
+@media (prefers-reduced-motion: reduce) {
+  .mm-fighter-portrait::before, .mm-fighter-portrait::after { animation: none; }
+}
+
 .mm-fighter-portrait { cursor: pointer; }
 /* hovering a card sends that fighter into a quick lunge */
 .mm-fighter-card:hover .mm-pixel { animation: mm-card-lunge 0.5s ease-in-out; }
@@ -558,15 +593,9 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 }
 .mm-hud-avatar:hover { border-color: rgba(52,231,228,0.9); box-shadow: inset 0 0 14px rgba(52,231,228,0.4), 0 0 16px rgba(52,231,228,0.4); transform: translateY(-1px); }
 .mm-hud-face { font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
-/* animated plan fighter sprite (2-frame flipbook, black keyed out via screen blend) */
-.mm-hud-sprite { position: absolute; inset: 3px; }
-.mm-hud-sprite .hf {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; object-position: bottom center;
-  mix-blend-mode: screen; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
-}
-.mm-hud-sprite .f1 { animation: mm-frameA 0.9s steps(1, end) infinite; }
-.mm-hud-sprite .f2 { animation: mm-frameB 0.9s steps(1, end) infinite; }
+/* animated plan combat mech (SVG, self-contained glow + idle animation) */
+.mm-hud-sprite { position: absolute; inset: 2px; display: block; }
+.mm-hud-sprite .mm-mech { width: 100%; height: 100%; filter: drop-shadow(0 1px 4px color-mix(in srgb, var(--acc, #34E7E4) 55%, transparent)); }
 .mm-hud-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mm-hud-top { display: flex; align-items: baseline; gap: 8px; }
 .mm-hud-name {
