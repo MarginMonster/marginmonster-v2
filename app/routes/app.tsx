@@ -13,12 +13,14 @@ import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
-// Avatar (arcade fighter) + display name per plan tier.
-const PLAN_AVATAR: Record<PlanKey, { icon: string; label: string }> = {
-  STARTER: { icon: "🥊", label: "Starter" },
-  GROWTH: { icon: "⚔️", label: "Growth" },
-  PRO: { icon: "🛡️", label: "Pro" },
-  SCALE: { icon: "👑", label: "Scale" },
+// Avatar (arcade fighter sprite) + display name per plan tier. `sprite` maps to
+// the real 2-frame pixel fighters in public/fighters ({sprite}.png + {sprite}_b.png),
+// matching the character shown on the Plans page for that tier.
+const PLAN_AVATAR: Record<PlanKey, { icon: string; label: string; sprite: string }> = {
+  STARTER: { icon: "🥊", label: "Starter", sprite: "striker" },
+  GROWTH: { icon: "⚔️", label: "Growth", sprite: "bruiser" },
+  PRO: { icon: "🛡️", label: "Pro", sprite: "warlord" },
+  SCALE: { icon: "👑", label: "Scale", sprite: "titan" },
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -37,6 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     planKey: PlanKey | null;
     planLabel: string;
     avatar: string;
+    sprite: string | null;
     tokens: number;
     tokensMax: number;
     videos: number;
@@ -46,6 +49,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     planKey: null,
     planLabel: "No Plan",
     avatar: "🎮",
+    sprite: null,
     tokens: 0,
     tokensMax: 0,
     videos: 0,
@@ -67,6 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         planKey: plan.type as PlanKey,
         planLabel: tier?.label ?? plan.type,
         avatar: tier?.icon ?? "🎮",
+        sprite: tier?.sprite ?? null,
         tokens: remaining,
         tokensMax: Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra),
         videos: Math.max(0, plan.videoQuota - plan.videoUsed),
@@ -82,30 +87,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function App() {
   const { apiKey, hud } = useLoaderData<typeof loader>();
-  const hpPct = Math.max(0, Math.min(100, Math.round((hud.tokens / hud.tokensMax) * 100)));
-  const hpTone = hpPct <= 20 ? " low" : hpPct <= 50 ? " mid" : "";
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <style dangerouslySetInnerHTML={{ __html: brandStyles }} />
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
       <div className="mm-hud" aria-label="Player status">
-        <div className="mm-hud-avatar" title={hud.planLabel}>
-          <span className="mm-hud-face">{hud.avatar}</span>
-        </div>
+        <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`}>
+          {hud.sprite ? (
+            <span className="mm-hud-sprite" aria-hidden="true">
+              <img className="hf f1" src={`/fighters/${hud.sprite}.png?v=4`} alt="" draggable={false} />
+              <img className="hf f2" src={`/fighters/${hud.sprite}_b.png?v=4`} alt="" draggable={false} />
+            </span>
+          ) : (
+            <span className="mm-hud-face">{hud.avatar}</span>
+          )}
+        </Link>
         <div className="mm-hud-body">
           <div className="mm-hud-top">
             <span className="mm-hud-name">{hud.name}</span>
-            <span className="mm-hud-plan">{hud.planLabel}</span>
+            <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
           </div>
-          <div className={`mm-hud-hp${hpTone}`} title={`${hud.tokens.toLocaleString()} / ${hud.tokensMax.toLocaleString()} tokens`}>
-            <i style={{ width: `${hpPct}%` }} />
-            <span className="mm-hud-hp-txt">{hud.tokens.toLocaleString()} ⚡</span>
-          </div>
+          {/* Always-full lime health bar (decorative) */}
+          <div className="mm-hud-hp" aria-hidden="true"><i /></div>
           <div className="mm-hud-stats">
-            <span title="Tokens remaining">⚡ {hud.tokens.toLocaleString()}</span>
-            <span title="Video generations left">🎬 {hud.videos}</span>
-            <span title="Ad generations you can afford">🖼 {hud.ads}</span>
+            <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
+              <span title="Tokens remaining">🪙 {hud.tokens.toLocaleString()}</span>
+              <span className="mm-hud-plus">+ TOP UP</span>
+            </Link>
+            <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos}</span>
+            <span className="mm-hud-stat" title="Ad generations you can afford">🖼 {hud.ads}</span>
           </div>
         </div>
       </div>
@@ -128,6 +139,8 @@ export default function App() {
         <svg className="ast a3" viewBox="0 0 100 100"><polygon points="50,8 78,22 90,50 76,82 44,92 16,72 10,42 26,18" /></svg>
         <svg className="ast a4" viewBox="0 0 100 100"><polygon points="50,6 80,26 88,56 68,86 36,88 12,62 14,30 32,12" /></svg>
       </div>
+      {/* spacer so the fixed HUD never covers page header actions */}
+      <div className="mm-hud-spacer" aria-hidden="true" />
       <Outlet />
     </AppProvider>
   );

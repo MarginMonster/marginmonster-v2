@@ -545,16 +545,28 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
               inset 0 1px 0 rgba(255,255,255,0.06);
   backdrop-filter: blur(6px); color: #EAFBFF;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  max-width: min(320px, calc(100vw - 28px)); pointer-events: auto;
+  width: min(380px, calc(100vw - 28px)); pointer-events: auto;
 }
 .mm-hud-avatar {
-  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px;
-  display: grid; place-items: center;
-  background: radial-gradient(120% 120% at 50% 20%, #123a44, #0a1622);
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: 11px;
+  display: grid; place-items: center; overflow: hidden; position: relative;
+  text-decoration: none; cursor: pointer;
+  background: radial-gradient(120% 120% at 50% 18%, #0f2e36, #06111c 82%);
   border: 1px solid rgba(52,231,228,0.5);
   box-shadow: inset 0 0 12px rgba(52,231,228,0.28), 0 0 10px rgba(52,231,228,0.2);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
+.mm-hud-avatar:hover { border-color: rgba(52,231,228,0.9); box-shadow: inset 0 0 14px rgba(52,231,228,0.4), 0 0 16px rgba(52,231,228,0.4); transform: translateY(-1px); }
 .mm-hud-face { font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+/* animated plan fighter sprite (2-frame flipbook, black keyed out via screen blend) */
+.mm-hud-sprite { position: absolute; inset: 3px; }
+.mm-hud-sprite .hf {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; object-position: bottom center;
+  mix-blend-mode: screen; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+}
+.mm-hud-sprite .f1 { animation: mm-frameA 0.9s steps(1, end) infinite; }
+.mm-hud-sprite .f2 { animation: mm-frameB 0.9s steps(1, end) infinite; }
 .mm-hud-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mm-hud-top { display: flex; align-items: baseline; gap: 8px; }
 .mm-hud-name {
@@ -564,33 +576,46 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-hud-plan {
   font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
   color: #0a1622; background: linear-gradient(180deg, #7ffff9, #34E7E4);
-  padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  text-decoration: none; cursor: pointer; transition: filter .15s ease, transform .15s ease;
 }
-/* health bar */
+.mm-hud-plan:hover { filter: brightness(1.12); transform: translateY(-1px); }
+/* health bar — always full, lime green (pure arcade HP, no text inside) */
 .mm-hud-hp {
-  position: relative; height: 12px; border-radius: 999px; overflow: hidden;
-  background: #0a1c26; border: 1px solid rgba(52,231,228,0.35);
+  position: relative; height: 11px; border-radius: 999px; overflow: hidden;
+  background: #0a1c26; border: 1px solid rgba(198,255,61,0.3);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
 }
 .mm-hud-hp > i {
-  display: block; height: 100%; border-radius: 999px;
-  background: linear-gradient(90deg, #1fb6b3, #34E7E4 60%, #a9f7f4);
-  box-shadow: 0 0 10px rgba(52,231,228,0.6); transition: width .4s ease;
-}
-.mm-hud-hp.mid > i { background: linear-gradient(90deg, #c9a53a, #f4d03f 60%, #fff0a8); box-shadow: 0 0 10px rgba(244,208,63,0.6); }
-.mm-hud-hp.low > i { background: linear-gradient(90deg, #b03a3a, #ff5a5a 60%, #ffb0b0); box-shadow: 0 0 10px rgba(255,90,90,0.6); }
-.mm-hud-hp-txt {
-  position: absolute; inset: 0; display: grid; place-items: center;
-  font-size: 8.5px; font-weight: 800; letter-spacing: 0.4px; color: #FFFFFF;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.85);
+  display: block; height: 100%; width: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #7BC80F, #C6FF3D 55%, #eaff9c);
+  box-shadow: 0 0 10px rgba(198,255,61,0.6);
 }
 .mm-hud-stats {
-  display: flex; gap: 10px; font-size: 10.5px; font-weight: 700; color: #cdeef2;
+  display: flex; align-items: center; gap: 12px; font-size: 11.5px; font-weight: 800; color: #dff7f2;
 }
-.mm-hud-stats span { white-space: nowrap; }
+.mm-hud-stat { white-space: nowrap; }
+.mm-hud-top-up {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  color: #EAFBFF; text-decoration: none; cursor: pointer;
+  padding: 2px 4px 2px 2px; border-radius: 8px; transition: background .15s ease;
+}
+.mm-hud-top-up:hover { background: rgba(52,231,228,0.12); }
+.mm-hud-plus {
+  font-size: 8.5px; font-weight: 900; letter-spacing: 0.6px;
+  color: #0a1622; background: linear-gradient(180deg, #C6FF3D, #7BC80F);
+  padding: 2px 6px; border-radius: 999px; box-shadow: 0 0 8px rgba(198,255,61,0.45);
+}
+/* reserves vertical space so the fixed HUD never overlaps page header actions */
+.mm-hud-spacer { height: 92px; }
 @media (max-width: 560px) {
   .mm-hud { top: 8px; right: 8px; gap: 8px; padding: 6px 9px 6px 6px; }
-  .mm-hud-avatar { width: 36px; height: 36px; }
+  .mm-hud-avatar { width: 38px; height: 38px; }
   .mm-hud-face { font-size: 19px; }
   .mm-hud-name { max-width: 110px; }
+  .mm-hud-stats { gap: 9px; font-size: 10.5px; }
+  .mm-hud-spacer { height: 78px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-hud-sprite .f2 { opacity: 0; }
 }
