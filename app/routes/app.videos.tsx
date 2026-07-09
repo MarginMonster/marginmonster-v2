@@ -18,6 +18,7 @@ import {
   Box,
   Divider,
   EmptyState,
+  Select,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -284,6 +285,35 @@ export default function Videos() {
     : available;
   const castImg = (id: string, v: number) =>
     castAvail[id] === "variants" ? avatarImg(id, v) : `/avatars/${id}.jpg`;
+
+  // Take Library filters — reference cuts by presenter/product/status instead
+  // of scrolling the full reel
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [presenterFilter, setPresenterFilter] = useState<string>("ALL");
+  const [productFilter, setProductFilter] = useState<string>("ALL");
+
+  const videoMeta = (v: { metaJson: string }) => {
+    try { return JSON.parse(v.metaJson) as { avatarId?: string | null; productTitle?: string }; } catch { return {}; }
+  };
+  const presenterOptions = [
+    { label: "All presenters", value: "ALL" },
+    { label: "Product only", value: "NONE" },
+    ...Array.from(new Set(videos.map((v) => videoMeta(v).avatarId).filter(Boolean) as string[]))
+      .map((id) => ({ label: AVATAR_BY_ID[id]?.name || id, value: id })),
+  ];
+  const productOptions = [
+    { label: "All products", value: "ALL" },
+    ...Array.from(new Set(videos.map((v) => videoMeta(v).productTitle).filter(Boolean) as string[]))
+      .map((t) => ({ label: t.length > 40 ? t.slice(0, 40) + "…" : t, value: t })),
+  ];
+  const filteredVideos = videos.filter((v) => {
+    const meta = videoMeta(v);
+    if (statusFilter !== "ALL" && v.status !== statusFilter) return false;
+    if (presenterFilter === "NONE" && meta.avatarId) return false;
+    if (presenterFilter !== "ALL" && presenterFilter !== "NONE" && meta.avatarId !== presenterFilter) return false;
+    if (productFilter !== "ALL" && meta.productTitle !== productFilter) return false;
+    return true;
+  });
 
   // videos render in the background — poll while any job is in flight so the
   // finished cut pops in without a manual refresh
@@ -623,8 +653,11 @@ export default function Videos() {
           </Layout.Section>
         )}
 
-        {/* Library */}
+        {/* TAKE LIBRARY — filterable by status / presenter / product */}
         <Layout.Section>
+          <span className="mm-section-label">
+            ▶ TAKE LIBRARY ({filteredVideos.length}{filteredVideos.length !== videos.length ? ` of ${videos.length}` : ""})
+          </span>
           {videos.length === 0 ? (
             <Card>
               <Box padding="400">
@@ -634,8 +667,38 @@ export default function Videos() {
               </Box>
             </Card>
           ) : (
-            <BlockStack gap="400">
-              {videos.map((v) => {
+            <BlockStack gap="300">
+              <Card>
+                <InlineStack gap="400" blockAlign="end" wrap>
+                  <div className="mm-filter-chips">
+                    {([["ALL", "All"], ["PENDING", "Needs review"], ["APPROVED", "Approved"], ["REJECTED", "Rejected"]] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        className={`mm-chip mm-filter-chip${statusFilter === val ? " on" : ""}`}
+                        onClick={() => setStatusFilter(val)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <Box minWidth="170px">
+                    <Select label="Presenter" options={presenterOptions} value={presenterFilter} onChange={setPresenterFilter} />
+                  </Box>
+                  <Box minWidth="170px">
+                    <Select label="Product" options={productOptions} value={productFilter} onChange={setProductFilter} />
+                  </Box>
+                </InlineStack>
+              </Card>
+              {filteredVideos.length === 0 && (
+                <Card>
+                  <Box padding="400">
+                    <Text as="p" tone="subdued" alignment="center">No takes match those filters.</Text>
+                  </Box>
+                </Card>
+              )}
+              <div className="mm-take-grid">
+              {filteredVideos.map((v) => {
                 const body = JSON.parse(v.bodyJson);
                 const meta = JSON.parse(v.metaJson);
                 const pendingProvider = body.status === "awaiting_video_provider";
@@ -724,6 +787,7 @@ export default function Videos() {
                   </Card>
                 );
               })}
+              </div>
             </BlockStack>
           )}
         </Layout.Section>

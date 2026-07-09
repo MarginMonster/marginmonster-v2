@@ -754,6 +754,15 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-fit .fl { font-family: var(--font-pixel); font-size: 7px; letter-spacing: .08em; color: #dff7f2; }
 .mm-fit.on .fl { color: var(--arc-yellow); }
 
+/* TAKE LIBRARY — 2-up grid + filter chips */
+.mm-take-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.mm-filter-chips { display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 2px; }
+.mm-filter-chip { cursor: pointer; font-size: 12.5px; }
+.mm-filter-chip.on {
+  border-color: var(--mm-cyan); background: rgba(52,231,228,0.14); color: #EAFBFF;
+  box-shadow: 0 0 10px rgba(52,231,228,0.2);
+}
+
 /* rendering indicator — gentle pulse on the camera while a video cooks */
 .mm-render-spin { font-size: 26px; display: inline-block; animation: mm-render-pulse 1.4s ease-in-out infinite; }
 @keyframes mm-render-pulse { 0%,100% { transform: scale(1); opacity: .75; } 50% { transform: scale(1.18); opacity: 1; } }

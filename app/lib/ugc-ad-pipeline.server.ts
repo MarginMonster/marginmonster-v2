@@ -181,13 +181,24 @@ function assemble(opts: {
 
 /* ---------- The pipeline ---------- */
 
+/** Portrait URL that actually exists on this deploy — wardrobe variant if the
+ *  file is on disk, else that avatar's default, else the legacy flat portrait.
+ *  (Keeps the pipeline working while the 400-image wardrobe rollout lands.) */
+function resolvePortraitUrl(base: string, id: string, variant: number): string {
+  const dir = path.join(process.cwd(), "public", "avatars");
+  for (const candidate of [`${id}_${variant}.jpg`, `${id}_0.jpg`, `${id}.jpg`]) {
+    if (fs.existsSync(path.join(dir, candidate))) return `${base}/avatars/${candidate}`;
+  }
+  throw new Error(`[ugc] no portrait on disk for presenter "${id}"`);
+}
+
 export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const avatar = AVATAR_BY_ID[params.avatarId];
   if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
   const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   if (!base) throw new Error("[ugc] SHOPIFY_APP_URL not set (needed for portrait URL)");
-  const portraitUrl = `${base}/avatars/${avatar.id}_${variant}.jpg`;
+  const portraitUrl = resolvePortraitUrl(base, avatar.id, variant);
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
 
