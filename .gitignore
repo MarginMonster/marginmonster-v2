@@ -4,3 +4,6 @@ build/
 .env
 *.local
 .DS_Store
+
+/bin
+/data
