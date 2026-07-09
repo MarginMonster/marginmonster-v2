@@ -240,6 +240,7 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--acc, #34E7E4) 60%, transparent) 0%, color-mix(in srgb, var(--acc, #34E7E4) 22%, transparent) 40%, transparent 66%);
   filter: blur(5px); opacity: 0.5;
   animation: mm-mech-aura 4s ease-in-out infinite;
+  animation-delay: calc(var(--fd, 0s) * 1.6);
 }
 /* ground shadow that breathes inversely to the float (sells the levitation) */
 .mm-mech-shadow {
@@ -247,6 +248,7 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   transform: translateX(-50%); z-index: 1; pointer-events: none;
   background: radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 45%, transparent 72%);
   animation: mm-mech-shadow 4s ease-in-out infinite;
+  animation-delay: calc(var(--fd, 0s) * 2.2);
 }
 /* the stage — holds the stacked sprite frames and carries the levitation, so
    frame flips and motion never fight over the same transform */
@@ -254,6 +256,7 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   position: absolute; inset: 0; z-index: 2; display: block;
   transform-origin: 50% 100%;
   animation: mm-mech-levitate 4s ease-in-out infinite;
+  animation-delay: calc(var(--fd, 0s) * 2.2); /* matches shadow so they breathe together */
   will-change: transform;
 }
 .mm-mech-img {
@@ -263,27 +266,25 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 }
 /* TRUE sprite flipbook — hard cuts between three art frames of the same
    character (img2img variants), like hand-drawn "boiling" game animation.
-   4.8s organic fidget cycle: A → B → A → C → A. */
+   Fast equal-interval rotation (~0.6s/frame) reads as continuous living
+   motion rather than discrete pose changes. All three layers MUST share the
+   same delay (--fd) so exactly one frame is visible at any instant. */
 .mm-mech .mf-b, .mm-mech .mf-c { opacity: 0; }
-.mm-mech.f3 .mf-a { animation: mm-flip-a 4.8s linear infinite; }
-.mm-mech.f3 .mf-b { animation: mm-flip-b 4.8s linear infinite; }
-.mm-mech.f3 .mf-c { animation: mm-flip-c 4.8s linear infinite; }
+.mm-mech.f3 .mf-a { animation: mm-flip-a 1.8s linear infinite; animation-delay: var(--fd, 0s); }
+.mm-mech.f3 .mf-b { animation: mm-flip-b 1.8s linear infinite; animation-delay: var(--fd, 0s); }
+.mm-mech.f3 .mf-c { animation: mm-flip-c 1.8s linear infinite; animation-delay: var(--fd, 0s); }
 @keyframes mm-flip-a {
-  0%, 37.9% { opacity: 1; } 38%, 57.9% { opacity: 0; }
-  58%, 71.9% { opacity: 1; } 72%, 91.9% { opacity: 0; }
-  92%, 100% { opacity: 1; }
+  0%, 33.2% { opacity: 1; } 33.3%, 99.9% { opacity: 0; } 100% { opacity: 1; }
 }
 @keyframes mm-flip-b {
-  0%, 37.9% { opacity: 0; } 38%, 57.9% { opacity: 1; }
-  58%, 100% { opacity: 0; }
+  0%, 33.2% { opacity: 0; } 33.3%, 66.5% { opacity: 1; } 66.6%, 100% { opacity: 0; }
 }
 @keyframes mm-flip-c {
-  0%, 71.9% { opacity: 0; } 72%, 91.9% { opacity: 1; }
-  92%, 100% { opacity: 0; }
+  0%, 66.5% { opacity: 0; } 66.6%, 99.9% { opacity: 1; } 100% { opacity: 0; }
 }
 /* gentle whole-body sway on the wrapper — different period so the combined
    motion never visibly loops */
-.mm-mech { animation: mm-mech-sway 5.6s ease-in-out infinite; transform-origin: 50% 88%; }
+.mm-mech { animation: mm-mech-sway 5.6s ease-in-out infinite; transform-origin: 50% 88%; animation-delay: calc(var(--fd, 0s) * 3.1); }
 @keyframes mm-mech-sway {
   0%, 100% { transform: rotate(-1deg); }
   50% { transform: rotate(1deg); }
@@ -294,8 +295,8 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   color: var(--acc, #34E7E4); text-shadow: 0 0 8px var(--acc, #34E7E4);
   opacity: 0; transform: scale(0.3);
 }
-.mm-mech::before { top: 14%; right: 10%; font-size: 14px; animation: mm-spark 9.2s ease-in-out infinite; }
-.mm-mech::after { top: 42%; left: 7%; font-size: 10px; animation: mm-spark 12.4s ease-in-out 4.6s infinite; }
+.mm-mech::before { top: 14%; right: 10%; font-size: 14px; animation: mm-spark 9.2s ease-in-out infinite; animation-delay: calc(var(--fd, 0s) * 4); }
+.mm-mech::after { top: 42%; left: 7%; font-size: 10px; animation: mm-spark 12.4s ease-in-out infinite; animation-delay: calc(4.6s + var(--fd, 0s) * 5); }
 @keyframes mm-spark {
   0%, 88%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
   91% { opacity: 1; transform: scale(1.15) rotate(40deg); }

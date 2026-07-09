@@ -33,10 +33,17 @@ export function Mech({
   className?: string;
 }) {
   const src = (s: string) => `/fighters/mons/${img}${s}.png?v=${MECH_V}`;
+  // Per-character stagger so the roster never animates in unison — each partner
+  // starts mid-cycle at its own offset via negative animation-delay (brand.css
+  // also multiplies this for the sway/float/aura layers). Quarter-cycle spread
+  // across the four partners = maximum visual desync. Deterministic, so server
+  // and client render identically (no hydration mismatch).
+  const STAGGER: Record<string, number> = { byte: 0, kilo: -0.45, mega: -0.9, giga: -1.35, chaos: -0.6 };
+  const stagger = STAGGER[img] ?? -((img.length * 7) % 17) / 10;
   return (
     <span
       className={`mm-mech${frames >= 3 ? " f3" : ""}${className ? " " + className : ""}`}
-      style={{ ["--acc" as string]: accent }}
+      style={{ ["--acc" as string]: accent, ["--fd" as string]: `${stagger}s` }}
       aria-hidden="true"
     >
       <span className="mm-mech-aura" />
