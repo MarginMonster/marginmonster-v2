@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
-import { useState } from "react";
+import { useLoaderData, useSubmit, useNavigation, useFetcher } from "@remix-run/react";
+import { useState, useEffect } from "react";
 import {
   Page,
   Layout,
@@ -23,18 +23,39 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS } from "../lib/avatars";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
     include: { activePlan: true },
   });
-  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false });
+  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [] });
 
   const videos = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD" },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
+
+  // Catalog picker — same pattern as the SEO Forge, so no typing needed.
+  let products: { id: string; title: string; image: string | null; description: string }[] = [];
+  try {
+    const res = await admin.graphql(
+      `{ products(first: 24, sortKey: UPDATED_AT, reverse: true) {
+        edges { node { id title featuredImage { url } description(truncateAt: 220) } }
+      } }`
+    );
+    const j = (await res.json()) as {
+      data?: { products?: { edges?: { node: { id: string; title: string; featuredImage?: { url?: string }; description?: string } }[] } };
+    };
+    products = (j.data?.products?.edges || []).map((e) => ({
+      id: e.node.id,
+      title: e.node.title,
+      image: e.node.featuredImage?.url || null,
+      description: e.node.description || "",
+    }));
+  } catch {
+    /* non-fatal — manual entry still works */
+  }
 
   const plan = shop.activePlan;
   const hasVideoPlan = !!plan && plan.videoQuota > 0;
@@ -45,8 +66,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ? { videoQuota: plan.videoQuota, videoUsed: plan.videoUsed, videoCredits: plan.videoCredits }
       : null,
     hasVideoPlan,
+    products,
   });
 };
+
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -58,6 +89,90 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     include: { activePlan: true, brandProfile: true },
   });
   if (!shop) return json({ error: "Shop not found" });
+
+  // ---- Pull product info from any URL (Shopify product JSON → JSON-LD → OG tags) ----
+  if (intent === "pullUrl") {
+    const raw = ((form.get("url") as string) || "").trim();
+    try {
+      const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+      if (!/^https?:$/.test(u.protocol)) throw new Error("bad protocol");
+      const host = u.hostname.toLowerCase();
+      if (
+        host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") ||
+        /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+      ) {
+        return json({ pullError: "That URL isn't allowed." });
+      }
+      const ua = { "user-agent": "Mozilla/5.0 (compatible; AdArcade product import)", accept: "text/html,application/json" };
+
+      // Shopify storefront shortcut: /products/{handle}.js returns clean JSON
+      if (/\/products\/[^/?#]+\/?$/.test(u.pathname)) {
+        try {
+          const jres = await fetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: ua });
+          if (jres.ok) {
+            const pj = (await jres.json()) as { title?: string; description?: string; featured_image?: string };
+            if (pj?.title) {
+              const img = pj.featured_image
+                ? (pj.featured_image.startsWith("//") ? `https:${pj.featured_image}` : pj.featured_image)
+                : null;
+              return json({
+                pulled: { title: pj.title.slice(0, 120), image: img, description: stripHtml(pj.description || "").slice(0, 300) },
+              });
+            }
+          }
+        } catch { /* fall through to HTML scrape */ }
+      }
+
+      const res = await fetch(u.href, { signal: AbortSignal.timeout(9000), headers: ua, redirect: "follow" });
+      if (!res.ok) return json({ pullError: `Couldn't reach that page (${res.status}).` });
+      const html = (await res.text()).slice(0, 600_000);
+
+      let title: string | undefined;
+      let image: string | undefined;
+      let description: string | undefined;
+
+      // JSON-LD Product schema
+      const ldBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+      for (const block of ldBlocks) {
+        try {
+          const body = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+          const data = JSON.parse(body);
+          const nodes: any[] = Array.isArray(data) ? data : data?.["@graph"] ? data["@graph"] : [data];
+          const prod = nodes.find((n) => {
+            const t = n?.["@type"];
+            return t === "Product" || (Array.isArray(t) && t.includes("Product"));
+          });
+          if (prod) {
+            title = prod.name;
+            description = stripHtml(String(prod.description || "")).slice(0, 300);
+            const im = Array.isArray(prod.image) ? prod.image[0] : prod.image;
+            image = typeof im === "object" ? im?.url : im;
+            break;
+          }
+        } catch { /* try the next block */ }
+      }
+
+      // OpenGraph / <title> fallback
+      const og = (p: string) =>
+        html.match(new RegExp(`<meta[^>]+(?:property|name)=["']og:${p}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1] ||
+        html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:${p}["']`, "i"))?.[1];
+      title = title || og("title") || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+      image = image || og("image");
+      description = description || stripHtml(og("description") || "").slice(0, 300);
+
+      if (!title) return json({ pullError: "Couldn't find product info on that page." });
+      return json({
+        pulled: {
+          title: decodeEntities(title.trim()).slice(0, 120),
+          image: image || null,
+          description: decodeEntities(description || ""),
+        },
+      });
+    } catch {
+      return json({ pullError: "Couldn't pull from that URL — check the link and try again." });
+    }
+  }
 
   if (intent === "generate" || intent === "regenerate") {
     if (!shop.brandProfile) {
@@ -72,6 +187,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Cast selection drives the style: a presenter = avatar video, none = showcase.
     const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
     const customPrompt = (form.get("customPrompt") as string)?.trim() || undefined;
+    const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
+    const productDescription = ((form.get("productDescription") as string) || "").trim() || undefined;
     if (!productTitle) return json({ error: "Give your video a product or subject." });
 
     await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
@@ -79,6 +196,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       style,
       customPrompt,
       avatarId,
+      productImageUrl,
+      productDescription,
     });
     return json({ ok: true, queued: true });
   }
@@ -92,15 +211,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ ok: true });
 };
 
+type Pick = { id: string | null; title: string; image: string | null; description: string };
+
 export default function Videos() {
-  const { videos, plan, hasVideoPlan } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products } = useLoaderData<typeof loader>();
   const submit = useSubmit();
   const nav = useNavigation();
+  const puller = useFetcher<{ pulled?: Pick; pullError?: string }>();
   const busy = nav.state !== "idle";
+  const pulling = puller.state !== "idle";
 
   const [productTitle, setProductTitle] = useState("");
   const [avatarId, setAvatarId] = useState<string>(""); // "" = product only
   const [customPrompt, setCustomPrompt] = useState("");
+  const [pick, setPick] = useState<Pick | null>(null);
+  const [pullUrl, setPullUrl] = useState("");
+
+  // a URL pull landing = auto-select that product
+  useEffect(() => {
+    const pulled = puller.data && "pulled" in puller.data ? puller.data.pulled : null;
+    if (pulled) {
+      setPick({ id: null, title: pulled.title, image: pulled.image, description: pulled.description || "" });
+      setProductTitle(pulled.title);
+    }
+  }, [puller.data]);
+  const pullError = puller.data && "pullError" in puller.data ? puller.data.pullError : null;
+
+  const choose = (p: { id: string; title: string; image: string | null; description: string }) => {
+    if (pick?.id === p.id) {
+      setPick(null);
+      return;
+    }
+    setPick({ id: p.id, title: p.title, image: p.image, description: p.description });
+    setProductTitle(p.title);
+  };
 
   const insertChip = (chip: string) =>
     setCustomPrompt((p) => (p.trim() ? `${p.trim()}, ${chip.toLowerCase()}` : chip));
@@ -112,6 +256,8 @@ export default function Videos() {
         productTitle: seed?.title ?? productTitle,
         avatarId: seed?.avatarId ?? avatarId,
         customPrompt: seed?.prompt ?? customPrompt,
+        productImageUrl: seed ? "" : pick?.image || "",
+        productDescription: seed ? "" : pick?.description || "",
       },
       { method: "post" }
     );
@@ -199,13 +345,58 @@ export default function Videos() {
                 {selectedAvatar ? `Direct ${selectedAvatar.name}'s shoot` : "Direct your showcase"}
               </Text>
 
+              {products.length > 0 && (
+                <BlockStack gap="200">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text variant="headingSm" as="h3">Pick from your catalog</Text>
+                    {pick?.id && <Badge tone="success">{pick.title.length > 30 ? pick.title.slice(0, 30) + "…" : pick.title}</Badge>}
+                  </InlineStack>
+                  <div className="mm-prodgrid">
+                    {products.map((p) => {
+                      const on = pick?.id === p.id;
+                      return (
+                        <button key={p.id} type="button" className={`mm-prodcard${on ? " on" : ""}`} onClick={() => choose(p)}>
+                          {on && <span className="mm-prodcheck">✓</span>}
+                          {p.image ? <img src={p.image} alt="" loading="lazy" /> : <div className="mm-prodph">🛍️</div>}
+                          <span className="mm-prodtitle">{p.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </BlockStack>
+              )}
+
+              <BlockStack gap="200">
+                <TextField
+                  label="…or pull from any product URL"
+                  value={pullUrl}
+                  onChange={setPullUrl}
+                  autoComplete="off"
+                  placeholder="https://yourstore.com/products/blue-razz-gummy-worms"
+                  helpText="Paste a product page — we'll grab the title, image, and description automatically."
+                  connectedRight={
+                    <Button
+                      onClick={() => puller.submit({ intent: "pullUrl", url: pullUrl }, { method: "post" })}
+                      loading={pulling}
+                      disabled={!pullUrl.trim()}
+                    >
+                      ⤓ Pull
+                    </Button>
+                  }
+                />
+                {pullError && (
+                  <Text variant="bodySm" as="p" tone="critical">{pullError}</Text>
+                )}
+              </BlockStack>
+
               <TextField
                 label="Product or subject"
                 value={productTitle}
                 onChange={setProductTitle}
                 autoComplete="off"
                 placeholder="e.g. Blue Razz Gummy Worms"
-                helpText="What's the video about?"
+                helpText={pick ? "Auto-filled from your selection — tweak it freely." : "What's the video about?"}
+                prefix={pick?.image ? <img src={pick.image} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: "cover", display: "block" }} /> : undefined}
               />
 
               <BlockStack gap="200">

@@ -59,7 +59,10 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
         ? `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, vertical.`
         : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`;
   const direction = params.customPrompt?.trim();
-  const prompt = direction ? `${basePrompt} Direction: ${direction}` : basePrompt;
+  const context = productDescription?.trim()
+    ? ` Product context: ${productDescription.trim().slice(0, 200)}.`
+    : "";
+  const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}`;
 
   const input: Record<string, unknown> = { prompt, prompt_optimizer: true };
   if (style === "AI_AVATAR" && avatar) {
