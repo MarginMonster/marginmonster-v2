@@ -486,15 +486,15 @@ function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boo
           </svg>
           <span className="mm-brand-word">Ad<span className="c">Arcade</span><span className="io">.io</span></span>
         </div>
-        <span className="mm-eyebrow">THE MARKETING ARCADE</span>
-        <h1>Your store's marketing, on autopilot.</h1>
+        <span className="mm-eyebrow">▶ INSERT COIN · PLAYER 1 READY</span>
+        <h1><span className="mm-marquee">Let's beat yesterday's high score.</span></h1>
         <p>
-          Insert a token and the arcade goes to work — generating the content,
-          launching the ads, and pushing your ROI up the high-score board while
-          you run your business.
+          Drop a coin and the arcade goes to work — writing the content,
+          launching the ads, and pushing your ROI up the leaderboard while you
+          run your business. You bring the store; we bring the power-ups.
         </p>
         <Link to={hasPlan ? "/app/performance" : "/app/plans"} className="mm-hero-cta">
-          {hasPlan ? "Enter the arcade →" : "Choose your plan →"}
+          {hasPlan ? "▶ PRESS START" : "▶ CHOOSE YOUR PARTNER"}
         </Link>
         <div className="mm-hero-stats">
           <div className="mm-hero-stat">

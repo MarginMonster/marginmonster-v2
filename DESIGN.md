@@ -1,72 +1,75 @@
-# AdArcade — design system
+# AdArcade — design system v2: "One arcade, many cabinets"
 
-> **North star:** the *work* is clean and legible; the *arcade* lives in the edges and moments.
-> Merchants must trust this app converts. We win like Stripe/Linear/Shopify: a restrained,
-> professional core with arcade flavor as an **accent layer** — never arcade cranked to 11
-> over every pixel.
+> **North star:** classic golden-age arcade — lively, vibrant, upbeat, encouraging,
+> and extremely simple to use. Think vintage Donkey Kong marquee art, Pac-Man dots,
+> Asteroids' starfield void, and 90s monster-collector partners. The app is an
+> **arcade room**: each tool is its own game cabinet, wrapped in one consistent
+> CRT-and-marquee chrome.
 
-## The one rule
+## The concept that unifies everything
 
-**Arcade is an accent, not the surface.** Before adding any neon, character, pixel font,
-or animation to a screen, ask: *is this a showcase moment or a work surface?*
+An arcade is not one game — it's a room of cabinets. So different tools are
+*allowed* different game genres, and it reads as intentional:
 
-- **Showcase moments** (get the arcade treatment): the Plans "SELECT YOUR FIGHTER" screen,
-  onboarding, empty states, celebrations (first listing forged, plan upgraded), the player
-  HUD, and **one** hero flourish per major screen.
-- **Work surfaces** (stay clean): Content Queue, Calendar, Performance, forms, tables, the
-  Forge working area, settings. Clean Polaris cards, readable type, neon only as an accent
-  (active state, focus ring, a key stat, a small glyph).
+| Tool | Cabinet genre |
+|---|---|
+| Plans | Monster-collector (choose your partner, it evolves) |
+| SEO Forge | Fantasy dungeon (Gauntlet/Golden Axe — the orc blacksmith belongs) |
+| Performance | Space-shooter scoreboard (Asteroids, HI-SCORE) |
+| Dashboard | The arcade lobby (marquee, PRESS START) |
 
-## Background
+What makes them one product is the shared chrome: the CRT void + scanlines,
+marquee typography, cabinet buttons, coin/token language, and encouraging copy.
 
-- **Default = calm.** A static dark radial (`body` background). No twinkle, no asteroids.
-- **Showcase pages opt in** via a `.mm-hero` element. The twinkling starfield (`body::before`)
-  and drifting asteroids (`.mm-asteroids`) are gated behind `body:has(.mm-hero)`.
-  Pages: dashboard, plans, strategy, videos. Dense tools have no hero → stay calm.
-- The Forge (`/app/products`) supplies its own contained flourish (the ember/coal `.mm-ember-bg`)
-  as its hero moment; its results/working area should read clean.
+## Partners (the monster roster)
 
-## Color
+Your plan = your partner; upgrading = evolution. Vintage 90s creature-collector
+style, vibrant cel-shaded with bold outlines:
 
-- Neutral dark surfaces + **one accent per context.**
-  - Default accent: **cyan** (`--mm-cyan` #34E7E4).
-  - Plans: the **tier color** (cyan / magenta / gold / violet) is the accent within each card.
-- Neon is **reserved**: primary CTA, active/selected state, focus ring, a single key stat,
-  and character glows. If everything glows, nothing does.
-- Text on colored fills uses the darkest shade of that same color family — never pure black.
+- **BYTE** — Stage 1 "Starter" (cyan baby dragon, rookie)
+- **KILO** — Stage 2 "Growth" (magenta fox, runner)
+- **MEGA** — Stage 3 "Rapid Growth" (gold armored lion, champion)
+- **GIGA** — Stage 4 "Commercial Growth" (purple/gold dragon, legend)
 
-## Type
+Renders: `public/fighters/mons/` (Replicate SDXL-Lightning + rembg; keep the
+style block from scratchpad genmons.mjs for consistency). Component:
+`app/components/Mech.tsx` (`Mech` + `MECH_BY_PLAN`) — floating hero presentation
+(aura + levitation + ground shadow + silhouette-masked glint).
 
-- **Pixel font (`--font-pixel`): short labels only** — eyebrows, tags, section labels, stat
-  keys. **Never** body copy or long strings (it kills legibility).
-- **Body:** clean sans (`--font-body`) / Polaris defaults. Let Polaris own body text color so
-  it always adapts to the merchant's light/dark admin.
-- **Headings:** `--font-heading`, restrained sizes. Sentence case for UI copy.
+## Chrome (the shared cabinet)
 
-## Motion
+- **Background:** deep-indigo CRT void with subtle starfield everywhere;
+  faint scanlines + vignette (`body::after`). Asteroid wireframes only on
+  showcase pages (`body:has(.mm-hero)`).
+- **Buttons:** chunky "cabinet buttons" — bright gradient fill, hard 4px press
+  shadow, press-down active state. (`.mm-arcade-btn`, Polaris primary,
+  `.mm-hero-cta`, `.mm-fighter-select`.)
+- **Marquee titles:** rainbow gradient text (`.mm-marquee`) on hero H1s ONLY.
+- **Pac-dots:** `.mm-dots` trail after section labels, sparingly.
+- **Cheer chips:** `.mm-cheer` for celebratory tags ("NICE COMBO!").
+- **Palette:** deep indigo base + cabinet primaries `--arc-red/-yellow/-green/-blue/-violet`
+  plus legacy cyan/gold/magenta. Text on colored fills = darkest shade of the same family.
 
-- **Big animations are reserved for characters/heroes** — the mech levitation + aura + glint,
-  the forge ember-intensify, hero glows.
-- **Work surfaces get micro-interactions only**: hover lift, focus ring, 150ms transitions.
+## Voice — witty, upbeat, encouraging
+
+- Coin language: tokens are **coins** ("INSERT COINS", "Drop a coin").
+- Game language: PRESS START, PLAYER 1 READY, HI-SCORE, LEVEL UP, STAGE 1–4.
+- Encourage constantly: celebrate completions, frame progress as score/streaks.
+- Keep it *simple*: one clear action per screen. Never let theme block the task.
+
+## Legibility guardrails (still non-negotiable)
+
+- Pixel font for SHORT labels only; body copy stays clean sans (Polaris owns body
+  text color so it adapts to the merchant's light/dark admin).
+- Scanlines/vignette stay faint (≤ ~10% opacity) and behind content (z-index 0).
+- One accent per context; work surfaces (Queue, Calendar, Performance tables,
+  forms) keep clean cards — the vibrancy lives in chrome, buttons, and characters.
 - Everything respects `prefers-reduced-motion`.
 
-## Characters
+## New screen checklist
 
-- AdArcade is a **roster of AI units.** Your plan = the combat mech you deploy
-  (SPARK-01 / HAVOC / OVERLORD / OMEGA — see `app/components/Mech.tsx`).
-- Characters appear **at the edges** — HUD avatar, section headers, empty states, hero cards —
-  **not** sprawled across work areas.
-- Renders live in `public/fighters/mechs/` (generated via Replicate SDXL-Lightning + rembg;
-  see `scratchpad/genmechs*.mjs` pattern). Keep the family consistent: matte-black chassis,
-  single accent glow, same framing.
-- *Open follow-up:* the SEO Forge's orc blacksmith is from a different (fantasy) universe. Under
-  the accent model it's contained to the Forge hero, so it's tolerable — but recasting it as a
-  cyber "Forgemaster" mech would fully unify the roster. Nice-to-have, not a blocker.
-
-## Adding a new screen — checklist
-
-1. Is it a work surface? → calm background (no `.mm-hero`), clean Polaris cards, one accent.
-2. Is it a showcase? → add a `.mm-hero`, allow the arcade backdrop + a character.
-3. Pixel font only on short labels.
-4. One accent color; neon only on CTA/active/focus/key-stat.
-5. Big motion only if there's a character; otherwise micro-interactions.
+1. Which cabinet is this? Give it its genre flavor in the HERO only.
+2. Wrap it in the shared chrome (void, cabinet buttons, marquee title if hero).
+3. Coin/game/encouraging copy; one clear action.
+4. Pixel font short labels; clean body text; one accent.
+5. Big motion only for characters; micro-interactions elsewhere.

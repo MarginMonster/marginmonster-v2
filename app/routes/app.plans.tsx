@@ -113,13 +113,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 type Fighter = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "SPARK-01", ref: "Starter", rank: "TIER I", power: 1, accent: "#34E7E4", img: "spark",
+  STARTER: { title: "BYTE", ref: "Starter", rank: "STAGE 1", power: 1, accent: "#34E7E4", img: "byte",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  GROWTH: { title: "HAVOC", ref: "Growth", rank: "TIER II", power: 2, accent: "#FF3D8B", img: "havoc",
+  GROWTH: { title: "KILO", ref: "Growth", rank: "STAGE 2", power: 2, accent: "#FF3D8B", img: "kilo",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  PRO: { title: "OVERLORD", ref: "Rapid Growth", rank: "TIER III", power: 3, accent: "#FFB020", img: "overlord",
+  PRO: { title: "MEGA", ref: "Rapid Growth", rank: "STAGE 3", power: 3, accent: "#FFB020", img: "mega",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
-  SCALE: { title: "OMEGA", ref: "Commercial Growth", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "omega",
+  SCALE: { title: "GIGA", ref: "Commercial Growth", rank: "STAGE 4", power: 4, accent: "#B77BFF", img: "giga",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
@@ -193,18 +193,18 @@ export default function Plans() {
     <Page
       fullWidth
       backAction={{ content: "Home", url: "/app" }}
-      title="Choose your plan"
-      subtitle="Pick a plan, choose how hands-on you want to be, and start growing today."
+      title="Choose your partner"
+      subtitle="Every plan comes with a partner that does the marketing for you — pick yours and start growing today."
     >
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">▶ CHOOSE YOUR PLAN</span>
-            <h1>Choose your plan. Let your store sell for you.</h1>
+            <span className="mm-eyebrow">▶ CHOOSE YOUR PARTNER</span>
+            <h1><span className="mm-marquee">Pick your partner. Level up your store.</span></h1>
             <p>
-              You didn't start a business to spend nights writing blog posts and
-              editing videos. Pick a plan and hand the content grind to us — grow
-              faster, and take your time back.
+              You didn't start a business to grind through blog posts and video
+              edits. Team up with a partner that does the marketing for you —
+              it evolves as you grow, and every stage hits harder.
             </p>
           </div>
         </Layout.Section>
@@ -242,8 +242,9 @@ export default function Plans() {
             </div>
 
             <p className="mm-fight-caption">
-              Hover a plan below to send that fighter in — <strong>stronger plans
-              hit harder.</strong> Then choose how hands-on you want to be:
+              Hover a partner below to send it into battle — <strong>every
+              evolution stage hits harder.</strong> Then choose how hands-on you
+              want to be:
             </p>
 
             <div className="mm-seg" role="group" aria-label="Publishing mode">
@@ -269,7 +270,7 @@ export default function Plans() {
 
         {/* Character-select — each tier is a stronger fighter */}
         <Layout.Section>
-          <span className="mm-section-label">▶ SELECT YOUR FIGHTER</span>
+          <span className="mm-section-label">▶ CHOOSE YOUR PARTNER<span className="mm-dots">· · · · ·</span></span>
           <div className="mm-fighter-grid">
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
@@ -281,7 +282,7 @@ export default function Plans() {
                   style={{ ["--fx" as string]: f.accent }}
                   onMouseEnter={() => setPreviewKey(tier.key as PlanKey)}
                 >
-                  {tier.highlight && <div className="mm-plan-ribbon">Most popular</div>}
+                  {tier.highlight && <div className="mm-plan-ribbon">★ Player favorite</div>}
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
@@ -296,7 +297,7 @@ export default function Plans() {
                   <div className="mm-fighter-name">{f.title}</div>
                   <div className="mm-fighter-plan">
                     <span className="mm-fighter-ref">"{f.ref}"</span>
-                    {isCurrent && <span className="mm-fighter-current">SELECTED</span>}
+                    {isCurrent && <span className="mm-fighter-current">YOURS</span>}
                   </div>
                   <p className="mm-plan-price" style={{ margin: "6px 0 4px" }}>
                     ${tier.price}<small> /mo</small>
@@ -329,7 +330,7 @@ export default function Plans() {
                     onFocus={() => setPreviewKey(tier.key as PlanKey)}
                     disabled={isCurrent}
                   >
-                    {isCurrent ? "SELECTED" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SELECT"}
+                    {isCurrent ? "★ YOUR PARTNER" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ TEAM UP"}
                   </button>
                 </div>
               );

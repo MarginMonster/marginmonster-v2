@@ -1,18 +1,26 @@
-/* AdArcade — space arcade theme, working WITH Polaris (not against it).
-   Polaris themes its own cards + text (adapts to the merchant's light/dark
-   admin automatically). We only add: a deep-space starfield backdrop, drifting
-   asteroids, dark "screen" elements (hero/mode cards/HI-SCORE), and adaptive
-   custom cards that follow Polaris tokens so nothing ever mismatches. */
+/* AdArcade — CLASSIC ARCADE theme: "one arcade, many cabinets."
+   Vintage golden-age arcade energy (Donkey Kong marquees, Pac-Man dots,
+   Asteroids void, monster-collector partners) — lively, vibrant, upbeat,
+   encouraging — while working WITH Polaris (it themes its own cards + text,
+   adapting to the merchant's light/dark admin). Each tool is its own "game
+   cabinet"; a consistent CRT-and-marquee chrome wraps them all. See DESIGN.md. */
 
 @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap");
 
 :root {
-  --mm-space: #07060F;
-  --mm-space-2: #0C0A18;
+  --mm-space: #0A0821;
+  --mm-space-2: #110D2E;
   --mm-cyan: #34E7E4;
   --mm-gold: #F5C451;
   --mm-magenta: #E5397D;
   --mm-magenta-deep: #C22A66;
+  /* vintage cabinet-marquee primaries */
+  --arc-red: #FF4D4D;
+  --arc-red-deep: #D93636;
+  --arc-yellow: #FFD23F;
+  --arc-green: #6EE04B;
+  --arc-blue: #4B9BFF;
+  --arc-violet: #B77BFF;
 
   --font-pixel: "Press Start 2P", monospace;
   --font-heading: "Poppins", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -28,18 +36,24 @@
   --p-font-family-sans: var(--font-body);
 }
 
-/* Calm deep-space canvas behind everything. The lively twinkling starfield +
-   drifting asteroids are an ACCENT — reserved for showcase pages (those with a
-   .mm-hero), so dense work screens (Queue, Calendar, Performance…) stay clean
-   and legible. See DESIGN.md. */
-body { background: radial-gradient(125% 85% at 50% -12%, #16132c 0%, var(--mm-space) 52%) !important; }
+/* The arcade void — a warm deep-indigo CRT glow behind everything. The subtle
+   twinkling starfield (Asteroids vibes) runs everywhere; the drifting asteroid
+   wireframes stay reserved for showcase pages (.mm-hero) so dense work screens
+   keep their focus. See DESIGN.md. */
+body { background: radial-gradient(125% 85% at 50% -12%, #1B1545 0%, var(--mm-space) 55%) !important; }
 .Polaris-Page, .Polaris-Frame { background: transparent !important; }
 .Polaris-Page { padding-bottom: 96px !important; position: relative; z-index: 1; }
 
-/* starfield: off by default, on only for showcase (hero) pages */
-body::before { display: none; }
-body:has(.mm-hero)::before { display: block; }
-body:has(.mm-hero)::before {
+/* CRT scanlines + soft vignette — the "you're looking at a cabinet screen" feel.
+   Kept faint so content stays perfectly legible. */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.10) 0 1px, transparent 1px 4px),
+    radial-gradient(120% 120% at 50% 50%, transparent 62%, rgba(0,0,0,0.30) 100%);
+}
+
+body::before {
   content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
     radial-gradient(1.5px 1.5px at 12% 18%, #fff, transparent),
@@ -81,8 +95,16 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .Polaris-Text--headingMd, .Polaris-Text--headingSm, .Polaris-Header-Title {
   font-family: var(--font-heading) !important; letter-spacing: -0.01em;
 }
-.Polaris-Button--variantPrimary { background: var(--mm-magenta) !important; border: none !important; box-shadow: 0 6px 18px rgba(229,57,125,0.3) !important; font-family: var(--font-heading) !important; font-weight: 600 !important; border-radius: 10px !important; }
-.Polaris-Button--variantPrimary:hover { background: var(--mm-magenta-deep) !important; }
+/* Cabinet buttons — chunky, bright, with a hard "press-down" shadow like a real
+   arcade button. Active state physically presses in. */
+.Polaris-Button--variantPrimary {
+  background: linear-gradient(180deg, #ff6b6b, var(--arc-red)) !important; border: none !important;
+  box-shadow: 0 4px 0 #A32222, 0 8px 20px rgba(255,77,77,0.35) !important;
+  font-family: var(--font-heading) !important; font-weight: 700 !important; border-radius: 12px !important;
+  transition: transform .08s ease, box-shadow .08s ease, filter .12s ease !important;
+}
+.Polaris-Button--variantPrimary:hover { filter: brightness(1.08); background: linear-gradient(180deg, #ff6b6b, var(--arc-red)) !important; }
+.Polaris-Button--variantPrimary:active { transform: translateY(3px); box-shadow: 0 1px 0 #A32222, 0 4px 12px rgba(255,77,77,0.35) !important; }
 
 /* Page header sits directly on the starfield → force it light. */
 .Polaris-Page-Header__Title, .Polaris-Page-Header__TitleWrapper .Polaris-Text--root { color: #ECEAFB !important; }
@@ -93,7 +115,22 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-hero::after { content: ""; position: absolute; top: -80px; right: -60px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(52,231,228,0.18) 0%, transparent 70%); pointer-events: none; }
 .mm-hero h1 { font-family: var(--font-heading); font-size: 40px; font-weight: 800; line-height: 1.08; margin: 0 0 12px; letter-spacing: -0.03em; max-width: 640px; color: #ECEAFB; }
 .mm-hero p { font-family: var(--font-body); font-size: 16px; color: #A8A2D0; margin: 0; max-width: 560px; line-height: 1.6; }
-.mm-hero .mm-eyebrow { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.26em; color: var(--mm-cyan); margin-bottom: 20px; display: block; }
+.mm-hero .mm-eyebrow { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.26em; color: var(--mm-cyan); margin-bottom: 20px; display: block; animation: mm-blink 2.4s steps(1,end) infinite; }
+@keyframes mm-blink { 0%,72%,100% { opacity: 1; } 76%,88% { opacity: 0.25; } 92% { opacity: 1; } }
+
+/* Marquee title — the Donkey Kong cabinet-art rainbow, used on hero H1s only */
+.mm-marquee {
+  background: linear-gradient(92deg, var(--arc-red) 0%, var(--arc-yellow) 30%, var(--arc-green) 55%, var(--mm-cyan) 80%, var(--arc-violet) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent !important;
+}
+/* Pac-dot trail — playful little dotted runway after section labels */
+.mm-dots { display: inline-block; margin-left: 12px; letter-spacing: 7px; color: var(--arc-yellow); font-size: 9px; vertical-align: 2px; text-shadow: 0 0 6px rgba(255,210,63,0.6); }
+/* Encouragement chip — "NICE COMBO!" style celebratory tag */
+.mm-cheer {
+  display: inline-block; font-family: var(--font-pixel); font-size: 8px; letter-spacing: .12em;
+  color: #1F1500; background: linear-gradient(180deg, #ffe08a, var(--arc-yellow));
+  border-radius: 999px; padding: 5px 10px; box-shadow: 0 3px 0 #A87F0E, 0 6px 14px rgba(255,210,63,0.35);
+}
 
 /* brand lockup (dashboard hero) */
 .mm-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
@@ -101,8 +138,9 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-brand-word { font-family: var(--font-heading); font-weight: 800; font-size: 24px; color: #ECEAFB; letter-spacing: -0.01em; }
 .mm-brand-word .c { color: #34E7E4; }
 .mm-brand-word .io { color: #F5C451; font-size: 15px; }
-.mm-hero-cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; background: var(--mm-cyan); color: #06231F !important; font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 24px; border-radius: 11px; box-shadow: 0 8px 26px rgba(52,231,228,0.3); transition: transform .15s ease; }
-.mm-hero-cta:hover { transform: translateY(-2px); }
+.mm-hero-cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; background: linear-gradient(180deg, #7ffff9, var(--mm-cyan)); color: #06231F !important; font-family: var(--font-heading); font-weight: 800; font-size: 14px; text-decoration: none; padding: 13px 26px; border-radius: 12px; box-shadow: 0 4px 0 #128f8c, 0 10px 26px rgba(52,231,228,0.35); transition: transform .08s ease, box-shadow .08s ease, filter .12s ease; }
+.mm-hero-cta:hover { filter: brightness(1.07); }
+.mm-hero-cta:active { transform: translateY(3px); box-shadow: 0 1px 0 #128f8c, 0 5px 14px rgba(52,231,228,0.35); }
 .mm-pixel { font-family: var(--font-pixel) !important; }
 .mm-hero-stats { display: flex; gap: 28px; margin-top: 30px; flex-wrap: wrap; }
 .mm-hero-stat .k { font-family: var(--font-pixel); font-size: 9px; letter-spacing: 0.14em; color: #A8A2D0; }
@@ -300,11 +338,11 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   width: 100%; margin-top: 14px; cursor: pointer;
   font-family: var(--font-pixel); font-size: 10px; letter-spacing: .1em;
   color: #0B0A17; background: var(--fx); border: none; border-radius: 10px;
-  padding: 13px 12px; transition: filter .15s ease, transform .1s ease;
-  box-shadow: 0 6px 20px color-mix(in srgb, var(--fx) 40%, transparent);
+  padding: 13px 12px; transition: filter .15s ease, transform .08s ease, box-shadow .08s ease;
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--fx) 45%, #000), 0 8px 20px color-mix(in srgb, var(--fx) 40%, transparent);
 }
 .mm-fighter-select:hover:not(:disabled) { filter: brightness(1.12); }
-.mm-fighter-select:active:not(:disabled) { transform: translateY(1px); }
+.mm-fighter-select:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 color-mix(in srgb, var(--fx) 45%, #000), 0 4px 12px color-mix(in srgb, var(--fx) 40%, transparent); }
 .mm-fighter-select:disabled { background: rgba(255,255,255,0.12); color: #8A84B6; cursor: default; box-shadow: none; }
 .mm-fighter-select.loading { opacity: .8; }
 
