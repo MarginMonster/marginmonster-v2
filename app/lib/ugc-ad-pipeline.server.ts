@@ -164,15 +164,19 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
 
 function assemble(opts: {
   talkingPath: string;
+  audioPath: string; // our TTS track is ALWAYS the audio (works for engines
+  // whose video has no/other audio; video loops to cover the full narration)
   productImagePath: string | null;
   script: string;
   outPath: string;
 }): void {
   if (!ffmpegPath) throw new Error("[ugc:assemble] ffmpeg binary missing");
   const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  const duration = ffprobeDuration(opts.talkingPath);
+  const duration = ffprobeDuration(opts.audioPath); // narration defines the ad
 
-  const args: string[] = ["-y", "-i", opts.talkingPath];
+  // input 0: talking video (looped so it always covers the narration)
+  // input 1: TTS audio   |   input 2 (optional): product image for b-roll
+  const args: string[] = ["-y", "-stream_loop", "-1", "-i", opts.talkingPath, "-i", opts.audioPath];
   const filters: string[] = [];
   let vLabel = "[v0]";
   filters.push(`[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[v0]`);
@@ -182,7 +186,7 @@ function assemble(opts: {
     args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
     const bs = Math.max(1.2, duration * 0.45).toFixed(2);
     const be = Math.min(duration - 0.8, duration * 0.45 + 2.2).toFixed(2);
-    filters.push(`[1:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
+    filters.push(`[2:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
     filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
     vLabel = "[v1]";
   }
@@ -195,9 +199,10 @@ function assemble(opts: {
 
   args.push(
     "-filter_complex", filters.join(";"),
-    "-map", vLabel, "-map", "0:a",
+    "-map", vLabel, "-map", "1:a",
+    "-t", duration.toFixed(2),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart",
+    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
     opts.outPath
   );
 
@@ -291,30 +296,44 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // instead of paying for a duplicate render; transient provider failures
   // ("Failed to upload…") get one cheap in-attempt retry with a new prediction
   let talkingUrl = resume.talkingUrl || "";
+  let engine = "omni-human";
   if (!talkingUrl) {
     if (resume.omniPredictionId) {
       try {
         talkingUrl = await repPoll(resume.omniPredictionId, 12 * 60_000, "omni-human(resumed)");
       } catch { /* old prediction died — fall through to a fresh one */ }
     }
-    let lastErr: unknown = null;
     for (let attempt = 0; attempt < 2 && !talkingUrl; attempt++) {
       try {
         const omniId = await repCreate("bytedance/omni-human", { image: portraitDataUri, audio: audioDataUri });
         await ckpt({ ckOmniId: omniId });
         talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
       } catch (e) {
-        lastErr = e;
         const msg = e instanceof Error ? e.message : String(e);
-        // transient provider-side flakes are worth one immediate retry
-        if (attempt === 0 && /upload|internal|try (running|again)|temporar|E\d{3,}/i.test(msg)) {
+        console.error(`[ugc] omni-human attempt ${attempt + 1} failed: ${msg.slice(0, 200)}`);
+        if (attempt === 0 && /upload|internal|signature|timestamp|try (running|again)|temporar|E\d{3,}/i.test(msg)) {
           await new Promise((r) => setTimeout(r, 5000));
-          continue;
+          continue; // transient provider-side flakes get one immediate retry
         }
-        throw e;
+        break; // hard failure → fall back to Kling below
       }
     }
-    if (!talkingUrl) throw lastErr instanceof Error ? lastErr : new Error("[ugc:omni-human] failed");
+    // FALLBACK: Kling voiceover-style — the presenter moves naturally to camera
+    // while the TTS narration carries the ad. Not lip-synced, but a legitimate
+    // UGC format, and Kling has been rock-solid on this account.
+    if (!talkingUrl) {
+      console.log("[ugc] falling back to kling voiceover style");
+      engine = "kling-voiceover";
+      const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
+        start_image: portraitDataUri,
+        prompt: `${avatar.desc}, talking directly to the camera with natural hand gestures and subtle head movement, enthusiastic friendly energy, static camera, plain studio background, vertical video`,
+        negative_prompt: "camera movement, zoom, pan, morphing, distortion, extra people, text, watermark",
+        duration: 10,
+        cfg_scale: 0.5,
+      });
+      await ckpt({ ckOmniId: klingId });
+      talkingUrl = await repPoll(klingId, 12 * 60_000, "kling-fallback");
+    }
     await ckpt({ ckTalkingUrl: talkingUrl });
   }
 
@@ -323,6 +342,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   try {
     const talkingPath = path.join(tmp, "talking.mp4");
     await download(talkingUrl, talkingPath);
+    const audioPath = path.join(tmp, "voice.mp3");
+    fs.writeFileSync(audioPath, audioBuf);
 
     let productImagePath: string | null = null;
     if (params.productImageUrl) {
@@ -339,7 +360,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
-    assemble({ talkingPath, productImagePath, script, outPath });
+    assemble({ talkingPath, audioPath, productImagePath, script, outPath });
 
     const asset = await db.asset.create({
       data: {
@@ -349,7 +370,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         title: `${avatar.name} presents — ${params.productTitle}`,
         bodyJson: JSON.stringify({
           style: "AI_AVATAR",
-          engine: "ugc-pipeline-v1",
+          engine,
           videoUrl: `/renders/${fileName}`,
           prompt: script,
           script,
