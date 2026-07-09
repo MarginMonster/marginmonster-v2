@@ -142,7 +142,7 @@ function PixelFoe() {
 }
 
 export default function Plans() {
-  const { currentPlan, currentReview } = useLoaderData<typeof loader>();
+  const { currentPlan } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const billingError = actionData && "error" in actionData ? actionData.error : null;
   const confirmationUrl = actionData && "confirmationUrl" in actionData ? actionData.confirmationUrl : null;
@@ -163,7 +163,6 @@ export default function Plans() {
     }
     window.open(confirmationUrl, "_top");
   }, [confirmationUrl]);
-  const [reviewMode, setReviewMode] = useState<string>(currentReview);
   const [pending, setPending] = useState<PlanKey | null>(null);
 
   // which plan the fight scene is previewing — hover a card to change it
@@ -174,7 +173,7 @@ export default function Plans() {
 
   const buy = (planKey: PlanKey) => {
     setPending(planKey);
-    submit({ planKey, reviewMode }, { method: "post" });
+    submit({ planKey }, { method: "post" });
   };
 
   return (
@@ -231,28 +230,8 @@ export default function Plans() {
 
             <p className="mm-fight-caption">
               Hover a partner below to send it into battle — <strong>every
-              evolution stage hits harder.</strong> Then choose how hands-on you
-              want to be:
+              evolution stage hits harder.</strong>
             </p>
-
-            <div className="mm-seg" role="group" aria-label="Publishing mode">
-              <button
-                type="button"
-                className={`mm-seg-btn${reviewMode === "SET_AND_FORGET" ? " on" : ""}`}
-                onClick={() => setReviewMode("SET_AND_FORGET")}
-              >
-                ⚡ Set &amp; forget
-                <small>Publishes automatically</small>
-              </button>
-              <button
-                type="button"
-                className={`mm-seg-btn${reviewMode === "REVIEW_FIRST" ? " on" : ""}`}
-                onClick={() => setReviewMode("REVIEW_FIRST")}
-              >
-                ✓ Review first
-                <small>You approve before it goes live</small>
-              </button>
-            </div>
           </div>
         </Layout.Section>
 
