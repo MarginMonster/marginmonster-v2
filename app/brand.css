@@ -479,15 +479,24 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 /* premium framed character card (crisp bezel + integrated nameplate) */
 .mm-smith-card {
   position: relative; flex-shrink: 0; width: 328px; height: 306px; border-radius: 20px;
-  overflow: hidden; background: #0A0912;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(52,231,228,0.30) 0%, transparent 62%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 4px),
+    #060512;
   border: 1px solid rgba(120,220,220,0.26);
   box-shadow: 0 26px 64px rgba(0,0,0,0.55), 0 0 44px rgba(52,231,228,0.16),
               inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(0,0,0,0.4);
   transition: box-shadow .3s ease, border-color .3s ease;
 }
-.mm-smith-vid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 56% 40%; }
-/* subtle top glass sheen for depth */
-.mm-smith-sheen { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,0.07), transparent 22%); }
+/* the smith partner lives in the pod above the nameplate */
+.mm-smith-stage { position: absolute; inset: 10px 10px 64px; }
+/* forging = overdrive: the smith flips frames double-speed and glows hotter */
+.mm-forge-hero.forging .mm-smith-stage .mf-a,
+.mm-forge-hero.forging .mm-smith-stage .mf-b,
+.mm-forge-hero.forging .mm-smith-stage .mf-c { animation-duration: 0.55s; }
+.mm-forge-hero.forging .mm-smith-stage .mm-mech-aura { opacity: 0.85; animation-duration: 1.2s; }
+.mm-forge-hero.forging .mm-smith-stage .mm-mech-img { filter: drop-shadow(0 0 16px rgba(52,231,228,0.75)); }
 /* integrated nameplate at the bottom */
 .mm-smith-plate {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 16px 14px;

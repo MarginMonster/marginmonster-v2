@@ -10,12 +10,12 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
 import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
-import { Mech, MECH_BY_PLAN } from "../components/Mech";
+import { Partner, PARTNER_BY_PLAN } from "../components/Partner";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
-// Display name per plan tier. The avatar itself is the matching combat mech
-// (see MECH_BY_PLAN), so the HUD stays in sync with the Plans select screen.
+// Display name per plan tier. The avatar itself is the matching partner monster
+// (see PARTNER_BY_PLAN), so the HUD stays in sync with the Plans select screen.
 const PLAN_AVATAR: Record<PlanKey, { label: string }> = {
   STARTER: { label: "Starter" },
   GROWTH: { label: "Growth" },
@@ -65,13 +65,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (plan) {
       plan = await refreshPeriod(plan);
       const remaining = tokensRemaining(plan);
-      const mech = MECH_BY_PLAN[plan.type as PlanKey];
+      const partner = PARTNER_BY_PLAN[plan.type as PlanKey];
       hud = {
         name: playerName,
         planKey: plan.type as PlanKey,
         planLabel: PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type,
-        img: mech?.img ?? null,
-        accent: mech?.accent ?? "#34E7E4",
+        img: partner?.img ?? null,
+        accent: partner?.accent ?? "#34E7E4",
         tokens: remaining,
         tokensMax: Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra),
         videos: Math.max(0, plan.videoQuota - plan.videoUsed),
@@ -96,7 +96,7 @@ export default function App() {
         <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>
           {hud.img ? (
             <span className="mm-hud-sprite" aria-hidden="true">
-              <Mech img={hud.img} accent={hud.accent} />
+              <Partner img={hud.img} accent={hud.accent} />
             </span>
           ) : (
             <span className="mm-hud-face">🎮</span>

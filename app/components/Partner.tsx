@@ -8,9 +8,9 @@
 
 export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
 
-export const MECH_V = "6"; // bump to bust cache when renders change
+export const ART_V = "6"; // bump to bust cache when renders change
 
-export const MECH_BY_PLAN: Record<
+export const PARTNER_BY_PLAN: Record<
   PlanKey,
   { tier: 1 | 2 | 3 | 4; accent: string; name: string; klass: string; img: string }
 > = {
@@ -20,7 +20,7 @@ export const MECH_BY_PLAN: Record<
   SCALE: { tier: 4, accent: "#B77BFF", name: "GIGA", klass: "Legend", img: "giga" },
 };
 
-export function Mech({
+export function Partner({
   img,
   accent,
   frames = 3,
@@ -32,7 +32,7 @@ export function Mech({
   frames?: 1 | 3;
   className?: string;
 }) {
-  const src = (s: string) => `/fighters/mons/${img}${s}.png?v=${MECH_V}`;
+  const src = (s: string) => `/fighters/mons/${img}${s}.png?v=${ART_V}`;
   // Per-character stagger so the roster never animates in unison — each partner
   // starts mid-cycle at its own offset via negative animation-delay (brand.css
   // also multiplies this for the sway/float/aura layers). Quarter-cycle spread

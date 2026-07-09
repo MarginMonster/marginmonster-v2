@@ -22,6 +22,7 @@ import { db } from "../db.server";
 import { generateProductCopy, type ProductCopy } from "../lib/product-copy.server";
 import { chargeTokens, tokensRemaining, InsufficientTokensError } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { Partner } from "../components/Partner";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -312,12 +313,12 @@ export default function Products() {
         <Layout.Section>
           <div className={`mm-forge-hero${busy ? " forging" : ""}`}>
             <div className="mm-forge-text">
-              <span className="mm-eyebrow">▶ SEO FORGE</span>
-              <h1>Forge listings that sell.</h1>
+              <span className="mm-eyebrow">▶ SEO FORGE · STAGE SELECT</span>
+              <h1><span className="mm-marquee">Forge listings that sell.</span></h1>
               <p>
-                Turn any product into SEO-ready copy — titles, descriptions,
-                bullets, and meta tags in your brand voice, then push it live in
-                one click.
+                Drop a product on the anvil and ANVIL hammers it into SEO gold —
+                titles, descriptions, bullets, and meta tags in your brand voice.
+                Push it live in one click. Every listing forged levels up your store.
               </p>
               {busy && (
                 <div className="mm-forge-status">
@@ -332,22 +333,15 @@ export default function Products() {
               )}
             </div>
             <div className="mm-smith-card" aria-hidden="true">
-              <video
-                key={busy ? "hammer" : "idle"}
-                className="mm-smith-vid"
-                src={busy ? "/fighters/forge_hammer.mp4?v=5" : "/fighters/forge_idle.mp4?v=5"}
-                autoPlay
-                loop
-                muted
-                playsInline
-              />
-              <div className="mm-smith-sheen" />
+              <div className="mm-smith-stage">
+                <Partner img="anvil" accent="#34E7E4" />
+              </div>
               <div className="mm-smith-plate">
                 <div className="mm-smith-row">
                   <span className="mm-smith-lvl">LVL&nbsp;97</span>
                   <div className="mm-smith-hp"><i /></div>
                 </div>
-                <div className="mm-smith-name">MASTER SEO BLACKSMITH</div>
+                <div className="mm-smith-name">ANVIL · MASTER SMITH</div>
               </div>
             </div>
           </div>
@@ -385,7 +379,7 @@ export default function Products() {
                 </button>
                 {tokens != null && (
                   <span className={`mm-credits${!canAfford ? " low" : ""}`}>
-                    <b>TOKENS</b> ⚡ {remaining.toLocaleString()}
+                    <b>TOKENS</b> 🪙 {remaining.toLocaleString()}
                     {forgeCount > 0 && <em> · Cost {totalCost} Tokens</em>}
                   </span>
                 )}

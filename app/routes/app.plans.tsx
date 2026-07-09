@@ -11,7 +11,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
-import { Mech } from "../components/Mech";
+import { Partner } from "../components/Partner";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -123,10 +123,10 @@ const FIGHTERS: Record<string, Fighter> = {
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
-function MechFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
+function PartnerFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
   return (
     <div className={`mm-pixel mm-mech-wrap${context === "fight" ? " in-fight" : ""}`} style={{ ["--fx" as string]: accent }}>
-      <Mech img={img} accent={accent} className={context === "fight" ? "in-fight" : ""} />
+      <Partner img={img} accent={accent} className={context === "fight" ? "in-fight" : ""} />
     </div>
   );
 }
@@ -136,7 +136,7 @@ function MechFighter({ img, accent, context }: { img: string; accent: string; co
 function PixelFoe() {
   return (
     <div className="mm-pixel mm-mech-wrap foe">
-      <Mech img="chaos" accent="#FF6B6B" frames={1} />
+      <Partner img="chaos" accent="#FF6B6B" frames={1} />
     </div>
   );
 }
@@ -220,7 +220,7 @@ export default function Plans() {
             </div>
 
             <div className="mm-fight-stage" data-p={champ.power}>
-              <div className="mm-fighter-you"><MechFighter img={champ.img} accent={champ.accent} context="fight" /></div>
+              <div className="mm-fighter-you"><PartnerFighter img={champ.img} accent={champ.accent} context="fight" /></div>
               <div className="mm-fireball" style={{ ["--fireclr" as string]: champ.accent }} />
               <div className="mm-fight-hit" style={{ color: champ.accent, fontSize: 15 + champ.power * 4 }}>
                 {champ.power >= 4 ? "K.O.!" : champ.power >= 3 ? "BOOM!" : "POW!"}
@@ -253,7 +253,7 @@ export default function Plans() {
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
-                    <MechFighter img={f.img} accent={f.accent} />
+                    <PartnerFighter img={f.img} accent={f.accent} />
                     <div className="mm-fighter-power">
                       {[1, 2, 3, 4].map((n) => (
                         <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
