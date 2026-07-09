@@ -123,20 +123,6 @@ const FIGHTERS: Record<string, Fighter> = {
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
-/* Real generated pixel-art sprites (public/fighters/*.png), each on a pure
- * black background. Two frames per fighter ({img}.png + {img}_b.png) hard-cut
- * on a step animation = an arcade idle flipbook. `mix-blend-mode: lighten`
- * (in CSS) drops the black so the fighter floats on the dark stage. */
-const SPRITE_V = "4"; // bump to bust browser cache when sprites change
-function Sprite({ img, className }: { img: string; className: string }) {
-  return (
-    <div className={className}>
-      <img className="frame f1" src={`/fighters/${img}.png?v=${SPRITE_V}`} alt="" aria-hidden="true" draggable={false} />
-      <img className="frame f2" src={`/fighters/${img}_b.png?v=${SPRITE_V}`} alt="" aria-hidden="true" draggable={false} />
-    </div>
-  );
-}
-
 function MechFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
   return (
     <div className={`mm-pixel mm-mech-wrap${context === "fight" ? " in-fight" : ""}`} style={{ ["--fx" as string]: accent }}>
@@ -145,10 +131,12 @@ function MechFighter({ img, accent, context }: { img: string; accent: string; co
   );
 }
 
+/* The opponent: a frazzled paperwork gremlin — what "managing your own ads"
+ * feels like. Same render pipeline as the partners, dull red accent. */
 function PixelFoe() {
   return (
-    <div className="mm-pixel foe">
-      <Sprite img="foe" className="mm-sprite" />
+    <div className="mm-pixel mm-mech-wrap foe">
+      <Mech img="chaos" accent="#FF6B6B" />
     </div>
   );
 }
