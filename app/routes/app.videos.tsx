@@ -249,17 +249,41 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // ---- Take card ops: delete / attach to listing / queue for social ----
   if (intent === "deleteTake") {
     const id = (form.get("assetId") as string) || "";
-    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "VIDEO_AD" } });
-    if (asset) {
-      try {
-        const body = JSON.parse(asset.bodyJson || "{}");
-        if (typeof body.videoUrl === "string" && body.videoUrl.startsWith("/renders/")) {
-          const f = path.join(process.cwd(), "data", "renders", path.basename(body.videoUrl));
-          if (fs.existsSync(f)) fs.unlinkSync(f);
+    try {
+      const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "VIDEO_AD" } });
+      if (asset) {
+        try {
+          const body = JSON.parse(asset.bodyJson || "{}");
+          if (typeof body.videoUrl === "string" && body.videoUrl.startsWith("/renders/")) {
+            const f = path.join(process.cwd(), "data", "renders", path.basename(body.videoUrl));
+            if (fs.existsSync(f)) fs.unlinkSync(f);
+          }
+        } catch { /* file cleanup is best-effort */ }
+        // campaigns reference assets with a restrict FK — clean up draft/demo
+        // campaign rows first, but never touch one that actually launched
+        const live = await db.campaign.count({ where: { assetId: asset.id, externalId: { not: null } } });
+        if (live > 0) {
+          return json({ opError: "This take is part of a launched campaign — end the campaign before deleting it." });
         }
-      } catch { /* file cleanup is best-effort */ }
-      await db.asset.delete({ where: { id: asset.id } });
+        await db.campaign.deleteMany({ where: { assetId: asset.id } });
+        await db.asset.delete({ where: { id: asset.id } });
+      }
+      return json({ ok: true });
+    } catch (e) {
+      // absolutely never take the page down over a delete
+      console.error("[videos] deleteTake failed:", e);
+      return json({ opError: "Couldn't delete that take — it may be linked to other records. Try again after ending its campaigns." });
     }
+  }
+
+  // ---- Retry a failed render: reset the job, keep its stage checkpoints ----
+  // (a job that failed at assembly re-runs WITHOUT re-buying script/voice/video)
+  if (intent === "retryJob") {
+    const jobId = (form.get("jobId") as string) || "";
+    await db.job.updateMany({
+      where: { id: jobId, shopId: shop.id, type: "GENERATE_VIDEO_AD", status: "FAILED" },
+      data: { status: "PENDING", attempts: 0, lastError: null },
+    });
     return json({ ok: true });
   }
 
@@ -769,6 +793,10 @@ export default function Videos() {
                   tone="critical"
                   title={`Render failed — ${j.title}`}
                   action={{
+                    content: "Retry (free — resumes where it stopped)",
+                    onAction: () => crowner.submit({ intent: "retryJob", jobId: j.id }, { method: "post" }),
+                  }}
+                  secondaryAction={{
                     content: "Dismiss",
                     onAction: () => crowner.submit({ intent: "dismissJob", jobId: j.id }, { method: "post" }),
                   }}
@@ -777,7 +805,7 @@ export default function Videos() {
                     {j.lastError || "Unknown error."} ({j.attempts} attempts)
                     {/(payment|credit|402|billing|insufficient)/i.test(j.lastError || "")
                       ? " — the video provider account looks out of credit."
-                      : " — hit ROLL CAMERA to try again."}
+                      : " — Retry picks up from the last completed stage, so finished footage isn't re-bought."}
                   </p>
                 </Banner>
               ))}
@@ -936,7 +964,7 @@ export default function Videos() {
                               title: v.title || meta.productTitle || "",
                               avatarId: meta.avatarId || "",
                               variant: meta.avatarVariant ?? 0,
-                              prompt: body.prompt || "",
+                              prompt: meta.direction || "",
                             })
                           }
                           loading={busy}

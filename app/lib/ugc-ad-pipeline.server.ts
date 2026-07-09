@@ -124,9 +124,24 @@ function pickVoice(desc: string): string {
 
 /* ---------- Caption + assembly helpers ---------- */
 
+/** Prefer the system ffmpeg (Docker image ships Debian's full build — the npm
+ *  static Linux binary is missing drawtext, which broke captioning in prod). */
+function ffmpegBin(): string {
+  for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) {
+    if (fs.existsSync(p)) return p;
+  }
+  if (!ffmpegPath) throw new Error("[ugc:assemble] no ffmpeg binary available");
+  return ffmpegPath as unknown as string;
+}
+function ffprobeBin(): string {
+  for (const p of ["/usr/bin/ffprobe", "/usr/local/bin/ffprobe"]) {
+    if (fs.existsSync(p)) return p;
+  }
+  return (ffprobeStatic as unknown as { path: string }).path;
+}
+
 function ffprobeDuration(file: string): number {
-  const probeBin = (ffprobeStatic as unknown as { path: string }).path;
-  const out = spawnSync(probeBin, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
+  const out = spawnSync(ffprobeBin(), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
     encoding: "utf8",
   });
   const d = parseFloat((out.stdout || "").trim());
@@ -170,7 +185,6 @@ function assemble(opts: {
   script: string;
   outPath: string;
 }): void {
-  if (!ffmpegPath) throw new Error("[ugc:assemble] ffmpeg binary missing");
   const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   const duration = ffprobeDuration(opts.audioPath); // narration defines the ad
 
@@ -206,7 +220,7 @@ function assemble(opts: {
     opts.outPath
   );
 
-  const run = spawnSync(ffmpegPath as unknown as string, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const run = spawnSync(ffmpegBin(), args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   if (run.status !== 0 || !fs.existsSync(opts.outPath)) {
     throw new Error(`[ugc:assemble] ffmpeg failed: ${(run.stderr || "").slice(-400)}`);
   }
@@ -380,6 +394,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           productTitle: params.productTitle,
           avatarId: avatar.id,
           avatarVariant: variant,
+          direction: params.direction || null,
         }),
       },
     });

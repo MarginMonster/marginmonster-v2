@@ -122,7 +122,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       status: "PENDING",
       title: `${style === "AI_AVATAR" ? (avatar ? `${avatar.name} presents` : "Avatar video") : "Product video"} — ${productTitle}`,
       bodyJson: JSON.stringify({ style, videoUrl, prompt }),
-      metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null }),
+      metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null }),
     },
   });
   return asset.id;
