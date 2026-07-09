@@ -7,7 +7,7 @@
 
 export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
 
-export const MECH_V = "3"; // bump to bust cache when renders change
+export const MECH_V = "4"; // bump to bust cache when renders change
 
 export const MECH_BY_PLAN: Record<
   PlanKey,
