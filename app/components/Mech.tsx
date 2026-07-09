@@ -38,8 +38,8 @@ export function Mech({
   // also multiplies this for the sway/float/aura layers). Quarter-cycle spread
   // across the four partners = maximum visual desync. Deterministic, so server
   // and client render identically (no hydration mismatch).
-  const STAGGER: Record<string, number> = { byte: 0, kilo: -0.45, mega: -0.9, giga: -1.35, chaos: -0.6 };
-  const stagger = STAGGER[img] ?? -((img.length * 7) % 17) / 10;
+  const STAGGER: Record<string, number> = { byte: 0, kilo: -0.3, mega: -0.6, giga: -0.9, chaos: -0.45 };
+  const stagger = STAGGER[img] ?? -((img.length * 7) % 11) / 10;
   return (
     <span
       className={`mm-mech${frames >= 3 ? " f3" : ""}${className ? " " + className : ""}`}

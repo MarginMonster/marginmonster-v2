@@ -266,21 +266,22 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 }
 /* TRUE sprite flipbook — hard cuts between three art frames of the same
    character (img2img variants), like hand-drawn "boiling" game animation.
-   Fast equal-interval rotation (~0.6s/frame) reads as continuous living
-   motion rather than discrete pose changes. All three layers MUST share the
-   same delay (--fd) so exactly one frame is visible at any instant. */
+   step-end timing = INSTANT frame swaps (no opacity crossfade, so there is
+   never a dark blend-flash between frames). Fast rotation (0.4s/frame) reads
+   as continuous living motion. All three layers MUST share the same delay
+   (--fd) so exactly one frame is visible at any instant. */
 .mm-mech .mf-b, .mm-mech .mf-c { opacity: 0; }
-.mm-mech.f3 .mf-a { animation: mm-flip-a 1.8s linear infinite; animation-delay: var(--fd, 0s); }
-.mm-mech.f3 .mf-b { animation: mm-flip-b 1.8s linear infinite; animation-delay: var(--fd, 0s); }
-.mm-mech.f3 .mf-c { animation: mm-flip-c 1.8s linear infinite; animation-delay: var(--fd, 0s); }
+.mm-mech.f3 .mf-a { animation: mm-flip-a 1.2s step-end infinite; animation-delay: var(--fd, 0s); }
+.mm-mech.f3 .mf-b { animation: mm-flip-b 1.2s step-end infinite; animation-delay: var(--fd, 0s); }
+.mm-mech.f3 .mf-c { animation: mm-flip-c 1.2s step-end infinite; animation-delay: var(--fd, 0s); }
 @keyframes mm-flip-a {
-  0%, 33.2% { opacity: 1; } 33.3%, 99.9% { opacity: 0; } 100% { opacity: 1; }
+  0% { opacity: 1; } 33.333% { opacity: 0; } 100% { opacity: 0; }
 }
 @keyframes mm-flip-b {
-  0%, 33.2% { opacity: 0; } 33.3%, 66.5% { opacity: 1; } 66.6%, 100% { opacity: 0; }
+  0% { opacity: 0; } 33.333% { opacity: 1; } 66.666% { opacity: 0; } 100% { opacity: 0; }
 }
 @keyframes mm-flip-c {
-  0%, 66.5% { opacity: 0; } 66.6%, 99.9% { opacity: 1; } 100% { opacity: 0; }
+  0% { opacity: 0; } 66.666% { opacity: 1; } 100% { opacity: 1; }
 }
 /* gentle whole-body sway on the wrapper — different period so the combined
    motion never visibly loops */
