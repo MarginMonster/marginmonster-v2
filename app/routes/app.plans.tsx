@@ -136,7 +136,7 @@ function MechFighter({ img, accent, context }: { img: string; accent: string; co
 function PixelFoe() {
   return (
     <div className="mm-pixel mm-mech-wrap foe">
-      <Mech img="chaos" accent="#FF6B6B" />
+      <Mech img="chaos" accent="#FF6B6B" frames={1} />
     </div>
   );
 }

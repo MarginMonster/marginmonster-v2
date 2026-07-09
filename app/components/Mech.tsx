@@ -1,13 +1,14 @@
 /* AdArcade partners — AI-rendered vintage monster companions (90s
- * creature-collector vibe), one per plan tier. Your plan = your partner; higher
- * tiers are later evolution stages (BYTE → KILO → MEGA → GIGA). Transparent PNG
- * cutouts in public/fighters/mons, presented as a floating hero: energy aura
- * behind, levitation over a breathing ground shadow, and a light-glint sweep
- * masked to the silhouette. Shared by the Plans select screen + global HUD. */
+ * creature-collector vibe), one per plan tier. TRUE sprite animation: each
+ * partner has multiple art frames (base / blink / cheer) generated via img2img
+ * from the same render so the character stays consistent, hard-cut like a real
+ * video-game flipbook. Layered on top: levitation over a breathing ground
+ * shadow, an energy aura, gentle sway, and sparkle twinkles.
+ * Files: public/fighters/mons/{img}.png, {img}_b.png (blink), {img}_c.png (cheer). */
 
 export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
 
-export const MECH_V = "4"; // bump to bust cache when renders change
+export const MECH_V = "5"; // bump to bust cache when renders change
 
 export const MECH_BY_PLAN: Record<
   PlanKey,
@@ -22,23 +23,29 @@ export const MECH_BY_PLAN: Record<
 export function Mech({
   img,
   accent,
+  frames = 3,
   className,
 }: {
   img: string;
   accent: string;
+  /** 3 = full flipbook (base/blink/cheer), 1 = static art (foe etc.) */
+  frames?: 1 | 3;
   className?: string;
 }) {
-  const src = `/fighters/mons/${img}.png?v=${MECH_V}`;
+  const src = (s: string) => `/fighters/mons/${img}${s}.png?v=${MECH_V}`;
   return (
     <span
-      className={`mm-mech${className ? " " + className : ""}`}
+      className={`mm-mech${frames >= 3 ? " f3" : ""}${className ? " " + className : ""}`}
       style={{ ["--acc" as string]: accent }}
       aria-hidden="true"
     >
       <span className="mm-mech-aura" />
       <span className="mm-mech-shadow" />
-      <img className="mm-mech-img" src={src} alt="" draggable={false} />
-      <span className="mm-mech-sweep" style={{ ["--img" as string]: `url("${src}")` }} />
+      <span className="mm-mech-stage">
+        <img className="mm-mech-img mf-a" src={src("")} alt="" draggable={false} />
+        {frames >= 3 && <img className="mm-mech-img mf-b" src={src("_b")} alt="" draggable={false} />}
+        {frames >= 3 && <img className="mm-mech-img mf-c" src={src("_c")} alt="" draggable={false} />}
+      </span>
     </span>
   );
 }

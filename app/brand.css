@@ -248,22 +248,59 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   background: radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 45%, transparent 72%);
   animation: mm-mech-shadow 4s ease-in-out infinite;
 }
-/* the robot — smooth levitation, no squash/rotation */
-.mm-mech-img {
-  position: relative; z-index: 2; width: 100%; height: 100%;
-  object-fit: contain; object-position: bottom center;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--acc, #34E7E4) 42%, transparent));
+/* the stage — holds the stacked sprite frames and carries the levitation, so
+   frame flips and motion never fight over the same transform */
+.mm-mech-stage {
+  position: absolute; inset: 0; z-index: 2; display: block;
+  transform-origin: 50% 100%;
   animation: mm-mech-levitate 4s ease-in-out infinite;
   will-change: transform;
 }
-/* metallic light-glint sweeping across the chassis, masked to the silhouette */
-.mm-mech-sweep {
-  position: absolute; inset: 0; z-index: 3; pointer-events: none; mix-blend-mode: screen;
-  background: linear-gradient(112deg, transparent 43%, rgba(210,248,255,0.7) 50%, transparent 57%);
-  background-size: 260% 100%; background-repeat: no-repeat; background-position: 175% 0;
-  -webkit-mask: var(--img) center bottom / contain no-repeat;
-  mask: var(--img) center bottom / contain no-repeat;
-  opacity: 0; animation: mm-mech-sweep 6s ease-in-out infinite;
+.mm-mech-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; object-position: bottom center;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--acc, #34E7E4) 42%, transparent));
+}
+/* TRUE sprite flipbook — hard cuts between three art frames of the same
+   character (img2img variants), like hand-drawn "boiling" game animation.
+   4.8s organic fidget cycle: A → B → A → C → A. */
+.mm-mech .mf-b, .mm-mech .mf-c { opacity: 0; }
+.mm-mech.f3 .mf-a { animation: mm-flip-a 4.8s linear infinite; }
+.mm-mech.f3 .mf-b { animation: mm-flip-b 4.8s linear infinite; }
+.mm-mech.f3 .mf-c { animation: mm-flip-c 4.8s linear infinite; }
+@keyframes mm-flip-a {
+  0%, 37.9% { opacity: 1; } 38%, 57.9% { opacity: 0; }
+  58%, 71.9% { opacity: 1; } 72%, 91.9% { opacity: 0; }
+  92%, 100% { opacity: 1; }
+}
+@keyframes mm-flip-b {
+  0%, 37.9% { opacity: 0; } 38%, 57.9% { opacity: 1; }
+  58%, 100% { opacity: 0; }
+}
+@keyframes mm-flip-c {
+  0%, 71.9% { opacity: 0; } 72%, 91.9% { opacity: 1; }
+  92%, 100% { opacity: 0; }
+}
+/* gentle whole-body sway on the wrapper — different period so the combined
+   motion never visibly loops */
+.mm-mech { animation: mm-mech-sway 5.6s ease-in-out infinite; transform-origin: 50% 88%; }
+@keyframes mm-mech-sway {
+  0%, 100% { transform: rotate(-1deg); }
+  50% { transform: rotate(1deg); }
+}
+/* sparkle twinkles in the partner's color — pop briefly on long offbeat periods */
+.mm-mech::before, .mm-mech::after {
+  content: "✦"; position: absolute; z-index: 3; pointer-events: none;
+  color: var(--acc, #34E7E4); text-shadow: 0 0 8px var(--acc, #34E7E4);
+  opacity: 0; transform: scale(0.3);
+}
+.mm-mech::before { top: 14%; right: 10%; font-size: 14px; animation: mm-spark 9.2s ease-in-out infinite; }
+.mm-mech::after { top: 42%; left: 7%; font-size: 10px; animation: mm-spark 12.4s ease-in-out 4.6s infinite; }
+@keyframes mm-spark {
+  0%, 88%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+  91% { opacity: 1; transform: scale(1.15) rotate(40deg); }
+  94% { opacity: 0.7; transform: scale(0.8) rotate(80deg); }
+  97% { opacity: 0; transform: scale(0.3) rotate(120deg); }
 }
 @keyframes mm-mech-levitate {
   0%, 100% { transform: translateY(1.5%); }
@@ -277,14 +314,11 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   0%, 100% { opacity: 0.55; transform: translateX(-50%) scaleX(1); }
   50% { opacity: 0.3; transform: translateX(-50%) scaleX(0.8); }
 }
-@keyframes mm-mech-sweep {
-  0% { background-position: 175% 0; opacity: 0; }
-  6% { opacity: 0.9; }
-  26% { background-position: -75% 0; opacity: 0.9; }
-  32%, 100% { background-position: -75% 0; opacity: 0; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .mm-mech-aura, .mm-mech-shadow, .mm-mech-img, .mm-mech-sweep { animation: none; }
+  .mm-mech, .mm-mech-stage, .mm-mech-aura, .mm-mech-shadow, .mm-mech-img,
+  .mm-mech::before, .mm-mech::after { animation: none; }
+  .mm-mech .mf-b, .mm-mech .mf-c { opacity: 0 !important; }
+  .mm-mech .mf-a { opacity: 1 !important; }
 }
 
 /* premium "containment pod" — rotating energy ring + sheen behind the mech */
