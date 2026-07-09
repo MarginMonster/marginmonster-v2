@@ -56,4 +56,5 @@ export const XP_EVENTS = {
   forgeListing: 8, // per listing successfully forged
   applyListing: 12, // per listing pushed live to the store
   tokenSpent: 1, // per token spent (farm-proof: they paid)
+  videoGenerated: 60, // per finished video — the app's premium action
 } as const;

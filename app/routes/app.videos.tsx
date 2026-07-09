@@ -79,9 +79,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       take: 10,
     })
   ).map((j) => {
-    let title = "Video";
-    try { title = JSON.parse(j.payload).productTitle || "Video"; } catch { /* keep default */ }
-    return { id: j.id, status: j.status, title, lastError: j.lastError, attempts: j.attempts };
+    let payload: { productTitle?: string; avatarId?: string; avatarVariant?: number | string; productImageUrl?: string } = {};
+    try { payload = JSON.parse(j.payload); } catch { /* keep defaults */ }
+    return {
+      id: j.id,
+      status: j.status,
+      title: payload.productTitle || "Video",
+      avatarId: payload.avatarId || null,
+      avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
+      productImage: payload.productImageUrl || null,
+      lastError: j.lastError,
+      attempts: j.attempts,
+      createdAt: j.createdAt,
+    };
   });
 
   const plan = shop.activePlan;
@@ -327,13 +337,18 @@ export default function Videos() {
 
   // videos render in the background — poll while any job is in flight so the
   // finished cut pops in without a manual refresh
-  const rendering = renderJobs.some((j) => j.status === "PENDING" || j.status === "IN_PROGRESS");
+  const activeJobs = renderJobs.filter((j) => j.status === "PENDING" || j.status === "IN_PROGRESS");
+  const failedJobs = renderJobs.filter((j) => j.status === "FAILED");
+  const rendering = activeJobs.length > 0;
   useEffect(() => {
     if (!rendering) return;
     const t = setInterval(() => revalidator.revalidate(), 8000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rendering]);
+  // client-only clock for "N min in" (avoids a server/client hydration mismatch)
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
   const [customPrompt, setCustomPrompt] = useState("");
   const [pick, setPick] = useState<Pick | null>(null);
   const [pullUrl, setPullUrl] = useState("");
@@ -433,7 +448,7 @@ export default function Videos() {
           <Layout.Section>
             {queued ? (
               <Banner tone="success" title="🎬 Rolling!">
-                <p>Your video is rendering — this usually takes 2–5 minutes. It'll appear below automatically; you can keep working or roll another.</p>
+                <p>Your video is rendering — usually 2–6 minutes (first takes can run longer while the AI model warms up). It'll appear in the Take Library below automatically.</p>
               </Banner>
             ) : (
               <Banner tone="critical" title="Couldn't start the shoot">
@@ -631,42 +646,28 @@ export default function Videos() {
           </Card>
         </Layout.Section>
 
-        {/* In-flight + failed renders — the queue is never invisible */}
-        {renderJobs.length > 0 && (
+        {/* Failed renders — dismissible, never silent */}
+        {failedJobs.length > 0 && (
           <Layout.Section>
             <BlockStack gap="300">
-              {renderJobs.map((j) =>
-                j.status === "FAILED" ? (
-                  <Banner
-                    key={j.id}
-                    tone="critical"
-                    title={`Render failed — ${j.title}`}
-                    action={{
-                      content: "Dismiss",
-                      onAction: () => crowner.submit({ intent: "dismissJob", jobId: j.id }, { method: "post" }),
-                    }}
-                  >
-                    <p>
-                      {j.lastError || "Unknown error."} ({j.attempts} attempts)
-                      {/(payment|credit|402|billing|insufficient)/i.test(j.lastError || "")
-                        ? " — the video provider account looks out of credit."
-                        : " — hit ROLL CAMERA to try again."}
-                    </p>
-                  </Banner>
-                ) : (
-                  <Card key={j.id}>
-                    <InlineStack gap="300" blockAlign="center">
-                      <span className="mm-render-spin" aria-hidden="true">🎥</span>
-                      <BlockStack gap="050">
-                        <Text variant="headingSm" as="h3">RENDERING — {j.title}</Text>
-                        <Text variant="bodySm" as="p" tone="subdued">
-                          Usually 2–5 minutes. This page checks automatically every few seconds.
-                        </Text>
-                      </BlockStack>
-                    </InlineStack>
-                  </Card>
-                )
-              )}
+              {failedJobs.map((j) => (
+                <Banner
+                  key={j.id}
+                  tone="critical"
+                  title={`Render failed — ${j.title}`}
+                  action={{
+                    content: "Dismiss",
+                    onAction: () => crowner.submit({ intent: "dismissJob", jobId: j.id }, { method: "post" }),
+                  }}
+                >
+                  <p>
+                    {j.lastError || "Unknown error."} ({j.attempts} attempts)
+                    {/(payment|credit|402|billing|insufficient)/i.test(j.lastError || "")
+                      ? " — the video provider account looks out of credit."
+                      : " — hit ROLL CAMERA to try again."}
+                  </p>
+                </Banner>
+              ))}
             </BlockStack>
           </Layout.Section>
         )}
@@ -676,7 +677,7 @@ export default function Videos() {
           <span className="mm-section-label">
             ▶ TAKE LIBRARY ({filteredVideos.length}{filteredVideos.length !== videos.length ? ` of ${videos.length}` : ""})
           </span>
-          {videos.length === 0 ? (
+          {videos.length === 0 && activeJobs.length === 0 ? (
             <Card>
               <Box padding="400">
                 <Text as="p" tone="subdued" alignment="center">
@@ -716,6 +717,35 @@ export default function Videos() {
                 </Card>
               )}
               <div className="mm-take-grid">
+              {activeJobs.map((j) => {
+                const cm = j.avatarId ? AVATAR_BY_ID[j.avatarId] : null;
+                const thumb = j.productImage || (cm && castAvail[cm.id] ? castImg(cm.id, j.avatarVariant) : null);
+                const mins = now ? Math.max(1, Math.round((now - new Date(j.createdAt).getTime()) / 60_000)) : null;
+                return (
+                  <div key={j.id} className="mm-take-render">
+                    <div className="mm-take-render-thumb">
+                      {thumb ? <img src={thumb} alt="" /> : <div className="ph">🎬</div>}
+                      <div className="mm-buffer" aria-hidden="true"><span className="ring" /></div>
+                    </div>
+                    <div className="mm-take-render-body">
+                      <Text variant="headingSm" as="h3">{j.title}</Text>
+                      <InlineStack gap="200" blockAlign="center">
+                        {cm && castAvail[cm.id] && (
+                          <span className="mm-cast-tag">
+                            <img src={castImg(cm.id, j.avatarVariant)} alt="" /> {cm.name}
+                          </span>
+                        )}
+                        <Badge tone="attention">RENDERING</Badge>
+                      </InlineStack>
+                      <Text variant="bodySm" as="p" tone="subdued">
+                        {mins ? `${mins} min in · ` : ""}usually 2–6 min
+                        {mins && mins > 6 ? " — first takes can run longer while the AI model warms up" : ""}.
+                        Updates automatically.
+                      </Text>
+                    </div>
+                  </div>
+                );
+              })}
               {filteredVideos.map((v) => {
                 const body = JSON.parse(v.bodyJson);
                 const meta = JSON.parse(v.metaJson);

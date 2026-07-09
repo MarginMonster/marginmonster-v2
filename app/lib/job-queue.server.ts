@@ -7,11 +7,35 @@ import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
+import { awardXp, checkLevelAchievements } from "./xp.server";
+import { XP_EVENTS } from "./achievements";
 import { generateAdCopy } from "./ad-copy-generation.server";
 import { launchCampaign } from "./campaign-launch.server";
 import { runDecisioningPass } from "./decisioning-engine.server";
 
 const MAX_ATTEMPTS = 3;
+
+/** Jobs claimed by a process that died (deploy/restart) stay IN_PROGRESS
+ *  forever and look "stuck rendering" to the merchant. Reclaim them: back to
+ *  PENDING if they have attempts left, else FAILED with a clear reason.
+ *  Called at worker boot (nothing can genuinely be running then) and each tick
+ *  for anything stuck past the hard ceiling. */
+export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const stuck = await db.job.findMany({
+    where: { status: "IN_PROGRESS", updatedAt: { lt: cutoff } },
+  });
+  for (const j of stuck) {
+    await db.job.update({
+      where: { id: j.id },
+      data:
+        j.attempts >= MAX_ATTEMPTS
+          ? { status: "FAILED", lastError: "Interrupted by a server restart — hit ROLL CAMERA to try again." }
+          : { status: "PENDING" },
+    });
+  }
+  if (stuck.length) console.log(`[worker] reclaimed ${stuck.length} orphaned job(s)`);
+}
 
 export async function enqueueJob(
   shopId: string,
@@ -150,6 +174,18 @@ async function runJob(
           style: "PRODUCT_HIGHLIGHT",
           customPrompt: payload.customPrompt as string | undefined,
         });
+      }
+      // Success → burn one take from the plan allowance + pay video XP.
+      // (Non-fatal: economics must never un-render a finished video.)
+      try {
+        await db.plan.update({
+          where: { id: shop.activePlan.id },
+          data: { videoUsed: { increment: 1 } },
+        });
+        const xp = await awardXp(shopId, XP_EVENTS.videoGenerated);
+        if (xp?.leveledUp) await checkLevelAchievements(shopId, xp.level);
+      } catch (e) {
+        console.error("[job] video accounting failed (non-fatal):", e);
       }
       break;
     }

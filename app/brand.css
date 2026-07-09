@@ -763,9 +763,30 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   box-shadow: 0 0 10px rgba(52,231,228,0.2);
 }
 
-/* rendering indicator — gentle pulse on the camera while a video cooks */
-.mm-render-spin { font-size: 26px; display: inline-block; animation: mm-render-pulse 1.4s ease-in-out infinite; }
-@keyframes mm-render-pulse { 0%,100% { transform: scale(1); opacity: .75; } 50% { transform: scale(1.18); opacity: 1; } }
+/* RENDERING take-card — lives in the Take Library grid: the presenter/product
+   thumb with a buffering ring over it, not a naked banner */
+.mm-take-render {
+  border-radius: 14px; overflow: hidden;
+  background: linear-gradient(180deg, #14122A 0%, #0B0A17 100%);
+  border: 1px solid rgba(52,231,228,0.35);
+  box-shadow: 0 0 18px rgba(52,231,228,0.12);
+}
+.mm-take-render-thumb { position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; }
+.mm-take-render-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; filter: brightness(0.55) saturate(0.85); }
+.mm-take-render-thumb .ph {
+  width: 100%; height: 100%; display: grid; place-items: center; font-size: 44px;
+  background: radial-gradient(120% 90% at 50% 20%, rgba(52,231,228,0.16), transparent 65%), #060512;
+}
+.mm-buffer { position: absolute; inset: 0; display: grid; place-items: center; }
+.mm-buffer .ring {
+  width: 54px; height: 54px; border-radius: 50%;
+  border: 4px solid rgba(255,255,255,0.18); border-top-color: var(--mm-cyan);
+  box-shadow: 0 0 18px rgba(52,231,228,0.35);
+  animation: mm-buffer-spin 0.9s linear infinite;
+}
+@keyframes mm-buffer-spin { to { transform: rotate(360deg); } }
+.mm-take-render-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .mm-buffer .ring { animation: none; } }
 
 /* Brand Face — the merchant's signature presenter */
 .mm-bf-tag {
