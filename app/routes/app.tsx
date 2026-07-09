@@ -38,7 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     name: string;
     planKey: PlanKey | null;
     planLabel: string;
-    tier: 1 | 2 | 3 | 4 | null;
+    img: string | null;
     accent: string;
     tokens: number;
     tokensMax: number;
@@ -48,7 +48,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     name: playerName,
     planKey: null,
     planLabel: "No Plan",
-    tier: null,
+    img: null,
     accent: "#34E7E4",
     tokens: 0,
     tokensMax: 0,
@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         name: playerName,
         planKey: plan.type as PlanKey,
         planLabel: PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type,
-        tier: mech?.tier ?? null,
+        img: mech?.img ?? null,
         accent: mech?.accent ?? "#34E7E4",
         tokens: remaining,
         tokensMax: Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra),
@@ -94,9 +94,9 @@ export default function App() {
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
       <div className="mm-hud" aria-label="Player status">
         <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>
-          {hud.tier ? (
+          {hud.img ? (
             <span className="mm-hud-sprite" aria-hidden="true">
-              <Mech tier={hud.tier} accent={hud.accent} />
+              <Mech img={hud.img} accent={hud.accent} />
             </span>
           ) : (
             <span className="mm-hud-face">🎮</span>
