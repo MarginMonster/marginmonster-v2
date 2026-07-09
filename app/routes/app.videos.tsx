@@ -1,7 +1,9 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation, useFetcher } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation, useFetcher, useRevalidator, useActionData } from "@remix-run/react";
 import { useState, useEffect } from "react";
+import fs from "node:fs";
+import path from "node:path";
 import {
   Page,
   Layout,
@@ -20,7 +22,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
-import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS } from "../lib/avatars";
+import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS, OUTFITS, CAST_PREVIEW_COUNT, avatarImg } from "../lib/avatars";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -57,6 +59,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     /* non-fatal — manual entry still works */
   }
 
+  // Which cast portraits actually exist on disk — lets the roster grow to 100
+  // the moment the wardrobe images deploy, without ever showing broken cards.
+  const castAvail: Record<string, "variants" | "legacy"> = {};
+  try {
+    const files = new Set(fs.readdirSync(path.join(process.cwd(), "public", "avatars")));
+    for (const a of AVATARS) {
+      if (files.has(`${a.id}_0.jpg`)) castAvail[a.id] = "variants";
+      else if (files.has(`${a.id}.jpg`)) castAvail[a.id] = "legacy";
+    }
+  } catch { /* no avatars dir — roster renders empty, product-only still works */ }
+
+  // In-flight + failed renders so ROLL CAMERA always has visible consequences.
+  const renderJobs = (
+    await db.job.findMany({
+      where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    })
+  ).map((j) => {
+    let title = "Video";
+    try { title = JSON.parse(j.payload).productTitle || "Video"; } catch { /* keep default */ }
+    return { id: j.id, status: j.status, title, lastError: j.lastError, attempts: j.attempts };
+  });
+
   const plan = shop.activePlan;
   const hasVideoPlan = !!plan && plan.videoQuota > 0;
 
@@ -67,6 +93,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null,
     hasVideoPlan,
     products,
+    castAvail,
+    renderJobs,
+    brandFace: shop.brandAvatarId
+      ? { id: shop.brandAvatarId, variant: shop.brandAvatarVariant ?? 0 }
+      : null,
   });
 };
 
@@ -184,6 +215,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const productTitle = (form.get("productTitle") as string)?.trim();
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
+    const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     // Cast selection drives the style: a presenter = avatar video, none = showcase.
     const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
     const customPrompt = (form.get("customPrompt") as string)?.trim() || undefined;
@@ -196,10 +228,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       style,
       customPrompt,
       avatarId,
+      avatarVariant,
       productImageUrl,
       productDescription,
     });
     return json({ ok: true, queued: true });
+  }
+
+  // ---- Brand Face: crown (or uncrown) the signature presenter ----
+  if (intent === "setBrandFace") {
+    const id = ((form.get("avatarId") as string) || "").trim() || null;
+    const variant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { brandAvatarId: id, brandAvatarVariant: id ? variant : 0 },
+    });
+    return json({ ok: true, brandFaceSet: !!id });
   }
 
   const assetId = form.get("assetId") as string;
@@ -214,18 +258,50 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Pick = { id: string | null; title: string; image: string | null; description: string };
 
 export default function Videos() {
-  const { videos, plan, hasVideoPlan, products } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
+  const revalidator = useRevalidator();
   const puller = useFetcher<{ pulled?: Pick; pullError?: string }>();
+  const crowner = useFetcher();
   const busy = nav.state !== "idle";
   const pulling = puller.state !== "idle";
+  const queued = !!(actionData && "queued" in actionData && actionData.queued);
+  const actionError = actionData && "error" in actionData ? (actionData.error as string) : null;
 
+  // Brand Face pre-casts the merchant's signature presenter + outfit
   const [productTitle, setProductTitle] = useState("");
-  const [avatarId, setAvatarId] = useState<string>(""); // "" = product only
+  const [avatarId, setAvatarId] = useState<string>(brandFace?.id || ""); // "" = product only
+  const [avatarVariant, setAvatarVariant] = useState(brandFace?.variant ?? 0); // wardrobe slot 0-3
+  const [visibleCount, setVisibleCount] = useState(CAST_PREVIEW_COUNT);
+
+  // only presenters whose portraits exist on this deploy; brand face pinned
+  // right after PRODUCT ONLY so it's always on screen
+  const available = AVATARS.filter((a) => castAvail[a.id]);
+  const orderedCast = brandFace?.id && AVATAR_BY_ID[brandFace.id] && castAvail[brandFace.id]
+    ? [AVATAR_BY_ID[brandFace.id], ...available.filter((a) => a.id !== brandFace.id)]
+    : available;
+  const castImg = (id: string, v: number) =>
+    castAvail[id] === "variants" ? avatarImg(id, v) : `/avatars/${id}.jpg`;
+
+  // videos render in the background — poll while any job is in flight so the
+  // finished cut pops in without a manual refresh
+  const rendering = renderJobs.some((j) => j.status === "PENDING" || j.status === "IN_PROGRESS");
+  useEffect(() => {
+    if (!rendering) return;
+    const t = setInterval(() => revalidator.revalidate(), 8000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rendering]);
   const [customPrompt, setCustomPrompt] = useState("");
   const [pick, setPick] = useState<Pick | null>(null);
   const [pullUrl, setPullUrl] = useState("");
+
+  const castAvatar = (id: string) => {
+    setAvatarId(id);
+    setAvatarVariant(0); // new presenter starts in their default fit
+  };
 
   // a URL pull landing = auto-select that product
   useEffect(() => {
@@ -249,12 +325,13 @@ export default function Videos() {
   const insertChip = (chip: string) =>
     setCustomPrompt((p) => (p.trim() ? `${p.trim()}, ${chip.toLowerCase()}` : chip));
 
-  const generate = (intent: "generate" | "regenerate", seed?: { title: string; avatarId: string; prompt: string }) => {
+  const generate = (intent: "generate" | "regenerate", seed?: { title: string; avatarId: string; variant: number; prompt: string }) => {
     submit(
       {
         intent,
         productTitle: seed?.title ?? productTitle,
         avatarId: seed?.avatarId ?? avatarId,
+        avatarVariant: String(seed?.variant ?? avatarVariant),
         customPrompt: seed?.prompt ?? customPrompt,
         productImageUrl: seed ? "" : pick?.image || "",
         productDescription: seed ? "" : pick?.description || "",
@@ -303,13 +380,30 @@ export default function Videos() {
               </div>
               <div className="mm-hero-stat">
                 <div className="k">NOW CASTING</div>
-                <div className="v cyan">{selectedAvatar ? selectedAvatar.name : "PRODUCT ONLY"}</div>
+                <div className="v cyan">
+                  {selectedAvatar ? `${selectedAvatar.name} · ${OUTFITS[avatarVariant].label.toUpperCase()}` : "PRODUCT ONLY"}
+                </div>
               </div>
             </div>
           </div>
         </Layout.Section>
 
-        {/* CAST SELECT — Zeely-style presenter gallery */}
+        {/* ROLL CAMERA feedback — a click ALWAYS has a visible consequence */}
+        {(queued || actionError) && (
+          <Layout.Section>
+            {queued ? (
+              <Banner tone="success" title="🎬 Rolling!">
+                <p>Your video is rendering — this usually takes 2–5 minutes. It'll appear below automatically; you can keep working or roll another.</p>
+              </Banner>
+            ) : (
+              <Banner tone="critical" title="Couldn't start the shoot">
+                <p>{actionError}</p>
+              </Banner>
+            )}
+          </Layout.Section>
+        )}
+
+        {/* CAST SELECT — Zeely-style presenter gallery (100-strong, 4 fits each) */}
         <Layout.Section>
           <span className="mm-section-label">▶ SELECT YOUR PRESENTER<span className="mm-dots">· · · · ·</span></span>
           <div className="mm-cast-grid">
@@ -322,19 +416,72 @@ export default function Videos() {
               <div className="nm">PRODUCT ONLY</div>
               <div className="vb">Showcase reel</div>
             </button>
-            {AVATARS.map((a) => (
+            {orderedCast.slice(0, visibleCount).map((a) => (
               <button
                 key={a.id}
                 type="button"
                 className={`mm-cast${avatarId === a.id ? " on" : ""}`}
-                onClick={() => setAvatarId(a.id)}
+                onClick={() => castAvatar(a.id)}
               >
-                <img src={`/avatars/${a.id}.jpg`} alt={`${a.name} — ${a.vibe}`} loading="lazy" />
+                {brandFace?.id === a.id && <span className="mm-bf-tag">★ BRAND FACE</span>}
+                <img
+                  src={castImg(a.id, avatarId === a.id ? avatarVariant : 0)}
+                  alt={`${a.name} — ${a.vibe}`}
+                  loading="lazy"
+                />
                 <div className="nm">{a.name}</div>
                 <div className="vb">{a.vibe}</div>
               </button>
             ))}
           </div>
+          {visibleCount < orderedCast.length && (
+            <div className="mm-viewmore-wrap">
+              <button type="button" className="mm-ghost-btn" onClick={() => setVisibleCount(orderedCast.length)}>
+                ▼ VIEW MORE AVATARS ({orderedCast.length - visibleCount} more)
+              </button>
+            </div>
+          )}
+
+          {/* WARDROBE — 4 fits per presenter + Brand Face crown */}
+          {selectedAvatar && castAvail[selectedAvatar.id] === "variants" && (
+            <div className="mm-wardrobe">
+              <span className="mm-section-label">▶ {selectedAvatar.name}'S WARDROBE</span>
+              <div className="mm-wardrobe-row">
+                {OUTFITS.map((o, i) => (
+                  <button
+                    key={o.label}
+                    type="button"
+                    className={`mm-fit${avatarVariant === i ? " on" : ""}`}
+                    onClick={() => setAvatarVariant(i)}
+                  >
+                    <img src={avatarImg(selectedAvatar.id, i)} alt={`${selectedAvatar.name} — ${o.label}`} loading="lazy" />
+                    <span className="fl">{o.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mm-bf-row">
+                {brandFace?.id === selectedAvatar.id && brandFace?.variant === avatarVariant ? (
+                  <button
+                    type="button"
+                    className="mm-bf-btn on"
+                    onClick={() => crowner.submit({ intent: "setBrandFace", avatarId: "", avatarVariant: "0" }, { method: "post" })}
+                    disabled={crowner.state !== "idle"}
+                  >
+                    ★ YOUR BRAND FACE — every video stays on-brand · tap to uncrown
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="mm-bf-btn"
+                    onClick={() => crowner.submit({ intent: "setBrandFace", avatarId: selectedAvatar.id, avatarVariant: String(avatarVariant) }, { method: "post" })}
+                    disabled={crowner.state !== "idle"}
+                  >
+                    ☆ SET AS BRAND FACE — pre-cast {selectedAvatar.name} in this fit on every visit
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </Layout.Section>
 
         {/* Direction booth */}
@@ -444,6 +591,38 @@ export default function Videos() {
           </Card>
         </Layout.Section>
 
+        {/* In-flight + failed renders — the queue is never invisible */}
+        {renderJobs.length > 0 && (
+          <Layout.Section>
+            <BlockStack gap="300">
+              {renderJobs.map((j) =>
+                j.status === "FAILED" ? (
+                  <Banner key={j.id} tone="critical" title={`Render failed — ${j.title}`}>
+                    <p>
+                      {j.lastError || "Unknown error."} ({j.attempts} attempts)
+                      {/(payment|credit|402|billing|insufficient)/i.test(j.lastError || "")
+                        ? " — the video provider account looks out of credit."
+                        : " — hit ROLL CAMERA to try again."}
+                    </p>
+                  </Banner>
+                ) : (
+                  <Card key={j.id}>
+                    <InlineStack gap="300" blockAlign="center">
+                      <span className="mm-render-spin" aria-hidden="true">🎥</span>
+                      <BlockStack gap="050">
+                        <Text variant="headingSm" as="h3">RENDERING — {j.title}</Text>
+                        <Text variant="bodySm" as="p" tone="subdued">
+                          Usually 2–5 minutes. This page checks automatically every few seconds.
+                        </Text>
+                      </BlockStack>
+                    </InlineStack>
+                  </Card>
+                )
+              )}
+            </BlockStack>
+          </Layout.Section>
+        )}
+
         {/* Library */}
         <Layout.Section>
           {videos.length === 0 ? (
@@ -470,7 +649,7 @@ export default function Videos() {
                           <InlineStack gap="200" blockAlign="center">
                             {castMember ? (
                               <span className="mm-cast-tag">
-                                <img src={`/avatars/${castMember.id}.jpg`} alt="" /> {castMember.name}
+                                <img src={avatarImg(castMember.id, meta.avatarVariant ?? 0)} alt="" /> {castMember.name}
                               </span>
                             ) : (
                               <Badge>{(meta.style || "PRODUCT_HIGHLIGHT").replace(/_/g, " ")}</Badge>
@@ -514,6 +693,7 @@ export default function Videos() {
                             generate("regenerate", {
                               title: v.title || meta.productTitle || "",
                               avatarId: meta.avatarId || "",
+                              variant: meta.avatarVariant ?? 0,
                               prompt: body.prompt || "",
                             })
                           }

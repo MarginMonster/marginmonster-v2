@@ -6,7 +6,7 @@
 
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
-import { AVATAR_BY_ID } from "./avatars";
+import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
 
@@ -29,6 +29,7 @@ interface GenerateVideoParams {
   script?: string; // for AI_AVATAR; auto-written if omitted
   customPrompt?: string; // merchant direction, appended to the base prompt
   avatarId?: string; // cast member (avatars.ts) — portrait seeds the first frame
+  avatarVariant?: number; // wardrobe variant 0-3 (see OUTFITS)
 }
 
 export async function generateVideoAd(params: GenerateVideoParams): Promise<string> {
@@ -52,9 +53,11 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // the presenter's identity, and merchant direction is APPENDED (not a
   // replacement) so custom control never loses the quality floor.
   const avatar = params.avatarId ? AVATAR_BY_ID[params.avatarId] : undefined;
+  const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
+  const outfit = OUTFITS[variant];
   const basePrompt =
     style === "AI_AVATAR" && avatar
-      ? `UGC-style spokesperson video: ${avatar.desc}, enthusiastically presenting ${productTitle} to the camera. ${voice.tone} tone. Authentic hand-held creator feel, natural gestures, vertical.`
+      ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, enthusiastically presenting ${productTitle} to the camera. ${voice.tone} tone. Authentic hand-held creator feel, natural gestures, vertical.`
       : style === "AI_AVATAR"
         ? `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, vertical.`
         : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`;
@@ -66,10 +69,10 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
 
   const input: Record<string, unknown> = { prompt, prompt_optimizer: true };
   if (style === "AI_AVATAR" && avatar) {
-    // Seed the video with the cast member's portrait — the presenter you pick
-    // is the presenter who appears.
+    // Seed the video with the cast member's portrait — in the chosen outfit —
+    // so the presenter you pick is the presenter who appears.
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    if (base) input.first_frame_image = `${base}/avatars/${avatar.id}.jpg`;
+    if (base) input.first_frame_image = `${base}/avatars/${avatar.id}_${variant}.jpg`;
   } else if (style === "PRODUCT_HIGHLIGHT" && productImageUrl) {
     input.first_frame_image = productImageUrl;
   }
@@ -119,7 +122,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       status: "PENDING",
       title: `${style === "AI_AVATAR" ? (avatar ? `${avatar.name} presents` : "Avatar video") : "Product video"} — ${productTitle}`,
       bodyJson: JSON.stringify({ style, videoUrl, prompt }),
-      metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null }),
+      metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null }),
     },
   });
   return asset.id;

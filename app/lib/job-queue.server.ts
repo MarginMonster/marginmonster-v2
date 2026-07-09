@@ -134,6 +134,7 @@ async function runJob(
         style: (payload.style as "PRODUCT_HIGHLIGHT" | "AI_AVATAR") || "PRODUCT_HIGHLIGHT",
         customPrompt: payload.customPrompt as string | undefined,
         avatarId: payload.avatarId as string | undefined,
+        avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : undefined,
       });
       break;
     }

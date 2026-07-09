@@ -41,6 +41,10 @@ model Shop {
   tokensSpent  Int @default(0) // lifetime tokens spent
   // one-shot flash for the global level-up popup: {"level":n,"gift":n}
   pendingLevelUp String?
+  // Brand Face — the merchant's signature presenter (avatars.ts id + outfit),
+  // pre-cast on every Video Studio visit for cross-campaign consistency
+  brandAvatarId      String?
+  brandAvatarVariant Int     @default(0)
 
   brandProfile   BrandProfile?
   activePlan     Plan?
