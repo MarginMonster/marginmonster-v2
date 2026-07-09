@@ -1,0 +1,278 @@
+/* Zeely-class UGC ad pipeline. A "UGC ad" is an assembled performance, not a
+ * raw video generation:
+ *   1. SCRIPT  — Claude writes a ~13s hook-driven spoken script (AIDA/PAS) in
+ *                the brand's voice
+ *   2. VOICE   — minimax speech-02-turbo reads it (voice matched to presenter)
+ *   3. TALKING — bytedance/omni-human: cast portrait + audio → lip-synced
+ *                presenter performance ($0.14/s, ≤15s sweet spot)
+ *   4. ASSEMBLY— ffmpeg: vertical 720x1280 canvas, product b-roll cut-in,
+ *                bold burned-in captions (UGC style)
+ * Total COGS ≈ $2-3 per finished ad. Output saved to data/renders and served
+ * via the /renders/:file resource route. */
+
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { spawnSync } from "node:child_process";
+import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
+import { db } from "../db.server";
+import { anthropicText } from "./anthropic.server";
+import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import type { BrandProfile } from "@prisma/client";
+
+const REP = "https://api.replicate.com/v1";
+
+interface UgcAdParams {
+  shopId: string;
+  brandProfile: BrandProfile;
+  productTitle: string;
+  productDescription?: string;
+  productImageUrl?: string;
+  avatarId: string;
+  avatarVariant?: number;
+  direction?: string; // merchant's custom prompt
+}
+
+/* ---------- Replicate helpers (model endpoint, 429-tolerant) ---------- */
+
+function repToken(): string {
+  const t = process.env.REPLICATE_API_TOKEN;
+  if (!t) throw new Error("[ugc] REPLICATE_API_TOKEN not set");
+  return t;
+}
+
+async function repCreate(model: string, input: Record<string, unknown>): Promise<string> {
+  for (let a = 0; a < 12; a++) {
+    const res = await fetch(`${REP}/models/${model}/predictions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${repToken()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ input }),
+    });
+    if (res.status === 429) {
+      const j = (await res.json().catch(() => ({}))) as { retry_after?: number };
+      await new Promise((r) => setTimeout(r, (j.retry_after || 12) * 1000 + 1500));
+      continue;
+    }
+    if (!res.ok) throw new Error(`[ugc] ${model} create ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const j = (await res.json()) as { id: string };
+    return j.id;
+  }
+  throw new Error(`[ugc] ${model}: rate-limited too long`);
+}
+
+async function repPoll(id: string, maxMs: number, stage: string): Promise<string> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    await new Promise((r) => setTimeout(r, 4000));
+    const res = await fetch(`${REP}/predictions/${id}`, {
+      headers: { Authorization: `Bearer ${repToken()}` },
+    });
+    const j = (await res.json()) as { status: string; output?: string | string[]; error?: string };
+    if (j.status === "succeeded" && j.output) {
+      return Array.isArray(j.output) ? j.output[0] : j.output;
+    }
+    if (j.status === "failed" || j.status === "canceled") {
+      throw new Error(`[ugc:${stage}] ${j.error || j.status}`);
+    }
+  }
+  throw new Error(`[ugc:${stage}] timed out after ${Math.round(maxMs / 1000)}s`);
+}
+
+async function download(url: string, file: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`[ugc] download ${res.status} for ${file}`);
+  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+}
+
+/* ---------- Voice casting ---------- */
+
+function pickVoice(desc: string): string {
+  // Only ids documented in the model schema — guaranteed valid. Expand later.
+  return /\b(woman|girl|lady|abuela|grandma|mom)\b/i.test(desc)
+    ? "English_Wiselady"
+    : "English_Deep-VoicedGentleman";
+}
+
+/* ---------- Caption + assembly helpers ---------- */
+
+function ffprobeDuration(file: string): number {
+  const probeBin = (ffprobeStatic as unknown as { path: string }).path;
+  const out = spawnSync(probeBin, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
+    encoding: "utf8",
+  });
+  const d = parseFloat((out.stdout || "").trim());
+  if (!d || Number.isNaN(d)) throw new Error(`[ugc:assemble] couldn't probe duration (${out.stderr?.slice(0, 120)})`);
+  return d;
+}
+
+/** Caption-safe text: bold UGC style is ALL CAPS; strip anything that fights
+ *  drawtext's escaping rules. */
+function captionSafe(s: string): string {
+  return s.toUpperCase().replace(/[^A-Z0-9 .!?$-]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function buildCaptionFilters(script: string, duration: number, fontFile: string): string[] {
+  const words = captionSafe(script).split(" ").filter(Boolean);
+  if (!words.length) return [];
+  // 3-word chunks: fits 720px at this size, and short bursts read more "UGC"
+  const chunks: string[] = [];
+  for (let i = 0; i < words.length; i += 3) chunks.push(words.slice(i, i + 3).join(" "));
+  const capped = chunks.slice(0, 16);
+  const per = duration / capped.length;
+  // fontfile path needs forward slashes + escaped colon for the filter parser
+  const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+  return capped.map((text, i) => {
+    const t0 = (i * per).toFixed(2);
+    const t1 = ((i + 1) * per).toFixed(2);
+    // gte*lt (not between) — between is inclusive on both ends, which
+    // double-draws two captions on the shared boundary frame
+    return (
+      `drawtext=fontfile='${font}':text='${text}':fontsize=50:fontcolor=white:` +
+      `borderw=7:bordercolor=black:x=(w-text_w)/2:y=h-330:enable='gte(t,${t0})*lt(t,${t1})'`
+    );
+  });
+}
+
+function assemble(opts: {
+  talkingPath: string;
+  productImagePath: string | null;
+  script: string;
+  outPath: string;
+}): void {
+  if (!ffmpegPath) throw new Error("[ugc:assemble] ffmpeg binary missing");
+  const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  const duration = ffprobeDuration(opts.talkingPath);
+
+  const args: string[] = ["-y", "-i", opts.talkingPath];
+  const filters: string[] = [];
+  let vLabel = "[v0]";
+  filters.push(`[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[v0]`);
+
+  if (opts.productImagePath) {
+    // product b-roll cut-in mid-ad while the voice keeps talking (classic UGC cut)
+    args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
+    const bs = Math.max(1.2, duration * 0.45).toFixed(2);
+    const be = Math.min(duration - 0.8, duration * 0.45 + 2.2).toFixed(2);
+    filters.push(`[1:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
+    filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
+    vLabel = "[v1]";
+  }
+
+  const captions = buildCaptionFilters(opts.script, duration, fontFile);
+  if (captions.length) {
+    filters.push(`${vLabel}${captions.join(",")}[vf]`);
+    vLabel = "[vf]";
+  }
+
+  args.push(
+    "-filter_complex", filters.join(";"),
+    "-map", vLabel, "-map", "0:a",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart",
+    opts.outPath
+  );
+
+  const run = spawnSync(ffmpegPath as unknown as string, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  if (run.status !== 0 || !fs.existsSync(opts.outPath)) {
+    throw new Error(`[ugc:assemble] ffmpeg failed: ${(run.stderr || "").slice(-400)}`);
+  }
+}
+
+/* ---------- The pipeline ---------- */
+
+export async function generateUgcAd(params: UgcAdParams): Promise<string> {
+  const avatar = AVATAR_BY_ID[params.avatarId];
+  if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
+  const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!base) throw new Error("[ugc] SHOPIFY_APP_URL not set (needed for portrait URL)");
+  const portraitUrl = `${base}/avatars/${avatar.id}_${variant}.jpg`;
+
+  const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
+
+  // 1) SCRIPT — hook-first, ~13s spoken
+  const scriptPrompt = [
+    `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).`,
+    `Presenter: ${avatar.name}, ${avatar.desc}.`,
+    `Product: "${params.productTitle}".`,
+    params.productDescription ? `Product details: ${params.productDescription.slice(0, 300)}` : "",
+    voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
+    params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
+    ``,
+    `Rules: The FIRST sentence must be a scroll-stopping hook. Use PAS or AIDA.`,
+    `30 to 40 words TOTAL (about 13 seconds spoken). Conversational, first person,`,
+    `like recommending to a friend. End with a short call to action.`,
+    `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+    .replace(/["“”\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!script) throw new Error("[ugc:script] empty script from model");
+  const w = script.split(" ");
+  if (w.length > 45) script = w.slice(0, 45).join(" ");
+
+  // 2) VOICE
+  const ttsId = await repCreate("minimax/speech-02-turbo", {
+    text: script,
+    voice_id: pickVoice(avatar.desc),
+  });
+  const audioUrl = await repPoll(ttsId, 3 * 60_000, "tts");
+
+  // 3) TALKING PERFORMANCE
+  const omniId = await repCreate("bytedance/omni-human", { image: portraitUrl, audio: audioUrl });
+  const talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
+
+  // 4) ASSEMBLY
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-"));
+  try {
+    const talkingPath = path.join(tmp, "talking.mp4");
+    await download(talkingUrl, talkingPath);
+
+    let productImagePath: string | null = null;
+    if (params.productImageUrl) {
+      try {
+        productImagePath = path.join(tmp, "product.img");
+        await download(params.productImageUrl, productImagePath);
+      } catch {
+        productImagePath = null; // b-roll is a bonus, never a blocker
+      }
+    }
+
+    const rendersDir = path.join(process.cwd(), "data", "renders");
+    fs.mkdirSync(rendersDir, { recursive: true });
+    const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const outPath = path.join(rendersDir, fileName);
+
+    assemble({ talkingPath, productImagePath, script, outPath });
+
+    const asset = await db.asset.create({
+      data: {
+        shopId: params.shopId,
+        type: "VIDEO_AD",
+        status: "PENDING",
+        title: `${avatar.name} presents — ${params.productTitle}`,
+        bodyJson: JSON.stringify({
+          style: "AI_AVATAR",
+          engine: "ugc-pipeline-v1",
+          videoUrl: `/renders/${fileName}`,
+          prompt: script,
+          script,
+        }),
+        metaJson: JSON.stringify({
+          style: "AI_AVATAR",
+          productTitle: params.productTitle,
+          avatarId: avatar.id,
+          avatarVariant: variant,
+        }),
+      },
+    });
+    return asset.id;
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* tmp cleanup best-effort */ }
+  }
+}

@@ -6,6 +6,7 @@ import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
+import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { generateAdCopy } from "./ad-copy-generation.server";
 import { launchCampaign } from "./campaign-launch.server";
 import { runDecisioningPass } from "./decisioning-engine.server";
@@ -124,18 +125,32 @@ async function runJob(
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }
-      await generateVideoAd({
-        shopId,
-        brandProfile: shop.brandProfile,
-        plan: shop.activePlan,
-        productTitle: payload.productTitle as string,
-        productDescription: payload.productDescription as string | undefined,
-        productImageUrl: payload.productImageUrl as string | undefined,
-        style: (payload.style as "PRODUCT_HIGHLIGHT" | "AI_AVATAR") || "PRODUCT_HIGHLIGHT",
-        customPrompt: payload.customPrompt as string | undefined,
-        avatarId: payload.avatarId as string | undefined,
-        avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : undefined,
-      });
+      if (payload.avatarId) {
+        // Presenter cast → full UGC ad pipeline (script → voice → talking
+        // performance → captioned assembly). Zeely-class output.
+        await generateUgcAd({
+          shopId,
+          brandProfile: shop.brandProfile,
+          productTitle: payload.productTitle as string,
+          productDescription: payload.productDescription as string | undefined,
+          productImageUrl: payload.productImageUrl as string | undefined,
+          avatarId: payload.avatarId as string,
+          avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
+          direction: payload.customPrompt as string | undefined,
+        });
+      } else {
+        // PRODUCT ONLY → showcase reel (minimax i2v seeded with product image)
+        await generateVideoAd({
+          shopId,
+          brandProfile: shop.brandProfile,
+          plan: shop.activePlan,
+          productTitle: payload.productTitle as string,
+          productDescription: payload.productDescription as string | undefined,
+          productImageUrl: payload.productImageUrl as string | undefined,
+          style: "PRODUCT_HIGHLIGHT",
+          customPrompt: payload.customPrompt as string | undefined,
+        });
+      }
       break;
     }
 
