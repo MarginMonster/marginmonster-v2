@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
+import { useState, useEffect } from "react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
@@ -60,6 +61,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     videos: 0,
     ads: 0,
   };
+  // one-shot level-up celebration (set by awardXp, cleared here after read)
+  let levelUp: { level: number; gift: number } | null = null;
 
   try {
     const shop = await db.shop.findUnique({
@@ -71,6 +74,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const next = totalXpForLevel(shop.level + 1);
       hud.level = shop.level;
       hud.xpPct = Math.max(0, Math.min(100, Math.round(((shop.xp - cur) / Math.max(1, next - cur)) * 100)));
+      if (shop.pendingLevelUp) {
+        try { levelUp = JSON.parse(shop.pendingLevelUp); } catch { levelUp = null; }
+        await db.shop.update({ where: { id: shop.id }, data: { pendingLevelUp: null } });
+      }
     }
     let plan = shop?.activePlan ?? null;
     if (plan) {
@@ -94,15 +101,59 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.error("[app hud] failed to load player stats:", e);
   }
 
-  return json({ apiKey: process.env.SHOPIFY_API_KEY || "", hud });
+  return json({ apiKey: process.env.SHOPIFY_API_KEY || "", hud, levelUp });
 };
 
+function LevelUpPopup({ level, gift, img, accent, onClose }: { level: number; gift: number; img: string | null; accent: string; onClose: () => void }) {
+  const isVideoGift = gift >= 60;
+  return (
+    <div className="mm-lvlup-overlay" role="dialog" aria-label={`Level ${level} reached`}>
+      <div className="mm-lvlup-card">
+        <div className="mm-lvlup-coins" aria-hidden="true">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <span key={i} className={`c c${i + 1}`}>🪙</span>
+          ))}
+        </div>
+        {img && (
+          <div className="mm-lvlup-partner">
+            <Partner img={img} accent={accent} />
+          </div>
+        )}
+        <div className="mm-lvlup-title">⭐ LEVEL {level}! ⭐</div>
+        <p className="mm-lvlup-msg">Congratulations, Player One — your store just leveled up.</p>
+        {gift > 0 ? (
+          <div className="mm-lvlup-gift">
+            🎁 REWARD: +{gift} 🪙 tokens{isVideoGift ? " — a FREE VIDEO generation, on us!" : " — a free ad generation, on us!"}
+          </div>
+        ) : (
+          <div className="mm-lvlup-gift">🎁 Pick a plan to start collecting level-up token gifts!</div>
+        )}
+        <button type="button" className="mm-arcade-btn mm-lvlup-btn" onClick={onClose}>
+          ▶ CONTINUE
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const { apiKey, hud } = useLoaderData<typeof loader>();
+  const { apiKey, hud, levelUp } = useLoaderData<typeof loader>();
+  const [showLevelUp, setShowLevelUp] = useState(!!levelUp);
+  // re-arm when a new level-up flash arrives on a later revalidation
+  useEffect(() => { setShowLevelUp(!!levelUp); }, [levelUp]);
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <style dangerouslySetInnerHTML={{ __html: brandStyles }} />
+      {showLevelUp && levelUp && (
+        <LevelUpPopup
+          level={levelUp.level}
+          gift={levelUp.gift}
+          img={hud.img}
+          accent={hud.accent}
+          onClose={() => setShowLevelUp(false)}
+        />
+      )}
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
       <div className="mm-hud" aria-label="Player status">
         <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>

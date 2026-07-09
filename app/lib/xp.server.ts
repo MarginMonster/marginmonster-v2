@@ -39,7 +39,15 @@ export async function awardXp(shopId: string, gained: number): Promise<XpResult 
       for (let l = shop.level + 1; l <= level; l++) giftedTokens += giftForLevel(l);
     }
 
-    await db.shop.update({ where: { id: shopId }, data: { xp, level } });
+    await db.shop.update({
+      where: { id: shopId },
+      data: {
+        xp,
+        level,
+        // flash for the global level-up popup (read + cleared by the app shell)
+        ...(leveledUp ? { pendingLevelUp: JSON.stringify({ level, gift: giftedTokens }) } : {}),
+      },
+    });
     if (giftedTokens > 0 && shop.activePlan) {
       await db.plan.update({
         where: { id: shop.activePlan.id },

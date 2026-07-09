@@ -39,6 +39,8 @@ model Shop {
   forgedCount  Int @default(0) // lifetime listings forged
   appliedCount Int @default(0) // lifetime listings applied to the store
   tokensSpent  Int @default(0) // lifetime tokens spent
+  // one-shot flash for the global level-up popup: {"level":n,"gift":n}
+  pendingLevelUp String?
 
   brandProfile   BrandProfile?
   activePlan     Plan?
