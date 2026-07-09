@@ -11,6 +11,7 @@ import { db } from "../db.server";
 import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
 import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
 import { Partner, PARTNER_BY_PLAN } from "../components/Partner";
+import { totalXpForLevel } from "../lib/achievements";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
@@ -33,7 +34,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
     session.shop.replace(/\.myshopify\.com$/, "");
 
-  // Player stats — token wallet + video/ad generation balance.
+  // Player stats — token wallet, XP/level progression, generation balances.
   let hud: {
     name: string;
     planKey: PlanKey | null;
@@ -41,7 +42,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     img: string | null;
     accent: string;
     tokens: number;
-    tokensMax: number;
+    tokensPct: number; // health = % of wallet remaining
+    level: number;
+    xpPct: number; // progress through the current level
     videos: number;
     ads: number;
   } = {
@@ -51,7 +54,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     img: null,
     accent: "#34E7E4",
     tokens: 0,
-    tokensMax: 0,
+    tokensPct: 0,
+    level: 1,
+    xpPct: 0,
     videos: 0,
     ads: 0,
   };
@@ -61,19 +66,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       where: { domain: session.shop },
       include: { activePlan: true },
     });
+    if (shop) {
+      const cur = totalXpForLevel(shop.level);
+      const next = totalXpForLevel(shop.level + 1);
+      hud.level = shop.level;
+      hud.xpPct = Math.max(0, Math.min(100, Math.round(((shop.xp - cur) / Math.max(1, next - cur)) * 100)));
+    }
     let plan = shop?.activePlan ?? null;
     if (plan) {
       plan = await refreshPeriod(plan);
       const remaining = tokensRemaining(plan);
       const partner = PARTNER_BY_PLAN[plan.type as PlanKey];
+      const tokensMax = Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra);
       hud = {
-        name: playerName,
+        ...hud,
         planKey: plan.type as PlanKey,
         planLabel: PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type,
         img: partner?.img ?? null,
         accent: partner?.accent ?? "#34E7E4",
         tokens: remaining,
-        tokensMax: Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra),
+        tokensPct: Math.max(0, Math.min(100, Math.round((remaining / tokensMax) * 100))),
         videos: Math.max(0, plan.videoQuota - plan.videoUsed),
         ads: Math.floor(remaining / TOKEN_COST.image),
       };
@@ -105,10 +117,17 @@ export default function App() {
         <div className="mm-hud-body">
           <div className="mm-hud-top">
             <span className="mm-hud-name">{hud.name}</span>
+            <span className="mm-hud-lvl" title={`Level ${hud.level} — earn XP by forging, applying & spending tokens`}>LVL {hud.level}</span>
             <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
           </div>
-          {/* Always-full lime health bar (decorative) */}
-          <div className="mm-hud-hp" aria-hidden="true"><i /></div>
+          {/* Health = token wallet remaining (%) */}
+          <div className="mm-hud-hp" title={`Health ${hud.tokensPct}% — token wallet remaining`}>
+            <i style={{ width: `${hud.tokensPct}%` }} />
+          </div>
+          {/* XP progress through the current level */}
+          <div className="mm-hud-xp" title={`XP ${hud.xpPct}% to level ${hud.level + 1}`}>
+            <i style={{ width: `${hud.xpPct}%` }} />
+          </div>
           <div className="mm-hud-stats">
             <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
               <span title="Tokens remaining">🪙 {hud.tokens.toLocaleString()}</span>

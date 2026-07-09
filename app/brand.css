@@ -685,7 +685,25 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 
 .mm-token { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-pixel); font-size: 10px; color: var(--mm-gold); background: rgba(245,196,81,0.12); border: 1px solid rgba(245,196,81,0.35); border-radius: 999px; padding: 5px 10px; }
 
-.mm-ach-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.mm-ach-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.mm-ach .ds { font-size: 11px; color: var(--p-color-text-secondary, #6d7175); margin-top: 4px; line-height: 1.3; }
+.mm-ach .bn {
+  display: inline-block; margin-top: 8px; font-family: var(--font-pixel); font-size: 7px;
+  letter-spacing: .06em; color: #1F1500; background: linear-gradient(180deg, #ffe08a, #FFD23F);
+  padding: 3px 8px; border-radius: 999px;
+}
+.mm-ach.earned { border-color: rgba(52,231,228,0.55); box-shadow: 0 0 14px rgba(52,231,228,0.18); }
+
+/* Level-up celebration banner (forge results etc.) */
+.mm-levelup {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-pixel); font-size: 10px; letter-spacing: .08em; color: #1F1500;
+  background: linear-gradient(180deg, #ffe98f, var(--arc-yellow));
+  border-radius: 12px; padding: 12px 18px; margin: 4px 0;
+  box-shadow: 0 4px 0 #A87F0E, 0 10px 26px rgba(255,210,63,0.35);
+  animation: mm-levelup-pop .5s cubic-bezier(.2,1.6,.4,1);
+}
+@keyframes mm-levelup-pop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 .mm-ach { border: 1px solid var(--p-color-border); border-radius: 14px; padding: 16px 12px; text-align: center; background: var(--p-color-bg-surface); }
 .mm-ach.earned { border-color: var(--mm-magenta); }
 .mm-ach .ic { font-size: 24px; line-height: 1; }
@@ -746,16 +764,36 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   text-decoration: none; cursor: pointer; transition: filter .15s ease, transform .15s ease;
 }
 .mm-hud-plan:hover { filter: brightness(1.12); transform: translateY(-1px); }
-/* health bar — always full, lime green (pure arcade HP, no text inside) */
+/* health bar — lime green, fill = % of token wallet remaining */
 .mm-hud-hp {
   position: relative; height: 11px; border-radius: 999px; overflow: hidden;
   background: #0a1c26; border: 1px solid rgba(198,255,61,0.3);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
 }
 .mm-hud-hp > i {
-  display: block; height: 100%; width: 100%; border-radius: 999px;
+  display: block; height: 100%; border-radius: 999px;
   background: linear-gradient(90deg, #7BC80F, #C6FF3D 55%, #eaff9c);
   box-shadow: 0 0 10px rgba(198,255,61,0.6);
+  transition: width .5s ease;
+}
+/* XP bar — thinner cyan bar; fill = progress through the current level */
+.mm-hud-xp {
+  position: relative; height: 7px; border-radius: 999px; overflow: hidden;
+  background: #0a1c26; border: 1px solid rgba(52,231,228,0.3);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+}
+.mm-hud-xp > i {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #1fb6b3, #34E7E4 55%, #a9f7f4);
+  box-shadow: 0 0 8px rgba(52,231,228,0.6);
+  transition: width .5s ease;
+}
+/* player level chip */
+.mm-hud-lvl {
+  font-family: var(--font-pixel); font-size: 7.5px; letter-spacing: .08em;
+  color: #1F1500; background: linear-gradient(180deg, #ffe08a, var(--arc-yellow));
+  padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  box-shadow: 0 2px 0 #A87F0E;
 }
 .mm-hud-stats {
   display: flex; align-items: center; gap: 12px; font-size: 11.5px; font-weight: 800; color: #dff7f2;

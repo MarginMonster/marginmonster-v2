@@ -1,6 +1,7 @@
 import type { Plan } from "@prisma/client";
 import { db } from "../db.server";
 import { TOKEN_COST, TOKEN_ACTION_LABEL, PLAN_BY_KEY, type TokenAction, type PlanKey } from "./plan-config";
+import { onTokensSpent } from "./xp.server";
 
 const PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -60,5 +61,7 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
       tokensExtra: { decrement: fromExtra },
     },
   });
+  // Arcade progression: spending tokens earns XP (farm-proof — they paid).
+  await onTokensSpent(shopId, cost);
   return { remaining: remaining - cost, charged: cost };
 }

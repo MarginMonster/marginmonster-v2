@@ -12,6 +12,7 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
+import { unlockAchievement } from "../lib/xp.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -68,6 +69,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       periodStart: new Date(),
     },
   });
+
+  // Progression: first plan selection unlocks INSERT_COIN (once — switching
+  // plans later can't farm it).
+  await unlockAchievement(shop.id, "INSERT_COIN");
 
   // Attempt the real Shopify charge. On success this THROWS a redirect to
   // Shopify's approval screen. If billing isn't fully set up yet, we don't

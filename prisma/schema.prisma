@@ -32,13 +32,32 @@ model Shop {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Player progression — the arcade XP/level system. XP is awarded server-side
+  // for meaningful outcomes (forge, apply, token spend…); level-ups gift tokens.
+  xp           Int @default(0)
+  level        Int @default(1)
+  forgedCount  Int @default(0) // lifetime listings forged
+  appliedCount Int @default(0) // lifetime listings applied to the store
+  tokensSpent  Int @default(0) // lifetime tokens spent
+
   brandProfile   BrandProfile?
   activePlan     Plan?
   assets         Asset[]
   jobs           Job[]
   adAccounts     AdAccount[]
   campaigns      Campaign[]
+  achievements   ShopAchievement[]
   landingPages   LandingPage[]
+}
+
+model ShopAchievement {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  key        String
+  unlockedAt DateTime @default(now())
+
+  @@unique([shopId, key])
 }
 
 model LandingPage {

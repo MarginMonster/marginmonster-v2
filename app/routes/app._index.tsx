@@ -18,6 +18,8 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { generateBrandProfile } from "../lib/brand-voice.server";
+import { unlockAchievement } from "../lib/xp.server";
+import { ACHIEVEMENTS } from "../lib/achievements";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, billing } = await authenticate.admin(request);
@@ -40,6 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     include: {
       brandProfile: true,
       activePlan: true,
+      achievements: true,
       assets: { orderBy: { createdAt: "desc" }, take: 10 },
       campaigns: {
         include: {
@@ -110,19 +113,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     await generateBrandProfile(shop.id, graphql);
+    // Progression: the "we understand your store" moment = SCANNER unlocked.
+    await unlockAchievement(shop.id, "SCANNER");
     return json({ ok: true });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) });
   }
 };
 
-// Fighter / rank labels so the dashboard reflects the arcade plan names
+// Partner / stage labels so the dashboard reflects the arcade plan names
 // (kept in sync with FIGHTERS in app.plans.tsx).
 const PLAN_LABELS: Record<string, { fighter: string; rank: string }> = {
-  STARTER: { fighter: "Striker", rank: "Starter" },
-  GROWTH: { fighter: "Bruiser", rank: "Pro" },
-  PRO: { fighter: "Warlord", rank: "Master" },
-  SCALE: { fighter: "Titan", rank: "Grandmaster" },
+  STARTER: { fighter: "BYTE", rank: "Starter" },
+  GROWTH: { fighter: "KILO", rank: "Growth" },
+  PRO: { fighter: "MEGA", rank: "Rapid Growth" },
+  SCALE: { fighter: "GIGA", rank: "Commercial Growth" },
 };
 const planLabel = (type: string) => {
   const l = PLAN_LABELS[type];
@@ -386,18 +391,30 @@ export default function Dashboard() {
           </InlineStack>
         </Layout.Section>
 
-        {/* Arcade achievements */}
+        {/* Arcade achievements — real unlocks that pay XP + token bonuses */}
         <Layout.Section>
           <Card>
             <BlockStack gap="300">
-              <Text variant="headingMd" as="h2">Achievements</Text>
+              <InlineStack align="space-between" blockAlign="center">
+                <Text variant="headingMd" as="h2">Achievements</Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {(shop.achievements?.length ?? 0)} / {ACHIEVEMENTS.length} unlocked · earn XP &amp; bonus tokens
+                </Text>
+              </InlineStack>
               <div className="mm-ach-grid">
-                <Achievement icon="🕹️" name="POWERED ON" earned />
-                <Achievement icon="🔍" name="BRAND SCANNED" earned={steps?.analyzed} />
-                <Achievement icon="🎯" name="PLAYER 1" earned={steps?.planned} />
-                <Achievement icon="📦" name="FIRST DROP" earned={(shop.assets.length ?? 0) > 0} />
-                <Achievement icon="🚀" name="ON THE BOARD" earned={shop.campaigns.length > 0} />
-                <Achievement icon="🏆" name="HIGH SCORE" earned={shop.campaigns.some((c) => c.status === "ACTIVE")} />
+                {ACHIEVEMENTS.map((a) => {
+                  const earned = shop.achievements?.some((u: { key: string }) => u.key === a.key);
+                  return (
+                    <Achievement
+                      key={a.key}
+                      icon={a.icon}
+                      name={a.label.toUpperCase()}
+                      desc={a.desc}
+                      bonus={a.tokens > 0 ? `+${a.tokens} 🪙` : `+${a.xp} XP`}
+                      earned={earned}
+                    />
+                  );
+                })}
               </div>
             </BlockStack>
           </Card>
@@ -533,11 +550,17 @@ function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boo
   );
 }
 
-function Achievement({ icon, name, earned }: { icon: string; name: string; earned?: boolean }) {
+function Achievement({ icon, name, desc, bonus, earned }: { icon: string; name: string; desc?: string; bonus?: string; earned?: boolean }) {
   return (
-    <div className={`mm-ach${earned ? " earned" : ""}`} style={{ filter: earned ? "none" : "grayscale(1) opacity(0.5)" }}>
+    <div
+      className={`mm-ach${earned ? " earned" : ""}`}
+      title={desc}
+      style={{ filter: earned ? "none" : "grayscale(1) opacity(0.5)" }}
+    >
       <div className="ic">{icon}</div>
       <div className="nm">{name}</div>
+      {desc && <div className="ds">{desc}</div>}
+      {bonus && <div className="bn">{bonus}</div>}
     </div>
   );
 }

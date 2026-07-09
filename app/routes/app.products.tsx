@@ -23,6 +23,8 @@ import { generateProductCopy, type ProductCopy } from "../lib/product-copy.serve
 import { chargeTokens, tokensRemaining, InsufficientTokensError } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
+import { awardXp, unlockAchievement, checkLevelAchievements, type UnlockResult, type XpResult } from "../lib/xp.server";
+import { XP_EVENTS } from "../lib/achievements";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -87,7 +89,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       };
       const errs = j.data?.productUpdate?.userErrors || [];
       if (errs.length) return json({ applyError: errs.map((e) => e.message).join("; ") });
-      return json({ applied: true, appliedTitle: j.data?.productUpdate?.product?.title || "" });
+      // Progression: applying a listing is the outcome we most want to reward.
+      let xpRes: XpResult | null = null;
+      const newAch: UnlockResult[] = [];
+      if (shop) {
+        try {
+          await db.shop.update({ where: { id: shop.id }, data: { appliedCount: { increment: 1 } } });
+          const a = await unlockAchievement(shop.id, "SHIPPED_IT");
+          if (a) newAch.push(a);
+          xpRes = await awardXp(shop.id, XP_EVENTS.applyListing);
+          if (xpRes?.leveledUp) newAch.push(...(await checkLevelAchievements(shop.id, xpRes.level)));
+        } catch { /* progression is never fatal */ }
+      }
+      return json({ applied: true, appliedTitle: j.data?.productUpdate?.product?.title || "", xpRes, newAch });
     } catch (e) {
       return json({ applyError: e instanceof Error ? e.message : String(e) });
     }
@@ -121,7 +135,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         failed.push(e instanceof Error ? e.message : String(e));
       }
     }
-    return json({ appliedAll: ok, appliedTotal: batch.length, applyError: failed.length ? `${failed.length} failed: ${failed[0]}` : null });
+    // Progression: batch applies earn per-listing XP + combo achievement.
+    let xpRes: XpResult | null = null;
+    const newAch: UnlockResult[] = [];
+    if (shop && ok > 0) {
+      try {
+        await db.shop.update({ where: { id: shop.id }, data: { appliedCount: { increment: ok } } });
+        const a1 = await unlockAchievement(shop.id, "SHIPPED_IT");
+        if (a1) newAch.push(a1);
+        if (ok >= 5) {
+          const a2 = await unlockAchievement(shop.id, "BATCH_MASTER");
+          if (a2) newAch.push(a2);
+        }
+        xpRes = await awardXp(shop.id, XP_EVENTS.applyListing * ok);
+        if (xpRes?.leveledUp) newAch.push(...(await checkLevelAchievements(shop.id, xpRes.level)));
+      } catch { /* progression is never fatal */ }
+    }
+    return json({ appliedAll: ok, appliedTotal: batch.length, applyError: failed.length ? `${failed.length} failed: ${failed[0]}` : null, xpRes, newAch });
   }
 
   // ---- Generate (one or many listings in a single batch) ----
@@ -166,7 +196,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       break;
     }
   }
-  return json({ results, remaining, forged });
+
+  // Progression: forge XP + forge-count achievements (token-spend XP already
+  // flowed through chargeTokens).
+  let xpRes: XpResult | null = null;
+  const newAch: UnlockResult[] = [];
+  if (forged > 0) {
+    try {
+      const updated = await db.shop.update({
+        where: { id: shop.id },
+        data: { forgedCount: { increment: forged } },
+      });
+      const a1 = await unlockAchievement(shop.id, "FIRST_FORGE");
+      if (a1) newAch.push(a1);
+      if (updated.forgedCount >= 10) {
+        const a2 = await unlockAchievement(shop.id, "HAMMER_TIME");
+        if (a2) newAch.push(a2);
+      }
+      xpRes = await awardXp(shop.id, XP_EVENTS.forgeListing * forged);
+      if (xpRes?.leveledUp) newAch.push(...(await checkLevelAchievements(shop.id, xpRes.level)));
+      // gifts/bonuses may have topped the wallet back up — report the fresh number
+      const freshPlan = await db.plan.findUnique({ where: { shopId: shop.id } });
+      if (freshPlan) remaining = tokensRemaining(freshPlan);
+    } catch { /* progression is never fatal */ }
+  }
+  return json({ results, remaining, forged, xpRes, newAch });
 };
 
 function escapeHtml(s: string): string {
@@ -200,6 +254,8 @@ export default function Products() {
   const error = actionData && "error" in actionData ? actionData.error : null;
   const results = (actionData && "results" in actionData ? actionData.results : null) as ForgeResult[] | null;
   const forgedCount = actionData && "forged" in actionData ? (actionData.forged as number) : 0;
+  const xpRes = (actionData && "xpRes" in actionData ? actionData.xpRes : null) as { gained: number; level: number; leveledUp: boolean; giftedTokens: number } | null;
+  const newAch = ((actionData && "newAch" in actionData ? actionData.newAch : null) || []) as { key: string; icon: string; label: string; tokens: number; xp: number }[];
 
   // multi-select from the catalog + one optional manual entry
   const [selected, setSelected] = useState<Record<string, PickItem>>({});
@@ -477,7 +533,24 @@ export default function Products() {
               <Text variant="headingMd" as="h2">
                 {forgedCount} listing{forgedCount === 1 ? "" : "s"} ready
               </Text>
+              {xpRes && <span className="mm-cheer">+{xpRes.gained} XP</span>}
             </div>
+            {(xpRes?.leveledUp || newAch.length > 0) && (
+              <Box paddingBlockStart="200">
+                <InlineStack gap="200" wrap blockAlign="center">
+                  {xpRes?.leveledUp && (
+                    <div className="mm-levelup">
+                      ⭐ LEVEL {xpRes.level}!{xpRes.giftedTokens > 0 ? ` +${xpRes.giftedTokens} 🪙 GIFT` : ""}
+                    </div>
+                  )}
+                  {newAch.map((a) => (
+                    <span key={a.key} className="mm-cheer">
+                      🏆 {a.label.toUpperCase()} UNLOCKED{a.tokens > 0 ? ` +${a.tokens} 🪙` : ""}
+                    </span>
+                  ))}
+                </InlineStack>
+              </Box>
+            )}
             {applicable.length > 0 && (
               <Box paddingBlockStart="200">
                 <InlineStack gap="300" blockAlign="center" wrap>
