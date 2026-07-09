@@ -316,7 +316,7 @@ export default function Products() {
               <span className="mm-eyebrow">▶ SEO FORGE · STAGE SELECT</span>
               <h1><span className="mm-marquee">Forge listings that sell.</span></h1>
               <p>
-                Drop a product on the anvil and ANVIL hammers it into SEO gold —
+                Hand your products to ANVIL and he hammers them into SEO gold —
                 titles, descriptions, bullets, and meta tags in your brand voice.
                 Push it live in one click. Every listing forged levels up your store.
               </p>
@@ -333,9 +333,20 @@ export default function Products() {
               )}
             </div>
             <div className="mm-smith-card" aria-hidden="true">
-              <div className="mm-smith-stage">
-                <Partner img="anvil" accent="#34E7E4" />
-              </div>
+              {busy ? (
+                <video
+                  className="mm-smith-vid"
+                  src="/fighters/anvil_forge.mp4?v=1"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              ) : (
+                <div className="mm-smith-stage">
+                  <Partner img="anvil" accent="#34E7E4" />
+                </div>
+              )}
               <div className="mm-smith-plate">
                 <div className="mm-smith-row">
                   <span className="mm-smith-lvl">LVL&nbsp;97</span>
