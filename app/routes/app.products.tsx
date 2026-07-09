@@ -336,7 +336,7 @@ export default function Products() {
               {busy ? (
                 <video
                   className="mm-smith-vid"
-                  src="/fighters/anvil_forge.mp4?v=1"
+                  src="/fighters/anvil_forge.mp4?v=2"
                   autoPlay
                   loop
                   muted
