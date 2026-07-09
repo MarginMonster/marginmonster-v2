@@ -21,6 +21,19 @@ import { anthropicText } from "./anthropic.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import type { BrandProfile } from "@prisma/client";
 
+/** Merge stage checkpoints into the job payload (kept local to avoid a
+ *  circular import with job-queue.server). Never fatal. */
+async function checkpointJob(jobId: string, patch: Record<string, unknown>): Promise<void> {
+  try {
+    const job = await db.job.findUnique({ where: { id: jobId } });
+    if (!job) return;
+    const payload = { ...JSON.parse(job.payload || "{}"), ...patch };
+    await db.job.update({ where: { id: jobId }, data: { payload: JSON.stringify(payload) } });
+  } catch (e) {
+    console.error("[ugc] checkpoint failed (non-fatal):", e);
+  }
+}
+
 const REP = "https://api.replicate.com/v1";
 
 interface UgcAdParams {
@@ -32,6 +45,15 @@ interface UgcAdParams {
   avatarId: string;
   avatarVariant?: number;
   direction?: string; // merchant's custom prompt
+  jobId?: string; // enables stage checkpointing
+  resume?: {
+    // stage checkpoints from a previous interrupted attempt — restarts must
+    // NEVER re-spend on completed stages or abandon a live omni prediction
+    script?: string;
+    audioUrl?: string;
+    omniPredictionId?: string;
+    talkingUrl?: string;
+  };
 }
 
 /* ---------- Replicate helpers (model endpoint, 429-tolerant) ---------- */
@@ -219,24 +241,52 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     .filter(Boolean)
     .join("\n");
 
-  let script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
-    .replace(/["“”\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!script) throw new Error("[ugc:script] empty script from model");
-  const w = script.split(" ");
-  if (w.length > 45) script = w.slice(0, 45).join(" ");
+  const resume = params.resume || {};
+  const ckpt = (patch: Record<string, unknown>) =>
+    params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
 
-  // 2) VOICE
-  const ttsId = await repCreate("minimax/speech-02-turbo", {
-    text: script,
-    voice_id: pickVoice(avatar.desc),
-  });
-  const audioUrl = await repPoll(ttsId, 3 * 60_000, "tts");
+  let script = resume.script || "";
+  if (!script) {
+    script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+      .replace(/["“”\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!script) throw new Error("[ugc:script] empty script from model");
+    const w = script.split(" ");
+    if (w.length > 45) script = w.slice(0, 45).join(" ");
+    await ckpt({ ckScript: script });
+  }
 
-  // 3) TALKING PERFORMANCE
-  const omniId = await repCreate("bytedance/omni-human", { image: portraitUrl, audio: audioUrl });
-  const talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
+  // 2) VOICE (skipped entirely on resume)
+  let audioUrl = resume.audioUrl || "";
+  if (!audioUrl) {
+    const ttsId = await repCreate("minimax/speech-02-turbo", {
+      text: script,
+      voice_id: pickVoice(avatar.desc),
+    });
+    audioUrl = await repPoll(ttsId, 3 * 60_000, "tts");
+    await ckpt({ ckAudioUrl: audioUrl });
+  }
+
+  // 3) TALKING PERFORMANCE — on resume, re-attach to the SAME prediction
+  // instead of paying for a duplicate render
+  let talkingUrl = resume.talkingUrl || "";
+  if (!talkingUrl) {
+    let omniId = resume.omniPredictionId || "";
+    if (omniId) {
+      try {
+        talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human(resumed)");
+      } catch {
+        omniId = ""; // old prediction died — fall through to a fresh one
+      }
+    }
+    if (!talkingUrl) {
+      omniId = await repCreate("bytedance/omni-human", { image: portraitUrl, audio: audioUrl });
+      await ckpt({ ckOmniId: omniId });
+      talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
+    }
+    await ckpt({ ckTalkingUrl: talkingUrl });
+  }
 
   // 4) ASSEMBLY
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-"));

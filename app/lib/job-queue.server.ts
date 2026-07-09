@@ -52,6 +52,7 @@ export async function enqueueJob(
   return job.id;
 }
 
+
 export async function processNextJob(): Promise<boolean> {
   // Claim one pending job atomically
   const jobs = await db.job.findMany({
@@ -70,6 +71,7 @@ export async function processNextJob(): Promise<boolean> {
 
   try {
     const payload = JSON.parse(job.payload);
+    payload.__jobId = job.id; // lets long pipelines checkpoint their progress
     await runJob(job.type, job.shopId, payload);
 
     await db.job.update({
@@ -161,6 +163,13 @@ async function runJob(
           avatarId: payload.avatarId as string,
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
           direction: payload.customPrompt as string | undefined,
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            script: payload.ckScript as string | undefined,
+            audioUrl: payload.ckAudioUrl as string | undefined,
+            omniPredictionId: payload.ckOmniId as string | undefined,
+            talkingUrl: payload.ckTalkingUrl as string | undefined,
+          },
         });
       } else {
         // PRODUCT ONLY → showcase reel (minimax i2v seeded with product image)

@@ -862,12 +862,12 @@ export default function Videos() {
                             <img src={castImg(cm.id, j.avatarVariant)} alt="" /> {cm.name}
                           </span>
                         )}
-                        <Badge tone="attention">RENDERING</Badge>
+                        <Badge tone="attention">{j.status === "IN_PROGRESS" ? "RENDERING NOW" : "IN LINE"}</Badge>
                       </InlineStack>
                       <Text variant="bodySm" as="p" tone="subdued">
-                        {mins ? `${mins} min in · ` : ""}usually 2–6 min
-                        {mins && mins > 6 ? " — first takes can run longer while the AI model warms up" : ""}.
-                        Updates automatically.
+                        {j.status === "IN_PROGRESS"
+                          ? `${mins ? `${mins} min in · ` : ""}usually 3–8 min${mins && mins > 8 ? " — long takes happen when the AI model is warming up" : ""}. Updates automatically.`
+                          : "Waiting for the take ahead of it to finish — takes render one at a time."}
                       </Text>
                     </div>
                   </div>
