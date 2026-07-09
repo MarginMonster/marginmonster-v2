@@ -107,6 +107,12 @@ async function download(url: string, file: string): Promise<void> {
   fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
 }
 
+async function downloadBuffer(url: string): Promise<Buffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`[ugc] download ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 /* ---------- Voice casting ---------- */
 
 function pickVoice(desc: string): string {
@@ -203,13 +209,15 @@ function assemble(opts: {
 
 /* ---------- The pipeline ---------- */
 
-/** Portrait URL that actually exists on this deploy — wardrobe variant if the
- *  file is on disk, else that avatar's default, else the legacy flat portrait.
- *  (Keeps the pipeline working while the 400-image wardrobe rollout lands.) */
-function resolvePortraitUrl(base: string, id: string, variant: number): string {
+/** Portrait file that actually exists on this deploy — wardrobe variant first,
+ *  then that avatar's default, then the legacy flat portrait. Returned as a
+ *  local path so we can send inline bytes (no cross-provider URL fetching to
+ *  flake out on). */
+function resolvePortraitFile(id: string, variant: number): string {
   const dir = path.join(process.cwd(), "public", "avatars");
   for (const candidate of [`${id}_${variant}.jpg`, `${id}_0.jpg`, `${id}.jpg`]) {
-    if (fs.existsSync(path.join(dir, candidate))) return `${base}/avatars/${candidate}`;
+    const p = path.join(dir, candidate);
+    if (fs.existsSync(p)) return p;
   }
   throw new Error(`[ugc] no portrait on disk for presenter "${id}"`);
 }
@@ -218,9 +226,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const avatar = AVATAR_BY_ID[params.avatarId];
   if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
   const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
-  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  if (!base) throw new Error("[ugc] SHOPIFY_APP_URL not set (needed for portrait URL)");
-  const portraitUrl = resolvePortraitUrl(base, avatar.id, variant);
+  // inline bytes: omni-human never has to fetch our server or another
+  // provider's expiring URL (both have flaked in production)
+  const portraitDataUri =
+    "data:image/jpeg;base64," + fs.readFileSync(resolvePortraitFile(avatar.id, variant)).toString("base64");
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
 
@@ -257,34 +266,55 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     await ckpt({ ckScript: script });
   }
 
-  // 2) VOICE (skipped entirely on resume)
-  let audioUrl = resume.audioUrl || "";
-  if (!audioUrl) {
+  // 2) VOICE — TTS is 3s/$0.001, so regenerating on a dead resume URL is fine.
+  // We always end up with the audio BYTES (validated), sent inline downstream.
+  const freshTts = async (): Promise<string> => {
     const ttsId = await repCreate("minimax/speech-02-turbo", {
       text: script,
       voice_id: pickVoice(avatar.desc),
     });
-    audioUrl = await repPoll(ttsId, 3 * 60_000, "tts");
-    await ckpt({ ckAudioUrl: audioUrl });
+    return repPoll(ttsId, 3 * 60_000, "tts");
+  };
+  let audioBuf: Buffer | null = null;
+  if (resume.audioUrl) {
+    try { audioBuf = await downloadBuffer(resume.audioUrl); } catch { audioBuf = null; }
   }
+  if (!audioBuf || audioBuf.length < 10_000) {
+    const audioUrl = await freshTts();
+    await ckpt({ ckAudioUrl: audioUrl });
+    audioBuf = await downloadBuffer(audioUrl);
+  }
+  if (audioBuf.length < 10_000) throw new Error("[ugc:tts] audio came back empty");
+  const audioDataUri = "data:audio/mpeg;base64," + audioBuf.toString("base64");
 
   // 3) TALKING PERFORMANCE — on resume, re-attach to the SAME prediction
-  // instead of paying for a duplicate render
+  // instead of paying for a duplicate render; transient provider failures
+  // ("Failed to upload…") get one cheap in-attempt retry with a new prediction
   let talkingUrl = resume.talkingUrl || "";
   if (!talkingUrl) {
-    let omniId = resume.omniPredictionId || "";
-    if (omniId) {
+    if (resume.omniPredictionId) {
       try {
-        talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human(resumed)");
-      } catch {
-        omniId = ""; // old prediction died — fall through to a fresh one
+        talkingUrl = await repPoll(resume.omniPredictionId, 12 * 60_000, "omni-human(resumed)");
+      } catch { /* old prediction died — fall through to a fresh one */ }
+    }
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 2 && !talkingUrl; attempt++) {
+      try {
+        const omniId = await repCreate("bytedance/omni-human", { image: portraitDataUri, audio: audioDataUri });
+        await ckpt({ ckOmniId: omniId });
+        talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
+      } catch (e) {
+        lastErr = e;
+        const msg = e instanceof Error ? e.message : String(e);
+        // transient provider-side flakes are worth one immediate retry
+        if (attempt === 0 && /upload|internal|try (running|again)|temporar|E\d{3,}/i.test(msg)) {
+          await new Promise((r) => setTimeout(r, 5000));
+          continue;
+        }
+        throw e;
       }
     }
-    if (!talkingUrl) {
-      omniId = await repCreate("bytedance/omni-human", { image: portraitUrl, audio: audioUrl });
-      await ckpt({ ckOmniId: omniId });
-      talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
-    }
+    if (!talkingUrl) throw lastErr instanceof Error ? lastErr : new Error("[ugc:omni-human] failed");
     await ckpt({ ckTalkingUrl: talkingUrl });
   }
 
