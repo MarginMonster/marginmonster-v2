@@ -122,7 +122,7 @@ function decodeEntities(s: string): string {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
 
@@ -246,6 +246,106 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ ok: true, queued: true });
   }
 
+  // ---- Take card ops: delete / attach to listing / queue for social ----
+  if (intent === "deleteTake") {
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "VIDEO_AD" } });
+    if (asset) {
+      try {
+        const body = JSON.parse(asset.bodyJson || "{}");
+        if (typeof body.videoUrl === "string" && body.videoUrl.startsWith("/renders/")) {
+          const f = path.join(process.cwd(), "data", "renders", path.basename(body.videoUrl));
+          if (fs.existsSync(f)) fs.unlinkSync(f);
+        }
+      } catch { /* file cleanup is best-effort */ }
+      await db.asset.delete({ where: { id: asset.id } });
+    }
+    return json({ ok: true });
+  }
+
+  if (intent === "queueSocial") {
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "VIDEO_AD" } });
+    if (asset) {
+      const meta = JSON.parse(asset.metaJson || "{}");
+      meta.socialQueued = !meta.socialQueued; // toggle
+      meta.socialQueuedAt = meta.socialQueued ? new Date().toISOString() : null;
+      await db.asset.update({ where: { id: asset.id }, data: { metaJson: JSON.stringify(meta) } });
+    }
+    return json({ ok: true });
+  }
+
+  if (intent === "attachProduct") {
+    const id = (form.get("assetId") as string) || "";
+    const productId = (form.get("productId") as string) || "";
+    const productTitle = (form.get("productTitle") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "VIDEO_AD" } });
+    if (!asset || !productId) return json({ opError: "Pick a product to attach this take to." });
+    try {
+      const body = JSON.parse(asset.bodyJson || "{}");
+      if (!body.videoUrl) return json({ opError: "This take has no rendered video yet." });
+
+      // get the video bytes (local render, or re-download a remote take)
+      let buf: Buffer;
+      if (String(body.videoUrl).startsWith("/renders/")) {
+        const f = path.join(process.cwd(), "data", "renders", path.basename(body.videoUrl));
+        if (!fs.existsSync(f)) return json({ opError: "The video file has expired from storage — roll a fresh take and attach that." });
+        buf = fs.readFileSync(f);
+      } else {
+        const res = await fetch(body.videoUrl);
+        if (!res.ok) return json({ opError: "The video file has expired from the provider — roll a fresh take and attach that." });
+        buf = Buffer.from(await res.arrayBuffer());
+      }
+
+      // 1) staged upload target
+      const staged = await admin.graphql(
+        `mutation Staged($input: [StagedUploadInput!]!) {
+          stagedUploadsCreate(input: $input) {
+            stagedTargets { url resourceUrl parameters { name value } }
+            userErrors { message }
+          }
+        }`,
+        { variables: { input: [{ resource: "VIDEO", filename: "adarcade-take.mp4", mimeType: "video/mp4", fileSize: String(buf.length), httpMethod: "POST" }] } }
+      );
+      const sj = (await staged.json()) as {
+        data?: { stagedUploadsCreate?: { stagedTargets?: { url: string; resourceUrl: string; parameters: { name: string; value: string }[] }[]; userErrors?: { message: string }[] } };
+      };
+      const errs1 = sj.data?.stagedUploadsCreate?.userErrors || [];
+      const target = sj.data?.stagedUploadsCreate?.stagedTargets?.[0];
+      if (errs1.length || !target) return json({ opError: errs1[0]?.message || "Shopify refused the upload slot." });
+
+      // 2) upload the bytes
+      const fd = new FormData();
+      for (const p of target.parameters) fd.append(p.name, p.value);
+      fd.append("file", new Blob([buf], { type: "video/mp4" }), "adarcade-take.mp4");
+      const up = await fetch(target.url, { method: "POST", body: fd });
+      if (!up.ok && up.status !== 201) return json({ opError: `Upload failed (${up.status}).` });
+
+      // 3) attach as product media
+      const media = await admin.graphql(
+        `mutation Attach($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media { alt }
+            mediaUserErrors { message }
+          }
+        }`,
+        { variables: { productId, media: [{ mediaContentType: "VIDEO", originalSource: target.resourceUrl, alt: asset.title || "AdArcade video" }] } }
+      );
+      const mj = (await media.json()) as { data?: { productCreateMedia?: { mediaUserErrors?: { message: string }[] } } };
+      const errs2 = mj.data?.productCreateMedia?.mediaUserErrors || [];
+      if (errs2.length) return json({ opError: errs2[0].message });
+
+      const meta = JSON.parse(asset.metaJson || "{}");
+      meta.attachedProductId = productId;
+      meta.attachedProductTitle = productTitle;
+      meta.attachedAt = new Date().toISOString();
+      await db.asset.update({ where: { id: asset.id }, data: { metaJson: JSON.stringify(meta) } });
+      return json({ ok: true, attached: productTitle });
+    } catch (e) {
+      return json({ opError: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   // ---- Dismiss a failed render from the queue view ----
   if (intent === "dismissJob") {
     const jobId = (form.get("jobId") as string) || "";
@@ -286,6 +386,7 @@ export default function Videos() {
   const revalidator = useRevalidator();
   const puller = useFetcher<{ pulled?: Pick; pullError?: string }>();
   const crowner = useFetcher();
+  const taker = useFetcher<{ ok?: boolean; attached?: string; opError?: string }>();
   const busy = nav.state !== "idle";
   const pulling = puller.state !== "idle";
   const queued = !!(actionData && "queued" in actionData && actionData.queued);
@@ -349,6 +450,18 @@ export default function Videos() {
   // client-only clock for "N min in" (avoids a server/client hydration mismatch)
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
+
+  // take-card ops: attach flow state
+  const [attachingId, setAttachingId] = useState<string | null>(null);
+  const [attachPick, setAttachPick] = useState<string>("");
+  useEffect(() => {
+    if (taker.state === "idle" && taker.data && "ok" in taker.data && taker.data.ok) setAttachingId(null);
+  }, [taker.state, taker.data]);
+  const opError = taker.data && "opError" in taker.data ? taker.data.opError : null;
+  const attachOptions = [
+    { label: "Pick a product…", value: "" },
+    ...products.map((p) => ({ label: p.title.length > 42 ? p.title.slice(0, 42) + "…" : p.title, value: p.id })),
+  ];
   const [customPrompt, setCustomPrompt] = useState("");
   const [pick, setPick] = useState<Pick | null>(null);
   const [pullUrl, setPullUrl] = useState("");
@@ -677,6 +790,20 @@ export default function Videos() {
           <span className="mm-section-label">
             ▶ TAKE LIBRARY ({filteredVideos.length}{filteredVideos.length !== videos.length ? ` of ${videos.length}` : ""})
           </span>
+          {opError && (
+            <Box paddingBlockEnd="300">
+              <Banner tone="critical" title="That didn't work">
+                <p>{opError}</p>
+              </Banner>
+            </Box>
+          )}
+          {taker.data && "attached" in taker.data && taker.data.attached && (
+            <Box paddingBlockEnd="300">
+              <Banner tone="success" title={`Video attached to "${taker.data.attached}"`}>
+                <p>Shopify is processing it now — it'll appear in that product's media shortly.</p>
+              </Banner>
+            </Box>
+          )}
           {videos.length === 0 && activeJobs.length === 0 ? (
             <Card>
               <Box padding="400">
@@ -768,6 +895,10 @@ export default function Videos() {
                             <Badge tone={v.status === "APPROVED" ? "success" : v.status === "REJECTED" ? "critical" : "warning"}>
                               {v.status}
                             </Badge>
+                            {meta.attachedProductTitle && (
+                              <Badge tone="success">{`📎 ${String(meta.attachedProductTitle).slice(0, 24)}`}</Badge>
+                            )}
+                            {meta.socialQueued && <Badge tone="info">QUEUED FOR SOCIAL</Badge>}
                           </InlineStack>
                         </BlockStack>
                       </InlineStack>
@@ -830,7 +961,67 @@ export default function Videos() {
                             </Button>
                           </>
                         )}
+                        {body.videoUrl && (
+                          <>
+                            <Button size="slim" url={body.videoUrl} download target="_blank">
+                              ⬇ Download
+                            </Button>
+                            <Button
+                              size="slim"
+                              onClick={() => { setAttachingId(attachingId === v.id ? null : v.id); setAttachPick(""); }}
+                            >
+                              📎 Attach to listing
+                            </Button>
+                            <Button
+                              size="slim"
+                              pressed={!!meta.socialQueued}
+                              loading={taker.state !== "idle"}
+                              onClick={() => taker.submit({ intent: "queueSocial", assetId: v.id }, { method: "post" })}
+                            >
+                              {meta.socialQueued ? "📣 Unqueue" : "📣 Queue for social"}
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          size="slim"
+                          tone="critical"
+                          variant="tertiary"
+                          onClick={() => {
+                            if (window.confirm("Delete this take? The video file is removed for good.")) {
+                              taker.submit({ intent: "deleteTake", assetId: v.id }, { method: "post" });
+                            }
+                          }}
+                        >
+                          🗑
+                        </Button>
                       </InlineStack>
+
+                      {attachingId === v.id && (
+                        <InlineStack gap="200" blockAlign="end" wrap>
+                          <Box minWidth="240px">
+                            <Select label="Attach to product listing" options={attachOptions} value={attachPick} onChange={setAttachPick} />
+                          </Box>
+                          <Button
+                            variant="primary"
+                            size="slim"
+                            disabled={!attachPick}
+                            loading={taker.state !== "idle"}
+                            onClick={() =>
+                              taker.submit(
+                                {
+                                  intent: "attachProduct",
+                                  assetId: v.id,
+                                  productId: attachPick,
+                                  productTitle: products.find((p) => p.id === attachPick)?.title || "",
+                                },
+                                { method: "post" }
+                              )
+                            }
+                          >
+                            Attach video to listing
+                          </Button>
+                        </InlineStack>
+                      )}
                     </BlockStack>
                   </Card>
                 );
