@@ -1,7 +1,8 @@
-/* AdArcade combat mechs — a cohesive line of AI-rendered cyber-ninja battle
- * robots (Mortal Kombat / Cyrax vibe), one per plan tier. Transparent PNG
- * cutouts in public/fighters/mechs, animated via CSS (idle float + reactor
- * glow pulse). Shared by the Plans select screen and the global HUD avatar. */
+/* AdArcade combat mechs — AI-rendered cyber-ninja battle robots (Cyrax vibe),
+ * one per plan tier. Transparent PNG cutouts in public/fighters/mechs, presented
+ * as a premium floating hero: an energy aura pulses behind, the mech levitates on
+ * a breathing ground shadow, and a metallic light-glint sweeps across the chassis
+ * (masked to the silhouette). Shared by the Plans select screen + global HUD. */
 
 export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
 
@@ -26,18 +27,17 @@ export function Mech({
   accent: string;
   className?: string;
 }) {
+  const src = `/fighters/mechs/${img}.png?v=${MECH_V}`;
   return (
     <span
       className={`mm-mech${className ? " " + className : ""}`}
       style={{ ["--acc" as string]: accent }}
       aria-hidden="true"
     >
-      <img
-        className="mm-mech-img"
-        src={`/fighters/mechs/${img}.png?v=${MECH_V}`}
-        alt=""
-        draggable={false}
-      />
+      <span className="mm-mech-aura" />
+      <span className="mm-mech-shadow" />
+      <img className="mm-mech-img" src={src} alt="" draggable={false} />
+      <span className="mm-mech-sweep" style={{ ["--img" as string]: `url("${src}")` }} />
     </span>
   );
 }
