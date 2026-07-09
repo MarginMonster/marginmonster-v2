@@ -28,12 +28,18 @@
   --p-font-family-sans: var(--font-body);
 }
 
-/* Deep-space canvas behind everything */
-body { background: var(--mm-space) !important; }
+/* Calm deep-space canvas behind everything. The lively twinkling starfield +
+   drifting asteroids are an ACCENT — reserved for showcase pages (those with a
+   .mm-hero), so dense work screens (Queue, Calendar, Performance…) stay clean
+   and legible. See DESIGN.md. */
+body { background: radial-gradient(125% 85% at 50% -12%, #16132c 0%, var(--mm-space) 52%) !important; }
 .Polaris-Page, .Polaris-Frame { background: transparent !important; }
 .Polaris-Page { padding-bottom: 96px !important; position: relative; z-index: 1; }
 
-body::before {
+/* starfield: off by default, on only for showcase (hero) pages */
+body::before { display: none; }
+body:has(.mm-hero)::before { display: block; }
+body:has(.mm-hero)::before {
   content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
     radial-gradient(1.5px 1.5px at 12% 18%, #fff, transparent),
@@ -54,7 +60,8 @@ body::before {
 }
 @keyframes mm-twinkle { 0%,100%{opacity:.85} 50%{opacity:1} }
 
-.mm-asteroids { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.mm-asteroids { display: none; position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-asteroids .ast { position: absolute; fill: none; stroke: rgba(255,255,255,0.35); stroke-width: 2; }
 .mm-asteroids .a1 { top: 10%; left: 6%; width: 90px; height: 90px; animation: mm-ast1 90s linear infinite; }
 .mm-asteroids .a2 { top: 64%; left: 82%; width: 130px; height: 130px; animation: mm-ast2 120s linear infinite; }
