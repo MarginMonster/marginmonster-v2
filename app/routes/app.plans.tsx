@@ -113,13 +113,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 type Fighter = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string; stats: { label: string; v: number }[] };
 const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "SPARK-01", ref: "Recon Unit", rank: "TIER I", power: 1, accent: "#34E7E4", img: "spark",
+  STARTER: { title: "SPARK-01", ref: "Starter", rank: "TIER I", power: 1, accent: "#34E7E4", img: "spark",
     stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  GROWTH: { title: "HAVOC", ref: "Assault Mech", rank: "TIER II", power: 2, accent: "#FF3D8B", img: "havoc",
+  GROWTH: { title: "HAVOC", ref: "Growth", rank: "TIER II", power: 2, accent: "#FF3D8B", img: "havoc",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  PRO: { title: "OVERLORD", ref: "Siege Titan", rank: "TIER III", power: 3, accent: "#FFB020", img: "overlord",
+  PRO: { title: "OVERLORD", ref: "Rapid Growth", rank: "TIER III", power: 3, accent: "#FFB020", img: "overlord",
     stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
-  SCALE: { title: "OMEGA", ref: "Omega Prime", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "omega",
+  SCALE: { title: "OMEGA", ref: "Commercial Growth", rank: "TIER IV", power: 4, accent: "#B77BFF", img: "omega",
     stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
 };
 
@@ -227,7 +227,7 @@ export default function Plans() {
               </div>
               <div className="mm-fight-vs">VS</div>
               <div className="mm-hp-block right">
-                <div className="mm-hp-name">GOING IT ALONE</div>
+                <div className="mm-hp-name">MANAGING YOUR OWN ADS</div>
                 <div className="mm-hp"><span className="mm-hp-fill foe" style={{ ["--dmg" as string]: DMG[champ.power] }} /></div>
               </div>
             </div>
