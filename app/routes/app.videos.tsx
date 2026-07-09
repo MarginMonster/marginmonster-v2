@@ -236,6 +236,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ ok: true, queued: true });
   }
 
+  // ---- Dismiss a failed render from the queue view ----
+  if (intent === "dismissJob") {
+    const jobId = (form.get("jobId") as string) || "";
+    // scoped delete — only this shop's failed video jobs can be dismissed
+    await db.job.deleteMany({
+      where: { id: jobId, shopId: shop.id, type: "GENERATE_VIDEO_AD", status: "FAILED" },
+    });
+    return json({ ok: true });
+  }
+
   // ---- Brand Face: crown (or uncrown) the signature presenter ----
   if (intent === "setBrandFace") {
     const id = ((form.get("avatarId") as string) || "").trim() || null;
@@ -627,7 +637,15 @@ export default function Videos() {
             <BlockStack gap="300">
               {renderJobs.map((j) =>
                 j.status === "FAILED" ? (
-                  <Banner key={j.id} tone="critical" title={`Render failed — ${j.title}`}>
+                  <Banner
+                    key={j.id}
+                    tone="critical"
+                    title={`Render failed — ${j.title}`}
+                    action={{
+                      content: "Dismiss",
+                      onAction: () => crowner.submit({ intent: "dismissJob", jobId: j.id }, { method: "post" }),
+                    }}
+                  >
                     <p>
                       {j.lastError || "Unknown error."} ({j.attempts} attempts)
                       {/(payment|credit|402|billing|insufficient)/i.test(j.lastError || "")
