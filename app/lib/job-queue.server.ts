@@ -133,6 +133,7 @@ async function runJob(
         productImageUrl: payload.productImageUrl as string | undefined,
         style: (payload.style as "PRODUCT_HIGHLIGHT" | "AI_AVATAR") || "PRODUCT_HIGHLIGHT",
         customPrompt: payload.customPrompt as string | undefined,
+        avatarId: payload.avatarId as string | undefined,
       });
       break;
     }

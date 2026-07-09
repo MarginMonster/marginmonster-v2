@@ -694,6 +694,53 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 }
 .mm-ach.earned { border-color: rgba(52,231,228,0.55); box-shadow: 0 0 14px rgba(52,231,228,0.18); }
 
+/* ===== Video Studio — CAST SELECT (Zeely-style presenter gallery) ===== */
+.mm-cast-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px;
+}
+.mm-cast {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  padding: 0 0 10px; border-radius: 14px; overflow: hidden; cursor: pointer;
+  background: linear-gradient(180deg, #14122A 0%, #0B0A17 100%);
+  border: 1px solid rgba(255,255,255,0.10);
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  text-align: center;
+}
+.mm-cast:hover { transform: translateY(-3px); border-color: rgba(52,231,228,0.55); }
+.mm-cast.on {
+  border-color: var(--mm-cyan);
+  box-shadow: 0 0 0 1px var(--mm-cyan), 0 0 22px rgba(52,231,228,0.35);
+}
+.mm-cast.on::after {
+  content: "✓ CAST"; position: absolute; top: 8px; right: 8px;
+  font-family: var(--font-pixel); font-size: 7px; letter-spacing: .08em;
+  color: #06231F; background: var(--mm-cyan); padding: 3px 7px; border-radius: 999px;
+}
+.mm-cast img {
+  width: 100%; aspect-ratio: 3 / 3.4; object-fit: cover; object-position: top center;
+  display: block; margin-bottom: 8px;
+}
+.mm-cast .ph {
+  width: 100%; aspect-ratio: 3 / 3.4; display: grid; place-items: center; font-size: 40px;
+  background: radial-gradient(120% 90% at 50% 20%, rgba(52,231,228,0.18), transparent 65%), #060512;
+  margin-bottom: 8px;
+}
+.mm-cast .nm { font-family: var(--font-pixel); font-size: 8px; letter-spacing: .1em; color: #fff; }
+.mm-cast .vb { font-size: 11px; color: #A8A2D0; margin-top: 4px; }
+
+/* one-tap direction inserts */
+.mm-dir-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.mm-dir-chip { cursor: pointer; font-size: 12px; }
+
+/* small presenter tag on library cards */
+.mm-cast-tag {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-pixel); font-size: 7.5px; letter-spacing: .08em; color: #06231F;
+  background: linear-gradient(180deg, #7ffff9, var(--mm-cyan));
+  border-radius: 999px; padding: 3px 10px 3px 3px;
+}
+.mm-cast-tag img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; object-position: top center; }
+
 /* ===== Level-up popup — full-screen arcade celebration ===== */
 .mm-lvlup-overlay {
   position: fixed; inset: 0; z-index: 10050; display: flex; align-items: center; justify-content: center;

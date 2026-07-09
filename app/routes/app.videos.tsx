@@ -12,7 +12,6 @@ import {
   Badge,
   Button,
   TextField,
-  Select,
   Banner,
   Box,
   Divider,
@@ -21,6 +20,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
+import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS } from "../lib/avatars";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -68,7 +68,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const productTitle = (form.get("productTitle") as string)?.trim();
-    const style = (form.get("style") as string) || "PRODUCT_HIGHLIGHT";
+    const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
+    // Cast selection drives the style: a presenter = avatar video, none = showcase.
+    const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
     const customPrompt = (form.get("customPrompt") as string)?.trim() || undefined;
     if (!productTitle) return json({ error: "Give your video a product or subject." });
 
@@ -76,6 +78,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productTitle,
       style,
       customPrompt,
+      avatarId,
     });
     return json({ ok: true, queued: true });
   }
@@ -89,11 +92,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ ok: true });
 };
 
-const STYLE_OPTIONS = [
-  { label: "Product highlight — dynamic showcase reel", value: "PRODUCT_HIGHLIGHT" },
-  { label: "AI avatar — UGC-style spokesperson", value: "AI_AVATAR" },
-];
-
 export default function Videos() {
   const { videos, plan, hasVideoPlan } = useLoaderData<typeof loader>();
   const submit = useSubmit();
@@ -101,15 +99,18 @@ export default function Videos() {
   const busy = nav.state !== "idle";
 
   const [productTitle, setProductTitle] = useState("");
-  const [style, setStyle] = useState("PRODUCT_HIGHLIGHT");
+  const [avatarId, setAvatarId] = useState<string>(""); // "" = product only
   const [customPrompt, setCustomPrompt] = useState("");
 
-  const generate = (intent: "generate" | "regenerate", seed?: { title: string; style: string; prompt: string }) => {
+  const insertChip = (chip: string) =>
+    setCustomPrompt((p) => (p.trim() ? `${p.trim()}, ${chip.toLowerCase()}` : chip));
+
+  const generate = (intent: "generate" | "regenerate", seed?: { title: string; avatarId: string; prompt: string }) => {
     submit(
       {
         intent,
         productTitle: seed?.title ?? productTitle,
-        style: seed?.style ?? style,
+        avatarId: seed?.avatarId ?? avatarId,
         customPrompt: seed?.prompt ?? customPrompt,
       },
       { method: "post" }
@@ -124,40 +125,79 @@ export default function Videos() {
           image=""
           action={{ content: "See plans", url: "/app/plans" }}
         >
-          <p>Upgrade to Pro or Scale to generate AI product videos — avatars or highlight reels — from your catalog.</p>
+          <p>Upgrade to Pro or Scale to generate AI product videos — a full presenter cast or highlight reels — from your catalog.</p>
         </EmptyState>
       </Page>
     );
   }
 
   const remaining = plan ? plan.videoQuota - plan.videoUsed + plan.videoCredits : 0;
+  const selectedAvatar = avatarId ? AVATAR_BY_ID[avatarId] : null;
 
   return (
     <Page
       title="Video Studio"
       backAction={{ content: "Home", url: "/app" }}
-      subtitle="Write a prompt, pick a style, and generate scroll-stopping product videos."
+      subtitle="Pick your presenter, direct the shot, and roll camera — ready-to-post videos for TikTok, Reels & Shorts."
     >
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">VIDEO STUDIO</span>
-            <h1>Scroll-stopping videos, made for you.</h1>
-            <p>Write a prompt, pick a style, and dispense a ready-to-post product video for TikTok, Reels, and Shorts.</p>
+            <span className="mm-eyebrow">▶ VIDEO STUDIO · DIRECTOR MODE</span>
+            <h1><span className="mm-marquee">Lights. Camera. Sales.</span></h1>
+            <p>
+              Choose a presenter from the cast (or go product-only), add your
+              direction, and we'll shoot a scroll-stopping vertical video —
+              cut for TikTok, Reels, and Shorts.
+            </p>
             <div className="mm-hero-stats">
               <div className="mm-hero-stat">
                 <div className="k">VIDEOS LEFT</div>
                 <div className="v">{remaining}</div>
               </div>
+              <div className="mm-hero-stat">
+                <div className="k">NOW CASTING</div>
+                <div className="v cyan">{selectedAvatar ? selectedAvatar.name : "PRODUCT ONLY"}</div>
+              </div>
             </div>
           </div>
         </Layout.Section>
 
-        {/* Generation / prompting studio */}
+        {/* CAST SELECT — Zeely-style presenter gallery */}
+        <Layout.Section>
+          <span className="mm-section-label">▶ SELECT YOUR PRESENTER<span className="mm-dots">· · · · ·</span></span>
+          <div className="mm-cast-grid">
+            <button
+              type="button"
+              className={`mm-cast mm-cast-none${avatarId === "" ? " on" : ""}`}
+              onClick={() => setAvatarId("")}
+            >
+              <div className="ph">🎬</div>
+              <div className="nm">PRODUCT ONLY</div>
+              <div className="vb">Showcase reel</div>
+            </button>
+            {AVATARS.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className={`mm-cast${avatarId === a.id ? " on" : ""}`}
+                onClick={() => setAvatarId(a.id)}
+              >
+                <img src={`/avatars/${a.id}.jpg`} alt={`${a.name} — ${a.vibe}`} loading="lazy" />
+                <div className="nm">{a.name}</div>
+                <div className="vb">{a.vibe}</div>
+              </button>
+            ))}
+          </div>
+        </Layout.Section>
+
+        {/* Direction booth */}
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">Create a video</Text>
+              <Text variant="headingMd" as="h2">
+                {selectedAvatar ? `Direct ${selectedAvatar.name}'s shoot` : "Direct your showcase"}
+              </Text>
 
               <TextField
                 label="Product or subject"
@@ -168,37 +208,47 @@ export default function Videos() {
                 helpText="What's the video about?"
               />
 
-              <Select
-                label="Style"
-                options={STYLE_OPTIONS}
-                value={style}
-                onChange={setStyle}
-              />
+              <BlockStack gap="200">
+                <TextField
+                  label="Your direction (optional)"
+                  value={customPrompt}
+                  onChange={setCustomPrompt}
+                  multiline={3}
+                  autoComplete="off"
+                  placeholder={
+                    selectedAvatar
+                      ? `What should ${selectedAvatar.name} do or say? e.g. "opens the bag mid-sentence and reacts to the sour hit"`
+                      : 'Describe the shots and vibe. e.g. "slow-mo close-ups, bright candy colors, upbeat energy"'
+                  }
+                  helpText="Leave blank and we'll direct it from your brand voice — or take the director's chair. Tap a card below to drop in a proven angle."
+                />
+                <div className="mm-dir-chips">
+                  {DIRECTION_CHIPS.map((c) => (
+                    <button key={c} type="button" className="mm-chip mm-dir-chip" onClick={() => insertChip(c)}>
+                      + {c}
+                    </button>
+                  ))}
+                </div>
+              </BlockStack>
 
-              <TextField
-                label="Prompt / script (optional)"
-                value={customPrompt}
-                onChange={setCustomPrompt}
-                multiline={4}
-                autoComplete="off"
-                placeholder={
-                  style === "AI_AVATAR"
-                    ? "What should the avatar say? e.g. 'These gummy worms are unreal — sour, sweet, and gone in seconds…'"
-                    : "Describe the shots/vibe. e.g. 'Slow-mo close-ups, bright candy colors, playful energy, upbeat feel'"
-                }
-                helpText="Leave blank and we'll write it from your brand voice — or take full control here."
-              />
-
-              <InlineStack>
-                <Button
-                  variant="primary"
+              <div className="mm-forge-cta">
+                <button
+                  type="button"
+                  className="mm-arcade-btn"
                   onClick={() => generate("generate")}
-                  loading={busy}
-                  disabled={!productTitle.trim()}
+                  disabled={busy || !productTitle.trim() || remaining <= 0}
                 >
-                  Generate video
-                </Button>
-              </InlineStack>
+                  {busy ? "ROLLING…" : "▶ ROLL CAMERA"}
+                </button>
+                <span className={`mm-credits${remaining <= 0 ? " low" : ""}`}>
+                  <b>TAKES LEFT</b> 🎬 {remaining}
+                </span>
+              </div>
+              {remaining <= 0 && (
+                <Text variant="bodySm" as="p" tone="critical">
+                  Out of video takes this period — top up or upgrade on the Plans page.
+                </Text>
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>
@@ -209,7 +259,7 @@ export default function Videos() {
             <Card>
               <Box padding="400">
                 <Text as="p" tone="subdued" alignment="center">
-                  No videos yet — create your first one above.
+                  No videos yet — pick a presenter and roll your first take above.
                 </Text>
               </Box>
             </Card>
@@ -219,14 +269,21 @@ export default function Videos() {
                 const body = JSON.parse(v.bodyJson);
                 const meta = JSON.parse(v.metaJson);
                 const pendingProvider = body.status === "awaiting_video_provider";
+                const castMember = meta.avatarId ? AVATAR_BY_ID[meta.avatarId] : null;
                 return (
                   <Card key={v.id}>
                     <BlockStack gap="300">
                       <InlineStack align="space-between" blockAlign="center">
                         <BlockStack gap="050">
                           <Text variant="headingSm" as="h3">{v.title}</Text>
-                          <InlineStack gap="200">
-                            <Badge>{(meta.style || "PRODUCT_HIGHLIGHT").replace(/_/g, " ")}</Badge>
+                          <InlineStack gap="200" blockAlign="center">
+                            {castMember ? (
+                              <span className="mm-cast-tag">
+                                <img src={`/avatars/${castMember.id}.jpg`} alt="" /> {castMember.name}
+                              </span>
+                            ) : (
+                              <Badge>{(meta.style || "PRODUCT_HIGHLIGHT").replace(/_/g, " ")}</Badge>
+                            )}
                             <Badge tone={v.status === "APPROVED" ? "success" : v.status === "REJECTED" ? "critical" : "warning"}>
                               {v.status}
                             </Badge>
@@ -254,7 +311,7 @@ export default function Videos() {
                         <>
                           <Divider />
                           <Text variant="bodySm" as="p" tone="subdued">
-                            <strong>Prompt:</strong> {body.prompt}
+                            <strong>Direction:</strong> {body.prompt}
                           </Text>
                         </>
                       )}
@@ -265,13 +322,13 @@ export default function Videos() {
                           onClick={() =>
                             generate("regenerate", {
                               title: v.title || meta.productTitle || "",
-                              style: meta.style || "PRODUCT_HIGHLIGHT",
+                              avatarId: meta.avatarId || "",
                               prompt: body.prompt || "",
                             })
                           }
                           loading={busy}
                         >
-                          Regenerate
+                          Another take
                         </Button>
                         {v.status === "PENDING" && (
                           <>
