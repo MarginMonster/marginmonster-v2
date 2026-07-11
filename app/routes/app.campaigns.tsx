@@ -13,7 +13,7 @@ import {
   QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
-import { AVATARS, AVATAR_BY_ID } from "../lib/avatars";
+import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
 import { Partner, PARTNER_BY_PLAN, type PlanKey } from "../components/Partner";
 
 const TIER_RANK: Record<string, number> = { STARTER: 0, GROWTH: 1, PRO: 2, SCALE: 3 };
@@ -772,12 +772,22 @@ export default function Campaigns() {
         <div className="qh-loadout-grid">
           <div>
             <label className="qh-field-label" htmlFor="qh-star">Star presenter (Brand Face)</label>
-            <select id="qh-star" className="qh-select" value={starId} onChange={(e) => setStarId(e.target.value)}>
-              {available.length === 0 && <option value="">Cast still loading…</option>}
-              {available.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}{brandFace?.id === a.id ? " ★" : ""} — {a.vibe}</option>
-              ))}
-            </select>
+            <div className="qh-star-row">
+              {starId && (
+                <img
+                  className="qh-star-face"
+                  src={avatarImg(starId, starVariant)}
+                  alt={AVATAR_BY_ID[starId]?.name || "Presenter"}
+                  title={AVATAR_BY_ID[starId] ? `${AVATAR_BY_ID[starId].name} — ${AVATAR_BY_ID[starId].vibe}` : undefined}
+                />
+              )}
+              <select id="qh-star" className="qh-select" value={starId} onChange={(e) => setStarId(e.target.value)}>
+                {available.length === 0 && <option value="">Cast still loading…</option>}
+                {available.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}{brandFace?.id === a.id ? " ★" : ""} — {a.vibe}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div>
             <label className="qh-field-label" htmlFor="qh-mode">Publishing mode</label>

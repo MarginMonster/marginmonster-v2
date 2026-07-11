@@ -888,6 +888,12 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 }
 .qh-select:focus { outline: none; border-color: var(--mm-cyan); }
 .qh-field-label { font-family: ui-monospace, monospace; font-size: 11.5px; color: #7d7da8; display: block; margin-bottom: 5px; }
+.qh-star-row { display: flex; align-items: center; gap: 10px; }
+.qh-star-row .qh-select { flex: 1; }
+.qh-star-face {
+  width: 44px; height: 44px; flex: none; border-radius: 10px; object-fit: cover; display: block;
+  border: 2px solid var(--mm-cyan); box-shadow: 0 0 10px rgba(52, 231, 228, 0.35);
+}
 .qh-loadout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 @media (max-width: 620px) { .qh-loadout-grid { grid-template-columns: 1fr; } }
 
