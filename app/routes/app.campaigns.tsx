@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
+import { Link, useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,24 +41,6 @@ function fmtTime(t: string): string {
   const ap = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return mm === "00" ? `${h12}${ap}` : `${h12}:${mm}${ap}`;
-}
-
-/** Translate a pipeline job into a mission-control feed line. Every line maps
- *  to a true state — the AI never bluffs. */
-function feedLine(j: { type: string; status: string; payload: string }): { msg: string; tone: string } {
-  let p: Record<string, unknown> = {};
-  try { p = JSON.parse(j.payload); } catch { /* raw */ }
-  const kind = j.type === "GENERATE_IMAGE_AD" ? "Image ad" : j.type === "GENERATE_BLOG_POST" ? "Blog post" : "Video take";
-  if (j.status === "FAILED") return { msg: `${kind} failed — retry available`, tone: "bad" };
-  if (j.status === "SUCCESS") return { msg: `${kind} delivered`, tone: "ok" };
-  if (j.status === "IN_PROGRESS") {
-    if (p.ckTalkingUrl) return { msg: "Assembling final cut — captions burning in", tone: "hot" };
-    if (p.ckOmniId) return { msg: "Performance rendering — lip-sync in progress", tone: "hot" };
-    if (p.ckAudioUrl) return { msg: "Voice recorded — animating the performance", tone: "hot" };
-    if (p.ckScript) return { msg: "Script forged — casting the voice", tone: "hot" };
-    return { msg: `${kind} in production`, tone: "hot" };
-  }
-  return { msg: `${kind} scheduled — waiting for its calendar slot`, tone: "" };
 }
 
 /** Legacy quests predate the calendar — synthesize a display schedule from
@@ -105,7 +87,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFace: null as { id: string; variant: number } | null,
     castAvail: {} as Record<string, boolean>,
     partner: null as { img: string; accent: string; name: string } | null,
-    feed: [] as { t: string; msg: string; tone: string }[],
+    feed: [] as { ts: number; t: string; msg: string; tone: string; href?: string }[],
     renderingIds: [] as string[], working: false,
   };
   if (!shop) return json(empty);
@@ -125,31 +107,65 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     for (const a of AVATARS) if (files.has(`${a.id}_0.jpg`) || files.has(`${a.id}.jpg`)) castAvail[a.id] = true;
   } catch { /* empty roster */ }
 
+  const planType = (shop.activePlan?.type || "STARTER") as PlanKey;
+  const pd = PARTNER_BY_PLAN[planType] || PARTNER_BY_PLAN.STARTER;
+
+  /* Quest Journal — tales from the road. Only about ACTIVE questlines; every
+   * entry maps a real pipeline event into the partner's voice, with a link to
+   * the true reward where one exists. */
   const now = Date.now();
-  let feed: { t: string; msg: string; tone: string }[] = [];
+  const activeQls = shop.questlines.filter((q) => q.status !== "COMPLETE");
+  const qlById = new Map(activeQls.map((q) => [q.id, { name: q.name, slots: parseSchedule(q.scheduleJson).slots }]));
+  let feed: { ts: number; t: string; msg: string; tone: string; href?: string }[] = [];
   const renderingIds: string[] = [];
   let working = false;
   try {
     const jobs = await db.job.findMany({
       where: { shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } },
       orderBy: { updatedAt: "desc" },
-      take: 8,
+      take: 40,
     });
-    feed = jobs.map((j) => ({ t: rel(j.updatedAt.getTime(), now), ...feedLine(j) }));
     for (const j of jobs) {
-      if (j.status !== "IN_PROGRESS") continue;
-      working = true;
-      try {
-        const p = JSON.parse(j.payload);
-        if (p.questlineId) renderingIds.push(p.questlineId as string);
-      } catch { /* skip */ }
+      let p: Record<string, unknown> = {};
+      try { p = JSON.parse(j.payload); } catch { /* skip */ }
+      const qid = p.questlineId as string | undefined;
+      if (!qid || !qlById.has(qid)) continue;
+      if (j.status === "IN_PROGRESS") { working = true; renderingIds.push(qid); }
+      const ql = qlById.get(qid)!;
+      const slot = typeof p.slotIdx === "number" ? ql.slots.find((s) => s.idx === p.slotIdx) : undefined;
+      const spot = slot?.spot || "the trail";
+      const kind = j.type === "GENERATE_IMAGE_AD" ? "image ad" : j.type === "GENERATE_BLOG_POST" ? "blog post" : "video take";
+      const ts = j.updatedAt.getTime();
+      const t = rel(ts, now);
+      if (j.status === "COMPLETED") {
+        feed.push({
+          ts, t, tone: "ok",
+          msg: `${pd.name} delivered the ${spot} ${kind} — +25 XP found! ✨`,
+          href: j.type === "GENERATE_VIDEO_AD" ? "/app/videos" : "/app/assets",
+        });
+      } else if (j.status === "FAILED") {
+        feed.push({ ts, t, tone: "bad", msg: `A goblin ambushed ${pd.name} at ${spot}! Retry to drive it off`, href: "/app/videos" });
+      } else if (j.status === "IN_PROGRESS") {
+        const msg =
+          p.ckTalkingUrl ? `${pd.name} is stitching the final cut at ${spot} 🎬` :
+          p.ckOmniId ? `${pd.name} is forging the ${spot} take at the anvil ⚒️` :
+          p.ckAudioUrl ? `A voice echoes through ${spot} — the recording is done 🎙️` :
+          p.ckScript ? `${pd.name} penned a script by the ${spot} campfire ✍️` :
+          `${pd.name} is hard at work at ${spot}`;
+        feed.push({ ts, t, tone: "hot", msg });
+      } else if (slot) {
+        feed.push({ ts, t, tone: "", msg: `${pd.name} camps until DAY ${slot.day} — the ${spot} ${kind} drops ${fmtDow(slot.date)} ${fmtTime(slot.time)}` });
+      }
     }
+    // The day the contract was signed is a tale too.
+    for (const q of activeQls) {
+      feed.push({ ts: q.createdAt.getTime(), t: rel(q.createdAt.getTime(), now), tone: "hot", msg: `${pd.name} signed the ${q.name} contract — the expedition begins! 📜` });
+    }
+    feed.sort((a, b) => b.ts - a.ts);
+    feed = feed.slice(0, 8);
   } catch (e) {
-    console.error("[quests] feed load failed (non-fatal):", e);
+    console.error("[quests] journal load failed (non-fatal):", e);
   }
-
-  const planType = (shop.activePlan?.type || "STARTER") as PlanKey;
-  const pd = PARTNER_BY_PLAN[planType] || PARTNER_BY_PLAN.STARTER;
 
   return json({
     ...empty,
@@ -304,11 +320,12 @@ const BIRD_LANES = [
   { y: 42, dur: 55, delay: 26, size: 1.2 },
 ];
 
-function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selectedIdx, destination, dayOf, duration }: {
+function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDay, selectedIdx, selectedDay, destination, dayOf, duration }: {
   slots: QuestSlot[]; xpReward: number; rendering: boolean;
   partner: { img: string; accent: string; name: string } | null;
   cargo: { title: string; image: string | null }[];
-  onPick: (idx: number) => void; selectedIdx: number | null;
+  onPick: (idx: number) => void; onPickDay: (day: number) => void;
+  selectedIdx: number | null; selectedDay: number | null;
   destination: string; dayOf: number; duration: number;
 }) {
   const start = routePoint(0);
@@ -352,6 +369,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
   };
   const onPointerUp = () => { drag.current.on = false; };
   const pick = (idx: number) => { if (!drag.current.moved) onPick(idx); };
+  const pickDay = (day: number) => { if (!drag.current.moved) onPickDay(day); };
 
   return (
     <div className="qh-mapwrap">
@@ -389,13 +407,17 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
         <path d={routeD} fill="none" stroke="#1a1206" strokeWidth="11" opacity="0.35" strokeLinejoin="round" strokeLinecap="round" />
         <path d={routeD} fill="none" stroke="#ffd76a" strokeWidth="5" strokeDasharray="2 16" strokeLinecap="round" opacity="0.95" />
 
-        {/* quiet-day waypoints — every day of the month is a place */}
+        {/* quiet-day waypoints — every day of the month is a place, and every
+            one answers when you knock */}
         {waypointDays.map((d) => {
           const p = routePoint(dayT(d, duration));
           const passed = d < dayOf;
           const today = d === dayOf;
+          const sel = selectedDay === d;
           return (
-            <g key={`wp${d}`}>
+            <g key={`wp${d}`} onClick={() => pickDay(d)} style={{ cursor: "pointer" }}>
+              <circle cx={p.x} cy={p.y} r="15" fill="transparent" />
+              {sel && <circle cx={p.x} cy={p.y} r="13" fill="none" stroke="#34E7E4" strokeWidth="3" />}
               <circle cx={p.x} cy={p.y} r={today ? 8 : 5} fill={passed || today ? "#ffd76a" : "#2b2650"} stroke={passed || today ? "#7a4c08" : "#171430"} strokeWidth="2.5" opacity={passed ? 0.9 : 0.8} />
               {today && (
                 <text x={p.x} y={p.y - 18} textAnchor="middle" fontSize="17" fontFamily="monospace" fill="#ffe9b0" stroke="#14102a" strokeWidth="5" paintOrder="stroke">TODAY</text>
@@ -481,34 +503,138 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
             fill="#ffd76a" stroke="#14102a" strokeWidth="5" paintOrder="stroke">+{xpReward.toLocaleString()} XP</text>
         </g>
 
-        {/* wildlife: birds riding different sky lanes across the whole panorama */}
+        {/* ===== LIFE — the world breathes ===== */}
+        {/* drifting clouds with the whole sky to cross */}
+        {[{ y: 46, dur: 150, s: 1.3, b: 0 }, { y: 84, dur: 210, s: 1, b: 40 }].map((c, i) => (
+          <g key={`cl${i}`} opacity="0.2" transform={`scale(${c.s})`}>
+            <g>
+              <ellipse cx="0" cy={c.y} rx="52" ry="15" fill="#ffffff" />
+              <ellipse cx="34" cy={c.y - 8} rx="34" ry="12" fill="#ffffff" />
+              <ellipse cx="-30" cy={c.y - 5} rx="28" ry="10" fill="#ffffff" />
+              <animateTransform attributeName="transform" type="translate" values={`-120 0; ${PANO_W + 150} 0`} dur={`${c.dur}s`} begin={`-${c.b}s`} repeatCount="indefinite" />
+            </g>
+          </g>
+        ))}
+        {/* birds riding three sky lanes */}
         {BIRD_LANES.map((b, i) => (
-          <g key={i} opacity="0.55" transform={`scale(${b.size})`}>
+          <g key={`bd${i}`} opacity="0.55" transform={`scale(${b.size})`}>
             <path d={`M0 ${b.y} q7 -8 14 0 q7 -8 14 0`} stroke="#14102a" strokeWidth="3" fill="none">
               <animateTransform attributeName="transform" type="translate" values={`-60 0; ${PANO_W + 100} -30`} dur={`${b.dur}s`} begin={`${b.delay}s`} repeatCount="indefinite" />
             </path>
           </g>
         ))}
-        {/* butterflies fluttering near the meadow road */}
+        {/* MEADOW: cherry petals on the wind, butterflies, a bunny, a lagoon boat */}
+        {Array.from({ length: 8 }).map((_, i) => (
+          <circle key={`pt${i}`} r={2.5 + (i % 2)} fill="#f2a3c4" opacity="0.85">
+            <animate attributeName="cy" values="-8;648" dur={`${9 + (i % 5)}s`} begin={`${i * 1.4}s`} repeatCount="indefinite" />
+            <animate attributeName="cx" values={`${250 + ((i * 160) % 900)};${250 + ((i * 160) % 900) + 60}`} dur={`${9 + (i % 5)}s`} begin={`${i * 1.4}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
         <g opacity="0.8">
-          <circle r="4" fill="#f2a3c4">
-            <animateMotion dur="11s" repeatCount="indefinite" path="M 500 300 q 40 -30 80 0 q 40 30 80 0 q -60 40 -160 0 Z" />
-          </circle>
-          <circle r="4" fill="#8fd4f2">
-            <animateMotion dur="14s" begin="3s" repeatCount="indefinite" path="M 900 320 q -30 -40 -70 -10 q -30 30 10 50 q 50 10 60 -40 Z" />
-          </circle>
+          <circle r="4" fill="#f2a3c4"><animateMotion dur="11s" repeatCount="indefinite" path="M 500 300 q 40 -30 80 0 q 40 30 80 0 q -60 40 -160 0 Z" /></circle>
+          <circle r="4" fill="#8fd4f2"><animateMotion dur="14s" begin="3s" repeatCount="indefinite" path="M 900 320 q -30 -40 -70 -10 q -30 30 10 50 q 50 10 60 -40 Z" /></circle>
         </g>
-        {/* something alive in every water: canyon river, frozen lake, temple cove */}
+        <g>
+          <g>
+            <ellipse cx="0" cy="0" rx="7" ry="5" fill="#f4f0e6" />
+            <rect x="-4" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" /><rect x="1" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" />
+            <animateMotion dur="8s" repeatCount="indefinite" path="M 560 332 q 12 -16 24 0 q 12 -16 24 0 q 12 -16 24 0 q -36 10 -72 0 Z" />
+          </g>
+        </g>
+        <g>
+          <g shapeRendering="crispEdges">
+            <path d="M -16 0 h32 l-6 9 h-20 Z" fill="#6b4420" />
+            <rect x="-1.5" y="-22" width="3" height="22" fill="#4a3323" />
+            <path d="M 1.5 -22 q 16 6 0 14 Z" fill="#f4ead0" />
+            <animateTransform attributeName="transform" type="translate" values="1035 398; 1085 398; 1035 398" dur="34s" repeatCount="indefinite" additive="replace" />
+          </g>
+        </g>
+        {/* DESERT: drifting sand motes + a camel patrolling the dunes */}
+        {Array.from({ length: 7 }).map((_, i) => (
+          <circle key={`sm${i}`} r="2.5" fill="#e8d9a0" opacity="0.6">
+            <animate attributeName="cx" values={`${STEP + 60 + ((i * 190) % 1200)};${STEP + 60 + ((i * 190) % 1200) + 300}`} dur={`${11 + (i % 6)}s`} begin={`${i * 1.1}s`} repeatCount="indefinite" />
+            <animate attributeName="cy" values={`${340 + ((i * 41) % 240)};${330 + ((i * 41) % 240)}`} dur={`${11 + (i % 6)}s`} begin={`${i * 1.1}s`} repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;.6;0" dur={`${11 + (i % 6)}s`} begin={`${i * 1.1}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
+        <g transform={`translate(${STEP + 990}, 512)`} shapeRendering="crispEdges">
+          <g>
+            <rect x="0" y="0" width="20" height="9" rx="3" fill="#8a6a3a" />
+            <path d="M 4 0 q 4 -6 9 -2 q 4 -6 8 -1" stroke="#8a6a3a" strokeWidth="4" fill="none" />
+            <rect x="18" y="-9" width="4" height="9" fill="#8a6a3a" /><rect x="18" y="-12" width="6" height="4" fill="#8a6a3a" />
+            <rect x="3" y="9" width="2.5" height="7" fill="#6d5230" /><rect x="14" y="9" width="2.5" height="7" fill="#6d5230" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 190 0; 0 0" dur="52s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* TUNDRA: falling snow, chimney smoke that actually rises, a fox on patrol */}
+        {Array.from({ length: 14 }).map((_, i) => (
+          <circle key={`sn${i}`} r={1.8 + (i % 3) * 0.8} fill="#ffffff" opacity="0.85">
+            <animate attributeName="cy" values="-8;648" dur={`${8 + (i % 6)}s`} begin={`${i * 0.7}s`} repeatCount="indefinite" />
+            <animate attributeName="cx" values={`${STEP * 2 + 30 + ((i * 117) % 1460)};${STEP * 2 + 70 + ((i * 117) % 1460)}`} dur={`${8 + (i % 6)}s`} begin={`${i * 0.7}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {[{ x: STEP * 2 + 738, y: 92 }, { x: STEP * 2 + 972, y: 152 }].map((ch, ci) =>
+          Array.from({ length: 3 }).map((_, i) => (
+            <circle key={`sk${ci}-${i}`} cx={ch.x} fill="#cfc9dd" opacity="0">
+              <animate attributeName="cy" values={`${ch.y};${ch.y - 46}`} dur="4.2s" begin={`${ci * 0.8 + i * 1.4}s`} repeatCount="indefinite" />
+              <animate attributeName="r" values="2.5;8" dur="4.2s" begin={`${ci * 0.8 + i * 1.4}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.55;0" dur="4.2s" begin={`${ci * 0.8 + i * 1.4}s`} repeatCount="indefinite" />
+            </circle>
+          ))
+        )}
+        <g transform={`translate(${STEP * 2 + 560}, 452)`}>
+          <g shapeRendering="crispEdges">
+            <rect x="0" y="0" width="15" height="7" rx="2" fill="#d97f3e" />
+            <rect x="13" y="-5" width="5" height="6" fill="#d97f3e" /><path d="M 0 2 q -9 -2 -12 4 q 6 4 12 0 Z" fill="#e89a5e" />
+            <rect x="2" y="7" width="2" height="5" fill="#a85f2e" /><rect x="11" y="7" width="2" height="5" fill="#a85f2e" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 170 6; 0 0" dur="30s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* VOLCANO: pulsing summit glow, rising embers, a parrot circling the temple, a sailboat */}
+        <circle cx={STEP * 3 + 748} cy={96} r="46" fill="#ff6b35" opacity="0.25">
+          <animate attributeName="opacity" values="0.18;0.42;0.18" dur="3.2s" repeatCount="indefinite" />
+          <animate attributeName="r" values="40;54;40" dur="3.2s" repeatCount="indefinite" />
+        </circle>
+        {Array.from({ length: 7 }).map((_, i) => (
+          <circle key={`em${i}`} r="2.5" fill="#ffb03a" opacity="0">
+            <animate attributeName="cx" values={`${STEP * 3 + 700 + ((i * 23) % 110)};${STEP * 3 + 690 + ((i * 31) % 130)}`} dur={`${5 + (i % 4)}s`} begin={`${i * 0.9}s`} repeatCount="indefinite" />
+            <animate attributeName="cy" values="160;36" dur={`${5 + (i % 4)}s`} begin={`${i * 0.9}s`} repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.9;0" dur={`${5 + (i % 4)}s`} begin={`${i * 0.9}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
+        <g transform={`translate(${STEP * 3 + 790}, 298)`}>
+          <g>
+            <circle r="4.5" fill="#e24b4a" />
+            <path d="M -2 -2 q -8 -7 -14 -2 M 2 -2 q 8 -7 14 -2" stroke="#e24b4a" strokeWidth="2.5" fill="none">
+              <animate attributeName="d" values="M -2 -2 q -8 -7 -14 -2 M 2 -2 q 8 -7 14 -2; M -2 0 q -8 5 -14 2 M 2 0 q 8 5 14 2; M -2 -2 q -8 -7 -14 -2 M 2 -2 q 8 -7 14 -2" dur="0.6s" repeatCount="indefinite" />
+            </path>
+            <animateMotion dur="15s" repeatCount="indefinite" path="M 0 0 a 84 44 0 1 0 168 0 a 84 44 0 1 0 -168 0" />
+          </g>
+        </g>
+        <g>
+          <g shapeRendering="crispEdges">
+            <path d="M -16 0 h32 l-6 9 h-20 Z" fill="#5a3d20" />
+            <rect x="-1.5" y="-24" width="3" height="24" fill="#3d2b16" />
+            <path d="M -1.5 -24 q -17 7 0 15 Z" fill="#ffd9a0" />
+            <animateTransform attributeName="transform" type="translate" values={`${STEP * 3 + 210} 592; ${STEP * 3 + 300} 588; ${STEP * 3 + 210} 592`} dur="44s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* waves & ripples in every water */}
         {[
-          { x: STEP * 1 + 780, y: 480, d: 0 },
-          { x: STEP * 2 + 800, y: 520, d: 2.1 },
-          { x: STEP * 3 + 380, y: 545, d: 1.2 },
-          { x: 1150, y: 430, d: 3.4 },
+          { x: STEP + 780, y: 480, d: 0 }, { x: STEP * 2 + 800, y: 520, d: 2.1 },
+          { x: STEP * 3 + 380, y: 545, d: 1.2 }, { x: 1150, y: 430, d: 3.4 },
+          { x: STEP * 3 + 1180, y: 560, d: 4.2 }, { x: 640, y: 610, d: 1.9 },
         ].map((r, i) => (
           <circle key={`rp${i}`} cx={r.x} cy={r.y} fill="none" stroke="#eaf8ff" strokeWidth="2.5" opacity="0.7">
             <animate attributeName="r" values="2;16" dur="4.5s" begin={`${r.d}s`} repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.7;0" dur="4.5s" begin={`${r.d}s`} repeatCount="indefinite" />
           </circle>
+        ))}
+        {[{ x: 1000, y: 392 }, { x: STEP + 830, y: 420 }, { x: STEP * 2 + 760, y: 545 }, { x: STEP * 3 + 350, y: 570 }].map((w, i) => (
+          <path key={`wv${i}`} d={`M ${w.x} ${w.y} q 9 -5 18 0 q 9 5 18 0`} stroke="#dff2ff" strokeWidth="2" fill="none" opacity="0.5">
+            <animate attributeName="opacity" values="0.15;0.6;0.15" dur={`${3 + (i % 3)}s`} begin={`${i * 0.8}s`} repeatCount="indefinite" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 14 0; 0 0" dur={`${5 + i}s`} repeatCount="indefinite" />
+          </path>
         ))}
       </svg>
       {partner && (
@@ -549,13 +675,24 @@ export default function Campaigns() {
   const [bag, setBag] = useState<{ id: string; title: string; image: string | null }[]>([]);
   const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("REVIEW_FIRST");
   const [editSel, setEditSel] = useState<{ qid: string; idx: number } | null>(null);
+  const [daySel, setDaySel] = useState<{ qid: string; day: number } | null>(null);
   const [editDate, setEditDate] = useState("");
   const [editTime, setEditTime] = useState("");
 
   const canRun = (minTier: string) => (TIER_RANK[tier] ?? 0) >= (TIER_RANK[minTier] ?? 1);
   const firstUnlocked = QUESTLINES.find((q) => canRun(q.minTier)) || QUESTLINES[0];
   const [selKey, setSelKey] = useState(firstUnlocked.key);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const sel = QUESTLINE_BY_KEY[selKey] || firstUnlocked;
+
+  /** Calendar date for an arbitrary day of a quest (UTC math — hydration-safe). */
+  const dateForDay = (slots: QuestSlot[], day: number): string => {
+    const ref = slots[0];
+    if (!ref) return "";
+    const [y, m, d] = ref.date.split("-").map(Number);
+    const base = Date.UTC(y, m - 1, d) - (ref.day - 1) * 86400000;
+    return new Date(base + (day - 1) * 86400000).toISOString().slice(0, 10);
+  };
   const selCost = questlineTokenCost(sel);
   const selLocked = !canRun(sel.minTier);
   const selAffordable = tokens >= selCost;
@@ -612,9 +749,14 @@ export default function Campaigns() {
   const openEditor = (qid: string, slots: QuestSlot[], idx: number) => {
     const s = slots.find((x) => x.idx === idx);
     if (!s) return;
+    setDaySel(null);
     setEditSel({ qid, idx });
     setEditDate(s.date);
     setEditTime(s.time);
+  };
+  const openDay = (qid: string, day: number) => {
+    setEditSel(null);
+    setDaySel({ qid, day });
   };
 
   return (
@@ -653,27 +795,33 @@ export default function Campaigns() {
             partner={partner}
             cargo={q.productImageUrl ? [{ title: q.productTitle || "", image: q.productImageUrl }] : []}
             onPick={(idx) => openEditor(q.id, q.slots, idx)}
+            onPickDay={(day) => openDay(q.id, day)}
             selectedIdx={editSel?.qid === q.id ? editSel.idx : null}
+            selectedDay={daySel?.qid === q.id ? daySel.day : null}
             destination={DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
             dayOf={q.dayOf}
             duration={q.duration}
           />
+          {/* a content stop was clicked — what happens here, and when */}
           {editSel?.qid === q.id && (() => {
             const s = q.slots.find((x) => x.idx === editSel.idx);
             if (!s) return null;
             const locked = s.status === "READY" || s.status === "POSTED";
+            const kind = s.type === "video" ? "video take" : s.type === "image" ? "image ad" : "blog post";
             return (
               <div className="qh-slot-editor">
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <div className="spot">{NODE_ICON[s.type]} {s.spot}</div>
-                  <div className="meta">DAY {s.day} · {s.type} drop{s.productTitle ? ` · ${s.productTitle}` : ""} · {s.status}</div>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div className="spot">{NODE_ICON[s.type]} {s.spot} — DAY {s.day}</div>
+                  <div className="meta">
+                    {locked
+                      ? `${pName} already forged this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — it's waiting in your library. ✓`
+                      : `${pName} forges a ${kind} here${s.productTitle ? ` starring ${s.productTitle}` : ""}, ready for ${fmtDow(s.date)} at ${fmtTime(s.time)}. Change the plan below — the whole schedule obeys.`}
+                  </div>
                 </div>
-                {locked ? (
-                  <div className="meta" style={{ color: "#8ee89c" }}>Already forged ✓ — find it in the library</div>
-                ) : (
+                {!locked && (
                   <>
                     <div>
-                      <label className="qh-field-label" htmlFor="qh-edit-date">Post date</label>
+                      <label className="qh-field-label" htmlFor="qh-edit-date">Drop date</label>
                       <input id="qh-edit-date" className="qh-input" type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                     </div>
                     <div>
@@ -684,11 +832,42 @@ export default function Campaigns() {
                       type="button" className="qh-mini-btn" disabled={busy}
                       onClick={() => submit({ intent: "reschedule", questlineId: q.id, slotIdx: String(editSel.idx), date: editDate, time: editTime }, { method: "post" })}
                     >
-                      💾 Save stop
+                      💾 Save the plan
                     </button>
                   </>
                 )}
                 <button type="button" className="qh-mini-btn" onClick={() => setEditSel(null)}>Close</button>
+              </div>
+            );
+          })()}
+          {/* a quiet day was clicked — tell the merchant what happens (nothing) and offer action */}
+          {daySel?.qid === q.id && (() => {
+            const d = daySel.day;
+            const date = dateForDay(q.slots, d);
+            const next = q.slots.find((s) => s.status === "SCHEDULED" || s.status === "FORGING");
+            const passed = d < q.dayOf;
+            const today = d === q.dayOf;
+            const msg = passed
+              ? `${pName} passed through here on DAY ${d} — a quiet stretch of road, nothing dropped.`
+              : today
+                ? `${pName} is camped here right now — DAY ${d} of ${q.duration}.${next ? ` Next drop ahead: ${next.spot} on ${fmtDow(next.date)} at ${fmtTime(next.time)}.` : ""}`
+                : `DAY ${d} · ${fmtDow(date)} — a travel day. Nothing is scheduled to drop here${next ? `; the next drop is ${next.spot} on DAY ${next.day}` : ""}.`;
+            return (
+              <div className="qh-slot-editor">
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div className="spot">🏕 DAY {d} — ON THE ROAD</div>
+                  <div className="meta">{msg}</div>
+                </div>
+                {!passed && !today && next && (
+                  <button
+                    type="button" className="qh-mini-btn" disabled={busy}
+                    title={`Moves the ${next.spot} drop to this day`}
+                    onClick={() => submit({ intent: "reschedule", questlineId: q.id, slotIdx: String(next.idx), date, time: next.time }, { method: "post" })}
+                  >
+                    📦 Move next drop here
+                  </button>
+                )}
+                <button type="button" className="qh-mini-btn" onClick={() => setDaySel(null)}>Close</button>
               </div>
             );
           })()}
@@ -715,156 +894,168 @@ export default function Campaigns() {
         <p><span className="nm">{pName}:</span> {dialog}<span className="qh-curs">▊</span></p>
       </div>
 
-      <div className="qh-grid2" style={{ marginBottom: 16 }}>
-        <div className="qh-win">
-          <span className="qh-label">LIVE FEED<span className="r">pipeline telemetry</span></span>
-          {feed.length === 0 ? (
-            <div className="qh-feed"><div><span className="t">--</span>Standing by — no production activity yet</div></div>
-          ) : (
-            <div className="qh-feed">
-              {feed.map((f, i) => (
-                <div key={i}><span className="t">{f.t}</span><span className={f.tone}>{f.msg}</span></div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Quest Journal — tales from the road, real events in the partner's voice */}
+      <div className="qh-win" style={{ marginBottom: 16 }}>
+        <span className="qh-label">📖 QUEST JOURNAL<span className="r">tales from the road</span></span>
+        {feed.length === 0 ? (
+          <div className="qh-feed"><div><span className="t">--</span>The journal is blank — sign a questline below and {pName} starts writing.</div></div>
+        ) : (
+          <div className="qh-feed">
+            {feed.map((f, i) => (
+              <div key={i}>
+                <span className="t">{f.t}</span>
+                <span className={f.tone}>{f.msg}</span>
+                {f.href && <Link to={f.href} className="qh-journal-link"> → see it</Link>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-        <div className="qh-win gold">
-          <span className="qh-label gold">NEW QUESTS<span className="r">monthly expeditions</span></span>
-          {QUESTLINES.map((q) => {
-            const locked = !canRun(q.minTier);
-            const cost = questlineTokenCost(q);
-            return (
+      {/* Active Questlines — the quest book. Click a title to read the tale. */}
+      <div className="qh-win gold" style={{ marginBottom: 16 }}>
+        <span className="qh-label gold">⚔ QUESTLINES<span className="r">monthly expeditions · click a title to open the tale</span></span>
+        {QUESTLINES.map((q) => {
+          const locked = !canRun(q.minTier);
+          const cost = questlineTokenCost(q);
+          const activeQ = active.find((a) => a.template === q.key);
+          const open = openKey === q.key;
+          const isSel = open;
+          return (
+            <div key={q.key} className={`qh-quest-entry${open ? " open" : ""}`}>
               <button
-                key={q.key} type="button"
-                className={`qh-qrow${selKey === q.key ? " on" : ""}${locked ? " locked" : ""}`}
-                onClick={() => setSelKey(q.key)}
+                type="button"
+                className={`qh-qrow${isSel ? " on" : ""}${locked ? " locked" : ""}`}
+                onClick={() => { setOpenKey(open ? null : q.key); if (!locked) setSelKey(q.key); }}
               >
                 <span style={{ display: "inline-flex", gap: 4, alignItems: "center", minWidth: 0 }}>
                   <span className="ptr">▶</span>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.icon} {q.name.toUpperCase()}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {q.icon} {q.name.toUpperCase()} <span style={{ color: "#7d7da8" }}>→ {DESTINATION_BY_KEY[q.key]}</span>
+                  </span>
                 </span>
-                {locked ? <span>🔒 {q.minTier}</span> : (
-                  <span className="cost">{cost.toLocaleString()}🪙 <span className="xp">+{q.xpReward.toLocaleString()}XP</span></span>
-                )}
+                {activeQ ? <span style={{ color: "#8ee89c" }}>⚑ ON EXPEDITION · DAY {activeQ.dayOf}</span> :
+                  locked ? <span>🔒 {q.minTier}</span> : (
+                    <span className="cost">{cost.toLocaleString()}🪙 <span className="xp">+{q.xpReward.toLocaleString()}XP</span></span>
+                  )}
               </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Mission briefing + loadout */}
-      <div className="qh-win" style={{ marginBottom: 16 }}>
-        <span className="qh-label">
-          MISSION BRIEFING — {sel.icon} {sel.name.toUpperCase()}
-          <span className="r">30-day expedition{sel.recurring ? " · renews monthly" : ""}</span>
-        </span>
-        <p style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "#a8a8cc", margin: "0 0 12px", lineHeight: 1.6 }}>
-          {sel.tagline} Posting rhythm: {sel.cadence}.
-        </p>
-        <div className="qh-detail-objs">
-          {sel.objectives.map((o, i) => (
-            <div key={i}>{NODE_ICON[o.type]} {o.target}× {o.label}</div>
-          ))}
-          <div style={{ color: "#8ee89c" }}>🏆 Reward: {sel.xpReward.toLocaleString()} XP + 100 XP per perfect week</div>
-        </div>
-
-        <div className="qh-loadout-grid">
-          <div>
-            <label className="qh-field-label" htmlFor="qh-star">Star presenter (Brand Face)</label>
-            <div className="qh-star-row">
-              {starId && (
-                <img
-                  className="qh-star-face"
-                  src={avatarImg(starId, starVariant)}
-                  alt={AVATAR_BY_ID[starId]?.name || "Presenter"}
-                  title={AVATAR_BY_ID[starId] ? `${AVATAR_BY_ID[starId].name} — ${AVATAR_BY_ID[starId].vibe}` : undefined}
-                />
-              )}
-              <select id="qh-star" className="qh-select" value={starId} onChange={(e) => setStarId(e.target.value)}>
-                {available.length === 0 && <option value="">Cast still loading…</option>}
-                {available.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}{brandFace?.id === a.id ? " ★" : ""} — {a.vibe}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="qh-field-label" htmlFor="qh-mode">Publishing mode</label>
-            <select id="qh-mode" className="qh-select" value={reviewMode} onChange={(e) => setReviewMode(e.target.value as "REVIEW_FIRST" | "SET_AND_FORGET")}>
-              <option value="REVIEW_FIRST">Review first — AI stages, you approve</option>
-              <option value="SET_AND_FORGET">Set & forget — full autopilot</option>
-            </select>
-          </div>
-        </div>
-
-        {products.length > 0 && (() => {
-          const drops = sel.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
-          const pouchCols = 3; // pockets sewn onto the bag art's front panel
-          const say =
-            bagCapped.length === 0 ? "Pack at least 1 item to march." :
-            bagCapped.length >= sel.bagSize ? `Fully loaded! Each item gets ~${Math.round((drops / sel.bagSize) * 10) / 10} drops this month.` :
-            `${bagCapped.length} packed — the AI rotates ${bagCapped.length === 1 ? "it" : "them"} across the month's ${drops} drops.`;
-          return (
-            <div className="qh-packgrid" style={{ marginBottom: 14 }}>
-              <div>
-                <span className="qh-field-label">SUPPLY SHELF — your store catalog · click an item to pack it</span>
-                <div className="qh-bag">
-                  {products.map((p) => {
-                    const inBag = bag.some((b) => b.id === p.id);
-                    return (
-                      <button
-                        key={p.id} type="button"
-                        className={`qh-slot${inBag ? " ghost" : ""}`}
-                        title={inBag ? `${p.title} — already packed` : p.title}
-                        onClick={() => { if (!inBag) toggleItem(p); }}
-                      >
-                        {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <span className="ph">🛍️</span>}
-                        <span className="qh-slot-name">{p.title}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="qh-bagcol">
-                <span className="qh-field-label">🎒 YOUR PACK — {sel.bagSize} pouches · click a pouch to unpack</span>
-                <div key={bagCapped.length} className="qh-bagart" style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
-                  <img src="/quests/backpack.jpg" alt="Adventurer's backpack" />
-                  <div className="qh-pouches" style={{ gridTemplateColumns: `repeat(${pouchCols}, 1fr)` }}>
-                    {Array.from({ length: sel.bagSize }).map((_, i) => {
-                      const item = bagCapped[i];
-                      return item ? (
-                        <button key={i} type="button" className="qh-pouch full" title={`${item.title} — click to unpack`} onClick={() => toggleItem(item)}>
-                          {item.image ? <img src={item.image} alt={item.title} /> : <span style={{ fontSize: 22 }}>🛍️</span>}
-                        </button>
-                      ) : (
-                        <div key={i} className="qh-pouch">+</div>
-                      );
-                    })}
+              {open && (
+                <div className="qh-qbody">
+                  <p className="qh-lore">{q.lore}</p>
+                  <div className="qh-detail-objs">
+                    <div style={{ color: "#e0d9b8" }}>🗺 The plan: a 30-day march from YOUR SHOP to {DESTINATION_BY_KEY[q.key]}. {q.cadence}.</div>
+                    {q.objectives.map((o, i) => (
+                      <div key={i}>{NODE_ICON[o.type]} {o.target}× {o.label}</div>
+                    ))}
+                    <div style={{ color: "#8ee89c" }}>🏆 The spoils: {q.xpReward.toLocaleString()} XP at {DESTINATION_BY_KEY[q.key]} + 100 XP per perfect week{q.recurring ? " · the contract renews monthly" : ""}</div>
                   </div>
+
+                  {activeQ ? (
+                    <div className="qh-hint" style={{ textAlign: "left" }}>⚑ Already on the road — day {activeQ.dayOf} of {activeQ.duration}. Follow the journey on the board above.</div>
+                  ) : locked ? (
+                    <div className="qh-hint" style={{ textAlign: "left" }}>🔒 This contract needs the {q.minTier[0] + q.minTier.slice(1).toLowerCase()} plan. Level up your plan to unlock it.</div>
+                  ) : (
+                    <>
+                      <div className="qh-loadout-grid">
+                        <div>
+                          <label className="qh-field-label" htmlFor="qh-star">Star presenter (your Brand Face)</label>
+                          <div className="qh-star-row">
+                            {starId && (
+                              <img
+                                className="qh-star-face"
+                                src={avatarImg(starId, starVariant)}
+                                alt={AVATAR_BY_ID[starId]?.name || "Presenter"}
+                                title={AVATAR_BY_ID[starId] ? `${AVATAR_BY_ID[starId].name} — ${AVATAR_BY_ID[starId].vibe}` : undefined}
+                              />
+                            )}
+                            <select id="qh-star" className="qh-select" value={starId} onChange={(e) => setStarId(e.target.value)}>
+                              {available.length === 0 && <option value="">The cast is still arriving…</option>}
+                              {available.map((a) => (
+                                <option key={a.id} value={a.id}>{a.name}{brandFace?.id === a.id ? " ★" : ""} — {a.vibe}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="qh-field-label" htmlFor="qh-mode">Publishing style</label>
+                          <select id="qh-mode" className="qh-select" value={reviewMode} onChange={(e) => setReviewMode(e.target.value as "REVIEW_FIRST" | "SET_AND_FORGET")}>
+                            <option value="REVIEW_FIRST">Scout ahead — {pName} stages, you approve</option>
+                            <option value="SET_AND_FORGET">Charge in — full autopilot</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {products.length > 0 && (() => {
+                        const drops = q.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
+                        const say =
+                          bagCapped.length === 0 ? "Pack at least 1 item to march." :
+                          bagCapped.length >= q.bagSize ? `Fully loaded! Each item stars in ~${Math.round((drops / q.bagSize) * 10) / 10} drops this month.` :
+                          `${bagCapped.length} packed — ${pName} rotates ${bagCapped.length === 1 ? "it" : "them"} across the month's ${drops} drops.`;
+                        return (
+                          <div className="qh-packgrid" style={{ marginBottom: 14 }}>
+                            <div>
+                              <span className="qh-field-label">SUPPLY SHELF — your store catalog · click an item to pack it</span>
+                              <div className="qh-bag">
+                                {products.map((p) => {
+                                  const inBag = bag.some((b) => b.id === p.id);
+                                  return (
+                                    <button
+                                      key={p.id} type="button"
+                                      className={`qh-slot${inBag ? " ghost" : ""}`}
+                                      title={inBag ? `${p.title} — already packed` : p.title}
+                                      onClick={() => { if (!inBag) toggleItem(p); }}
+                                    >
+                                      {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <span className="ph">🛍️</span>}
+                                      <span className="qh-slot-name">{p.title}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="qh-bagcol">
+                              <span className="qh-field-label">🎒 YOUR PACK — {q.bagSize} pouches · click a pouch to unpack</span>
+                              <div key={bagCapped.length} className="qh-bagart" style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
+                                <img src="/quests/backpack.png" alt="Merchant's treasure pack" />
+                                <div className={`qh-pouches${q.bagSize > 6 ? " big" : ""}`}>
+                                  {Array.from({ length: q.bagSize }).map((_, i) => {
+                                    const item = bagCapped[i];
+                                    return item ? (
+                                      <button key={i} type="button" className="qh-pouch full" title={`${item.title} — click to unpack`} onClick={() => toggleItem(item)}>
+                                        {item.image ? <img src={item.image} alt={item.title} /> : <span style={{ fontSize: 22 }}>🛍️</span>}
+                                      </button>
+                                    ) : (
+                                      <div key={i} className="qh-pouch">+</div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div className="qh-load-row"><span>PACK LOAD</span><span>{bagCapped.length}/{q.bagSize}</span></div>
+                              <div className="qh-load-bar"><i style={{ width: `${(bagCapped.length / q.bagSize) * 100}%` }} /></div>
+                              <div className="qh-pack-say">{say}</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <button
+                        type="button" className="qh-start"
+                        disabled={busy || bagCapped.length === 0 || !selAffordable || !starId}
+                        onClick={startQuest}
+                      >
+                        {busy ? "SIGNING THE CONTRACT…" : `⚔ SIGN THE CONTRACT — ${cost.toLocaleString()} 🪙`}
+                      </button>
+                      <div className="qh-hint">
+                        {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
+                          !selAffordable ? `The contract costs ${cost.toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT COINS in the HUD to top up.` :
+                          "Tokens cover the month's content. Abandon anytime — unforged pieces are refunded. Ad spend always stays on your own connected accounts."}
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="qh-load-row"><span>PACK LOAD</span><span>{bagCapped.length}/{sel.bagSize}</span></div>
-                <div className="qh-load-bar"><i style={{ width: `${(bagCapped.length / sel.bagSize) * 100}%` }} /></div>
-                <div className="qh-pack-say">{say}</div>
-              </div>
+              )}
             </div>
           );
-        })()}
-
-        <button
-          type="button" className="qh-start"
-          disabled={busy || selLocked || bagCapped.length === 0 || !selAffordable || !starId}
-          onClick={startQuest}
-        >
-          {selLocked ? `🔒 ${sel.minTier} PLAN REQUIRED` : busy ? "SIGNING…" : `▶ START 30-DAY QUEST — ${selCost.toLocaleString()} 🪙`}
-        </button>
-        {!selLocked && (
-          <div className="qh-hint">
-            {bagCapped.length === 0 ? "Equip at least one item from your backpack to unlock the mission" :
-              !selAffordable ? `Needs ${selCost.toLocaleString()} tokens — you have ${tokens.toLocaleString()}. INSERT COINS in the HUD to top up.` :
-              "Tokens cover the month's content. Abandoning refunds unforged pieces. Ad spend always runs on your own connected accounts."}
-          </div>
-        )}
+        })}
       </div>
 
       {done.length > 0 && (

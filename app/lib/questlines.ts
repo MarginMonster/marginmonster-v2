@@ -26,6 +26,7 @@ export type QuestlineDef = {
   xpReward: number;
   bagSize: number; // backpack capacity — generous; more items = richer calendar
   cadence: string; // human-readable posting rhythm, shown in the briefing
+  lore: string; // in-world quest description, shown when the title is opened
 };
 
 export const QUEST_DURATION_DAYS = 30; // every questline is a monthly segment
@@ -45,6 +46,7 @@ export function questlineTokenCost(q: QuestlineDef): number {
 export const QUESTLINES: QuestlineDef[] = [
   {
     key: "FIRST_BLOOD",
+    lore: "Every legend starts with a first swing. Your partner shoulders the pack, marches out of your shop, and puts your brand on the board — a handful of scroll-stoppers and two takes with your Brand Face to draw first blood on the feed.",
     name: "First Blood",
     icon: "🩸",
     tagline: "Your opening month — a light, steady introduction to the battlefield.",
@@ -62,6 +64,7 @@ export const QUESTLINES: QuestlineDef[] = [
   },
   {
     key: "STEADY_GRIND",
+    lore: "Empires aren't built in a day — they're built every few days, for a month straight. A steady drumbeat of fresh takes and image ads, drip-posted at peak hours while you do literally anything else.",
     name: "The Steady Grind",
     icon: "⚙️",
     tagline: "Always-on presence — a content drop every few days, all month long.",
@@ -79,6 +82,7 @@ export const QUESTLINES: QuestlineDef[] = [
   },
   {
     key: "LAUNCH_BLITZ",
+    lore: "You've got something big dropping, and the whole realm should hear about it. A heavy first-week barrage of hype takes, then a rolling echo that keeps the launch loud all month.",
     name: "Launch Blitz",
     icon: "🚀",
     tagline: "A loud month for a big drop — front-loaded hype, then a steady echo.",
@@ -96,6 +100,7 @@ export const QUESTLINES: QuestlineDef[] = [
   },
   {
     key: "OMNICHANNEL",
+    lore: "The full war machine. Blogs for the search engines, image ads for the scrollers, video takes for everyone else — every channel, every week, all month long.",
     name: "Omnichannel Onslaught",
     icon: "🌐",
     tagline: "Everything, everywhere, all month — blogs, ads, and videos on every channel.",

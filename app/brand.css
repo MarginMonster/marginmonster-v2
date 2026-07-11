@@ -905,12 +905,13 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-slot.ghost:hover { border-color: #2e2e52; transform: none; }
 .qh-bagcol { width: 340px; text-align: center; }
 /* the bag is real generated art; pouch slots overlay its body like sewn pockets */
-.qh-bagart { position: relative; width: 340px; }
-.qh-bagart > img { display: block; width: 100%; border-radius: 12px; }
+.qh-bagart { position: relative; width: 340px; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45)); }
+.qh-bagart > img { display: block; width: 100%; }
 .qh-pouches {
-  position: absolute; left: 28%; right: 28%; top: 31%; bottom: 13%;
+  position: absolute; left: 32%; right: 32%; top: 53%; bottom: 16%;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; align-content: center;
 }
+.qh-pouches.big { top: 30%; }
 .qh-pouch {
   position: relative; aspect-ratio: 1; background: rgba(24, 12, 4, 0.55); border: 2px dashed rgba(255, 205, 120, 0.45);
   border-radius: 7px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0; cursor: default;
@@ -986,6 +987,17 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 }
 .qh-cargo img { width: 30px; height: 30px; object-fit: cover; border-radius: 3px; border: 1px solid #3e3e66; display: block; }
 .qh-cargo .lb { font-family: var(--font-pixel); font-size: 6.5px; letter-spacing: .08em; color: var(--arc-yellow); }
+
+/* quest book accordion + journal */
+.qh-quest-entry { border-bottom: 1px solid #1c1c38; padding-bottom: 4px; margin-bottom: 4px; }
+.qh-quest-entry:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.qh-qbody { padding: 10px 10px 16px; }
+.qh-lore {
+  font-family: ui-monospace, monospace; font-size: 13.5px; color: #d8d3ef; line-height: 1.75;
+  border-left: 3px solid var(--arc-yellow); padding-left: 12px; margin: 4px 0 14px; font-style: italic;
+}
+.qh-journal-link { color: var(--mm-cyan); text-decoration: underline dotted; }
+.qh-journal-link:hover { color: #7ff5f2; }
 
 /* completed log */
 .qh-done-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-family: ui-monospace, monospace; font-size: 13px; color: #c6c1e6; padding: 7px 4px; border-bottom: 1px solid #1c1c38; }
