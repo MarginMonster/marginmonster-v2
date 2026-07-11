@@ -179,28 +179,42 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
 
 function assemble(opts: {
   talkingPath: string;
-  audioPath: string; // our TTS track is ALWAYS the audio (works for engines
-  // whose video has no/other audio; video loops to cover the full narration)
+  audioPath: string;
   productImagePath: string | null;
   script: string;
   outPath: string;
+  /** true = the talking video already carries lip-synced audio (omni-human):
+   *  keep its OWN audio, DON'T loop or re-mux — that's what was breaking sync.
+   *  false = silent/generic motion (kling fallback): loop the clip and lay our
+   *  TTS narration over it. */
+  lipSynced: boolean;
 }): void {
   const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  const duration = ffprobeDuration(opts.audioPath); // narration defines the ad
+  // The performance defines the ad when it's lip-synced (never trim/loop the
+  // synced clip); the narration defines it only for the silent fallback.
+  const duration = opts.lipSynced ? ffprobeDuration(opts.talkingPath) : ffprobeDuration(opts.audioPath);
 
-  // input 0: talking video (looped so it always covers the narration)
-  // input 1: TTS audio   |   input 2 (optional): product image for b-roll
-  const args: string[] = ["-y", "-stream_loop", "-1", "-i", opts.talkingPath, "-i", opts.audioPath];
+  const args: string[] = ["-y"];
+  if (!opts.lipSynced) args.push("-stream_loop", "-1"); // loop only the silent clip
+  args.push("-i", opts.talkingPath);
+  if (!opts.lipSynced) args.push("-i", opts.audioPath); // external narration only for fallback
+  const audioInputIndex = opts.lipSynced ? 0 : 1; // omni: video's own audio; kling: the mp3
+
   const filters: string[] = [];
   let vLabel = "[v0]";
   filters.push(`[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[v0]`);
 
   if (opts.productImagePath) {
-    // product b-roll cut-in mid-ad while the voice keeps talking (classic UGC cut)
+    // b-roll product image = the next input. Lip-synced has [0]=video only, so
+    // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
+    const brIdx = opts.lipSynced ? 1 : 2;
     args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
-    const bs = Math.max(1.2, duration * 0.45).toFixed(2);
-    const be = Math.min(duration - 0.8, duration * 0.45 + 2.2).toFixed(2);
-    filters.push(`[2:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
+    // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
+    // reads as an intentional UGC cut, not a glitch)
+    const cutLen = opts.lipSynced ? 1.6 : 2.2;
+    const bs = Math.max(1.2, duration * 0.5).toFixed(2);
+    const be = Math.min(duration - 0.8, duration * 0.5 + cutLen).toFixed(2);
+    filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
     filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
     vLabel = "[v1]";
   }
@@ -213,7 +227,7 @@ function assemble(opts: {
 
   args.push(
     "-filter_complex", filters.join(";"),
-    "-map", vLabel, "-map", "1:a",
+    "-map", vLabel, "-map", `${audioInputIndex}:a`,
     "-t", duration.toFixed(2),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
@@ -374,7 +388,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
-    assemble({ talkingPath, audioPath, productImagePath, script, outPath });
+    assemble({ talkingPath, audioPath, productImagePath, script, outPath, lipSynced: engine === "omni-human" });
 
     const asset = await db.asset.create({
       data: {
