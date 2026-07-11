@@ -568,12 +568,19 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             </g>
           </g>
         ))}
-        {/* birds riding three sky lanes */}
+        {/* birds riding three sky lanes — wings actually beat */}
         {BIRD_LANES.map((b, i) => (
           <g key={`bd${i}`} opacity="0.55" transform={`scale(${b.size})`}>
-            <path d={`M0 ${b.y} q7 -8 14 0 q7 -8 14 0`} stroke="#14102a" strokeWidth="3" fill="none">
+            <g>
+              <path d={`M0 ${b.y} q7 -8 14 0 q7 -8 14 0`} stroke="#14102a" strokeWidth="3" fill="none">
+                <animate
+                  attributeName="d"
+                  values={`M0 ${b.y} q7 -8 14 0 q7 -8 14 0; M0 ${b.y} q7 6 14 0 q7 6 14 0; M0 ${b.y} q7 -8 14 0 q7 -8 14 0`}
+                  dur="0.55s" begin={`${i * 0.15}s`} repeatCount="indefinite"
+                />
+              </path>
               <animateTransform attributeName="transform" type="translate" values={`-60 0; ${PANO_W + 100} -30`} dur={`${b.dur}s`} begin={`${b.delay}s`} repeatCount="indefinite" />
-            </path>
+            </g>
           </g>
         ))}
         {/* MEADOW: cherry petals on the wind, butterflies, a bunny, a lagoon boat */}
@@ -638,7 +645,9 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
         {/* a hawk circling the mesas */}
         <g transform={`translate(${STEP + 330}, 112)`} opacity="0.65">
           <g>
-            <path d="M 0 0 q 6 -7 12 0 q 6 -7 12 0" stroke="#3d2b16" strokeWidth="2.5" fill="none" />
+            <path d="M 0 0 q 6 -7 12 0 q 6 -7 12 0" stroke="#3d2b16" strokeWidth="2.5" fill="none">
+              <animate attributeName="d" values="M 0 0 q 6 -7 12 0 q 6 -7 12 0; M 0 0 q 6 5 12 0 q 6 5 12 0; M 0 0 q 6 -7 12 0 q 6 -7 12 0" dur="0.7s" repeatCount="indefinite" />
+            </path>
             <animateMotion dur="21s" repeatCount="indefinite" path="M 0 0 a 95 32 0 1 0 190 0 a 95 32 0 1 0 -190 0" />
           </g>
         </g>
@@ -782,8 +791,8 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           </g>
         </g>
         {/* ===== THE PIRATE SHIP — crew included, sails the volcano sea ===== */}
-        <g transform={`translate(${STEP * 3 + 150}, 566)`}>
-          <g className="qh-walker" style={{ ["--px" as string]: "300px", ["--pd" as string]: "85s" }}>
+        <g transform={`translate(${STEP * 3 + 265}, 572)`}>
+          <g className="qh-walker" style={{ ["--px" as string]: "230px", ["--pd" as string]: "85s" }}>
             <g className="qh-shiprock">
               <path d="M -30 0 h 62 q 4 12 -10 15 h -44 q -12 -3 -8 -15 Z" fill="#5a3a20" stroke="#3d2712" strokeWidth="2" />
               <rect x="-30" y="3" width="62" height="3" fill="#8a5f33" shapeRendering="crispEdges" />
@@ -811,22 +820,38 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           </g>
         </g>
         {/* ===== CRYPTIDS & FOLKLORE — the world has legends ===== */}
-        {/* a dragon perched on the tower town, wings stretching, chuffing smoke */}
-        <g transform="translate(1248, 194)">
-          <g className="qh-wingL"><path d="M -4 -2 q -16 -14 -26 -6 q 8 2 10 8 q 8 -4 16 2 Z" fill="#2f8a4a" stroke="#1c5a2e" strokeWidth="1.5" /></g>
-          <g className="qh-wingR"><path d="M 12 -2 q 16 -14 26 -6 q -8 2 -10 8 q -8 -4 -16 2 Z" fill="#2f8a4a" stroke="#1c5a2e" strokeWidth="1.5" /></g>
-          <ellipse cx="4" cy="0" rx="10" ry="6.5" fill="#3aa85e" stroke="#1c5a2e" strokeWidth="1.5" />
-          <path d="M 12 -1 q 10 3 16 10" stroke="#3aa85e" strokeWidth="4" fill="none" strokeLinecap="round" />
-          <g>
-            <rect x="-9" y="-10" width="8" height="7" rx="2" fill="#3aa85e" stroke="#1c5a2e" strokeWidth="1.2" />
-            <path d="M -8 -10 l -1.5 -4 l 3 1 Z M -4 -10 l -1 -4 l 3 1 Z" fill="#e8c15a" />
-            <circle cx="-6.5" cy="-7" r="1.1" fill="#ffd76a" />
+        {/* a dragon perched on the tower town — long neck, raised wing, spiked tail */}
+        <g transform="translate(1252, 192)">
+          {/* tail curling off the roofline, arrow tip */}
+          <path d="M 12 0 q 20 3 26 12 q 3 6 -4 8" stroke="#2f9152" strokeWidth="5" fill="none" strokeLinecap="round" />
+          <path d="M 34 22 l 7 -1 l -3 6 Z" fill="#2f9152" />
+          {/* raised wing, membrane ribs, gentle flap */}
+          <g className="qh-wingR">
+            <path d="M 4 -6 q 8 -24 30 -24 q -8 8 -9 16 q -10 -1 -21 8 Z" fill="#1f7a42" stroke="#144d29" strokeWidth="1.5" />
+            <path d="M 8 -9 q 10 -14 22 -18 M 9 -8 q 12 -8 16 -7" stroke="#144d29" strokeWidth="1" fill="none" opacity="0.7" />
           </g>
+          {/* body + pale belly + back spikes */}
+          <ellipse cx="2" cy="0" rx="13" ry="7.5" fill="#2f9152" stroke="#144d29" strokeWidth="1.5" />
+          <ellipse cx="0" cy="3.5" rx="9" ry="3.5" fill="#a8d9a0" />
+          <path d="M -8 -6 l 3 -4 l 3 4 l 3 -4 l 3 4 l 3 -4 l 3 4 Z" fill="#144d29" />
+          {/* neck reaching up, head with snout, horns, golden eye */}
+          <path d="M -10 -2 q -8 -8 -7 -20" stroke="#2f9152" strokeWidth="6" fill="none" strokeLinecap="round" />
+          <g>
+            <path d="M -24 -26 q 0 -5 6 -5 l 6 0 q 5 0 5 5 q 0 4 -5 4 l -7 0 q -5 0 -5 -4 Z" fill="#2f9152" stroke="#144d29" strokeWidth="1.3" />
+            <rect x="-29" y="-27" width="6" height="4" rx="1.5" fill="#2f9152" stroke="#144d29" strokeWidth="1" />
+            <path d="M -12 -31 l 2 -6 l 3 4 Z M -18 -31 l 1 -6 l 4 4 Z" fill="#e8c15a" />
+            <circle cx="-19" cy="-27" r="1.4" fill="#ffd76a" />
+            <circle cx="-27" cy="-24.6" r="0.7" fill="#144d29" />
+          </g>
+          {/* claws gripping the roof */}
+          <rect x="-7" y="6" width="4" height="4" rx="1" fill="#1f7a42" />
+          <rect x="4" y="6" width="4" height="4" rx="1" fill="#1f7a42" />
+          {/* smoke chuffs from the nostrils */}
           {[0, 1].map((k) => (
-            <circle key={k} cx="-12" fill="#b8b2cc" opacity="0">
-              <animate attributeName="cy" values="-9;-22" dur="5.5s" begin={`${k * 2.4}s`} repeatCount="indefinite" />
-              <animate attributeName="r" values="1.5;4" dur="5.5s" begin={`${k * 2.4}s`} repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.6;0" dur="5.5s" begin={`${k * 2.4}s`} repeatCount="indefinite" />
+            <circle key={k} cx="-30" fill="#b8b2cc" opacity="0">
+              <animate attributeName="cy" values="-28;-44" dur="5.5s" begin={`${k * 2.6}s`} repeatCount="indefinite" />
+              <animate attributeName="r" values="1.5;4.5" dur="5.5s" begin={`${k * 2.6}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.6;0" dur="5.5s" begin={`${k * 2.6}s`} repeatCount="indefinite" />
             </circle>
           ))}
         </g>
@@ -848,20 +873,42 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             <path d="M -8 4 q -5 2 -6 6" stroke="#eef2fa" strokeWidth="4" fill="none" strokeLinecap="round" />
           </g>
         </g>
-        {/* the great sandworm breaches the dunes */}
-        <g transform={`translate(${STEP + 640}, 215)`}>
-          <g className="qh-surface" style={{ ["--sd" as string]: "6s" }}>
-            <path d="M -22 0 a 22 20 0 0 1 44 0" fill="none" stroke="#b8905a" strokeWidth="11" strokeLinecap="round" />
-            <path d="M -22 0 a 22 20 0 0 1 44 0" fill="none" stroke="#8a6a3a" strokeWidth="11" strokeLinecap="round" strokeDasharray="6 6" />
-            {[[-28, -2], [30, -4], [0, -26]].map(([sx, sy], k) => (
-              <circle key={k} cx={sx} cy={sy} r="2" fill="#e8d9a0" opacity="0.8" />
-            ))}
+        {/* the great sandworm — heads erupt across the valley, one at a time */}
+        {[
+          { x: STEP + 560, y: 305, sd: 0 },
+          { x: STEP + 1080, y: 480, sd: 9 },
+          { x: STEP + 350, y: 468, sd: 18 },
+        ].map((w, wi) => (
+          <g key={`wm${wi}`} transform={`translate(${w.x}, ${w.y})`}>
+            <ellipse cx="0" cy="0" rx="16" ry="4.5" fill="#c9a25e" opacity="0.9" />
+            <g className="qh-wormpop" style={{ ["--sd" as string]: `${w.sd}s` }}>
+              <g shapeRendering="crispEdges">
+                <rect x="-9" y="-34" width="18" height="34" rx="7" fill="#b8905a" />
+                <rect x="-9" y="-12" width="18" height="3.5" fill="#8a6a3a" />
+                <rect x="-9" y="-21" width="18" height="3.5" fill="#8a6a3a" />
+                <rect x="-9" y="-30" width="18" height="3" fill="#8a6a3a" />
+              </g>
+              <circle cx="0" cy="-31" r="6.5" fill="#3d2712" />
+              {[0, 60, 120, 180, 240, 300].map((a) => (
+                <path
+                  key={a}
+                  d="M 0 -37.5 l 2.2 4 l -4.4 0 Z"
+                  fill="#f4f0e6"
+                  transform={`rotate(${a} 0 -31)`}
+                />
+              ))}
+              {[[-16, -6], [17, -10], [-20, -16]].map(([sx, sy], k) => (
+                <circle key={k} cx={sx} cy={sy} r="2" fill="#e8d9a0" opacity="0.85" />
+              ))}
+            </g>
           </g>
-        </g>
+        ))}
         {/* the phoenix rides the volcano thermals, embers trailing */}
         <g transform={`translate(${STEP * 3 + 620}, 150)`}>
           <g>
-            <path d="M 0 0 q 8 -9 16 0 q 8 -9 16 0" stroke="#ff9d4d" strokeWidth="4" fill="none" strokeLinecap="round" />
+            <path d="M 0 0 q 8 -9 16 0 q 8 -9 16 0" stroke="#ff9d4d" strokeWidth="4" fill="none" strokeLinecap="round">
+              <animate attributeName="d" values="M 0 0 q 8 -9 16 0 q 8 -9 16 0; M 0 0 q 8 7 16 0 q 8 7 16 0; M 0 0 q 8 -9 16 0 q 8 -9 16 0" dur="0.6s" repeatCount="indefinite" />
+            </path>
             <circle cx="16" cy="-2" r="4" fill="#ffb03a" />
             <path d="M 12 2 q -10 8 -18 6" stroke="#e24b4a" strokeWidth="3" fill="none" strokeLinecap="round" />
             <animateMotion dur="22s" repeatCount="indefinite" path="M 0 0 q 90 -50 220 -10 q 90 30 180 -20 q -120 -40 -220 -10 q -100 26 -180 40 Z" />
@@ -877,7 +924,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
         {[
           { path: "M 320 614 q 100 -8 200 0 q 100 8 190 -2", dur: 24 },
           { path: `M ${STEP * 3 + 110} 612 q 130 -10 260 0 q 130 10 250 -4`, dur: 28 },
-          { path: `M ${STEP * 3 + 1120} 560 a 70 26 0 1 0 140 0 a 70 26 0 1 0 -140 0`, dur: 15 },
+          { path: `M ${STEP * 2 + 700} 532 a 85 22 0 1 0 170 0 a 85 22 0 1 0 -170 0`, dur: 17 },
         ].map((s, i) => (
           <g key={`sh${i}`}>
             <g>
@@ -892,7 +939,9 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
         {[{ x: 1040, y: 300 }, { x: STEP * 3 + 1000, y: 400 }].map((sg, i) => (
           <g key={`sg${i}`} transform={`translate(${sg.x}, ${sg.y})`} opacity="0.75">
             <g>
-              <path d="M 0 0 q 5 -6 10 0 q 5 -6 10 0" stroke="#f4f0e6" strokeWidth="2.5" fill="none" />
+              <path d="M 0 0 q 5 -6 10 0 q 5 -6 10 0" stroke="#f4f0e6" strokeWidth="2.5" fill="none">
+                <animate attributeName="d" values="M 0 0 q 5 -6 10 0 q 5 -6 10 0; M 0 0 q 5 4 10 0 q 5 4 10 0; M 0 0 q 5 -6 10 0 q 5 -6 10 0" dur="0.5s" begin={`${i * 0.2}s`} repeatCount="indefinite" />
+              </path>
               <animateMotion dur={`${16 + i * 4}s`} begin={`${i * 2}s`} repeatCount="indefinite" path="M 0 0 a 62 24 0 1 0 124 0 a 62 24 0 1 0 -124 0" />
             </g>
           </g>

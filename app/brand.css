@@ -1035,15 +1035,25 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   60%, 84% { transform: translateY(0); opacity: 1; }
   92%, 100% { transform: translateY(28px); opacity: 0; }
 }
+/* the sandworm: heads burst from the dunes one at a time, never together —
+   each spot owns a different slice of the shared 27s cycle via --sd */
+.qh-wormpop { animation: qh-wormpop 27s ease-in-out infinite; animation-delay: var(--sd, 0s); opacity: 0; }
+@keyframes qh-wormpop {
+  0%, 55% { transform: translateY(48px); opacity: 0; }
+  59%, 62% { transform: translateY(0); opacity: 1; }
+  65% { transform: translateY(5px); }
+  68%, 71% { transform: translateY(0); opacity: 1; }
+  76%, 100% { transform: translateY(48px); opacity: 0; }
+}
 
 /* ship: slow rock on the swell */
 .qh-shiprock { transform-box: fill-box; transform-origin: center bottom; animation: qh-shiprock 4.6s ease-in-out infinite; }
 @keyframes qh-shiprock { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
 @media (prefers-reduced-motion: reduce) {
   .qh-walker, .qh-fA, .qh-fB, .qh-stepbob, .qh-swing, .qh-bobline, .qh-bubble, .qh-shiprock,
-  .qh-wingL, .qh-wingR, .qh-peek, .qh-surface { animation: none; }
+  .qh-wingL, .qh-wingR, .qh-peek, .qh-surface, .qh-wormpop { animation: none; }
   .qh-fB { opacity: 0; }
-  .qh-bubble, .qh-peek, .qh-surface { opacity: 0; }
+  .qh-bubble, .qh-peek, .qh-surface, .qh-wormpop { opacity: 0; }
 }
 
 /* the bag rides the map — tap to peek at this month's cargo */
