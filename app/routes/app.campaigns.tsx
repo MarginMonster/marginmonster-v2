@@ -384,7 +384,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
   const here = contentDone ? end : routePoint(dayT(Math.min(dayOf, duration), duration));
   // What the partner is up to: the closest content stop ahead (or the goal).
   const nextStop = stopPts.find((p) => p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED");
-  const curSpot = contentDone ? destination : rendering && nextStop ? nextStop.slot.spot : `DAY ${dayOf} · EN ROUTE`;
+  const curSpot = contentDone ? destination : rendering && nextStop ? nextStop.slot.spot : `DAY ${dayOf}`;
 
   const routeD = ROUTE.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
 
@@ -936,7 +936,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           <Partner img={partner.img} accent={partner.accent} />
           {rendering && <span className="qh-work-tool" aria-hidden="true">⚒️</span>}
           <span className={`tag${rendering ? " working" : ""}`}>
-            {rendering ? `FORGING AT ${curSpot}` : `${partner.name} · ${curSpot}`}
+            {rendering ? `FORGING AT ${curSpot}` : curSpot}
           </span>
         </div>
       )}
