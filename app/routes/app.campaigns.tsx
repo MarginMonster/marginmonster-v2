@@ -51,7 +51,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const empty = {
     questlines: [] as {
       id: string; name: string; template: string; status: string; avatarId: string | null;
-      avatarVariant: number; productTitle: string | null;
+      avatarVariant: number; productTitle: string | null; productImageUrl: string | null;
       objectives: { key: string; label: string; type: string; target: number; done: number }[];
       tokenCost: number; xpReward: number; progress: number; reviewMode: string;
     }[],
@@ -112,6 +112,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     questlines: shop.questlines.map((q) => ({
       id: q.id, name: q.name, template: q.template, status: q.status,
       avatarId: q.avatarId, avatarVariant: q.avatarVariant, productTitle: q.productTitle,
+      productImageUrl: q.productImageUrl,
       objectives: JSON.parse(q.objectivesJson) as { key: string; label: string; type: string; target: number; done: number }[],
       tokenCost: q.tokenCost, xpReward: q.xpReward, progress: q.progress, reviewMode: q.reviewMode,
     })),
@@ -171,9 +172,10 @@ type Objective = { key: string; label: string; type: string; target: number; don
 
 /** The overworld: pixel tile map with a telemetry overlay. Nodes are the
  *  quest's objectives; the plan partner walks the trail as they complete. */
-function TrailMap({ objectives, xpReward, rendering, partner }: {
+function TrailMap({ objectives, xpReward, rendering, partner, cargo }: {
   objectives: Objective[]; xpReward: number; rendering: boolean;
   partner: { img: string; accent: string; name: string } | null;
+  cargo: { title: string; image: string | null } | null;
 }) {
   const nodes = [
     { icon: "✓", lbl: "SIGNED", count: "", done: true },
@@ -259,6 +261,12 @@ function TrailMap({ objectives, xpReward, rendering, partner }: {
         <div className="qh-partner" style={{ left: `${(px / 640) * 100}%`, top: `${(py / 158) * 100}%` }}>
           <Partner img={partner.img} accent={partner.accent} />
           <span className="tag">{partner.name}</span>
+        </div>
+      )}
+      {cargo && cargo.image && (
+        <div className="qh-cargo" title={`Carrying: ${cargo.title}`}>
+          <img src={cargo.image} alt="" />
+          <span className="lb">CARGO</span>
         </div>
       )}
     </div>
@@ -356,6 +364,7 @@ export default function Campaigns() {
             xpReward={q.xpReward}
             rendering={q.status === "ACTIVE" && renderingIds.includes(q.id)}
             partner={partner}
+            cargo={q.productTitle ? { title: q.productTitle, image: q.productImageUrl } : null}
           />
           <div className="qh-quest-foot">
             <span className="xp">🏆 {q.xpReward.toLocaleString()} XP AT THE CHEST</span>
@@ -455,14 +464,25 @@ export default function Campaigns() {
 
         {products.length > 0 && (
           <div style={{ marginBottom: 14 }}>
-            <span className="qh-field-label">Product to promote {pick && <span style={{ color: "#8ee89c" }}>— {pick.title}</span>}</span>
-            <div className="mm-prodgrid">
+            <span className="qh-field-label">
+              🎒 BACKPACK — equip the item this quest promotes{" "}
+              {pick && <span className="qh-equipped-line">— {pick.title} equipped</span>}
+            </span>
+            <div className="qh-bag">
               {products.map((p) => (
-                <button key={p.id} type="button" className={`mm-prodcard${pick?.id === p.id ? " on" : ""}`} onClick={() => setPick(pick?.id === p.id ? null : p)}>
-                  {pick?.id === p.id && <span className="mm-prodcheck">✓</span>}
-                  {p.image ? <img src={p.image} alt="" loading="lazy" /> : <div className="mm-prodph">🛍️</div>}
-                  <span className="mm-prodtitle">{p.title}</span>
+                <button
+                  key={p.id} type="button"
+                  className={`qh-slot${pick?.id === p.id ? " on" : ""}`}
+                  title={p.title}
+                  onClick={() => setPick(pick?.id === p.id ? null : p)}
+                >
+                  {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <span className="ph">🛍️</span>}
+                  <span className="qh-slot-name">{p.title}</span>
                 </button>
+              ))}
+              {/* pad the bag to a full row so it reads as an inventory, not a list */}
+              {Array.from({ length: Math.max(0, (8 - (products.length % 8)) % 8) }).map((_, i) => (
+                <div key={`e${i}`} className="qh-slot empty" aria-hidden="true">·</div>
               ))}
             </div>
           </div>
@@ -477,7 +497,7 @@ export default function Campaigns() {
         </button>
         {!selLocked && (
           <div className="qh-hint">
-            {!pick ? "Pick a product above to unlock the mission" :
+            {!pick ? "Equip an item from your backpack to unlock the mission" :
               !selAffordable ? `Needs ${selCost.toLocaleString()} tokens — you have ${tokens.toLocaleString()}. INSERT COINS in the HUD to top up.` :
               "Tokens cover content creation. Ad spend always runs on your own connected accounts — never ours to touch."}
           </div>

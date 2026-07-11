@@ -882,6 +882,40 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-loadout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 @media (max-width: 620px) { .qh-loadout-grid { grid-template-columns: 1fr; } }
 
+/* backpack — the store catalog as an RPG inventory; picking a product equips it */
+.qh-bag { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 10px; max-height: 300px; overflow-y: auto; padding: 2px; }
+.qh-slot {
+  position: relative; aspect-ratio: 1; background: #12122a; border: 2px solid #2e2e52; border-radius: 6px;
+  padding: 0; cursor: pointer; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  transition: border-color .12s ease, transform .12s ease;
+}
+.qh-slot img { width: 100%; height: 100%; object-fit: cover; image-rendering: auto; display: block; }
+.qh-slot:hover { border-color: var(--mm-cyan); transform: translateY(-2px); }
+.qh-slot.on { border-color: var(--arc-yellow); box-shadow: 0 0 12px rgba(255, 215, 106, 0.35); }
+.qh-slot.on::after {
+  content: "EQUIPPED"; position: absolute; left: 0; right: 0; bottom: 0; text-align: center;
+  font-family: var(--font-pixel); font-size: 6px; letter-spacing: .08em; color: #3d2b12;
+  background: var(--arc-yellow); padding: 3px 0;
+}
+.qh-slot.empty { border-style: dashed; cursor: default; color: #2e2e52; font-size: 18px; }
+.qh-slot.empty:hover { border-color: #2e2e52; transform: none; }
+.qh-slot .ph { font-size: 24px; }
+.qh-slot-name {
+  position: absolute; left: 0; right: 0; top: 0; font-family: ui-monospace, monospace; font-size: 10px;
+  color: #e8e8f0; background: rgba(10, 10, 28, 0.82); padding: 3px 5px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .12s ease;
+}
+.qh-slot:hover .qh-slot-name { opacity: 1; }
+.qh-equipped-line { font-family: ui-monospace, monospace; font-size: 12px; color: #8ee89c; }
+
+/* cargo badge — the equipped item riding along on the quest map */
+.qh-cargo {
+  position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; align-items: center; gap: 7px;
+  background: rgba(10, 10, 28, 0.85); border: 1px solid #2e2e52; border-radius: 5px; padding: 4px 8px 4px 4px;
+}
+.qh-cargo img { width: 30px; height: 30px; object-fit: cover; border-radius: 3px; border: 1px solid #3e3e66; display: block; }
+.qh-cargo .lb { font-family: var(--font-pixel); font-size: 6.5px; letter-spacing: .08em; color: var(--arc-yellow); }
+
 /* completed log */
 .qh-done-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-family: ui-monospace, monospace; font-size: 13px; color: #c6c1e6; padding: 7px 4px; border-bottom: 1px solid #1c1c38; }
 .qh-done-row:last-child { border-bottom: none; }
