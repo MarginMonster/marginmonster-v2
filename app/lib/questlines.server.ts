@@ -1,15 +1,86 @@
 import { db } from "../db.server";
-import { spendTokens } from "./tokens.server";
+import { spendTokens, refundTokens } from "./tokens.server";
 import { awardXp, unlockAchievement, checkLevelAchievements } from "./xp.server";
 import { enqueueJob } from "./job-queue.server";
-import { QUESTLINE_BY_KEY, questlineTokenCost, type ObjectiveType } from "./questlines";
+import { TOKEN_COST } from "./plan-config";
+import {
+  QUESTLINE_BY_KEY, questlineTokenCost, spotName, parseSchedule,
+  QUEST_DURATION_DAYS, type ObjectiveType, type QuestSlot, type QuestSchedule,
+} from "./questlines";
 
-/* Questline orchestration. Accepting a questline charges its full token cost
- * up front, then fans its content out as pre-paid generation jobs. Each job
- * that completes ticks the matching objective and drops milestone XP; when
- * every content objective is done the questline completes and pays its reward. */
+/* Questline orchestration — 30-day expeditions. Accepting charges the full
+ * token cost upfront, then the scheduler lays every deliverable onto the
+ * calendar with a smart posting slot and a named map destination. Content
+ * jobs run ~24h before their post date (drip, not dump); each completion
+ * marks its map slot READY, drips XP, and pays weekly + completion bonuses. */
 
 type Objective = { key: string; label: string; type: ObjectiveType; target: number; done: number };
+type BagItem = { title: string; image: string | null };
+
+const GEN_LEAD_MS = 24 * 60 * 60 * 1000; // forge content a day before its slot
+const WEEK_BONUS_XP = 100;
+
+/* Platform-smart posting times per content type (heuristics now; learned
+ * times when the platform metrics APIs land). */
+const POST_TIME: Record<ObjectiveType, string> = {
+  video: "19:00", // evening scroll peak
+  image: "12:00", // lunch break
+  blog: "09:00", // morning coffee reads
+  post: "19:00",
+};
+
+/** Lay the quest's deliverables across the monthly segment: front-load
+ *  slightly (first drop on day 2), space evenly, interleave types so the
+ *  calendar feels varied, round-robin backpack items for even coverage. */
+export function buildSchedule(templateKey: string, bag: BagItem[], start: Date): QuestSlot[] {
+  const def = QUESTLINE_BY_KEY[templateKey];
+  if (!def) return [];
+  // Expand content objectives (posts mirror content, they don't get own slots)
+  const pieces: ObjectiveType[] = [];
+  for (const o of def.objectives) {
+    if (o.type === "post") continue;
+    for (let i = 0; i < o.target; i++) pieces.push(o.type);
+  }
+  // Interleave types: sort by fractional position within their own type count
+  const counts: Record<string, number> = {};
+  const seen: Record<string, number> = {};
+  for (const p of pieces) counts[p] = (counts[p] || 0) + 1;
+  const ordered = pieces
+    .map((t) => {
+      const pos = (seen[t] = (seen[t] || 0) + 1);
+      return { t, k: pos / (counts[t] + 1) };
+    })
+    .sort((a, b) => a.k - b.k)
+    .map((x) => x.t);
+
+  const n = ordered.length;
+  const spotCounters: Record<string, number> = {};
+  return ordered.map((type, i) => {
+    // days 2 .. duration-2, evenly spaced
+    const day = Math.min(QUEST_DURATION_DAYS - 1, Math.max(2, Math.round(2 + (i * (QUEST_DURATION_DAYS - 4)) / Math.max(1, n - 1))));
+    const date = new Date(start.getTime() + (day - 1) * 24 * 60 * 60 * 1000);
+    const item = bag[i % Math.max(1, bag.length)] || { title: "", image: null };
+    const sn = spotCounters[type] = (spotCounters[type] || 0);
+    spotCounters[type]++;
+    return {
+      idx: i,
+      day,
+      date: date.toISOString().slice(0, 10),
+      time: POST_TIME[type],
+      type,
+      spot: spotName(type, sn),
+      productTitle: item.title,
+      productImageUrl: item.image,
+      status: "SCHEDULED" as const,
+    };
+  });
+}
+
+function slotRunAt(slot: QuestSlot): Date {
+  const post = new Date(`${slot.date}T${slot.time}:00`);
+  const runAt = new Date(post.getTime() - GEN_LEAD_MS);
+  return runAt.getTime() < Date.now() ? new Date() : runAt;
+}
 
 export async function acceptQuestline(params: {
   shopId: string;
@@ -17,30 +88,28 @@ export async function acceptQuestline(params: {
   avatarId: string | null;
   avatarVariant: number;
   reviewMode: "REVIEW_FIRST" | "SET_AND_FORGET";
-  productTitle: string;
-  productImageUrl?: string | null;
+  bag: BagItem[];
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const def = QUESTLINE_BY_KEY[params.templateKey];
   if (!def) return { ok: false, error: "Unknown questline." };
-  if (!params.productTitle?.trim()) return { ok: false, error: "Pick a product for this questline." };
+  const bag = (params.bag || []).filter((b) => b.title?.trim()).slice(0, def.bagSize);
+  if (bag.length === 0) return { ok: false, error: "Equip at least one item in the backpack." };
 
   const shop = await db.shop.findUnique({ where: { id: params.shopId }, include: { activePlan: true } });
   if (!shop?.activePlan) return { ok: false, error: "Choose a plan first to run questlines." };
 
   const cost = questlineTokenCost(def);
   try {
-    await spendTokens(params.shopId, cost); // reserve the whole mission up front
+    await spendTokens(params.shopId, cost); // the whole month, reserved upfront
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
   }
 
   const objectives: Objective[] = def.objectives.map((o, i) => ({
-    key: `${o.type}-${i}`,
-    label: o.label,
-    type: o.type,
-    target: o.target,
-    done: 0,
+    key: `${o.type}-${i}`, label: o.label, type: o.type, target: o.target, done: 0,
   }));
+  const slots = buildSchedule(def.key, bag, new Date());
+  const schedule: QuestSchedule = { slots, weeksAwarded: [] };
 
   const q = await db.questline.create({
     data: {
@@ -51,72 +120,133 @@ export async function acceptQuestline(params: {
       avatarId: params.avatarId,
       avatarVariant: params.avatarVariant,
       reviewMode: params.reviewMode,
-      productTitle: params.productTitle.trim(),
-      productImageUrl: params.productImageUrl || null,
+      productTitle: bag.length === 1 ? bag[0].title : `${bag.length} items`,
+      productImageUrl: bag[0].image || null,
       objectivesJson: JSON.stringify(objectives),
+      scheduleJson: JSON.stringify(schedule),
+      durationDays: QUEST_DURATION_DAYS,
       tokenCost: cost,
       xpReward: def.xpReward,
       progress: 0,
     },
   });
 
-  // Fan out the content objectives as PRE-PAID jobs (skip per-item charging —
-  // the whole questline was paid on accept). "post" objectives tick when their
-  // matching content is generated (real platform posting lands with the API
-  // integrations track).
-  for (const obj of objectives) {
-    if (obj.type === "post") continue;
-    for (let n = 0; n < obj.target; n++) {
-      if (obj.type === "video") {
-        await enqueueJob(params.shopId, "GENERATE_VIDEO_AD", {
-          productTitle: params.productTitle.trim(),
-          productImageUrl: params.productImageUrl || undefined,
-          avatarId: params.avatarId || undefined,
-          avatarVariant: params.avatarVariant,
-          questlineId: q.id,
-          objectiveKey: obj.key,
-          prePaid: true,
-        });
-      } else if (obj.type === "image") {
-        await enqueueJob(params.shopId, "GENERATE_IMAGE_AD", {
-          productTitle: params.productTitle.trim(),
-          productImageUrl: params.productImageUrl || undefined,
-          questlineId: q.id,
-          objectiveKey: obj.key,
-          prePaid: true,
-        });
-      } else if (obj.type === "blog") {
-        await enqueueJob(params.shopId, "GENERATE_BLOG_POST", {
-          productTitle: params.productTitle.trim(),
-          questlineId: q.id,
-          objectiveKey: obj.key,
-          prePaid: true,
-        });
-      }
+  // One PRE-PAID job per slot, scheduled to forge ~24h before its post time.
+  for (const slot of slots) {
+    const objective = objectives.find((o) => o.type === slot.type);
+    const base = {
+      productTitle: slot.productTitle,
+      productImageUrl: slot.productImageUrl || undefined,
+      questlineId: q.id,
+      objectiveKey: objective?.key,
+      slotIdx: slot.idx,
+      prePaid: true,
+    };
+    const runAt = slotRunAt(slot);
+    if (slot.type === "video") {
+      await enqueueJob(params.shopId, "GENERATE_VIDEO_AD", {
+        ...base, avatarId: params.avatarId || undefined, avatarVariant: params.avatarVariant,
+      }, runAt);
+    } else if (slot.type === "image") {
+      await enqueueJob(params.shopId, "GENERATE_IMAGE_AD", base, runAt);
+    } else if (slot.type === "blog") {
+      await enqueueJob(params.shopId, "GENERATE_BLOG_POST", base, runAt);
     }
   }
 
   return { ok: true, id: q.id };
 }
 
-/** Called from the job queue when a questline-tagged content job finishes.
- *  Ticks the objective, drips milestone XP, and completes the questline +
+/** Reschedule a slot (map destinations are editable). Moves the post date/time
+ *  and the pending generation job's runAt with it. */
+export async function rescheduleSlot(shopId: string, questlineId: string, slotIdx: number, date: string, time: string): Promise<{ ok: boolean; error?: string }> {
+  const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
+  if (!q) return { ok: false, error: "Quest not found." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return { ok: false, error: "Bad date or time." };
+  const schedule = parseSchedule(q.scheduleJson);
+  const slot = schedule.slots.find((s) => s.idx === slotIdx);
+  if (!slot) return { ok: false, error: "Stop not found." };
+  if (slot.status === "READY" || slot.status === "POSTED") return { ok: false, error: "That content is already forged — its post slot can move, but it can't be re-generated." };
+
+  slot.date = date;
+  slot.time = time;
+  const start = q.createdAt.getTime();
+  slot.day = Math.max(1, Math.round((new Date(`${date}T00:00:00`).getTime() - start) / 86400000) + 1);
+  await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
+
+  // Move the matching pending job's runAt
+  try {
+    const jobs = await db.job.findMany({ where: { shopId, status: "PENDING", payload: { contains: questlineId } } });
+    for (const j of jobs) {
+      try {
+        const p = JSON.parse(j.payload);
+        if (p.questlineId === questlineId && p.slotIdx === slotIdx) {
+          await db.job.update({ where: { id: j.id }, data: { runAt: slotRunAt(slot) } });
+        }
+      } catch { /* skip */ }
+    }
+  } catch (e) {
+    console.error("[questline] reschedule job move failed (non-fatal):", e);
+  }
+  return { ok: true };
+}
+
+/** Abandon: refund tokens for slots whose content hasn't been generated yet
+ *  (SCHEDULED with a still-pending job), cancel those jobs, delete the quest.
+ *  Forged content stays in the library. */
+export async function abandonQuestline(shopId: string, questlineId: string): Promise<{ ok: boolean; refunded: number }> {
+  const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
+  if (!q) return { ok: false, refunded: 0 };
+  const schedule = parseSchedule(q.scheduleJson);
+  let refund = 0;
+  for (const s of schedule.slots) {
+    if (s.status === "SCHEDULED") {
+      refund += s.type === "video" ? TOKEN_COST.video : s.type === "image" ? TOKEN_COST.image : s.type === "blog" ? TOKEN_COST.blog : 0;
+    }
+  }
+  // Cancel unstarted jobs for this quest
+  try {
+    const jobs = await db.job.findMany({ where: { shopId, status: "PENDING", payload: { contains: questlineId } } });
+    for (const j of jobs) {
+      try {
+        const p = JSON.parse(j.payload);
+        if (p.questlineId === questlineId) await db.job.delete({ where: { id: j.id } });
+      } catch { /* skip */ }
+    }
+  } catch (e) {
+    console.error("[questline] abandon job cleanup failed (non-fatal):", e);
+  }
+  if (refund > 0) {
+    try { await refundTokens(shopId, refund); } catch (e) { console.error("[questline] refund failed:", e); refund = 0; }
+  }
+  await db.questline.delete({ where: { id: q.id } });
+  return { ok: true, refunded: refund };
+}
+
+/** Called from the job queue when a questline-tagged content job finishes
+ *  (ok=true) or permanently fails (ok=false). Marks the map slot, ticks the
+ *  objective, drips step XP, pays weekly bonuses, and completes the quest +
  *  drops its reward when all content is done. Fully non-fatal. */
-export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey: string, shopId: string): Promise<void> {
+export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey: string | undefined, shopId: string, slotIdx?: number, ok: boolean = true): Promise<void> {
   try {
     const q = await db.questline.findUnique({ where: { id: questlineId } });
     if (!q || q.status === "COMPLETE") return;
     const objectives: Objective[] = JSON.parse(q.objectivesJson);
+    const schedule = parseSchedule(q.scheduleJson);
 
-    const obj = objectives.find((o) => o.key === objectiveKey);
-    if (obj && obj.done < obj.target) obj.done += 1;
+    // Mark the map slot
+    const slot = slotIdx != null ? schedule.slots.find((s) => s.idx === slotIdx) : undefined;
+    if (slot) slot.status = ok ? "READY" : "FAILED";
 
-    // "post" objectives track content pieces posted — mirror the matching
-    // content type's progress (posting itself lights up with the API track).
-    const post = objectives.find((o) => o.type === "post");
-    if (post) {
-      const contentDone = objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.done, 0);
-      post.done = Math.min(post.target, contentDone);
+    if (ok) {
+      const obj = objectives.find((o) => o.key === objectiveKey);
+      if (obj && obj.done < obj.target) obj.done += 1;
+      // "post" objectives mirror content progress until platform posting lands.
+      const post = objectives.find((o) => o.type === "post");
+      if (post) {
+        const contentDone = objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.done, 0);
+        post.done = Math.min(post.target, contentDone);
+      }
     }
 
     const totalTarget = objectives.reduce((s, o) => s + o.target, 0);
@@ -125,17 +255,30 @@ export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey
     const contentObjs = objectives.filter((o) => o.type !== "post");
     const allContentDone = contentObjs.every((o) => o.done >= o.target);
 
+    // Weekly bonus: all of a week's slots forged -> +100 XP, once per week.
+    let weeklyBonus = 0;
+    if (ok && slot) {
+      const week = Math.ceil(slot.day / 7);
+      if (!schedule.weeksAwarded.includes(week)) {
+        const weekSlots = schedule.slots.filter((s) => Math.ceil(s.day / 7) === week);
+        if (weekSlots.length > 0 && weekSlots.every((s) => s.status === "READY" || s.status === "POSTED")) {
+          schedule.weeksAwarded.push(week);
+          weeklyBonus = WEEK_BONUS_XP;
+        }
+      }
+    }
+
     await db.questline.update({
       where: { id: questlineId },
       data: {
         objectivesJson: JSON.stringify(objectives),
+        scheduleJson: JSON.stringify(schedule),
         progress,
         ...(allContentDone ? { status: "COMPLETE", completedAt: new Date() } : {}),
       },
     });
 
-    // Milestone XP per objective step (small, keeps the dopamine flowing).
-    await awardXp(shopId, 25);
+    if (ok) await awardXp(shopId, 25 + weeklyBonus);
 
     if (allContentDone) {
       const res = await awardXp(shopId, q.xpReward);

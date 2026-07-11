@@ -73,6 +73,8 @@ model Questline {
   productTitle   String?
   productImageUrl String?
   objectivesJson String    // [{key,label,type,target,done}]
+  scheduleJson   String    @default("{}") // {slots:[{idx,day,date,time,type,spot,productTitle,productImageUrl,status}],weeksAwarded:[]}
+  durationDays   Int       @default(30) // monthly segment
   tokenCost      Int       @default(0) // charged upfront on accept
   xpReward       Int       @default(0) // dropped on completion
   progress       Int       @default(0) // 0-100
@@ -241,6 +243,7 @@ model Job {
   payload     String    // JSON
   attempts    Int       @default(0)
   lastError   String?
+  runAt       DateTime? // scheduled jobs (campaign drip) wait until this time; null = run now
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   processedAt DateTime?

@@ -908,6 +908,27 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-slot:hover .qh-slot-name { opacity: 1; }
 .qh-equipped-line { font-family: ui-monospace, monospace; font-size: 12px; color: #8ee89c; }
 
+/* partner "at work" — tool swing + status tag while forging at a destination */
+.qh-work-tool {
+  position: absolute; right: -16px; top: 6px; font-size: 20px; transform-origin: 20% 90%;
+  animation: qh-swing 0.55s ease-in-out infinite; filter: drop-shadow(0 1px 2px #000);
+}
+@keyframes qh-swing { 0%, 100% { transform: rotate(-24deg); } 50% { transform: rotate(38deg); } }
+.qh-partner .tag.working { color: var(--arc-yellow); }
+
+/* map slot editor — destinations are editable */
+.qh-slot-editor {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 12px;
+  background: #12122a; border: 1px solid #2e2e52; border-radius: 6px; padding: 12px 14px;
+}
+.qh-slot-editor .spot { font-family: var(--font-pixel); font-size: 9px; color: var(--arc-yellow); letter-spacing: .08em; }
+.qh-slot-editor .meta { font-family: ui-monospace, monospace; font-size: 12px; color: #a8a8cc; }
+.qh-input {
+  background: #161632; border: 1px solid #2e2e52; color: #e8e8f0; border-radius: 4px;
+  padding: 7px 9px; font-family: ui-monospace, monospace; font-size: 13px; color-scheme: dark;
+}
+.qh-input:focus { outline: none; border-color: var(--mm-cyan); }
+
 /* cargo badge — the equipped item riding along on the quest map */
 .qh-cargo {
   position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; align-items: center; gap: 7px;

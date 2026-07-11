@@ -89,3 +89,17 @@ export async function spendTokens(shopId: string, amount: number): Promise<{ rem
   await onTokensSpent(shopId, amount);
   return { remaining: remaining - amount };
 }
+
+/** Credit tokens back (e.g. abandoning a questline before its content was
+ *  generated). Unwinds the monthly allowance first, overflow onto top-up. */
+export async function refundTokens(shopId: string, amount: number): Promise<void> {
+  if (amount <= 0) return;
+  const plan = await db.plan.findUnique({ where: { shopId } });
+  if (!plan) return;
+  const toAllowance = Math.min(amount, plan.tokensUsed);
+  const toExtra = amount - toAllowance;
+  await db.plan.update({
+    where: { id: plan.id },
+    data: { tokensUsed: { decrement: toAllowance }, tokensExtra: { increment: toExtra } },
+  });
+}

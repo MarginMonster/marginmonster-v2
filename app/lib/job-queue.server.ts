@@ -17,12 +17,13 @@ const MAX_ATTEMPTS = 3;
 
 /** Advance the questline that spawned this job, if any. Lazy import avoids a
  *  circular dependency (questlines.server → job-queue for enqueueJob). */
-async function maybeTickQuestline(payload: Record<string, unknown>, shopId: string): Promise<void> {
+async function maybeTickQuestline(payload: Record<string, unknown>, shopId: string, ok = true): Promise<void> {
   const qid = payload.questlineId as string | undefined;
   const okey = payload.objectiveKey as string | undefined;
-  if (!qid || !okey) return;
+  if (!qid) return;
+  const slotIdx = typeof payload.slotIdx === "number" ? (payload.slotIdx as number) : undefined;
   const { onQuestlineObjectiveDone } = await import("./questlines.server");
-  await onQuestlineObjectiveDone(qid, okey, shopId);
+  await onQuestlineObjectiveDone(qid, okey, shopId, slotIdx, ok);
 }
 
 /** Jobs claimed by a process that died (deploy/restart) stay IN_PROGRESS
@@ -50,13 +51,15 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
 export async function enqueueJob(
   shopId: string,
   type: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  runAt?: Date // scheduled drip jobs (campaign calendar) wait until this time
 ): Promise<string> {
   const job = await db.job.create({
     data: {
       shopId,
       type: type as any,
       payload: JSON.stringify(payload),
+      runAt: runAt ?? null,
     },
   });
   return job.id;
@@ -64,9 +67,13 @@ export async function enqueueJob(
 
 
 export async function processNextJob(): Promise<boolean> {
-  // Claim one pending job atomically
+  // Claim one DUE pending job atomically (scheduled jobs sleep until runAt)
   const jobs = await db.job.findMany({
-    where: { status: "PENDING", attempts: { lt: MAX_ATTEMPTS } },
+    where: {
+      status: "PENDING",
+      attempts: { lt: MAX_ATTEMPTS },
+      OR: [{ runAt: null }, { runAt: { lte: new Date() } }],
+    },
     orderBy: { createdAt: "asc" },
     take: 1,
   });
@@ -96,6 +103,10 @@ export async function processNextJob(): Promise<boolean> {
       data: { status: nextStatus, lastError },
     });
     console.error(`Job ${job.id} (${job.type}) failed:`, lastError);
+    // Out of retries on a questline job → mark its map slot FAILED (non-fatal)
+    if (nextStatus === "FAILED") {
+      try { await maybeTickQuestline(JSON.parse(job.payload), job.shopId, false); } catch { /* skip */ }
+    }
   }
 
   return true;
