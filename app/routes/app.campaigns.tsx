@@ -345,10 +345,11 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
 
   const routeD = ROUTE.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
 
-  // Grab-and-drag panning (in addition to native scroll); a real drag
-  // suppresses the click so stop-pins stay clickable.
+  // Grab-and-drag panning. Pointer capture retargets clicks at the container,
+  // so pin taps are resolved manually on release: remember what was pressed,
+  // and if the pointer never really moved, treat it as a tap on that pin.
   const scrollRef = useRef<HTMLDivElement>(null);
-  const drag = useRef({ on: false, x: 0, left: 0, moved: false });
+  const drag = useRef<{ on: boolean; x: number; left: number; moved: boolean; tgt: EventTarget | null }>({ on: false, x: 0, left: 0, moved: false, tgt: null });
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollLeft = (here.x / PANO_W) * RENDER_W - el.clientWidth / 2;
@@ -357,7 +358,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el) return;
-    drag.current = { on: true, x: e.clientX, left: el.scrollLeft, moved: false };
+    drag.current = { on: true, x: e.clientX, left: el.scrollLeft, moved: false, tgt: e.target };
     el.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -367,9 +368,17 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
     if (Math.abs(dx) > 5) drag.current.moved = true;
     el.scrollLeft = drag.current.left - dx;
   };
-  const onPointerUp = () => { drag.current.on = false; };
-  const pick = (idx: number) => { if (!drag.current.moved) onPick(idx); };
-  const pickDay = (day: number) => { if (!drag.current.moved) onPickDay(day); };
+  const onPointerUp = () => {
+    const d = drag.current;
+    drag.current = { ...d, on: false };
+    if (d.moved || !d.tgt) return;
+    const hit = (d.tgt as Element).closest?.("[data-slot],[data-day]");
+    if (!hit) return;
+    const slotAttr = hit.getAttribute("data-slot");
+    const dayAttr = hit.getAttribute("data-day");
+    if (slotAttr != null) onPick(parseInt(slotAttr, 10));
+    else if (dayAttr != null) onPickDay(parseInt(dayAttr, 10));
+  };
 
   return (
     <div className="qh-mapwrap">
@@ -415,7 +424,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           const today = d === dayOf;
           const sel = selectedDay === d;
           return (
-            <g key={`wp${d}`} onClick={() => pickDay(d)} style={{ cursor: "pointer" }}>
+            <g key={`wp${d}`} data-day={d} style={{ cursor: "pointer" }}>
               <circle cx={p.x} cy={p.y} r="15" fill="transparent" />
               {sel && <circle cx={p.x} cy={p.y} r="13" fill="none" stroke="#34E7E4" strokeWidth="3" />}
               <circle cx={p.x} cy={p.y} r={today ? 8 : 5} fill={passed || today ? "#ffd76a" : "#2b2650"} stroke={passed || today ? "#7a4c08" : "#171430"} strokeWidth="2.5" opacity={passed ? 0.9 : 0.8} />
@@ -447,7 +456,8 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           const ly = labelUp ? p.y - 34 - lane : p.y + 44 + lane;
           const ly2 = labelUp ? p.y - 58 - lane : p.y + 68 + lane;
           return (
-            <g key={s.idx} onClick={() => pick(s.idx)} style={{ cursor: "pointer" }}>
+            <g key={s.idx} data-slot={s.idx} style={{ cursor: "pointer" }}>
+              <circle cx={p.x} cy={p.y} r="22" fill="transparent" />
               {activeHere && (
                 <circle cx={p.x} cy={p.y} fill="none" stroke="#34E7E4" strokeWidth="4">
                   <animate attributeName="r" values="20;46" dur="1.7s" repeatCount="indefinite" />
@@ -469,9 +479,9 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
                   </text>
                 </g>
               ) : (
-                <text x={p.x} y={ly} textAnchor="middle" fontSize="18" fontFamily="monospace"
-                  fill={done ? "#bfe9d6" : failed ? "#f0a8a8" : "#cfc9ea"} opacity={done || failed ? 0.95 : 0.75}
-                  stroke="#14102a" strokeWidth="5" paintOrder="stroke">
+                <text x={p.x} y={ly} textAnchor="middle" fontSize="19" fontFamily="monospace" fontWeight="bold"
+                  fill={done ? "#c9f5e2" : failed ? "#ffb8b8" : "#f2f0ff"}
+                  stroke="#0b0918" strokeWidth="6" paintOrder="stroke">
                   {failed ? `${s.spot} · GOBLIN!` : done ? `${s.spot} ✓` : `${s.spot} · D${s.day}`}
                 </text>
               )}
@@ -538,7 +548,19 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           <g>
             <ellipse cx="0" cy="0" rx="7" ry="5" fill="#f4f0e6" />
             <rect x="-4" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" /><rect x="1" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" />
-            <animateMotion dur="8s" repeatCount="indefinite" path="M 560 332 q 12 -16 24 0 q 12 -16 24 0 q 12 -16 24 0 q -36 10 -72 0 Z" />
+            <animateMotion dur="9s" repeatCount="indefinite" path="M 545 332 q 14 -18 28 0 q 14 -18 28 0 q 14 -18 28 0 q 14 -18 28 0" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" dur="9s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* meadow deer grazing the western grass */}
+        <g transform="translate(165, 330)" shapeRendering="crispEdges">
+          <g>
+            <rect x="0" y="0" width="17" height="9" rx="2" fill="#a87848" />
+            <rect x="15" y="-8" width="5" height="9" fill="#a87848" />
+            <path d="M 17 -8 l 3 -6 M 20 -8 l 4 -5" stroke="#8a5f38" strokeWidth="1.5" fill="none" />
+            <rect x="2" y="9" width="2.5" height="7" fill="#8a5f38" /><rect x="12" y="9" width="2.5" height="7" fill="#8a5f38" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 120 4" dur="38s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.92;1" dur="38s" repeatCount="indefinite" />
           </g>
         </g>
         <g>
@@ -563,7 +585,15 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             <path d="M 4 0 q 4 -6 9 -2 q 4 -6 8 -1" stroke="#8a6a3a" strokeWidth="4" fill="none" />
             <rect x="18" y="-9" width="4" height="9" fill="#8a6a3a" /><rect x="18" y="-12" width="6" height="4" fill="#8a6a3a" />
             <rect x="3" y="9" width="2.5" height="7" fill="#6d5230" /><rect x="14" y="9" width="2.5" height="7" fill="#6d5230" />
-            <animateTransform attributeName="transform" type="translate" values="0 0; 190 0; 0 0" dur="52s" repeatCount="indefinite" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 200 0" dur="42s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.92;1" dur="42s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* a hawk circling the mesas */}
+        <g transform={`translate(${STEP + 330}, 112)`} opacity="0.65">
+          <g>
+            <path d="M 0 0 q 6 -7 12 0 q 6 -7 12 0" stroke="#3d2b16" strokeWidth="2.5" fill="none" />
+            <animateMotion dur="21s" repeatCount="indefinite" path="M 0 0 a 95 32 0 1 0 190 0 a 95 32 0 1 0 -190 0" />
           </g>
         </g>
         {/* TUNDRA: falling snow, chimney smoke that actually rises, a fox on patrol */}
@@ -582,12 +612,24 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             </circle>
           ))
         )}
-        <g transform={`translate(${STEP * 2 + 560}, 452)`}>
+        <g transform={`translate(${STEP * 2 + 480}, 296)`}>
           <g shapeRendering="crispEdges">
             <rect x="0" y="0" width="15" height="7" rx="2" fill="#d97f3e" />
             <rect x="13" y="-5" width="5" height="6" fill="#d97f3e" /><path d="M 0 2 q -9 -2 -12 4 q 6 4 12 0 Z" fill="#e89a5e" />
             <rect x="2" y="7" width="2" height="5" fill="#a85f2e" /><rect x="11" y="7" width="2" height="5" fill="#a85f2e" />
-            <animateTransform attributeName="transform" type="translate" values="0 0; 170 6; 0 0" dur="30s" repeatCount="indefinite" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 180 8" dur="26s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.07;.92;1" dur="26s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* a penguin waddling the snowy lakeshore */}
+        <g transform={`translate(${STEP * 2 + 850}, 448)`} shapeRendering="crispEdges">
+          <g>
+            <rect x="0" y="-10" width="8" height="12" rx="3" fill="#1c1c2e" />
+            <rect x="2" y="-6" width="4" height="7" fill="#f4f0e6" />
+            <rect x="2.5" y="-12" width="3" height="2" fill="#e8a33a" />
+            <animateTransform attributeName="transform" type="translate" values="0 0; 90 3" dur="30s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" dur="30s" repeatCount="indefinite" />
+            <animateTransform attributeName="transform" type="rotate" additive="sum" values="-6 4 0; 6 4 0; -6 4 0" dur="0.8s" repeatCount="indefinite" />
           </g>
         </g>
         {/* VOLCANO: pulsing summit glow, rising embers, a parrot circling the temple, a sailboat */}
@@ -617,6 +659,46 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             <rect x="-1.5" y="-24" width="3" height="24" fill="#3d2b16" />
             <path d="M -1.5 -24 q -17 7 0 15 Z" fill="#ffd9a0" />
             <animateTransform attributeName="transform" type="translate" values={`${STEP * 3 + 210} 592; ${STEP * 3 + 300} 588; ${STEP * 3 + 210} 592`} dur="44s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* SHARKS — fins cruising the open water, wakes trailing */}
+        {[
+          { path: "M 320 614 q 100 -8 200 0 q 100 8 190 -2", dur: 24 },
+          { path: `M ${STEP * 3 + 110} 612 q 130 -10 260 0 q 130 10 250 -4`, dur: 28 },
+          { path: `M ${STEP * 3 + 1120} 560 a 70 26 0 1 0 140 0 a 70 26 0 1 0 -140 0`, dur: 15 },
+        ].map((s, i) => (
+          <g key={`sh${i}`}>
+            <g>
+              <path d="M 0 0 q 2 -13 11 -16 q -1 9 3 16 Z" fill="#46586b" stroke="#2c3a4a" strokeWidth="1.5" />
+              <path d="M -6 2 q -10 3 -20 1" stroke="#dff2ff" strokeWidth="2" fill="none" opacity="0.5" />
+              <animateMotion dur={`${s.dur}s`} begin={`${i * 3}s`} repeatCount="indefinite" path={s.path} rotate="auto" />
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.05;.95;1" dur={`${s.dur}s`} begin={`${i * 3}s`} repeatCount="indefinite" />
+            </g>
+          </g>
+        ))}
+        {/* seagulls wheeling over the coves */}
+        {[{ x: 1040, y: 300 }, { x: STEP * 3 + 1000, y: 400 }].map((sg, i) => (
+          <g key={`sg${i}`} transform={`translate(${sg.x}, ${sg.y})`} opacity="0.75">
+            <g>
+              <path d="M 0 0 q 5 -6 10 0 q 5 -6 10 0" stroke="#f4f0e6" strokeWidth="2.5" fill="none" />
+              <animateMotion dur={`${16 + i * 4}s`} begin={`${i * 2}s`} repeatCount="indefinite" path="M 0 0 a 62 24 0 1 0 124 0 a 62 24 0 1 0 -124 0" />
+            </g>
+          </g>
+        ))}
+        {/* a whale surfacing off the volcano coast, spout and all */}
+        <g transform={`translate(${STEP * 3 + 1270}, 596)`}>
+          <g>
+            <path d="M -26 0 q 26 -20 52 0 Z" fill="#5a6b80" />
+            <path d="M 20 -4 q 8 -8 12 -2 q -6 1 -8 6 Z" fill="#5a6b80" />
+            <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;.55;.62;.85;.92;1" dur="13s" repeatCount="indefinite" />
+          </g>
+          <g>
+            {[0, 1, 2].map((k) => (
+              <circle key={k} cx={-8 + k * 4} r={2.2 - k * 0.4} fill="#dff2ff" opacity="0">
+                <animate attributeName="cy" values="-16;-16;-36;-36" keyTimes={`0;${0.6 + k * 0.015};${0.76 + k * 0.015};1`} dur="13s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0;0;0.85;0;0" keyTimes={`0;${0.6 + k * 0.015};${0.66 + k * 0.015};${0.78 + k * 0.015};1`} dur="13s" repeatCount="indefinite" />
+              </circle>
+            ))}
           </g>
         </g>
         {/* waves & ripples in every water */}

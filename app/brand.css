@@ -827,8 +827,10 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 }
 .qh-partner { position: absolute; width: 76px; height: 76px; transform: translate(-50%, -88%); pointer-events: none; z-index: 2; transition: left .9s ease, top .9s ease; }
 .qh-partner .tag {
-  position: absolute; left: 50%; bottom: -13px; transform: translateX(-50%);
-  font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--mm-cyan); white-space: nowrap; text-shadow: 0 1px 3px #000;
+  position: absolute; left: 50%; bottom: -18px; transform: translateX(-50%);
+  font-family: ui-monospace, monospace; font-size: 11.5px; font-weight: 700; color: #9ffcf9;
+  white-space: nowrap; background: rgba(8, 8, 22, 0.88); border: 1px solid rgba(52, 231, 228, 0.5);
+  border-radius: 4px; padding: 2px 8px;
 }
 .qh-quest-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .qh-quest-foot .xp { font-family: var(--font-pixel); font-size: 9px; color: var(--arc-yellow); }
