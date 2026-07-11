@@ -353,11 +353,11 @@ const BIRD_LANES = [
   { y: 42, dur: 55, delay: 26, size: 1.2 },
 ];
 
-function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDay, selectedIdx, selectedDay, destination, dayOf, duration }: {
+function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDay, onOpenBag, selectedIdx, selectedDay, destination, dayOf, duration }: {
   slots: QuestSlot[]; xpReward: number; rendering: boolean;
   partner: { img: string; accent: string; name: string } | null;
   cargo: { title: string; image: string | null }[];
-  onPick: (idx: number) => void; onPickDay: (day: number) => void;
+  onPick: (idx: number) => void; onPickDay: (day: number) => void; onOpenBag: () => void;
   selectedIdx: number | null; selectedDay: number | null;
   destination: string; dayOf: number; duration: number;
 }) {
@@ -800,6 +800,69 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             </g>
           </g>
         </g>
+        {/* ===== CRYPTIDS & FOLKLORE — the world has legends ===== */}
+        {/* a dragon perched on the tower town, wings stretching, chuffing smoke */}
+        <g transform="translate(1248, 194)">
+          <g className="qh-wingL"><path d="M -4 -2 q -16 -14 -26 -6 q 8 2 10 8 q 8 -4 16 2 Z" fill="#2f8a4a" stroke="#1c5a2e" strokeWidth="1.5" /></g>
+          <g className="qh-wingR"><path d="M 12 -2 q 16 -14 26 -6 q -8 2 -10 8 q -8 -4 -16 2 Z" fill="#2f8a4a" stroke="#1c5a2e" strokeWidth="1.5" /></g>
+          <ellipse cx="4" cy="0" rx="10" ry="6.5" fill="#3aa85e" stroke="#1c5a2e" strokeWidth="1.5" />
+          <path d="M 12 -1 q 10 3 16 10" stroke="#3aa85e" strokeWidth="4" fill="none" strokeLinecap="round" />
+          <g>
+            <rect x="-9" y="-10" width="8" height="7" rx="2" fill="#3aa85e" stroke="#1c5a2e" strokeWidth="1.2" />
+            <path d="M -8 -10 l -1.5 -4 l 3 1 Z M -4 -10 l -1 -4 l 3 1 Z" fill="#e8c15a" />
+            <circle cx="-6.5" cy="-7" r="1.1" fill="#ffd76a" />
+          </g>
+          {[0, 1].map((k) => (
+            <circle key={k} cx="-12" fill="#b8b2cc" opacity="0">
+              <animate attributeName="cy" values="-9;-22" dur="5.5s" begin={`${k * 2.4}s`} repeatCount="indefinite" />
+              <animate attributeName="r" values="1.5;4" dur="5.5s" begin={`${k * 2.4}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.6;0" dur="5.5s" begin={`${k * 2.4}s`} repeatCount="indefinite" />
+            </circle>
+          ))}
+        </g>
+        {/* something old lives in the meadow's southern sea */}
+        <g transform="translate(630, 618)">
+          <g className="qh-surface">
+            <path d="M -6 0 q 2 -18 10 -20 q 8 -2 8 6" stroke="#2f7a68" strokeWidth="6" fill="none" strokeLinecap="round" />
+            <ellipse cx="13" cy="-15" rx="5" ry="3.5" fill="#2f7a68" />
+            <circle cx="15" cy="-16" r="1" fill="#0b2b2a" />
+            <path d="M -26 2 a 8 6 0 0 1 14 0 Z M -44 3 a 7 5 0 0 1 12 0 Z" fill="#2f7a68" />
+          </g>
+        </g>
+        {/* a yeti peeks from the tundra treeline, then thinks better of it */}
+        <g transform={`translate(${STEP * 2 + 56}, 296)`}>
+          <g className="qh-peek">
+            <ellipse cx="0" cy="0" rx="9" ry="12" fill="#eef2fa" stroke="#b8c4dd" strokeWidth="1.5" />
+            <ellipse cx="1" cy="-4" rx="5" ry="4.5" fill="#8a94b8" />
+            <circle cx="-0.5" cy="-5" r="1" fill="#1c1c2e" /><circle cx="3" cy="-5" r="1" fill="#1c1c2e" />
+            <path d="M -8 4 q -5 2 -6 6" stroke="#eef2fa" strokeWidth="4" fill="none" strokeLinecap="round" />
+          </g>
+        </g>
+        {/* the great sandworm breaches the dunes */}
+        <g transform={`translate(${STEP + 640}, 215)`}>
+          <g className="qh-surface" style={{ ["--sd" as string]: "6s" }}>
+            <path d="M -22 0 a 22 20 0 0 1 44 0" fill="none" stroke="#b8905a" strokeWidth="11" strokeLinecap="round" />
+            <path d="M -22 0 a 22 20 0 0 1 44 0" fill="none" stroke="#8a6a3a" strokeWidth="11" strokeLinecap="round" strokeDasharray="6 6" />
+            {[[-28, -2], [30, -4], [0, -26]].map(([sx, sy], k) => (
+              <circle key={k} cx={sx} cy={sy} r="2" fill="#e8d9a0" opacity="0.8" />
+            ))}
+          </g>
+        </g>
+        {/* the phoenix rides the volcano thermals, embers trailing */}
+        <g transform={`translate(${STEP * 3 + 620}, 150)`}>
+          <g>
+            <path d="M 0 0 q 8 -9 16 0 q 8 -9 16 0" stroke="#ff9d4d" strokeWidth="4" fill="none" strokeLinecap="round" />
+            <circle cx="16" cy="-2" r="4" fill="#ffb03a" />
+            <path d="M 12 2 q -10 8 -18 6" stroke="#e24b4a" strokeWidth="3" fill="none" strokeLinecap="round" />
+            <animateMotion dur="22s" repeatCount="indefinite" path="M 0 0 q 90 -50 220 -10 q 90 30 180 -20 q -120 -40 -220 -10 q -100 26 -180 40 Z" />
+          </g>
+          {[0, 1].map((k) => (
+            <circle key={k} r="2" fill="#ffb03a" opacity="0.7">
+              <animateMotion dur="22s" begin={`${0.4 + k * 0.4}s`} repeatCount="indefinite" path="M 0 0 q 90 -50 220 -10 q 90 30 180 -20 q -120 -40 -220 -10 q -100 26 -180 40 Z" />
+              <animate attributeName="opacity" values="0.7;0.15;0.7" dur="1.4s" repeatCount="indefinite" />
+            </circle>
+          ))}
+        </g>
         {/* SHARKS — fins cruising the open water, wakes trailing */}
         {[
           { path: "M 320 614 q 100 -8 200 0 q 100 8 190 -2", dur: 24 },
@@ -870,10 +933,13 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
     </div>
     </div>
     {cargo.length > 0 && (
-      <div className="qh-cargo" title={cargo.map((c) => c.title).join(", ")}>
-        {cargo.slice(0, 3).map((c, i) => (c.image ? <img key={i} src={c.image} alt="" /> : null))}
-        <span className="lb">CARGO ×{cargo.length}</span>
-      </div>
+      <button type="button" className="qh-cargo bagbtn" onClick={onOpenBag} title="Open the bag — see everything auto-posting this month">
+        <img className="bagimg" src="/quests/backpack.png" alt="" />
+        <span>
+          <span className="l1">IN THE BAG · ×{cargo.length}</span>
+          <span className="l2">auto-posting this month — tap to peek</span>
+        </span>
+      </button>
     )}
     <span className="qh-map-hint">✋ grab + drag to travel the world</span>
     </div>
@@ -978,6 +1044,20 @@ export default function Campaigns() {
   const openDay = (qid: string, day: number) => {
     setEditSel(null);
     setDaySel({ qid, day });
+    setBagView(null);
+  };
+  const [bagView, setBagView] = useState<string | null>(null);
+
+  /** Unique items riding in a quest's bag, with how many drops each stars in. */
+  const bagContents = (slots: QuestSlot[]): { title: string; image: string | null; drops: number }[] => {
+    const m = new Map<string, { title: string; image: string | null; drops: number }>();
+    for (const s of slots) {
+      if (!s.productTitle) continue;
+      const cur = m.get(s.productTitle);
+      if (cur) cur.drops++;
+      else m.set(s.productTitle, { title: s.productTitle, image: s.productImageUrl, drops: 1 });
+    }
+    return Array.from(m.values());
   };
 
   return (
@@ -1014,9 +1094,10 @@ export default function Campaigns() {
             xpReward={q.xpReward}
             rendering={q.status === "ACTIVE" && renderingIds.includes(q.id)}
             partner={partner}
-            cargo={q.productImageUrl ? [{ title: q.productTitle || "", image: q.productImageUrl }] : []}
+            cargo={bagContents(q.slots)}
             onPick={(idx) => openEditor(q.id, q.slots, idx)}
             onPickDay={(day) => openDay(q.id, day)}
+            onOpenBag={() => { setEditSel(null); setDaySel(null); setBagView(bagView === q.id ? null : q.id); }}
             selectedIdx={editSel?.qid === q.id ? editSel.idx : null}
             selectedDay={daySel?.qid === q.id ? daySel.day : null}
             destination={DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
@@ -1089,6 +1170,32 @@ export default function Campaigns() {
                   </button>
                 )}
                 <button type="button" className="qh-mini-btn" onClick={() => setDaySel(null)}>Close</button>
+              </div>
+            );
+          })()}
+          {/* the bag was tapped — everything auto-posting this month */}
+          {bagView === q.id && (() => {
+            const items = bagContents(q.slots);
+            return (
+              <div className="qh-slot-editor">
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div className="spot">🎒 IN THE BAG — AUTO-POSTING THIS MONTH</div>
+                  <div className="meta" style={{ margin: "6px 0 10px" }}>
+                    {pName} carries {items.length === 1 ? "this item" : `these ${items.length} items`} the whole expedition, starring them across the month's drops.
+                  </div>
+                  <div className="qh-bagpanel-items">
+                    {items.map((it, i) => (
+                      <div key={i} className="qh-bagpanel-item">
+                        {it.image ? <img src={it.image} alt="" /> : <span style={{ fontSize: 22 }}>🛍️</span>}
+                        <span>
+                          <span className="nm">{it.title}</span>
+                          <span className="ct">{it.drops} DROP{it.drops === 1 ? "" : "S"}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button type="button" className="qh-mini-btn" onClick={() => setBagView(null)}>Close</button>
               </div>
             );
           })()}
