@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import { Page, Banner, Box } from "@shopify/polaris";
@@ -290,8 +290,18 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
 
   const routeD = [start, ...pts, end].map((p, i) => `${i === 0 ? "M" : "L"} ${Math.round(p.x)} ${Math.round(p.y)}`).join(" ");
 
+  // Panorama: the world renders wide and scrolls; open centered on the partner.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = (cur.x / MAP_W) * 1280 - el.clientWidth / 2;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <div className="qh-map">
+    <div className="qh-mapwrap">
+    <div className="qh-map" ref={scrollRef}>
+    <div className="qh-map-inner">
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} role="img" aria-label="Campaign world map">
         <image href="/quests/worldmap.jpg" width={MAP_W} height={MAP_H} />
         {/* route: soft shadow + golden dashes */}
@@ -315,8 +325,10 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
           const fill = done ? "#2fbf8a" : failed ? "#d24b4b" : activeHere ? "#ffd76a" : "#3a3560";
           const ring = done ? "#0d4a33" : failed ? "#571414" : activeHere ? "#7a4c08" : "#171430";
           const labelUp = p.y > 330; // keep labels off the water/edges
-          const ly = labelUp ? p.y - 34 : p.y + 44;
-          const ly2 = labelUp ? p.y - 58 : p.y + 68;
+          // stagger alternate stops onto a second lane so neighbors never collide
+          const lane = (i % 2) * 26;
+          const ly = labelUp ? p.y - 34 - lane : p.y + 44 + lane;
+          const ly2 = labelUp ? p.y - 58 - lane : p.y + 68 + lane;
           return (
             <g key={s.idx} onClick={() => onPick(s.idx)} style={{ cursor: "pointer" }}>
               {activeHere && (
@@ -392,12 +404,16 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
           </span>
         </div>
       )}
-      {cargo.length > 0 && (
-        <div className="qh-cargo" title={cargo.map((c) => c.title).join(", ")}>
-          {cargo.slice(0, 3).map((c, i) => (c.image ? <img key={i} src={c.image} alt="" /> : null))}
-          <span className="lb">CARGO ×{cargo.length}</span>
-        </div>
-      )}
+    </div>
+    </div>
+    {/* pinned chrome — stays put while the world scrolls underneath */}
+    {cargo.length > 0 && (
+      <div className="qh-cargo" title={cargo.map((c) => c.title).join(", ")}>
+        {cargo.slice(0, 3).map((c, i) => (c.image ? <img key={i} src={c.image} alt="" /> : null))}
+        <span className="lb">CARGO ×{cargo.length}</span>
+      </div>
+    )}
+    <span className="qh-map-hint">⟷ drag to explore the world</span>
     </div>
   );
 }
@@ -657,7 +673,7 @@ export default function Campaigns() {
 
         {products.length > 0 && (() => {
           const drops = sel.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
-          const pouchCols = sel.bagSize > 6 ? 5 : 3;
+          const pouchCols = 3; // pockets sewn onto the bag art's front panel
           const say =
             bagCapped.length === 0 ? "Pack at least 1 item to march." :
             bagCapped.length >= sel.bagSize ? `Fully loaded! Each item gets ~${Math.round((drops / sel.bagSize) * 10) / 10} drops this month.` :
@@ -685,30 +701,19 @@ export default function Campaigns() {
               </div>
               <div className="qh-bagcol">
                 <span className="qh-field-label">🎒 YOUR PACK — {sel.bagSize} pouches · click a pouch to unpack</span>
-                <div key={bagCapped.length} style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
-                  <svg width="300" height="80" viewBox="0 0 300 80" style={{ display: "block" }} aria-hidden="true">
-                    <g shapeRendering="crispEdges">
-                      <rect x="24" y="34" width="252" height="46" rx="8" fill="#7a4a22" />
-                      <rect x="24" y="34" width="252" height="10" fill="#8f5c30" />
-                      <path d="M42 36 q108 -42 216 0 l0 12 q-108 -38 -216 0 Z" fill="#8f5c30" />
-                      <rect x="130" y="12" width="40" height="12" rx="4" fill="#5a3d20" />
-                      <rect x="70" y="48" width="15" height="22" fill="#c9955a" /><rect x="74" y="54" width="7" height="7" fill="#8a5f33" />
-                      <rect x="215" y="48" width="15" height="22" fill="#c9955a" /><rect x="219" y="54" width="7" height="7" fill="#8a5f33" />
-                    </g>
-                  </svg>
-                  <div className="qh-bagbody">
-                    <div className="qh-pouches" style={{ gridTemplateColumns: `repeat(${pouchCols}, 1fr)` }}>
-                      {Array.from({ length: sel.bagSize }).map((_, i) => {
-                        const item = bagCapped[i];
-                        return item ? (
-                          <button key={i} type="button" className="qh-pouch full" title={`${item.title} — click to unpack`} onClick={() => toggleItem(item)}>
-                            {item.image ? <img src={item.image} alt={item.title} /> : <span style={{ fontSize: 22 }}>🛍️</span>}
-                          </button>
-                        ) : (
-                          <div key={i} className="qh-pouch">+</div>
-                        );
-                      })}
-                    </div>
+                <div key={bagCapped.length} className="qh-bagart" style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
+                  <img src="/quests/backpack.jpg" alt="Adventurer's backpack" />
+                  <div className="qh-pouches" style={{ gridTemplateColumns: `repeat(${pouchCols}, 1fr)` }}>
+                    {Array.from({ length: sel.bagSize }).map((_, i) => {
+                      const item = bagCapped[i];
+                      return item ? (
+                        <button key={i} type="button" className="qh-pouch full" title={`${item.title} — click to unpack`} onClick={() => toggleItem(item)}>
+                          {item.image ? <img src={item.image} alt={item.title} /> : <span style={{ fontSize: 22 }}>🛍️</span>}
+                        </button>
+                      ) : (
+                        <div key={i} className="qh-pouch">+</div>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="qh-load-row"><span>PACK LOAD</span><span>{bagCapped.length}/{sel.bagSize}</span></div>

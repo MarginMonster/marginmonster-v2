@@ -813,9 +813,16 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-label .r { color: #7d7da8; font-family: ui-monospace, monospace; font-size: 11.5px; letter-spacing: 0; }
 .qh-label.gold { color: var(--arc-yellow); }
 
-/* world map */
-.qh-map { position: relative; border-radius: 6px; overflow: hidden; }
-.qh-map svg { display: block; width: 100%; height: auto; }
+/* world map — a panorama you travel across, not a screen you cram */
+.qh-mapwrap { position: relative; }
+.qh-map { position: relative; border-radius: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #3a3560 #12122a; }
+.qh-map-inner { position: relative; width: 1280px; }
+.qh-map svg { display: block; width: 1280px; height: auto; }
+.qh-map-hint {
+  position: absolute; right: 10px; bottom: 10px; z-index: 2; pointer-events: none;
+  font-family: ui-monospace, monospace; font-size: 11px; color: #cfc9ea;
+  background: rgba(10, 10, 28, 0.75); border: 1px solid #2e2e52; border-radius: 4px; padding: 3px 8px;
+}
 .qh-partner { position: absolute; width: 76px; height: 76px; transform: translate(-50%, -88%); pointer-events: none; z-index: 2; transition: left .9s ease, top .9s ease; }
 .qh-partner .tag {
   position: absolute; left: 50%; bottom: -13px; transform: translateX(-50%);
@@ -888,18 +895,21 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 @media (max-width: 720px) { .qh-packgrid { grid-template-columns: 1fr; } .qh-bagcol { margin: 0 auto; } }
 .qh-slot.ghost { opacity: 0.25; border-style: dashed; cursor: default; }
 .qh-slot.ghost:hover { border-color: #2e2e52; transform: none; }
-.qh-bagcol { width: 300px; text-align: center; }
-.qh-bagbody {
-  background: #7a4a22; border: 3px solid #5a3d20; border-top: none; border-radius: 0 0 16px 16px;
-  padding: 12px 14px 14px; margin-top: -4px;
+.qh-bagcol { width: 340px; text-align: center; }
+/* the bag is real generated art; pouch slots overlay its body like sewn pockets */
+.qh-bagart { position: relative; width: 340px; }
+.qh-bagart > img { display: block; width: 100%; border-radius: 12px; }
+.qh-pouches {
+  position: absolute; left: 28%; right: 28%; top: 31%; bottom: 13%;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; align-content: center;
 }
-.qh-pouches { display: grid; gap: 9px; }
 .qh-pouch {
-  position: relative; aspect-ratio: 1; background: #5a3d20; border: 2px dashed #8a5f33; border-radius: 5px;
-  display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0; cursor: default;
-  font-family: ui-monospace, monospace; font-size: 14px; color: #8a5f33;
+  position: relative; aspect-ratio: 1; background: rgba(24, 12, 4, 0.55); border: 2px dashed rgba(255, 205, 120, 0.45);
+  border-radius: 7px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0; cursor: default;
+  font-family: ui-monospace, monospace; font-size: 15px; color: rgba(255, 220, 150, 0.6);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
 }
-.qh-pouch.full { border-style: solid; border-color: #c9955a; background: #6b4a26; cursor: pointer; animation: qh-pack-drop .35s ease; }
+.qh-pouch.full { border-style: solid; border-color: #ffd76a; background: #241304; cursor: pointer; animation: qh-pack-drop .35s ease; box-shadow: 0 0 10px rgba(255, 215, 106, 0.35), inset 0 0 0 1px rgba(0,0,0,.4); }
 .qh-pouch.full img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .qh-pouch.full:hover { border-color: #f0c987; }
 .qh-pouch.full:hover::after {
