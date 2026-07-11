@@ -645,35 +645,69 @@ export default function Campaigns() {
           </div>
         </div>
 
-        {products.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <span className="qh-field-label">
-              🎒 BACKPACK — equip up to {sel.bagSize} items; the AI rotates them across the month{" "}
-              <span className={bagCapped.length > 0 ? "qh-equipped-line" : ""} style={bagCapped.length === 0 ? { color: "#7d7da8" } : undefined}>
-                — {bagCapped.length}/{sel.bagSize} equipped
-              </span>
-            </span>
-            <div className="qh-bag">
-              {products.map((p) => {
-                const inBag = bag.some((b) => b.id === p.id);
-                return (
-                  <button
-                    key={p.id} type="button"
-                    className={`qh-slot${inBag ? " on" : ""}`}
-                    title={p.title}
-                    onClick={() => toggleItem(p)}
-                  >
-                    {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <span className="ph">🛍️</span>}
-                    <span className="qh-slot-name">{p.title}</span>
-                  </button>
-                );
-              })}
-              {Array.from({ length: Math.max(0, (8 - (products.length % 8)) % 8) }).map((_, i) => (
-                <div key={`e${i}`} className="qh-slot empty" aria-hidden="true">·</div>
-              ))}
+        {products.length > 0 && (() => {
+          const drops = sel.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
+          const pouchCols = sel.bagSize > 6 ? 5 : 3;
+          const say =
+            bagCapped.length === 0 ? "Pack at least 1 item to march." :
+            bagCapped.length >= sel.bagSize ? `Fully loaded! Each item gets ~${Math.round((drops / sel.bagSize) * 10) / 10} drops this month.` :
+            `${bagCapped.length} packed — the AI rotates ${bagCapped.length === 1 ? "it" : "them"} across the month's ${drops} drops.`;
+          return (
+            <div className="qh-packgrid" style={{ marginBottom: 14 }}>
+              <div>
+                <span className="qh-field-label">SUPPLY SHELF — your store catalog · click an item to pack it</span>
+                <div className="qh-bag">
+                  {products.map((p) => {
+                    const inBag = bag.some((b) => b.id === p.id);
+                    return (
+                      <button
+                        key={p.id} type="button"
+                        className={`qh-slot${inBag ? " ghost" : ""}`}
+                        title={inBag ? `${p.title} — already packed` : p.title}
+                        onClick={() => { if (!inBag) toggleItem(p); }}
+                      >
+                        {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <span className="ph">🛍️</span>}
+                        <span className="qh-slot-name">{p.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="qh-bagcol">
+                <span className="qh-field-label">🎒 YOUR PACK — {sel.bagSize} pouches · click a pouch to unpack</span>
+                <div key={bagCapped.length} style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
+                  <svg width="300" height="80" viewBox="0 0 300 80" style={{ display: "block" }} aria-hidden="true">
+                    <g shapeRendering="crispEdges">
+                      <rect x="24" y="34" width="252" height="46" rx="8" fill="#7a4a22" />
+                      <rect x="24" y="34" width="252" height="10" fill="#8f5c30" />
+                      <path d="M42 36 q108 -42 216 0 l0 12 q-108 -38 -216 0 Z" fill="#8f5c30" />
+                      <rect x="130" y="12" width="40" height="12" rx="4" fill="#5a3d20" />
+                      <rect x="70" y="48" width="15" height="22" fill="#c9955a" /><rect x="74" y="54" width="7" height="7" fill="#8a5f33" />
+                      <rect x="215" y="48" width="15" height="22" fill="#c9955a" /><rect x="219" y="54" width="7" height="7" fill="#8a5f33" />
+                    </g>
+                  </svg>
+                  <div className="qh-bagbody">
+                    <div className="qh-pouches" style={{ gridTemplateColumns: `repeat(${pouchCols}, 1fr)` }}>
+                      {Array.from({ length: sel.bagSize }).map((_, i) => {
+                        const item = bagCapped[i];
+                        return item ? (
+                          <button key={i} type="button" className="qh-pouch full" title={`${item.title} — click to unpack`} onClick={() => toggleItem(item)}>
+                            {item.image ? <img src={item.image} alt={item.title} /> : <span style={{ fontSize: 22 }}>🛍️</span>}
+                          </button>
+                        ) : (
+                          <div key={i} className="qh-pouch">+</div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="qh-load-row"><span>PACK LOAD</span><span>{bagCapped.length}/{sel.bagSize}</span></div>
+                <div className="qh-load-bar"><i style={{ width: `${(bagCapped.length / sel.bagSize) * 100}%` }} /></div>
+                <div className="qh-pack-say">{say}</div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <button
           type="button" className="qh-start"
