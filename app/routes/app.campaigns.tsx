@@ -10,7 +10,7 @@ import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline } from "../lib/questlines.server";
 import {
-  QUESTLINES, QUESTLINE_BY_KEY, questlineTokenCost, parseSchedule, spotName,
+  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
 import { AVATARS, AVATAR_BY_ID } from "../lib/avatars";
@@ -230,152 +230,161 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 const NODE_ICON: Record<string, string> = { video: "🎬", image: "🖼", blog: "📝", post: "📣" };
 
-/** Spread n points between a and b (inclusive). */
-function spread(a: number, b: number, n: number): number[] {
-  if (n <= 1) return [Math.round((a + b) / 2)];
-  return Array.from({ length: n }, (_, i) => Math.round(a + (i * (b - a)) / (n - 1)));
+/* ---- The painted overworld ----
+ * Background is real generated pixel-art (public/quests/worldmap.jpg,
+ * 1536x640). The journey follows a hand-tuned waypoint route across its
+ * terrain; stops are spaced evenly along that route by arc length (pure
+ * math — SSR-safe). Label restraint: the current stop speaks at full
+ * volume, everything else whispers until hovered/clicked. */
+
+const MAP_W = 1536;
+const MAP_H = 640;
+
+/* Waypoints trace the art's own roads: shop meadow -> cherry grove -> pond ->
+ * palm grove -> village row -> beach cove -> headland -> the tower town. */
+const ROUTE: [number, number][] = [
+  [355, 390], [480, 315], [620, 250], [770, 340],
+  [930, 285], [1075, 320], [1160, 285], [1250, 240],
+];
+
+/** Even points along the waypoint polyline (t in 0..1 by arc length). */
+function routePoint(t: number): { x: number; y: number } {
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 1; i < ROUTE.length; i++) {
+    const d = Math.hypot(ROUTE[i][0] - ROUTE[i - 1][0], ROUTE[i][1] - ROUTE[i - 1][1]);
+    segs.push(d);
+    total += d;
+  }
+  let target = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i]) {
+      const f = segs[i] === 0 ? 0 : target / segs[i];
+      return {
+        x: ROUTE[i][0] + (ROUTE[i + 1][0] - ROUTE[i][0]) * f,
+        y: ROUTE[i][1] + (ROUTE[i + 1][1] - ROUTE[i][1]) * f,
+      };
+    }
+    target -= segs[i];
+  }
+  return { x: ROUTE[ROUTE.length - 1][0], y: ROUTE[ROUTE.length - 1][1] };
 }
 
-/** The overworld v2 — a vivid two-row adventure board. Every destination is a
- *  named, dated, labeled stop; the plan partner physically works the current
- *  one. Clicking a stop opens the schedule editor. */
-function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selectedIdx }: {
+function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selectedIdx, destination }: {
   slots: QuestSlot[]; xpReward: number; rendering: boolean;
   partner: { img: string; accent: string; name: string } | null;
   cargo: { title: string; image: string | null }[];
   onPick: (idx: number) => void; selectedIdx: number | null;
+  destination: string;
 }) {
-  type Pt = { kind: "start" | "slot" | "vault"; slot?: QuestSlot; x: number; y: number };
-  const items: Omit<Pt, "x" | "y">[] = [
-    { kind: "start" },
-    ...slots.map((s) => ({ kind: "slot" as const, slot: s })),
-    { kind: "vault" },
-  ];
-  const T = items.length;
-  const r1 = Math.ceil(T / 2);
-  const r2 = T - r1;
-  const y1 = 74, y2 = 196;
-  const xs1 = spread(52, 608, r1);
-  const xs2 = spread(608, 52, Math.max(1, r2));
-  const pts: Pt[] = items.map((it, i) => (
-    i < r1 ? { ...it, x: xs1[i], y: y1 } : { ...it, x: xs2[i - r1], y: y2 }
-  ));
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 1; i < pts.length; i++) {
-    const p = pts[i], prev = pts[i - 1];
-    d += p.y === prev.y ? ` H ${p.x}` : ` V ${p.y}`;
-    if (p.y !== prev.y) d += ` H ${p.x}`;
-  }
-  // The partner stands at the stop it's currently working / traveling toward.
-  let curIdx = pts.findIndex((p) => p.kind === "slot" && p.slot && (p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED"));
-  if (curIdx === -1) curIdx = pts.length - 1; // everything forged → the vault
-  const cur = pts[curIdx];
-  const curSpot = cur.kind === "slot" ? cur.slot?.spot : cur.kind === "vault" ? "THE VAULT" : "BASE CAMP";
+  const n = slots.length;
+  const start = routePoint(0);
+  const end = routePoint(1);
+  const pts = slots.map((s, i) => ({ slot: s, ...routePoint(0.09 + (i * 0.82) / Math.max(1, n - 1)) }));
+
+  // The partner stands at the stop it's working / traveling toward.
+  let curI = pts.findIndex((p) => p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED");
+  const allDone = curI === -1;
+  const cur = allDone ? end : pts[curI];
+  const curSpot = allDone ? destination : pts[curI].slot.spot;
+
+  const routeD = [start, ...pts, end].map((p, i) => `${i === 0 ? "M" : "L"} ${Math.round(p.x)} ${Math.round(p.y)}`).join(" ");
 
   return (
     <div className="qh-map">
-      <svg viewBox="0 0 660 268" role="img" aria-label="Campaign adventure board">
-        {/* biomes: lush grass, a river across the middle, sand cove, mountains */}
-        <rect width="660" height="268" fill="#1f9152" />
-        <g fill="#1a7d46" shapeRendering="crispEdges">
-          {[30, 110, 240, 330, 470, 590].map((x, i) => <rect key={i} x={x} y={(i % 2) * 30 + 14} width="16" height="16" />)}
-          {[70, 200, 380, 520, 620].map((x, i) => <rect key={`b${i}`} x={x} y={230 - (i % 2) * 26} width="16" height="16" />)}
-        </g>
-        {/* river */}
-        <rect y="122" width="660" height="30" fill="#2f6fc0" shapeRendering="crispEdges" />
-        <g fill="#4b8bd8" shapeRendering="crispEdges">
-          {[20, 90, 170, 260, 350, 440, 530, 610].map((x, i) => <rect key={i} x={x} y={130 + (i % 2) * 8} width="22" height="4" />)}
-        </g>
-        {/* sand cove bottom-left */}
-        <path d="M0 240 h130 v28 H0 Z" fill="#d9b36a" shapeRendering="crispEdges" />
-        <rect x="24" y="246" width="8" height="8" fill="#c49a4e" shapeRendering="crispEdges" />
-        <rect x="70" y="252" width="8" height="8" fill="#c49a4e" shapeRendering="crispEdges" />
-        {/* mountains top-right with snow caps */}
-        <g shapeRendering="crispEdges">
-          <path d="M560 44 l24 -30 24 30 Z" fill="#5f5390" /><path d="M578 22 l6 -8 6 8 Z" fill="#e8ecf5" />
-          <path d="M600 44 l20 -24 20 24 Z" fill="#524777" /><path d="M615 26 l5 -6 5 6 Z" fill="#e8ecf5" />
-        </g>
-        {/* trees + flowers */}
-        <g shapeRendering="crispEdges">
-          {[[96, 20], [268, 26], [430, 16]].map(([x, y], i) => (
-            <g key={i}><rect x={x} y={y} width="22" height="26" fill="#0f5c33" /><rect x={x + 7} y={y + 22} width="8" height="10" fill="#6b4420" /></g>
-          ))}
-          {[[150, 236], [420, 240], [560, 232]].map(([x, y], i) => (
-            <g key={`t${i}`}><rect x={x} y={y} width="22" height="26" fill="#0f5c33" /><rect x={x + 7} y={y + 22} width="8" height="10" fill="#6b4420" /></g>
-          ))}
-          {[[40, 100], [210, 40], [500, 96], [340, 232], [620, 210]].map(([x, y], i) => (
-            <rect key={`f${i}`} x={x} y={y} width="6" height="6" fill={i % 2 ? "#f2c14e" : "#e24b4a"} />
-          ))}
-        </g>
-        {/* the road (with a bridge over the river) */}
-        <path d={d} fill="none" stroke="#b98d4f" strokeWidth="18" shapeRendering="crispEdges" />
-        <path d={d} fill="none" stroke="#e0c088" strokeWidth="12" shapeRendering="crispEdges" />
-        <path d={d} fill="none" stroke="#34E7E4" strokeWidth="2" strokeDasharray="6 10" opacity="0.65" />
-        <rect x={pts[r1 - 1].x - 13} y="120" width="26" height="34" fill="#8a5a22" shapeRendering="crispEdges" />
-        <g fill="#6b4420" shapeRendering="crispEdges">
-          <rect x={pts[r1 - 1].x - 13} y="126" width="26" height="3" /><rect x={pts[r1 - 1].x - 13} y="138" width="26" height="3" />
+      <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} role="img" aria-label="Campaign world map">
+        <image href="/quests/worldmap.jpg" width={MAP_W} height={MAP_H} />
+        {/* route: soft shadow + golden dashes */}
+        <path d={routeD} fill="none" stroke="#1a1206" strokeWidth="11" opacity="0.35" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={routeD} fill="none" stroke="#ffd76a" strokeWidth="5" strokeDasharray="2 16" strokeLinecap="round" opacity="0.95" />
+
+        {/* YOUR SHOP — the journey starts at the merchant's own storefront */}
+        <g style={{ paintOrder: "stroke" }}>
+          <circle cx={start.x} cy={start.y} r="15" fill="#7c5cff" stroke="#241a4d" strokeWidth="4" />
+          <text x={start.x} y={start.y + 7} textAnchor="middle" fontSize="18">🏪</text>
+          <text x={start.x} y={start.y + 44} textAnchor="middle" fontSize="21" fontFamily="monospace" fontWeight="bold"
+            fill="#e8e2ff" stroke="#14102a" strokeWidth="5" paintOrder="stroke">YOUR SHOP</text>
         </g>
 
         {pts.map((p, i) => {
-          if (p.kind === "start") {
-            return (
-              <g key={i} shapeRendering="crispEdges">
-                <rect x={p.x - 12} y={p.y - 12} width="24" height="24" fill="#1D9E75" stroke="#04342C" strokeWidth="3" />
-                <text x={p.x} y={p.y + 5} textAnchor="middle" fontSize="12" fill="#04342C">⚑</text>
-                <text x={p.x} y={p.y - 22} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="#bff3d4" fontWeight="bold">BASE CAMP</text>
-                <text x={p.x} y={p.y + 34} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="#7dd8b8">QUEST SIGNED ✓</text>
-              </g>
-            );
-          }
-          if (p.kind === "vault") {
-            return (
-              <g key={i} shapeRendering="crispEdges">
-                <rect x={p.x - 20} y={p.y - 20} width="40" height="34" fill="#6e6a8a" stroke="#3a3752" strokeWidth="3" />
-                <rect x={p.x - 20} y={p.y - 26} width="8" height="8" fill="#6e6a8a" /><rect x={p.x + 12} y={p.y - 26} width="8" height="8" fill="#6e6a8a" />
-                <rect x={p.x - 2} y={p.y - 30} width="4" height="10" fill="#8a5a22" /><path d={`M${p.x + 2} ${p.y - 30} h12 l-12 6 Z`} fill="#e24b4a" />
-                <rect x={p.x - 6} y={p.y - 4} width="12" height="18" fill="#3d2b12" />
-                <rect x={p.x - 3} y={p.y + 2} width="6" height="6" fill="#ffd76a" />
-                <text x={p.x} y={p.y - 38} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="#ffd76a" fontWeight="bold">THE VAULT</text>
-                <text x={p.x} y={p.y + 32} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="#ffd76a">+{xpReward.toLocaleString()} XP</text>
-              </g>
-            );
-          }
-          const s = p.slot!;
+          const s = p.slot;
           const done = s.status === "READY" || s.status === "POSTED";
           const failed = s.status === "FAILED";
-          const activeHere = i === curIdx;
-          const fill = done ? "#1D9E75" : failed ? "#8a2f2f" : activeHere ? "#ffd76a" : "#26264a";
-          const stroke = done ? "#04342C" : failed ? "#4a1414" : activeHere ? "#854f0b" : "#3e3e66";
-          const top = p.y === y1;
-          const statusTxt =
-        s.status === "READY" ? "READY ✓" :
-        s.status === "POSTED" ? "POSTED ✓" :
-        s.status === "FAILED" ? "FAILED" :
-        s.status === "FORGING" || (activeHere && rendering) ? "FORGING…" :
-        `${fmtDow(s.date)} ${fmtTime(s.time)}`;
-          const statusFill = done ? "#7dd8b8" : failed ? "#f09595" : activeHere ? "#fff3c9" : "#cfd0ee";
+          const activeHere = i === curI && !allDone;
           const sel = selectedIdx === s.idx;
+          const fill = done ? "#2fbf8a" : failed ? "#d24b4b" : activeHere ? "#ffd76a" : "#3a3560";
+          const ring = done ? "#0d4a33" : failed ? "#571414" : activeHere ? "#7a4c08" : "#171430";
+          const labelUp = p.y > 330; // keep labels off the water/edges
+          const ly = labelUp ? p.y - 34 : p.y + 44;
+          const ly2 = labelUp ? p.y - 58 : p.y + 68;
           return (
-            <g key={i} onClick={() => onPick(s.idx)} style={{ cursor: "pointer" }}>
+            <g key={s.idx} onClick={() => onPick(s.idx)} style={{ cursor: "pointer" }}>
               {activeHere && (
-                <circle cx={p.x} cy={p.y} fill="none" stroke="#34E7E4" strokeWidth="2">
-                  <animate attributeName="r" values="15;30" dur="1.6s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.8;0" dur="1.6s" repeatCount="indefinite" />
+                <circle cx={p.x} cy={p.y} fill="none" stroke="#34E7E4" strokeWidth="4">
+                  <animate attributeName="r" values="20;46" dur="1.7s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.9;0" dur="1.7s" repeatCount="indefinite" />
                 </circle>
               )}
-              {sel && <rect x={p.x - 18} y={p.y - 18} width="36" height="36" fill="none" stroke="#34E7E4" strokeWidth="2" shapeRendering="crispEdges" />}
-              <rect x={p.x - 13} y={p.y - 13} width="26" height="26" fill={fill} stroke={stroke} strokeWidth="3" shapeRendering="crispEdges" />
-              <text x={p.x} y={p.y + 5} textAnchor="middle" fontSize="12" fill={done ? "#04342C" : "#e8e8f0"}>{done ? "✓" : NODE_ICON[s.type] || "⬜"}</text>
-              <text x={p.x} y={top ? p.y - 34 : p.y + 30} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="#ffe9b0" fontWeight="bold">{s.spot}</text>
-              <text x={p.x} y={top ? p.y - 22 : p.y + 42} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill={statusFill}>
-                DAY {s.day} · {statusTxt}
+              {sel && <circle cx={p.x} cy={p.y} r="24" fill="none" stroke="#34E7E4" strokeWidth="4" />}
+              <circle cx={p.x} cy={p.y} r={activeHere ? 17 : 13} fill={fill} stroke={ring} strokeWidth="4" />
+              <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize={activeHere ? 17 : 14}>
+                {done ? "✓" : failed ? "✕" : NODE_ICON[s.type] || "•"}
               </text>
+              {/* label discipline: current stop full voice, others a whisper */}
+              {activeHere ? (
+                <g>
+                  <text x={p.x} y={ly} textAnchor="middle" fontSize="23" fontFamily="monospace" fontWeight="bold"
+                    fill="#fff3c9" stroke="#14102a" strokeWidth="6" paintOrder="stroke">{s.spot}</text>
+                  <text x={p.x} y={labelUp ? ly2 + 46 : ly2} textAnchor="middle" fontSize="19" fontFamily="monospace"
+                    fill={rendering ? "#7ff5f2" : "#e0d9b8"} stroke="#14102a" strokeWidth="5" paintOrder="stroke">
+                    {`DAY ${s.day} · ${rendering ? "FORGING…" : `${fmtDow(s.date)} ${fmtTime(s.time)}`}`}
+                  </text>
+                </g>
+              ) : (
+                <text x={p.x} y={ly} textAnchor="middle" fontSize="18" fontFamily="monospace"
+                  fill={done ? "#bfe9d6" : failed ? "#f0a8a8" : "#cfc9ea"} opacity={done || failed ? 0.95 : 0.75}
+                  stroke="#14102a" strokeWidth="5" paintOrder="stroke">
+                  {failed ? `${s.spot} · GOBLIN!` : done ? `${s.spot} ✓` : `${s.spot} · D${s.day}`}
+                </text>
+              )}
+              {/* a goblin squats on failed stops until the merchant retries */}
+              {failed && (
+                <g transform={`translate(${p.x + 20}, ${p.y - 34}) scale(2)`} shapeRendering="crispEdges">
+                  <rect width="13" height="11" fill="#5d8a4a" />
+                  <rect x="3" y="-4" width="3" height="4" fill="#5d8a4a" /><rect x="8" y="-4" width="3" height="4" fill="#5d8a4a" />
+                  <rect x="3" y="3" width="2" height="2" fill="#e8d44a" /><rect x="8" y="3" width="2" height="2" fill="#e8d44a" />
+                  <animateTransform attributeName="transform" type="translate" additive="sum" values="0 0; 0 -6; 0 0" keyTimes="0;0.5;1" dur="0.9s" repeatCount="indefinite" />
+                </g>
+              )}
             </g>
           );
         })}
+
+        {/* destination — the quest's own landmark; the chest opens on arrival */}
+        <g style={{ paintOrder: "stroke" }}>
+          {allDone && (
+            <circle cx={end.x} cy={end.y} fill="none" stroke="#ffd76a" strokeWidth="4">
+              <animate attributeName="r" values="20;50" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.9;0" dur="2s" repeatCount="indefinite" />
+            </circle>
+          )}
+          <circle cx={end.x} cy={end.y} r="16" fill={allDone ? "#ffd76a" : "#8a6a2e"} stroke="#3d2b12" strokeWidth="4" />
+          <text x={end.x} y={end.y + 7} textAnchor="middle" fontSize="18">{allDone ? "🏆" : "🏁"}</text>
+          <text x={end.x} y={end.y - 30} textAnchor="middle" fontSize="22" fontFamily="monospace" fontWeight="bold"
+            fill="#ffe9b0" stroke="#14102a" strokeWidth="6" paintOrder="stroke">{destination}</text>
+          <text x={end.x} y={end.y - 56} textAnchor="middle" fontSize="18" fontFamily="monospace"
+            fill="#ffd76a" stroke="#14102a" strokeWidth="5" paintOrder="stroke">+{xpReward.toLocaleString()} XP</text>
+        </g>
+
+        {/* a bird crossing the sky, slow and rare */}
+        <g opacity="0.55">
+          <path d="M0 70 q7 -8 14 0 q7 -8 14 0" stroke="#14102a" strokeWidth="3" fill="none">
+            <animateTransform attributeName="transform" type="translate" values="-60 0; 1600 -40" dur="26s" repeatCount="indefinite" />
+          </path>
+        </g>
       </svg>
       {partner && (
-        <div className="qh-partner" style={{ left: `${(cur.x / 660) * 100}%`, top: `${(cur.y / 268) * 100}%` }}>
+        <div className="qh-partner" style={{ left: `${(cur.x / MAP_W) * 100}%`, top: `${(cur.y / MAP_H) * 100}%` }}>
           <Partner img={partner.img} accent={partner.accent} />
           {rendering && <span className="qh-work-tool" aria-hidden="true">⚒️</span>}
           <span className={`tag${rendering ? " working" : ""}`}>
@@ -500,7 +509,7 @@ export default function Campaigns() {
       {active.map((q) => (
         <div key={q.id} className="qh-win" style={{ marginBottom: 16 }}>
           <span className="qh-label">
-            ▶ {q.name.toUpperCase()}
+            ▶ {q.name.toUpperCase()} → {DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
             <span className="r">
               DAY {q.dayOf} OF {q.duration} · {q.slots.filter((s) => s.status === "READY" || s.status === "POSTED").length} FORGED · {q.slots.filter((s) => s.status === "SCHEDULED" || s.status === "FORGING").length} SCHEDULED
               {q.avatarId && AVATAR_BY_ID[q.avatarId] ? ` · ★ ${AVATAR_BY_ID[q.avatarId].name}` : ""}
@@ -514,6 +523,7 @@ export default function Campaigns() {
             cargo={q.productImageUrl ? [{ title: q.productTitle || "", image: q.productImageUrl }] : []}
             onPick={(idx) => openEditor(q.id, q.slots, idx)}
             selectedIdx={editSel?.qid === q.id ? editSel.idx : null}
+            destination={DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
           />
           {editSel?.qid === q.id && (() => {
             const s = q.slots.find((x) => x.idx === editSel.idx);

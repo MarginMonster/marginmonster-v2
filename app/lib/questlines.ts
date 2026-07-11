@@ -118,6 +118,15 @@ export const QUESTLINE_BY_KEY: Record<string, QuestlineDef> = Object.fromEntries
   QUESTLINES.map((q) => [q.key, q])
 );
 
+/* Each quest journeys from YOUR SHOP to a destination that pays off its story
+ * (the reward chest opens on arrival — no bank vaults out here). */
+export const DESTINATION_BY_KEY: Record<string, string> = {
+  FIRST_BLOOD: "FIRST VICTORY HILL",
+  STEADY_GRIND: "THE GRAND BAZAAR",
+  LAUNCH_BLITZ: "THE LAUNCH BEACON",
+  OMNICHANNEL: "THE SIGNAL CITADEL",
+};
+
 /* ---- Map destinations ----
  * Every stop on the board is a named place, Candy Land style. Pools per
  * content type; assignment cycles deterministically so a quest's board is
