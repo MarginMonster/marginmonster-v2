@@ -163,6 +163,7 @@ async function runJob(
           avatarId: payload.avatarId as string,
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
           direction: payload.customPrompt as string | undefined,
+          captions: payload.captions !== false,
           jobId: payload.__jobId as string | undefined,
           resume: {
             script: payload.ckScript as string | undefined,

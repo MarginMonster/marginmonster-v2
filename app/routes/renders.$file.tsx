@@ -2,26 +2,72 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
 
-/* Streams assembled UGC ad videos from the runtime render directory.
- * (Runtime-generated files can't go in public/ — Vite copies that at build
- * time — so they live in data/renders and are served through this route.)
- * NOTE: Render's disk is ephemeral — files survive restarts within a deploy
- * but not redeploys. Durable storage (R2/S3) is the known follow-up. */
-export const loader = async ({ params }: LoaderFunctionArgs) => {
-  const name = params.file || "";
-  if (!/^[a-zA-Z0-9_-]+\.mp4$/.test(name)) {
-    throw new Response("Not found", { status: 404 });
-  }
-  const filePath = path.join(process.cwd(), "data", "renders", name);
-  if (!fs.existsSync(filePath)) throw new Response("Not found", { status: 404 });
-  const stat = fs.statSync(filePath);
-  const stream = fs.createReadStream(filePath);
-  return new Response(stream as unknown as ReadableStream, {
-    headers: {
+/* Serves assembled UGC ad videos from the runtime render directory.
+ * (Runtime-generated files can't live in public/ — Vite copies that at build
+ * time — so they sit in data/renders and are served here.)
+ *
+ * CRITICAL: never hand a raw Node read stream to the Response. `<video>` fires
+ * Range requests and aborts connections; a stream 'error' with no listener is
+ * an uncaught exception that CRASHES the whole Node process (the "app crashes
+ * when the video is delivered, reload works" bug). We read bytes into a buffer
+ * and always return a plain Response — nothing can throw uncaught.
+ *
+ * Render's disk is ephemeral across redeploys — durable storage (R2/S3) is the
+ * known follow-up. */
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
+  try {
+    const name = params.file || "";
+    if (!/^[a-zA-Z0-9_-]+\.mp4$/.test(name)) {
+      return new Response("Not found", { status: 404 });
+    }
+    const filePath = path.join(process.cwd(), "data", "renders", name);
+    if (!fs.existsSync(filePath)) {
+      return new Response("Not found", { status: 404 });
+    }
+    const size = fs.statSync(filePath).size;
+    const baseHeaders: Record<string, string> = {
       "Content-Type": "video/mp4",
-      "Content-Length": String(stat.size),
-      "Cache-Control": "public, max-age=31536000, immutable",
       "Accept-Ranges": "bytes",
-    },
-  });
+      "Cache-Control": "public, max-age=31536000, immutable",
+    };
+
+    // Range request (video scrubbing, iOS/Safari) → 206 with just that slice.
+    const range = request.headers.get("range");
+    const m = range && /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (m) {
+      let start = m[1] ? parseInt(m[1], 10) : 0;
+      let end = m[2] ? parseInt(m[2], 10) : size - 1;
+      if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
+        return new Response("Range not satisfiable", {
+          status: 416,
+          headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" },
+        });
+      }
+      // cap slice size so a hostile Range can't balloon memory
+      end = Math.min(end, size - 1, start + 8 * 1024 * 1024 - 1);
+      const fd = fs.openSync(filePath, "r");
+      try {
+        const len = end - start + 1;
+        const buf = Buffer.allocUnsafe(len);
+        fs.readSync(fd, buf, 0, len, start);
+        return new Response(buf, {
+          status: 206,
+          headers: {
+            ...baseHeaders,
+            "Content-Range": `bytes ${start}-${end}/${size}`,
+            "Content-Length": String(len),
+          },
+        });
+      } finally {
+        fs.closeSync(fd);
+      }
+    }
+
+    // No range → whole file as a buffer (these clips are a few MB).
+    const buf = fs.readFileSync(filePath);
+    return new Response(buf, { headers: { ...baseHeaders, "Content-Length": String(size) } });
+  } catch (e) {
+    console.error("[renders] serve failed:", e);
+    return new Response("Server error", { status: 500 });
+  }
 };

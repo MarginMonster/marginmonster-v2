@@ -19,6 +19,7 @@ import {
   Divider,
   EmptyState,
   Select,
+  Checkbox,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -232,6 +233,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const customPrompt = (form.get("customPrompt") as string)?.trim() || undefined;
     const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
     const productDescription = ((form.get("productDescription") as string) || "").trim() || undefined;
+    const captions = form.get("captions") !== "off";
     if (!productTitle) return json({ error: "Give your video a product or subject." });
 
     await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
@@ -242,6 +244,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       avatarVariant,
       productImageUrl,
       productDescription,
+      captions,
     });
     return json({ ok: true, queued: true });
   }
@@ -420,6 +423,7 @@ export default function Videos() {
   const [productTitle, setProductTitle] = useState("");
   const [avatarId, setAvatarId] = useState<string>(brandFace?.id || ""); // "" = product only
   const [avatarVariant, setAvatarVariant] = useState(brandFace?.variant ?? 0); // wardrobe slot 0-3
+  const [captionsOn, setCaptionsOn] = useState(true);
   const [visibleCount, setVisibleCount] = useState(CAST_PREVIEW_COUNT);
 
   // only presenters whose portraits exist on this deploy; brand face pinned
@@ -527,6 +531,7 @@ export default function Videos() {
         customPrompt: seed?.prompt ?? customPrompt,
         productImageUrl: seed ? "" : pick?.image || "",
         productDescription: seed ? "" : pick?.description || "",
+        captions: captionsOn ? "on" : "off",
       },
       { method: "post" }
     );
@@ -760,6 +765,13 @@ export default function Videos() {
                   ))}
                 </div>
               </BlockStack>
+
+              <Checkbox
+                label="Burn in on-screen captions"
+                helpText="Bold word-by-word captions like top TikTok/Reels ads. Turn off for a clean, caption-free cut."
+                checked={captionsOn}
+                onChange={setCaptionsOn}
+              />
 
               <div className="mm-forge-cta">
                 <button

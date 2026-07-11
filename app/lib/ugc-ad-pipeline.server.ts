@@ -45,6 +45,7 @@ interface UgcAdParams {
   avatarId: string;
   avatarVariant?: number;
   direction?: string; // merchant's custom prompt
+  captions?: boolean; // burn in on-screen captions (default true)
   jobId?: string; // enables stage checkpointing
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
@@ -115,11 +116,34 @@ async function downloadBuffer(url: string): Promise<Buffer> {
 
 /* ---------- Voice casting ---------- */
 
-function pickVoice(desc: string): string {
-  // Only ids documented in the model schema — guaranteed valid. Expand later.
-  return /\b(woman|girl|lady|abuela|grandma|mom)\b/i.test(desc)
-    ? "English_Wiselady"
-    : "English_Deep-VoicedGentleman";
+// Verified-working MiniMax speech-02 system voices (each one render-tested).
+// Two pools so presenters don't all sound alike; a stable per-avatar pick
+// keeps the SAME presenter's voice consistent across all their videos.
+const VOICES_FEMALE = [
+  "English_Wiselady", "English_Graceful_Lady", "English_CalmWoman",
+  "English_ConfidentWoman", "English_PlayfulGirl", "English_SereneWoman",
+  "English_FriendlyPerson", "English_Soft-spokenGirl", "English_captivating_female1",
+  "English_Kind-heartedGirl", "English_UpsetGirl", "English_Whispering_girl",
+];
+const VOICES_MALE = [
+  "English_Deep-VoicedGentleman", "English_Trustworth_Man", "English_Aussie_Bloke",
+  "English_PatientMan", "English_ManWithDeepVoice", "English_MaturePartner",
+  "English_Diligent_Man", "English_Gentle-voiced_man", "English_ReservedYoungMan",
+  "English_magnetic_voiced_man", "English_Comedian",
+];
+
+function hashId(id: string): number {
+  let h = 5381;
+  for (let i = 0; i < id.length; i++) h = ((h * 33) ^ id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function pickVoice(avatarId: string, desc: string): string {
+  const female = /\b(woman|girl|lady|female|mom|grandma|abuela|she|her)\b/i.test(desc);
+  const male = /\b(man|men|guy|male|gentleman|boy|dad|uncle|grandpa|bloke|dude|him|his)\b/i.test(desc);
+  const h = hashId(avatarId);
+  const pool = female && !male ? VOICES_FEMALE : male && !female ? VOICES_MALE : (h % 2 ? VOICES_MALE : VOICES_FEMALE);
+  return pool[h % pool.length];
 }
 
 /* ---------- Caption + assembly helpers ---------- */
@@ -304,7 +328,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const freshTts = async (): Promise<string> => {
     const ttsId = await repCreate("minimax/speech-02-turbo", {
       text: script,
-      voice_id: pickVoice(avatar.desc),
+      voice_id: pickVoice(avatar.id, avatar.desc),
     });
     return repPoll(ttsId, 3 * 60_000, "tts");
   };
@@ -388,7 +412,11 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
-    assemble({ talkingPath, audioPath, productImagePath, script, outPath, lipSynced: engine === "omni-human" });
+    assemble({
+      talkingPath, audioPath, productImagePath, outPath,
+      script: params.captions === false ? "" : script, // "" = no captions
+      lipSynced: engine === "omni-human",
+    });
 
     const asset = await db.asset.create({
       data: {
