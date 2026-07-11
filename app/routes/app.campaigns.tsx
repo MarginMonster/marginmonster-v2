@@ -857,9 +857,9 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           </g>
           <Bubble delay={7.5} char="♪" />
         </g>
-        {/* desert: water carrier, miner, the snake charmer, the treasure hunter */}
-        <g transform={`translate(${STEP + 700}, 402)`}>
-          <g className="qh-walker" style={{ ["--px" as string]: "130px", ["--pd" as string]: "32s" }}>
+        {/* desert: the water carrier crosses the RIVER BY THE BRIDGE, like a person */}
+        <g transform={`translate(${STEP + 715}, 326)`}>
+          <g className="qh-walker" style={{ ["--px" as string]: "290px", ["--pd" as string]: "42s" }}>
             <g className="qh-stepbob">
               <NpcBody tunic="#c9764a" skin="#c98a5a" hat={<rect x="1" y="-19" width="6" height="5" rx="1" fill="#d9a04e" />} />
             </g>
@@ -912,12 +912,41 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             <animate attributeName="opacity" values="1;1;0" keyTimes="0;.8;1" dur="2.6s" repeatCount="indefinite" />
           </circle>
         </g>
-        <g transform={`translate(${STEP * 2 + 800}, 516)`}>
-          <ellipse cx="14" cy="6" rx="7" ry="3" fill="#0e4a6a" />
-          <NpcBody tunic="#5a4a8a" walking={false} hat={<rect x="0" y="-16" width="8" height="3" fill="#e8842a" />} />
-          <path d="M 8 -10 q 8 -4 12 4" stroke="#5a3d20" strokeWidth="1.5" fill="none" />
-          <g className="qh-bobline"><line x1="18" y1="-4" x2="18" y2="5" stroke="#dff2ff" strokeWidth="1" opacity="0.7" /></g>
-        </g>
+        {/* the ice-fishing club — three regulars, three holes, zero fish */}
+        {[
+          { x: STEP * 2 + 800, y: 516, tunic: "#5a4a8a", hat: "#e8842a", flip: false },
+          { x: STEP * 2 + 630, y: 548, tunic: "#a83a4a", hat: "#3a6ea8", flip: true },
+          { x: STEP * 2 + 930, y: 556, tunic: "#2a6a4e", hat: "#e8c15a", flip: false },
+        ].map((f, fi) => (
+          <g key={`if${fi}`} transform={`translate(${f.x}, ${f.y})${f.flip ? " scale(-1, 1)" : ""}`}>
+            <ellipse cx="14" cy="6" rx="7" ry="3" fill="#0e4a6a" />
+            <NpcBody tunic={f.tunic} walking={false} hat={<rect x="0" y="-16" width="8" height="3" fill={f.hat} />} />
+            <path d="M 8 -10 q 8 -4 12 4" stroke="#5a3d20" strokeWidth="1.5" fill="none" />
+            <g className="qh-bobline" style={{ animationDelay: `${fi * 1.1}s` }}>
+              <line x1="18" y1="-4" x2="18" y2="5" stroke="#dff2ff" strokeWidth="1" opacity="0.7" />
+            </g>
+          </g>
+        ))}
+        {/* bears — one per wilderness, minding their own business */}
+        {[
+          { x: 292, y: 252, fur: "#8a5f38", dark: "#6d4a2a", px: "90px", pd: "48s" },
+          { x: STEP * 2 + 240, y: 384, fur: "#eef2fa", dark: "#c9d2e8", px: "110px", pd: "52s" },
+          { x: STEP * 3 + 430, y: 432, fur: "#3d3028", dark: "#2a201a", px: "80px", pd: "44s" },
+        ].map((b, bi) => (
+          <g key={`br${bi}`} transform={`translate(${b.x}, ${b.y})`} shapeRendering="crispEdges">
+            <g className="qh-walker" style={{ ["--px" as string]: b.px, ["--pd" as string]: b.pd }}>
+              <g className="qh-stepbob">
+                <rect x="0" y="-3" width="22" height="12" rx="4" fill={b.fur} />
+                <rect x="18" y="-9" width="8" height="8" rx="2" fill={b.fur} />
+                <circle cx="19" cy="-9" r="1.8" fill={b.fur} /><circle cx="24.5" cy="-9" r="1.8" fill={b.fur} />
+                <rect x="25" y="-5" width="2.5" height="2" fill={b.dark} />
+                <circle cx="22" cy="-6" r="0.9" fill="#14102a" />
+                <g className="qh-fA"><rect x="2" y="9" width="3.5" height="6" fill={b.dark} /><rect x="15" y="9" width="3.5" height="6" fill={b.dark} /></g>
+                <g className="qh-fB"><rect x="6" y="9" width="3.5" height="6" fill={b.dark} /><rect x="11.5" y="9" width="3.5" height="6" fill={b.dark} /></g>
+              </g>
+            </g>
+          </g>
+        ))}
         <g transform={`translate(${STEP * 2 + 1060}, 330)`}>
           <NpcBody tunic="#2fa86a" walking={false} hat={<g><circle cx="2" cy="-12" r="2" fill="#8ee89c" stroke="#1c5a2e" strokeWidth="0.8" /><circle cx="6.5" cy="-12" r="2" fill="#8ee89c" stroke="#1c5a2e" strokeWidth="0.8" /></g>} />
           <path d="M 10 -2 l 5 0 l 1.5 4 q -4 3 -8 0 Z" fill="#b77bff" opacity="0.9" />
@@ -1093,7 +1122,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
         {[
           { path: "M 320 614 q 100 -8 200 0 q 100 8 190 -2", dur: 24 },
           { path: `M ${STEP * 3 + 110} 612 q 130 -10 260 0 q 130 10 250 -4`, dur: 28 },
-          { path: `M ${STEP * 2 + 700} 532 a 85 22 0 1 0 170 0 a 85 22 0 1 0 -170 0`, dur: 17 },
+          { path: `M ${STEP * 3 + 1120} 606 a 70 18 0 1 0 140 0 a 70 18 0 1 0 -140 0`, dur: 16 },
         ].map((s, i) => (
           <g key={`sh${i}`}>
             <g>
