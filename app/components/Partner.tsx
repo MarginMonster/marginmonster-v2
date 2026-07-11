@@ -25,14 +25,20 @@ export function Partner({
   accent,
   frames = 3,
   className,
+  srcs,
 }: {
   img: string;
   accent: string;
   /** 3 = full flipbook (base/blink/cheer), 1 = static art (foe etc.) */
   frames?: 1 | 3;
   className?: string;
+  /** Override art entirely (companion gallery / custom forged art). When set,
+   *  `img` is only used for the animation stagger. Missing b/c fall back to a. */
+  srcs?: { a: string; b?: string; c?: string };
 }) {
-  const src = (s: string) => `/fighters/mons/${img}${s}.png?v=${ART_V}`;
+  const src = srcs
+    ? (s: string) => (s === "_b" ? srcs.b || srcs.a : s === "_c" ? srcs.c || srcs.a : srcs.a)
+    : (s: string) => `/fighters/mons/${img}${s}.png?v=${ART_V}`;
   // Per-character stagger so the roster never animates in unison — each partner
   // starts mid-cycle at its own offset via negative animation-delay (brand.css
   // also multiplies this for the sway/float/aura layers). Quarter-cycle spread

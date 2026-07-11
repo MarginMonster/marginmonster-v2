@@ -13,6 +13,10 @@ import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
 import { unlockAchievement } from "../lib/xp.server";
+import { COMPANIONS, COMPANION_BY_ID, CATEGORY_LABEL, companionSrcs, type CompanionCategory } from "../lib/companions";
+import { enqueueJob } from "../lib/job-queue.server";
+import fsMod from "node:fs";
+import pathMod from "node:path";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -20,15 +24,61 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { domain: session.shop },
     include: { activePlan: true },
   });
+  // gallery availability: only show companions whose art actually shipped
+  let installed: string[] = [];
+  try {
+    const files = new Set(fsMod.readdirSync(pathMod.join(process.cwd(), "public", "companions")));
+    installed = COMPANIONS.filter((c) => files.has(`${c.id}.png`)).map((c) => c.id);
+  } catch { /* gallery not installed yet */ }
+  // is a forge currently running?
+  let forging = false;
+  try {
+    if (shop) {
+      const j = await db.job.findFirst({ where: { shopId: shop.id, type: "FORGE_COMPANION", status: { in: ["PENDING", "IN_PROGRESS"] } } });
+      forging = !!j;
+    }
+  } catch { /* non-fatal */ }
   return json({
     currentPlan: shop?.activePlan?.type || null,
     currentReview: shop?.activePlan?.reviewMode || "REVIEW_FIRST",
+    companionId: shop?.companionId || null,
+    companionName: shop?.companionName || null,
+    hasCustom: !!shop?.companionArt,
+    shopId: shop?.id || "",
+    installed,
+    forging,
   });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, billing } = await authenticate.admin(request);
   const form = await request.formData();
+  const intent = form.get("intent") as string | null;
+
+  // ---- companion intents (no billing involved) ----
+  if (intent === "setCompanion") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return json({ error: "Shop not found" });
+    const id = (form.get("companionId") as string) || "";
+    if (id !== "custom" && !COMPANION_BY_ID[id]) return json({ error: "Unknown companion" });
+    if (id === "custom" && !shop.companionArt) return json({ error: "Forge a custom companion first" });
+    const nick = ((form.get("companionName") as string) || "").trim().slice(0, 24);
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { companionId: id, companionName: nick || (id === "custom" ? shop.companionName : COMPANION_BY_ID[id]?.name) },
+    });
+    return json({ companionSet: true });
+  }
+  if (intent === "forgeCompanion") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return json({ error: "Shop not found" });
+    const prompt = ((form.get("prompt") as string) || "").trim();
+    const name = ((form.get("name") as string) || "").trim();
+    if (prompt.length < 8) return json({ error: "Describe your companion in a few words first." });
+    await enqueueJob(shop.id, "FORGE_COMPANION", { prompt, name: name || "PARTNER" });
+    return json({ forgeQueued: true });
+  }
+
   const planKey = form.get("planKey") as PlanKey;
   const reviewMode = (form.get("reviewMode") as "SET_AND_FORGET" | "REVIEW_FIRST") || "REVIEW_FIRST";
 
@@ -147,12 +197,28 @@ function PixelFoe() {
 }
 
 export default function Plans() {
-  const { currentPlan } = useLoaderData<typeof loader>();
+  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const billingError = actionData && "error" in actionData ? actionData.error : null;
   const confirmationUrl = actionData && "confirmationUrl" in actionData ? actionData.confirmationUrl : null;
+  const companionSet = !!(actionData && "companionSet" in actionData);
+  const forgeQueued = !!(actionData && "forgeQueued" in actionData);
   const submit = useSubmit();
   const nav = useNavigation();
+
+  // companion gallery state
+  const installedSet = new Set(installed);
+  const gallery = COMPANIONS.filter((c) => installedSet.has(c.id));
+  const [cat, setCat] = useState<CompanionCategory | "all">("all");
+  const [selId, setSelId] = useState<string | null>(companionId);
+  const [nick, setNick] = useState<string>(companionName || "");
+  const [forgeName, setForgeName] = useState("");
+  const [forgePrompt, setForgePrompt] = useState("");
+  const selDef = selId && selId !== "custom" ? COMPANION_BY_ID[selId] : null;
+  const selSrcs =
+    selId === "custom" && hasCustom
+      ? { a: `/companion-art/${shopId}/a`, b: `/companion-art/${shopId}/b`, c: `/companion-art/${shopId}/c` }
+      : selDef ? companionSrcs(selDef.id) : null;
 
   // Billing approval must be a TOP-LEVEL redirect (the confirmation page lives
   // on admin.shopify.com and can't load inside the embedded iframe → 401).
@@ -185,18 +251,19 @@ export default function Plans() {
     <Page
       fullWidth
       backAction={{ content: "Home", url: "/app" }}
-      title="Choose your partner"
-      subtitle="Every plan comes with a partner that does the marketing for you — pick yours and start growing today."
+      title="Expedition Packages"
+      subtitle="Pick the scale of your expedition, then choose (or forge) the companion who runs it for you."
     >
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">▶ CHOOSE YOUR PARTNER</span>
-            <h1><span className="mm-marquee">Pick your partner. Level up your store.</span></h1>
+            <span className="mm-eyebrow">▶ EXPEDITION PACKAGES</span>
+            <h1><span className="mm-marquee">Pick your package. Choose your companion.</span></h1>
             <p>
               You didn't start a business to grind through blog posts and video
-              edits. Team up with a partner that does the marketing for you —
-              it evolves as you grow, and every stage hits harder.
+              edits. Choose how big your expedition runs — then pick any
+              companion you like to run it. Your buddy is yours forever, no
+              matter how your package changes.
             </p>
           </div>
         </Layout.Section>
@@ -240,9 +307,9 @@ export default function Plans() {
           </div>
         </Layout.Section>
 
-        {/* Character-select — each tier is a stronger fighter */}
+        {/* Package select — each tier is a bigger expedition */}
         <Layout.Section>
-          <span className="mm-section-label">▶ CHOOSE YOUR PARTNER<span className="mm-dots">· · · · ·</span></span>
+          <span className="mm-section-label">▶ CHOOSE YOUR PACKAGE<span className="mm-dots">· · · · ·</span></span>
           <div className="mm-fighter-grid">
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
@@ -302,7 +369,7 @@ export default function Plans() {
                     onFocus={() => setPreviewKey(tier.key as PlanKey)}
                     disabled={isCurrent}
                   >
-                    {isCurrent ? "★ YOUR PARTNER" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ TEAM UP"}
+                    {isCurrent ? "★ YOUR PACKAGE" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SET OUT"}
                   </button>
                 </div>
               );
@@ -310,10 +377,118 @@ export default function Plans() {
           </div>
         </Layout.Section>
 
+        {/* Companion select — 48 chibi partners + the free forge */}
+        <Layout.Section>
+          <span className="mm-section-label">▶ CHOOSE YOUR COMPANION<span className="mm-dots">· · · · ·</span></span>
+          {companionSet && (
+            <div style={{ marginBottom: 12 }}>
+              <Banner tone="success" title="Companion recruited!"><p>Your new buddy is live in the HUD and out on the quest map already.</p></Banner>
+            </div>
+          )}
+          {(forgeQueued || forging) && (
+            <div style={{ marginBottom: 12 }}>
+              <Banner tone="info" title="⚒️ The forge is lit">
+                <p>Your custom companion is being forged — three animation frames, hand-cut. It installs itself automatically in a couple of minutes; check back or refresh.</p>
+              </Banner>
+            </div>
+          )}
+
+          <div className="cmp-wrap">
+            <div className="cmp-left">
+              <div className="cmp-filters">
+                <button type="button" className={`cmp-chip${cat === "all" ? " on" : ""}`} onClick={() => setCat("all")}>ALL ({gallery.length})</button>
+                {(Object.keys(CATEGORY_LABEL) as CompanionCategory[]).map((k) => (
+                  <button key={k} type="button" className={`cmp-chip${cat === k ? " on" : ""}`} onClick={() => setCat(k)}>{CATEGORY_LABEL[k]}</button>
+                ))}
+              </div>
+              <div className="cmp-grid">
+                {gallery.filter((c) => cat === "all" || c.cat === cat).map((c) => (
+                  <button
+                    key={c.id} type="button"
+                    className={`cmp-card${selId === c.id ? " on" : ""}${companionId === c.id ? " mine" : ""}`}
+                    style={{ ["--acc" as string]: c.accent }}
+                    onClick={() => { setSelId(c.id); setNick(""); }}
+                    title={`${c.name} — ${c.vibe}`}
+                  >
+                    <img src={companionSrcs(c.id).a} alt={c.name} loading="lazy" />
+                    <span className="nm">{c.name}</span>
+                  </button>
+                ))}
+                {gallery.length === 0 && (
+                  <p style={{ fontFamily: "ui-monospace, monospace", color: "#7d7da8", fontSize: 13 }}>
+                    The companion roster is still marching in — check back shortly.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="cmp-right">
+              {/* live preview with the full flipbook animation */}
+              <div className="cmp-preview">
+                {selSrcs ? (
+                  <>
+                    <div className="cmp-stage" style={{ ["--acc" as string]: selDef?.accent || "#34E7E4" }}>
+                      <Partner img={selId || "custom"} accent={selDef?.accent || "#34E7E4"} srcs={selSrcs} />
+                    </div>
+                    <div className="cmp-prevname">{selId === "custom" ? (companionName || "YOUR FORGED COMPANION") : selDef?.name}</div>
+                    <div className="cmp-prevvibe">{selId === "custom" ? "One of one" : selDef?.vibe}</div>
+                    <input
+                      className="qh-input" style={{ width: "100%", marginTop: 8 }}
+                      placeholder="Nickname (optional)" maxLength={24}
+                      value={nick} onChange={(e) => setNick(e.target.value)}
+                    />
+                    <button
+                      type="button" className="qh-start" style={{ marginTop: 10 }}
+                      disabled={nav.state !== "idle" || companionId === selId && !nick}
+                      onClick={() => submit({ intent: "setCompanion", companionId: selId!, companionName: nick }, { method: "post" })}
+                    >
+                      {companionId === selId ? "★ YOUR COMPANION" : "▶ MAKE IT MINE"}
+                    </button>
+                  </>
+                ) : (
+                  <p style={{ fontFamily: "ui-monospace, monospace", color: "#7d7da8", fontSize: 13, textAlign: "center" }}>
+                    Pick a companion from the roster to preview it — blink, cheer, aura and all.
+                  </p>
+                )}
+                {hasCustom && selId !== "custom" && (
+                  <button type="button" className="qh-mini-btn" style={{ marginTop: 10, width: "100%" }} onClick={() => setSelId("custom")}>
+                    👁 View your forged companion
+                  </button>
+                )}
+              </div>
+
+              {/* the forge — free, always */}
+              <div className="cmp-forge">
+                <div className="cmp-forge-title">⚒️ FORGE YOUR OWN — FREE</div>
+                <p className="cmp-forge-sub">Describe any companion you can imagine. We forge it in the house style with full animation frames.</p>
+                <input
+                  className="qh-input" style={{ width: "100%", marginBottom: 8 }}
+                  placeholder="Name it (e.g. SPROCKET)" maxLength={24}
+                  value={forgeName} onChange={(e) => setForgeName(e.target.value)}
+                />
+                <textarea
+                  className="qh-input" style={{ width: "100%", minHeight: 64, resize: "vertical" }}
+                  placeholder="a grumpy purple axolotl wearing a tiny wizard hat…"
+                  maxLength={220}
+                  value={forgePrompt} onChange={(e) => setForgePrompt(e.target.value)}
+                />
+                <button
+                  type="button" className="qh-start" style={{ marginTop: 10 }}
+                  disabled={nav.state !== "idle" || forging || forgeQueued || forgePrompt.trim().length < 8}
+                  onClick={() => submit({ intent: "forgeCompanion", name: forgeName, prompt: forgePrompt }, { method: "post" })}
+                >
+                  {forging || forgeQueued ? "⚒️ FORGING…" : "⚒️ FORGE COMPANION"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Layout.Section>
+
         <Layout.Section>
           <Text variant="bodySm" as="p" tone="subdued" alignment="center">
-            Need more than your plan includes? Drop in tokens anytime — no
-            upgrade required. Cancel or switch plans whenever you like.
+            Need more than your package includes? Drop in tokens anytime — no
+            upgrade required. Cancel or switch packages whenever you like. Your
+            companion stays with you either way.
           </Text>
         </Layout.Section>
       </Layout>

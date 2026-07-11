@@ -45,6 +45,14 @@ model Shop {
   // pre-cast on every Video Studio visit for cross-campaign consistency
   brandAvatarId      String?
   brandAvatarVariant Int     @default(0)
+  // Companion — the merchant's chosen chibi partner (companions.ts id, or
+  // "custom" with the forged art stored inline as base64 PNGs; disk on Render
+  // is ephemeral so custom art lives in the DB until the R2/S3 track)
+  companionId    String?
+  companionName  String?
+  companionArt   String? // custom base frame (base64 png)
+  companionArtB  String? // custom blink frame
+  companionArtC  String? // custom cheer frame
 
   brandProfile   BrandProfile?
   activePlan     Plan?
@@ -225,6 +233,7 @@ enum JobType {
   GENERATE_AD_COPY
   LAUNCH_CAMPAIGN
   DECISIONING_PASS
+  FORGE_COMPANION
 }
 
 enum JobStatus {

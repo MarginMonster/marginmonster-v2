@@ -14,7 +14,8 @@ import {
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
 import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
-import { Partner, PARTNER_BY_PLAN, type PlanKey } from "../components/Partner";
+import { Partner } from "../components/Partner";
+import { getCompanion } from "../lib/companion.server";
 
 const TIER_RANK: Record<string, number> = { STARTER: 0, GROWTH: 1, PRO: 2, SCALE: 3 };
 
@@ -86,7 +87,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tokens: 0, tier: "STARTER",
     brandFace: null as { id: string; variant: number } | null,
     castAvail: {} as Record<string, boolean>,
-    partner: null as { img: string; accent: string; name: string } | null,
+    partner: null as { img: string; accent: string; name: string; srcs?: { a: string; b?: string; c?: string } } | null,
     feed: [] as { ts: number; t: string; msg: string; tone: string; href?: string }[],
     renderingIds: [] as string[], working: false,
   };
@@ -107,8 +108,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     for (const a of AVATARS) if (files.has(`${a.id}_0.jpg`) || files.has(`${a.id}.jpg`)) castAvail[a.id] = true;
   } catch { /* empty roster */ }
 
-  const planType = (shop.activePlan?.type || "STARTER") as PlanKey;
-  const pd = PARTNER_BY_PLAN[planType] || PARTNER_BY_PLAN.STARTER;
+  const pd = getCompanion({
+    id: shop.id, companionId: shop.companionId, companionName: shop.companionName,
+    companionArt: shop.companionArt, planType: shop.activePlan?.type,
+  });
 
   /* Quest Journal — tales from the road. Only about ACTIVE questlines; every
    * entry maps a real pipeline event into the partner's voice, with a link to
@@ -188,7 +191,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tier: shop.activePlan?.type || "STARTER",
     brandFace: shop.brandAvatarId ? { id: shop.brandAvatarId, variant: shop.brandAvatarVariant ?? 0 } : null,
     castAvail,
-    partner: { img: pd.img, accent: pd.accent, name: pd.name },
+    partner: { img: pd.img, accent: pd.accent, name: pd.name, srcs: pd.srcs },
     feed,
     renderingIds,
     working,
@@ -365,7 +368,7 @@ const BIRD_LANES = [
 
 function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDay, onOpenBag, selectedIdx, selectedDay, destination, dayOf, duration }: {
   slots: QuestSlot[]; xpReward: number; rendering: boolean;
-  partner: { img: string; accent: string; name: string } | null;
+  partner: { img: string; accent: string; name: string; srcs?: { a: string; b?: string; c?: string } } | null;
   cargo: { title: string; image: string | null }[];
   onPick: (idx: number) => void; onPickDay: (day: number) => void; onOpenBag: () => void;
   selectedIdx: number | null; selectedDay: number | null;
@@ -1180,7 +1183,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
       </svg>
       {partner && (
         <div className="qh-partner" style={{ left: `${(here.x / PANO_W) * 100}%`, top: `${(here.y / MAP_H) * 100}%` }}>
-          <Partner img={partner.img} accent={partner.accent} />
+          <Partner img={partner.img} accent={partner.accent} srcs={partner.srcs} />
           {rendering && <span className="qh-work-tool" aria-hidden="true">⚒️</span>}
           <span className={`tag${rendering ? " working" : ""}`}>
             {rendering ? `FORGING AT ${curSpot}` : curSpot}
@@ -1519,7 +1522,7 @@ export default function Campaigns() {
 
       {/* Partner dialog — state-aware, always true */}
       <div className="qh-win qh-dialog" style={{ marginBottom: 16 }}>
-        <div className="art">{partner && <Partner img={partner.img} accent={partner.accent} />}</div>
+        <div className="art">{partner && <Partner img={partner.img} accent={partner.accent} srcs={partner.srcs} />}</div>
         <p><span className="nm">{pName}:</span> {dialog}<span className="qh-curs">▊</span></p>
       </div>
 

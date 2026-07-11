@@ -12,6 +12,7 @@ import { db } from "../db.server";
 import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
 import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
 import { Partner, PARTNER_BY_PLAN } from "../components/Partner";
+import { getCompanion } from "../lib/companion.server";
 import { totalXpForLevel } from "../lib/achievements";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
@@ -41,6 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     planKey: PlanKey | null;
     planLabel: string;
     img: string | null;
+    srcs?: { a: string; b?: string; c?: string };
     accent: string;
     tokens: number;
     tokensPct: number; // health = % of wallet remaining
@@ -97,6 +99,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         ads: Math.floor(remaining / TOKEN_COST.image),
       };
     }
+    // The companion outranks the plan mascot everywhere it's been chosen.
+    if (shop) {
+      const comp = getCompanion({
+        id: shop.id, companionId: shop.companionId, companionName: shop.companionName,
+        companionArt: shop.companionArt, planType: plan?.type,
+      });
+      hud.img = comp.img;
+      hud.accent = comp.accent;
+      hud.srcs = comp.srcs;
+    }
   } catch (e) {
     console.error("[app hud] failed to load player stats:", e);
   }
@@ -104,7 +116,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({ apiKey: process.env.SHOPIFY_API_KEY || "", hud, levelUp });
 };
 
-function LevelUpPopup({ level, gift, img, accent, onClose }: { level: number; gift: number; img: string | null; accent: string; onClose: () => void }) {
+function LevelUpPopup({ level, gift, img, accent, srcs, onClose }: { level: number; gift: number; img: string | null; accent: string; srcs?: { a: string; b?: string; c?: string }; onClose: () => void }) {
   const isVideoGift = gift >= 60;
   return (
     <div className="mm-lvlup-overlay" role="dialog" aria-label={`Level ${level} reached`}>
@@ -116,7 +128,7 @@ function LevelUpPopup({ level, gift, img, accent, onClose }: { level: number; gi
         </div>
         {img && (
           <div className="mm-lvlup-partner">
-            <Partner img={img} accent={accent} />
+            <Partner img={img} accent={accent} srcs={srcs} />
           </div>
         )}
         <div className="mm-lvlup-title">⭐ LEVEL {level}! ⭐</div>
@@ -151,6 +163,7 @@ export default function App() {
           gift={levelUp.gift}
           img={hud.img}
           accent={hud.accent}
+          srcs={hud.srcs}
           onClose={() => setShowLevelUp(false)}
         />
       )}
@@ -159,7 +172,7 @@ export default function App() {
         <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>
           {hud.img ? (
             <span className="mm-hud-sprite" aria-hidden="true">
-              <Partner img={hud.img} accent={hud.accent} />
+              <Partner img={hud.img} accent={hud.accent} srcs={hud.srcs} />
             </span>
           ) : (
             <span className="mm-hud-face">🎮</span>

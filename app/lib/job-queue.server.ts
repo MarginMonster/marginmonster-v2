@@ -227,6 +227,15 @@ async function runJob(
       break;
     }
 
+    case "FORGE_COMPANION": {
+      // Free custom companion: base + blink + cheer frames, cut out, stored
+      // in the DB, installed as the shop's active partner. Lazy import keeps
+      // the replicate helpers out of the hot path.
+      const { forgeCompanion } = await import("./companion.server");
+      await forgeCompanion(shopId, payload.prompt as string, payload.name as string);
+      break;
+    }
+
     case "GENERATE_AD_COPY": {
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
