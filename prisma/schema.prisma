@@ -57,9 +57,9 @@ model Shop {
   questlines     Questline[]
 }
 
-/* Campaigns reframed as game Questlines — an automated content-and-posting
- * mission with a live objective log, token cost paid upfront, and XP/reward
- * milestones. Distinct from Campaign (which models a single platform ad). */
+// Campaigns reframed as game Questlines — an automated content-and-posting
+// mission with a live objective log, token cost paid upfront, and XP/reward
+// milestones. Distinct from Campaign (which models a single platform ad).
 model Questline {
   id             String    @id @default(cuid())
   shopId         String
