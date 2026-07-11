@@ -8,7 +8,7 @@ import { Page, Banner, Box } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
-import { acceptQuestline, rescheduleSlot, abandonQuestline } from "../lib/questlines.server";
+import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem } from "../lib/questlines.server";
 import {
   QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
@@ -225,6 +225,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       (form.get("time") as string) || ""
     );
     return json(res.ok ? { rescheduled: true } : { error: res.error });
+  }
+
+  if (intent === "swapItem") {
+    const res = await swapQuestlineItem(
+      shop.id,
+      (form.get("questlineId") as string) || "",
+      (form.get("fromTitle") as string) || "",
+      { title: (form.get("toTitle") as string) || "", image: ((form.get("toImage") as string) || "").trim() || null }
+    );
+    return json(res.ok ? { swapped: res.swapped } : { error: res.error });
   }
 
   if (intent === "pauseToggle") {
@@ -1048,17 +1058,20 @@ export default function Campaigns() {
   };
   const [bagView, setBagView] = useState<string | null>(null);
 
-  /** Unique items riding in a quest's bag, with how many drops each stars in. */
-  const bagContents = (slots: QuestSlot[]): { title: string; image: string | null; drops: number }[] => {
-    const m = new Map<string, { title: string; image: string | null; drops: number }>();
+  /** Unique items riding in a quest's bag: total drops + how many are still
+   *  swappable (not yet forged). */
+  const bagContents = (slots: QuestSlot[]): { title: string; image: string | null; drops: number; future: number }[] => {
+    const m = new Map<string, { title: string; image: string | null; drops: number; future: number }>();
     for (const s of slots) {
       if (!s.productTitle) continue;
+      const swappable = s.status === "SCHEDULED" || s.status === "FAILED" ? 1 : 0;
       const cur = m.get(s.productTitle);
-      if (cur) cur.drops++;
-      else m.set(s.productTitle, { title: s.productTitle, image: s.productImageUrl, drops: 1 });
+      if (cur) { cur.drops++; cur.future += swappable; }
+      else m.set(s.productTitle, { title: s.productTitle, image: s.productImageUrl, drops: 1, future: swappable });
     }
     return Array.from(m.values());
   };
+  const [swapSel, setSwapSel] = useState<{ qid: string; fromTitle: string } | null>(null);
 
   return (
     <Page backAction={{ content: "Home", url: "/app" }}>
@@ -1077,6 +1090,9 @@ export default function Campaigns() {
       )}
       {refunded > 0 && (
         <Box paddingBlockEnd="300"><Banner tone="success" title="Quest abandoned"><p>{refunded} tokens refunded for content that hadn't been forged yet. Finished content stays in your library.</p></Banner></Box>
+      )}
+      {actionData && "swapped" in actionData && (
+        <Box paddingBlockEnd="300"><Banner tone="success" title="⇄ Cargo swapped"><p>{actionData.swapped as number} upcoming drop{(actionData.swapped as number) === 1 ? "" : "s"} now star the new item. Already-forged content keeps its original star.</p></Banner></Box>
       )}
 
       {/* Active expeditions — the adventure boards */}
@@ -1173,29 +1189,67 @@ export default function Campaigns() {
               </div>
             );
           })()}
-          {/* the bag was tapped — everything auto-posting this month */}
+          {/* the bag was tapped — everything auto-posting this month, swappable */}
           {bagView === q.id && (() => {
             const items = bagContents(q.slots);
+            const swapping = swapSel?.qid === q.id ? swapSel.fromTitle : null;
+            const inBagTitles = new Set(items.map((it) => it.title));
             return (
               <div className="qh-slot-editor">
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div className="spot">🎒 IN THE BAG — AUTO-POSTING THIS MONTH</div>
-                  <div className="meta" style={{ margin: "6px 0 10px" }}>
-                    {pName} carries {items.length === 1 ? "this item" : `these ${items.length} items`} the whole expedition, starring them across the month's drops.
-                  </div>
-                  <div className="qh-bagpanel-items">
-                    {items.map((it, i) => (
-                      <div key={i} className="qh-bagpanel-item">
-                        {it.image ? <img src={it.image} alt="" /> : <span style={{ fontSize: 22 }}>🛍️</span>}
-                        <span>
-                          <span className="nm">{it.title}</span>
-                          <span className="ct">{it.drops} DROP{it.drops === 1 ? "" : "S"}</span>
-                        </span>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  {swapping ? (
+                    <>
+                      <div className="spot">⇄ SWAP OUT: {swapping}</div>
+                      <div className="meta" style={{ margin: "6px 0 10px" }}>
+                        Pick the new star from your catalog. Every drop of {swapping} that isn't forged yet switches over — finished content keeps its original star.
                       </div>
-                    ))}
-                  </div>
+                      <div className="qh-bag" style={{ maxHeight: 200 }}>
+                        {products.filter((p) => !inBagTitles.has(p.title)).map((p) => (
+                          <button
+                            key={p.id} type="button" className="qh-slot" title={`Swap in ${p.title}`}
+                            disabled={busy}
+                            onClick={() => {
+                              submit({ intent: "swapItem", questlineId: q.id, fromTitle: swapping, toTitle: p.title, toImage: p.image || "" }, { method: "post" });
+                              setSwapSel(null);
+                            }}
+                          >
+                            {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <span className="ph">🛍️</span>}
+                            <span className="qh-slot-name">{p.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="spot">🎒 IN THE BAG — AUTO-POSTING THIS MONTH</div>
+                      <div className="meta" style={{ margin: "6px 0 10px" }}>
+                        {pName} carries {items.length === 1 ? "this item" : `these ${items.length} items`} the whole expedition, starring them across the month's drops.
+                      </div>
+                      <div className="qh-bagpanel-items">
+                        {items.map((it, i) => (
+                          <div key={i} className="qh-bagpanel-item">
+                            {it.image ? <img src={it.image} alt="" /> : <span style={{ fontSize: 22 }}>🛍️</span>}
+                            <span>
+                              <span className="nm">{it.title}</span>
+                              <span className="ct">{it.drops} DROP{it.drops === 1 ? "" : "S"}{it.future > 0 ? ` · ${it.future} TO FORGE` : " · ALL FORGED"}</span>
+                            </span>
+                            <button
+                              type="button" className="qh-mini-btn" style={{ marginLeft: 6 }}
+                              disabled={it.future === 0 || busy}
+                              title={it.future === 0 ? "All of this item's drops are already forged" : `Swap ${it.title} out of the remaining ${it.future} drop${it.future === 1 ? "" : "s"}`}
+                              onClick={() => setSwapSel({ qid: q.id, fromTitle: it.title })}
+                            >
+                              ⇄ Swap
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
-                <button type="button" className="qh-mini-btn" onClick={() => setBagView(null)}>Close</button>
+                <button type="button" className="qh-mini-btn" onClick={() => { if (swapping) setSwapSel(null); else setBagView(null); }}>
+                  {swapping ? "← Back" : "Close"}
+                </button>
               </div>
             );
           })()}

@@ -191,6 +191,55 @@ export async function rescheduleSlot(shopId: string, questlineId: string, slotId
   return { ok: true };
 }
 
+/** Swap a bag item mid-quest: every FUTURE (not yet forged) drop starring the
+ *  old item now stars the new one. Forged content keeps its original star.
+ *  Pending generation jobs are re-pointed too. */
+export async function swapQuestlineItem(
+  shopId: string, questlineId: string, fromTitle: string,
+  to: { title: string; image: string | null }
+): Promise<{ ok: boolean; swapped?: number; error?: string }> {
+  const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
+  if (!q) return { ok: false, error: "Quest not found." };
+  if (!to.title?.trim()) return { ok: false, error: "Pick a replacement item." };
+  const schedule = parseSchedule(q.scheduleJson);
+  const changed = new Set<number>();
+  for (const s of schedule.slots) {
+    if (s.productTitle === fromTitle && (s.status === "SCHEDULED" || s.status === "FAILED")) {
+      s.productTitle = to.title.trim();
+      s.productImageUrl = to.image || null;
+      changed.add(s.idx);
+    }
+  }
+  if (changed.size === 0) return { ok: false, error: "Every drop starring that item is already forged — nothing left to swap." };
+
+  await db.questline.update({
+    where: { id: q.id },
+    data: {
+      scheduleJson: JSON.stringify(schedule),
+      // keep the cover summary in step with the bag
+      ...(q.productTitle === fromTitle ? { productTitle: to.title.trim(), productImageUrl: to.image || null } : {}),
+    },
+  });
+
+  // Re-point the pending generation jobs for those slots.
+  try {
+    const jobs = await db.job.findMany({ where: { shopId, status: "PENDING", payload: { contains: questlineId } } });
+    for (const j of jobs) {
+      try {
+        const p = JSON.parse(j.payload);
+        if (p.questlineId === questlineId && typeof p.slotIdx === "number" && changed.has(p.slotIdx)) {
+          p.productTitle = to.title.trim();
+          p.productImageUrl = to.image || undefined;
+          await db.job.update({ where: { id: j.id }, data: { payload: JSON.stringify(p) } });
+        }
+      } catch { /* skip */ }
+    }
+  } catch (e) {
+    console.error("[questline] swap job re-point failed (non-fatal):", e);
+  }
+  return { ok: true, swapped: changed.size };
+}
+
 /** Abandon: refund tokens for slots whose content hasn't been generated yet
  *  (SCHEDULED with a still-pending job), cancel those jobs, delete the quest.
  *  Forged content stays in the library. */
