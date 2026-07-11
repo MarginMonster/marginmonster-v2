@@ -30,9 +30,12 @@ export const OUTFITS = [
   { label: "Street", desc: "trendy streetwear with a graphic hoodie or denim jacket" },
 ] as const;
 
+// bump when the portrait set is replaced so browsers reload (not the stale cache)
+export const AVATAR_V = "2";
+
 export function avatarImg(id: string, variant: number = 0): string {
   const v = Math.max(0, Math.min(OUTFITS.length - 1, Math.floor(variant)));
-  return `/avatars/${id}_${v}.jpg`;
+  return `/avatars/${id}_${v}.jpg?v=${AVATAR_V}`;
 }
 
 /* How many avatars show before "VIEW MORE" expands the full cast. */

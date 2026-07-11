@@ -15,6 +15,16 @@ import { runDecisioningPass } from "./decisioning-engine.server";
 
 const MAX_ATTEMPTS = 3;
 
+/** Advance the questline that spawned this job, if any. Lazy import avoids a
+ *  circular dependency (questlines.server → job-queue for enqueueJob). */
+async function maybeTickQuestline(payload: Record<string, unknown>, shopId: string): Promise<void> {
+  const qid = payload.questlineId as string | undefined;
+  const okey = payload.objectiveKey as string | undefined;
+  if (!qid || !okey) return;
+  const { onQuestlineObjectiveDone } = await import("./questlines.server");
+  await onQuestlineObjectiveDone(qid, okey, shopId);
+}
+
 /** Jobs claimed by a process that died (deploy/restart) stay IN_PROGRESS
  *  forever and look "stuck rendering" to the merchant. Reclaim them: back to
  *  PENDING if they have attempts left, else FAILED with a clear reason.
@@ -130,6 +140,7 @@ async function runJob(
         payload.productTitle as string,
         payload.productDescription as string
       );
+      if (payload.prePaid) await maybeTickQuestline(payload, shopId);
       break;
     }
 
@@ -144,6 +155,7 @@ async function runJob(
         payload.productTitle as string,
         payload.productImageUrl as string | undefined
       );
+      if (payload.prePaid) await maybeTickQuestline(payload, shopId);
       break;
     }
 
@@ -185,15 +197,19 @@ async function runJob(
           customPrompt: payload.customPrompt as string | undefined,
         });
       }
-      // Success → burn one take from the plan allowance + pay video XP.
-      // (Non-fatal: economics must never un-render a finished video.)
+      // Accounting. Questline videos were pre-paid on accept (tokens) and don't
+      // touch the manual video quota; standalone Studio videos burn a take.
       try {
-        await db.plan.update({
-          where: { id: shop.activePlan.id },
-          data: { videoUsed: { increment: 1 } },
-        });
-        const xp = await awardXp(shopId, XP_EVENTS.videoGenerated);
-        if (xp?.leveledUp) await checkLevelAchievements(shopId, xp.level);
+        if (payload.prePaid) {
+          await maybeTickQuestline(payload, shopId);
+        } else {
+          await db.plan.update({
+            where: { id: shop.activePlan.id },
+            data: { videoUsed: { increment: 1 } },
+          });
+          const xp = await awardXp(shopId, XP_EVENTS.videoGenerated);
+          if (xp?.leveledUp) await checkLevelAchievements(shopId, xp.level);
+        }
       } catch (e) {
         console.error("[job] video accounting failed (non-fatal):", e);
       }

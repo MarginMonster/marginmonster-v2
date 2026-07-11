@@ -23,6 +23,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { key: "PLAYER_ONE", icon: "⭐", label: "Player One", desc: "Reach level 5", xp: 0, tokens: 10 },
   { key: "ARCADE_REGULAR", icon: "👾", label: "Arcade Regular", desc: "Reach level 10", xp: 0, tokens: 25 },
   { key: "HIGH_SCORE", icon: "🏆", label: "High Score", desc: "Reach level 25", xp: 0, tokens: 60 },
+  { key: "QUEST_COMPLETE", icon: "⚔️", label: "Questmaster", desc: "Complete your first campaign questline", xp: 0, tokens: 20 },
 ];
 
 export const ACHIEVEMENT_BY_KEY: Record<string, AchievementDef> = Object.fromEntries(

@@ -54,6 +54,32 @@ model Shop {
   campaigns      Campaign[]
   achievements   ShopAchievement[]
   landingPages   LandingPage[]
+  questlines     Questline[]
+}
+
+/* Campaigns reframed as game Questlines — an automated content-and-posting
+ * mission with a live objective log, token cost paid upfront, and XP/reward
+ * milestones. Distinct from Campaign (which models a single platform ad). */
+model Questline {
+  id             String    @id @default(cuid())
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  template       String    // template key (questlines.ts)
+  name           String    // game name shown to the merchant
+  status         String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETE
+  avatarId       String?   // brand face starring in this questline's content
+  avatarVariant  Int       @default(0)
+  reviewMode     String    @default("REVIEW_FIRST") // REVIEW_FIRST | SET_AND_FORGET
+  productTitle   String?
+  productImageUrl String?
+  objectivesJson String    // [{key,label,type,target,done}]
+  tokenCost      Int       @default(0) // charged upfront on accept
+  xpReward       Int       @default(0) // dropped on completion
+  progress       Int       @default(0) // 0-100
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([shopId, status])
 }
 
 model ShopAchievement {

@@ -788,6 +788,49 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-take-render-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .mm-buffer .ring { animation: none; } }
 
+/* ===== Campaign Questlines ===== */
+.mm-quest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.mm-quest {
+  border-radius: 16px; padding: 16px 16px 14px;
+  background: linear-gradient(180deg, #14122A 0%, #0B0A17 100%);
+  border: 1px solid rgba(52,231,228,0.3); box-shadow: 0 0 18px rgba(52,231,228,0.1);
+}
+.mm-quest-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.mm-quest-icon { font-size: 28px; line-height: 1; }
+.mm-quest-title { flex: 1; min-width: 0; }
+.mm-quest-title .nm { font-family: var(--font-heading); font-weight: 800; font-size: 16px; color: #fff; }
+.mm-quest-title .sub { font-size: 12px; color: #A8A2D0; margin-top: 2px; }
+.mm-quest-bar { height: 10px; border-radius: 999px; background: #0a1c26; border: 1px solid rgba(52,231,228,0.3); overflow: hidden; margin-bottom: 12px; }
+.mm-quest-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1fb6b3, #34E7E4 60%, #a9f7f4); box-shadow: 0 0 10px rgba(52,231,228,0.6); transition: width .5s ease; }
+.mm-quest-objs { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
+.mm-obj { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #C6C1E6; }
+.mm-obj.done { color: #8fe89c; }
+.mm-obj .ck { width: 20px; text-align: center; }
+.mm-obj .lb { flex: 1; }
+.mm-obj .ct { font-family: var(--font-pixel); font-size: 8px; color: #9A95C4; }
+.mm-quest-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.mm-questpick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.mm-questcard {
+  display: flex; flex-direction: column; border-radius: 16px; padding: 18px 16px 16px;
+  background: linear-gradient(180deg, #16132c 0%, #0B0A17 100%);
+  border: 1px solid rgba(255,255,255,0.10);
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.mm-questcard:hover:not(.locked) { transform: translateY(-3px); border-color: var(--mm-cyan); box-shadow: 0 0 24px rgba(52,231,228,0.18); }
+.mm-questcard.locked { opacity: 0.62; }
+.mm-questcard-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.mm-questcard-head .ic { font-size: 26px; }
+.mm-questcard-head .nm { font-family: var(--font-heading); font-weight: 800; font-size: 17px; color: #fff; flex: 1; }
+.mm-recur { font-family: var(--font-pixel); font-size: 6.5px; letter-spacing: .06em; color: #06231F; background: var(--mm-cyan); padding: 3px 6px; border-radius: 999px; }
+.mm-questcard .tag { font-size: 12.5px; color: #A8A2D0; line-height: 1.4; margin: 0 0 12px; }
+.mm-questcard-objs { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.mm-questcard-objs .row { font-size: 12.5px; color: #C6C1E6; display: flex; gap: 7px; }
+.mm-questcard-foot { display: flex; justify-content: space-between; font-family: var(--font-pixel); font-size: 8.5px; margin-bottom: 12px; }
+.mm-questcard-foot .cost { color: var(--arc-yellow); }
+.mm-questcard-foot .xp { color: var(--mm-cyan); }
+.mm-quest-accept { margin-top: auto; }
+
 /* Brand Face — the merchant's signature presenter */
 .mm-bf-tag {
   position: absolute; top: 8px; left: 8px; z-index: 2;

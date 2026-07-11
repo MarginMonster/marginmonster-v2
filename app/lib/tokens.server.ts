@@ -65,3 +65,27 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
   await onTokensSpent(shopId, cost);
   return { remaining: remaining - cost, charged: cost };
 }
+
+/** Spend a flat token amount (e.g. accepting a Questline up front). Throws if
+ *  the wallet can't cover it. Same allowance-first, then top-up logic. */
+export async function spendTokens(shopId: string, amount: number): Promise<{ remaining: number }> {
+  if (amount <= 0) return { remaining: 0 };
+  let plan = await db.plan.findUnique({ where: { shopId } });
+  if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
+  plan = await refreshPeriod(plan);
+
+  const remaining = tokensRemaining(plan);
+  if (remaining < amount) {
+    const e = new Error(`Not enough tokens — needs ${amount}, you have ${remaining}. Top up on the Plans page.`);
+    e.name = "InsufficientTokensError";
+    throw e;
+  }
+  const fromAllowance = Math.min(amount, Math.max(0, plan.tokensIncluded - plan.tokensUsed));
+  const fromExtra = amount - fromAllowance;
+  await db.plan.update({
+    where: { id: plan.id },
+    data: { tokensUsed: { increment: fromAllowance }, tokensExtra: { decrement: fromExtra } },
+  });
+  await onTokensSpent(shopId, amount);
+  return { remaining: remaining - amount };
+}

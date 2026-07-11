@@ -199,7 +199,7 @@ export default function App() {
         <Link to="/app/products">SEO Forge</Link>
         <Link to="/app/funnels">Landing Pages</Link>
         <Link to="/app/connect">Ad Accounts</Link>
-        <Link to="/app/campaigns">Campaigns</Link>
+        <Link to="/app/campaigns">Campaign Quests</Link>
         <Link to="/app/performance">Performance & ROI</Link>
       </NavMenu>
       <div className="mm-asteroids" aria-hidden="true">
