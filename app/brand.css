@@ -990,6 +990,43 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-cargo img { width: 30px; height: 30px; object-fit: cover; border-radius: 3px; border: 1px solid #3e3e66; display: block; }
 .qh-cargo .lb { font-family: var(--font-pixel); font-size: 6.5px; letter-spacing: .08em; color: var(--arc-yellow); }
 
+/* ===== map life: walkers, workers, talkers ===== */
+/* patrol: walk out, flip (mirror), walk home — no vanishing acts */
+.qh-walker {
+  transform-box: fill-box; transform-origin: center;
+  animation: qh-patrol var(--pd, 24s) linear infinite;
+}
+@keyframes qh-patrol {
+  0% { transform: translateX(0) scaleX(1); }
+  47% { transform: translateX(var(--px, 160px)) scaleX(1); }
+  53% { transform: translateX(var(--px, 160px)) scaleX(-1); }
+  97% { transform: translateX(0) scaleX(-1); }
+  100% { transform: translateX(0) scaleX(1); }
+}
+/* two-frame gait, hard-cut like a real flipbook (matches the partner sprites) */
+.qh-fA { animation: qh-frameA 0.5s steps(1, end) infinite; }
+.qh-fB { animation: qh-frameB 0.5s steps(1, end) infinite; }
+@keyframes qh-frameA { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes qh-frameB { 0%, 49% { opacity: 0; } 50%, 100% { opacity: 1; } }
+.qh-stepbob { animation: qh-stepbob 0.5s steps(2, end) infinite; }
+@keyframes qh-stepbob { 0% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } 100% { transform: translateY(0); } }
+/* workers: axe/hammer/hoe swings + a fishing line that never catches anything */
+.qh-swing { transform-box: fill-box; transform-origin: 15% 90%; animation: qh-swing-work 1.15s ease-in-out infinite; }
+@keyframes qh-swing-work { 0%, 100% { transform: rotate(-52deg); } 45% { transform: rotate(18deg); } 60% { transform: rotate(14deg); } }
+.qh-bobline { animation: qh-bobline 3.2s ease-in-out infinite; }
+@keyframes qh-bobline { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+/* speech bubbles — villagers gossip on a lazy loop */
+.qh-bubble { opacity: 0; animation: qh-bubble 11s ease-in-out infinite; animation-delay: var(--bd, 0s); }
+@keyframes qh-bubble { 0%, 54% { opacity: 0; } 60%, 84% { opacity: 1; } 90%, 100% { opacity: 0; } }
+/* ship: slow rock on the swell */
+.qh-shiprock { transform-box: fill-box; transform-origin: center bottom; animation: qh-shiprock 4.6s ease-in-out infinite; }
+@keyframes qh-shiprock { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .qh-walker, .qh-fA, .qh-fB, .qh-stepbob, .qh-swing, .qh-bobline, .qh-bubble, .qh-shiprock { animation: none; }
+  .qh-fB { opacity: 0; }
+  .qh-bubble { opacity: 0; }
+}
+
 /* quest book accordion + journal */
 .qh-quest-entry { border-bottom: 1px solid #1c1c38; padding-bottom: 4px; margin-bottom: 4px; }
 .qh-quest-entry:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }

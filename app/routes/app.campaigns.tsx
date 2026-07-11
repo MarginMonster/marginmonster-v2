@@ -246,6 +246,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 const NODE_ICON: Record<string, string> = { video: "🎬", image: "🖼", blog: "📝", post: "📣" };
 
+/* Tiny pixel villagers — biome-dressed locals who walk, work, and gossip so
+ * the world never feels lonely. Two-frame gait, mirrored patrols. */
+function NpcBody({ tunic, skin = "#e8b48a", hat, walking = true }: { tunic: string; skin?: string; hat?: React.ReactNode; walking?: boolean }) {
+  return (
+    <g shapeRendering="crispEdges">
+      <rect x="1" y="-14" width="6" height="6" fill={skin} />
+      {hat}
+      <rect x="0" y="-8" width="8" height="8" fill={tunic} />
+      {walking ? (
+        <>
+          <g className="qh-fA"><rect x="1" y="0" width="2.5" height="5" fill="#2a2438" /><rect x="4.5" y="0" width="2.5" height="5" fill="#2a2438" /></g>
+          <g className="qh-fB"><rect x="2.8" y="0" width="2.5" height="5" fill="#2a2438" /></g>
+        </>
+      ) : (
+        <><rect x="1" y="0" width="2.5" height="5" fill="#2a2438" /><rect x="4.5" y="0" width="2.5" height="5" fill="#2a2438" /></>
+      )}
+    </g>
+  );
+}
+function Bubble({ delay, shout = false }: { delay: number; shout?: boolean }) {
+  return (
+    <g className="qh-bubble" style={{ ["--bd" as string]: `${delay}s` }}>
+      <rect x="-8" y="-31" width="21" height="12" rx="4" fill="#fdfdf4" stroke="#2a2438" strokeWidth="1.2" />
+      <path d="M 0 -19 l 3 4 l 2 -4 Z" fill="#fdfdf4" />
+      {shout ? (
+        <text x="2.5" y="-21.5" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#2a2438">!</text>
+      ) : (
+        <g fill="#2a2438"><circle cx="-2.5" cy="-25" r="1.2" /><circle cx="2.5" cy="-25" r="1.2" /><circle cx="7.5" cy="-25" r="1.2" /></g>
+      )}
+    </g>
+  );
+}
+
 /* ---- The painted panorama ----
  * The month is a journey across FOUR stitched pixel-art worlds (meadow ->
  * desert -> tundra -> volcano), blended at the seams with gradient masks.
@@ -544,23 +577,25 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           <circle r="4" fill="#f2a3c4"><animateMotion dur="11s" repeatCount="indefinite" path="M 500 300 q 40 -30 80 0 q 40 30 80 0 q -60 40 -160 0 Z" /></circle>
           <circle r="4" fill="#8fd4f2"><animateMotion dur="14s" begin="3s" repeatCount="indefinite" path="M 900 320 q -30 -40 -70 -10 q -30 30 10 50 q 50 10 60 -40 Z" /></circle>
         </g>
-        <g>
-          <g>
-            <ellipse cx="0" cy="0" rx="7" ry="5" fill="#f4f0e6" />
-            <rect x="-4" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" /><rect x="1" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" />
-            <animateMotion dur="9s" repeatCount="indefinite" path="M 545 332 q 14 -18 28 0 q 14 -18 28 0 q 14 -18 28 0 q 14 -18 28 0" />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" dur="9s" repeatCount="indefinite" />
+        <g transform="translate(545, 328)">
+          <g className="qh-walker" style={{ ["--px" as string]: "110px", ["--pd" as string]: "18s" }}>
+            <g className="qh-stepbob">
+              <ellipse cx="0" cy="0" rx="7" ry="5" fill="#f4f0e6" />
+              <rect x="-4" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" /><rect x="1" y="-9" width="2.5" height="6" rx="1" fill="#f4f0e6" />
+              <circle cx="-4.5" cy="-1" r="1" fill="#2a2020" />
+            </g>
           </g>
         </g>
-        {/* meadow deer grazing the western grass */}
+        {/* meadow deer on patrol — walks out, turns around, walks home */}
         <g transform="translate(165, 330)" shapeRendering="crispEdges">
-          <g>
-            <rect x="0" y="0" width="17" height="9" rx="2" fill="#a87848" />
-            <rect x="15" y="-8" width="5" height="9" fill="#a87848" />
-            <path d="M 17 -8 l 3 -6 M 20 -8 l 4 -5" stroke="#8a5f38" strokeWidth="1.5" fill="none" />
-            <rect x="2" y="9" width="2.5" height="7" fill="#8a5f38" /><rect x="12" y="9" width="2.5" height="7" fill="#8a5f38" />
-            <animateTransform attributeName="transform" type="translate" values="0 0; 120 4" dur="38s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.92;1" dur="38s" repeatCount="indefinite" />
+          <g className="qh-walker" style={{ ["--px" as string]: "130px", ["--pd" as string]: "40s" }}>
+            <g className="qh-stepbob">
+              <rect x="0" y="0" width="17" height="9" rx="2" fill="#a87848" />
+              <rect x="15" y="-8" width="5" height="9" fill="#a87848" />
+              <path d="M 17 -8 l 3 -6 M 20 -8 l 4 -5" stroke="#8a5f38" strokeWidth="1.5" fill="none" />
+              <g className="qh-fA"><rect x="2" y="9" width="2.5" height="7" fill="#8a5f38" /><rect x="12" y="9" width="2.5" height="7" fill="#8a5f38" /></g>
+              <g className="qh-fB"><rect x="4.5" y="9" width="2.5" height="7" fill="#8a5f38" /><rect x="9.5" y="9" width="2.5" height="7" fill="#8a5f38" /></g>
+            </g>
           </g>
         </g>
         <g>
@@ -580,13 +615,14 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           </circle>
         ))}
         <g transform={`translate(${STEP + 990}, 512)`} shapeRendering="crispEdges">
-          <g>
-            <rect x="0" y="0" width="20" height="9" rx="3" fill="#8a6a3a" />
-            <path d="M 4 0 q 4 -6 9 -2 q 4 -6 8 -1" stroke="#8a6a3a" strokeWidth="4" fill="none" />
-            <rect x="18" y="-9" width="4" height="9" fill="#8a6a3a" /><rect x="18" y="-12" width="6" height="4" fill="#8a6a3a" />
-            <rect x="3" y="9" width="2.5" height="7" fill="#6d5230" /><rect x="14" y="9" width="2.5" height="7" fill="#6d5230" />
-            <animateTransform attributeName="transform" type="translate" values="0 0; 200 0" dur="42s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.92;1" dur="42s" repeatCount="indefinite" />
+          <g className="qh-walker" style={{ ["--px" as string]: "200px", ["--pd" as string]: "46s" }}>
+            <g className="qh-stepbob">
+              <rect x="0" y="0" width="20" height="9" rx="3" fill="#8a6a3a" />
+              <path d="M 4 0 q 4 -6 9 -2 q 4 -6 8 -1" stroke="#8a6a3a" strokeWidth="4" fill="none" />
+              <rect x="18" y="-9" width="4" height="9" fill="#8a6a3a" /><rect x="18" y="-12" width="6" height="4" fill="#8a6a3a" />
+              <g className="qh-fA"><rect x="3" y="9" width="2.5" height="7" fill="#6d5230" /><rect x="14" y="9" width="2.5" height="7" fill="#6d5230" /></g>
+              <g className="qh-fB"><rect x="6" y="9" width="2.5" height="7" fill="#6d5230" /><rect x="11" y="9" width="2.5" height="7" fill="#6d5230" /></g>
+            </g>
           </g>
         </g>
         {/* a hawk circling the mesas */}
@@ -612,24 +648,26 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             </circle>
           ))
         )}
-        <g transform={`translate(${STEP * 2 + 480}, 296)`}>
-          <g shapeRendering="crispEdges">
-            <rect x="0" y="0" width="15" height="7" rx="2" fill="#d97f3e" />
-            <rect x="13" y="-5" width="5" height="6" fill="#d97f3e" /><path d="M 0 2 q -9 -2 -12 4 q 6 4 12 0 Z" fill="#e89a5e" />
-            <rect x="2" y="7" width="2" height="5" fill="#a85f2e" /><rect x="11" y="7" width="2" height="5" fill="#a85f2e" />
-            <animateTransform attributeName="transform" type="translate" values="0 0; 180 8" dur="26s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.07;.92;1" dur="26s" repeatCount="indefinite" />
+        <g transform={`translate(${STEP * 2 + 480}, 296)`} shapeRendering="crispEdges">
+          <g className="qh-walker" style={{ ["--px" as string]: "170px", ["--pd" as string]: "30s" }}>
+            <g className="qh-stepbob">
+              <rect x="0" y="0" width="15" height="7" rx="2" fill="#d97f3e" />
+              <rect x="13" y="-5" width="5" height="6" fill="#d97f3e" /><path d="M 0 2 q -9 -2 -12 4 q 6 4 12 0 Z" fill="#e89a5e" />
+              <g className="qh-fA"><rect x="2" y="7" width="2" height="5" fill="#a85f2e" /><rect x="11" y="7" width="2" height="5" fill="#a85f2e" /></g>
+              <g className="qh-fB"><rect x="4.5" y="7" width="2" height="5" fill="#a85f2e" /><rect x="8.5" y="7" width="2" height="5" fill="#a85f2e" /></g>
+            </g>
           </g>
         </g>
         {/* a penguin waddling the snowy lakeshore */}
         <g transform={`translate(${STEP * 2 + 850}, 448)`} shapeRendering="crispEdges">
-          <g>
-            <rect x="0" y="-10" width="8" height="12" rx="3" fill="#1c1c2e" />
-            <rect x="2" y="-6" width="4" height="7" fill="#f4f0e6" />
-            <rect x="2.5" y="-12" width="3" height="2" fill="#e8a33a" />
-            <animateTransform attributeName="transform" type="translate" values="0 0; 90 3" dur="30s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" dur="30s" repeatCount="indefinite" />
-            <animateTransform attributeName="transform" type="rotate" additive="sum" values="-6 4 0; 6 4 0; -6 4 0" dur="0.8s" repeatCount="indefinite" />
+          <g className="qh-walker" style={{ ["--px" as string]: "90px", ["--pd" as string]: "28s" }}>
+            <g className="qh-stepbob">
+              <rect x="0" y="-10" width="8" height="12" rx="3" fill="#1c1c2e" />
+              <rect x="2" y="-6" width="4" height="7" fill="#f4f0e6" />
+              <rect x="2.5" y="-12" width="3" height="2" fill="#e8a33a" />
+              <g className="qh-fA"><rect x="1" y="2" width="2.5" height="3" fill="#e8a33a" /><rect x="4.5" y="2" width="2.5" height="3" fill="#e8a33a" /></g>
+              <g className="qh-fB"><rect x="2.5" y="2" width="3" height="3" fill="#e8a33a" /></g>
+            </g>
           </g>
         </g>
         {/* VOLCANO: pulsing summit glow, rising embers, a parrot circling the temple, a sailboat */}
@@ -659,6 +697,107 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
             <rect x="-1.5" y="-24" width="3" height="24" fill="#3d2b16" />
             <path d="M -1.5 -24 q -17 7 0 15 Z" fill="#ffd9a0" />
             <animateTransform attributeName="transform" type="translate" values={`${STEP * 3 + 210} 592; ${STEP * 3 + 300} 588; ${STEP * 3 + 210} 592`} dur="44s" repeatCount="indefinite" />
+          </g>
+        </g>
+        {/* ===== VILLAGERS — every biome has locals with jobs and gossip ===== */}
+        {/* meadow: a farmer on his rounds, a hoeing field hand, two gossips in the village */}
+        <g transform="translate(450, 372)">
+          <g className="qh-walker" style={{ ["--px" as string]: "140px", ["--pd" as string]: "30s" }}>
+            <g className="qh-stepbob">
+              <NpcBody tunic="#5d8a4a" hat={<rect x="-1" y="-16" width="10" height="3" fill="#e8c15a" />} />
+            </g>
+          </g>
+        </g>
+        <g transform="translate(585, 292)">
+          <NpcBody tunic="#7a5a8a" walking={false} hat={<rect x="0" y="-16" width="8" height="3" fill="#c9955a" />} />
+          <g className="qh-swing">
+            <rect x="8" y="-14" width="2.5" height="16" fill="#8a5f33" />
+            <rect x="7" y="1" width="5" height="3" fill="#9aa3ad" />
+          </g>
+        </g>
+        <g transform="translate(915, 262)">
+          <NpcBody tunic="#a83a4a" walking={false} hat={<rect x="1" y="-16" width="6" height="2.5" fill="#5a3d20" />} />
+          <Bubble delay={0} />
+        </g>
+        <g transform="translate(944, 262)">
+          <g transform="scale(-1, 1)"><NpcBody tunic="#3a6ea8" walking={false} /></g>
+          <Bubble delay={5.5} />
+        </g>
+        {/* desert: a robed trader on patrol, a smith hammering at the market tent */}
+        <g transform={`translate(${STEP + 1120}, 428)`}>
+          <g className="qh-walker" style={{ ["--px" as string]: "115px", ["--pd" as string]: "26s" }}>
+            <g className="qh-stepbob">
+              <NpcBody tunic="#f4ead0" skin="#c98a5a" hat={<rect x="0" y="-17" width="8" height="4" rx="2" fill="#fdfdf4" />} />
+            </g>
+          </g>
+        </g>
+        <g transform={`translate(${STEP + 470}, 402)`}>
+          <NpcBody tunic="#a83a4a" skin="#c98a5a" walking={false} hat={<rect x="0" y="-17" width="8" height="4" rx="2" fill="#e8c15a" />} />
+          <g className="qh-swing">
+            <rect x="8" y="-12" width="2.5" height="12" fill="#8a5f33" />
+            <rect x="6.5" y="-14" width="5.5" height="4" fill="#9aa3ad" />
+          </g>
+          <Bubble delay={8} shout />
+        </g>
+        {/* tundra: a bundled walker, a lumberjack who never runs out of logs */}
+        <g transform={`translate(${STEP * 2 + 600}, 348)`}>
+          <g className="qh-walker" style={{ ["--px" as string]: "130px", ["--pd" as string]: "32s" }}>
+            <g className="qh-stepbob">
+              <NpcBody tunic="#3a6ea8" hat={<rect x="0" y="-16" width="8" height="3" fill="#f4f0e6" />} />
+            </g>
+          </g>
+        </g>
+        <g transform={`translate(${STEP * 2 + 830}, 322)`}>
+          <NpcBody tunic="#a83232" walking={false} hat={<rect x="1" y="-16" width="6" height="2.5" fill="#2a2438" />} />
+          <rect x="12" y="1" width="9" height="4" fill="#6b4420" shapeRendering="crispEdges" />
+          <g className="qh-swing">
+            <rect x="8" y="-14" width="2.5" height="15" fill="#8a5f33" />
+            <path d="M 7 -16 h 6 l 2 4 h -8 Z" fill="#9aa3ad" />
+          </g>
+        </g>
+        {/* volcano: an islander strolling the beach, a fisherman working the cove */}
+        <g transform={`translate(${STEP * 3 + 930}, 470)`}>
+          <g className="qh-walker" style={{ ["--px" as string]: "150px", ["--pd" as string]: "30s" }}>
+            <g className="qh-stepbob">
+              <NpcBody tunic="#2fa86a" skin="#b8763a" hat={<rect x="0" y="-11" width="8" height="2" fill="#e24b8a" />} />
+            </g>
+          </g>
+        </g>
+        <g transform={`translate(${STEP * 3 + 540}, 520)`}>
+          <NpcBody tunic="#d9a04e" skin="#b8763a" walking={false} hat={<rect x="-1" y="-16" width="10" height="3" fill="#8a6a3a" />} />
+          <path d="M 8 -10 q 12 -6 18 2" stroke="#5a3d20" strokeWidth="1.5" fill="none" />
+          <g className="qh-bobline">
+            <line x1="26" y1="-8" x2="26" y2="6" stroke="#dff2ff" strokeWidth="1" opacity="0.7" />
+            <circle cx="26" cy="7" r="1.5" fill="#e24b4a" />
+          </g>
+        </g>
+        {/* ===== THE PIRATE SHIP — crew included, sails the volcano sea ===== */}
+        <g transform={`translate(${STEP * 3 + 150}, 566)`}>
+          <g className="qh-walker" style={{ ["--px" as string]: "300px", ["--pd" as string]: "85s" }}>
+            <g className="qh-shiprock">
+              <path d="M -30 0 h 62 q 4 12 -10 15 h -44 q -12 -3 -8 -15 Z" fill="#5a3a20" stroke="#3d2712" strokeWidth="2" />
+              <rect x="-30" y="3" width="62" height="3" fill="#8a5f33" shapeRendering="crispEdges" />
+              <rect x="-8" y="-34" width="3" height="34" fill="#3d2712" />
+              <rect x="16" y="-26" width="2.5" height="26" fill="#3d2712" />
+              <path d="M -5 -32 q 14 4 0 22 Z" fill="#e8e0cc" />
+              <path d="M 18.5 -24 q 11 3 0 16 Z" fill="#e8e0cc" />
+              <g shapeRendering="crispEdges">
+                <rect x="-8" y="-40" width="11" height="7" fill="#1c1c2e" />
+                <circle cx="-3.5" cy="-37" r="1.6" fill="#f4f0e6" />
+                <path d="M -6 -35.4 h 5 M -3.5 -36.8 v 2.8" stroke="#f4f0e6" strokeWidth="0.8" />
+              </g>
+              <g transform="translate(-18, -5)">
+                <g className="qh-walker" style={{ ["--px" as string]: "16px", ["--pd" as string]: "7s" }}>
+                  <g className="qh-stepbob"><NpcBody tunic="#a83a4a" hat={<rect x="0" y="-16" width="8" height="2.5" fill="#e24b4a" />} /></g>
+                </g>
+              </g>
+              <g transform="translate(6, -5)">
+                <g className="qh-walker" style={{ ["--px" as string]: "14px", ["--pd" as string]: "9s" }}>
+                  <g className="qh-stepbob"><NpcBody tunic="#2a2438" hat={<rect x="0" y="-16" width="8" height="2.5" fill="#f4f0e6" />} /></g>
+                </g>
+              </g>
+              <Bubble delay={3} shout />
+            </g>
           </g>
         </g>
         {/* SHARKS — fins cruising the open water, wakes trailing */}
