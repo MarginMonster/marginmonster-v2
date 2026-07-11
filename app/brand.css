@@ -816,8 +816,10 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 /* world map — a panorama you travel across, not a screen you cram */
 .qh-mapwrap { position: relative; }
 .qh-map { position: relative; border-radius: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #3a3560 #12122a; }
-.qh-map-inner { position: relative; width: 1280px; }
-.qh-map svg { display: block; width: 1280px; height: auto; }
+.qh-map-inner { position: relative; }
+.qh-map svg { display: block; height: auto; }
+.qh-map.grabby { cursor: grab; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.qh-map.grabby:active { cursor: grabbing; }
 .qh-map-hint {
   position: absolute; right: 10px; bottom: 10px; z-index: 2; pointer-events: none;
   font-family: ui-monospace, monospace; font-size: 11px; color: #cfc9ea;

@@ -230,22 +230,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 const NODE_ICON: Record<string, string> = { video: "🎬", image: "🖼", blog: "📝", post: "📣" };
 
-/* ---- The painted overworld ----
- * Background is real generated pixel-art (public/quests/worldmap.jpg,
- * 1536x640). The journey follows a hand-tuned waypoint route across its
- * terrain; stops are spaced evenly along that route by arc length (pure
- * math — SSR-safe). Label restraint: the current stop speaks at full
- * volume, everything else whispers until hovered/clicked. */
+/* ---- The painted panorama ----
+ * The month is a journey across FOUR stitched pixel-art worlds (meadow ->
+ * desert -> tundra -> volcano), blended at the seams with gradient masks.
+ * Every day of the quest is a destination on the road: content days are
+ * named landmark stops, quiet days are small waypoints the partner still
+ * travels through. Grab-and-drag to pan; auto-centers on the partner. */
 
 const MAP_W = 1536;
 const MAP_H = 640;
+const SEAM = 140; // px of gradient overlap where one world fades into the next
+const STEP = MAP_W - SEAM; // x offset between consecutive worlds
 
-/* Waypoints trace the art's own roads: shop meadow -> cherry grove -> pond ->
- * palm grove -> village row -> beach cove -> headland -> the tower town. */
-const ROUTE: [number, number][] = [
-  [355, 390], [480, 315], [620, 250], [770, 340],
-  [930, 285], [1075, 320], [1160, 285], [1250, 240],
+type World = { src: string; route: [number, number][] };
+const WORLDS: World[] = [
+  {
+    src: "/quests/worldmap.jpg", // spring meadow & cove
+    route: [[355, 390], [480, 315], [620, 250], [770, 340], [930, 285], [1075, 320], [1250, 245], [1470, 300]],
+  },
+  {
+    src: "/quests/world-desert.jpg", // red canyon: oasis -> bridge -> caravan tents
+    route: [[70, 470], [430, 480], [450, 400], [640, 360], [875, 335], [1040, 470], [1185, 415], [1470, 430]],
+  },
+  {
+    src: "/quests/world-tundra.jpg", // snow: bridge -> cabin village road
+    route: [[70, 430], [470, 390], [700, 330], [940, 300], [1150, 345], [1470, 360]],
+  },
+  {
+    src: "/quests/world-volcano.jpg", // jungle isles -> waterfall cove -> the golden temple
+    route: [[70, 480], [300, 520], [560, 470], [770, 430], [930, 400], [865, 330]],
+  },
 ];
+const PANO_W = STEP * (WORLDS.length - 1) + MAP_W;
+
+/* Combined route across all worlds (each world's local xs shifted right). */
+const ROUTE: [number, number][] = WORLDS.flatMap((w, k) =>
+  w.route.map(([x, y]) => [x + k * STEP, y] as [number, number])
+);
 
 /** Even points along the waypoint polyline (t in 0..1 by arc length). */
 function routePoint(t: number): { x: number; y: number } {
@@ -270,45 +291,120 @@ function routePoint(t: number): { x: number; y: number } {
   return { x: ROUTE[ROUTE.length - 1][0], y: ROUTE[ROUTE.length - 1][1] };
 }
 
-function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selectedIdx, destination }: {
+/** Day -> position along the month-long road (day 0 = the shop, last = goal). */
+function dayT(day: number, duration: number): number {
+  return 0.03 + (Math.max(0, Math.min(duration, day)) / duration) * 0.94;
+}
+
+/* Ambient life — birds in every sky, per-world ground critters. Positions are
+ * in local world coords; rendered offset per world. Slow, sparse, gentle. */
+const BIRD_LANES = [
+  { y: 60, dur: 34, delay: 0, size: 1 },
+  { y: 96, dur: 46, delay: 12, size: 0.8 },
+  { y: 42, dur: 55, delay: 26, size: 1.2 },
+];
+
+function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selectedIdx, destination, dayOf, duration }: {
   slots: QuestSlot[]; xpReward: number; rendering: boolean;
   partner: { img: string; accent: string; name: string } | null;
   cargo: { title: string; image: string | null }[];
   onPick: (idx: number) => void; selectedIdx: number | null;
-  destination: string;
+  destination: string; dayOf: number; duration: number;
 }) {
-  const n = slots.length;
   const start = routePoint(0);
   const end = routePoint(1);
-  const pts = slots.map((s, i) => ({ slot: s, ...routePoint(0.09 + (i * 0.82) / Math.max(1, n - 1)) }));
+  const RENDER_W = 3200; // panorama pixels on screen (scrolls)
 
-  // The partner stands at the stop it's working / traveling toward.
-  let curI = pts.findIndex((p) => p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED");
-  const allDone = curI === -1;
-  const cur = allDone ? end : pts[curI];
-  const curSpot = allDone ? destination : pts[curI].slot.spot;
+  // Content stops sit on their scheduled day; quiet days are small waypoints.
+  const stopPts = slots.map((s) => ({ slot: s, ...routePoint(dayT(s.day, duration)) }));
+  const slotDays = new Set(slots.map((s) => s.day));
+  const waypointDays = Array.from({ length: duration }, (_, i) => i + 1).filter((d) => !slotDays.has(d));
 
-  const routeD = [start, ...pts, end].map((p, i) => `${i === 0 ? "M" : "L"} ${Math.round(p.x)} ${Math.round(p.y)}`).join(" ");
+  const contentDone = slots.every((s) => s.status === "READY" || s.status === "POSTED");
+  const here = contentDone ? end : routePoint(dayT(Math.min(dayOf, duration), duration));
+  // What the partner is up to: the closest content stop ahead (or the goal).
+  const nextStop = stopPts.find((p) => p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED");
+  const curSpot = contentDone ? destination : rendering && nextStop ? nextStop.slot.spot : `DAY ${dayOf} · EN ROUTE`;
 
-  // Panorama: the world renders wide and scrolls; open centered on the partner.
+  const routeD = ROUTE.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
+
+  // Grab-and-drag panning (in addition to native scroll); a real drag
+  // suppresses the click so stop-pins stay clickable.
   const scrollRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ on: false, x: 0, left: 0, moved: false });
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollLeft = (cur.x / MAP_W) * 1280 - el.clientWidth / 2;
+    if (el) el.scrollLeft = (here.x / PANO_W) * RENDER_W - el.clientWidth / 2;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    drag.current = { on: true, x: e.clientX, left: el.scrollLeft, moved: false };
+    el.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || !drag.current.on) return;
+    const dx = e.clientX - drag.current.x;
+    if (Math.abs(dx) > 5) drag.current.moved = true;
+    el.scrollLeft = drag.current.left - dx;
+  };
+  const onPointerUp = () => { drag.current.on = false; };
+  const pick = (idx: number) => { if (!drag.current.moved) onPick(idx); };
 
   return (
     <div className="qh-mapwrap">
-    <div className="qh-map" ref={scrollRef}>
-    <div className="qh-map-inner">
-      <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} role="img" aria-label="Campaign world map">
-        <image href="/quests/worldmap.jpg" width={MAP_W} height={MAP_H} />
-        {/* route: soft shadow + golden dashes */}
+    <div
+      className="qh-map grabby"
+      ref={scrollRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+    >
+    <div className="qh-map-inner" style={{ width: RENDER_W }}>
+      <svg viewBox={`0 0 ${PANO_W} ${MAP_H}`} style={{ width: RENDER_W }} role="img" aria-label="Campaign world panorama">
+        <defs>
+          <linearGradient id="qh-seam" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#000" stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" stopOpacity="1" />
+          </linearGradient>
+          {WORLDS.map((_, k) => k > 0 && (
+            <mask id={`qh-fade-${k}`} key={k} maskUnits="userSpaceOnUse" x={k * STEP} y="0" width={MAP_W} height={MAP_H}>
+              <rect x={k * STEP} y="0" width={SEAM} height={MAP_H} fill="url(#qh-seam)" />
+              <rect x={k * STEP + SEAM} y="0" width={MAP_W - SEAM} height={MAP_H} fill="#fff" />
+            </mask>
+          ))}
+        </defs>
+
+        {WORLDS.map((w, k) => (
+          <image
+            key={w.src} href={w.src} x={k * STEP} y="0" width={MAP_W} height={MAP_H}
+            mask={k > 0 ? `url(#qh-fade-${k})` : undefined}
+          />
+        ))}
+
+        {/* the road */}
         <path d={routeD} fill="none" stroke="#1a1206" strokeWidth="11" opacity="0.35" strokeLinejoin="round" strokeLinecap="round" />
         <path d={routeD} fill="none" stroke="#ffd76a" strokeWidth="5" strokeDasharray="2 16" strokeLinecap="round" opacity="0.95" />
 
-        {/* YOUR SHOP — the journey starts at the merchant's own storefront */}
+        {/* quiet-day waypoints — every day of the month is a place */}
+        {waypointDays.map((d) => {
+          const p = routePoint(dayT(d, duration));
+          const passed = d < dayOf;
+          const today = d === dayOf;
+          return (
+            <g key={`wp${d}`}>
+              <circle cx={p.x} cy={p.y} r={today ? 8 : 5} fill={passed || today ? "#ffd76a" : "#2b2650"} stroke={passed || today ? "#7a4c08" : "#171430"} strokeWidth="2.5" opacity={passed ? 0.9 : 0.8} />
+              {today && (
+                <text x={p.x} y={p.y - 18} textAnchor="middle" fontSize="17" fontFamily="monospace" fill="#ffe9b0" stroke="#14102a" strokeWidth="5" paintOrder="stroke">TODAY</text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* YOUR SHOP */}
         <g style={{ paintOrder: "stroke" }}>
           <circle cx={start.x} cy={start.y} r="15" fill="#7c5cff" stroke="#241a4d" strokeWidth="4" />
           <text x={start.x} y={start.y + 7} textAnchor="middle" fontSize="18">🏪</text>
@@ -316,21 +412,20 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
             fill="#e8e2ff" stroke="#14102a" strokeWidth="5" paintOrder="stroke">YOUR SHOP</text>
         </g>
 
-        {pts.map((p, i) => {
+        {stopPts.map((p, i) => {
           const s = p.slot;
           const done = s.status === "READY" || s.status === "POSTED";
           const failed = s.status === "FAILED";
-          const activeHere = i === curI && !allDone;
+          const activeHere = !contentDone && nextStop && s.idx === nextStop.slot.idx;
           const sel = selectedIdx === s.idx;
           const fill = done ? "#2fbf8a" : failed ? "#d24b4b" : activeHere ? "#ffd76a" : "#3a3560";
           const ring = done ? "#0d4a33" : failed ? "#571414" : activeHere ? "#7a4c08" : "#171430";
-          const labelUp = p.y > 330; // keep labels off the water/edges
-          // stagger alternate stops onto a second lane so neighbors never collide
+          const labelUp = p.y > 330;
           const lane = (i % 2) * 26;
           const ly = labelUp ? p.y - 34 - lane : p.y + 44 + lane;
           const ly2 = labelUp ? p.y - 58 - lane : p.y + 68 + lane;
           return (
-            <g key={s.idx} onClick={() => onPick(s.idx)} style={{ cursor: "pointer" }}>
+            <g key={s.idx} onClick={() => pick(s.idx)} style={{ cursor: "pointer" }}>
               {activeHere && (
                 <circle cx={p.x} cy={p.y} fill="none" stroke="#34E7E4" strokeWidth="4">
                   <animate attributeName="r" values="20;46" dur="1.7s" repeatCount="indefinite" />
@@ -342,7 +437,6 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
               <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize={activeHere ? 17 : 14}>
                 {done ? "✓" : failed ? "✕" : NODE_ICON[s.type] || "•"}
               </text>
-              {/* label discipline: current stop full voice, others a whisper */}
               {activeHere ? (
                 <g>
                   <text x={p.x} y={ly} textAnchor="middle" fontSize="23" fontFamily="monospace" fontWeight="bold"
@@ -359,7 +453,6 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
                   {failed ? `${s.spot} · GOBLIN!` : done ? `${s.spot} ✓` : `${s.spot} · D${s.day}`}
                 </text>
               )}
-              {/* a goblin squats on failed stops until the merchant retries */}
               {failed && (
                 <g transform={`translate(${p.x + 20}, ${p.y - 34}) scale(2)`} shapeRendering="crispEdges">
                   <rect width="13" height="11" fill="#5d8a4a" />
@@ -372,31 +465,54 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
           );
         })}
 
-        {/* destination — the quest's own landmark; the chest opens on arrival */}
+        {/* the destination */}
         <g style={{ paintOrder: "stroke" }}>
-          {allDone && (
+          {contentDone && (
             <circle cx={end.x} cy={end.y} fill="none" stroke="#ffd76a" strokeWidth="4">
               <animate attributeName="r" values="20;50" dur="2s" repeatCount="indefinite" />
               <animate attributeName="opacity" values="0.9;0" dur="2s" repeatCount="indefinite" />
             </circle>
           )}
-          <circle cx={end.x} cy={end.y} r="16" fill={allDone ? "#ffd76a" : "#8a6a2e"} stroke="#3d2b12" strokeWidth="4" />
-          <text x={end.x} y={end.y + 7} textAnchor="middle" fontSize="18">{allDone ? "🏆" : "🏁"}</text>
+          <circle cx={end.x} cy={end.y} r="16" fill={contentDone ? "#ffd76a" : "#8a6a2e"} stroke="#3d2b12" strokeWidth="4" />
+          <text x={end.x} y={end.y + 7} textAnchor="middle" fontSize="18">{contentDone ? "🏆" : "🏁"}</text>
           <text x={end.x} y={end.y - 30} textAnchor="middle" fontSize="22" fontFamily="monospace" fontWeight="bold"
             fill="#ffe9b0" stroke="#14102a" strokeWidth="6" paintOrder="stroke">{destination}</text>
           <text x={end.x} y={end.y - 56} textAnchor="middle" fontSize="18" fontFamily="monospace"
             fill="#ffd76a" stroke="#14102a" strokeWidth="5" paintOrder="stroke">+{xpReward.toLocaleString()} XP</text>
         </g>
 
-        {/* a bird crossing the sky, slow and rare */}
-        <g opacity="0.55">
-          <path d="M0 70 q7 -8 14 0 q7 -8 14 0" stroke="#14102a" strokeWidth="3" fill="none">
-            <animateTransform attributeName="transform" type="translate" values="-60 0; 1600 -40" dur="26s" repeatCount="indefinite" />
-          </path>
+        {/* wildlife: birds riding different sky lanes across the whole panorama */}
+        {BIRD_LANES.map((b, i) => (
+          <g key={i} opacity="0.55" transform={`scale(${b.size})`}>
+            <path d={`M0 ${b.y} q7 -8 14 0 q7 -8 14 0`} stroke="#14102a" strokeWidth="3" fill="none">
+              <animateTransform attributeName="transform" type="translate" values={`-60 0; ${PANO_W + 100} -30`} dur={`${b.dur}s`} begin={`${b.delay}s`} repeatCount="indefinite" />
+            </path>
+          </g>
+        ))}
+        {/* butterflies fluttering near the meadow road */}
+        <g opacity="0.8">
+          <circle r="4" fill="#f2a3c4">
+            <animateMotion dur="11s" repeatCount="indefinite" path="M 500 300 q 40 -30 80 0 q 40 30 80 0 q -60 40 -160 0 Z" />
+          </circle>
+          <circle r="4" fill="#8fd4f2">
+            <animateMotion dur="14s" begin="3s" repeatCount="indefinite" path="M 900 320 q -30 -40 -70 -10 q -30 30 10 50 q 50 10 60 -40 Z" />
+          </circle>
         </g>
+        {/* something alive in every water: canyon river, frozen lake, temple cove */}
+        {[
+          { x: STEP * 1 + 780, y: 480, d: 0 },
+          { x: STEP * 2 + 800, y: 520, d: 2.1 },
+          { x: STEP * 3 + 380, y: 545, d: 1.2 },
+          { x: 1150, y: 430, d: 3.4 },
+        ].map((r, i) => (
+          <circle key={`rp${i}`} cx={r.x} cy={r.y} fill="none" stroke="#eaf8ff" strokeWidth="2.5" opacity="0.7">
+            <animate attributeName="r" values="2;16" dur="4.5s" begin={`${r.d}s`} repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.7;0" dur="4.5s" begin={`${r.d}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
       </svg>
       {partner && (
-        <div className="qh-partner" style={{ left: `${(cur.x / MAP_W) * 100}%`, top: `${(cur.y / MAP_H) * 100}%` }}>
+        <div className="qh-partner" style={{ left: `${(here.x / PANO_W) * 100}%`, top: `${(here.y / MAP_H) * 100}%` }}>
           <Partner img={partner.img} accent={partner.accent} />
           {rendering && <span className="qh-work-tool" aria-hidden="true">⚒️</span>}
           <span className={`tag${rendering ? " working" : ""}`}>
@@ -406,14 +522,13 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, selected
       )}
     </div>
     </div>
-    {/* pinned chrome — stays put while the world scrolls underneath */}
     {cargo.length > 0 && (
       <div className="qh-cargo" title={cargo.map((c) => c.title).join(", ")}>
         {cargo.slice(0, 3).map((c, i) => (c.image ? <img key={i} src={c.image} alt="" /> : null))}
         <span className="lb">CARGO ×{cargo.length}</span>
       </div>
     )}
-    <span className="qh-map-hint">⟷ drag to explore the world</span>
+    <span className="qh-map-hint">✋ grab + drag to travel the world</span>
     </div>
   );
 }
@@ -540,6 +655,8 @@ export default function Campaigns() {
             onPick={(idx) => openEditor(q.id, q.slots, idx)}
             selectedIdx={editSel?.qid === q.id ? editSel.idx : null}
             destination={DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
+            dayOf={q.dayOf}
+            duration={q.duration}
           />
           {editSel?.qid === q.id && (() => {
             const s = q.slots.find((x) => x.idx === editSel.idx);
