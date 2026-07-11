@@ -788,48 +788,108 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-take-render-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .mm-buffer .ring { animation: none; } }
 
-/* ===== Campaign Questlines ===== */
-.mm-quest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-.mm-quest {
-  border-radius: 16px; padding: 16px 16px 14px;
-  background: linear-gradient(180deg, #14122A 0%, #0B0A17 100%);
-  border: 1px solid rgba(52,231,228,0.3); box-shadow: 0 0 18px rgba(52,231,228,0.1);
+/* ===== Campaign Quests — adventure world map + AI mission control =====
+   Doctrine: the world is a game (tiles, sprites, chests), the interface is
+   intelligence (monospace telemetry, corner-bracket HUD windows, live feed). */
+.qh-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.qh-title { font-family: var(--font-pixel); font-size: 15px; color: #fff; letter-spacing: .04em; }
+.qh-title em { color: var(--mm-cyan); font-style: normal; }
+.qh-chip {
+  display: inline-flex; align-items: center; gap: 8px; border: 1px solid #1d4d3a; background: #0c2018;
+  border-radius: 999px; padding: 5px 12px; font-family: ui-monospace, monospace; font-size: 12px; color: #8ee89c;
 }
-.mm-quest-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.mm-quest-icon { font-size: 28px; line-height: 1; }
-.mm-quest-title { flex: 1; min-width: 0; }
-.mm-quest-title .nm { font-family: var(--font-heading); font-weight: 800; font-size: 16px; color: #fff; }
-.mm-quest-title .sub { font-size: 12px; color: #A8A2D0; margin-top: 2px; }
-.mm-quest-bar { height: 10px; border-radius: 999px; background: #0a1c26; border: 1px solid rgba(52,231,228,0.3); overflow: hidden; margin-bottom: 12px; }
-.mm-quest-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1fb6b3, #34E7E4 60%, #a9f7f4); box-shadow: 0 0 10px rgba(52,231,228,0.6); transition: width .5s ease; }
-.mm-quest-objs { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
-.mm-obj { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #C6C1E6; }
-.mm-obj.done { color: #8fe89c; }
-.mm-obj .ck { width: 20px; text-align: center; }
-.mm-obj .lb { flex: 1; }
-.mm-obj .ct { font-family: var(--font-pixel); font-size: 8px; color: #9A95C4; }
-.mm-quest-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.qh-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; animation: qh-dot 1.4s ease-in-out infinite; }
+.qh-chip.idle { border-color: #2e2e52; background: #12122a; color: #a8a8cc; }
+.qh-chip.idle .dot { background: #5d5d8a; animation: none; }
+@keyframes qh-dot { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
-.mm-questpick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
-.mm-questcard {
-  display: flex; flex-direction: column; border-radius: 16px; padding: 18px 16px 16px;
-  background: linear-gradient(180deg, #16132c 0%, #0B0A17 100%);
-  border: 1px solid rgba(255,255,255,0.10);
-  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+/* corner-bracket HUD window */
+.qh-win { position: relative; background: #0c0c20; border: 1px solid #2e2e52; border-radius: 6px; padding: 14px 16px; }
+.qh-win::before, .qh-win::after { content: ""; position: absolute; width: 14px; height: 14px; border: 2px solid var(--mm-cyan); pointer-events: none; }
+.qh-win::before { top: -2px; left: -2px; border-right: none; border-bottom: none; border-top-left-radius: 4px; }
+.qh-win::after { bottom: -2px; right: -2px; border-left: none; border-top: none; border-bottom-right-radius: 4px; }
+.qh-win.gold::before, .qh-win.gold::after { border-color: var(--arc-yellow); }
+.qh-label { font-family: var(--font-pixel); font-size: 9px; letter-spacing: .12em; color: var(--mm-cyan); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.qh-label .r { color: #7d7da8; font-family: ui-monospace, monospace; font-size: 11.5px; letter-spacing: 0; }
+.qh-label.gold { color: var(--arc-yellow); }
+
+/* world map */
+.qh-map { position: relative; border-radius: 6px; overflow: hidden; }
+.qh-map svg { display: block; width: 100%; height: auto; }
+.qh-partner { position: absolute; width: 76px; height: 76px; transform: translate(-50%, -88%); pointer-events: none; z-index: 2; transition: left .9s ease, top .9s ease; }
+.qh-partner .tag {
+  position: absolute; left: 50%; bottom: -13px; transform: translateX(-50%);
+  font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--mm-cyan); white-space: nowrap; text-shadow: 0 1px 3px #000;
 }
-.mm-questcard:hover:not(.locked) { transform: translateY(-3px); border-color: var(--mm-cyan); box-shadow: 0 0 24px rgba(52,231,228,0.18); }
-.mm-questcard.locked { opacity: 0.62; }
-.mm-questcard-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.mm-questcard-head .ic { font-size: 26px; }
-.mm-questcard-head .nm { font-family: var(--font-heading); font-weight: 800; font-size: 17px; color: #fff; flex: 1; }
-.mm-recur { font-family: var(--font-pixel); font-size: 6.5px; letter-spacing: .06em; color: #06231F; background: var(--mm-cyan); padding: 3px 6px; border-radius: 999px; }
-.mm-questcard .tag { font-size: 12.5px; color: #A8A2D0; line-height: 1.4; margin: 0 0 12px; }
-.mm-questcard-objs { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.mm-questcard-objs .row { font-size: 12.5px; color: #C6C1E6; display: flex; gap: 7px; }
-.mm-questcard-foot { display: flex; justify-content: space-between; font-family: var(--font-pixel); font-size: 8.5px; margin-bottom: 12px; }
-.mm-questcard-foot .cost { color: var(--arc-yellow); }
-.mm-questcard-foot .xp { color: var(--mm-cyan); }
-.mm-quest-accept { margin-top: auto; }
+.qh-quest-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.qh-quest-foot .xp { font-family: var(--font-pixel); font-size: 9px; color: var(--arc-yellow); }
+.qh-mini-btn {
+  font-family: ui-monospace, monospace; font-size: 12px; color: #c6c1e6; background: #161632;
+  border: 1px solid #2e2e52; border-radius: 4px; padding: 5px 12px; cursor: pointer;
+}
+.qh-mini-btn:hover { border-color: var(--mm-cyan); color: #fff; }
+.qh-mini-btn.danger:hover { border-color: #e24b4a; color: #f09595; }
+
+/* partner dialog box */
+.qh-dialog { display: flex; gap: 16px; align-items: center; }
+.qh-dialog .art { width: 62px; height: 62px; flex: none; position: relative; }
+.qh-dialog p { margin: 0; font-family: ui-monospace, monospace; font-size: 13.5px; line-height: 1.75; color: #e8e8f0; }
+.qh-dialog p .nm { color: var(--mm-cyan); }
+.qh-curs { display: inline-block; color: var(--mm-cyan); animation: qh-curs 1s step-end infinite; }
+@keyframes qh-curs { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* live feed */
+.qh-feed { display: flex; flex-direction: column; gap: 7px; font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.5; color: #a8a8cc; }
+.qh-feed .t { color: #5d5d8a; margin-right: 8px; white-space: nowrap; }
+.qh-feed .ok { color: #8ee89c; }
+.qh-feed .warn { color: #f0c987; }
+.qh-feed .bad { color: #f09595; }
+.qh-feed .hot { color: var(--mm-cyan); }
+
+/* quest select */
+.qh-grid2 { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .qh-grid2 { grid-template-columns: 1fr; } }
+.qh-qrow {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left;
+  font-family: ui-monospace, monospace; font-size: 13px; color: #c6c1e6; background: none; border: 1px solid transparent;
+  border-radius: 4px; padding: 8px 10px; cursor: pointer;
+}
+.qh-qrow:hover { background: #131330; }
+.qh-qrow.on { background: #161632; border-color: #2e2e52; color: #fff; }
+.qh-qrow.on .ptr { color: var(--arc-yellow); animation: qh-curs 1s step-end infinite; }
+.qh-qrow .ptr { width: 14px; color: transparent; flex: none; }
+.qh-qrow .cost { color: var(--arc-yellow); white-space: nowrap; }
+.qh-qrow .cost .xp { color: #8ee89c; }
+.qh-qrow.locked { color: #55557a; cursor: default; }
+.qh-qrow.locked:hover { background: none; }
+.qh-detail-objs { display: flex; flex-direction: column; gap: 6px; font-family: ui-monospace, monospace; font-size: 12.5px; color: #c6c1e6; margin-bottom: 12px; }
+.qh-start {
+  display: block; width: 100%; font-family: var(--font-pixel); font-size: 10px; letter-spacing: .08em;
+  background: var(--mm-cyan); color: #062a29; border: none; border-radius: 4px; padding: 12px 8px; cursor: pointer;
+  transition: filter .12s ease, transform .12s ease;
+}
+.qh-start:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+.qh-start:disabled { background: #23234a; color: #55557a; cursor: not-allowed; }
+.qh-hint { font-family: ui-monospace, monospace; font-size: 11.5px; color: #7d7da8; margin-top: 8px; text-align: center; }
+
+/* loadout controls */
+.qh-select {
+  width: 100%; background: #161632; border: 1px solid #2e2e52; color: #e8e8f0; border-radius: 4px;
+  padding: 9px 10px; font-family: ui-monospace, monospace; font-size: 13px;
+}
+.qh-select:focus { outline: none; border-color: var(--mm-cyan); }
+.qh-field-label { font-family: ui-monospace, monospace; font-size: 11.5px; color: #7d7da8; display: block; margin-bottom: 5px; }
+.qh-loadout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+@media (max-width: 620px) { .qh-loadout-grid { grid-template-columns: 1fr; } }
+
+/* completed log */
+.qh-done-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-family: ui-monospace, monospace; font-size: 13px; color: #c6c1e6; padding: 7px 4px; border-bottom: 1px solid #1c1c38; }
+.qh-done-row:last-child { border-bottom: none; }
+.qh-done-row .xp { color: #8ee89c; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qh-chip .dot, .qh-curs, .qh-qrow.on .ptr { animation: none; }
+}
 
 /* Brand Face — the merchant's signature presenter */
 .mm-bf-tag {
