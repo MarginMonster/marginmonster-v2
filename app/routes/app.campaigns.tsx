@@ -245,9 +245,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shop.id,
       (form.get("questlineId") as string) || "",
       parseInt((form.get("day") as string) || "0", 10),
-      ((form.get("dropType") as string) || "video") as "video" | "image" | "blog"
+      ((form.get("dropType") as string) || "video") as "video" | "image" | "blog",
+      {
+        instant: form.get("instant") === "1",
+        productTitle: ((form.get("dropProduct") as string) || "").trim() || undefined,
+        direction: ((form.get("dropTopic") as string) || "").trim() || undefined,
+      }
     );
-    return json(res.ok ? { dropAdded: res.cost } : { error: res.error });
+    return json(res.ok ? { dropAdded: res.cost, instant: form.get("instant") === "1" } : { error: res.error });
   }
 
   if (intent === "pauseToggle") {
@@ -1205,7 +1210,17 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
   const end = routePoint(ROUTE, 1);
   const RENDER_W = 3200;
 
-  const stopPts = slots.map((s) => ({ slot: s, ...routePoint(ROUTE, dayT(s.day, duration)) }));
+  // several drops on one day fan out along the road instead of stacking
+  const dayCounts = new Map<number, number>();
+  for (const s of slots) dayCounts.set(s.day, (dayCounts.get(s.day) || 0) + 1);
+  const dayRank = new Map<number, number>();
+  const stopPts = slots.map((s) => {
+    const n = dayCounts.get(s.day) || 1;
+    const r = dayRank.get(s.day) || 0;
+    dayRank.set(s.day, r + 1);
+    const effDay = n > 1 ? s.day - 0.3 + (0.6 * (r + 0.5)) / n : s.day;
+    return { slot: s, ...routePoint(ROUTE, dayT(effDay, duration)) };
+  });
   const slotDays = new Set(slots.map((s) => s.day));
   const waypointDays = Array.from({ length: duration }, (_, i) => i + 1).filter((d) => !slotDays.has(d));
 
@@ -1296,6 +1311,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
               {sel && <circle cx={p.x} cy={p.y} r="17" fill="none" stroke="#34E7E4" strokeWidth="3" />}
               <circle cx={p.x} cy={p.y} r={today ? 12 : 9} fill={passed || today ? "#ffd76a" : "#2b2650"} stroke={passed || today ? "#7a4c08" : "#171430"} strokeWidth="3" opacity={passed ? 0.9 : 0.85} />
               {!passed && !today && <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="11" fontFamily="monospace" fill="#8a84b8" style={{ pointerEvents: "none" }}>+</text>}
+              <text x={p.x} y={p.y + 26} textAnchor="middle" fontSize="12" fontFamily="monospace" fill="#8a84b8" opacity="0.85" stroke="#0b0918" strokeWidth="4" paintOrder="stroke" style={{ pointerEvents: "none" }}>{d}</text>
               {today && (
                 <text x={p.x} y={p.y - 18} textAnchor="middle" fontSize="17" fontFamily="monospace" fill="#ffe9b0" stroke="#14102a" strokeWidth="5" paintOrder="stroke">TODAY</text>
               )}
@@ -1562,18 +1578,20 @@ export default function Campaigns() {
     return Array.from(m.values());
   };
   const [swapSel, setSwapSel] = useState<{ qid: string; fromTitle: string } | null>(null);
+  const [dropProduct, setDropProduct] = useState("");
+  const [dropTopic, setDropTopic] = useState("");
+  const [dropInstant, setDropInstant] = useState(false);
 
   return (
     <Page backAction={{ content: "Home", url: "/app" }}>
       {/* the cabinet's marquee — automation is the headline, not the fine print */}
       <div className="mm-hero" style={{ marginBottom: 16 }}>
         <span className="mm-eyebrow">▶ MARKETING CAMPAIGNS · AI AUTOPILOT</span>
-        <h1><span className="mm-marquee">A month of marketing. One signature.</span></h1>
+        <h1><span className="mm-marquee">Marketing that runs itself.</span></h1>
         <p>
-          Sign a campaign and go live your life. {pName} creates every video and ad with your
-          Brand Face, picks the best posting days and peak times automatically, and auto-posts
-          to <b>TikTok + Meta</b> — hands off, all month. Review anything, move any drop, or
-          just watch the map.
+          Pick a campaign once — {pName} handles the rest. Every video and ad is created with
+          your Brand Face, scheduled for the days and peak times that perform, and auto-posted
+          to <b>TikTok + Meta</b>. You approve, adjust, or simply watch it work.
         </p>
         <div className="mm-hero-stats">
           <div className="mm-hero-stat"><div className="k">ACTIVE CAMPAIGNS</div><div className="v cyan">{active.length}</div></div>
@@ -1641,7 +1659,7 @@ export default function Campaigns() {
                   <div className="meta">
                     {locked
                       ? `${pName} already forged this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — it's waiting in your library. ✓`
-                      : `${pName} forges a ${kind} here${s.productTitle ? ` starring ${s.productTitle}` : ""}, ready for ${fmtDow(s.date)} at ${fmtTime(s.time)}. Change the plan below — the whole schedule obeys.`}
+                      : `${pName} forges a ${kind} here${s.productTitle ? ` starring ${s.productTitle}` : ""}${s.topic ? ` about "${s.topic}"` : ""}, ready for ${fmtDow(s.date)} at ${fmtTime(s.time)}. Change the plan below — the whole schedule obeys.`}
                   </div>
                 </div>
                 {!locked && (
@@ -1685,12 +1703,27 @@ export default function Campaigns() {
                   <div className="meta">{msg}</div>
                 </div>
                 {!passed && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 260, flex: 1 }}>
                     <div className="qh-field-label" style={{ marginBottom: 0 }}>Schedule another drop here — auto-posted to TikTok + Meta at peak time:</div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "video" }, { method: "post" })}>🎬 Video · 60🪙</button>
-                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "image" }, { method: "post" })}>🖼 Image ad · 5🪙</button>
-                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "blog" }, { method: "post" })}>📝 Blog · 10🪙</button>
+                      <select className="qh-select" style={{ width: "auto", minWidth: 150 }} value={dropProduct} onChange={(e) => setDropProduct(e.target.value)}>
+                        <option value="">Star item: auto-rotate</option>
+                        {bagContents(q.slots).map((it) => <option key={it.title} value={it.title}>{it.title}</option>)}
+                      </select>
+                      <input
+                        className="qh-input" style={{ flex: 1, minWidth: 180 }} maxLength={160}
+                        placeholder="What should it be about? (optional — e.g. 'holiday gift angle')"
+                        value={dropTopic} onChange={(e) => setDropTopic(e.target.value)}
+                      />
+                    </div>
+                    <label className="qh-field-label" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                      <input type="checkbox" checked={dropInstant} onChange={(e) => setDropInstant(e.target.checked)} />
+                      ⚡ Instant drop — forge it right now instead of waiting for the schedule
+                    </label>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "video", instant: dropInstant ? "1" : "", dropProduct, dropTopic }, { method: "post" })}>🎬 Video · 60🪙</button>
+                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "image", instant: dropInstant ? "1" : "", dropProduct, dropTopic }, { method: "post" })}>🖼 Image ad · 5🪙</button>
+                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "blog", instant: dropInstant ? "1" : "", dropProduct, dropTopic }, { method: "post" })}>📝 Blog · 10🪙</button>
                       {!today && next && (
                         <button
                           type="button" className="qh-mini-btn" disabled={busy}
@@ -1928,7 +1961,7 @@ export default function Campaigns() {
                         const drops = selSku.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
                         const say =
                           bagCapped.length === 0 ? "Pack at least 1 item to march." :
-                          bagCapped.length >= selSku.bagSize ? `Fully loaded! Each item stars in ~${Math.round((drops / selSku.bagSize) * 10) / 10} drops this month.` :
+                          bagCapped.length >= selSku.bagSize ? `Fully loaded (${selSku.bagSize} items)! Want more products in the rotation? ${selSku.tier === "GOLD" ? "GOLD carries the biggest bag — upgrade your package for more monthly firepower." : selSku.tier === "SILVER" ? "GOLD carries 10 pouches." : "SILVER carries 6 pouches, GOLD carries 10."}` :
                           `${bagCapped.length} packed — ${pName} rotates ${bagCapped.length === 1 ? "it" : "them"} across the month's ${drops} drops.`;
                         return (
                           <div className="qh-packgrid" style={{ marginBottom: 14 }}>

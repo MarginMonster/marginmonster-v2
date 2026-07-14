@@ -195,12 +195,14 @@ export async function rescheduleSlot(shopId: string, questlineId: string, slotId
  *  map). Charges tokens for the piece, appends the slot, grows the matching
  *  objective, and schedules the pre-paid forge job — fully automatic after. */
 export async function addDrop(
-  shopId: string, questlineId: string, day: number, type: "video" | "image" | "blog"
+  shopId: string, questlineId: string, day: number, type: "video" | "image" | "blog",
+  opts: { instant?: boolean; productTitle?: string; direction?: string } = {}
 ): Promise<{ ok: boolean; error?: string; cost?: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q || q.status === "COMPLETE") return { ok: false, error: "Campaign not found or already complete." };
   const duration = q.durationDays || QUEST_DURATION_DAYS;
   const dayOf = Math.max(1, Math.min(duration, Math.floor((Date.now() - q.createdAt.getTime()) / 86400000) + 1));
+  if (opts.instant) day = dayOf;
   if (day < dayOf || day > duration) return { ok: false, error: "Pick a day that's still ahead on this campaign." };
 
   const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
@@ -219,15 +221,21 @@ export async function addDrop(
   for (const s of schedule.slots) {
     if (s.productTitle && !uniq.some((u) => u.title === s.productTitle)) uniq.push({ title: s.productTitle, image: s.productImageUrl });
   }
-  const item = uniq.length ? uniq[idx % uniq.length] : { title: q.productTitle || "", image: q.productImageUrl };
+  let item = uniq.length ? uniq[idx % uniq.length] : { title: q.productTitle || "", image: q.productImageUrl };
+  if (opts.productTitle) {
+    const picked = uniq.find((u) => u.title === opts.productTitle);
+    if (picked) item = picked;
+  }
 
   const date = new Date(q.createdAt.getTime() + (day - 1) * 86400000).toISOString().slice(0, 10);
+  const nowHM = new Date().toISOString().slice(11, 16);
   const slot = {
     idx, day, date,
-    time: type === "video" ? "19:00" : type === "blog" ? "09:00" : "12:00",
+    time: opts.instant ? nowHM : type === "video" ? "19:00" : type === "blog" ? "09:00" : "12:00",
     type, spot: spotName(type, typeCount),
     productTitle: item.title, productImageUrl: item.image,
     status: "SCHEDULED" as const,
+    topic: (opts.direction || "").trim().slice(0, 160) || undefined,
   };
   schedule.slots.push(slot);
 
@@ -251,11 +259,15 @@ export async function addDrop(
     },
   });
 
+  const direction = (opts.direction || "").trim().slice(0, 160) || undefined;
   const base = {
     productTitle: item.title, productImageUrl: item.image || undefined,
+    // the merchant's topic steers the script/article (video: customPrompt,
+    // blog: description; image gen picks it up when it learns directions)
+    customPrompt: direction, productDescription: direction,
     questlineId: q.id, objectiveKey: obj.key, slotIdx: idx, prePaid: true,
   };
-  const runAt = slotRunAt(slot);
+  const runAt = opts.instant ? new Date() : slotRunAt(slot);
   if (type === "video") {
     await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant }, runAt);
   } else if (type === "image") {

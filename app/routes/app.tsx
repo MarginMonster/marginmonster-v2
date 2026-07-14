@@ -204,16 +204,16 @@ export default function App() {
       </div>
       <NavMenu>
         <Link to="/app" rel="home">Dashboard</Link>
-        <Link to="/app/strategy">Marketing Plan</Link>
-        <Link to="/app/plans">Choose Plan</Link>
-        <Link to="/app/assets">Content Queue</Link>
-        <Link to="/app/calendar">Content Calendar</Link>
+        <Link to="/app/campaigns">Marketing Campaigns</Link>
         <Link to="/app/videos">Video Studio</Link>
         <Link to="/app/products">SEO Forge</Link>
+        <Link to="/app/assets">Content Queue</Link>
+        <Link to="/app/calendar">Content Calendar</Link>
         <Link to="/app/funnels">Landing Pages</Link>
+        <Link to="/app/strategy">Strategy</Link>
         <Link to="/app/connect">Ad Accounts</Link>
-        <Link to="/app/campaigns">Marketing Campaigns</Link>
         <Link to="/app/performance">Performance & ROI</Link>
+        <Link to="/app/plans">Packages & Companions</Link>
       </NavMenu>
       <div className="mm-asteroids" aria-hidden="true">
         <svg className="ast a1" viewBox="0 0 100 100"><polygon points="50,4 74,14 92,40 86,68 66,92 38,90 12,70 6,40 22,16" /></svg>
