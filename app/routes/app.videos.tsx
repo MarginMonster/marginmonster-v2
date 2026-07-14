@@ -92,20 +92,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       questNames.set(q.id, q.name);
     }
   }
-  const renderJobs = parsed.map(({ j, payload }) => ({
-    id: j.id,
-    status: j.status,
-    title: payload.productTitle || "Video",
-    avatarId: payload.avatarId || null,
-    avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
-    productImage: payload.productImageUrl || null,
-    origin: payload.questlineId
-      ? `⚔ QUEST · ${(questNames.get(payload.questlineId) || "CAMPAIGN").toUpperCase()}`
-      : `🎬 BY ${(payload.initiator || "MERCHANT").toUpperCase()}`,
-    lastError: j.lastError,
-    attempts: j.attempts,
-    createdAt: j.createdAt,
-  }));
+  const nowMs = Date.now();
+  const renderJobs = parsed.map(({ j, payload }) => {
+    // scheduled = a drip job whose forge time is still in the future
+    const scheduledFor = j.runAt && j.runAt.getTime() > nowMs ? j.runAt.toISOString() : null;
+    return {
+      id: j.id,
+      status: j.status,
+      title: payload.productTitle || "Video",
+      avatarId: payload.avatarId || null,
+      avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
+      productImage: payload.productImageUrl || null,
+      origin: payload.questlineId
+        ? `⚔ QUEST · ${(questNames.get(payload.questlineId) || "CAMPAIGN").toUpperCase()}`
+        : `🎬 BY ${(payload.initiator || "MERCHANT").toUpperCase()}`,
+      scheduledFor,
+      lastError: j.lastError,
+      attempts: j.attempts,
+      createdAt: j.createdAt,
+    };
+  });
 
   const plan = shop.activePlan;
   const hasVideoPlan = !!plan && plan.videoQuota > 0;
@@ -130,6 +136,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null,
   });
 };
+
+/** Friendly local date+time for a scheduled forge, e.g. "Thu, Jul 17 · 6PM".
+ *  Client-only (rendered inside the live-clock section), so locale is fine. */
+function fmtDayTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "soon";
+  const day = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 === 0 ? 12 : h % 12;
+  return `${day} · ${m === 0 ? `${h}${ap}` : `${h}:${String(m).padStart(2, "0")}${ap}`}`;
+}
 
 function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -952,11 +971,22 @@ export default function Videos() {
                 const cm = j.avatarId ? AVATAR_BY_ID[j.avatarId] : null;
                 const thumb = j.productImage || (cm && castAvail[cm.id] ? castImg(cm.id, j.avatarVariant) : null);
                 const mins = now ? Math.max(1, Math.round((now - new Date(j.createdAt).getTime()) / 60_000)) : null;
+                // a drip job with a future forge time isn't rendering — it's scheduled
+                const scheduled = j.status === "PENDING" && j.scheduledFor;
+                const schedLabel = scheduled ? fmtDayTime(j.scheduledFor as string) : null;
                 return (
                   <div key={j.id} className="mm-take-render">
                     <div className="mm-take-render-thumb">
                       {thumb ? <img src={thumb} alt="" /> : <div className="ph">🎬</div>}
-                      <div className="mm-buffer" aria-hidden="true"><span className="ring" /></div>
+                      {scheduled ? (
+                        <div className="mm-sched-overlay" aria-hidden="true">
+                          <span className="ico">🗓️</span>
+                          <span className="lb">SCHEDULED</span>
+                          <span className="dt">{schedLabel}</span>
+                        </div>
+                      ) : (
+                        <div className="mm-buffer" aria-hidden="true"><span className="ring" /></div>
+                      )}
                     </div>
                     <div className="mm-take-render-body">
                       <Text variant="headingSm" as="h3">{j.title}</Text>
@@ -966,11 +996,15 @@ export default function Videos() {
                             <img src={castImg(cm.id, j.avatarVariant)} alt="" /> {cm.name}
                           </span>
                         )}
-                        <Badge tone="attention">{j.status === "IN_PROGRESS" ? "RENDERING NOW" : "IN LINE"}</Badge>
+                        <Badge tone={scheduled ? "info" : "attention"}>
+                          {scheduled ? "SCHEDULED" : j.status === "IN_PROGRESS" ? "RENDERING NOW" : "IN LINE"}
+                        </Badge>
                         <span className="mm-origin-tag">{j.origin}</span>
                       </InlineStack>
                       <Text variant="bodySm" as="p" tone="subdued">
-                        {j.status === "IN_PROGRESS"
+                        {scheduled
+                          ? `Scheduled to generate on ${schedLabel} — your campaign creates this automatically about a day before it posts. Nothing to do; it'll appear here when it's forged.`
+                          : j.status === "IN_PROGRESS"
                           ? `${mins ? `${mins} min in · ` : ""}usually 3–8 min${mins && mins > 8 ? " — long takes happen when the AI model is warming up" : ""}. Updates automatically.`
                           : "Waiting for the take ahead of it to finish — takes render one at a time."}
                       </Text>
