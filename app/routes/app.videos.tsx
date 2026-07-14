@@ -73,27 +73,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   } catch { /* no avatars dir — roster renders empty, product-only still works */ }
 
   // In-flight + failed renders so ROLL CAMERA always has visible consequences.
-  const renderJobs = (
-    await db.job.findMany({
-      where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] } },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    })
-  ).map((j) => {
-    let payload: { productTitle?: string; avatarId?: string; avatarVariant?: number | string; productImageUrl?: string } = {};
-    try { payload = JSON.parse(j.payload); } catch { /* keep defaults */ }
-    return {
-      id: j.id,
-      status: j.status,
-      title: payload.productTitle || "Video",
-      avatarId: payload.avatarId || null,
-      avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
-      productImage: payload.productImageUrl || null,
-      lastError: j.lastError,
-      attempts: j.attempts,
-      createdAt: j.createdAt,
-    };
+  // Every card carries its provenance: quest-drip renders name their quest,
+  // manual renders name the person who pressed the button.
+  const rawJobs = await db.job.findMany({
+    where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
   });
+  const parsed = rawJobs.map((j) => {
+    let payload: { productTitle?: string; avatarId?: string; avatarVariant?: number | string; productImageUrl?: string; questlineId?: string; initiator?: string } = {};
+    try { payload = JSON.parse(j.payload); } catch { /* keep defaults */ }
+    return { j, payload };
+  });
+  const questIds = [...new Set(parsed.map((p) => p.payload.questlineId).filter(Boolean))] as string[];
+  const questNames = new Map<string, string>();
+  if (questIds.length) {
+    for (const q of await db.questline.findMany({ where: { id: { in: questIds } }, select: { id: true, name: true } })) {
+      questNames.set(q.id, q.name);
+    }
+  }
+  const renderJobs = parsed.map(({ j, payload }) => ({
+    id: j.id,
+    status: j.status,
+    title: payload.productTitle || "Video",
+    avatarId: payload.avatarId || null,
+    avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
+    productImage: payload.productImageUrl || null,
+    origin: payload.questlineId
+      ? `⚔ QUEST · ${(questNames.get(payload.questlineId) || "CAMPAIGN").toUpperCase()}`
+      : `🎬 BY ${(payload.initiator || "MERCHANT").toUpperCase()}`,
+    lastError: j.lastError,
+    attempts: j.attempts,
+    createdAt: j.createdAt,
+  }));
 
   const plan = shop.activePlan;
   const hasVideoPlan = !!plan && plan.videoQuota > 0;
@@ -236,6 +248,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const captions = form.get("captions") !== "off";
     if (!productTitle) return json({ error: "Give your video a product or subject." });
 
+    // Provenance: name the human who pressed ROLL CAMERA (quest drips carry
+    // their questlineId instead), so the Studio can label every card.
+    const sessUser = (session as { onlineAccessInfo?: { associated_user?: { first_name?: string; last_name?: string } } }).onlineAccessInfo?.associated_user;
+    const initiator = [sessUser?.first_name, sessUser?.last_name].filter(Boolean).join(" ").trim() || undefined;
+
     await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
       productTitle,
       style,
@@ -245,6 +262,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productImageUrl,
       productDescription,
       captions,
+      initiator,
     });
     return json({ ok: true, queued: true });
   }
@@ -803,7 +821,7 @@ export default function Videos() {
                 <Banner
                   key={j.id}
                   tone="critical"
-                  title={`Render failed — ${j.title}`}
+                  title={`Render failed — ${j.title} · ${j.origin}`}
                   action={{
                     content: "Retry (free — resumes where it stopped)",
                     onAction: () => crowner.submit({ intent: "retryJob", jobId: j.id }, { method: "post" }),
@@ -903,6 +921,7 @@ export default function Videos() {
                           </span>
                         )}
                         <Badge tone="attention">{j.status === "IN_PROGRESS" ? "RENDERING NOW" : "IN LINE"}</Badge>
+                        <span className="mm-origin-tag">{j.origin}</span>
                       </InlineStack>
                       <Text variant="bodySm" as="p" tone="subdued">
                         {j.status === "IN_PROGRESS"
@@ -939,6 +958,7 @@ export default function Videos() {
                               <Badge tone="success">{`📎 ${String(meta.attachedProductTitle).slice(0, 24)}`}</Badge>
                             )}
                             {meta.socialQueued && <Badge tone="info">QUEUED FOR SOCIAL</Badge>}
+                            {meta.origin && <span className="mm-origin-tag">{meta.origin}</span>}
                           </InlineStack>
                         </BlockStack>
                       </InlineStack>

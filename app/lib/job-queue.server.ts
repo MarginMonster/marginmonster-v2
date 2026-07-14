@@ -174,6 +174,16 @@ async function runJob(
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }
+      // Provenance label for the finished take's card in the Studio.
+      let origin: string | undefined;
+      if (payload.questlineId) {
+        try {
+          const ql = await db.questline.findUnique({ where: { id: payload.questlineId as string }, select: { name: true } });
+          origin = `⚔ QUEST · ${(ql?.name || "CAMPAIGN").toUpperCase()}`;
+        } catch { origin = "⚔ QUEST"; }
+      } else if (payload.initiator) {
+        origin = `🎬 BY ${(payload.initiator as string).toUpperCase()}`;
+      }
       if (payload.avatarId) {
         // Presenter cast → full UGC ad pipeline (script → voice → talking
         // performance → captioned assembly). Zeely-class output.
@@ -187,6 +197,7 @@ async function runJob(
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
           direction: payload.customPrompt as string | undefined,
           captions: payload.captions !== false,
+          origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
             script: payload.ckScript as string | undefined,

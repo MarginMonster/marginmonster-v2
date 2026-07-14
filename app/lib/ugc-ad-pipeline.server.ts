@@ -46,6 +46,7 @@ interface UgcAdParams {
   avatarVariant?: number;
   direction?: string; // merchant's custom prompt
   captions?: boolean; // burn in on-screen captions (default true)
+  origin?: string; // provenance label ("⚔ QUEST · FIRST BLOOD" / "🎬 BY DANIEL")
   jobId?: string; // enables stage checkpointing
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
@@ -437,6 +438,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           avatarId: avatar.id,
           avatarVariant: variant,
           direction: params.direction || null,
+          origin: params.origin || null,
         }),
       },
     });
