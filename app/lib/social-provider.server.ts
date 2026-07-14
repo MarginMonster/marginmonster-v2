@@ -111,26 +111,33 @@ export function linkedFromCache(socialsJson: string | null | undefined): string[
   } catch { return []; }
 }
 
-/** Publish one piece of media. Returns ok ONLY on confirmed provider success. */
+/** Publish one piece of media. Returns ok ONLY on confirmed provider success.
+ *  Video: pass the media URL directly (upload-post's /api/upload `video` field
+ *  accepts a URL) — no re-upload through our server. Photos: /api/upload_photos
+ *  is file-only, so we fetch the bytes and attach them. */
 export async function publishPost(
   username: string,
   params: { title: string; mediaUrl: string; isVideo: boolean; platforms: string[] }
 ): Promise<{ ok: boolean; error?: string }> {
   if (!socialProviderEnabled()) return { ok: false, error: "no-api-key" };
   try {
-    // pull the media from our own served URL (worker and web share a host)
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const mediaAbs = params.mediaUrl.startsWith("http") ? params.mediaUrl : `${base}${params.mediaUrl}`;
-    const mediaRes = await fetch(mediaAbs);
-    if (!mediaRes.ok) return { ok: false, error: `media-${mediaRes.status}` };
-    const blob = await mediaRes.blob();
+    const title = params.title.slice(0, 150);
 
     const form = new FormData();
     form.append("user", username);
-    form.append("title", params.title.slice(0, 150));
+    form.append("title", title);
     for (const p of params.platforms) form.append("platform[]", p);
-    if (params.isVideo) form.append("video", blob, "adarcade.mp4");
-    else form.append("photos[]", blob, "adarcade.jpg");
+
+    if (params.isVideo) {
+      // video accepts a URL string — provider fetches it directly
+      form.append("video", mediaAbs);
+    } else {
+      const mediaRes = await fetch(mediaAbs);
+      if (!mediaRes.ok) return { ok: false, error: `media-${mediaRes.status}` };
+      form.append("photos[]", await mediaRes.blob(), "adarcade.jpg");
+    }
 
     const r = await fetch(`${API}/${params.isVideo ? "upload" : "upload_photos"}`, {
       method: "POST",
@@ -140,7 +147,7 @@ export async function publishPost(
     const j = (await r.json().catch(() => ({}))) as { success?: boolean; results?: Record<string, { success?: boolean }> };
     const anySuccess =
       j.success === true ||
-      (j.results && Object.values(j.results).some((v) => v && v.success));
+      (j.results ? Object.values(j.results).some((v) => v && v.success) : false);
     if (r.ok && anySuccess) return { ok: true };
     console.error("[social] post failed:", r.status, JSON.stringify(j).slice(0, 300));
     return { ok: false, error: `post-${r.status}` };
