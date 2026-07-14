@@ -3,6 +3,7 @@
 // a low-volume app. Guarded by a global so hot-reload doesn't spawn duplicates.
 
 import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
+import { postDueSlots } from "./lib/social-post.server";
 
 declare global {
   var __mm_worker_started__: boolean | undefined;
@@ -16,6 +17,8 @@ async function tick() {
   try {
     // Free any jobs whose process died mid-run (deploys, restarts).
     await reclaimOrphanJobs(STUCK_MS);
+    // Publish READY slots whose post time arrived (self-throttled to ~5 min).
+    await postDueSlots();
     // Drain any pending jobs each tick.
     let processed = true;
     let guard = 0;

@@ -90,6 +90,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     partner: null as { img: string; accent: string; name: string; srcs?: { a: string; b?: string; c?: string } } | null,
     feed: [] as { ts: number; t: string; msg: string; tone: string; href?: string }[],
     renderingIds: [] as string[], working: false,
+    socials: { meta: false, tiktok: false },
   };
   if (!shop) return json(empty);
 
@@ -107,6 +108,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const files = new Set(fs.readdirSync(path.join(process.cwd(), "public", "avatars")));
     for (const a of AVATARS) if (files.has(`${a.id}_0.jpg`) || files.has(`${a.id}.jpg`)) castAvail[a.id] = true;
   } catch { /* empty roster */ }
+
+  // connected social platforms — gates the auto-post messaging honestly
+  const socials = { meta: false, tiktok: false };
+  try {
+    for (const a of await db.adAccount.findMany({ where: { shopId: shop.id }, select: { platform: true } })) {
+      if (a.platform === "META") socials.meta = true;
+      if (a.platform === "TIKTOK") socials.tiktok = true;
+    }
+  } catch { /* chip just shows the connect prompt */ }
 
   const pd = getCompanion({
     id: shop.id, companionId: shop.companionId, companionName: shop.companionName,
@@ -1458,7 +1468,8 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
 }
 
 export default function Campaigns() {
-  const { questlines, products, tokens, tier, brandFace, castAvail, partner, feed, renderingIds, working } = useLoaderData<typeof loader>();
+  const { questlines, products, tokens, tier, brandFace, castAvail, partner, feed, renderingIds, working, socials } = useLoaderData<typeof loader>();
+  const socialsArmed = socials.meta || socials.tiktok;
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -1603,6 +1614,13 @@ export default function Campaigns() {
             <span className="dot" />AI AUTOPILOT · {working ? "WORKING" : "ONLINE"}
           </span>
           <span className="qh-chip idle"><span className="dot" />🪙 {tokens.toLocaleString()}</span>
+          {socialsArmed ? (
+            <span className="qh-chip">📲 AUTO-POST ARMED · {[socials.tiktok && "TIKTOK", socials.meta && "META"].filter(Boolean).join(" + ")}</span>
+          ) : (
+            <Link to="/app/connect" className="qh-chip" style={{ borderColor: "#4d3a1d", background: "#201a0c", color: "#e8cf8c", textDecoration: "none" }}>
+              ⚠ CONNECT TIKTOK + META — one click to full hands-off
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1925,7 +1943,7 @@ export default function Campaigns() {
                         <div className="qh-auto-grid">
                           <span>🎬 Creates every video & image ad — starring your Brand Face</span>
                           <span>🗓 Picks posting days & peak times for you ({selSku.cadence})</span>
-                          <span>📲 Auto-posts to TikTok + Meta — connect once, hands off</span>
+                          <span>{socialsArmed ? "📲 Auto-posts to TikTok + Meta — armed and hands off" : "📲 Auto-posts to TikTok + Meta — connect your accounts once (Ad Accounts tab) to arm it"}</span>
                           <span>🎛 You stay in control: review anything, move any drop on the map</span>
                         </div>
                       </div>

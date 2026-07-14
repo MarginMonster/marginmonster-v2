@@ -35,25 +35,25 @@ export type CampaignDef = {
 
 export const CAMPAIGNS: CampaignDef[] = [
   {
-    key: "GET_SEEN", headline: "GET SEEN", label: "Brand Awareness", icon: "📣", homeWorld: 0,
+    key: "GET_SEEN", headline: "CENTER STAGE", label: "Brand Awareness", icon: "🎪", homeWorld: 0,
     desc: "Video-heavy social presence — your Brand Face in front of new eyes, week after week.",
     lore: "Your companion takes the brand on tour: fresh faces, fresh takes, and your name echoing through every square along the road.",
     recurring: true,
   },
   {
-    key: "LAUNCH_IT", headline: "LAUNCH IT", label: "Product Launch", icon: "🚀", homeWorld: 3,
+    key: "LAUNCH_IT", headline: "LIGHT THE BEACON", label: "Product Launch", icon: "🚀", homeWorld: 3,
     desc: "A loud month for a big drop — front-loaded hype videos, then a rolling echo.",
     lore: "Light the beacon. A heavy first-week barrage announces the drop, and the echo keeps it burning all month.",
     recurring: false,
   },
   {
-    key: "STAY_STEADY", headline: "STAY STEADY", label: "Always-On Growth", icon: "⚙️", homeWorld: 2,
+    key: "STAY_STEADY", headline: "FOUR SEASONS", label: "Always-On Growth", icon: "⚙️", homeWorld: 2,
     desc: "The consistent monthly drumbeat — content posted at peak times while you do anything else.",
     lore: "Empires are built every few days, for a month straight. The road is long, the pace is calm, the fire never goes out.",
     recurring: true,
   },
   {
-    key: "OWN_THE_SEARCH", headline: "OWN THE SEARCH", label: "SEO & Discovery", icon: "🔎", homeWorld: 1,
+    key: "OWN_THE_SEARCH", headline: "TREASURE HUNT", label: "SEO & Discovery", icon: "🗺️", homeWorld: 1,
     desc: "Blogs and image ads that compound in Google — traffic that keeps arriving after the month ends.",
     lore: "Real treasure is buried in the search results. Your companion digs where the maps say X: keywords, articles, and ads that pay out for seasons.",
     recurring: false,
