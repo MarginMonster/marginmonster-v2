@@ -32,7 +32,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { domain: session.shop },
     include: { activePlan: true },
   });
-  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [] });
+  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null });
 
   const videos = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD" },
@@ -110,6 +110,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const plan = shop.activePlan;
   const hasVideoPlan = !!plan && plan.videoQuota > 0;
 
+  // linked social platforms (for the per-take "Post to socials" test buttons)
+  const { linkedFromCache, socialProviderEnabled } = await import("../lib/social-provider.server");
+  const linkedSocials = linkedFromCache(shop.socialsJson);
+
   return json({
     videos,
     plan: plan
@@ -119,6 +123,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products,
     castAvail,
     renderJobs,
+    linkedSocials,
+    posterEnabled: socialProviderEnabled(),
     brandFace: shop.brandAvatarId
       ? { id: shop.brandAvatarId, variant: shop.brandAvatarVariant ?? 0 }
       : null,
@@ -320,6 +326,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ ok: true });
   }
 
+  if (intent === "postToSocials") {
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "VIDEO_AD" } });
+    if (!asset) return json({ opError: "Take not found." });
+    let videoUrl: string | undefined;
+    let title = "New from our shop";
+    try {
+      const body = JSON.parse(asset.bodyJson || "{}");
+      videoUrl = body.videoUrl;
+      const meta = JSON.parse(asset.metaJson || "{}");
+      title = meta.productTitle || asset.title || title;
+    } catch { /* fall through */ }
+    if (!videoUrl) return json({ opError: "This take has no rendered video yet." });
+
+    const { ensureProfile, refreshLinkedPlatforms, publishPost, socialProviderEnabled } = await import("../lib/social-provider.server");
+    if (!socialProviderEnabled()) return json({ opError: "Auto-posting isn't switched on yet (no provider key)." });
+    const profileKey = await ensureProfile(shop.id);
+    if (!profileKey) return json({ opError: "Couldn't reach the posting service." });
+    const linked = await refreshLinkedPlatforms(shop.id);
+    const platforms = linked.filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+    if (platforms.length === 0) return json({ opError: "Connect a social account first (Ad Accounts tab)." });
+
+    const res = await publishPost(profileKey, { title, mediaUrl: videoUrl, isVideo: true, platforms });
+    return res.ok
+      ? json({ posted: platforms.join(", ") })
+      : json({ opError: `Posting failed (${res.error || "unknown"}). Check your connected accounts.` });
+  }
+
   if (intent === "attachProduct") {
     const id = (form.get("assetId") as string) || "";
     const productId = (form.get("productId") as string) || "";
@@ -424,14 +458,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Pick = { id: string | null; title: string; image: string | null; description: string };
 
 export default function Videos() {
-  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
   const revalidator = useRevalidator();
   const puller = useFetcher<{ pulled?: Pick; pullError?: string }>();
   const crowner = useFetcher();
-  const taker = useFetcher<{ ok?: boolean; attached?: string; opError?: string }>();
+  const taker = useFetcher<{ ok?: boolean; attached?: string; posted?: string; opError?: string }>();
   const busy = nav.state !== "idle";
   const pulling = puller.state !== "idle";
   const queued = !!(actionData && "queued" in actionData && actionData.queued);
@@ -862,6 +896,18 @@ export default function Videos() {
               </Banner>
             </Box>
           )}
+          {taker.data && "posted" in taker.data && taker.data.posted && (
+            <Box paddingBlockEnd="300">
+              <Banner tone="success" title="📲 Posted to your socials">
+                <p>Live on {taker.data.posted}. Check your accounts — this is the same pipeline your campaigns post through automatically.</p>
+              </Banner>
+            </Box>
+          )}
+          {taker.data && "opError" in taker.data && taker.data.opError && (
+            <Box paddingBlockEnd="300">
+              <Banner tone="critical" title="Couldn't post"><p>{taker.data.opError}</p></Banner>
+            </Box>
+          )}
           {videos.length === 0 && activeJobs.length === 0 ? (
             <Card>
               <Box padding="400">
@@ -1040,6 +1086,17 @@ export default function Videos() {
                             >
                               {meta.socialQueued ? "📣 Unqueue" : "📣 Queue for social"}
                             </Button>
+                            {posterEnabled && (
+                              <Button
+                                size="slim"
+                                variant="primary"
+                                loading={taker.state !== "idle"}
+                                disabled={linkedSocials.length === 0}
+                                onClick={() => taker.submit({ intent: "postToSocials", assetId: v.id }, { method: "post" })}
+                              >
+                                {linkedSocials.length === 0 ? "📲 Connect socials first" : `📲 Post now → ${linkedSocials.map((p: string) => p === "facebook" ? "FB" : p === "instagram" ? "IG" : "TikTok").join("+")}`}
+                              </Button>
+                            )}
                           </>
                         )}
                         <Button
