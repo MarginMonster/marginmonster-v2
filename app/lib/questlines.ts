@@ -59,13 +59,21 @@ export const CAMPAIGNS: CampaignDef[] = [
     recurring: false,
   },
 ];
+/* Where each campaign's month-long road ends (its set's finale world). */
+export const CAMPAIGN_DEST: Record<string, string> = {
+  GET_SEEN: 'THE GRAND BAZAAR',
+  LAUNCH_IT: 'THE LAUNCH BEACON',
+  STAY_STEADY: 'THE EVERGREEN HOLD',
+  OWN_THE_SEARCH: 'THE GOLDEN OASIS',
+};
+
 export const CAMPAIGN_BY_KEY: Record<string, CampaignDef> = Object.fromEntries(CAMPAIGNS.map((c) => [c.key, c]));
 
 /* Tier = intensity + journey length + package gate. One legible axis. */
 export const TIERS: { key: TierKey; worlds: number; minTier: "GROWTH" | "PRO" | "SCALE"; bagSize: number; blurb: string }[] = [
-  { key: "BRONZE", worlds: 1, minTier: "GROWTH", bagSize: 3, blurb: "A light month — one world" },
-  { key: "SILVER", worlds: 2, minTier: "PRO", bagSize: 6, blurb: "The standard month — two worlds" },
-  { key: "GOLD", worlds: 4, minTier: "SCALE", bagSize: 10, blurb: "Full assault — the whole panorama" },
+  { key: "BRONZE", worlds: 1, minTier: "GROWTH", bagSize: 3, blurb: "A light month, gently paced" },
+  { key: "SILVER", worlds: 2, minTier: "PRO", bagSize: 6, blurb: "The standard month" },
+  { key: "GOLD", worlds: 4, minTier: "SCALE", bagSize: 10, blurb: "Full assault" },
 ];
 
 /* Content mixes per campaign x tier (v=video, i=image, b=blog). */
@@ -111,13 +119,6 @@ export type QuestlineDef = {
   destination: string;
 };
 
-/** Journey window: ends where it can showcase the home world; GOLD is always
- *  the full panorama. */
-function windowFor(home: number, worlds: number): [number, number] {
-  if (worlds >= 4) return [0, 3];
-  const start = Math.max(0, Math.min(home - worlds + 1, 4 - worlds));
-  return [start, start + worlds - 1];
-}
 
 function buildSku(c: CampaignDef, t: (typeof TIERS)[number]): QuestlineDef {
   const m = MIX[c.key][t.key];
@@ -126,7 +127,7 @@ function buildSku(c: CampaignDef, t: (typeof TIERS)[number]): QuestlineDef {
   if (m.i) objectives.push({ type: "image", label: "Scroll-stopping image ads", target: m.i });
   if (m.b) objectives.push({ type: "blog", label: "SEO blog posts", target: m.b });
   objectives.push({ type: "post", label: "Scheduled drops at peak times", target: m.v + m.i + m.b });
-  const win = windowFor(c.homeWorld, t.worlds);
+  const win: [number, number] = [0, 3]; // the route spans the campaign's whole panorama
   return {
     key: `${c.key}_${t.key}`,
     campaign: c.key,
@@ -143,7 +144,7 @@ function buildSku(c: CampaignDef, t: (typeof TIERS)[number]): QuestlineDef {
     bagSize: t.bagSize,
     cadence: m.cadence,
     worldWindow: win,
-    destination: WORLD_META[win[1]].destination,
+    destination: CAMPAIGN_DEST[c.key],
   };
 }
 

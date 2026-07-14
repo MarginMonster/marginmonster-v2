@@ -1810,7 +1810,6 @@ export default function Campaigns() {
                       const im = sku.objectives.find((o) => o.type === "image")?.target || 0;
                       const b = sku.objectives.find((o) => o.type === "blog")?.target || 0;
                       const tierMeta = TIERS.find((t) => t.key === sku.tier)!;
-                      const nWorlds = sku.worldWindow[1] - sku.worldWindow[0] + 1;
                       return (
                         <button
                           key={sku.key} type="button"
@@ -1824,7 +1823,7 @@ export default function Campaigns() {
                             {im > 0 && <span>🖼 {im} image ads</span>}
                             {b > 0 && <span>📝 {b} blog posts</span>}
                           </span>
-                          <span className="tjourney">🗺 {nWorlds === 4 ? "the full panorama" : `${nWorlds} world${nWorlds > 1 ? "s" : ""}`} → {sku.destination}</span>
+                          <span className="tjourney">🗺 journeys to {sku.destination}</span>
                           <span className="tcost">{locked ? `🔒 ${sku.minTier[0] + sku.minTier.slice(1).toLowerCase()} package` : <>{cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}</>}</span>
                         </button>
                       );
