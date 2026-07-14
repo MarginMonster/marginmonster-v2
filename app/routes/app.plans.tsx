@@ -166,35 +166,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app");
 };
 
-type Fighter = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string; stats: { label: string; v: number }[] };
-const FIGHTERS: Record<string, Fighter> = {
-  STARTER: { title: "BYTE", ref: "Starter", rank: "STAGE 1", power: 1, accent: "#34E7E4", img: "byte",
-    stats: [{ label: "CONTENT", v: 2 }, { label: "ADS", v: 0 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  GROWTH: { title: "KILO", ref: "Growth", rank: "STAGE 2", power: 2, accent: "#FF3D8B", img: "kilo",
-    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 3 }, { label: "VIDEO", v: 0 }, { label: "AUTOPILOT", v: 5 }] },
-  PRO: { title: "MEGA", ref: "Rapid Growth", rank: "STAGE 3", power: 3, accent: "#FFB020", img: "mega",
-    stats: [{ label: "CONTENT", v: 4 }, { label: "ADS", v: 4 }, { label: "VIDEO", v: 3 }, { label: "AUTOPILOT", v: 5 }] },
-  SCALE: { title: "GIGA", ref: "Commercial Growth", rank: "STAGE 4", power: 4, accent: "#B77BFF", img: "giga",
-    stats: [{ label: "CONTENT", v: 5 }, { label: "ADS", v: 5 }, { label: "VIDEO", v: 5 }, { label: "AUTOPILOT", v: 5 }] },
+
+
+
+/* Package identities — expedition scale, not characters. Companions are the
+ * merchant's own pick now; these emblems carry the tier flex instead. */
+type Pkg = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string; stats: { label: string; v: number }[] };
+const PACKAGES: Record<string, Pkg> = {
+  STARTER: { title: 'BASE CAMP', ref: 'Starter', rank: 'EXPEDITION I', power: 1, accent: '#34E7E4', img: '/plans/pkg-camp.png',
+    stats: [{ label: 'CONTENT', v: 2 }, { label: 'ADS', v: 0 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
+  GROWTH: { title: 'CARAVAN', ref: 'Growth', rank: 'EXPEDITION II', power: 2, accent: '#FF3D8B', img: '/plans/pkg-caravan.png',
+    stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 3 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
+  PRO: { title: 'WAR GALLEON', ref: 'Rapid Growth', rank: 'EXPEDITION III', power: 3, accent: '#FFB020', img: '/plans/pkg-galleon.png',
+    stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 4 }, { label: 'VIDEO', v: 3 }, { label: 'AUTOPILOT', v: 5 }] },
+  SCALE: { title: 'SKY CITADEL', ref: 'Commercial Growth', rank: 'EXPEDITION IV', power: 4, accent: '#B77BFF', img: '/plans/pkg-citadel.png',
+    stats: [{ label: 'CONTENT', v: 5 }, { label: 'ADS', v: 5 }, { label: 'VIDEO', v: 5 }, { label: 'AUTOPILOT', v: 5 }] },
 };
-
-function PartnerFighter({ img, accent, context }: { img: string; accent: string; context?: "fight" }) {
-  return (
-    <div className={`mm-pixel mm-mech-wrap${context === "fight" ? " in-fight" : ""}`} style={{ ["--fx" as string]: accent }}>
-      <Partner img={img} accent={accent} className={context === "fight" ? "in-fight" : ""} />
-    </div>
-  );
-}
-
-/* The opponent: a frazzled paperwork gremlin — what "managing your own ads"
- * feels like. Same render pipeline as the partners, dull red accent. */
-function PixelFoe() {
-  return (
-    <div className="mm-pixel mm-mech-wrap foe">
-      <Partner img="chaos" accent="#FF6B6B" frames={1} />
-    </div>
-  );
-}
 
 export default function Plans() {
   const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging } = useLoaderData<typeof loader>();
@@ -236,12 +223,6 @@ export default function Plans() {
   }, [confirmationUrl]);
   const [pending, setPending] = useState<PlanKey | null>(null);
 
-  // which plan the fight scene is previewing — hover a card to change it
-  const defaultPreview = (PLAN_TIERS.find((t) => t.highlight)?.key || PLAN_TIERS[0].key) as PlanKey;
-  const [previewKey, setPreviewKey] = useState<PlanKey>(defaultPreview);
-  const champ = FIGHTERS[previewKey];
-  const DMG: Record<number, string> = { 1: "70%", 2: "50%", 3: "28%", 4: "8%" };
-
   const buy = (planKey: PlanKey) => {
     setPending(planKey);
     submit({ planKey }, { method: "post" });
@@ -276,56 +257,26 @@ export default function Plans() {
           </Layout.Section>
         )}
 
-        {/* Animated fight — an Arcade-powered owner vs. going it alone */}
-        <Layout.Section>
-          <div className="mm-fight">
-            <div className="mm-fight-hud">
-              <div className="mm-hp-block">
-                <div className="mm-hp-name" style={{ color: champ.accent }}>{champ.title.toUpperCase()} · ARCADE</div>
-                <div className="mm-hp"><span className="mm-hp-fill you" /></div>
-              </div>
-              <div className="mm-fight-vs">VS</div>
-              <div className="mm-hp-block right">
-                <div className="mm-hp-name">MANAGING YOUR OWN ADS</div>
-                <div className="mm-hp"><span className="mm-hp-fill foe" style={{ ["--dmg" as string]: DMG[champ.power] }} /></div>
-              </div>
-            </div>
-
-            <div className="mm-fight-stage" data-p={champ.power}>
-              <div className="mm-fighter-you"><PartnerFighter img={champ.img} accent={champ.accent} context="fight" /></div>
-              <div className="mm-fireball" style={{ ["--fireclr" as string]: champ.accent }} />
-              <div className="mm-fight-hit" style={{ color: champ.accent, fontSize: 15 + champ.power * 4 }}>
-                {champ.power >= 4 ? "K.O.!" : champ.power >= 3 ? "BOOM!" : "POW!"}
-              </div>
-              <div className="mm-fighter-foe"><PixelFoe /></div>
-            </div>
-
-            <p className="mm-fight-caption">
-              Hover a partner below to send it into battle — <strong>every
-              evolution stage hits harder.</strong>
-            </p>
-          </div>
-        </Layout.Section>
-
         {/* Package select — each tier is a bigger expedition */}
         <Layout.Section>
           <span className="mm-section-label">▶ CHOOSE YOUR PACKAGE<span className="mm-dots">· · · · ·</span></span>
           <div className="mm-fighter-grid">
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
-              const f = FIGHTERS[tier.key];
+              const f = PACKAGES[tier.key];
               return (
                 <div
                   key={tier.key}
-                  className={`mm-fighter-card${tier.highlight ? " is-featured" : ""}${previewKey === tier.key ? " is-previewing" : ""}`}
+                  className={`mm-fighter-card${tier.highlight ? " is-featured" : ""}`}
                   style={{ ["--fx" as string]: f.accent }}
-                  onMouseEnter={() => setPreviewKey(tier.key as PlanKey)}
                 >
                   {tier.highlight && <div className="mm-plan-ribbon">★ Player favorite</div>}
 
                   <div className="mm-fighter-portrait">
                     <div className="mm-fighter-rank">{f.rank}</div>
-                    <PartnerFighter img={f.img} accent={f.accent} />
+                    <div className="pkg-emblem" style={{ ["--acc" as string]: f.accent }}>
+                      <img src={f.img} alt={f.title} loading="lazy" />
+                    </div>
                     <div className="mm-fighter-power">
                       {[1, 2, 3, 4].map((n) => (
                         <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
@@ -366,7 +317,6 @@ export default function Plans() {
                   <button
                     className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
                     onClick={() => buy(tier.key)}
-                    onFocus={() => setPreviewKey(tier.key as PlanKey)}
                     disabled={isCurrent}
                   >
                     {isCurrent ? "★ YOUR PACKAGE" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SET OUT"}
@@ -402,15 +352,18 @@ export default function Plans() {
                 ))}
               </div>
               <div className="cmp-grid">
-                {gallery.filter((c) => cat === "all" || c.cat === cat).map((c) => (
+                {gallery.filter((c) => cat === "all" || c.cat === cat).map((c, ci) => (
                   <button
                     key={c.id} type="button"
                     className={`cmp-card${selId === c.id ? " on" : ""}${companionId === c.id ? " mine" : ""}`}
-                    style={{ ["--acc" as string]: c.accent }}
                     onClick={() => { setSelId(c.id); setNick(""); }}
                     title={`${c.name} — ${c.vibe}`}
+                    style={{ ["--acc" as string]: c.accent, ["--fd" as string]: `${(ci % 8) * 0.4}s` }}
                   >
-                    <img src={companionSrcs(c.id).a} alt={c.name} loading="lazy" />
+                    <span className="cmp-flip">
+                      <img src={companionSrcs(c.id).a} alt={c.name} loading="lazy" className="fa" />
+                      <img src={companionSrcs(c.id).c} alt="" loading="lazy" className="fb" aria-hidden="true" />
+                    </span>
                     <span className="nm">{c.name}</span>
                   </button>
                 ))}

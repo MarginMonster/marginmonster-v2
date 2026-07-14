@@ -10,7 +10,7 @@ import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem } from "../lib/questlines.server";
 import {
-  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, questlineTokenCost, parseSchedule, spotName,
+  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
 import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
@@ -326,12 +326,16 @@ const WORLDS: World[] = [
 const PANO_W = STEP * (WORLDS.length - 1) + MAP_W;
 
 /* Combined route across all worlds (each world's local xs shifted right). */
-const ROUTE: [number, number][] = WORLDS.flatMap((w, k) =>
-  w.route.map(([x, y]) => [x + k * STEP, y] as [number, number])
-);
+/* Journeys can span a WINDOW of worlds (tier = journey length) — the whole
+ * panorama always renders as scenery, but the road only crosses the window. */
+function routeFor(w0: number, w1: number): [number, number][] {
+  return WORLDS.slice(w0, w1 + 1).flatMap((w, i) =>
+    w.route.map(([x, y]) => [x + (w0 + i) * STEP, y] as [number, number])
+  );
+}
 
 /** Even points along the waypoint polyline (t in 0..1 by arc length). */
-function routePoint(t: number): { x: number; y: number } {
+function routePoint(ROUTE: [number, number][], t: number): { x: number; y: number } {
   const segs: number[] = [];
   let total = 0;
   for (let i = 1; i < ROUTE.length; i++) {
@@ -366,25 +370,27 @@ const BIRD_LANES = [
   { y: 42, dur: 55, delay: 26, size: 1.2 },
 ];
 
-function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDay, onOpenBag, selectedIdx, selectedDay, destination, dayOf, duration }: {
+function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDay, onOpenBag, selectedIdx, selectedDay, destination, dayOf, duration, worldWindow }: {
   slots: QuestSlot[]; xpReward: number; rendering: boolean;
   partner: { img: string; accent: string; name: string; srcs?: { a: string; b?: string; c?: string } } | null;
   cargo: { title: string; image: string | null }[];
   onPick: (idx: number) => void; onPickDay: (day: number) => void; onOpenBag: () => void;
+  worldWindow: [number, number];
   selectedIdx: number | null; selectedDay: number | null;
   destination: string; dayOf: number; duration: number;
 }) {
-  const start = routePoint(0);
-  const end = routePoint(1);
+  const ROUTE = routeFor(worldWindow[0], worldWindow[1]);
+  const start = routePoint(ROUTE, 0);
+  const end = routePoint(ROUTE, 1);
   const RENDER_W = 3200; // panorama pixels on screen (scrolls)
 
   // Content stops sit on their scheduled day; quiet days are small waypoints.
-  const stopPts = slots.map((s) => ({ slot: s, ...routePoint(dayT(s.day, duration)) }));
+  const stopPts = slots.map((s) => ({ slot: s, ...routePoint(ROUTE, dayT(s.day, duration)) }));
   const slotDays = new Set(slots.map((s) => s.day));
   const waypointDays = Array.from({ length: duration }, (_, i) => i + 1).filter((d) => !slotDays.has(d));
 
   const contentDone = slots.every((s) => s.status === "READY" || s.status === "POSTED");
-  const here = contentDone ? end : routePoint(dayT(Math.min(dayOf, duration), duration));
+  const here = contentDone ? end : routePoint(ROUTE, dayT(Math.min(dayOf, duration), duration));
   // What the partner is up to: the closest content stop ahead (or the goal).
   const nextStop = stopPts.find((p) => p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED");
   const curSpot = contentDone ? destination : rendering && nextStop ? nextStop.slot.spot : `DAY ${dayOf}`;
@@ -465,7 +471,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
         {/* quiet-day waypoints — every day of the month is a place, and every
             one answers when you knock */}
         {waypointDays.map((d) => {
-          const p = routePoint(dayT(d, duration));
+          const p = routePoint(ROUTE, dayT(d, duration));
           const passed = d < dayOf;
           const today = d === dayOf;
           const sel = selectedDay === d;
@@ -1229,7 +1235,7 @@ export default function Campaigns() {
   const canRun = (minTier: string) => (TIER_RANK[tier] ?? 0) >= (TIER_RANK[minTier] ?? 1);
   const firstUnlocked = QUESTLINES.find((q) => canRun(q.minTier)) || QUESTLINES[0];
   const [selKey, setSelKey] = useState(firstUnlocked.key);
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null); // campaign key
   const sel = QUESTLINE_BY_KEY[selKey] || firstUnlocked;
 
   /** Calendar date for an arbitrary day of a quest (UTC math — hydration-safe). */
@@ -1326,7 +1332,7 @@ export default function Campaigns() {
   return (
     <Page backAction={{ content: "Home", url: "/app" }}>
       <div className="qh-head">
-        <span className="qh-title">CAMPAIGN <em>QUESTS</em></span>
+        <span className="qh-title">MARKETING <em>CAMPAIGNS</em></span>
         <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
           <span className="qh-chip" title="The AI autopilot plans the month, forges content on schedule, and reports here">
             <span className="dot" />AI AUTOPILOT · {working ? "WORKING" : "ONLINE"}
@@ -1367,6 +1373,7 @@ export default function Campaigns() {
             selectedIdx={editSel?.qid === q.id ? editSel.idx : null}
             selectedDay={daySel?.qid === q.id ? daySel.day : null}
             destination={DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
+            worldWindow={QUESTLINE_BY_KEY[q.template]?.worldWindow || [0, 3]}
             dayOf={q.dayOf}
             duration={q.duration}
           />
@@ -1544,50 +1551,82 @@ export default function Campaigns() {
         )}
       </div>
 
-      {/* Active Questlines — the quest book. Click a title to read the tale. */}
+      {/* The campaign catalog — marketing-first headlines, three tiers each.
+          Tier = intensity AND journey length across the panorama. */}
       <div className="qh-win gold" style={{ marginBottom: 16 }}>
-        <span className="qh-label gold">⚔ QUESTLINES<span className="r">monthly expeditions · click a title to open the tale</span></span>
-        {QUESTLINES.map((q) => {
-          const locked = !canRun(q.minTier);
-          const cost = questlineTokenCost(q);
-          const activeQ = active.find((a) => a.template === q.key);
-          const open = openKey === q.key;
-          const isSel = open;
+        <span className="qh-label gold">📣 MARKETING CAMPAIGNS<span className="r">pick a focus · pick how hard to push</span></span>
+        <div className="qh-howto">
+          <span><b>1.</b> Pick a campaign & tier</span>
+          <span><b>2.</b> Pack products, pick your presenter</span>
+          <span><b>3.</b> {pName} journeys the map — creating & scheduling your content all month</span>
+        </div>
+        {CAMPAIGNS.map((c) => {
+          const skus = TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean);
+          const activeQ = active.find((a) => QUESTLINE_BY_KEY[a.template]?.campaign === c.key || a.template.startsWith(c.key));
+          const open = openKey === c.key;
+          const cheapest = Math.min(...skus.map((s) => questlineTokenCost(s)));
+          const world = WORLD_META[c.homeWorld];
+          const selSku = skus.find((s) => s.key === selKey) || skus.find((s) => canRun(s.minTier)) || skus[0];
           return (
-            <div key={q.key} className={`qh-quest-entry${open ? " open" : ""}`}>
+            <div key={c.key} className={`qh-quest-entry${open ? " open" : ""}`}>
               <button
                 type="button"
-                className={`qh-qrow${isSel ? " on" : ""}${locked ? " locked" : ""}`}
-                onClick={() => { setOpenKey(open ? null : q.key); if (!locked) setSelKey(q.key); }}
+                className={`qh-qrow${open ? " on" : ""}`}
+                onClick={() => { setOpenKey(open ? null : c.key); if (!open && selSku) setSelKey(selSku.key); }}
               >
                 <span style={{ display: "inline-flex", gap: 4, alignItems: "center", minWidth: 0 }}>
                   <span className="ptr">▶</span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {q.icon} {q.name.toUpperCase()} <span style={{ color: "#7d7da8" }}>→ {DESTINATION_BY_KEY[q.key]}</span>
+                    {c.icon} {c.headline} <span style={{ color: "#7d7da8" }}>— {c.label} · {world.icon} {world.name}</span>
                   </span>
                 </span>
-                {activeQ ? <span style={{ color: "#8ee89c" }}>⚑ ON EXPEDITION · DAY {activeQ.dayOf}</span> :
-                  locked ? <span>🔒 {q.minTier}</span> : (
-                    <span className="cost">{cost.toLocaleString()}🪙 <span className="xp">+{q.xpReward.toLocaleString()}XP</span></span>
-                  )}
+                {activeQ ? <span style={{ color: "#8ee89c" }}>⚑ RUNNING · DAY {activeQ.dayOf}</span> : (
+                  <span className="cost">from {cheapest.toLocaleString()}🪙</span>
+                )}
               </button>
               {open && (
                 <div className="qh-qbody">
-                  <p className="qh-lore">{q.lore}</p>
-                  <div className="qh-detail-objs">
-                    <div style={{ color: "#e0d9b8" }}>🗺 The plan: a 30-day march from YOUR SHOP to {DESTINATION_BY_KEY[q.key]}. {q.cadence}.</div>
-                    {q.objectives.map((o, i) => (
-                      <div key={i}>{NODE_ICON[o.type]} {o.target}× {o.label}</div>
-                    ))}
-                    <div style={{ color: "#8ee89c" }}>🏆 The spoils: {q.xpReward.toLocaleString()} XP at {DESTINATION_BY_KEY[q.key]} + 100 XP per perfect week{q.recurring ? " · the contract renews monthly" : ""}</div>
+                  <p style={{ fontFamily: "ui-monospace, monospace", fontSize: 13.5, color: "#e0dcf2", margin: "0 0 4px", lineHeight: 1.65 }}>{c.desc}</p>
+                  <p className="qh-lore">{c.lore}</p>
+
+                  {/* tier picker — one legible axis: how hard to push */}
+                  <div className="qh-tier-row">
+                    {skus.map((sku) => {
+                      const locked = !canRun(sku.minTier);
+                      const cost = questlineTokenCost(sku);
+                      const on = selKey === sku.key;
+                      const v = sku.objectives.find((o) => o.type === "video")?.target || 0;
+                      const im = sku.objectives.find((o) => o.type === "image")?.target || 0;
+                      const b = sku.objectives.find((o) => o.type === "blog")?.target || 0;
+                      const tierMeta = TIERS.find((t) => t.key === sku.tier)!;
+                      const nWorlds = sku.worldWindow[1] - sku.worldWindow[0] + 1;
+                      return (
+                        <button
+                          key={sku.key} type="button"
+                          className={`qh-tier${on ? " on" : ""}${locked ? " locked" : ""} t-${sku.tier.toLowerCase()}`}
+                          onClick={() => setSelKey(sku.key)}
+                        >
+                          <span className="tname">{sku.tier}</span>
+                          <span className="tblurb">{tierMeta.blurb}</span>
+                          <span className="trec">
+                            {v > 0 && <span>🎬 {v} videos</span>}
+                            {im > 0 && <span>🖼 {im} image ads</span>}
+                            {b > 0 && <span>📝 {b} blog posts</span>}
+                          </span>
+                          <span className="tjourney">🗺 {nWorlds === 4 ? "the full panorama" : `${nWorlds} world${nWorlds > 1 ? "s" : ""}`} → {sku.destination}</span>
+                          <span className="tcost">{locked ? `🔒 ${sku.minTier[0] + sku.minTier.slice(1).toLowerCase()} package` : <>{cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}</>}</span>
+                        </button>
+                      );
+                    })}
                   </div>
 
                   {activeQ ? (
-                    <div className="qh-hint" style={{ textAlign: "left" }}>⚑ Already on the road — day {activeQ.dayOf} of {activeQ.duration}. Follow the journey on the board above.</div>
-                  ) : locked ? (
-                    <div className="qh-hint" style={{ textAlign: "left" }}>🔒 This contract needs the {q.minTier[0] + q.minTier.slice(1).toLowerCase()} plan. Level up your plan to unlock it.</div>
-                  ) : (
+                    <div className="qh-hint" style={{ textAlign: "left" }}>⚑ This campaign is already running — day {activeQ.dayOf} of {activeQ.duration}. Follow it on the board above.</div>
+                  ) : selSku && canRun(selSku.minTier) ? (
                     <>
+                      <div className="qh-detail-objs" style={{ marginTop: 12 }}>
+                        <div style={{ color: "#e0d9b8" }}>📅 {selSku.cadence} · content forges ~a day before each drop · you can move any stop on the map</div>
+                      </div>
                       <div className="qh-loadout-grid">
                         <div>
                           <label className="qh-field-label" htmlFor="qh-star">Star presenter (your Brand Face)</label>
@@ -1597,7 +1636,6 @@ export default function Campaigns() {
                                 className="qh-star-face"
                                 src={avatarImg(starId, starVariant)}
                                 alt={AVATAR_BY_ID[starId]?.name || "Presenter"}
-                                title={AVATAR_BY_ID[starId] ? `${AVATAR_BY_ID[starId].name} — ${AVATAR_BY_ID[starId].vibe}` : undefined}
                               />
                             )}
                             <select id="qh-star" className="qh-select" value={starId} onChange={(e) => setStarId(e.target.value)}>
@@ -1618,10 +1656,10 @@ export default function Campaigns() {
                       </div>
 
                       {products.length > 0 && (() => {
-                        const drops = q.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
+                        const drops = selSku.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
                         const say =
                           bagCapped.length === 0 ? "Pack at least 1 item to march." :
-                          bagCapped.length >= q.bagSize ? `Fully loaded! Each item stars in ~${Math.round((drops / q.bagSize) * 10) / 10} drops this month.` :
+                          bagCapped.length >= selSku.bagSize ? `Fully loaded! Each item stars in ~${Math.round((drops / selSku.bagSize) * 10) / 10} drops this month.` :
                           `${bagCapped.length} packed — ${pName} rotates ${bagCapped.length === 1 ? "it" : "them"} across the month's ${drops} drops.`;
                         return (
                           <div className="qh-packgrid" style={{ marginBottom: 14 }}>
@@ -1629,7 +1667,7 @@ export default function Campaigns() {
                               <span className="qh-field-label">SUPPLY SHELF — your store catalog · click an item to pack it</span>
                               <div className="qh-bag">
                                 {products.map((p) => {
-                                  const inBag = bag.some((b) => b.id === p.id);
+                                  const inBag = bag.some((bi) => bi.id === p.id);
                                   return (
                                     <button
                                       key={p.id} type="button"
@@ -1645,11 +1683,11 @@ export default function Campaigns() {
                               </div>
                             </div>
                             <div className="qh-bagcol">
-                              <span className="qh-field-label">🎒 YOUR PACK — {q.bagSize} pouches · click a pouch to unpack</span>
+                              <span className="qh-field-label">🎒 YOUR PACK — {selSku.bagSize} pouches · click a pouch to unpack</span>
                               <div key={bagCapped.length} className="qh-bagart" style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
                                 <img src="/quests/backpack.png" alt="Merchant's treasure pack" />
-                                <div className={`qh-pouches${q.bagSize > 6 ? " big" : ""}`}>
-                                  {Array.from({ length: q.bagSize }).map((_, i) => {
+                                <div className={`qh-pouches${selSku.bagSize > 6 ? " big" : ""}`}>
+                                  {Array.from({ length: selSku.bagSize }).map((_, i) => {
                                     const item = bagCapped[i];
                                     return item ? (
                                       <button key={i} type="button" className="qh-pouch full" title={`${item.title} — click to unpack`} onClick={() => toggleItem(item)}>
@@ -1661,8 +1699,8 @@ export default function Campaigns() {
                                   })}
                                 </div>
                               </div>
-                              <div className="qh-load-row"><span>PACK LOAD</span><span>{bagCapped.length}/{q.bagSize}</span></div>
-                              <div className="qh-load-bar"><i style={{ width: `${(bagCapped.length / q.bagSize) * 100}%` }} /></div>
+                              <div className="qh-load-row"><span>PACK LOAD</span><span>{bagCapped.length}/{selSku.bagSize}</span></div>
+                              <div className="qh-load-bar"><i style={{ width: `${(bagCapped.length / selSku.bagSize) * 100}%` }} /></div>
                               <div className="qh-pack-say">{say}</div>
                             </div>
                           </div>
@@ -1671,17 +1709,19 @@ export default function Campaigns() {
 
                       <button
                         type="button" className="qh-start"
-                        disabled={busy || bagCapped.length === 0 || !selAffordable || !starId}
+                        disabled={busy || bagCapped.length === 0 || tokens < questlineTokenCost(selSku) || !starId}
                         onClick={startQuest}
                       >
-                        {busy ? "SIGNING THE CONTRACT…" : `⚔ SIGN THE CONTRACT — ${cost.toLocaleString()} 🪙`}
+                        {busy ? "SIGNING THE CONTRACT…" : `▶ START ${c.headline} · ${selSku.tier} — ${questlineTokenCost(selSku).toLocaleString()} 🪙`}
                       </button>
                       <div className="qh-hint">
                         {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
-                          !selAffordable ? `The contract costs ${cost.toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT COINS in the HUD to top up.` :
+                          tokens < questlineTokenCost(selSku) ? `This tier costs ${questlineTokenCost(selSku).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT COINS in the HUD to top up.` :
                           "Tokens cover the month's content. Abandon anytime — unforged pieces are refunded. Ad spend always stays on your own connected accounts."}
                       </div>
                     </>
+                  ) : (
+                    <div className="qh-hint" style={{ textAlign: "left" }}>🔒 {selSku ? `${selSku.tier} needs the ${selSku.minTier[0] + selSku.minTier.slice(1).toLowerCase()} package — pick an unlocked tier above or level up your package.` : ""}</div>
                   )}
                 </div>
               )}
