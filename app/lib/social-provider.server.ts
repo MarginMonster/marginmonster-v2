@@ -53,8 +53,9 @@ export async function ensureProfile(shopId: string): Promise<string | null> {
   return shopId;
 }
 
-/** Branded hosted page where the merchant links TikTok/Instagram/Facebook. */
-export async function connectUrl(shopId: string): Promise<string | null> {
+/** Branded hosted page where the merchant links TikTok/Instagram/Facebook.
+ *  `returnUrl` sends them straight back into our app when they're done. */
+export async function connectUrl(shopId: string, returnUrl?: string): Promise<string | null> {
   const username = await ensureProfile(shopId);
   if (!username) return null;
   try {
@@ -66,6 +67,8 @@ export async function connectUrl(shopId: string): Promise<string | null> {
         connect_title: "Connect your socials to AdArcade",
         connect_description: "Link TikTok, Instagram, and Facebook — your campaigns auto-post from here. Hands off, all month.",
         platforms: ["tiktok", "instagram", "facebook"],
+        show_calendar: false,
+        ...(returnUrl ? { redirect_url: returnUrl, redirect_button_text: "← Back to AdArcade" } : {}),
       }),
     });
     if (!r.ok) {

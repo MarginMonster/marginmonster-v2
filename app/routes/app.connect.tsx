@@ -54,7 +54,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (form.get("intent") === "connectSocials") {
     const shop = await db.shop.findUnique({ where: { domain: session.shop } });
     if (!shop) return json({ error: "Shop not found" });
-    const url = await connectUrl(shop.id);
+    // Bounce the merchant back INTO the embedded admin (a bare app URL would
+    // 401 outside Shopify — same rule as the billing return URL).
+    const storeHandle = session.shop.replace(/\.myshopify\.com$/, "");
+    const appHandle = process.env.SHOPIFY_APP_HANDLE || "marginmonster-1";
+    const returnUrl = `https://admin.shopify.com/store/${storeHandle}/apps/${appHandle}/app/connect`;
+    const url = await connectUrl(shop.id, returnUrl);
     if (!url) return json({ error: "Couldn't reach the posting service — check the UPLOADPOST_API_KEY or try again." });
     return json({ connectSocialsUrl: url });
   }
