@@ -508,6 +508,7 @@ export default function Videos() {
 
   // Take Library filters — reference cuts by presenter/product/status instead
   // of scrolling the full reel
+  const [libTab, setLibTab] = useState<"READY" | "PENDING">("READY");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [presenterFilter, setPresenterFilter] = useState<string>("ALL");
   const [productFilter, setProductFilter] = useState<string>("ALL");
@@ -898,9 +899,23 @@ export default function Videos() {
 
         {/* TAKE LIBRARY — filterable by status / presenter / product */}
         <Layout.Section>
-          <span className="mm-section-label">
-            ▶ TAKE LIBRARY ({filteredVideos.length}{filteredVideos.length !== videos.length ? ` of ${videos.length}` : ""})
-          </span>
+          <span className="mm-section-label">▶ TAKE LIBRARY</span>
+          <div className="mm-lib-tabs">
+            <button
+              type="button"
+              className={`mm-chip mm-filter-chip${libTab === "READY" ? " on" : ""}`}
+              onClick={() => setLibTab("READY")}
+            >
+              ✅ Ready ({videos.length})
+            </button>
+            <button
+              type="button"
+              className={`mm-chip mm-filter-chip${libTab === "PENDING" ? " on" : ""}`}
+              onClick={() => setLibTab("PENDING")}
+            >
+              🗓️ Scheduled & rendering ({activeJobs.length})
+            </button>
+          </div>
           {opError && (
             <Box paddingBlockEnd="300">
               <Banner tone="critical" title="That didn't work">
@@ -937,37 +952,48 @@ export default function Videos() {
             </Card>
           ) : (
             <BlockStack gap="300">
-              <Card>
-                <InlineStack gap="400" blockAlign="end" wrap>
-                  <div className="mm-filter-chips">
-                    {([["ALL", "All"], ["PENDING", "Needs review"], ["APPROVED", "Approved"], ["REJECTED", "Rejected"]] as const).map(([val, label]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        className={`mm-chip mm-filter-chip${statusFilter === val ? " on" : ""}`}
-                        onClick={() => setStatusFilter(val)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <Box minWidth="170px">
-                    <Select label="Presenter" options={presenterOptions} value={presenterFilter} onChange={setPresenterFilter} />
-                  </Box>
-                  <Box minWidth="170px">
-                    <Select label="Product" options={productOptions} value={productFilter} onChange={setProductFilter} />
-                  </Box>
-                </InlineStack>
-              </Card>
-              {filteredVideos.length === 0 && (
+              {libTab === "READY" && (
+                <Card>
+                  <InlineStack gap="400" blockAlign="end" wrap>
+                    <div className="mm-filter-chips">
+                      {([["ALL", "All"], ["PENDING", "Needs review"], ["APPROVED", "Approved"], ["REJECTED", "Rejected"]] as const).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          className={`mm-chip mm-filter-chip${statusFilter === val ? " on" : ""}`}
+                          onClick={() => setStatusFilter(val)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <Box minWidth="170px">
+                      <Select label="Presenter" options={presenterOptions} value={presenterFilter} onChange={setPresenterFilter} />
+                    </Box>
+                    <Box minWidth="170px">
+                      <Select label="Product" options={productOptions} value={productFilter} onChange={setProductFilter} />
+                    </Box>
+                  </InlineStack>
+                </Card>
+              )}
+              {libTab === "READY" && filteredVideos.length === 0 && (
                 <Card>
                   <Box padding="400">
-                    <Text as="p" tone="subdued" alignment="center">No takes match those filters.</Text>
+                    <Text as="p" tone="subdued" alignment="center">
+                      {videos.length === 0 ? "No finished takes yet — scheduled ones appear under the other tab." : "No takes match those filters."}
+                    </Text>
+                  </Box>
+                </Card>
+              )}
+              {libTab === "PENDING" && activeJobs.length === 0 && (
+                <Card>
+                  <Box padding="400">
+                    <Text as="p" tone="subdued" alignment="center">Nothing scheduled or rendering right now — finished takes are under Ready.</Text>
                   </Box>
                 </Card>
               )}
               <div className="mm-take-grid">
-              {activeJobs.map((j) => {
+              {libTab === "PENDING" && activeJobs.map((j) => {
                 const cm = j.avatarId ? AVATAR_BY_ID[j.avatarId] : null;
                 const thumb = j.productImage || (cm && castAvail[cm.id] ? castImg(cm.id, j.avatarVariant) : null);
                 const mins = now ? Math.max(1, Math.round((now - new Date(j.createdAt).getTime()) / 60_000)) : null;
@@ -1012,7 +1038,7 @@ export default function Videos() {
                   </div>
                 );
               })}
-              {filteredVideos.map((v) => {
+              {libTab === "READY" && filteredVideos.map((v) => {
                 const body = JSON.parse(v.bodyJson);
                 const meta = JSON.parse(v.metaJson);
                 const pendingProvider = body.status === "awaiting_video_provider";
