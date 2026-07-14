@@ -32,6 +32,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         return {
           type: j.type, status: j.status, attempts: j.attempts,
           ageMin: Math.round((now - j.updatedAt.getTime()) / 60000),
+          dueMin: j.runAt ? Math.round((j.runAt.getTime() - now) / 60000) : "now",
           stage: ck.length ? ck[ck.length - 1] : "start",
           err: j.lastError?.slice(0, 140) || null,
         };
