@@ -10,7 +10,7 @@ import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem } from "../lib/questlines.server";
 import {
-  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
+  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, CAMPAIGN_DEST, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
 import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
@@ -258,6 +258,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 const NODE_ICON: Record<string, string> = { video: "🎬", image: "🖼", blog: "📝", post: "📣" };
+
+/* Each campaign's banner wears its finale world. */
+const BANNER_ART: Record<string, string> = {
+  GET_SEEN: "/quests/w-gs4.jpg",
+  LAUNCH_IT: "/quests/w-li4.jpg",
+  STAY_STEADY: "/quests/w-ss4.jpg",
+  OWN_THE_SEARCH: "/quests/w-os4.jpg",
+};
 
 /* Tiny pixel villagers — biome-dressed locals who walk, work, and gossip so
  * the world never feels lonely. Two-frame gait, mirrored patrols. */
@@ -1767,9 +1775,9 @@ export default function Campaigns() {
       <div className="qh-win gold" style={{ marginBottom: 16 }}>
         <span className="qh-label gold">📣 MARKETING CAMPAIGNS<span className="r">pick a focus · pick how hard to push</span></span>
         <div className="qh-howto">
-          <span><b>1.</b> Pick a campaign & tier</span>
-          <span><b>2.</b> Pack products, pick your presenter</span>
-          <span><b>3.</b> {pName} journeys the map — creating & scheduling your content all month</span>
+          <div className="step"><span className="n">1</span><span className="t">Pick a campaign and how hard to push</span></div>
+          <div className="step"><span className="n">2</span><span className="t">Pack your products, pick your presenter</span></div>
+          <div className="step"><span className="n">3</span><span className="t">{pName} journeys the map — creating and scheduling your content all month</span></div>
         </div>
         {CAMPAIGNS.map((c) => {
           const skus = TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean);
@@ -1782,22 +1790,23 @@ export default function Campaigns() {
             <div key={c.key} className={`qh-quest-entry${open ? " open" : ""}`}>
               <button
                 type="button"
-                className={`qh-qrow${open ? " on" : ""}`}
+                className={`qh-camp-banner${open ? " on" : ""}`}
+                style={{ backgroundImage: `url(${BANNER_ART[c.key] || ""})` }}
                 onClick={() => { setOpenKey(open ? null : c.key); if (!open && selSku) setSelKey(selSku.key); }}
               >
-                <span style={{ display: "inline-flex", gap: 4, alignItems: "center", minWidth: 0 }}>
-                  <span className="ptr">▶</span>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.icon} {c.headline} <span style={{ color: "#7d7da8" }}>— {c.label} · {world.icon} {world.name}</span>
-                  </span>
+                <span className="head">
+                  <span className="hl"><span className="ico">{c.icon}</span>{c.headline}</span>
+                  <span className="sub">{c.label} · {world.icon} {world.name} → {CAMPAIGN_DEST[c.key]}</span>
                 </span>
-                {activeQ ? <span style={{ color: "#8ee89c" }}>⚑ RUNNING · DAY {activeQ.dayOf}</span> : (
-                  <span className="cost">from {cheapest.toLocaleString()}🪙</span>
-                )}
+                <span className="side">
+                  {activeQ ? <span className="run">⚑ Running · Day {activeQ.dayOf}</span> : (
+                    <span className="price">from {cheapest.toLocaleString()} 🪙</span>
+                  )}
+                </span>
               </button>
               {open && (
                 <div className="qh-qbody">
-                  <p style={{ fontFamily: "ui-monospace, monospace", fontSize: 13.5, color: "#e0dcf2", margin: "0 0 4px", lineHeight: 1.65 }}>{c.desc}</p>
+                  <p className="qh-desc">{c.desc}</p>
                   <p className="qh-lore">{c.lore}</p>
 
                   {/* tier picker — one legible axis: how hard to push */}
@@ -1817,6 +1826,7 @@ export default function Campaigns() {
                           onClick={() => setSelKey(sku.key)}
                         >
                           <span className="tname">{sku.tier}</span>
+                          {sku.tier === "SILVER" && !locked && <span className="tpop">★ Most popular</span>}
                           <span className="tblurb">{tierMeta.blurb}</span>
                           <span className="trec">
                             {v > 0 && <span>🎬 {v} videos</span>}
@@ -1834,9 +1844,7 @@ export default function Campaigns() {
                     <div className="qh-hint" style={{ textAlign: "left" }}>⚑ This campaign is already running — day {activeQ.dayOf} of {activeQ.duration}. Follow it on the board above.</div>
                   ) : selSku && canRun(selSku.minTier) ? (
                     <>
-                      <div className="qh-detail-objs" style={{ marginTop: 12 }}>
-                        <div style={{ color: "#e0d9b8" }}>📅 {selSku.cadence} · content forges ~a day before each drop · you can move any stop on the map</div>
-                      </div>
+                      <p className="qh-desc" style={{ marginTop: 12, color: "#e0d9b8" }}>📅 {selSku.cadence} · content forges about a day before each drop — and you can move any stop on the map.</p>
                       <div className="qh-loadout-grid">
                         <div>
                           <label className="qh-field-label" htmlFor="qh-star">Star presenter (your Brand Face)</label>

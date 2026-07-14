@@ -1142,30 +1142,73 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .cmp-forge-title { font-family: var(--font-pixel); font-size: 10px; color: var(--arc-yellow); margin-bottom: 8px; }
 .cmp-forge-sub { font-family: ui-monospace, monospace; font-size: 12px; color: #9a94c2; line-height: 1.6; margin: 0 0 10px; }
 
-/* campaign catalog: how-it-works strip + tier picker cards */
-.qh-howto {
-  display: flex; gap: 18px; flex-wrap: wrap; font-family: ui-monospace, monospace; font-size: 12px;
-  color: #a8a8cc; background: #12122a; border: 1px solid #2e2e52; border-radius: 6px;
-  padding: 9px 12px; margin-bottom: 12px;
+/* campaign catalog — billion-dollar pass: art banners, metallic tier cards,
+   a typography ladder (display for headlines, sans for prose, mono ONLY for
+   numbers & telemetry), and room to breathe. */
+.qh-howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.qh-howto .step { display: flex; align-items: center; gap: 12px; background: #12122a; border: 1px solid #2e2e52; border-radius: 10px; padding: 12px 14px; }
+.qh-howto .n {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--arc-yellow) 60%, #b8860b);
+  color: #3d2b05; font-family: var(--font-pixel); font-size: 10px; box-shadow: 0 2px 6px rgba(0,0,0,.4);
 }
-.qh-howto b { color: var(--arc-yellow); }
-.qh-tier-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 8px; }
+.qh-howto .t { font-size: 13.5px; color: #c6c1e6; line-height: 1.45; }
+
+/* campaign banner rows — the finale world art sells each product at a glance */
+.qh-camp-banner {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%; text-align: left; border: 1px solid #2e2e52; border-radius: 12px; overflow: hidden;
+  padding: 18px 20px; cursor: pointer; min-height: 86px; background-size: cover; background-position: center 35%;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.qh-camp-banner::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(8, 8, 22, 0.92) 0%, rgba(8, 8, 22, 0.72) 45%, rgba(8, 8, 22, 0.25) 100%);
+}
+.qh-camp-banner:hover { transform: translateY(-2px); border-color: var(--mm-cyan); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); }
+.qh-camp-banner.on { border-color: var(--arc-yellow); }
+.qh-camp-banner > * { position: relative; }
+.qh-camp-banner .head { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.qh-camp-banner .hl { font-family: var(--font-heading); font-weight: 800; font-size: 21px; color: #fff; letter-spacing: .02em; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+.qh-camp-banner .hl .ico { margin-right: 8px; }
+.qh-camp-banner .sub { font-size: 13px; color: #cfc9ea; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+.qh-camp-banner .side { flex: none; text-align: right; }
+.qh-camp-banner .side .run { display: inline-block; font-size: 12.5px; font-weight: 700; color: #0a2e1c; background: #8ee89c; border-radius: 999px; padding: 4px 12px; }
+.qh-camp-banner .side .price { display: inline-block; font-family: ui-monospace, monospace; font-size: 13px; color: #ffe9b0; background: rgba(8,8,22,.7); border: 1px solid rgba(255,215,106,.4); border-radius: 999px; padding: 4px 12px; }
+.qh-quest-entry { border-bottom: none; padding-bottom: 10px; margin-bottom: 10px; }
+.qh-qbody { padding: 16px 8px 20px; }
+.qh-desc { font-size: 14.5px; color: #e0dcf2; line-height: 1.65; margin: 2px 0 6px; }
+.qh-lore {
+  font-family: inherit; font-size: 13.5px; color: #b8b2d6; line-height: 1.7;
+  border-left: 3px solid var(--arc-yellow); padding-left: 12px; margin: 4px 0 16px; font-style: italic;
+}
+
+/* tier picker — real pricing cards with metallic bands */
+.qh-tier-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 8px; }
 .qh-tier {
-  display: flex; flex-direction: column; gap: 6px; text-align: left; background: #12122a;
-  border: 2px solid #2e2e52; border-radius: 10px; padding: 12px 13px; cursor: pointer;
-  transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+  position: relative; display: flex; flex-direction: column; gap: 7px; text-align: left; background: #12122a;
+  border: 2px solid #2e2e52; border-radius: 12px; padding: 0 0 14px; cursor: pointer; overflow: hidden;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.qh-tier:hover:not(.locked) { transform: translateY(-2px); }
-.qh-tier.t-bronze { --tc: #d9995a; }
-.qh-tier.t-silver { --tc: #c9d2e8; }
-.qh-tier.t-gold { --tc: #ffd76a; }
-.qh-tier.on { border-color: var(--tc); box-shadow: 0 0 14px color-mix(in srgb, var(--tc) 40%, transparent); }
+.qh-tier:hover:not(.locked) { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4); }
+.qh-tier.t-bronze { --tc: #d9995a; --band: linear-gradient(180deg, #d9995a, #8a5a2e); }
+.qh-tier.t-silver { --tc: #c9d2e8; --band: linear-gradient(180deg, #e4e9f2, #97a2ba); }
+.qh-tier.t-gold { --tc: #ffd76a; --band: linear-gradient(180deg, #ffe08a, #c9971a); }
+.qh-tier.on { border-color: var(--tc); box-shadow: 0 0 18px color-mix(in srgb, var(--tc) 45%, transparent); }
 .qh-tier.locked { opacity: 0.55; }
-.qh-tier .tname { font-family: var(--font-pixel); font-size: 10px; color: var(--tc); letter-spacing: .08em; }
-.qh-tier .tblurb { font-family: ui-monospace, monospace; font-size: 11.5px; color: #9a94c2; }
-.qh-tier .trec { display: flex; flex-wrap: wrap; gap: 8px; font-family: ui-monospace, monospace; font-size: 12.5px; color: #e8e8f0; }
-.qh-tier .tjourney { font-family: ui-monospace, monospace; font-size: 11.5px; color: #7dd8b8; }
-.qh-tier .tcost { font-family: ui-monospace, monospace; font-size: 12px; color: var(--arc-yellow); margin-top: 2px; }
+.qh-tier .tname {
+  display: block; width: 100%; text-align: center; padding: 10px 8px; background: var(--band);
+  font-family: var(--font-pixel); font-size: 10px; color: #241505; letter-spacing: .1em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.qh-tier .tpop {
+  position: absolute; top: 44px; right: 10px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+  color: #241505; background: var(--arc-yellow); border-radius: 999px; padding: 3px 9px; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+.qh-tier .tblurb { font-size: 12.5px; color: #9a94c2; padding: 4px 14px 0; }
+.qh-tier .trec { display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; color: #eceaf6; padding: 2px 14px 0; }
+.qh-tier .tjourney { font-size: 12.5px; color: #7dd8b8; padding: 2px 14px 0; }
+.qh-tier .tcost { font-family: ui-monospace, monospace; font-size: 13.5px; color: var(--arc-yellow); padding: 6px 14px 0; margin-top: auto; }
 
 /* quest book accordion + journal */
 .qh-quest-entry { border-bottom: 1px solid #1c1c38; padding-bottom: 4px; margin-bottom: 4px; }

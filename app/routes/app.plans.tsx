@@ -177,9 +177,9 @@ const PACKAGES: Record<string, Pkg> = {
     stats: [{ label: 'CONTENT', v: 2 }, { label: 'ADS', v: 0 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
   GROWTH: { title: 'CARAVAN', ref: 'Growth', rank: 'EXPEDITION II', power: 2, accent: '#FF3D8B', img: '/plans/pkg-caravan.png',
     stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 3 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
-  PRO: { title: 'WAR GALLEON', ref: 'Rapid Growth', rank: 'EXPEDITION III', power: 3, accent: '#FFB020', img: '/plans/pkg-galleon.png',
+  PRO: { title: 'FLAGSHIP BRAND', ref: 'Rapid Growth', rank: 'EXPEDITION III', power: 3, accent: '#FFB020', img: '/plans/pkg-galleon.png',
     stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 4 }, { label: 'VIDEO', v: 3 }, { label: 'AUTOPILOT', v: 5 }] },
-  SCALE: { title: 'SKY CITADEL', ref: 'Commercial Growth', rank: 'EXPEDITION IV', power: 4, accent: '#B77BFF', img: '/plans/pkg-citadel.png',
+  SCALE: { title: 'COMMERCIAL MARKETING', ref: 'Commercial Growth', rank: 'EXPEDITION IV', power: 4, accent: '#B77BFF', img: '/plans/pkg-citadel.png',
     stats: [{ label: 'CONTENT', v: 5 }, { label: 'ADS', v: 5 }, { label: 'VIDEO', v: 5 }, { label: 'AUTOPILOT', v: 5 }] },
 };
 
