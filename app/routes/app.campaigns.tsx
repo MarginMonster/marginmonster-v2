@@ -8,7 +8,7 @@ import { Page, Banner, Box } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
-import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem } from "../lib/questlines.server";
+import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop } from "../lib/questlines.server";
 import {
   QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, CAMPAIGN_DEST, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
@@ -238,6 +238,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { title: (form.get("toTitle") as string) || "", image: ((form.get("toImage") as string) || "").trim() || null }
     );
     return json(res.ok ? { swapped: res.swapped } : { error: res.error });
+  }
+
+  if (intent === "addDrop") {
+    const res = await addDrop(
+      shop.id,
+      (form.get("questlineId") as string) || "",
+      parseInt((form.get("day") as string) || "0", 10),
+      ((form.get("dropType") as string) || "video") as "video" | "image" | "blog"
+    );
+    return json(res.ok ? { dropAdded: res.cost } : { error: res.error });
   }
 
   if (intent === "pauseToggle") {
@@ -1282,9 +1292,10 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           const sel = selectedDay === d;
           return (
             <g key={`wp${d}`} data-day={d} style={{ cursor: "pointer" }}>
-              <circle cx={p.x} cy={p.y} r="15" fill="transparent" />
-              {sel && <circle cx={p.x} cy={p.y} r="13" fill="none" stroke="#34E7E4" strokeWidth="3" />}
-              <circle cx={p.x} cy={p.y} r={today ? 8 : 5} fill={passed || today ? "#ffd76a" : "#2b2650"} stroke={passed || today ? "#7a4c08" : "#171430"} strokeWidth="2.5" opacity={passed ? 0.9 : 0.8} />
+              <circle cx={p.x} cy={p.y} r="20" fill="transparent" />
+              {sel && <circle cx={p.x} cy={p.y} r="17" fill="none" stroke="#34E7E4" strokeWidth="3" />}
+              <circle cx={p.x} cy={p.y} r={today ? 12 : 9} fill={passed || today ? "#ffd76a" : "#2b2650"} stroke={passed || today ? "#7a4c08" : "#171430"} strokeWidth="3" opacity={passed ? 0.9 : 0.85} />
+              {!passed && !today && <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="11" fontFamily="monospace" fill="#8a84b8" style={{ pointerEvents: "none" }}>+</text>}
               {today && (
                 <text x={p.x} y={p.y - 18} textAnchor="middle" fontSize="17" fontFamily="monospace" fill="#ffe9b0" stroke="#14102a" strokeWidth="5" paintOrder="stroke">TODAY</text>
               )}
@@ -1482,6 +1493,11 @@ export default function Campaigns() {
 
   // The partner never bluffs — every line below derives from real state.
   const pName = partner?.name || "BYTE";
+  const upcoming = active
+    .flatMap((q) => q.slots)
+    .filter((s) => s.status === "SCHEDULED" || s.status === "FORGING")
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const nextDropLabel = upcoming.length ? `${fmtDow(upcoming[0].date)} ${fmtTime(upcoming[0].time)}` : "—";
   let dialog: string;
   if (accepted) {
     dialog = "Contract signed. I've mapped the whole month — every stop has a date, a time, and an item from the bag. First forge fires a day before its slot. Check the board.";
@@ -1549,14 +1565,27 @@ export default function Campaigns() {
 
   return (
     <Page backAction={{ content: "Home", url: "/app" }}>
-      <div className="qh-head">
-        <span className="qh-title">MARKETING <em>CAMPAIGNS</em></span>
-        <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
-          <span className="qh-chip" title="The AI autopilot plans the month, forges content on schedule, and reports here">
+      {/* the cabinet's marquee — automation is the headline, not the fine print */}
+      <div className="mm-hero" style={{ marginBottom: 16 }}>
+        <span className="mm-eyebrow">▶ MARKETING CAMPAIGNS · AI AUTOPILOT</span>
+        <h1><span className="mm-marquee">A month of marketing. One signature.</span></h1>
+        <p>
+          Sign a campaign and go live your life. {pName} creates every video and ad with your
+          Brand Face, picks the best posting days and peak times automatically, and auto-posts
+          to <b>TikTok + Meta</b> — hands off, all month. Review anything, move any drop, or
+          just watch the map.
+        </p>
+        <div className="mm-hero-stats">
+          <div className="mm-hero-stat"><div className="k">ACTIVE CAMPAIGNS</div><div className="v cyan">{active.length}</div></div>
+          <div className="mm-hero-stat"><div className="k">DROPS THIS MONTH</div><div className="v">{active.reduce((s, q) => s + q.slots.length, 0)}</div></div>
+          <div className="mm-hero-stat"><div className="k">NEXT AUTO-DROP</div><div className="v">{nextDropLabel}</div></div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <span className="qh-chip" title="The AI autopilot plans the month, forges content on schedule, and posts it">
             <span className="dot" />AI AUTOPILOT · {working ? "WORKING" : "ONLINE"}
           </span>
           <span className="qh-chip idle"><span className="dot" />🪙 {tokens.toLocaleString()}</span>
-        </span>
+        </div>
       </div>
 
       {err && (
@@ -1564,6 +1593,9 @@ export default function Campaigns() {
       )}
       {refunded > 0 && (
         <Box paddingBlockEnd="300"><Banner tone="success" title="Quest abandoned"><p>{refunded} tokens refunded for content that hadn't been forged yet. Finished content stays in your library.</p></Banner></Box>
+      )}
+      {actionData && "dropAdded" in actionData && (
+        <Box paddingBlockEnd="300"><Banner tone="success" title="🗓 Drop scheduled"><p>{actionData.dropAdded as number} tokens charged. {pName} will forge it about a day early and it posts automatically at peak time. It's on the map.</p></Banner></Box>
       )}
       {actionData && "swapped" in actionData && (
         <Box paddingBlockEnd="300"><Banner tone="success" title="⇄ Cargo swapped"><p>{actionData.swapped as number} upcoming drop{(actionData.swapped as number) === 1 ? "" : "s"} now star the new item. Already-forged content keeps its original star.</p></Banner></Box>
@@ -1652,14 +1684,24 @@ export default function Campaigns() {
                   <div className="spot">🏕 DAY {d} — ON THE ROAD</div>
                   <div className="meta">{msg}</div>
                 </div>
-                {!passed && !today && next && (
-                  <button
-                    type="button" className="qh-mini-btn" disabled={busy}
-                    title={`Moves the ${next.spot} drop to this day`}
-                    onClick={() => submit({ intent: "reschedule", questlineId: q.id, slotIdx: String(next.idx), date, time: next.time }, { method: "post" })}
-                  >
-                    📦 Move next drop here
-                  </button>
+                {!passed && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="qh-field-label" style={{ marginBottom: 0 }}>Schedule another drop here — auto-posted to TikTok + Meta at peak time:</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "video" }, { method: "post" })}>🎬 Video · 60🪙</button>
+                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "image" }, { method: "post" })}>🖼 Image ad · 5🪙</button>
+                      <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "blog" }, { method: "post" })}>📝 Blog · 10🪙</button>
+                      {!today && next && (
+                        <button
+                          type="button" className="qh-mini-btn" disabled={busy}
+                          title={`Moves the ${next.spot} drop to this day`}
+                          onClick={() => submit({ intent: "reschedule", questlineId: q.id, slotIdx: String(next.idx), date, time: next.time }, { method: "post" })}
+                        >
+                          📦 Move next drop here
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
                 <button type="button" className="qh-mini-btn" onClick={() => setDaySel(null)}>Close</button>
               </div>
@@ -1833,7 +1875,8 @@ export default function Campaigns() {
                             {im > 0 && <span>🖼 {im} image ads</span>}
                             {b > 0 && <span>📝 {b} blog posts</span>}
                           </span>
-                          <span className="tjourney">🗺 journeys to {sku.destination}</span>
+                          <span className="tjourney">📲 auto-posted to TikTok + Meta</span>
+                          <span className="tjourney" style={{ color: "#9a94c2" }}>🗺 journeys to {sku.destination}</span>
                           <span className="tcost">{locked ? `🔒 ${sku.minTier[0] + sku.minTier.slice(1).toLowerCase()} package` : <>{cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}</>}</span>
                         </button>
                       );
@@ -1844,7 +1887,15 @@ export default function Campaigns() {
                     <div className="qh-hint" style={{ textAlign: "left" }}>⚑ This campaign is already running — day {activeQ.dayOf} of {activeQ.duration}. Follow it on the board above.</div>
                   ) : selSku && canRun(selSku.minTier) ? (
                     <>
-                      <p className="qh-desc" style={{ marginTop: 12, color: "#e0d9b8" }}>📅 {selSku.cadence} · content forges about a day before each drop — and you can move any stop on the map.</p>
+                      <div className="qh-auto">
+                        <div className="qh-auto-title">⚡ Fully automated after launch</div>
+                        <div className="qh-auto-grid">
+                          <span>🎬 Creates every video & image ad — starring your Brand Face</span>
+                          <span>🗓 Picks posting days & peak times for you ({selSku.cadence})</span>
+                          <span>📲 Auto-posts to TikTok + Meta — connect once, hands off</span>
+                          <span>🎛 You stay in control: review anything, move any drop on the map</span>
+                        </div>
+                      </div>
                       <div className="qh-loadout-grid">
                         <div>
                           <label className="qh-field-label" htmlFor="qh-star">Star presenter (your Brand Face)</label>

@@ -173,13 +173,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
  * merchant's own pick now; these emblems carry the tier flex instead. */
 type Pkg = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string; stats: { label: string; v: number }[] };
 const PACKAGES: Record<string, Pkg> = {
-  STARTER: { title: 'BASE CAMP', ref: 'Starter', rank: 'EXPEDITION I', power: 1, accent: '#34E7E4', img: '/plans/pkg-camp.png',
+  STARTER: { title: 'STARTER SHOP', ref: 'Starter', rank: 'EXPEDITION I', power: 1, accent: '#34E7E4', img: '/plans/pkg-camp.png',
     stats: [{ label: 'CONTENT', v: 2 }, { label: 'ADS', v: 0 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
-  GROWTH: { title: 'CARAVAN', ref: 'Growth', rank: 'EXPEDITION II', power: 2, accent: '#FF3D8B', img: '/plans/pkg-caravan.png',
+  GROWTH: { title: 'RISING BRAND', ref: 'Growth', rank: 'EXPEDITION II', power: 2, accent: '#FF3D8B', img: '/plans/pkg-caravan.png',
     stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 3 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
   PRO: { title: 'FLAGSHIP BRAND', ref: 'Rapid Growth', rank: 'EXPEDITION III', power: 3, accent: '#FFB020', img: '/plans/pkg-galleon.png',
     stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 4 }, { label: 'VIDEO', v: 3 }, { label: 'AUTOPILOT', v: 5 }] },
-  SCALE: { title: 'COMMERCIAL MARKETING', ref: 'Commercial Growth', rank: 'EXPEDITION IV', power: 4, accent: '#B77BFF', img: '/plans/pkg-citadel.png',
+  SCALE: { title: 'HOUSEHOLD NAME', ref: 'Commercial Growth', rank: 'EXPEDITION IV', power: 4, accent: '#B77BFF', img: '/plans/pkg-citadel.png',
     stats: [{ label: 'CONTENT', v: 5 }, { label: 'ADS', v: 5 }, { label: 'VIDEO', v: 5 }, { label: 'AUTOPILOT', v: 5 }] },
 };
 

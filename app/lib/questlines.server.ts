@@ -191,6 +191,81 @@ export async function rescheduleSlot(shopId: string, questlineId: string, slotId
   return { ok: true };
 }
 
+/** Add an extra drop to a RUNNING campaign on a chosen day (clicked on the
+ *  map). Charges tokens for the piece, appends the slot, grows the matching
+ *  objective, and schedules the pre-paid forge job — fully automatic after. */
+export async function addDrop(
+  shopId: string, questlineId: string, day: number, type: "video" | "image" | "blog"
+): Promise<{ ok: boolean; error?: string; cost?: number }> {
+  const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
+  if (!q || q.status === "COMPLETE") return { ok: false, error: "Campaign not found or already complete." };
+  const duration = q.durationDays || QUEST_DURATION_DAYS;
+  const dayOf = Math.max(1, Math.min(duration, Math.floor((Date.now() - q.createdAt.getTime()) / 86400000) + 1));
+  if (day < dayOf || day > duration) return { ok: false, error: "Pick a day that's still ahead on this campaign." };
+
+  const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+  try {
+    await spendTokens(shopId, cost);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
+  }
+
+  const schedule = parseSchedule(q.scheduleJson);
+  const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(q.objectivesJson);
+  const idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
+  const typeCount = schedule.slots.filter((s) => s.type === type).length;
+  // rotate the bag: give the new drop the least-recently-used packed item
+  const uniq: { title: string; image: string | null }[] = [];
+  for (const s of schedule.slots) {
+    if (s.productTitle && !uniq.some((u) => u.title === s.productTitle)) uniq.push({ title: s.productTitle, image: s.productImageUrl });
+  }
+  const item = uniq.length ? uniq[idx % uniq.length] : { title: q.productTitle || "", image: q.productImageUrl };
+
+  const date = new Date(q.createdAt.getTime() + (day - 1) * 86400000).toISOString().slice(0, 10);
+  const slot = {
+    idx, day, date,
+    time: type === "video" ? "19:00" : type === "blog" ? "09:00" : "12:00",
+    type, spot: spotName(type, typeCount),
+    productTitle: item.title, productImageUrl: item.image,
+    status: "SCHEDULED" as const,
+  };
+  schedule.slots.push(slot);
+
+  let obj = objectives.find((o) => o.type === type);
+  if (obj) obj.target += 1;
+  else {
+    obj = { key: `${type}-x${idx}`, label: type === "video" ? "UGC videos with your Brand Face" : type === "image" ? "Scroll-stopping image ads" : "SEO blog posts", type, target: 1, done: 0 };
+    objectives.push(obj);
+  }
+  const post = objectives.find((o) => o.type === "post");
+  if (post) post.target += 1;
+  const totalTarget = objectives.reduce((s, o) => s + o.target, 0);
+  const totalDone = objectives.reduce((s, o) => s + o.done, 0);
+
+  await db.questline.update({
+    where: { id: q.id },
+    data: {
+      scheduleJson: JSON.stringify(schedule),
+      objectivesJson: JSON.stringify(objectives),
+      progress: totalTarget ? Math.round((totalDone / totalTarget) * 100) : 0,
+    },
+  });
+
+  const base = {
+    productTitle: item.title, productImageUrl: item.image || undefined,
+    questlineId: q.id, objectiveKey: obj.key, slotIdx: idx, prePaid: true,
+  };
+  const runAt = slotRunAt(slot);
+  if (type === "video") {
+    await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant }, runAt);
+  } else if (type === "image") {
+    await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, runAt);
+  } else {
+    await enqueueJob(shopId, "GENERATE_BLOG_POST", base, runAt);
+  }
+  return { ok: true, cost };
+}
+
 /** Swap a bag item mid-quest: every FUTURE (not yet forged) drop starring the
  *  old item now stars the new one. Forged content keeps its original star.
  *  Pending generation jobs are re-pointed too. */

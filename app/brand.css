@@ -1210,6 +1210,11 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-tier .tjourney { font-size: 12.5px; color: #7dd8b8; padding: 2px 14px 0; }
 .qh-tier .tcost { font-family: ui-monospace, monospace; font-size: 13.5px; color: var(--arc-yellow); padding: 6px 14px 0; margin-top: auto; }
 
+/* the automation panel — the platform's superpower, said out loud */
+.qh-auto { background: #12122a; border: 1px solid #2e4d3a; border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+.qh-auto-title { font-family: var(--font-heading); font-weight: 800; font-size: 15px; color: #8ee89c; margin-bottom: 10px; }
+.qh-auto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 18px; font-size: 13.5px; color: #d8d3ef; line-height: 1.55; }
+
 /* quest book accordion + journal */
 .qh-quest-entry { border-bottom: 1px solid #1c1c38; padding-bottom: 4px; margin-bottom: 4px; }
 .qh-quest-entry:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
