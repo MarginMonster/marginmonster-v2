@@ -53,6 +53,11 @@ model Shop {
   companionArt   String? // custom base frame (base64 png)
   companionArtB  String? // custom blink frame
   companionArtC  String? // custom cheer frame
+  // Social auto-posting via the upload-post aggregator (v1 posting backend;
+  // provider-swappable). socialProfileKey = the shop's provider profile id;
+  // socialsJson = cached list of platforms the merchant linked
+  socialProfileKey String?
+  socialsJson      String?
 
   brandProfile   BrandProfile?
   activePlan     Plan?

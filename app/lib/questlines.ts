@@ -208,6 +208,7 @@ export type QuestSlot = {
   productImageUrl: string | null;
   status: "SCHEDULED" | "FORGING" | "READY" | "POSTED" | "FAILED";
   topic?: string; // merchant-directed subject for this drop
+  assetId?: string; // the forged Asset — the media the auto-poster publishes
 };
 
 export type QuestSchedule = { slots: QuestSlot[]; weeksAwarded: number[] };

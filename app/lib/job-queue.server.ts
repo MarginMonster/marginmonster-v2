@@ -17,13 +17,13 @@ const MAX_ATTEMPTS = 3;
 
 /** Advance the questline that spawned this job, if any. Lazy import avoids a
  *  circular dependency (questlines.server → job-queue for enqueueJob). */
-async function maybeTickQuestline(payload: Record<string, unknown>, shopId: string, ok = true): Promise<void> {
+async function maybeTickQuestline(payload: Record<string, unknown>, shopId: string, ok = true, assetId?: string): Promise<void> {
   const qid = payload.questlineId as string | undefined;
   const okey = payload.objectiveKey as string | undefined;
   if (!qid) return;
   const slotIdx = typeof payload.slotIdx === "number" ? (payload.slotIdx as number) : undefined;
   const { onQuestlineObjectiveDone } = await import("./questlines.server");
-  await onQuestlineObjectiveDone(qid, okey, shopId, slotIdx, ok);
+  await onQuestlineObjectiveDone(qid, okey, shopId, slotIdx, ok, assetId);
 }
 
 /** Jobs claimed by a process that died (deploy/restart) stay IN_PROGRESS
@@ -144,14 +144,14 @@ async function runJob(
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }
-      await generateBlogPost(
+      const blogAssetId = await generateBlogPost(
         shopId,
         shop.brandProfile,
         shop.activePlan,
         payload.productTitle as string,
         payload.productDescription as string
       );
-      if (payload.prePaid) await maybeTickQuestline(payload, shopId);
+      if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof blogAssetId === "string" ? blogAssetId : undefined);
       break;
     }
 
@@ -159,14 +159,14 @@ async function runJob(
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }
-      await generateImageAd(
+      const imgAssetId = await generateImageAd(
         shopId,
         shop.brandProfile,
         shop.activePlan,
         payload.productTitle as string,
         payload.productImageUrl as string | undefined
       );
-      if (payload.prePaid) await maybeTickQuestline(payload, shopId);
+      if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       break;
     }
 
@@ -184,10 +184,11 @@ async function runJob(
       } else if (payload.initiator) {
         origin = `🎬 BY ${(payload.initiator as string).toUpperCase()}`;
       }
+      let forgedAssetId: string | undefined;
       if (payload.avatarId) {
         // Presenter cast → full UGC ad pipeline (script → voice → talking
         // performance → captioned assembly). Zeely-class output.
-        await generateUgcAd({
+        forgedAssetId = await generateUgcAd({
           shopId,
           brandProfile: shop.brandProfile,
           productTitle: payload.productTitle as string,
@@ -223,7 +224,7 @@ async function runJob(
       // touch the manual video quota; standalone Studio videos burn a take.
       try {
         if (payload.prePaid) {
-          await maybeTickQuestline(payload, shopId);
+          await maybeTickQuestline(payload, shopId, true, forgedAssetId);
         } else {
           await db.plan.update({
             where: { id: shop.activePlan.id },

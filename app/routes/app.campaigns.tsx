@@ -16,6 +16,7 @@ import {
 import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
 import { Partner } from "../components/Partner";
 import { getCompanion } from "../lib/companion.server";
+import { linkedFromCache } from "../lib/social-provider.server";
 
 const TIER_RANK: Record<string, number> = { STARTER: 0, GROWTH: 1, PRO: 2, SCALE: 3 };
 
@@ -109,13 +110,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     for (const a of AVATARS) if (files.has(`${a.id}_0.jpg`) || files.has(`${a.id}.jpg`)) castAvail[a.id] = true;
   } catch { /* empty roster */ }
 
-  // connected social platforms — gates the auto-post messaging honestly
+  // connected social platforms (via the auto-posting provider) — gates the
+  // auto-post messaging honestly
   const socials = { meta: false, tiktok: false };
   try {
-    for (const a of await db.adAccount.findMany({ where: { shopId: shop.id }, select: { platform: true } })) {
-      if (a.platform === "META") socials.meta = true;
-      if (a.platform === "TIKTOK") socials.tiktok = true;
-    }
+    const linked = linkedFromCache(shop.socialsJson);
+    socials.meta = linked.includes("facebook") || linked.includes("instagram");
+    socials.tiktok = linked.includes("tiktok");
   } catch { /* chip just shows the connect prompt */ }
 
   const pd = getCompanion({

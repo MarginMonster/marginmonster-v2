@@ -363,7 +363,7 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
  *  (ok=true) or permanently fails (ok=false). Marks the map slot, ticks the
  *  objective, drips step XP, pays weekly bonuses, and completes the quest +
  *  drops its reward when all content is done. Fully non-fatal. */
-export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey: string | undefined, shopId: string, slotIdx?: number, ok: boolean = true): Promise<void> {
+export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey: string | undefined, shopId: string, slotIdx?: number, ok: boolean = true, assetId?: string): Promise<void> {
   try {
     const q = await db.questline.findUnique({ where: { id: questlineId } });
     if (!q || q.status === "COMPLETE") return;
@@ -372,7 +372,10 @@ export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey
 
     // Mark the map slot
     const slot = slotIdx != null ? schedule.slots.find((s) => s.idx === slotIdx) : undefined;
-    if (slot) slot.status = ok ? "READY" : "FAILED";
+    if (slot) {
+      slot.status = ok ? "READY" : "FAILED";
+      if (ok && assetId) slot.assetId = assetId;
+    }
 
     if (ok) {
       const obj = objectives.find((o) => o.key === objectiveKey);

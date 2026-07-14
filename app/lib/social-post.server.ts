@@ -21,16 +21,42 @@ type Publishable = {
   type: string;
   productTitle: string;
   topic?: string;
+  assetId?: string;
 };
 
-/** THE integration point. Return { ok: true } only on real platform success. */
+/** THE integration point — now live via the upload-post provider. Returns
+ *  ok only on a confirmed provider success. Blogs aren't social posts (they
+ *  publish to the store), so they're skipped here. */
 async function publishContent(
-  _platforms: { meta: boolean; tiktok: boolean },
-  _item: Publishable
+  linked: string[],
+  profileKey: string,
+  item: Publishable
 ): Promise<{ ok: boolean; pending?: string }> {
-  // TODO(next track): TikTok Content Posting API + Meta Graph publishing.
-  // Requires platform app credentials + review; see project memory.
-  return { ok: false, pending: "platform-api" };
+  if (item.type === "blog") return { ok: false, pending: "blog-not-social" };
+  if (!item.assetId) return { ok: false, pending: "no-asset" };
+  const { publishPost, socialProviderEnabled } = await import("./social-provider.server");
+  if (!socialProviderEnabled()) return { ok: false, pending: "provider-key" };
+
+  const asset = await db.asset.findUnique({ where: { id: item.assetId }, select: { bodyJson: true } });
+  if (!asset) return { ok: false, pending: "asset-missing" };
+  let mediaUrl: string | undefined;
+  try {
+    const body = JSON.parse(asset.bodyJson);
+    mediaUrl = body.videoUrl || body.imageUrl || body.url;
+  } catch { /* fall through */ }
+  if (!mediaUrl) return { ok: false, pending: "no-media" };
+
+  const platforms = linked.filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+  if (platforms.length === 0) return { ok: false, pending: "no-platforms" };
+
+  const title = `${item.productTitle}${item.topic ? ` — ${item.topic}` : ""}`.trim() || "New from our shop";
+  const res = await publishPost(profileKey, {
+    title,
+    mediaUrl,
+    isVideo: item.type === "video",
+    platforms,
+  });
+  return res.ok ? { ok: true } : { ok: false, pending: res.error };
 }
 
 let lastScan = 0;
@@ -49,19 +75,14 @@ export async function postDueSlots(): Promise<void> {
     });
     if (active.length === 0) return;
 
-    // connected platforms per shop (one query for all)
+    // provider link state per shop (from the cached socialsJson)
     const shopIds = [...new Set(active.map((q) => q.shopId))];
-    const accounts = await db.adAccount.findMany({
-      where: { shopId: { in: shopIds } },
-      select: { shopId: true, platform: true },
+    const shops = await db.shop.findMany({
+      where: { id: { in: shopIds } },
+      select: { id: true, socialProfileKey: true, socialsJson: true },
     });
-    const connected = new Map<string, { meta: boolean; tiktok: boolean }>();
-    for (const a of accounts) {
-      const c = connected.get(a.shopId) || { meta: false, tiktok: false };
-      if (a.platform === "META") c.meta = true;
-      if (a.platform === "TIKTOK") c.tiktok = true;
-      connected.set(a.shopId, c);
-    }
+    const { linkedFromCache } = await import("./social-provider.server");
+    const byShop = new Map(shops.map((s) => [s.id, { profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson) }]));
 
     let due = 0;
     let posted = 0;
@@ -72,11 +93,11 @@ export async function postDueSlots(): Promise<void> {
         if (s.status !== "READY") continue;
         if (new Date(`${s.date}T${s.time}:00`).getTime() > now) continue;
         due++;
-        const plats = connected.get(q.shopId);
-        if (!plats || (!plats.meta && !plats.tiktok)) continue; // nothing to post to yet
-        const res = await publishContent(plats, {
+        const link = byShop.get(q.shopId);
+        if (!link?.profileKey || link.linked.length === 0) continue; // nothing linked yet
+        const res = await publishContent(link.linked, link.profileKey, {
           shopId: q.shopId, questlineId: q.id, slotIdx: s.idx,
-          type: s.type, productTitle: s.productTitle, topic: s.topic,
+          type: s.type, productTitle: s.productTitle, topic: s.topic, assetId: s.assetId,
         });
         if (res.ok) {
           s.status = "POSTED";
