@@ -24,6 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         replicate: !!process.env.REPLICATE_API_TOKEN,
         anthropic: !!process.env.ANTHROPIC_API_KEY,
         uploadpost: !!process.env.UPLOADPOST_API_KEY,
+        fal: !!process.env.FAL_KEY,
       },
       counts: jobs.reduce((m: Record<string, number>, j) => { m[j.status] = (m[j.status] || 0) + 1; return m; }, {}),
       jobs: jobs.map((j) => {
