@@ -117,20 +117,37 @@ async function downloadBuffer(url: string): Promise<Buffer> {
 
 /* ---------- Voice casting ---------- */
 
-// Verified-working MiniMax speech-02 system voices (each one render-tested).
-// Two pools so presenters don't all sound alike; a stable per-avatar pick
-// keeps the SAME presenter's voice consistent across all their videos.
-const VOICES_FEMALE = [
-  "English_Wiselady", "English_Graceful_Lady", "English_CalmWoman",
-  "English_ConfidentWoman", "English_PlayfulGirl", "English_SereneWoman",
-  "English_FriendlyPerson", "English_Soft-spokenGirl", "English_captivating_female1",
-  "English_Kind-heartedGirl", "English_UpsetGirl", "English_Whispering_girl",
-];
-const VOICES_MALE = [
-  "English_Deep-VoicedGentleman", "English_Trustworth_Man", "English_Aussie_Bloke",
-  "English_PatientMan", "English_ManWithDeepVoice", "English_MaturePartner",
-  "English_Diligent_Man", "English_Gentle-voiced_man", "English_ReservedYoungMan",
-  "English_magnetic_voiced_man", "English_Comedian",
+// Verified-working MiniMax speech-02 system voices (each render-tested), now
+// TAGGED with the age band + character each one reads as — so the picked voice
+// FITS the avatar's face and vibe, not just their gender. Keeps a stable
+// per-avatar pick (same presenter → same voice across all their videos).
+type VoiceTag = { id: string; gender: "f" | "m"; age: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" };
+const VOICES: VoiceTag[] = [
+  // female
+  { id: "English_PlayfulGirl", gender: "f", age: "young", energy: "hype" },
+  { id: "English_UpsetGirl", gender: "f", age: "young", energy: "hype" },
+  { id: "English_Kind-heartedGirl", gender: "f", age: "young", energy: "warm" },
+  { id: "English_Soft-spokenGirl", gender: "f", age: "young", energy: "calm" },
+  { id: "English_Whispering_girl", gender: "f", age: "young", energy: "calm" },
+  { id: "English_ConfidentWoman", gender: "f", age: "mid", energy: "hype" },
+  { id: "English_FriendlyPerson", gender: "f", age: "mid", energy: "warm" },
+  { id: "English_captivating_female1", gender: "f", age: "mid", energy: "warm" },
+  { id: "English_CalmWoman", gender: "f", age: "mid", energy: "calm" },
+  { id: "English_SereneWoman", gender: "f", age: "mid", energy: "calm" },
+  { id: "English_Wiselady", gender: "f", age: "mature", energy: "warm" },
+  { id: "English_Graceful_Lady", gender: "f", age: "mature", energy: "calm" },
+  // male
+  { id: "English_Comedian", gender: "m", age: "young", energy: "hype" },
+  { id: "English_ReservedYoungMan", gender: "m", age: "young", energy: "calm" },
+  { id: "English_Aussie_Bloke", gender: "m", age: "mid", energy: "hype" },
+  { id: "English_magnetic_voiced_man", gender: "m", age: "mid", energy: "hype" },
+  { id: "English_Trustworth_Man", gender: "m", age: "mid", energy: "warm" },
+  { id: "English_Diligent_Man", gender: "m", age: "mid", energy: "warm" },
+  { id: "English_PatientMan", gender: "m", age: "mid", energy: "calm" },
+  { id: "English_Gentle-voiced_man", gender: "m", age: "mid", energy: "calm" },
+  { id: "English_MaturePartner", gender: "m", age: "mature", energy: "warm" },
+  { id: "English_Deep-VoicedGentleman", gender: "m", age: "mature", energy: "calm" },
+  { id: "English_ManWithDeepVoice", gender: "m", age: "mature", energy: "calm" },
 ];
 
 function hashId(id: string): number {
@@ -139,12 +156,25 @@ function hashId(id: string): number {
   return h;
 }
 
-function pickVoice(avatarId: string, desc: string): string {
-  const female = /\b(woman|girl|lady|female|mom|grandma|abuela|she|her)\b/i.test(desc);
-  const male = /\b(man|men|guy|male|gentleman|boy|dad|uncle|grandpa|bloke|dude|him|his)\b/i.test(desc);
-  const h = hashId(avatarId);
-  const pool = female && !male ? VOICES_FEMALE : male && !female ? VOICES_MALE : (h % 2 ? VOICES_MALE : VOICES_FEMALE);
-  return pool[h % pool.length];
+const AGE_ORDER: Record<string, number> = { young: 0, mid: 1, mature: 2 };
+
+/** Pick the best-fitting voice for an avatar's gender + age + energy. Scores
+ *  every same-gender voice (exact age = big win, adjacent age = partial;
+ *  matching energy = win) and takes the top; a stable per-avatar hash breaks
+ *  ties so the same presenter always sounds the same. */
+function pickVoice(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" }): string {
+  const h = hashId(avatar.id);
+  const pool = VOICES.filter((v) => v.gender === avatar.gender);
+  const scored = pool.map((v, i) => {
+    const ageGap = Math.abs(AGE_ORDER[v.age] - AGE_ORDER[avatar.ageBand]);
+    const ageScore = ageGap === 0 ? 4 : ageGap === 1 ? 2 : 0;
+    const energyScore = v.energy === avatar.energy ? 3 : v.energy === "warm" || avatar.energy === "warm" ? 1 : 0;
+    // deterministic jitter so equally-good voices still spread across avatars
+    const jitter = ((h + i * 2654435761) % 1000) / 1000;
+    return { id: v.id, score: ageScore + energyScore + jitter };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.id || "English_FriendlyPerson";
 }
 
 /* ---------- Caption + assembly helpers ---------- */
@@ -329,7 +359,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const freshTts = async (): Promise<string> => {
     const ttsId = await repCreate("minimax/speech-02-turbo", {
       text: script,
-      voice_id: pickVoice(avatar.id, avatar.desc),
+      voice_id: pickVoice(avatar),
     });
     return repPoll(ttsId, 3 * 60_000, "tts");
   };

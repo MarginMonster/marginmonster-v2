@@ -5,6 +5,13 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
+    # Durable storage for rendered videos — WITHOUT this, Render's ephemeral
+    # container disk wipes data/renders on every deploy (videos 404 on refresh,
+    # and auto-posting can't fetch them). Mounted at the app's data/renders.
+    disk:
+      name: renders
+      mountPath: /app/data/renders
+      sizeGB: 5
     envVars:
       - key: NODE_ENV
         value: production

@@ -6,15 +6,52 @@
 
 import RAW from "./avatars-data.json";
 
+export type Gender = "f" | "m";
+export type AgeBand = "young" | "mid" | "mature"; // ~20s / 30s-40s / 50s+
+export type Energy = "hype" | "warm" | "calm";
+
 export type Avatar = {
   id: string;
   name: string;
   vibe: string; // short label under the name
   desc: string; // prompt descriptor injected into the generation
+  gender: Gender; // explicit — drives voice selection (no more coin-flip)
+  ageBand: AgeBand; // so the voice's age fits the face
+  energy: Energy; // so the voice's character fits the persona
 };
 
+/* Derive persona traits from the desc + vibe (the cast is authored with clear
+ * age/energy cues). Explicit optional overrides can be added as a 5th JSON
+ * element later; until then these read cleanly for all 100. */
+function deriveGender(desc: string): Gender {
+  return /\b(woman|girl|lady|female|mom|grandma|abuela|she|her|her's)\b/i.test(desc) &&
+    !/\b(man|guy|male|gentleman|dad|grandpa)\b/i.test(desc)
+    ? "f"
+    : /\b(man|men|guy|male|gentleman|boy|dad|uncle|grandpa|bloke|dude|him|his)\b/i.test(desc)
+      ? "m"
+      : "f";
+}
+function deriveAge(desc: string): AgeBand {
+  const d = desc.toLowerCase();
+  if (/\b(fifties|sixties|seventies|grandma|grandpa|grandmother|grandfather|older|senior|silver-haired|salt-and-pepper|graying|elderly)\b/.test(d)) return "mature";
+  if (/\b(thirties|forties|mid thirties|late thirties|mother|father|middle-aged)\b/.test(d)) return "mid";
+  if (/\b(twenties|early twenties|late twenties|teen|young|gen-z|college|student)\b/.test(d)) return "young";
+  return "mid";
+}
+function deriveEnergy(vibe: string, desc: string): Energy {
+  const s = `${vibe} ${desc}`.toLowerCase();
+  if (/\b(energy|hype|playful|excited|bubbly|upbeat|bold|street|vibrant|fun|bright|lively|spunky)\b/.test(s)) return "hype";
+  if (/\b(elegant|luxury|serene|calm|refined|polished|graceful|soft|gentle|soothing|quiet|zen|minimal)\b/.test(s)) return "calm";
+  return "warm";
+}
+
 export const AVATARS: Avatar[] = (RAW as [string, string, string, string][]).map(
-  ([id, name, vibe, desc]) => ({ id, name, vibe, desc })
+  ([id, name, vibe, desc]) => ({
+    id, name, vibe, desc,
+    gender: deriveGender(desc),
+    ageBand: deriveAge(desc),
+    energy: deriveEnergy(vibe, desc),
+  })
 );
 
 export const AVATAR_BY_ID: Record<string, Avatar> = Object.fromEntries(
