@@ -18,6 +18,7 @@ import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
+import { animateAvatar, falEnabled } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import type { BrandProfile } from "@prisma/client";
 
@@ -381,7 +382,19 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   let talkingUrl = resume.talkingUrl || "";
   let engine = "omni-human";
   if (!talkingUrl) {
-    if (resume.omniPredictionId) {
+    // PRIMARY: fal.ai HeyGen Avatar 4 (photorealistic) when FAL_KEY is set.
+    // Same inputs as omni (portrait + TTS); on any failure we fall through to
+    // the existing omni-human → kling chain so a missing key or provider hiccup
+    // never blocks a render.
+    if (falEnabled()) {
+      try {
+        talkingUrl = await animateAvatar(portraitDataUri, audioDataUri);
+        engine = "heygen-fal";
+      } catch (e) {
+        console.error(`[ugc] fal heygen failed, falling back: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`);
+      }
+    }
+    if (!talkingUrl && resume.omniPredictionId) {
       try {
         talkingUrl = await repPoll(resume.omniPredictionId, 12 * 60_000, "omni-human(resumed)");
       } catch { /* old prediction died — fall through to a fresh one */ }
@@ -446,7 +459,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     assemble({
       talkingPath, audioPath, productImagePath, outPath,
       script: params.captions === false ? "" : script, // "" = no captions
-      lipSynced: engine === "omni-human",
+      // omni-human AND fal HeyGen bake the lip-synced audio into their output;
+      // only the silent kling fallback needs the TTS muxed over a looped clip.
+      lipSynced: engine === "omni-human" || engine === "heygen-fal",
     });
 
     const asset = await db.asset.create({
