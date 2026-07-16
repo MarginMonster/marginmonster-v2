@@ -20,5 +20,7 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # schema sync then serve (mirrors the previous render.yaml commands);
-# remix-serve binds to Render's provided PORT automatically
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx remix-serve ./build/server/index.js"]
+# remix-serve binds to Render's provided PORT automatically.
+# mkdir first: the persistent disk mounts EMPTY at /app/data/renders — make
+# sure the dir exists and is writable before anything touches it.
+CMD ["sh", "-c", "mkdir -p /app/data/renders && npx prisma db push --accept-data-loss && npx remix-serve ./build/server/index.js"]
