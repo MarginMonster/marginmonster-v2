@@ -22,9 +22,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
     return json({
       takes: assets.map((a) => {
-        let engine = "?", hasUrl = false;
-        try { const b = JSON.parse(a.bodyJson); engine = b.engine || "minimax-showcase"; hasUrl = !!b.videoUrl; } catch { /* skip */ }
-        return { at: a.createdAt, title: a.title?.slice(0, 40), engine, hasUrl };
+        let engine = "?", hasUrl = false, fileExists = false;
+        try {
+          const b = JSON.parse(a.bodyJson);
+          engine = b.engine || "minimax-showcase";
+          hasUrl = !!b.videoUrl;
+          if (typeof b.videoUrl === "string" && b.videoUrl.startsWith("/renders/")) {
+            const fs = require("node:fs") as typeof import("node:fs");
+            const path = require("node:path") as typeof import("node:path");
+            fileExists = fs.existsSync(path.join(process.cwd(), "data", "renders", path.basename(b.videoUrl)));
+          }
+        } catch { /* skip */ }
+        return { at: a.createdAt, title: a.title?.slice(0, 40), engine, hasUrl, fileExists };
       }),
     });
   }
