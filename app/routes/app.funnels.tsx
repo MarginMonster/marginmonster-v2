@@ -117,11 +117,9 @@ export default function Funnels() {
 
   const [productName, setProductName] = useState("");
   const [goal, setGoal] = useState("BUY");
+  const [search, setSearch] = useState("");
 
-  const productOptions = [
-    { label: "Pick from your catalog…", value: "" },
-    ...products.map((p) => ({ label: p.title.length > 48 ? p.title.slice(0, 48) + "…" : p.title, value: p.title })),
-  ];
+  const shown = products.filter((p) => !search.trim() || p.title.toLowerCase().includes(search.trim().toLowerCase()));
 
   const create = () => submit({ intent: "create", productName, goal }, { method: "post" });
 
@@ -155,14 +153,46 @@ export default function Funnels() {
           <Card>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h2">Build one now</Text>
-              <Select
-                label="Your product"
-                options={productOptions}
-                value={products.some((p) => p.title === productName) ? productName : ""}
-                onChange={(v) => v && setProductName(v)}
-              />
+              {products.length > 0 && (
+                <>
+                  <TextField
+                    label="Find your product"
+                    value={search}
+                    onChange={setSearch}
+                    autoComplete="off"
+                    placeholder="Search your catalog…"
+                    clearButton
+                    onClearButtonClick={() => setSearch("")}
+                  />
+                  {shown.length === 0 ? (
+                    <Text variant="bodySm" as="p" tone="subdued">Nothing matches "{search}" — type it as a custom offer below.</Text>
+                  ) : (
+                    <div className="mm-prodgrid">
+                      {shown.map((p) => {
+                        const on = productName === p.title;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`mm-prodcard${on ? " on" : ""}`}
+                            onClick={() => setProductName(on ? "" : p.title)}
+                          >
+                            {on && <span className="mm-prodcheck">✓</span>}
+                            {p.image ? (
+                              <img src={p.image} alt="" loading="lazy" />
+                            ) : (
+                              <div className="mm-prodph">🛍️</div>
+                            )}
+                            <span className="mm-prodtitle">{p.title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
               <TextField
-                label="Or type any product or offer"
+                label={products.length > 0 ? "Or type a custom offer" : "Product or offer"}
                 value={productName}
                 onChange={setProductName}
                 autoComplete="off"
