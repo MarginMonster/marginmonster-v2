@@ -1,5 +1,9 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+// ESM bundle — require() does NOT exist at runtime here (it crashed mode=disk
+// and silently no-op'd the takes fileExists probe). Use real imports.
+import fs from "node:fs";
+import path from "node:path";
 import { unauthenticated } from "../shopify.server";
 import { db } from "../db.server";
 
@@ -15,8 +19,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // writes renders? Reads /proc/mounts + drops a sentinel file that must
   // survive the next deploy if the disk is real.
   if (url.searchParams.get("mode") === "disk") {
-    const fs = require("node:fs") as typeof import("node:fs");
-    const path = require("node:path") as typeof import("node:path");
     const rendersDir = path.join(process.cwd(), "data", "renders");
     let mounts: string[] = [];
     try {
@@ -50,8 +52,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           engine = b.engine || "minimax-showcase";
           hasUrl = !!b.videoUrl;
           if (typeof b.videoUrl === "string" && b.videoUrl.startsWith("/renders/")) {
-            const fs = require("node:fs") as typeof import("node:fs");
-            const path = require("node:path") as typeof import("node:path");
             fileExists = fs.existsSync(path.join(process.cwd(), "data", "renders", path.basename(b.videoUrl)));
           }
         } catch { /* skip */ }
