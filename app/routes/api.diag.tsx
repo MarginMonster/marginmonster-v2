@@ -11,6 +11,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (url.searchParams.get("key") !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
+  // Disk-mount truth: is a persistent disk ACTUALLY mounted where the app
+  // writes renders? Reads /proc/mounts + drops a sentinel file that must
+  // survive the next deploy if the disk is real.
+  if (url.searchParams.get("mode") === "disk") {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const rendersDir = path.join(process.cwd(), "data", "renders");
+    let mounts: string[] = [];
+    try {
+      mounts = fs.readFileSync("/proc/mounts", "utf8").split("\n")
+        .filter((l) => l.includes("/app") || l.includes("render") || l.includes("/data"));
+    } catch { mounts = ["(no /proc/mounts)"]; }
+    let dirFiles: string[] = [];
+    try { dirFiles = fs.readdirSync(rendersDir).slice(0, 20); } catch { dirFiles = ["(dir missing)"]; }
+    const sentinelPath = path.join(rendersDir, ".sentinel");
+    let sentinel = "";
+    try { sentinel = fs.readFileSync(sentinelPath, "utf8"); } catch {
+      try { fs.mkdirSync(rendersDir, { recursive: true }); fs.writeFileSync(sentinelPath, new Date().toISOString()); sentinel = "(just created)"; } catch (e) { sentinel = `(write failed: ${e})`; }
+    }
+    return json({ cwd: process.cwd(), rendersDir, mounts, dirFiles, sentinel });
+  }
+
   // Recent finished takes with the engine that produced them (heygen-fal vs
   // omni-human vs kling-voiceover) — verifies the premium engine engaged.
   if (url.searchParams.get("mode") === "takes") {
