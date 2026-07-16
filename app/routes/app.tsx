@@ -195,7 +195,7 @@ export default function App() {
           <div className="mm-hud-stats">
             <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
               <span title="Tokens remaining">🪙 {hud.tokens.toLocaleString()}</span>
-              <span className="mm-hud-plus">+ INSERT COINS</span>
+              <span className="mm-hud-plus">+ INSERT TOKENS</span>
             </Link>
             <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos}</span>
             <span className="mm-hud-stat" title="Ad generations you can afford">🖼 {hud.ads}</span>

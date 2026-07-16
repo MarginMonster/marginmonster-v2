@@ -1545,7 +1545,7 @@ export default function Campaigns() {
   } else if (done.length > 0) {
     dialog = `Quest complete — ${done[0].xpReward.toLocaleString()} XP banked. Pick next month's mission and I'm back on the road.`;
   } else if (tokens < questlineTokenCost(firstUnlocked)) {
-    dialog = "Your token balance won't cover a quest yet — hit INSERT COINS in the HUD and I'll get to work the second we're funded.";
+    dialog = "Your token balance won't cover a quest yet — hit INSERT TOKENS in the HUD and I'll get to work the second we're funded.";
   } else {
     dialog = "No expedition running. Pick a monthly quest below — I plan the calendar, forge every piece a day early, and man every stop on the map.";
   }
@@ -2055,7 +2055,7 @@ export default function Campaigns() {
                       </button>
                       <div className="qh-hint">
                         {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
-                          tokens < questlineTokenCost(selSku) ? `This tier costs ${questlineTokenCost(selSku).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT COINS in the HUD to top up.` :
+                          tokens < questlineTokenCost(selSku) ? `This tier costs ${questlineTokenCost(selSku).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT TOKENS in the HUD to top up.` :
                           "Tokens cover the month's content. Abandon anytime — unforged pieces are refunded. Ad spend always stays on your own connected accounts."}
                       </div>
                     </>

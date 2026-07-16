@@ -995,7 +995,7 @@ export default function Videos() {
                   ) : tokens >= videoTokenCost ? (
                     <><b>{videoTokenCost} 🪙</b> this take · {tokens.toLocaleString()} 🪙 banked</>
                   ) : (
-                    <><b>INSERT COINS</b> — {videoTokenCost} 🪙 per take</>
+                    <><b>INSERT TOKENS</b> — {videoTokenCost} 🪙 per take</>
                   )}
                 </span>
               </div>

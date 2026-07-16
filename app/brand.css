@@ -440,10 +440,19 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-arcade-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .mm-arcade-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #b06a00, 0 4px 14px rgba(245,140,40,0.42); }
 .mm-arcade-btn:disabled { background: linear-gradient(180deg, #34314a, #26233b); color: #6f6a8e; box-shadow: none; cursor: default; }
-.mm-credits { font-family: var(--font-pixel); font-size: 10px; letter-spacing: .06em; color: #34E7E4; }
-.mm-credits b { color: #8A84B6; margin-right: 7px; font-weight: 400; }
-.mm-credits em { color: #F5C451; font-style: normal; margin-left: 4px; }
-.mm-credits.low { color: #E5397D; }
+/* wallet chip — Premium Play: cost leads in gold, balance follows quiet.
+   (was cyan pixel type — retired with the arcade costume) */
+.mm-credits {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 13px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  color: #16193A; background: rgba(240, 180, 41, 0.10);
+  border: 1px solid rgba(201, 143, 18, 0.28); border-radius: 999px;
+  padding: 7px 14px; font-variant-numeric: tabular-nums;
+}
+.mm-credits b { color: #C98F12; font-weight: 800; }
+.mm-credits em { color: #6A6E92; font-style: normal; font-weight: 500; }
+.mm-credits.low { color: #C74A4A; background: rgba(199, 74, 74, 0.08); border-color: rgba(199, 74, 74, 0.3); }
+.mm-credits.low b { color: #C74A4A; }
 
 /* multi-select checkmark on a product card */
 .mm-prodcard { position: relative; }

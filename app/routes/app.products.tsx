@@ -420,8 +420,11 @@ export default function Products() {
                 </button>
                 {tokens != null && (
                   <span className={`mm-credits${!canAfford ? " low" : ""}`}>
-                    <b>TOKENS</b> 🪙 {remaining.toLocaleString()}
-                    {forgeCount > 0 && <em> · Cost {totalCost} Tokens</em>}
+                    {forgeCount > 0 ? (
+                      <><b>{totalCost} 🪙</b> for {forgeCount === 1 ? "this listing" : `${forgeCount} listings`}<em> · {remaining.toLocaleString()} banked</em></>
+                    ) : (
+                      <><b>{remaining.toLocaleString()} 🪙</b><em> banked</em></>
+                    )}
                   </span>
                 )}
               </div>
