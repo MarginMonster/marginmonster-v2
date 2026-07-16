@@ -32,6 +32,11 @@ export async function animateAvatar(imageUrl: string, audioUrl: string): Promise
       image_url: imageUrl,
       audio_url: audioUrl,
       talking_style: "expressive",
+      // NATIVE vertical at full res — the default is 16:9 LANDSCAPE 720p, which
+      // forced assembly to crop a narrow strip and upscale it (the softness on
+      // the first heygen takes). 9:16 1080p = zero crop, zero upscale, same $/s.
+      aspect_ratio: "9:16",
+      resolution: "1080p",
     }),
   });
   if (!submit.ok) throw new Error(`fal submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
