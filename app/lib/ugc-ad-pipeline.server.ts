@@ -15,7 +15,7 @@ import path from "node:path";
 import os from "node:os";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import { db } from "../db.server";
@@ -245,7 +245,24 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
   });
 }
 
-function assemble(opts: {
+/** ffmpeg runs ASYNC (spawn, not spawnSync) — spawnSync froze the whole Node
+ *  process for the entire encode, so Render's 5s health checks timed out
+ *  mid-render and the platform killed the instance ("app crashed" with no
+ *  deploy). 1080p encodes are long enough to guarantee it. */
+function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", (c: Buffer) => {
+      err += c.toString();
+      if (err.length > 65536) err = err.slice(-32768); // keep the tail
+    });
+    p.on("error", reject);
+    p.on("close", (code) => resolve({ status: code ?? -1, stderr: err }));
+  });
+}
+
+async function assemble(opts: {
   talkingPath: string;
   audioPath: string;
   productImagePath: string | null;
@@ -256,7 +273,7 @@ function assemble(opts: {
    *  false = silent/generic motion (kling fallback): loop the clip and lay our
    *  TTS narration over it. */
   lipSynced: boolean;
-}): void {
+}): Promise<void> {
   const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   // The performance defines the ad when it's lip-synced (never trim/loop the
   // synced clip); the narration defines it only for the silent fallback.
@@ -306,7 +323,7 @@ function assemble(opts: {
     opts.outPath
   );
 
-  const run = spawnSync(ffmpegBin(), args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const run = await runFfmpeg(args);
   if (run.status !== 0 || !fs.existsSync(opts.outPath)) {
     throw new Error(`[ugc:assemble] ffmpeg failed: ${(run.stderr || "").slice(-400)}`);
   }
@@ -515,7 +532,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
-    assemble({
+    await assemble({
       talkingPath, audioPath, productImagePath, outPath,
       script: params.captions === false ? "" : script, // "" = no captions
       // omni-human AND fal HeyGen bake the lip-synced audio into their output;
