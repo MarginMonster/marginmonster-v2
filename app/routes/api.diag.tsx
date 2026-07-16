@@ -15,6 +15,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (url.searchParams.get("key") !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
+  // Memory truth: what limit is this container ACTUALLY running under, and
+  // how close to the ceiling are we? (cgroup v2 first, v1 fallback)
+  if (url.searchParams.get("mode") === "mem") {
+    const read = (p: string) => { try { return fs.readFileSync(p, "utf8").trim(); } catch { return null; } };
+    const gb = (v: string | null) => {
+      if (!v || v === "max") return v;
+      const n = Number(v);
+      return isNaN(n) ? v : `${(n / 1024 / 1024).toFixed(0)}MB`;
+    };
+    return json({
+      cgroupV2: { limit: gb(read("/sys/fs/cgroup/memory.max")), current: gb(read("/sys/fs/cgroup/memory.current")), peak: gb(read("/sys/fs/cgroup/memory.peak")) },
+      cgroupV1: { limit: gb(read("/sys/fs/cgroup/memory/memory.limit_in_bytes")), usage: gb(read("/sys/fs/cgroup/memory/memory.usage_in_bytes")), maxUsage: gb(read("/sys/fs/cgroup/memory/memory.max_usage_in_bytes")) },
+      nodeRss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
+      uptimeMin: Math.round(process.uptime() / 60),
+    });
+  }
+
   // Disk-mount truth: is a persistent disk ACTUALLY mounted where the app
   // writes renders? Reads /proc/mounts + drops a sentinel file that must
   // survive the next deploy if the disk is real.
