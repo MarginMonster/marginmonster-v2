@@ -8,9 +8,9 @@ import {
   Text,
   Banner,
 } from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
+import { authenticate, billingIsTest, TOKEN_PACK_PLANS, TOKENS_BY_PACK } from "../shopify.server";
 import { db } from "../db.server";
-import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
+import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, type PlanKey } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
 import { unlockAchievement } from "../lib/xp.server";
 import { COMPANIONS, COMPANION_BY_ID, CATEGORY_LABEL, companionSrcs, type CompanionCategory } from "../lib/companions";
@@ -19,7 +19,74 @@ import fsMod from "node:fs";
 import pathMod from "node:path";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, billing, admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
+
+  // ---- BILLING RETURN LEG 1: subscription approved → activate the plan ----
+  // Payment comes FIRST now; the plan row only exists once Shopify confirms
+  // an active subscription. No confirmation, no plan — no free rides.
+  const activate = url.searchParams.get("activate") as PlanKey | null;
+  if (activate && PLAN_BY_KEY[activate]) {
+    const { hasActivePayment } = await billing.check({ plans: [activate] as never, isTest: billingIsTest() });
+    if (hasActivePayment) {
+      const shopRow = await db.shop.findUnique({ where: { domain: session.shop } });
+      if (shopRow) {
+        const tier = PLAN_BY_KEY[activate];
+        const reviewMode = url.searchParams.get("review") === "SET_AND_FORGET" ? "SET_AND_FORGET" as const : "REVIEW_FIRST" as const;
+        await db.plan.upsert({
+          where: { shopId: shopRow.id },
+          create: {
+            shopId: shopRow.id, type: activate, reviewMode,
+            blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
+            adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
+            periodStart: new Date(), tokensIncluded: tier.monthlyTokens, tokensUsed: 0,
+          },
+          update: {
+            type: activate, reviewMode, active: true,
+            blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
+            adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
+            tokensIncluded: tier.monthlyTokens, tokensUsed: 0, periodStart: new Date(),
+          },
+        });
+        await unlockAchievement(shopRow.id, "INSERT_COIN");
+      }
+      throw redirect("/app/plans?welcome=" + activate);
+    }
+    throw redirect("/app/plans"); // declined/abandoned — nothing activates
+  }
+
+  // ---- BILLING RETURN LEG 2: token pack paid → credit ONCE (chargeId unique) ----
+  const packKey = url.searchParams.get("pack") as keyof typeof TOKEN_PACK_PLANS | null;
+  const chargeId = url.searchParams.get("charge_id");
+  if (packKey && TOKENS_BY_PACK[packKey] && chargeId) {
+    const shopRow = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true } });
+    if (shopRow?.activePlan) {
+      const already = await db.tokenPurchase.findUnique({ where: { chargeId } });
+      if (!already) {
+        // verify with Shopify that this exact charge is real and paid
+        let status = "";
+        try {
+          const res = await admin.graphql(
+            `{ node(id: "gid://shopify/AppPurchaseOneTime/${chargeId.replace(/[^0-9]/g, "")}") { ... on AppPurchaseOneTime { status } } }`
+          );
+          const j = (await res.json()) as { data?: { node?: { status?: string } } };
+          status = j.data?.node?.status || "";
+        } catch (e) { console.error("[billing] charge verify failed:", e); }
+        if (status === "ACTIVE") {
+          await db.tokenPurchase.create({
+            data: { shopId: shopRow.id, chargeId, tokens: TOKENS_BY_PACK[packKey], amountUsd: TOKEN_PACK_PLANS[packKey].amount },
+          });
+          await db.plan.update({
+            where: { shopId: shopRow.id },
+            data: { tokensExtra: { increment: TOKENS_BY_PACK[packKey] } },
+          });
+          throw redirect("/app/plans?topped=" + TOKENS_BY_PACK[packKey]);
+        }
+      }
+    }
+    throw redirect("/app/plans");
+  }
+
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
     include: { activePlan: true },
@@ -47,6 +114,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopId: shop?.id || "",
     installed,
     forging,
+    billingTest: billingIsTest(),
+    welcome: url.searchParams.get("welcome"),
+    topped: url.searchParams.get("topped"),
+    packs: TOKEN_PACKS.map((p, i) => ({
+      tokens: p.tokens,
+      price: p.price,
+      label: p.label,
+      best: !!(p as { best?: boolean }).best,
+      key: (["TOKENS_250", "TOKENS_750", "TOKENS_2000"] as const)[i],
+    })),
   });
 };
 
@@ -79,91 +156,48 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ forgeQueued: true });
   }
 
-  const planKey = form.get("planKey") as PlanKey;
-  const reviewMode = (form.get("reviewMode") as "SET_AND_FORGET" | "REVIEW_FIRST") || "REVIEW_FIRST";
-
-  const tier = PLAN_BY_KEY[planKey];
-  if (!tier) throw new Error("Invalid plan");
-
-  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
-  if (!shop) throw new Error("Shop not found");
-
-  // Seed the plan row (so quotas are ready the moment payment clears).
-  await db.plan.upsert({
-    where: { shopId: shop.id },
-    create: {
-      shopId: shop.id,
-      type: planKey,
-      reviewMode,
-      blogQuota: tier.blogQuota,
-      videoQuota: tier.videoQuota,
-      imageQuota: tier.imageQuota,
-      adCreativePack: tier.imageQuota > 0,
-      campaignAutopilot: tier.campaignAutopilot,
-      periodStart: new Date(),
-      tokensIncluded: tier.monthlyTokens,
-      tokensUsed: 0,
-    },
-    update: {
-      type: planKey,
-      reviewMode,
-      blogQuota: tier.blogQuota,
-      videoQuota: tier.videoQuota,
-      imageQuota: tier.imageQuota,
-      adCreativePack: tier.imageQuota > 0,
-      campaignAutopilot: tier.campaignAutopilot,
-      active: true,
-      // new tier → fresh allowance + period; keep purchased top-up (tokensExtra)
-      tokensIncluded: tier.monthlyTokens,
-      tokensUsed: 0,
-      periodStart: new Date(),
-    },
-  });
-
-  // Progression: first plan selection unlocks INSERT_COIN (once — switching
-  // plans later can't farm it).
-  await unlockAchievement(shop.id, "INSERT_COIN");
-
-  // Attempt the real Shopify charge. On success this THROWS a redirect to
-  // Shopify's approval screen. If billing isn't fully set up yet, we don't
-  // block the merchant — the plan is already active, so we just send them
-  // back to the dashboard. Real charging turns on once billing is verified.
-  // returnUrl MUST re-enter the EMBEDDED admin context, otherwise Shopify
-  // redirects to the bare app URL outside admin → no session → 401.
+  // Embedded apps can't follow a server redirect to Shopify's approval page
+  // inside the iframe — hand the confirmation URL to the client for a
+  // TOP-LEVEL redirect instead. returnUrl must re-enter the embedded admin.
   const storeHandle = session.shop.replace(/\.myshopify\.com$/, "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "marginmonster-1";
-  const returnUrl = `https://admin.shopify.com/store/${storeHandle}/apps/${appHandle}/app`;
-  try {
-    await billing.request({
-      plan: planKey,
-      isTest: true,
-      returnUrl,
-    });
-  } catch (e) {
-    if (e instanceof Response) {
-      // A 3xx is the real approval redirect. Embedded apps CANNOT follow a
-      // server redirect to admin.shopify.com inside the iframe (that 401s), so
-      // hand the confirmation URL back to the client for a TOP-LEVEL redirect.
-      if (e.status >= 300 && e.status < 400) {
+  const adminBase = `https://admin.shopify.com/store/${storeHandle}/apps/${appHandle}`;
+
+  const requestCharge = async (plan: string, returnUrl: string) => {
+    try {
+      await billing.request({ plan: plan as never, isTest: billingIsTest(), returnUrl });
+    } catch (e) {
+      if (e instanceof Response && e.status >= 300 && e.status < 400) {
         const confirmationUrl = e.headers.get("location");
         if (confirmationUrl) return json({ confirmationUrl });
-        throw e;
       }
-      // Any other Response (401/403/etc): the plan row is already active above,
-      // so don't dead-end the merchant. Charging via the Billing API needs
-      // expiring offline tokens (SDK migration) for apps created after
-      // 2026-04-01; until then, activate the plan and return to the dashboard.
-      const body = await e.text().catch(() => "");
-      console.error("[billing] non-redirect response (plan still activated)", e.status, body.slice(0, 300));
-      throw redirect("/app");
+      if (e instanceof Response) {
+        const body = await e.text().catch(() => "");
+        console.error("[billing] request failed:", e.status, body.slice(0, 300));
+        return json({ error: "Billing couldn't start — give it another try in a moment." });
+      }
+      const anyErr = e as { message?: string; errorData?: unknown };
+      console.error("[billing] request failed:", anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e));
+      return json({ error: "Billing couldn't start — give it another try in a moment." });
     }
-    const anyErr = e as { message?: string; errorData?: unknown };
-    const detail = anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e);
-    console.error("[billing] request failed:", detail);
-    return json({ error: detail });
+    return json({ error: "Billing didn't respond — try again." });
+  };
+
+  // ---- token top-up: one-time charge, credited on confirmed return ----
+  if (intent === "buyTokens") {
+    const packKey = form.get("packKey") as keyof typeof TOKEN_PACK_PLANS;
+    if (!TOKEN_PACK_PLANS[packKey]) return json({ error: "Unknown token pack." });
+    const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true } });
+    if (!shop?.activePlan) return json({ error: "Pick a package first — tokens live in your plan's wallet." });
+    return requestCharge(packKey, `${adminBase}/app/plans?pack=${packKey}`);
   }
 
-  throw redirect("/app");
+  // ---- plan subscription: PAYMENT FIRST — activation happens on the return
+  // leg (loader) only after Shopify confirms the subscription is active ----
+  const planKey = form.get("planKey") as PlanKey;
+  const reviewMode = (form.get("reviewMode") as "SET_AND_FORGET" | "REVIEW_FIRST") || "REVIEW_FIRST";
+  if (!PLAN_BY_KEY[planKey]) throw new Error("Invalid plan");
+  return requestCharge(planKey, `${adminBase}/app/plans?activate=${planKey}&review=${reviewMode}`);
 };
 
 
@@ -184,7 +218,7 @@ const PACKAGES: Record<string, Pkg> = {
 };
 
 export default function Plans() {
-  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging } = useLoaderData<typeof loader>();
+  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging, billingTest, welcome, topped, packs } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const billingError = actionData && "error" in actionData ? actionData.error : null;
   const confirmationUrl = actionData && "confirmationUrl" in actionData ? actionData.confirmationUrl : null;
@@ -249,6 +283,27 @@ export default function Plans() {
           </div>
         </Layout.Section>
 
+        {billingTest && (
+          <Layout.Section>
+            <Banner tone="warning" title="🧪 Billing is in TEST mode">
+              <p>Approvals run the real Shopify checkout but no money moves. Set BILLING_TEST=0 on the server to charge for real.</p>
+            </Banner>
+          </Layout.Section>
+        )}
+        {welcome && (
+          <Layout.Section>
+            <Banner tone="success" title={`🎉 ${PLAN_BY_KEY[welcome as PlanKey]?.name || welcome} is live`}>
+              <p>Subscription confirmed — your quotas and token allowance are loaded. Time to launch something.</p>
+            </Banner>
+          </Layout.Section>
+        )}
+        {topped && (
+          <Layout.Section>
+            <Banner tone="success" title={`🪙 +${Number(topped).toLocaleString()} tokens banked`}>
+              <p>Top-up confirmed and credited to your wallet.</p>
+            </Banner>
+          </Layout.Section>
+        )}
         {billingError && (
           <Layout.Section>
             <Banner tone="critical" title="Couldn't start checkout">
@@ -326,6 +381,38 @@ export default function Plans() {
             })}
           </div>
         </Layout.Section>
+
+        {/* Token top-ups — one-time purchases, credited on confirmed payment */}
+        {currentPlan && (
+          <Layout.Section>
+            <span className="mm-section-label">▶ INSERT TOKENS<span className="mm-dots">· · · · ·</span></span>
+            <div className="pp-tools">
+              {packs.map((p) => (
+                <div key={p.key} className="pp-tool" style={{ cursor: "default" }}>
+                  <span className="ico">🪙</span>
+                  <h3>+{p.tokens.toLocaleString()} tokens</h3>
+                  <p>
+                    {p.key === "TOKENS_250" && "Enough for a bronze campaign or four extra video takes."}
+                    {p.key === "TOKENS_750" && "Runs a silver campaign with room to spare — the workhorse pack."}
+                    {p.key === "TOKENS_2000" && "Diamond-tier fuel — the best rate per token in the shop."}
+                  </p>
+                  <div className="pp-meta">
+                    <span className="pp-count">${p.price}</span>
+                    {p.best && <span className="pp-chip">Best value</span>}
+                  </div>
+                  <button
+                    type="button"
+                    className="pp-cta gold"
+                    disabled={nav.state !== "idle"}
+                    onClick={() => submit({ intent: "buyTokens", packKey: p.key }, { method: "post" })}
+                  >
+                    Buy for ${p.price}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Layout.Section>
+        )}
 
         {/* Companion select — 48 chibi partners + the free forge */}
         <Layout.Section>

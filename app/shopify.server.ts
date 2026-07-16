@@ -18,6 +18,25 @@ export const BILLING_PLANS = {
   SCALE: { amount: 149, currencyCode: "USD", interval: BillingInterval.Every30Days },
 } as const;
 
+// One-time token top-ups — amounts must match TOKEN_PACKS in plan-config.ts.
+export const TOKEN_PACK_PLANS = {
+  TOKENS_250: { amount: 25, currencyCode: "USD", interval: BillingInterval.OneTime },
+  TOKENS_750: { amount: 60, currencyCode: "USD", interval: BillingInterval.OneTime },
+  TOKENS_2000: { amount: 140, currencyCode: "USD", interval: BillingInterval.OneTime },
+} as const;
+export const TOKENS_BY_PACK: Record<keyof typeof TOKEN_PACK_PLANS, number> = {
+  TOKENS_250: 250,
+  TOKENS_750: 750,
+  TOKENS_2000: 2000,
+};
+
+/** Test mode is the DEFAULT — no real money moves until BILLING_TEST=0 is set
+ *  in the environment. Test charges still exercise the full approval flow on
+ *  development stores. */
+export function billingIsTest(): boolean {
+  return process.env.BILLING_TEST !== "0";
+}
+
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
@@ -35,13 +54,19 @@ const shopify = shopifyApp({
   useOnlineTokens: true,
   sessionStorage: new PrismaSessionStorage(db),
   distribution: AppDistribution.AppStore,
-  billing: BILLING_PLANS,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK generic inference quirk; runtime shape is correct
+  billing: { ...BILLING_PLANS, ...TOKEN_PACK_PLANS } as any,
   webhooks: {
     APP_UNINSTALLED: {
       deliveryMethod: "http" as const,
       callbackUrl: "/webhooks",
     },
     PRODUCTS_CREATE: {
+      deliveryMethod: "http" as const,
+      callbackUrl: "/webhooks",
+    },
+    // Billing truth: cancellations/declines flip the plan off server-side
+    APP_SUBSCRIPTIONS_UPDATE: {
       deliveryMethod: "http" as const,
       callbackUrl: "/webhooks",
     },
@@ -58,7 +83,7 @@ const shopify = shopifyApp({
         });
         if (!existing) {
           await db.shop.create({
-            data: { domain: session.shop, accessToken: session.accessToken },
+            data: { domain: session.shop, accessToken: session.accessToken || "" },
           });
           await db.job.create({
             data: {

@@ -46,6 +46,7 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
   const cost = TOKEN_COST[action];
   let plan = await db.plan.findUnique({ where: { shopId } });
   if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
+  if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
   plan = await refreshPeriod(plan);
 
   const remaining = tokensRemaining(plan);
@@ -72,6 +73,7 @@ export async function spendTokens(shopId: string, amount: number): Promise<{ rem
   if (amount <= 0) return { remaining: 0 };
   let plan = await db.plan.findUnique({ where: { shopId } });
   if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
+  if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
   plan = await refreshPeriod(plan);
 
   const remaining = tokensRemaining(plan);

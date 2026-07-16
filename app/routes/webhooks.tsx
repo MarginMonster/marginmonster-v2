@@ -68,6 +68,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       break;
     }
 
+    case "APP_SUBSCRIPTIONS_UPDATE": {
+      // Billing truth stays synced: cancelled/expired/declined/frozen
+      // subscriptions switch the plan OFF; a (re)activated one switches it on.
+      // The plan row keeps its type/quotas so a reactivation restores cleanly.
+      const sub = (payload as { app_subscription?: { status?: string } }).app_subscription;
+      const status = sub?.status?.toUpperCase() || "";
+      const shopRecord = await db.shop.findUnique({ where: { domain: shop }, include: { activePlan: true } });
+      if (shopRecord?.activePlan && status) {
+        const nowActive = status === "ACTIVE";
+        if (shopRecord.activePlan.active !== nowActive) {
+          await db.plan.update({ where: { shopId: shopRecord.id }, data: { active: nowActive } });
+          console.log(`[billing] ${shop} subscription ${status} → plan ${nowActive ? "ON" : "OFF"}`);
+        }
+      }
+      break;
+    }
+
     default:
       console.log(`Unhandled webhook topic: ${topic}`);
   }

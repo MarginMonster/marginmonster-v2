@@ -68,6 +68,19 @@ model Shop {
   achievements   ShopAchievement[]
   landingPages   LandingPage[]
   questlines     Questline[]
+  tokenPurchases TokenPurchase[]
+}
+
+// One row per PAID token top-up — chargeId is unique so a purchase can never
+// be credited twice, no matter how many times the return URL is reloaded.
+model TokenPurchase {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  chargeId  String   @unique
+  tokens    Int
+  amountUsd Int
+  createdAt DateTime @default(now())
 }
 
 // Campaigns reframed as game Questlines — an automated content-and-posting

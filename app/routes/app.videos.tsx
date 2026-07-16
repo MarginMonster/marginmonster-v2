@@ -262,7 +262,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!shop.brandProfile) {
       return json({ error: "Analyze your store first (on the dashboard) so videos match your brand." });
     }
-    if (!shop.activePlan || shop.activePlan.videoQuota <= 0) {
+    if (!shop.activePlan || !shop.activePlan.active || shop.activePlan.videoQuota <= 0) {
       return json({ error: "Video generation needs the Pro or Scale plan. Upgrade on the Plans page." });
     }
 

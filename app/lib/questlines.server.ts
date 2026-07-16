@@ -97,6 +97,7 @@ export async function acceptQuestline(params: {
 
   const shop = await db.shop.findUnique({ where: { id: params.shopId }, include: { activePlan: true } });
   if (!shop?.activePlan) return { ok: false, error: "Choose a plan first to run questlines." };
+  if (!shop.activePlan.active) return { ok: false, error: "Your subscription is paused — resubscribe on the Packages page to launch campaigns." };
 
   const cost = questlineCostFor(def, shop.activePlan.type); // Scale price break applies here
   try {
