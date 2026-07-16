@@ -1500,3 +1500,97 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .mm-hud-sprite .f2 { opacity: 0; }
 }
+
+/* ============================================================
+   PREMIUM PLAY (pp-*) — Direction B pilot design system.
+   Game mechanics, executive finish: modern type, real depth,
+   gold as a material. Pilots on the SEO Hub; rolls out
+   section-by-section on approval. Standalone — no mm-/qh- deps.
+   ============================================================ */
+:root {
+  --pp-ink: #16193A; --pp-navy: #12163A; --pp-navy2: #0E1230;
+  --pp-line: #E3E0D4; --pp-muted: #6A6E92; --pp-gold: #C98F12;
+  --pp-gold-hi: #F0B429; --pp-gold-soft: rgba(240, 180, 41, 0.14);
+  --pp-good: #2E9E68; --pp-surface: #FFFFFF;
+}
+
+.pp-hero {
+  position: relative; overflow: hidden; border-radius: 18px;
+  background: linear-gradient(155deg, #171C42 0%, #10142C 60%, #0E1230 100%);
+  color: #F2F1FA; padding: 34px 34px 30px;
+  box-shadow: 0 12px 40px rgba(14, 18, 48, 0.35);
+}
+.pp-hero::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 90% at 85% -10%, rgba(240, 180, 41, 0.16), transparent 55%);
+}
+.pp-eyebrow { font-size: 11px; letter-spacing: 0.18em; font-weight: 700; text-transform: uppercase; color: var(--pp-gold-hi); }
+.pp-hero h1 { margin: 8px 0 10px; font-size: clamp(24px, 3.4vw, 34px); line-height: 1.1; letter-spacing: -0.02em; font-weight: 800; }
+.pp-hero h1 em { font-style: normal; color: var(--pp-gold-hi); }
+.pp-hero .pp-sub { color: #A6AACB; max-width: 62ch; margin: 0; font-size: 15px; line-height: 1.55; }
+
+.pp-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; position: relative; }
+.pp-stat {
+  flex: 1 1 150px; border-radius: 12px; padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.11);
+  backdrop-filter: blur(4px);
+}
+.pp-stat .v { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.pp-stat .v .g { color: var(--pp-gold-hi); }
+.pp-stat .l { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; color: #9CA0C4; margin-top: 2px; }
+
+.pp-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 18px; }
+.pp-tool {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--pp-surface); border: 1px solid var(--pp-line); border-radius: 16px;
+  padding: 22px; color: var(--pp-ink);
+  box-shadow: 0 2px 10px rgba(22, 25, 58, 0.06);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.pp-tool:hover { transform: translateY(-3px); border-color: var(--pp-gold-hi); box-shadow: 0 10px 28px rgba(22, 25, 58, 0.13); }
+.pp-tool .ico {
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
+  background: linear-gradient(160deg, #171C42, #0E1230); color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.pp-tool h3 { margin: 2px 0 0; font-size: 17px; font-weight: 750; letter-spacing: -0.01em; }
+.pp-tool p { margin: 0; color: var(--pp-muted); font-size: 13.5px; line-height: 1.5; flex: 1; }
+.pp-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.pp-count { font-size: 13px; font-weight: 700; color: var(--pp-ink); font-variant-numeric: tabular-nums; }
+.pp-count span { color: var(--pp-muted); font-weight: 500; }
+.pp-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  color: var(--pp-gold); background: var(--pp-gold-soft); padding: 3px 10px; border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.pp-coin { width: 13px; height: 13px; border-radius: 50%; display: inline-block;
+  background: radial-gradient(circle at 35% 30%, #FFE9A8, var(--pp-gold-hi) 70%);
+  box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.28); }
+.pp-cta {
+  align-self: flex-start; font-size: 13.5px; font-weight: 700; letter-spacing: 0.01em;
+  padding: 10px 18px; border-radius: 10px; border: 0; cursor: pointer; text-decoration: none;
+  background: var(--pp-ink); color: #fff; transition: background 0.15s ease;
+}
+.pp-cta:hover { background: #23284f; }
+.pp-cta.gold {
+  background: linear-gradient(180deg, #FFD777, var(--pp-gold-hi)); color: #1A1502;
+  box-shadow: 0 2px 12px rgba(240, 180, 41, 0.4);
+}
+
+.pp-auto {
+  margin-top: 18px; border-radius: 16px; padding: 20px 22px;
+  background: linear-gradient(155deg, rgba(23, 28, 66, 0.04), rgba(23, 28, 66, 0.09));
+  border: 1px solid var(--pp-line);
+}
+.pp-auto .t { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 800; color: var(--pp-gold); margin-bottom: 10px; }
+.pp-auto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 20px; }
+.pp-auto-grid span { font-size: 13.5px; color: var(--pp-ink); }
+.pp-auto-grid span::before { content: "✓ "; color: var(--pp-good); font-weight: 800; }
+
+.pp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 26px 0 4px; }
+.pp-head h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.01em; color: var(--pp-ink); }
+.pp-head .pp-sub2 { color: var(--pp-muted); font-size: 13.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-tool, .pp-tool:hover { transition: none; transform: none; }
+}

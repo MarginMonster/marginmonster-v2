@@ -22,7 +22,6 @@ import { db } from "../db.server";
 import { generateProductCopy, type ProductCopy } from "../lib/product-copy.server";
 import { chargeTokens, tokensRemaining, InsufficientTokensError } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
-import { Partner } from "../components/Partner";
 import { awardXp, unlockAchievement, checkLevelAchievements, type UnlockResult, type XpResult } from "../lib/xp.server";
 import { XP_EVENTS } from "../lib/achievements";
 
@@ -354,63 +353,36 @@ export default function Products() {
 
   return (
     <>
-      {/* Ember/coal backdrop — scoped to this page only; intensifies while forging */}
-      <div className={`mm-ember-bg${busy ? " forging" : ""}`} aria-hidden="true">
-        {Array.from({ length: 16 }).map((_, i) => (
-          <span key={i} className="em" />
-        ))}
-      </div>
       <Page
-        title="SEO Forge"
-        backAction={{ content: "Home", url: "/app" }}
-        subtitle="SEO-ready product listings, hammered into your brand voice — titles, descriptions, bullets & meta tags."
+        title="Product listings"
+        backAction={{ content: "SEO Hub", url: "/app/seo" }}
+        subtitle="Titles, descriptions, bullets & meta tags — rewritten in your brand voice and pushed live in one click."
       >
         <Layout>
         <Layout.Section>
-          <div className={`mm-forge-hero${busy ? " forging" : ""}`}>
-            <div className="mm-forge-text">
-              <span className="mm-eyebrow">▶ SEO FORGE · STAGE SELECT</span>
-              <h1><span className="mm-marquee">Forge listings that sell.</span></h1>
-              <p>
-                Hand your products to ANVIL and he hammers them into SEO gold —
-                titles, descriptions, bullets, and meta tags in your brand voice.
-                Push it live in one click. Every listing forged levels up your store.
-              </p>
-              {busy && (
-                <div className="mm-forge-status">
-                  <span>🔨 FORGING {forgeCount > 1 ? `${forgeCount} LISTINGS` : "YOUR LISTING"}…</span>
-                  <span className="mm-forge-bar"><i /></span>
+          <div className="pp-hero">
+            <span className="pp-eyebrow">SEO Hub · Listings</span>
+            <h1>Listings that <em>rank and sell.</em></h1>
+            <p className="pp-sub">
+              Pick products below and every one gets an SEO-weighted title, description,
+              bullets and meta tags in your brand voice. Review, then push live to
+              Shopify in one click — each listing earns XP.
+            </p>
+            {busy && (
+              <div className="pp-stats">
+                <div className="pp-stat">
+                  <div className="v">✍ Writing {forgeCount > 1 ? `${forgeCount} listings` : "your listing"}…</div>
+                  <div className="l">Usually under a minute · updates automatically</div>
                 </div>
-              )}
-              {results && !busy && forgedCount > 0 && (
-                <button type="button" className="mm-forge-jump" onClick={scrollToResults}>
-                  ✅ {forgedCount} LISTING{forgedCount > 1 ? "S" : ""} FORGED — VIEW ↓
-                </button>
-              )}
-            </div>
-            <div className="mm-smith-card" aria-hidden="true">
-              {busy ? (
-                <video
-                  className="mm-smith-vid"
-                  src="/fighters/anvil_forge.mp4?v=2"
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                />
-              ) : (
-                <div className="mm-smith-stage">
-                  <Partner img="anvil" accent="#34E7E4" />
-                </div>
-              )}
-              <div className="mm-smith-plate">
-                <div className="mm-smith-row">
-                  <span className="mm-smith-lvl">LVL&nbsp;97</span>
-                  <div className="mm-smith-hp"><i /></div>
-                </div>
-                <div className="mm-smith-name">ANVIL · MASTER SMITH</div>
               </div>
-            </div>
+            )}
+            {results && !busy && forgedCount > 0 && (
+              <div className="pp-stats">
+                <button type="button" className="pp-cta gold" onClick={scrollToResults}>
+                  ✓ {forgedCount} listing{forgedCount > 1 ? "s" : ""} ready — review ↓
+                </button>
+              </div>
+            )}
           </div>
         </Layout.Section>
 

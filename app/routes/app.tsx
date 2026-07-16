@@ -206,10 +206,9 @@ export default function App() {
         <Link to="/app" rel="home">Dashboard</Link>
         <Link to="/app/campaigns">Marketing Campaigns</Link>
         <Link to="/app/videos">Video Studio</Link>
-        <Link to="/app/products">SEO Forge</Link>
+        <Link to="/app/seo">SEO Hub</Link>
         <Link to="/app/assets">Content Queue</Link>
         <Link to="/app/calendar">Content Calendar</Link>
-        <Link to="/app/funnels">Landing Pages</Link>
         <Link to="/app/strategy">Strategy</Link>
         <Link to="/app/connect">Ad Accounts</Link>
         <Link to="/app/performance">Performance & ROI</Link>
