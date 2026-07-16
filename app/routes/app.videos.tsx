@@ -993,7 +993,7 @@ export default function Videos() {
                   {remaining > 0 ? (
                     <><b>{remaining} TAKES</b> in plan · then {videoTokenCost} 🪙 each</>
                   ) : tokens >= videoTokenCost ? (
-                    <><b>{videoTokenCost} 🪙</b> this take · {tokens.toLocaleString()} 🪙 banked</>
+                    <><b>{videoTokenCost} 🪙</b> this take · Balance {tokens.toLocaleString()}</>
                   ) : (
                     <><b>INSERT TOKENS</b> — {videoTokenCost} 🪙 per take</>
                   )}

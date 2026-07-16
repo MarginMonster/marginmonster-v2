@@ -54,7 +54,7 @@ export default function SeoHub() {
               <div className="pp-stat"><div className="v">{forged.toLocaleString()}</div><div className="l">Listings forged</div></div>
               <div className="pp-stat"><div className="v">{blogs.toLocaleString()} <span className="g">· {blogsLive} live</span></div><div className="l">Blog posts</div></div>
               <div className="pp-stat"><div className="v">{pages.toLocaleString()}</div><div className="l">Landing pages</div></div>
-              <div className="pp-stat"><div className="v"><span className="g">{tokens.toLocaleString()}</span></div><div className="l">Tokens banked</div></div>
+              <div className="pp-stat"><div className="v"><span className="g">{tokens.toLocaleString()}</span></div><div className="l">Token balance</div></div>
             </div>
           </div>
         </Layout.Section>

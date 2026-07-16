@@ -421,9 +421,9 @@ export default function Products() {
                 {tokens != null && (
                   <span className={`mm-credits${!canAfford ? " low" : ""}`}>
                     {forgeCount > 0 ? (
-                      <><b>{totalCost} 🪙</b> for {forgeCount === 1 ? "this listing" : `${forgeCount} listings`}<em> · {remaining.toLocaleString()} banked</em></>
+                      <><b>{totalCost} 🪙</b> for {forgeCount === 1 ? "this listing" : `${forgeCount} listings`}<em> · Balance {remaining.toLocaleString()}</em></>
                     ) : (
-                      <><b>{remaining.toLocaleString()} 🪙</b><em> banked</em></>
+                      <><b>{remaining.toLocaleString()} 🪙</b><em> Balance</em></>
                     )}
                   </span>
                 )}

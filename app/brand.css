@@ -1586,15 +1586,18 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   box-shadow: 0 2px 12px rgba(240, 180, 41, 0.4);
 }
 
+/* self-contained solid panel — never inherits the page ground, so the text
+   is visible in any admin theme (the translucent version washed out) */
 .pp-auto {
   margin-top: 18px; border-radius: 16px; padding: 20px 22px;
-  background: linear-gradient(155deg, rgba(23, 28, 66, 0.04), rgba(23, 28, 66, 0.09));
-  border: 1px solid var(--pp-line);
+  background: linear-gradient(155deg, #171C42, #10142C);
+  border: 1px solid #2A3060;
+  box-shadow: 0 8px 26px rgba(14, 18, 48, 0.25);
 }
-.pp-auto .t { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 800; color: var(--pp-gold); margin-bottom: 10px; }
+.pp-auto .t { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 800; color: #F0B429; margin-bottom: 10px; }
 .pp-auto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 20px; }
-.pp-auto-grid span { font-size: 13.5px; color: var(--pp-ink); }
-.pp-auto-grid span::before { content: "✓ "; color: var(--pp-good); font-weight: 800; }
+.pp-auto-grid span { font-size: 13.5px; color: #E7E6F4; }
+.pp-auto-grid span::before { content: "✓ "; color: #55C58B; font-weight: 800; }
 
 .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 26px 0 4px; }
 .pp-head h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.01em; color: var(--pp-ink); }
