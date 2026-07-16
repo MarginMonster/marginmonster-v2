@@ -324,10 +324,16 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const avatar = AVATAR_BY_ID[params.avatarId];
   if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
   const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
+  const portraitFile = resolvePortraitFile(avatar.id, variant);
   // inline bytes: omni-human never has to fetch our server or another
   // provider's expiring URL (both have flaked in production)
   const portraitDataUri =
-    "data:image/jpeg;base64," + fs.readFileSync(resolvePortraitFile(avatar.id, variant)).toString("base64");
+    "data:image/jpeg;base64," + fs.readFileSync(portraitFile).toString("base64");
+  // hosted URL for partner-routed engines: fal forwards to HeyGen's servers,
+  // which fetch inputs by URL — data URIs get rejected there
+  const portraitPublicUrl = process.env.SHOPIFY_APP_URL
+    ? `${process.env.SHOPIFY_APP_URL.replace(/\/$/, "")}/avatars/${path.basename(portraitFile)}`
+    : "";
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
 
@@ -374,13 +380,14 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     return repPoll(ttsId, 3 * 60_000, "tts");
   };
   let audioBuf: Buffer | null = null;
+  let audioHostedUrl = resume.audioUrl || ""; // hosted mp3 (Replicate CDN) — what fal/HeyGen fetches
   if (resume.audioUrl) {
     try { audioBuf = await downloadBuffer(resume.audioUrl); } catch { audioBuf = null; }
   }
   if (!audioBuf || audioBuf.length < 10_000) {
-    const audioUrl = await freshTts();
-    await ckpt({ ckAudioUrl: audioUrl });
-    audioBuf = await downloadBuffer(audioUrl);
+    audioHostedUrl = await freshTts();
+    await ckpt({ ckAudioUrl: audioHostedUrl });
+    audioBuf = await downloadBuffer(audioHostedUrl);
   }
   if (audioBuf.length < 10_000) throw new Error("[ugc:tts] audio came back empty");
   const audioDataUri = "data:audio/mpeg;base64," + audioBuf.toString("base64");
@@ -392,15 +399,18 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   let engine = "omni-human";
   if (!talkingUrl) {
     // PRIMARY: fal.ai HeyGen Avatar 4 (photorealistic) when FAL_KEY is set.
-    // Same inputs as omni (portrait + TTS); on any failure we fall through to
-    // the existing omni-human → kling chain so a missing key or provider hiccup
-    // never blocks a render.
-    if (falEnabled()) {
+    // HOSTED urls only (portrait from our /avatars, TTS from Replicate's CDN) —
+    // fal forwards to HeyGen, whose servers fetch by URL; data URIs bounce.
+    // Any failure falls through to the omni-human → kling chain, and the exact
+    // fal error is checkpointed so diag can show why.
+    if (falEnabled() && portraitPublicUrl && audioHostedUrl) {
       try {
-        talkingUrl = await animateAvatar(portraitDataUri, audioDataUri);
+        talkingUrl = await animateAvatar(portraitPublicUrl, audioHostedUrl);
         engine = "heygen-fal";
       } catch (e) {
-        console.error(`[ugc] fal heygen failed, falling back: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`);
+        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 180);
+        console.error(`[ugc] fal heygen failed, falling back: ${msg}`);
+        await ckpt({ ckFalError: msg });
       }
     }
     if (!talkingUrl && resume.omniPredictionId) {

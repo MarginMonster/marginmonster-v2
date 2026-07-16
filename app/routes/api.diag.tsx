@@ -47,12 +47,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       counts: jobs.reduce((m: Record<string, number>, j) => { m[j.status] = (m[j.status] || 0) + 1; return m; }, {}),
       jobs: jobs.map((j) => {
         let ck: string[] = [];
-        try { const p = JSON.parse(j.payload); ck = ["ckScript", "ckAudioUrl", "ckOmniId", "ckTalkingUrl"].filter((k) => p[k]); } catch { /* skip */ }
+        let falErr: string | null = null;
+        try {
+          const p = JSON.parse(j.payload);
+          ck = ["ckScript", "ckAudioUrl", "ckOmniId", "ckTalkingUrl"].filter((k) => p[k]);
+          falErr = typeof p.ckFalError === "string" ? p.ckFalError : null;
+        } catch { /* skip */ }
         return {
           type: j.type, status: j.status, attempts: j.attempts,
           ageMin: Math.round((now - j.updatedAt.getTime()) / 60000),
           dueMin: j.runAt ? Math.round((j.runAt.getTime() - now) / 60000) : "now",
           stage: ck.length ? ck[ck.length - 1] : "start",
+          falErr,
           err: j.lastError?.slice(0, 140) || null,
         };
       }),
