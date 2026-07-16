@@ -1873,12 +1873,30 @@ export default function Campaigns() {
           <div className="step"><span className="n">2</span><span className="t">Pack your products, pick your presenter</span></div>
           <div className="step"><span className="n">3</span><span className="t">{pName} journeys the map — creating and scheduling your content all month</span></div>
         </div>
-        {CAMPAIGNS.map((c) => {
+        {[...CAMPAIGNS]
+          .sort((a, b) => {
+            // catalog reads cheapest → priciest (entry cost of each focus)
+            const costOf = (c: typeof a) =>
+              Math.min(...TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean).map((s) => questlineTokenCost(s)));
+            return costOf(a) - costOf(b);
+          })
+          .map((c) => {
           const skus = TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean);
           const activeQ = active.find((a) => QUESTLINE_BY_KEY[a.template]?.campaign === c.key || a.template.startsWith(c.key));
           const open = openKey === c.key;
           const cheapest = Math.min(...skus.map((s) => questlineTokenCost(s)));
           const world = WORLD_META[c.homeWorld];
+          // banner subtitle = WHAT'S INSIDE, not where the road ends
+          const rng = (type: string) => {
+            const ns = skus.map((s) => s.objectives.find((o) => o.type === type)?.target || 0);
+            const lo = Math.min(...ns), hi = Math.max(...ns);
+            return hi === 0 ? null : lo === hi ? `${hi}` : `${lo}–${hi}`;
+          };
+          const inside = [
+            rng("video") && `🎬 ${rng("video")} videos`,
+            rng("image") && `🖼 ${rng("image")} image ads`,
+            rng("blog") && `📝 ${rng("blog")} blogs`,
+          ].filter(Boolean).join(" · ");
           const selSku = skus.find((s) => s.key === selKey) || skus.find((s) => canRun(s.minTier)) || skus[0];
           return (
             <div key={c.key} className={`qh-quest-entry${open ? " open" : ""}`}>
@@ -1890,7 +1908,7 @@ export default function Campaigns() {
               >
                 <span className="head">
                   <span className="hl"><span className="ico">{c.icon}</span>{c.headline}</span>
-                  <span className="sub">{c.label} · {world.icon} {world.name} → {CAMPAIGN_DEST[c.key]}</span>
+                  <span className="sub">{c.label} · {inside} · 📲 auto-posted all month</span>
                 </span>
                 <span className="side">
                   {activeQ ? <span className="run">⚑ Running · Day {activeQ.dayOf}</span> : (
@@ -1928,7 +1946,7 @@ export default function Campaigns() {
                             {b > 0 && <span>📝 {b} blog posts</span>}
                           </span>
                           <span className="tjourney">📲 auto-posted to TikTok + Meta</span>
-                          <span className="tjourney" style={{ color: "#9a94c2" }}>🗺 journeys to {sku.destination}</span>
+                          <span className="tjourney" style={{ color: "#9a94c2" }}>🗓 {sku.cadence}</span>
                           <span className="tcost">{locked ? `🔒 ${sku.minTier[0] + sku.minTier.slice(1).toLowerCase()} package` : <>{cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}</>}</span>
                         </button>
                       );

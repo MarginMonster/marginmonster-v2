@@ -171,11 +171,20 @@ function hashId(id: string): number {
 
 const AGE_ORDER: Record<string, number> = { young: 0, mid: 1, mature: 2 };
 
+/** Hand-tuned pins — when a presenter's scored voice doesn't sit right on the
+ *  ear, pin the exact voice here and it wins over the scorer. Curate from
+ *  real takes (each take records bodyJson.voiceId; /api/diag?mode=voices
+ *  shows the full assignment table). */
+const VOICE_OVERRIDES: Record<string, string> = {
+  // e.g. maya: "English_PlayfulGirl",
+};
+
 /** Pick the best-fitting voice for an avatar's gender + age + energy. Scores
  *  every same-gender voice (exact age = big win, adjacent age = partial;
  *  matching energy = win) and takes the top; a stable per-avatar hash breaks
  *  ties so the same presenter always sounds the same. */
-function pickVoice(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" }): string {
+export function pickVoice(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" }): string {
+  if (VOICE_OVERRIDES[avatar.id]) return VOICE_OVERRIDES[avatar.id];
   const h = hashId(avatar.id);
   const pool = VOICES.filter((v) => v.gender === avatar.gender);
   const scored = pool.map((v, i) => {
@@ -550,6 +559,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           style: "AI_AVATAR",
           engine,
           heldProduct, // the presenter is holding the product in-frame
+          voiceId: pickVoice(avatar), // which voice spoke — curation data
           videoUrl: `/renders/${fileName}`,
           prompt: script,
           script,

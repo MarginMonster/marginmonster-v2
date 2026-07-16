@@ -15,6 +15,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (url.searchParams.get("key") !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
+  // Voice-casting audit — every presenter's derived traits + the exact voice
+  // the scorer gives them. Curate mismatches into VOICE_OVERRIDES.
+  if (url.searchParams.get("mode") === "voices") {
+    const { AVATARS } = await import("../lib/avatars");
+    const { pickVoice } = await import("../lib/ugc-ad-pipeline.server");
+    return json({
+      voices: AVATARS.map((a) => ({
+        id: a.id, name: a.name, vibe: a.vibe,
+        gender: a.gender, age: a.ageBand, energy: a.energy,
+        voice: pickVoice(a),
+      })),
+    });
+  }
+
   // Memory truth: what limit is this container ACTUALLY running under, and
   // how close to the ceiling are we? (cgroup v2 first, v1 fallback)
   if (url.searchParams.get("mode") === "mem") {
