@@ -7,7 +7,7 @@
 import { TOKEN_COST } from "./plan-config";
 
 export type ObjectiveType = "video" | "image" | "blog" | "post";
-export type TierKey = "BRONZE" | "SILVER" | "GOLD";
+export type TierKey = "BRONZE" | "SILVER" | "GOLD" | "DIAMOND";
 
 export type QuestObjectiveDef = { type: ObjectiveType; label: string; target: number };
 
