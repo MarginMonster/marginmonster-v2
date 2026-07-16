@@ -1594,3 +1594,35 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .pp-tool, .pp-tool:hover { transition: none; transform: none; }
 }
+
+/* pp-cta-hero — the section's ONE special button. Gold sweep while idle,
+   breathing glow while working: pressing it should feel like igniting the
+   machine, not submitting a form. */
+.pp-cta-hero {
+  position: relative; overflow: hidden; cursor: pointer; border: 0;
+  font-size: 15px; font-weight: 800; letter-spacing: 0.01em;
+  padding: 14px 26px; border-radius: 12px;
+  background: linear-gradient(180deg, #FFD777, #F0B429); color: #1A1502;
+  box-shadow: 0 4px 18px rgba(240, 180, 41, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pp-cta-hero:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(240, 180, 41, 0.6); }
+.pp-cta-hero:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+.pp-cta-hero:disabled { opacity: 0.5; cursor: default; }
+.pp-cta-hero::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 64px; left: -90px;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  transform: skewX(-18deg); animation: pp-sweep 3s ease-in-out infinite;
+}
+.pp-cta-hero:disabled::after { animation: none; display: none; }
+.pp-cta-hero.busy { animation: pp-breathe 1.3s ease-in-out infinite; }
+.pp-cta-hero.busy::after { animation: pp-sweep 1.1s linear infinite; display: block; }
+@keyframes pp-sweep { 0%, 58% { left: -90px; } 88%, 100% { left: 115%; } }
+@keyframes pp-breathe {
+  0%, 100% { box-shadow: 0 4px 18px rgba(240, 180, 41, 0.45); }
+  50% { box-shadow: 0 4px 34px rgba(240, 180, 41, 0.85); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pp-cta-hero, .pp-cta-hero.busy { animation: none; }
+  .pp-cta-hero::after, .pp-cta-hero.busy::after { animation: none; display: none; }
+}

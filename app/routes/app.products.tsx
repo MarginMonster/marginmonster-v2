@@ -413,8 +413,10 @@ export default function Products() {
                 />
               )}
               <div className="mm-forge-cta">
-                <button type="button" className="mm-arcade-btn" onClick={forge} disabled={busy || !forgeCount || !canAfford}>
-                  {busy ? "FORGING…" : `▶ FORGE ${forgeCount > 0 ? forgeCount + " " : ""}LISTING${forgeCount === 1 ? "" : "S"}`}
+                <button type="button" className={`pp-cta-hero${busy ? " busy" : ""}`} onClick={forge} disabled={busy || !forgeCount || !canAfford}>
+                  {busy
+                    ? `✍ Writing ${forgeCount > 1 ? `${forgeCount} listings` : "your listing"}…`
+                    : `✨ Write ${forgeCount > 1 ? `${forgeCount} listings` : "my listing"}`}
                 </button>
                 {tokens != null && (
                   <span className={`mm-credits${!canAfford ? " low" : ""}`}>

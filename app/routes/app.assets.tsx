@@ -77,6 +77,7 @@ export default function Assets() {
   const submit = useSubmit();
   const navigation = useNavigation();
   const [selectedTab, setSelectedTab] = useState(0);
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [previewAsset, setPreviewAsset] = useState<typeof assets[0] | null>(null);
 
   const tabs = [
@@ -86,10 +87,18 @@ export default function Assets() {
     { id: "all", content: "All" },
   ];
 
+  // content types live in separate drawers — nobody scrolls past 20 videos to
+  // find a blog post
+  const TYPE_TABS: [string, string][] = [
+    ["ALL", "All"], ["VIDEO_AD", "🎬 Videos"], ["IMAGE_AD", "🖼 Images"], ["BLOG_POST", "📰 Blogs"], ["AD_COPY", "✍ Ad copy"],
+  ];
+  const countOf = (t: string) => assets.filter((a) => a.type === t).length;
+
   const tabStatuses = ["PENDING", "APPROVED", "PUBLISHED", null];
-  const filtered = tabStatuses[selectedTab]
+  const filtered = (tabStatuses[selectedTab]
     ? assets.filter((a) => a.status === tabStatuses[selectedTab])
-    : assets;
+    : assets
+  ).filter((a) => typeFilter === "ALL" || a.type === typeFilter);
 
   if (!hasPlan) {
     return (
@@ -108,6 +117,20 @@ export default function Assets() {
         <Layout.Section>
           <Card>
             <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+              <Box paddingBlockStart="300" paddingBlockEnd="200" paddingInlineStart="300">
+                <div className="mm-filter-chips">
+                  {TYPE_TABS.map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`mm-chip mm-filter-chip${typeFilter === val ? " on" : ""}`}
+                      onClick={() => setTypeFilter(val)}
+                    >
+                      {label}{val !== "ALL" ? ` (${countOf(val)})` : ""}
+                    </button>
+                  ))}
+                </div>
+              </Box>
               <BlockStack gap="0">
                 {filtered.length === 0 ? (
                   <Box padding="800">
