@@ -1497,14 +1497,14 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   padding: 2px 6px; border-radius: 999px; box-shadow: 0 0 8px rgba(198,255,61,0.45);
 }
 /* reserves vertical space so the fixed HUD never overlaps page header actions */
-.mm-hud-spacer { height: 92px; }
+.mm-hud-spacer { height: 118px; }
 @media (max-width: 560px) {
   .mm-hud { top: 8px; right: 8px; gap: 8px; padding: 6px 9px 6px 6px; }
   .mm-hud-avatar { width: 38px; height: 38px; }
   .mm-hud-face { font-size: 19px; }
   .mm-hud-name { max-width: 110px; }
   .mm-hud-stats { gap: 9px; font-size: 10.5px; }
-  .mm-hud-spacer { height: 78px; }
+  .mm-hud-spacer { height: 104px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mm-hud-sprite .f2 { opacity: 0; }
@@ -1638,3 +1638,24 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   .pp-cta-hero, .pp-cta-hero.busy { animation: none; }
   .pp-cta-hero::after, .pp-cta-hero.busy::after { animation: none; display: none; }
 }
+
+/* HUD bar labels — the numbers behind each bar, at a glance */
+.mm-hud-barlabel {
+  display: flex; justify-content: space-between; gap: 10px; margin: 3px 0 2px;
+  font: 600 9.5px/1.2 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  color: #9aa0cf; letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+}
+.mm-hud-barlabel span:last-child { color: #cfd3f2; }
+
+/* HUD collapse toggle + minimized state */
+.mm-hud-toggle {
+  margin-left: auto; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07); color: #cfd3f2; border-radius: 6px;
+  width: 22px; height: 20px; line-height: 1; font-size: 11px; padding: 0;
+}
+.mm-hud-toggle:hover { background: rgba(255, 255, 255, 0.14); }
+.mm-hud.min { padding: 6px 10px 6px 6px; align-items: center; }
+.mm-hud.min .mm-hud-top { margin: 0; align-items: center; gap: 8px; }
+.mm-hud.min .mm-hud-avatar { width: 34px; height: 34px; }
+.mm-hud-spacer.slim { height: 58px; }
+@media (max-width: 640px) { .mm-hud-spacer.slim { height: 50px; } }

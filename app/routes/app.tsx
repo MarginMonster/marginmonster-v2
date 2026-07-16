@@ -58,8 +58,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     accent: "#34E7E4",
     tokens: 0,
     tokensPct: 0,
+    tokensMax: 0,
     level: 1,
     xpPct: 0,
+    xpInto: 0,
+    xpNeed: 40,
     videos: 0,
     ads: 0,
   };
@@ -75,7 +78,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const cur = totalXpForLevel(shop.level);
       const next = totalXpForLevel(shop.level + 1);
       hud.level = shop.level;
-      hud.xpPct = Math.max(0, Math.min(100, Math.round(((shop.xp - cur) / Math.max(1, next - cur)) * 100)));
+      hud.xpInto = Math.max(0, shop.xp - cur);
+      hud.xpNeed = Math.max(1, next - cur);
+      hud.xpPct = Math.max(0, Math.min(100, Math.round((hud.xpInto / hud.xpNeed) * 100)));
       if (shop.pendingLevelUp) {
         try { levelUp = JSON.parse(shop.pendingLevelUp); } catch { levelUp = null; }
         await db.shop.update({ where: { id: shop.id }, data: { pendingLevelUp: null } });
@@ -94,6 +99,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         img: partner?.img ?? null,
         accent: partner?.accent ?? "#34E7E4",
         tokens: remaining,
+        tokensMax,
         tokensPct: Math.max(0, Math.min(100, Math.round((remaining / tokensMax) * 100))),
         videos: Math.max(0, plan.videoQuota - plan.videoUsed),
         ads: Math.floor(remaining / TOKEN_COST.image),
@@ -153,6 +159,12 @@ export default function App() {
   const [showLevelUp, setShowLevelUp] = useState(!!levelUp);
   // re-arm when a new level-up flash arrives on a later revalidation
   useEffect(() => { setShowLevelUp(!!levelUp); }, [levelUp]);
+  // HUD collapse — remembered per browser (read after mount: SSR-safe)
+  const [hudMin, setHudMin] = useState(false);
+  useEffect(() => { setHudMin(localStorage.getItem("mmHudMin") === "1"); }, []);
+  const toggleHud = () => {
+    setHudMin((m) => { localStorage.setItem("mmHudMin", m ? "0" : "1"); return !m; });
+  };
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
@@ -168,7 +180,7 @@ export default function App() {
         />
       )}
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
-      <div className="mm-hud" aria-label="Player status">
+      <div className={`mm-hud${hudMin ? " min" : ""}`} aria-label="Player status">
         <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>
           {hud.img ? (
             <span className="mm-hud-sprite" aria-hidden="true">
@@ -178,29 +190,48 @@ export default function App() {
             <span className="mm-hud-face">🎮</span>
           )}
         </Link>
-        <div className="mm-hud-body">
-          <div className="mm-hud-top">
-            <span className="mm-hud-name">{hud.name}</span>
-            <span className="mm-hud-lvl" title={`Level ${hud.level} — earn XP by forging, applying & spending tokens`}>LVL {hud.level}</span>
-            <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
+        {hudMin ? (
+          <div className="mm-hud-body">
+            <div className="mm-hud-top">
+              <span className="mm-hud-lvl" title={`Level ${hud.level} · ${hud.xpNeed - hud.xpInto} XP to level ${hud.level + 1}`}>LVL {hud.level}</span>
+              <span className="mm-hud-stat" title="Token balance">🪙 {hud.tokens.toLocaleString()}</span>
+              <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Expand HUD" aria-label="Expand HUD">▾</button>
+            </div>
           </div>
-          {/* Health = token wallet remaining (%) */}
-          <div className="mm-hud-hp" title={`Health ${hud.tokensPct}% — token wallet remaining`}>
-            <i style={{ width: `${hud.tokensPct}%` }} />
+        ) : (
+          <div className="mm-hud-body">
+            <div className="mm-hud-top">
+              <span className="mm-hud-name">{hud.name}</span>
+              <span className="mm-hud-lvl" title={`Level ${hud.level} — earn XP by forging, applying & spending tokens`}>LVL {hud.level}</span>
+              <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
+              <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Collapse HUD" aria-label="Collapse HUD">▴</button>
+            </div>
+            {/* Health = token wallet remaining */}
+            <div className="mm-hud-barlabel">
+              <span>❤ HP · tokens</span>
+              <span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span>
+            </div>
+            <div className="mm-hud-hp" title={`${hud.tokensPct}% of your token wallet remaining`}>
+              <i style={{ width: `${hud.tokensPct}%` }} />
+            </div>
+            {/* XP progress through the current level */}
+            <div className="mm-hud-barlabel">
+              <span>⚡ XP</span>
+              <span>{hud.xpInto.toLocaleString()} / {hud.xpNeed.toLocaleString()} · {(hud.xpNeed - hud.xpInto).toLocaleString()} to LVL {hud.level + 1}</span>
+            </div>
+            <div className="mm-hud-xp" title={`${hud.xpPct}% of the way to level ${hud.level + 1}`}>
+              <i style={{ width: `${hud.xpPct}%` }} />
+            </div>
+            <div className="mm-hud-stats">
+              <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
+                <span title="Token balance">🪙 {hud.tokens.toLocaleString()}</span>
+                <span className="mm-hud-plus">+ INSERT TOKENS</span>
+              </Link>
+              <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos}</span>
+              <span className="mm-hud-stat" title="Ad generations you can afford">🖼 {hud.ads}</span>
+            </div>
           </div>
-          {/* XP progress through the current level */}
-          <div className="mm-hud-xp" title={`XP ${hud.xpPct}% to level ${hud.level + 1}`}>
-            <i style={{ width: `${hud.xpPct}%` }} />
-          </div>
-          <div className="mm-hud-stats">
-            <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
-              <span title="Tokens remaining">🪙 {hud.tokens.toLocaleString()}</span>
-              <span className="mm-hud-plus">+ INSERT TOKENS</span>
-            </Link>
-            <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos}</span>
-            <span className="mm-hud-stat" title="Ad generations you can afford">🖼 {hud.ads}</span>
-          </div>
-        </div>
+        )}
       </div>
       <NavMenu>
         <Link to="/app" rel="home">Dashboard</Link>
@@ -221,7 +252,7 @@ export default function App() {
         <svg className="ast a4" viewBox="0 0 100 100"><polygon points="50,6 80,26 88,56 68,86 36,88 12,62 14,30 32,12" /></svg>
       </div>
       {/* spacer so the fixed HUD never covers page header actions */}
-      <div className="mm-hud-spacer" aria-hidden="true" />
+      <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
       <Outlet />
     </AppProvider>
   );
