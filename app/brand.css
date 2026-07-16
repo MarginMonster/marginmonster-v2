@@ -1075,6 +1075,28 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-lib-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 14px; }
 .mm-lib-tabs .mm-chip { font-size: 13px; padding: 7px 14px; }
 
+/* in-hand demo — compose + approve the "presenter holding the product" shot */
+.mm-inhand {
+  display: grid; gap: 10px; padding: 12px 14px; border-radius: 10px;
+  border: 1px dashed rgba(127, 245, 242, 0.45);
+  background: linear-gradient(180deg, rgba(18, 24, 48, 0.55), rgba(12, 14, 32, 0.55));
+}
+.mm-inhand-frames { display: flex; gap: 12px; flex-wrap: wrap; }
+.mm-inhand-frame {
+  position: relative; width: 132px; padding: 0; cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.15); border-radius: 10px; overflow: hidden;
+  background: none; transition: border-color 0.15s, transform 0.15s;
+}
+.mm-inhand-frame:hover { border-color: rgba(127, 245, 242, 0.6); transform: translateY(-2px); }
+.mm-inhand-frame.on { border-color: #7ff5f2; box-shadow: 0 0 14px rgba(127, 245, 242, 0.35); }
+.mm-inhand-frame img { display: block; width: 100%; aspect-ratio: 3/4; object-fit: cover; }
+.mm-inhand-frame .tick {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 0;
+  font-family: var(--font-pixel); font-size: 7px; letter-spacing: 0.08em;
+  color: #041014; background: #7ff5f2; text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { .mm-inhand-frame, .mm-inhand-frame:hover { transition: none; transform: none; } }
+
 /* scheduled-drip overlay — a stationary explainer, NOT a spinner, for videos
    whose forge time is still in the future (campaign drip) */
 .mm-sched-overlay {

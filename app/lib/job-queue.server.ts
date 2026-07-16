@@ -200,9 +200,12 @@ async function runJob(
           captions: payload.captions !== false,
           origin,
           jobId: payload.__jobId as string | undefined,
+          composedFrameUrl: payload.composedFrameUrl as string | undefined,
+          holdProduct: payload.holdProduct === true,
           resume: {
             script: payload.ckScript as string | undefined,
             audioUrl: payload.ckAudioUrl as string | undefined,
+            composedUrl: payload.ckComposedUrl as string | undefined,
             omniPredictionId: payload.ckOmniId as string | undefined,
             talkingUrl: payload.ckTalkingUrl as string | undefined,
           },

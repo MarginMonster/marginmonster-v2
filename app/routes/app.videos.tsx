@@ -271,6 +271,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
     const productDescription = ((form.get("productDescription") as string) || "").trim() || undefined;
     const captions = form.get("captions") !== "off";
+    const composedFrameUrl = ((form.get("composedFrameUrl") as string) || "").trim() || undefined;
     if (!productTitle) return json({ error: "Give your video a product or subject." });
 
     // Provenance: name the human who pressed ROLL CAMERA (quest drips carry
@@ -288,8 +289,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productDescription,
       captions,
       initiator,
+      composedFrameUrl, // approved in-hand frame — the render animates THIS
     });
     return json({ ok: true, queued: true });
+  }
+
+  // ---- In-hand demo: compose "presenter holding the product" frames for the
+  // merchant to approve BEFORE the video spend ----
+  if (intent === "composeFrame") {
+    const avatarId = ((form.get("avatarId") as string) || "").trim();
+    const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+    const productImageUrl = ((form.get("productImageUrl") as string) || "").trim();
+    const productTitle = ((form.get("productTitle") as string) || "").trim();
+    if (!avatarId || !productImageUrl) return json({ composeError: "Cast a presenter and pick a product with a photo first." });
+    try {
+      const { composeHoldingFrames, falImageEnabled } = await import("../lib/fal-image.server");
+      if (!falImageEnabled()) return json({ composeError: "The image engine isn't switched on yet (FAL_KEY)." });
+      const { resolvePortraitFile } = await import("../lib/ugc-ad-pipeline.server");
+      const path = await import("node:path");
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant))}`;
+      const frames = await composeHoldingFrames(portraitUrl, productImageUrl, productTitle, 2);
+      return json({ frames });
+    } catch (e) {
+      return json({ composeError: `Couldn't compose the shot (${(e instanceof Error ? e.message : "error").slice(0, 80)}). Try again or roll without it.` });
+    }
   }
 
   // ---- Take card ops: delete / attach to listing / queue for social ----
@@ -565,10 +589,24 @@ export default function Videos() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [pick, setPick] = useState<Pick | null>(null);
   const [pullUrl, setPullUrl] = useState("");
+  // In-hand demo: composed "presenter holding the product" frames + the one
+  // the merchant approved (its URL rides the generate payload)
+  const composer = useFetcher<{ frames?: string[]; composeError?: string }>();
+  const [framePick, setFramePick] = useState<string>("");
+  const composeFrames = composer.data && "frames" in composer.data ? composer.data.frames : null;
+  const composeError = composer.data && "composeError" in composer.data ? composer.data.composeError : null;
+  const composeShot = () => {
+    setFramePick("");
+    composer.submit(
+      { intent: "composeFrame", avatarId, avatarVariant: String(avatarVariant), productImageUrl: pick?.image || "", productTitle: pick?.title || productTitle },
+      { method: "post" }
+    );
+  };
 
   const castAvatar = (id: string) => {
     setAvatarId(id);
     setAvatarVariant(0); // new presenter starts in their default fit
+    setFramePick(""); // new face → any composed frame is stale
   };
 
   // a URL pull landing = auto-select that product
@@ -582,6 +620,7 @@ export default function Videos() {
   const pullError = puller.data && "pullError" in puller.data ? puller.data.pullError : null;
 
   const choose = (p: { id: string; title: string; image: string | null; description: string }) => {
+    setFramePick(""); // product changed → any composed frame is stale
     if (pick?.id === p.id) {
       setPick(null);
       return;
@@ -604,6 +643,7 @@ export default function Videos() {
         productImageUrl: seed ? "" : pick?.image || "",
         productDescription: seed ? "" : pick?.description || "",
         captions: captionsOn ? "on" : "off",
+        composedFrameUrl: seed ? "" : framePick,
       },
       { method: "post" }
     );
@@ -844,6 +884,42 @@ export default function Videos() {
                 checked={captionsOn}
                 onChange={setCaptionsOn}
               />
+
+              {/* IN-HAND DEMO — compose the presenter holding the product,
+                  approve the shot, THEN roll. The highest-converting UGC format. */}
+              {avatarId && pick?.image && (
+                <div className="mm-inhand">
+                  <InlineStack gap="300" blockAlign="center" wrap>
+                    <Text variant="headingSm" as="h3">🤲 IN-HAND DEMO</Text>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Your presenter holds {pick.title.length > 30 ? "the product" : `the ${pick.title}`} on camera — demo-style ads convert hardest.
+                    </Text>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button size="slim" loading={composer.state !== "idle"} onClick={composeShot}>
+                      {composeFrames ? "🎲 Re-compose the shot" : "✨ Compose the shot"}
+                    </Button>
+                    {framePick && <Badge tone="success">Shot approved — rolls with the take</Badge>}
+                    {!framePick && composeFrames && <Text variant="bodySm" as="span" tone="subdued">Tap the shot you like:</Text>}
+                  </InlineStack>
+                  {composeError && <Text variant="bodySm" as="p" tone="critical">{composeError}</Text>}
+                  {composeFrames && composeFrames.length > 0 && (
+                    <div className="mm-inhand-frames">
+                      {composeFrames.map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          className={`mm-inhand-frame${framePick === f ? " on" : ""}`}
+                          onClick={() => setFramePick(framePick === f ? "" : f)}
+                        >
+                          <img src={f} alt="Presenter holding the product" />
+                          {framePick === f && <span className="tick">✓ THIS ONE</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mm-forge-cta">
                 <button

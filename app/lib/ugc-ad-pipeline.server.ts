@@ -51,11 +51,17 @@ interface UgcAdParams {
   captions?: boolean; // burn in on-screen captions (default true)
   origin?: string; // provenance label ("⚔ QUEST · FIRST BLOOD" / "🎬 BY DANIEL")
   jobId?: string; // enables stage checkpointing
+  // Product-in-hand: an already-approved composed frame (Studio flow), or a
+  // flag to auto-compose one in-pipeline (campaign drips — hands-off). Compose
+  // failure NEVER blocks a render; it just falls back to the plain portrait.
+  composedFrameUrl?: string;
+  holdProduct?: boolean;
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
     // NEVER re-spend on completed stages or abandon a live omni prediction
     script?: string;
     audioUrl?: string;
+    composedUrl?: string;
     omniPredictionId?: string;
     talkingUrl?: string;
   };
@@ -311,7 +317,7 @@ function assemble(opts: {
  *  then that avatar's default, then the legacy flat portrait. Returned as a
  *  local path so we can send inline bytes (no cross-provider URL fetching to
  *  flake out on). */
-function resolvePortraitFile(id: string, variant: number): string {
+export function resolvePortraitFile(id: string, variant: number): string {
   const dir = path.join(process.cwd(), "public", "avatars");
   for (const candidate of [`${id}_${variant}.jpg`, `${id}_0.jpg`, `${id}.jpg`]) {
     const p = path.join(dir, candidate);
@@ -395,6 +401,37 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // 3) TALKING PERFORMANCE — on resume, re-attach to the SAME prediction
   // instead of paying for a duplicate render; transient provider failures
   // ("Failed to upload…") get one cheap in-attempt retry with a new prediction
+  // 2.5) PRODUCT-IN-HAND FRAME — the animation source decides the scene, so a
+  // composed "presenter holding the product" frame makes the whole ad an
+  // in-hand demo. Studio passes an approved frame; campaign drips auto-compose
+  // (checkpointed — restarts never re-spend). Failure → plain portrait.
+  let heldProduct = false;
+  let animSourceUrl = portraitPublicUrl; // what HeyGen fetches
+  let animSourceDataUri = portraitDataUri; // what omni/kling get inline
+  {
+    let composedUrl = params.composedFrameUrl || resume.composedUrl || "";
+    if (!composedUrl && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
+      try {
+        const { composeHoldingFrames } = await import("./fal-image.server");
+        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1);
+        composedUrl = frames[0] || "";
+        if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
+      } catch (e) {
+        console.error(`[ugc] compose failed (falling back to plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+      }
+    }
+    if (composedUrl) {
+      try {
+        const buf = await downloadBuffer(composedUrl);
+        if (buf.length > 10_000) {
+          animSourceUrl = composedUrl;
+          animSourceDataUri = "data:image/jpeg;base64," + buf.toString("base64");
+          heldProduct = true;
+        }
+      } catch { /* composed frame unreachable → plain portrait */ }
+    }
+  }
+
   let talkingUrl = resume.talkingUrl || "";
   let engine = "omni-human";
   if (!talkingUrl) {
@@ -403,9 +440,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // fal forwards to HeyGen, whose servers fetch by URL; data URIs bounce.
     // Any failure falls through to the omni-human → kling chain, and the exact
     // fal error is checkpointed so diag can show why.
-    if (falEnabled() && portraitPublicUrl && audioHostedUrl) {
+    if (falEnabled() && animSourceUrl && audioHostedUrl) {
       try {
-        talkingUrl = await animateAvatar(portraitPublicUrl, audioHostedUrl);
+        talkingUrl = await animateAvatar(animSourceUrl, audioHostedUrl);
         engine = "heygen-fal";
       } catch (e) {
         const msg = (e instanceof Error ? e.message : String(e)).slice(0, 180);
@@ -420,7 +457,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     }
     for (let attempt = 0; attempt < 2 && !talkingUrl; attempt++) {
       try {
-        const omniId = await repCreate("bytedance/omni-human", { image: portraitDataUri, audio: audioDataUri });
+        const omniId = await repCreate("bytedance/omni-human", { image: animSourceDataUri, audio: audioDataUri });
         await ckpt({ ckOmniId: omniId });
         talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
       } catch (e) {
@@ -440,7 +477,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       console.log("[ugc] falling back to kling voiceover style");
       engine = "kling-voiceover";
       const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
-        start_image: portraitDataUri,
+        start_image: animSourceDataUri,
         prompt: `${avatar.desc}, talking directly to the camera with natural hand gestures and subtle head movement, enthusiastic friendly energy, static camera, plain studio background, vertical video`,
         negative_prompt: "camera movement, zoom, pan, morphing, distortion, extra people, text, watermark",
         duration: 10,
@@ -492,6 +529,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         bodyJson: JSON.stringify({
           style: "AI_AVATAR",
           engine,
+          heldProduct, // the presenter is holding the product in-frame
           videoUrl: `/renders/${fileName}`,
           prompt: script,
           script,

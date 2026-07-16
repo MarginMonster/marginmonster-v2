@@ -144,8 +144,10 @@ export async function acceptQuestline(params: {
     };
     const runAt = slotRunAt(slot);
     if (slot.type === "video") {
+      // holdProduct: campaign drips auto-compose the presenter holding the
+      // product (hands-off in-hand demos; falls back to plain portrait)
       await enqueueJob(params.shopId, "GENERATE_VIDEO_AD", {
-        ...base, avatarId: params.avatarId || undefined, avatarVariant: params.avatarVariant,
+        ...base, avatarId: params.avatarId || undefined, avatarVariant: params.avatarVariant, holdProduct: true,
       }, runAt);
     } else if (slot.type === "image") {
       await enqueueJob(params.shopId, "GENERATE_IMAGE_AD", base, runAt);
@@ -269,7 +271,7 @@ export async function addDrop(
   };
   const runAt = opts.instant ? new Date() : slotRunAt(slot);
   if (type === "video") {
-    await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant }, runAt);
+    await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, runAt);
   } else if (type === "image") {
     await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, runAt);
   } else {
