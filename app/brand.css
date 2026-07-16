@@ -1254,6 +1254,7 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-tier.t-bronze { --tc: #d9995a; --band: linear-gradient(180deg, #d9995a, #8a5a2e); }
 .qh-tier.t-silver { --tc: #c9d2e8; --band: linear-gradient(180deg, #e4e9f2, #97a2ba); }
 .qh-tier.t-gold { --tc: #ffd76a; --band: linear-gradient(180deg, #ffe08a, #c9971a); }
+.qh-tier.t-diamond { --tc: #b7f0ff; --band: linear-gradient(180deg, #f2fdff, #8fd8ee 55%, #5db6d6); }
 .qh-tier.on { border-color: var(--tc); box-shadow: 0 0 18px color-mix(in srgb, var(--tc) 45%, transparent); }
 .qh-tier.locked { opacity: 0.55; }
 .qh-tier .tname {
@@ -1265,6 +1266,7 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   position: absolute; top: 44px; right: 10px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
   color: #241505; background: var(--arc-yellow); border-radius: 999px; padding: 3px 9px; box-shadow: 0 2px 6px rgba(0,0,0,.4);
 }
+.qh-tier .tpop.tdaily { color: #06222e; background: linear-gradient(180deg, #eafcff, #8fd8ee); }
 .qh-tier .tblurb { font-size: 12.5px; color: #9a94c2; padding: 4px 14px 0; }
 .qh-tier .trec { display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; color: #eceaf6; padding: 2px 14px 0; }
 .qh-tier .tjourney { font-size: 12.5px; color: #7dd8b8; padding: 2px 14px 0; }

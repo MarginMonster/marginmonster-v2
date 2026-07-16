@@ -74,29 +74,36 @@ export const TIERS: { key: TierKey; worlds: number; minTier: "GROWTH" | "PRO" | 
   { key: "BRONZE", worlds: 1, minTier: "GROWTH", bagSize: 3, blurb: "A light month, gently paced" },
   { key: "SILVER", worlds: 2, minTier: "PRO", bagSize: 6, blurb: "The standard month" },
   { key: "GOLD", worlds: 4, minTier: "SCALE", bagSize: 10, blurb: "Full assault" },
+  // TIER TWO — the daily engine: a drop lands every single day of the month
+  { key: "DIAMOND", worlds: 4, minTier: "SCALE", bagSize: 14, blurb: "Every. Single. Day." },
 ];
 
-/* Content mixes per campaign x tier (v=video, i=image, b=blog). */
+/* Content mixes per campaign x tier (v=video, i=image, b=blog).
+ * DIAMOND = 30+ pieces — at least one drop every day of the month. */
 const MIX: Record<string, Record<TierKey, { v: number; i: number; b: number; xp: number; cadence: string }>> = {
   GET_SEEN: {
     BRONZE: { v: 2, i: 2, b: 0, xp: 400, cadence: "~1 drop a week · evening video slots" },
     SILVER: { v: 6, i: 2, b: 0, xp: 1200, cadence: "~2 drops a week · Tue/Thu/Sat evenings" },
     GOLD: { v: 12, i: 4, b: 0, xp: 2400, cadence: "~4 drops a week · your face everywhere" },
+    DIAMOND: { v: 18, i: 12, b: 0, xp: 4800, cadence: "every single day · your face on the feed daily" },
   },
   LAUNCH_IT: {
     BRONZE: { v: 3, i: 3, b: 0, xp: 500, cadence: "~1–2 drops a week · heavier at the start" },
     SILVER: { v: 8, i: 3, b: 0, xp: 1800, cadence: "~3 drops a week · weeks 1–2 hit hardest" },
     GOLD: { v: 14, i: 6, b: 0, xp: 3000, cadence: "~5 drops a week · a launch nobody misses" },
+    DIAMOND: { v: 22, i: 12, b: 0, xp: 5500, cadence: "daily · double-drops through launch week" },
   },
   STAY_STEADY: {
     BRONZE: { v: 2, i: 4, b: 0, xp: 450, cadence: "~1–2 drops a week · steady and calm" },
     SILVER: { v: 6, i: 4, b: 1, xp: 1300, cadence: "~2–3 drops a week · the reliable drumbeat" },
     GOLD: { v: 10, i: 6, b: 2, xp: 2200, cadence: "~4 drops a week · always-on, everywhere" },
+    DIAMOND: { v: 14, i: 14, b: 4, xp: 4200, cadence: "every single day · calm and relentless" },
   },
   OWN_THE_SEARCH: {
     BRONZE: { v: 1, i: 4, b: 2, xp: 350, cadence: "~1–2 drops a week · blogs Monday mornings" },
     SILVER: { v: 3, i: 6, b: 4, xp: 900, cadence: "~2–3 drops a week · compounding steadily" },
     GOLD: { v: 6, i: 8, b: 6, xp: 1600, cadence: "~4 drops a week · own the results page" },
+    DIAMOND: { v: 8, i: 14, b: 12, xp: 3600, cadence: "daily · articles + ads compounding all month" },
   },
 };
 

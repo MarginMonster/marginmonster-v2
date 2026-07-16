@@ -1939,6 +1939,7 @@ export default function Campaigns() {
                         >
                           <span className="tname">{sku.tier}</span>
                           {sku.tier === "SILVER" && !locked && <span className="tpop">★ Most popular</span>}
+                          {sku.tier === "DIAMOND" && <span className="tpop tdaily">◆ DAILY DROPS</span>}
                           <span className="tblurb">{tierMeta.blurb}</span>
                           <span className="trec">
                             {v > 0 && <span>🎬 {v} videos</span>}
