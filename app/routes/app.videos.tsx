@@ -24,6 +24,8 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
+import { spendTokens, tokensRemaining } from "../lib/tokens.server";
+import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS, OUTFITS, CAST_PREVIEW_COUNT, avatarImg } from "../lib/avatars";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -32,7 +34,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { domain: session.shop },
     include: { activePlan: true },
   });
-  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null });
+  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video });
 
   const videos = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD" },
@@ -131,6 +133,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     renderJobs,
     linkedSocials,
     posterEnabled: socialProviderEnabled(),
+    tokens: plan ? tokensRemaining(plan) : 0,
+    videoTokenCost: TOKEN_COST.video,
     brandFace: shop.brandAvatarId
       ? { id: shop.brandAvatarId, variant: shop.brandAvatarVariant ?? 0 }
       : null,
@@ -274,6 +278,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const composedFrameUrl = ((form.get("composedFrameUrl") as string) || "").trim() || undefined;
     if (!productTitle) return json({ error: "Give your video a product or subject." });
 
+    // Plan takes first, tokens after — once the monthly takes are used, a take
+    // costs TOKEN_COST.video from the wallet (prePaid → accounting skips the
+    // quota burn since the coins already paid for it).
+    let prePaid = false;
+    const planTakesLeft = shop.activePlan.videoQuota - shop.activePlan.videoUsed + shop.activePlan.videoCredits;
+    if (planTakesLeft <= 0) {
+      try {
+        await spendTokens(shop.id, TOKEN_COST.video);
+        prePaid = true;
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : "Not enough tokens for this take." });
+      }
+    }
+
     // Provenance: name the human who pressed ROLL CAMERA (quest drips carry
     // their questlineId instead), so the Studio can label every card.
     const sessUser = (session as { onlineAccessInfo?: { associated_user?: { first_name?: string; last_name?: string } } }).onlineAccessInfo?.associated_user;
@@ -290,6 +308,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       captions,
       initiator,
       composedFrameUrl, // approved in-hand frame — the render animates THIS
+      prePaid,
     });
     return json({ ok: true, queued: true });
   }
@@ -501,7 +520,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Pick = { id: string | null; title: string; image: string | null; description: string };
 
 export default function Videos() {
-  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -891,18 +910,18 @@ export default function Videos() {
                 <div className="mm-inhand">
                   <InlineStack gap="300" blockAlign="center" wrap>
                     <Text variant="headingSm" as="h3">🤲 IN-HAND DEMO</Text>
-                    <Text variant="bodySm" as="span" tone="subdued">
-                      Your presenter holds {pick.title.length > 30 ? "the product" : `the ${pick.title}`} on camera — demo-style ads convert hardest.
-                    </Text>
+                    <span className="mm-inhand-sub">
+                      {AVATAR_BY_ID[avatarId]?.name || "Your presenter"} holds your product on camera — the highest-converting ad format.
+                    </span>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
                     <Button size="slim" loading={composer.state !== "idle"} onClick={composeShot}>
-                      {composeFrames ? "🎲 Re-compose the shot" : "✨ Compose the shot"}
+                      {composeFrames ? "🎲 New shots" : "✨ Compose the shot"}
                     </Button>
-                    {framePick && <Badge tone="success">Shot approved — rolls with the take</Badge>}
-                    {!framePick && composeFrames && <Text variant="bodySm" as="span" tone="subdued">Tap the shot you like:</Text>}
+                    {framePick && <Badge tone="success">Shot cast — rolls with this take</Badge>}
+                    {!framePick && composeFrames && <span className="mm-inhand-sub">Tap your favorite:</span>}
                   </InlineStack>
-                  {composeError && <Text variant="bodySm" as="p" tone="critical">{composeError}</Text>}
+                  {composeError && <Text variant="bodySm" as="p" tone="caution">{composeError}</Text>}
                   {composeFrames && composeFrames.length > 0 && (
                     <div className="mm-inhand-frames">
                       {composeFrames.map((f) => (
@@ -926,17 +945,23 @@ export default function Videos() {
                   type="button"
                   className="mm-arcade-btn"
                   onClick={() => generate("generate")}
-                  disabled={busy || !productTitle.trim() || remaining <= 0}
+                  disabled={busy || !productTitle.trim() || (remaining <= 0 && tokens < videoTokenCost)}
                 >
                   {busy ? "ROLLING…" : "▶ ROLL CAMERA"}
                 </button>
-                <span className={`mm-credits${remaining <= 0 ? " low" : ""}`}>
-                  <b>TAKES LEFT</b> 🎬 {remaining}
+                <span className={`mm-credits${remaining <= 0 && tokens < videoTokenCost ? " low" : ""}`}>
+                  {remaining > 0 ? (
+                    <><b>{remaining} TAKES</b> in plan · then {videoTokenCost} 🪙 each</>
+                  ) : tokens >= videoTokenCost ? (
+                    <><b>{videoTokenCost} 🪙</b> this take · {tokens.toLocaleString()} 🪙 banked</>
+                  ) : (
+                    <><b>INSERT COINS</b> — {videoTokenCost} 🪙 per take</>
+                  )}
                 </span>
               </div>
-              {remaining <= 0 && (
+              {remaining <= 0 && tokens < videoTokenCost && (
                 <Text variant="bodySm" as="p" tone="critical">
-                  Out of video takes this period — top up or upgrade on the Plans page.
+                  Plan takes are used and the coin bank is under {videoTokenCost} — top up tokens or upgrade on the Packages page.
                 </Text>
               )}
             </BlockStack>
