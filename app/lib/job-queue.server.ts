@@ -208,6 +208,7 @@ async function runJob(
             composedUrl: payload.ckComposedUrl as string | undefined,
             omniPredictionId: payload.ckOmniId as string | undefined,
             talkingUrl: payload.ckTalkingUrl as string | undefined,
+            engine: payload.ckEngine as string | undefined,
           },
         });
       } else {

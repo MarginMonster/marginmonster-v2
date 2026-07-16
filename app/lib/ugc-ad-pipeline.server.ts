@@ -64,6 +64,7 @@ interface UgcAdParams {
     composedUrl?: string;
     omniPredictionId?: string;
     talkingUrl?: string;
+    engine?: string;
   };
 }
 
@@ -433,7 +434,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   }
 
   let talkingUrl = resume.talkingUrl || "";
-  let engine = "omni-human";
+  // resumed jobs must keep the TRUE engine of the checkpointed render —
+  // without this, a deploy-interrupted heygen take got relabeled omni-human
+  let engine = (talkingUrl && resume.engine) || "omni-human";
   if (!talkingUrl) {
     // PRIMARY: fal.ai HeyGen Avatar 4 (photorealistic) when FAL_KEY is set.
     // HOSTED urls only (portrait from our /avatars, TTS from Replicate's CDN) —
@@ -486,7 +489,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       await ckpt({ ckOmniId: klingId });
       talkingUrl = await repPoll(klingId, 12 * 60_000, "kling-fallback");
     }
-    await ckpt({ ckTalkingUrl: talkingUrl });
+    await ckpt({ ckTalkingUrl: talkingUrl, ckEngine: engine });
   }
 
   // 4) ASSEMBLY
