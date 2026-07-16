@@ -46,8 +46,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     accent: string;
     tokens: number;
     tokensPct: number; // health = % of wallet remaining
+    tokensMax: number; // wallet ceiling (allowance + top-ups) for the HP label
     level: number;
     xpPct: number; // progress through the current level
+    xpInto: number; // XP earned inside the current level
+    xpNeed: number; // XP the current level spans — "132 / 280"
     videos: number;
     ads: number;
   } = {
