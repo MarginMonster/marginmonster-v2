@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useLoaderData, useSubmit, useNavigation, useActionData } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import { Page, Banner, Box } from "@shopify/polaris";
@@ -10,7 +10,7 @@ import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop } from "../lib/questlines.server";
 import {
-  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, CAMPAIGN_DEST, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
+  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, DIAMOND_CAMPAIGNS, CAMPAIGN_DEST, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
 import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
@@ -291,7 +291,41 @@ const BANNER_ART: Record<string, string> = {
   LAUNCH_IT: "/quests/w-li4.jpg",
   STAY_STEADY: "/quests/w-ss4.jpg",
   OWN_THE_SEARCH: "/quests/w-os4.jpg",
+  // diamond shelf — distinct art per line (own painted sets on the art backlog)
+  DAILY_FEED: "/quests/w-gs2.jpg",
+  VIDEO_STORM: "/quests/w-li3.jpg",
+  AD_BLITZ: "/quests/w-os2.jpg",
+  OMNIPRESENCE: "/quests/w-ss3.jpg",
 };
+
+/* Benefit meters — the "difficulty bar" of a questline, but for what it pays
+ * out: posting pace + what the line is rich in. 5 segments each. */
+function meterSegs(sku: { objectives: { type: string; target: number }[] }) {
+  const g = (t: string) => sku.objectives.find((o) => o.type === t)?.target || 0;
+  const v = g("video"), i = g("image"), b = g("blog");
+  const perWeek = ((v + i + b) / 30) * 7;
+  return {
+    pace: Math.max(1, Math.min(5, Math.round(perWeek / 1.6))),
+    video: v === 0 ? 0 : Math.max(1, Math.min(5, Math.ceil(v / 5))),
+    ads: i === 0 ? 0 : Math.max(1, Math.min(5, Math.ceil(i / 6))),
+    seo: b === 0 ? 0 : Math.max(1, Math.min(5, Math.ceil(b / 3))),
+    perWeek,
+  };
+}
+
+function Meter({ label, val, color, hint }: { label: string; val: number; color: string; hint: string }) {
+  if (val <= 0) return null;
+  return (
+    <span className="qh-meter" title={hint}>
+      <span className="lb">{label}</span>
+      <span className="segs">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <i key={n} className={`sg${n <= val ? " on" : ""}`} style={n <= val ? { background: color } : undefined} />
+        ))}
+      </span>
+    </span>
+  );
+}
 
 /* Tiny pixel villagers — biome-dressed locals who walk, work, and gossip so
  * the world never feels lonely. Two-frame gait, mirrored patrols. */
@@ -1873,15 +1907,22 @@ export default function Campaigns() {
           <div className="step"><span className="n">2</span><span className="t">Pack your products, pick your presenter</span></div>
           <div className="step"><span className="n">3</span><span className="t">{pName} journeys the map — creating and scheduling your content all month</span></div>
         </div>
-        {[...CAMPAIGNS]
-          .sort((a, b) => {
+        {[
+          ...[...CAMPAIGNS].sort((a, b) => {
             // catalog reads cheapest → priciest (entry cost of each focus)
             const costOf = (c: typeof a) =>
               Math.min(...TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean).map((s) => questlineTokenCost(s)));
             return costOf(a) - costOf(b);
-          })
-          .map((c) => {
-          const skus = TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean);
+          }),
+          // the DIAMOND shelf renders after the standard catalog, behind its own divider
+          ...[...DIAMOND_CAMPAIGNS].sort(
+            (a, b) => questlineTokenCost(QUESTLINE_BY_KEY[`${a.key}_DIAMOND`]) - questlineTokenCost(QUESTLINE_BY_KEY[`${b.key}_DIAMOND`])
+          ),
+        ].map((c, ci, arr) => {
+          const skus = c.diamond
+            ? [QUESTLINE_BY_KEY[`${c.key}_DIAMOND`]].filter(Boolean)
+            : TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean);
+          const firstDiamond = !!c.diamond && (ci === 0 || !arr[ci - 1].diamond);
           const activeQ = active.find((a) => QUESTLINE_BY_KEY[a.template]?.campaign === c.key || a.template.startsWith(c.key));
           const open = openKey === c.key;
           const cheapest = Math.min(...skus.map((s) => questlineTokenCost(s)));
@@ -1899,10 +1940,17 @@ export default function Campaigns() {
           ].filter(Boolean).join(" · ");
           const selSku = skus.find((s) => s.key === selKey) || skus.find((s) => canRun(s.minTier)) || skus[0];
           return (
-            <div key={c.key} className={`qh-quest-entry${open ? " open" : ""}`}>
+            <Fragment key={c.key}>
+            {firstDiamond && (
+              <div className="qh-diamond-divider">
+                <span className="dt">◆ DIAMOND AUTOPILOT</span>
+                <span className="ds">Daily social presence, fully hands off — a drop lands every single day. Scale exclusive.</span>
+              </div>
+            )}
+            <div className={`qh-quest-entry${open ? " open" : ""}`}>
               <button
                 type="button"
-                className={`qh-camp-banner${open ? " on" : ""}`}
+                className={`qh-camp-banner${open ? " on" : ""}${c.diamond ? " diamond" : ""}`}
                 style={{ backgroundImage: `url(${BANNER_ART[c.key] || ""})` }}
                 onClick={() => { setOpenKey(open ? null : c.key); if (!open && selSku) setSelKey(selSku.key); }}
               >
@@ -1940,12 +1988,23 @@ export default function Campaigns() {
                           <span className="tname">{sku.tier}</span>
                           {sku.tier === "SILVER" && !locked && <span className="tpop">★ Most popular</span>}
                           {sku.tier === "DIAMOND" && <span className="tpop tdaily">◆ DAILY DROPS</span>}
-                          <span className="tblurb">{tierMeta.blurb}</span>
+                          <span className="tblurb">{tierMeta?.blurb || "The daily engine"}</span>
                           <span className="trec">
                             {v > 0 && <span>🎬 {v} videos</span>}
                             {im > 0 && <span>🖼 {im} image ads</span>}
                             {b > 0 && <span>📝 {b} blog posts</span>}
                           </span>
+                          {(() => {
+                            const mt = meterSegs(sku);
+                            return (
+                              <span className="qh-meters">
+                                <Meter label="PACE" val={mt.pace} color="#7ff5f2" hint={`~${mt.perWeek.toFixed(1)} posts a week, auto-scheduled`} />
+                                <Meter label="VIDEO" val={mt.video} color="#ffd76a" hint={`${v} UGC videos this month`} />
+                                <Meter label="ADS" val={mt.ads} color="#ff7ac8" hint={`${im} image ads this month`} />
+                                <Meter label="SEO" val={mt.seo} color="#8ee89c" hint={`${b} blog posts this month`} />
+                              </span>
+                            );
+                          })()}
                           <span className="tjourney">📲 auto-posted to TikTok + Meta</span>
                           <span className="tjourney" style={{ color: "#9a94c2" }}>🗓 {sku.cadence}</span>
                           <span className="tcost">{locked ? `🔒 ${sku.minTier[0] + sku.minTier.slice(1).toLowerCase()} package` : <>{cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}</>}</span>
@@ -2066,6 +2125,7 @@ export default function Campaigns() {
                 </div>
               )}
             </div>
+            </Fragment>
           );
         })}
       </div>

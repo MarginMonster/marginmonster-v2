@@ -31,6 +31,7 @@ export type CampaignDef = {
   desc: string; // one plain sentence: what this campaign does
   lore: string; // the flavor, one notch below the facts
   recurring: boolean;
+  diamond?: true; // premium daily-autopilot shelf (single DIAMOND SKU)
 };
 
 export const CAMPAIGNS: CampaignDef[] = [
@@ -67,45 +68,87 @@ export const CAMPAIGN_DEST: Record<string, string> = {
   OWN_THE_SEARCH: 'THE GOLDEN OASIS',
 };
 
-export const CAMPAIGN_BY_KEY: Record<string, CampaignDef> = Object.fromEntries(CAMPAIGNS.map((c) => [c.key, c]));
+/* CAMPAIGN_BY_KEY is defined below the DIAMOND shelf (declaration order). */
 
 /* Tier = intensity + journey length + package gate. One legible axis. */
 export const TIERS: { key: TierKey; worlds: number; minTier: "GROWTH" | "PRO" | "SCALE"; bagSize: number; blurb: string }[] = [
   { key: "BRONZE", worlds: 1, minTier: "GROWTH", bagSize: 3, blurb: "A light month, gently paced" },
   { key: "SILVER", worlds: 2, minTier: "PRO", bagSize: 6, blurb: "The standard month" },
   { key: "GOLD", worlds: 4, minTier: "SCALE", bagSize: 10, blurb: "Full assault" },
-  // TIER TWO — the daily engine: a drop lands every single day of the month
-  { key: "DIAMOND", worlds: 4, minTier: "SCALE", bagSize: 14, blurb: "Every. Single. Day." },
 ];
 
-/* Content mixes per campaign x tier (v=video, i=image, b=blog).
- * DIAMOND = 30+ pieces — at least one drop every day of the month. */
-const MIX: Record<string, Record<TierKey, { v: number; i: number; b: number; xp: number; cadence: string }>> = {
+/* Content mixes per campaign x tier (v=video, i=image, b=blog). */
+const MIX: Record<string, Record<"BRONZE" | "SILVER" | "GOLD", { v: number; i: number; b: number; xp: number; cadence: string }>> = {
   GET_SEEN: {
     BRONZE: { v: 2, i: 2, b: 0, xp: 400, cadence: "~1 drop a week · evening video slots" },
     SILVER: { v: 6, i: 2, b: 0, xp: 1200, cadence: "~2 drops a week · Tue/Thu/Sat evenings" },
     GOLD: { v: 12, i: 4, b: 0, xp: 2400, cadence: "~4 drops a week · your face everywhere" },
-    DIAMOND: { v: 18, i: 12, b: 0, xp: 4800, cadence: "every single day · your face on the feed daily" },
   },
   LAUNCH_IT: {
     BRONZE: { v: 3, i: 3, b: 0, xp: 500, cadence: "~1–2 drops a week · heavier at the start" },
     SILVER: { v: 8, i: 3, b: 0, xp: 1800, cadence: "~3 drops a week · weeks 1–2 hit hardest" },
     GOLD: { v: 14, i: 6, b: 0, xp: 3000, cadence: "~5 drops a week · a launch nobody misses" },
-    DIAMOND: { v: 22, i: 12, b: 0, xp: 5500, cadence: "daily · double-drops through launch week" },
   },
   STAY_STEADY: {
     BRONZE: { v: 2, i: 4, b: 0, xp: 450, cadence: "~1–2 drops a week · steady and calm" },
     SILVER: { v: 6, i: 4, b: 1, xp: 1300, cadence: "~2–3 drops a week · the reliable drumbeat" },
     GOLD: { v: 10, i: 6, b: 2, xp: 2200, cadence: "~4 drops a week · always-on, everywhere" },
-    DIAMOND: { v: 14, i: 14, b: 4, xp: 4200, cadence: "every single day · calm and relentless" },
   },
   OWN_THE_SEARCH: {
     BRONZE: { v: 1, i: 4, b: 2, xp: 350, cadence: "~1–2 drops a week · blogs Monday mornings" },
     SILVER: { v: 3, i: 6, b: 4, xp: 900, cadence: "~2–3 drops a week · compounding steadily" },
     GOLD: { v: 6, i: 8, b: 6, xp: 1600, cadence: "~4 drops a week · own the results page" },
-    DIAMOND: { v: 8, i: 14, b: 12, xp: 3600, cadence: "daily · articles + ads compounding all month" },
   },
 };
+
+/* ---- DIAMOND AUTOPILOT — the segregated premium shelf ----
+ * Dedicated daily questlines (not a 4th tier): every line posts to socials
+ * EVERY day of the month, hands off. Titles name what each one is rich in;
+ * all Scale-gated, all with their own map flavor. */
+export const DIAMOND_CAMPAIGNS: CampaignDef[] = [
+  {
+    key: "DAILY_FEED", headline: "THE DAILY FEED", label: "Daily Social Autopilot", icon: "📆", homeWorld: 0,
+    desc: "One polished post every single day — video, ad, or article — your feed never goes quiet.",
+    lore: "Thirty days, thirty drops. The algorithm learns your name.",
+    recurring: true, diamond: true,
+  },
+  {
+    key: "VIDEO_STORM", headline: "VIDEO STORM", label: "Video-First Autopilot", icon: "🎬", homeWorld: 3,
+    desc: "Rich in video — your Brand Face posting reels daily, with fresh ads between.",
+    lore: "A storm doesn't ask permission for the feed. It takes it.",
+    recurring: true, diamond: true,
+  },
+  {
+    key: "AD_BLITZ", headline: "AD BLITZ", label: "Creative-Volume Autopilot", icon: "🖼", homeWorld: 1,
+    desc: "Rich in ad creative — a fresh scroll-stopper every day to feed the algorithm variety.",
+    lore: "Volume finds winners. The blitz never repeats itself.",
+    recurring: true, diamond: true,
+  },
+  {
+    key: "OMNIPRESENCE", headline: "OMNIPRESENCE", label: "Everywhere Autopilot", icon: "👑", homeWorld: 2,
+    desc: "Rich in everything — videos, ads AND articles with double-drop days. Total feed domination.",
+    lore: "Some brands post. Yours is simply always there.",
+    recurring: true, diamond: true,
+  },
+];
+
+const DIAMOND_MIX: Record<string, { v: number; i: number; b: number; xp: number; cadence: string }> = {
+  DAILY_FEED: { v: 14, i: 14, b: 2, xp: 4200, cadence: "1 drop every day · posted at peak times" },
+  VIDEO_STORM: { v: 22, i: 8, b: 0, xp: 5500, cadence: "video daily · reels & TikTok prime slots" },
+  AD_BLITZ: { v: 6, i: 26, b: 0, xp: 3400, cadence: "a fresh ad every day · relentless variety" },
+  OMNIPRESENCE: { v: 22, i: 16, b: 6, xp: 6500, cadence: "double-drop days · everywhere at once" },
+};
+
+export const DIAMOND_DEST: Record<string, string> = {
+  DAILY_FEED: "THE ENDLESS SCROLL",
+  VIDEO_STORM: "THE STORM'S EYE",
+  AD_BLITZ: "THE THOUSAND BANNERS",
+  OMNIPRESENCE: "THE EVERYWHERE THRONE",
+};
+
+export const CAMPAIGN_BY_KEY: Record<string, CampaignDef> = Object.fromEntries(
+  [...CAMPAIGNS, ...DIAMOND_CAMPAIGNS].map((c) => [c.key, c])
+);
 
 export type QuestlineDef = {
   key: string; // "GET_SEEN_SILVER"
@@ -128,7 +171,7 @@ export type QuestlineDef = {
 
 
 function buildSku(c: CampaignDef, t: (typeof TIERS)[number]): QuestlineDef {
-  const m = MIX[c.key][t.key];
+  const m = MIX[c.key][t.key as "BRONZE" | "SILVER" | "GOLD"]; // standard shelf only — diamonds build in DIAMOND_LINES
   const objectives: QuestObjectiveDef[] = [];
   if (m.v) objectives.push({ type: "video", label: "UGC videos with your Brand Face", target: m.v });
   if (m.i) objectives.push({ type: "image", label: "Scroll-stopping image ads", target: m.i });
@@ -155,7 +198,38 @@ function buildSku(c: CampaignDef, t: (typeof TIERS)[number]): QuestlineDef {
   };
 }
 
-export const QUESTLINES: QuestlineDef[] = CAMPAIGNS.flatMap((c) => TIERS.map((t) => buildSku(c, t)));
+/* Diamond shelf SKUs — one DIAMOND line per premium campaign. */
+export const DIAMOND_LINES: QuestlineDef[] = DIAMOND_CAMPAIGNS.map((c) => {
+  const m = DIAMOND_MIX[c.key];
+  const objectives: QuestObjectiveDef[] = [];
+  if (m.v) objectives.push({ type: "video", label: "UGC videos with your Brand Face", target: m.v });
+  if (m.i) objectives.push({ type: "image", label: "Scroll-stopping image ads", target: m.i });
+  if (m.b) objectives.push({ type: "blog", label: "SEO blog posts", target: m.b });
+  objectives.push({ type: "post", label: "Auto-posted — one drop (or more) every day", target: m.v + m.i + m.b });
+  return {
+    key: `${c.key}_DIAMOND`,
+    campaign: c.key,
+    tier: "DIAMOND" as TierKey,
+    name: `${c.headline} · DIAMOND`,
+    icon: c.icon,
+    tagline: c.desc,
+    lore: c.lore,
+    objectives,
+    platforms: ["TIKTOK", "META"],
+    recurring: c.recurring,
+    minTier: "SCALE" as const,
+    xpReward: m.xp,
+    bagSize: 14,
+    cadence: m.cadence,
+    worldWindow: [0, 3] as [number, number],
+    destination: DIAMOND_DEST[c.key],
+  };
+});
+
+export const QUESTLINES: QuestlineDef[] = [
+  ...CAMPAIGNS.flatMap((c) => TIERS.map((t) => buildSku(c, t))),
+  ...DIAMOND_LINES,
+];
 
 /* Legacy questlines (pre-catalog) — kept so active expeditions and their
  * journals keep resolving. Not shown in the new catalog. */
