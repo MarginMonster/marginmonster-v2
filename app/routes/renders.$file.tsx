@@ -25,8 +25,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       return new Response("Not found", { status: 404 });
     }
     const size = fs.statSync(filePath).size;
+    const ext = name.split(".").pop() as string;
+    const mime = ext === "mp4" ? "video/mp4" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
     const baseHeaders: Record<string, string> = {
-      "Content-Type": "video/mp4",
+      "Content-Type": mime,
       "Accept-Ranges": "bytes",
       "Cache-Control": "public, max-age=31536000, immutable",
     };

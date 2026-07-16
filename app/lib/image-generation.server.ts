@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 
@@ -71,13 +73,33 @@ export async function generateImageAd(
 
   if (!imageUrl) throw new Error("Replicate timed out");
 
+  // Replicate delivery URLs EXPIRE (~1h) — ads were going blank in the queue
+  // and auto-posting would fetch a dead link days later. Persist the bytes to
+  // the durable renders disk and serve our own URL, like videos.
+  let localUrl = imageUrl;
+  try {
+    const res = await fetch(imageUrl);
+    if (res.ok) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 5_000) {
+        const dir = path.join(process.cwd(), "data", "renders");
+        fs.mkdirSync(dir, { recursive: true });
+        const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        fs.writeFileSync(path.join(dir, fileName), buf);
+        localUrl = `/renders/${fileName}`;
+      }
+    }
+  } catch (e) {
+    console.error("[image-ad] persist failed, keeping remote url:", e);
+  }
+
   const asset = await db.asset.create({
     data: {
       shopId,
       type: "IMAGE_AD",
       status: "PENDING",
       title: `Ad image for ${productTitle}`,
-      bodyJson: JSON.stringify({ imageUrl, prompt }),
+      bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt }),
       metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle }),
     },
   });

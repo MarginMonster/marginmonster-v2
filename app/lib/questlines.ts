@@ -36,25 +36,25 @@ export type CampaignDef = {
 
 export const CAMPAIGNS: CampaignDef[] = [
   {
-    key: "GET_SEEN", headline: "CENTER STAGE", label: "Brand Awareness", icon: "🎪", homeWorld: 0,
+    key: "GET_SEEN", headline: "SOCIAL SPOTLIGHT", label: "Brand Awareness", icon: "🎪", homeWorld: 0,
     desc: "Video-heavy social presence — your Brand Face in front of new eyes, week after week.",
     lore: "Your companion takes the brand on tour: fresh faces, fresh takes, and your name echoing through every square along the road.",
     recurring: true,
   },
   {
-    key: "LAUNCH_IT", headline: "LIGHT THE BEACON", label: "Product Launch", icon: "🚀", homeWorld: 3,
+    key: "LAUNCH_IT", headline: "LAUNCH HYPE", label: "Product Launch", icon: "🚀", homeWorld: 3,
     desc: "A loud month for a big drop — front-loaded hype videos, then a rolling echo.",
     lore: "Light the beacon. A heavy first-week barrage announces the drop, and the echo keeps it burning all month.",
     recurring: false,
   },
   {
-    key: "STAY_STEADY", headline: "FOUR SEASONS", label: "Always-On Growth", icon: "⚙️", homeWorld: 2,
+    key: "STAY_STEADY", headline: "ALWAYS ON", label: "Always-On Growth", icon: "⚙️", homeWorld: 2,
     desc: "The consistent monthly drumbeat — content posted at peak times while you do anything else.",
     lore: "Empires are built every few days, for a month straight. The road is long, the pace is calm, the fire never goes out.",
     recurring: true,
   },
   {
-    key: "OWN_THE_SEARCH", headline: "TREASURE HUNT", label: "SEO & Discovery", icon: "🗺️", homeWorld: 1,
+    key: "OWN_THE_SEARCH", headline: "SEARCH MAGNET", label: "SEO & Discovery", icon: "🗺️", homeWorld: 1,
     desc: "Blogs and image ads that compound in Google — traffic that keeps arriving after the month ends.",
     lore: "Real treasure is buried in the search results. Your companion digs where the maps say X: keywords, articles, and ads that pay out for seasons.",
     recurring: false,
@@ -251,6 +251,18 @@ export const DESTINATION_BY_KEY: Record<string, string> = Object.fromEntries(
 
 /* Token cost of a campaign month (posting itself is free — merchants fund ad
  * spend on their own connected accounts). */
+/* Scale members get a price break on the premium (Scale-tagged) lines.
+ * Everyone else can still run them at full token price — top-ups welcome;
+ * the discount is the nudge, the tokens are the road. */
+export const SCALE_DISCOUNT = 0.15;
+export function questlineCostFor(q: QuestlineDef, planType?: string | null): number {
+  const base = questlineTokenCost(q);
+  if (planType === "SCALE" && q.minTier === "SCALE") {
+    return Math.max(5, Math.round((base * (1 - SCALE_DISCOUNT)) / 5) * 5);
+  }
+  return base;
+}
+
 export function questlineTokenCost(q: QuestlineDef): number {
   return q.objectives.reduce((sum, o) => {
     const per =

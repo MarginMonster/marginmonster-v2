@@ -4,7 +4,7 @@ import { awardXp, unlockAchievement, checkLevelAchievements } from "./xp.server"
 import { enqueueJob } from "./job-queue.server";
 import { TOKEN_COST } from "./plan-config";
 import {
-  QUESTLINE_BY_KEY, questlineTokenCost, spotName, parseSchedule,
+  QUESTLINE_BY_KEY, questlineTokenCost, questlineCostFor, spotName, parseSchedule,
   QUEST_DURATION_DAYS, type ObjectiveType, type QuestSlot, type QuestSchedule,
 } from "./questlines";
 
@@ -98,7 +98,7 @@ export async function acceptQuestline(params: {
   const shop = await db.shop.findUnique({ where: { id: params.shopId }, include: { activePlan: true } });
   if (!shop?.activePlan) return { ok: false, error: "Choose a plan first to run questlines." };
 
-  const cost = questlineTokenCost(def);
+  const cost = questlineCostFor(def, shop.activePlan.type); // Scale price break applies here
   try {
     await spendTokens(params.shopId, cost); // the whole month, reserved upfront
   } catch (e) {

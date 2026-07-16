@@ -1683,3 +1683,6 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   background: linear-gradient(90deg, rgba(6, 24, 34, 0.92) 0%, rgba(6, 24, 34, 0.66) 45%, rgba(6, 24, 34, 0.25) 100%);
 }
 .qh-camp-banner.diamond .hl { color: #eafcff; text-shadow: 0 0 14px rgba(143, 216, 238, 0.6); }
+
+/* Scale-price hint on premium tiers — the nudge, not a wall */
+.qh-tier .tcost .tsave { display: block; font-style: normal; font-size: 11px; color: #b7f0ff; margin-top: 3px; }

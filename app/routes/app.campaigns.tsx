@@ -10,7 +10,7 @@ import { db } from "../db.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop } from "../lib/questlines.server";
 import {
-  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, DIAMOND_CAMPAIGNS, CAMPAIGN_DEST, TIERS, WORLD_META, questlineTokenCost, parseSchedule, spotName,
+  QUESTLINES, QUESTLINE_BY_KEY, DESTINATION_BY_KEY, CAMPAIGNS, DIAMOND_CAMPAIGNS, CAMPAIGN_DEST, TIERS, WORLD_META, questlineTokenCost, questlineCostFor, parseSchedule, spotName,
   QUEST_DURATION_DAYS, type QuestSlot, type ObjectiveType,
 } from "../lib/questlines";
 import { AVATARS, AVATAR_BY_ID, avatarImg } from "../lib/avatars";
@@ -1537,8 +1537,8 @@ export default function Campaigns() {
     const base = Date.UTC(y, m - 1, d) - (ref.day - 1) * 86400000;
     return new Date(base + (day - 1) * 86400000).toISOString().slice(0, 10);
   };
-  const selCost = questlineTokenCost(sel);
-  const selLocked = !canRun(sel.minTier);
+  const selCost = questlineCostFor(sel, tier);
+  const selLocked = false; // tokens are the gate now — Scale membership is a DISCOUNT, not a wall
   const selAffordable = tokens >= selCost;
   const bagCapped = bag.slice(0, sel.bagSize);
 
@@ -1972,8 +1972,11 @@ export default function Campaigns() {
                   {/* tier picker — one legible axis: how hard to push */}
                   <div className="qh-tier-row">
                     {skus.map((sku) => {
-                      const locked = !canRun(sku.minTier);
-                      const cost = questlineTokenCost(sku);
+                      const locked = false; // every tier runnable — tokens (top-ups welcome) are the gate
+                      const cost = questlineCostFor(sku, tier);
+                      const baseCost = questlineTokenCost(sku);
+                      const scalePrice = questlineCostFor(sku, "SCALE");
+                      const isScaleTier = sku.minTier === "SCALE";
                       const on = selKey === sku.key;
                       const v = sku.objectives.find((o) => o.type === "video")?.target || 0;
                       const im = sku.objectives.find((o) => o.type === "image")?.target || 0;
@@ -2007,7 +2010,12 @@ export default function Campaigns() {
                           })()}
                           <span className="tjourney">📲 auto-posted to TikTok + Meta</span>
                           <span className="tjourney" style={{ color: "#9a94c2" }}>🗓 {sku.cadence}</span>
-                          <span className="tcost">{locked ? `🔒 ${sku.minTier[0] + sku.minTier.slice(1).toLowerCase()} package` : <>{cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}</>}</span>
+                          <span className="tcost">
+                            {cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}
+                            {isScaleTier && (cost < baseCost
+                              ? <em className="tsave"> ◆ Scale price — you save {(baseCost - cost).toLocaleString()}🪙</em>
+                              : <em className="tsave"> ◆ Scale members pay {scalePrice.toLocaleString()}🪙</em>)}
+                          </span>
                         </button>
                       );
                     })}
@@ -2015,7 +2023,7 @@ export default function Campaigns() {
 
                   {activeQ ? (
                     <div className="qh-hint" style={{ textAlign: "left" }}>⚑ This campaign is already running — day {activeQ.dayOf} of {activeQ.duration}. Follow it on the board above.</div>
-                  ) : selSku && canRun(selSku.minTier) ? (
+                  ) : selSku ? (
                     <>
                       <div className="qh-auto">
                         <div className="qh-auto-title">⚡ Fully automated after launch</div>
@@ -2108,19 +2116,19 @@ export default function Campaigns() {
 
                       <button
                         type="button" className="qh-start"
-                        disabled={busy || bagCapped.length === 0 || tokens < questlineTokenCost(selSku) || !starId}
+                        disabled={busy || bagCapped.length === 0 || tokens < questlineCostFor(selSku, tier) || !starId}
                         onClick={startQuest}
                       >
-                        {busy ? "SIGNING THE CONTRACT…" : `▶ START ${c.headline} · ${selSku.tier} — ${questlineTokenCost(selSku).toLocaleString()} 🪙`}
+                        {busy ? "SIGNING THE CONTRACT…" : `▶ START ${c.headline} · ${selSku.tier} — ${questlineCostFor(selSku, tier).toLocaleString()} 🪙`}
                       </button>
                       <div className="qh-hint">
                         {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
-                          tokens < questlineTokenCost(selSku) ? `This tier costs ${questlineTokenCost(selSku).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT TOKENS in the HUD to top up.` :
+                          tokens < questlineCostFor(selSku, tier) ? `This tier costs ${questlineCostFor(selSku, tier).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT TOKENS in the HUD to top up.` :
                           "Tokens cover the month's content. Abandon anytime — unforged pieces are refunded. Ad spend always stays on your own connected accounts."}
                       </div>
                     </>
                   ) : (
-                    <div className="qh-hint" style={{ textAlign: "left" }}>🔒 {selSku ? `${selSku.tier} needs the ${selSku.minTier[0] + selSku.minTier.slice(1).toLowerCase()} package — pick an unlocked tier above or level up your package.` : ""}</div>
+                    <div className="qh-hint" style={{ textAlign: "left" }}>Pick a tier above to gear up.</div>
                   )}
                 </div>
               )}
