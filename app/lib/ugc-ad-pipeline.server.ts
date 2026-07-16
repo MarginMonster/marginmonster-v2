@@ -13,6 +13,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { spawnSync } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
@@ -104,10 +106,13 @@ async function repPoll(id: string, maxMs: number, stage: string): Promise<string
   throw new Error(`[ugc:${stage}] timed out after ${Math.round(maxMs / 1000)}s`);
 }
 
+/* STREAM to disk — never buffer whole videos in memory. Render starter has a
+ * 512MB ceiling; arrayBuffer()-ing a big clip mid-render was OOM-killing the
+ * instance (crash → worker retry → crash loop). */
 async function download(url: string, file: string): Promise<void> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`[ugc] download ${res.status} for ${file}`);
-  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  if (!res.ok || !res.body) throw new Error(`[ugc] download ${res.status} for ${file}`);
+  await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(file));
 }
 
 async function downloadBuffer(url: string): Promise<Buffer> {
@@ -285,6 +290,10 @@ function assemble(opts: {
     "-filter_complex", filters.join(";"),
     "-map", vLabel, "-map", `${audioInputIndex}:a`,
     "-t", duration.toFixed(2),
+    // -threads 2: x264 memory scales with thread count, and containers report
+    // the HOST's cores (16+ on Render) — uncapped, the encode alone can blow
+    // the 512MB instance. 2 threads keeps a 15s 720x1280 encode well inside it.
+    "-threads", "2", "-filter_complex_threads", "2",
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
     opts.outPath

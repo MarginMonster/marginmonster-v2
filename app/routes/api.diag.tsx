@@ -11,6 +11,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (url.searchParams.get("key") !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
+  // Recent finished takes with the engine that produced them (heygen-fal vs
+  // omni-human vs kling-voiceover) — verifies the premium engine engaged.
+  if (url.searchParams.get("mode") === "takes") {
+    const assets = await db.asset.findMany({
+      where: { type: "VIDEO_AD" },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: { createdAt: true, title: true, bodyJson: true },
+    });
+    return json({
+      takes: assets.map((a) => {
+        let engine = "?", hasUrl = false;
+        try { const b = JSON.parse(a.bodyJson); engine = b.engine || "minimax-showcase"; hasUrl = !!b.videoUrl; } catch { /* skip */ }
+        return { at: a.createdAt, title: a.title?.slice(0, 40), engine, hasUrl };
+      }),
+    });
+  }
+
   // Job-state dump — why are videos "rendering forever"? No shop needed.
   if (url.searchParams.get("mode") === "jobs") {
     const now = Date.now();
