@@ -2,7 +2,9 @@ services:
   - type: web
     name: marginmonster
     runtime: docker
-    plan: starter
+    # standard (2GB) — starter's 512MB OOM'd during in-process video assembly;
+    # keep this in sync with the instance type set in the Render dashboard.
+    plan: standard
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
     # Durable storage for rendered videos — WITHOUT this, Render's ephemeral
