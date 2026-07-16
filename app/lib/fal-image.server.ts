@@ -27,13 +27,42 @@ export async function composeHoldingFrames(
     `exact same person — same face, same hairstyle, same outfit, same background and lighting as the first image, ` +
     `candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture`;
 
-  // Queue API, not sync — a held-open fal.run request can outlive request
-  // timeouts (the first live test died exactly that way). Submit, poll fast
-  // (images land in ~10-25s), bail with a friendly error at ~45s.
-  const auth = { Authorization: `Key ${process.env.FAL_KEY}` };
+  // Worker-context path (campaign drips): no request deadline, poll up to 2 min.
+  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages);
+  for (let i = 0; i < 48; i++) {
+    await new Promise((r) => setTimeout(r, 2500));
+    const p = await pollCompose(q.statusUrl, q.responseUrl);
+    if (p.done) return p.urls;
+  }
+  throw new Error("compose: timed out after 2 min");
+}
+
+function auth(): Record<string, string> {
+  return { Authorization: `Key ${process.env.FAL_KEY}` };
+}
+
+/** Queue-URL guard — these round-trip through the browser between polls, so
+ *  never let an arbitrary URL ride back in and get our API key attached. */
+export function isFalQueueUrl(u: string): boolean {
+  return u.startsWith("https://queue.fal.run/");
+}
+
+/** Kick off a compose job; returns the queue handles immediately (~1s). */
+export async function submitCompose(
+  portraitUrl: string,
+  productImageUrl: string,
+  productTitle: string,
+  numImages = 2
+): Promise<{ statusUrl: string; responseUrl: string }> {
+  if (!falImageEnabled()) throw new Error("FAL_KEY not set");
+  const prompt =
+    `The person from the first image holding the ${productTitle || "product"} from the second image ` +
+    `up at chest height in one hand, product facing the camera and clearly visible, natural relaxed grip, ` +
+    `exact same person — same face, same hairstyle, same outfit, same background and lighting as the first image, ` +
+    `candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: "POST",
-    headers: { ...auth, "Content-Type": "application/json" },
+    headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
       image_urls: [portraitUrl, productImageUrl],
@@ -44,22 +73,27 @@ export async function composeHoldingFrames(
   });
   if (!submit.ok) throw new Error(`compose submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
   const q = (await submit.json()) as { status_url?: string; response_url?: string };
-  if (!q.status_url || !q.response_url) throw new Error("compose: no queue urls");
-
-  for (let i = 0; i < 18; i++) {
-    await new Promise((r) => setTimeout(r, 2500));
-    const s = await fetch(q.status_url, { headers: auth });
-    if (!s.ok) continue;
-    const sj = (await s.json()) as { status?: string };
-    if (sj.status === "COMPLETED") break;
-    if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`compose ${sj.status}`);
-    if (i === 17) throw new Error("compose is taking longer than usual — tap again in a moment");
+  if (!q.status_url || !q.response_url || !isFalQueueUrl(q.status_url) || !isFalQueueUrl(q.response_url)) {
+    throw new Error("compose: no queue urls");
   }
+  return { statusUrl: q.status_url, responseUrl: q.response_url };
+}
 
-  const res = await fetch(q.response_url, { headers: auth });
+/** One status check on an in-flight compose. done:false = still cooking. */
+export async function pollCompose(
+  statusUrl: string,
+  responseUrl: string
+): Promise<{ done: false } | { done: true; urls: string[] }> {
+  if (!isFalQueueUrl(statusUrl) || !isFalQueueUrl(responseUrl)) throw new Error("compose: bad queue url");
+  const s = await fetch(statusUrl, { headers: auth() });
+  if (!s.ok) return { done: false };
+  const sj = (await s.json()) as { status?: string };
+  if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`compose ${sj.status}`);
+  if (sj.status !== "COMPLETED") return { done: false };
+  const res = await fetch(responseUrl, { headers: auth() });
   if (!res.ok) throw new Error(`compose result ${res.status}`);
   const j = (await res.json()) as { images?: { url?: string }[] };
   const urls = (j.images || []).map((i) => i.url).filter((u): u is string => !!u);
   if (urls.length === 0) throw new Error("compose: no images in result");
-  return urls;
+  return { done: true, urls };
 }

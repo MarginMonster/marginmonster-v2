@@ -314,24 +314,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // ---- In-hand demo: compose "presenter holding the product" frames for the
-  // merchant to approve BEFORE the video spend ----
+  // merchant to approve BEFORE the video spend. Two-phase: the first call
+  // submits and returns queue handles fast; the client auto-repolls the SAME
+  // job until the shots land (no re-tapping, no double spend). ----
   if (intent === "composeFrame") {
-    const avatarId = ((form.get("avatarId") as string) || "").trim();
-    const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
-    const productImageUrl = ((form.get("productImageUrl") as string) || "").trim();
-    const productTitle = ((form.get("productTitle") as string) || "").trim();
-    if (!avatarId || !productImageUrl) return json({ composeError: "Cast a presenter and pick a product with a photo first." });
     try {
-      const { composeHoldingFrames, falImageEnabled } = await import("../lib/fal-image.server");
+      const { submitCompose, pollCompose, isFalQueueUrl, falImageEnabled } = await import("../lib/fal-image.server");
       if (!falImageEnabled()) return json({ composeError: "The image engine isn't switched on yet (FAL_KEY)." });
+
+      // phase 2: keep checking an in-flight job
+      const statusUrl = ((form.get("composeStatusUrl") as string) || "").trim();
+      const responseUrl = ((form.get("composeResponseUrl") as string) || "").trim();
+      if (statusUrl && responseUrl) {
+        if (!isFalQueueUrl(statusUrl) || !isFalQueueUrl(responseUrl)) return json({ composeError: "Bad compose handle." });
+        const p = await pollCompose(statusUrl, responseUrl);
+        return p.done ? json({ frames: p.urls }) : json({ composePending: { statusUrl, responseUrl } });
+      }
+
+      // phase 1: kick a new job off
+      const avatarId = ((form.get("avatarId") as string) || "").trim();
+      const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+      const productImageUrl = ((form.get("productImageUrl") as string) || "").trim();
+      const productTitle = ((form.get("productTitle") as string) || "").trim();
+      if (!avatarId || !productImageUrl) return json({ composeError: "Cast a presenter and pick a product with a photo first." });
       const { resolvePortraitFile } = await import("../lib/ugc-ad-pipeline.server");
       const path = await import("node:path");
       const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
       const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant))}`;
-      const frames = await composeHoldingFrames(portraitUrl, productImageUrl, productTitle, 2);
-      return json({ frames });
+      const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 2);
+      // give fast renders one early chance (~5s), then hand off to auto-repoll
+      await new Promise((r) => setTimeout(r, 5000));
+      const first = await pollCompose(q.statusUrl, q.responseUrl);
+      return first.done ? json({ frames: first.urls }) : json({ composePending: q });
     } catch (e) {
-      return json({ composeError: `Couldn't compose the shot (${(e instanceof Error ? e.message : "error").slice(0, 80)}). Try again or roll without it.` });
+      return json({ composeError: `Couldn't compose the shot (${(e instanceof Error ? e.message : "error").slice(0, 80)}). Tap ✨ to try again.` });
     }
   }
 
@@ -609,13 +625,36 @@ export default function Videos() {
   const [pick, setPick] = useState<Pick | null>(null);
   const [pullUrl, setPullUrl] = useState("");
   // In-hand demo: composed "presenter holding the product" frames + the one
-  // the merchant approved (its URL rides the generate payload)
-  const composer = useFetcher<{ frames?: string[]; composeError?: string }>();
+  // the merchant approved (its URL rides the generate payload). Compose is
+  // async on the server — composePending hands back queue handles and this
+  // auto-repolls the SAME job every 4s (~90s budget) until the shots land.
+  const composer = useFetcher<{ frames?: string[]; composeError?: string; composePending?: { statusUrl: string; responseUrl: string } }>();
   const [framePick, setFramePick] = useState<string>("");
+  const [composeTries, setComposeTries] = useState(0);
   const composeFrames = composer.data && "frames" in composer.data ? composer.data.frames : null;
-  const composeError = composer.data && "composeError" in composer.data ? composer.data.composeError : null;
+  const composePending = composer.data && "composePending" in composer.data ? composer.data.composePending : null;
+  const composeError =
+    composer.data && "composeError" in composer.data
+      ? composer.data.composeError
+      : composeTries > 22
+        ? "The art station is jammed right now — tap ✨ to try a fresh compose."
+        : null;
+  const composing = composer.state !== "idle" || (!!composePending && composeTries <= 22);
+  useEffect(() => {
+    if (!composePending || composer.state !== "idle" || composeTries > 22) return;
+    const t = setTimeout(() => {
+      setComposeTries((n) => n + 1);
+      composer.submit(
+        { intent: "composeFrame", composeStatusUrl: composePending.statusUrl, composeResponseUrl: composePending.responseUrl },
+        { method: "post" }
+      );
+    }, 4000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composePending, composer.state, composeTries]);
   const composeShot = () => {
     setFramePick("");
+    setComposeTries(0);
     composer.submit(
       { intent: "composeFrame", avatarId, avatarVariant: String(avatarVariant), productImageUrl: pick?.image || "", productTitle: pick?.title || productTitle },
       { method: "post" }
@@ -915,13 +954,14 @@ export default function Videos() {
                     </span>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
-                    <Button size="slim" loading={composer.state !== "idle"} onClick={composeShot}>
+                    <Button size="slim" loading={composing} onClick={composeShot} disabled={composing}>
                       {composeFrames ? "🎲 New shots" : "✨ Compose the shot"}
                     </Button>
+                    {composing && <span className="mm-inhand-sub">Painting the shot… ~30 sec, it'll appear right here.</span>}
                     {framePick && <Badge tone="success">Shot cast — rolls with this take</Badge>}
-                    {!framePick && composeFrames && <span className="mm-inhand-sub">Tap your favorite:</span>}
+                    {!framePick && composeFrames && !composing && <span className="mm-inhand-sub">Tap your favorite:</span>}
                   </InlineStack>
-                  {composeError && <Text variant="bodySm" as="p" tone="caution">{composeError}</Text>}
+                  {composeError && !composing && <Text variant="bodySm" as="p" tone="caution">{composeError}</Text>}
                   {composeFrames && composeFrames.length > 0 && (
                     <div className="mm-inhand-frames">
                       {composeFrames.map((f) => (
