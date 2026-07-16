@@ -71,7 +71,15 @@ export async function submitCompose(
       max_images: numImages,
     }),
   });
-  if (!submit.ok) throw new Error(`compose submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
+  if (!submit.ok) {
+    const body = (await submit.text()).slice(0, 200);
+    // OUR provider balance is not the merchant's business — mask it, log it loud
+    if (/locked|exhausted|balance|top up/i.test(body) || submit.status === 402) {
+      console.error(`[compose] FAL BALANCE EXHAUSTED — top up at fal.ai/dashboard/billing (${submit.status}: ${body})`);
+      throw new Error("The art engine is recharging — try again in a few minutes.");
+    }
+    throw new Error(`compose submit ${submit.status}: ${body.slice(0, 160)}`);
+  }
   const q = (await submit.json()) as { status_url?: string; response_url?: string };
   if (!q.status_url || !q.response_url || !isFalQueueUrl(q.status_url) || !isFalQueueUrl(q.response_url)) {
     throw new Error("compose: no queue urls");
