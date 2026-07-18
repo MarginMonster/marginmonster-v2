@@ -231,7 +231,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const packKey = form.get("packKey") as keyof typeof TOKEN_PACK_PLANS;
     if (!TOKEN_PACK_PLANS[packKey]) return json({ error: "Unknown token pack." });
     const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true } });
-    if (!shop?.activePlan) return json({ error: "Pick a package first — tokens live in your plan's wallet." });
+    if (!shop?.activePlan) return json({ error: "Pick a package first — tokens top up your plan's balance." });
     return requestCharge(packKey, `${adminBase}/app/plans?pack=${packKey}`);
   }
 
@@ -386,7 +386,7 @@ export default function Plans() {
                   <>
                     <div className="mm-lvlup-eyebrow">✦ PAYMENT CONFIRMED ✦</div>
                     <div className="mm-lvlup-title big">+{celebration.n.toLocaleString()} TOKENS</div>
-                    <p className="mm-lvlup-msg">The coins just hit your wallet.</p>
+                    <p className="mm-lvlup-msg">The coins just hit your balance.</p>
                     <div className="mm-lvlup-gift">💰 Spend them on anything: videos, campaigns, the works.</div>
                   </>
                 )}
