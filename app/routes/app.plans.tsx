@@ -372,8 +372,10 @@ export default function Plans() {
                 ) : null}
                 {celebration.kind === "plan" ? (
                   <>
-                    <div className="mm-lvlup-title">🎉 {pkg?.title || celebration.key} IS LIVE! 🎉</div>
-                    <p className="mm-lvlup-msg">Subscription confirmed. Your expedition is funded and your crew is on the clock.</p>
+                    <div className="mm-lvlup-eyebrow">✦ SUBSCRIPTION CONFIRMED ✦</div>
+                    <div className="mm-lvlup-title big">{pkg?.title || celebration.key}</div>
+                    <div className="mm-lvlup-live">IS LIVE</div>
+                    <p className="mm-lvlup-msg">Your expedition is funded and your crew is on the clock.</p>
                     <div className="mm-lvlup-gift">
                       💰 LOADED: {tier ? `${tier.monthlyTokens.toLocaleString()} 🪙 tokens` : "fresh tokens"}
                       {tier && tier.videoQuota > 0 ? ` · 🎬 ${tier.videoQuota} video takes` : ""}
@@ -382,8 +384,9 @@ export default function Plans() {
                   </>
                 ) : (
                   <>
-                    <div className="mm-lvlup-title">🪙 +{celebration.n.toLocaleString()} TOKENS! 🪙</div>
-                    <p className="mm-lvlup-msg">Payment confirmed — the coins just hit your wallet.</p>
+                    <div className="mm-lvlup-eyebrow">✦ PAYMENT CONFIRMED ✦</div>
+                    <div className="mm-lvlup-title big">+{celebration.n.toLocaleString()} TOKENS</div>
+                    <p className="mm-lvlup-msg">The coins just hit your wallet.</p>
                     <div className="mm-lvlup-gift">💰 Spend them on anything: videos, campaigns, the works.</div>
                   </>
                 )}

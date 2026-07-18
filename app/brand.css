@@ -1349,6 +1349,17 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .mm-lvlup-title {
   font-family: var(--font-pixel); font-size: 22px; letter-spacing: .06em; color: var(--arc-yellow);
   text-shadow: 0 0 18px rgba(255,210,63,0.6), 0 3px 0 rgba(0,0,0,0.6); margin: 10px 0 10px;
+  text-align: center; line-height: 1.6; text-wrap: balance;
+}
+/* purchase celebration typography — centered, deliberate, no emoji drift */
+.mm-lvlup-eyebrow {
+  font-family: var(--font-pixel); font-size: 8px; letter-spacing: .22em; color: #7ff5f2;
+  text-align: center; margin: 12px 0 6px;
+}
+.mm-lvlup-title.big { font-size: 24px; margin: 0 0 2px; }
+.mm-lvlup-live {
+  font-family: var(--font-pixel); font-size: 11px; letter-spacing: .3em; color: #8ee89c;
+  text-align: center; margin: 2px 0 12px; text-shadow: 0 0 12px rgba(142,232,156,0.6);
 }
 .mm-lvlup-msg { font-family: var(--font-body); font-size: 14px; color: #ECEAFB; margin: 0 0 14px; }
 .mm-lvlup-gift {
