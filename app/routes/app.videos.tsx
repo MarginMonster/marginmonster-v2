@@ -732,24 +732,22 @@ export default function Videos() {
     >
       <Layout>
         <Layout.Section>
-          <div className="mm-hero">
-            <span className="mm-eyebrow">▶ VIDEO STUDIO · DIRECTOR MODE</span>
-            <h1><span className="mm-marquee">Lights. Camera. Sales.</span></h1>
-            <p>
-              Choose a presenter from the cast (or go product-only), add your
-              direction, and we'll shoot a scroll-stopping vertical video —
-              cut for TikTok, Reels, and Shorts.
+          <div className="pp-hero">
+            <span className="pp-eyebrow">Video Studio</span>
+            <h1>Lights. Camera. <em>Sales.</em></h1>
+            <p className="pp-sub">
+              Cast a presenter (or go product-only), give your direction, and a
+              scroll-stopping vertical video comes back — your presenter holding
+              your product, cut for TikTok, Reels, and Shorts.
             </p>
-            <div className="mm-hero-stats">
-              <div className="mm-hero-stat">
-                <div className="k">VIDEOS LEFT</div>
+            <div className="pp-stats">
+              <div className="pp-stat">
                 <div className="v">{remaining}</div>
+                <div className="l">Takes left</div>
               </div>
-              <div className="mm-hero-stat">
-                <div className="k">NOW CASTING</div>
-                <div className="v cyan">
-                  {selectedAvatar ? `${selectedAvatar.name} · ${OUTFITS[avatarVariant].label.toUpperCase()}` : "PRODUCT ONLY"}
-                </div>
+              <div className="pp-stat">
+                <div className="v"><span className="g">{selectedAvatar ? selectedAvatar.name : "Product only"}</span></div>
+                <div className="l">{selectedAvatar ? `Now casting · ${OUTFITS[avatarVariant].label}` : "No presenter cast"}</div>
               </div>
             </div>
           </div>
