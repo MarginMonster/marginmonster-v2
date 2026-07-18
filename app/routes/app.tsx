@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
@@ -248,12 +248,7 @@ export default function App() {
         <Link to="/app/performance">Performance & ROI</Link>
         <Link to="/app/plans">Packages & Companions</Link>
       </NavMenu>
-      <div className="mm-asteroids" aria-hidden="true">
-        <svg className="ast a1" viewBox="0 0 100 100"><polygon points="50,4 74,14 92,40 86,68 66,92 38,90 12,70 6,40 22,16" /></svg>
-        <svg className="ast a2" viewBox="0 0 100 100"><polygon points="48,6 70,10 90,34 94,58 78,82 52,94 26,86 8,62 10,32 28,14" /></svg>
-        <svg className="ast a3" viewBox="0 0 100 100"><polygon points="50,8 78,22 90,50 76,82 44,92 16,72 10,42 26,18" /></svg>
-        <svg className="ast a4" viewBox="0 0 100 100"><polygon points="50,6 80,26 88,56 68,86 36,88 12,62 14,30 32,12" /></svg>
-      </div>
+      <ParadoxField />
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
       <Outlet />
@@ -266,3 +261,55 @@ export function ErrorBoundary() {
 }
 
 export const headers = boundary.headers;
+
+
+/** 🌘 PARADOX field — ink spatter drifting across the porcelain. Fine mist,
+ *  mid drops, fat splats with satellite droplets; rare gold flecks. Subtle
+ *  at app density — the heroes carry the drama. */
+function ParadoxField() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const x = c.getContext("2d");
+    if (!x) return;
+    let W = 0, H = 0, raf = 0;
+    const size = () => { W = c.width = window.innerWidth; H = c.height = window.innerHeight; };
+    size();
+    window.addEventListener("resize", size);
+    type Dot = { x: number; y: number; r: number; p: number; s: number; dx: number; dy: number; gold: boolean };
+    const dots: Dot[] = [];
+    const spawn = (n: number, rMin: number, rMax: number, sat: boolean) => {
+      for (let i = 0; i < n; i++) {
+        const d: Dot = { x: Math.random(), y: Math.random(), r: rMin + Math.random() * (rMax - rMin),
+          p: Math.random() * 6.28, s: 0.006 + Math.random() * 0.02,
+          dx: (Math.random() - 0.5) * 0.00002, dy: (Math.random() - 0.5) * 0.000015,
+          gold: Math.random() < 0.08 };
+        dots.push(d);
+        if (sat) for (let k = 0, m = 1 + Math.floor(Math.random() * 3); k < m; k++) {
+          dots.push({ x: d.x + (Math.random() - 0.5) * 0.02, y: d.y + (Math.random() - 0.5) * 0.035,
+            r: 0.4 + Math.random(), p: Math.random() * 6.28, s: 0.008 + Math.random() * 0.02,
+            dx: d.dx, dy: d.dy, gold: false });
+        }
+      }
+    };
+    spawn(90, 0.4, 1.0, false);
+    spawn(26, 1.1, 2.0, false);
+    spawn(8, 2.2, 3.6, true);
+    const tick = () => {
+      x.clearRect(0, 0, W, H);
+      for (const d of dots) {
+        d.p += d.s;
+        d.x = (d.x + d.dx + 1) % 1; d.y = (d.y + d.dy + 1) % 1;
+        x.globalAlpha = Math.max(0.05, 0.26 + Math.sin(d.p) * 0.18);
+        x.fillStyle = d.gold ? "#C98F12" : "#14121F";
+        x.beginPath(); x.arc(d.x * W, d.y * H, d.r, 0, 7); x.fill();
+      }
+      x.globalAlpha = 1;
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); };
+  }, []);
+  return <canvas ref={ref} className="px-field" aria-hidden="true" />;
+}

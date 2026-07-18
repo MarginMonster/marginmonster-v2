@@ -1697,3 +1697,86 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 
 /* Scale-price hint on premium tiers — the nudge, not a wall */
 .qh-tier .tcost .tsave { display: block; font-style: normal; font-size: 11px; color: #b7f0ff; margin-top: 3px; }
+
+/* ═════════════════════════════════════════════════════════════
+   👑 PARADOX SKIN — crowned 2026-07-18. The inverted cosmos:
+   porcelain ground, ink type + ink-spatter stars, gold as the only
+   accent, obsidian CTAs breathing gold. Dark surfaces that remain
+   (game map, take cards, celebrations, pp-auto) are deliberate —
+   framed art on the white. Cascade-ordered override layer.
+   ═════════════════════════════════════════════════════════════ */
+body { background: linear-gradient(180deg, #FBFAF6 0%, #F5F2E9 55%, #F2EEE2 100%) !important; }
+.mm-asteroids { display: none !important; }
+.px-field { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+/* Heroes: porcelain panels, ink type, gold ember */
+.mm-hero, .pp-hero {
+  background: #FFFFFF !important; border: 1px solid rgba(20,18,31,0.14) !important;
+  box-shadow: 0 18px 50px rgba(20,18,31,0.10) !important; color: #14121F !important;
+}
+.pp-hero::after { background: radial-gradient(120% 90% at 85% -10%, rgba(240,180,41,0.14), transparent 55%) !important; }
+.mm-hero::after { background: radial-gradient(circle, rgba(240,180,41,0.15) 0%, transparent 70%) !important; }
+.mm-hero h1, .pp-hero h1 { color: #14121F !important; }
+.pp-hero h1 em {
+  background: linear-gradient(100deg, #C98F12 10%, #F0B429 40%, #8A6207 60%, #F5CE62 80%, #C98F12 95%);
+  background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: px-sheen 3.4s ease-in-out infinite;
+}
+@keyframes px-sheen { 0%, 100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+.mm-hero p, .pp-hero .pp-sub { color: #5C5872 !important; }
+.mm-hero .mm-eyebrow, .pp-eyebrow { color: #C98F12 !important; animation: none !important; }
+.mm-marquee { color: #14121F !important; text-shadow: none !important; }
+.pp-stat { background: rgba(20,18,31,0.045) !important; border: 1px solid rgba(20,18,31,0.14) !important; backdrop-filter: none !important; }
+.pp-stat .v { color: #14121F !important; }
+.pp-stat .v .g { color: #C98F12 !important; text-shadow: 0 0 14px rgba(240,180,41,0.35); }
+.pp-stat .l { color: #7B7692 !important; }
+.mm-hero-stats .mm-hero-stat { background: rgba(20,18,31,0.045); border: 1px solid rgba(20,18,31,0.14); }
+.mm-hero-stats .mm-hero-stat .k { color: #7B7692; }
+.mm-hero-stats .mm-hero-stat .v { color: #14121F; }
+.mm-hero-stats .mm-hero-stat .v.cyan { color: #C98F12; }
+
+/* CTAs: obsidian breathing gold — the crowned button, everywhere */
+.pp-cta-hero, .mm-arcade-btn, .mm-hero-cta {
+  background: linear-gradient(180deg, #2A2740, #14121F) !important;
+  color: #FFE9A8 !important;
+  box-shadow: 0 8px 30px rgba(20,18,31,0.35), inset 0 0 0 1px rgba(240,180,41,0.5) !important;
+  border: 0 !important; text-shadow: none !important;
+  animation: px-breathe 2.4s ease-in-out infinite !important;
+}
+@keyframes px-breathe {
+  0%, 100% { box-shadow: 0 8px 30px rgba(20,18,31,0.35), inset 0 0 0 1px rgba(240,180,41,0.5); }
+  50% { box-shadow: 0 8px 44px rgba(240,180,41,0.45), inset 0 0 0 1px rgba(240,180,41,0.9); }
+}
+.pp-cta-hero::after { background: linear-gradient(100deg, transparent, rgba(255,233,168,0.55), transparent) !important; }
+.pp-cta-hero:disabled, .mm-arcade-btn:disabled {
+  background: #E9E5D9 !important; color: #A39D8E !important; box-shadow: none !important; animation: none !important;
+}
+.pp-cta { background: #14121F !important; color: #FFE9A8 !important; }
+.pp-cta:hover { background: #2A2740 !important; }
+.pp-cta.gold { background: linear-gradient(180deg, #FFD777, #F0B429) !important; color: #241505 !important; }
+.mm-prodcard:hover { border-color: #F0B429 !important; }
+.mm-prodcard.on { border-color: #F0B429 !important; box-shadow: 0 0 0 1px #F0B429, 0 6px 18px rgba(240,180,41,0.3) !important; }
+
+/* HUD: porcelain card, ink type, gold XP */
+.mm-hud {
+  background: #FFFFFF !important; border: 1px solid rgba(20,18,31,0.16) !important;
+  box-shadow: 0 10px 34px rgba(20,18,31,0.16) !important; color: #14121F !important; backdrop-filter: none !important;
+}
+.mm-hud-name { color: #14121F !important; }
+.mm-hud-avatar { background: radial-gradient(120% 120% at 50% 18%, #F4F1E8, #E9E4D4 82%) !important; border-color: rgba(20,18,31,0.2) !important; }
+.mm-hud-avatar:hover { border-color: #F0B429 !important; box-shadow: 0 0 16px rgba(240,180,41,0.4) !important; }
+.mm-hud-plan { background: linear-gradient(180deg, #FFE08A, #F0B429) !important; color: #241505 !important; }
+.mm-hud-barlabel { color: #7B7692 !important; }
+.mm-hud-barlabel span:last-child { color: #14121F !important; }
+.mm-hud-xp { background: rgba(20,18,31,0.1) !important; }
+.mm-hud-xp i { background: linear-gradient(90deg, #C98F12, #FFD777) !important; }
+.mm-hud-stat { color: #14121F !important; }
+.mm-hud-top-up { color: #14121F !important; }
+.mm-hud-plus { background: linear-gradient(180deg, #FFE08A, #F0B429) !important; color: #241505 !important; }
+.mm-hud-toggle { border-color: rgba(20,18,31,0.25) !important; background: rgba(20,18,31,0.05) !important; color: #14121F !important; }
+.mm-hud-lvl { text-shadow: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-cta-hero, .mm-arcade-btn, .mm-hero-cta { animation: none !important; }
+  .pp-hero h1 em { animation: none !important; }
+}

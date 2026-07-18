@@ -743,8 +743,8 @@ export default function Videos() {
             </p>
             <div className="pp-stats">
               <div className="pp-stat">
-                <div className="v">{remaining}</div>
-                <div className="l">Takes left</div>
+                <div className="v">{remaining > 0 ? remaining : <span className="g">60 🪙</span>}</div>
+                <div className="l">{remaining > 0 ? "Takes left" : "Per take · rolling on tokens"}</div>
               </div>
               <div className="pp-stat">
                 <div className="v"><span className="g">{selectedAvatar ? selectedAvatar.name : "Product only"}</span></div>
