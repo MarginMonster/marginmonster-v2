@@ -174,11 +174,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (e instanceof Response) {
         const body = await e.text().catch(() => "");
         console.error("[billing] request failed:", e.status, body.slice(0, 300));
-        return json({ error: "Billing couldn't start — give it another try in a moment." });
+        return json({ error: billingIsTest() ? `Billing couldn't start (HTTP ${e.status}): ${body.slice(0, 260) || "(empty body)"}` : "Billing couldn't start — give it another try in a moment." });
       }
       const anyErr = e as { message?: string; errorData?: unknown };
-      console.error("[billing] request failed:", anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e));
-      return json({ error: "Billing couldn't start — give it another try in a moment." });
+      const detail = anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e);
+      console.error("[billing] request failed:", detail);
+      // test mode = the merchant is US — show the real reason so we can fix it
+      return json({ error: billingIsTest() ? `Billing couldn't start: ${detail.slice(0, 300)}` : "Billing couldn't start — give it another try in a moment." });
     }
     return json({ error: "Billing didn't respond — try again." });
   };
