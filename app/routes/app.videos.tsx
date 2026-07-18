@@ -116,7 +116,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const plan = shop.activePlan;
-  const hasVideoPlan = !!plan && plan.videoQuota > 0;
+  // every ACTIVE package gets the studio — plan takes first, tokens after
+  const hasVideoPlan = !!plan;
 
   // linked social platforms (for the per-take "Post to socials" test buttons)
   const { linkedFromCache, socialProviderEnabled } = await import("../lib/social-provider.server");
@@ -262,8 +263,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!shop.brandProfile) {
       return json({ error: "Analyze your store first (on the dashboard) so videos match your brand." });
     }
-    if (!shop.activePlan || !shop.activePlan.active || shop.activePlan.videoQuota <= 0) {
-      return json({ error: "Video generation needs the Pro or Scale plan. Upgrade on the Plans page." });
+    if (!shop.activePlan || !shop.activePlan.active) {
+      return json({ error: "Pick a package first — then every plan can roll takes (with tokens covering what your quota doesn't)." });
     }
 
     const productTitle = (form.get("productTitle") as string)?.trim();
@@ -711,11 +712,11 @@ export default function Videos() {
     return (
       <Page title="Video Studio" backAction={{ content: "Home", url: "/app" }}>
         <EmptyState
-          heading="Video generation is a Pro feature"
+          heading="The studio is waiting on your first package"
           image=""
-          action={{ content: "See plans", url: "/app/plans" }}
+          action={{ content: "Choose a package", url: "/app/plans" }}
         >
-          <p>Upgrade to Pro or Scale to generate AI product videos — a full presenter cast or highlight reels — from your catalog.</p>
+          <p>Pick any package — even Starter — and the full studio unlocks: 100 presenters, in-hand product demos, vertical cuts for TikTok, Reels & Shorts. Plan takes first, tokens after.</p>
         </EmptyState>
       </Page>
     );
@@ -997,9 +998,14 @@ export default function Videos() {
                   )}
                 </span>
               </div>
+              {remaining <= 0 && tokens >= videoTokenCost && (plan?.videoQuota ?? 0) < 8 && (
+                <Text variant="bodySm" as="p" tone="subdued">
+                  ◆ FLAGSHIP BRAND includes 8 takes + 1,500 🪙 every month — the take-heavy move if you're rolling weekly.
+                </Text>
+              )}
               {remaining <= 0 && tokens < videoTokenCost && (
                 <Text variant="bodySm" as="p" tone="critical">
-                  Plan takes are used and the coin bank is under {videoTokenCost} — top up tokens or upgrade on the Packages page.
+                  Balance is under {videoTokenCost} 🪙 — top up tokens or upgrade on the Packages page.
                 </Text>
               )}
             </BlockStack>
