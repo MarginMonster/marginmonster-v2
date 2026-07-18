@@ -173,9 +173,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (confirmationUrl) return json({ confirmationUrl });
       }
       if (e instanceof Response) {
-        // Forensics first (readable at /api/diag?mode=billing), then RETHROW —
-        // non-3xx Responses are the SDK's session-recovery bounces that App
-        // Bridge must see to re-exchange tokens.
+        // The new embedded-auth SDK delivers the charge CONFIRMATION URL in a
+        // 401's reauthorize header (not a 3xx like the docs of old) — the
+        // charge is already created; we just have to walk through the door.
+        const reauth = e.headers.get("x-shopify-api-request-failure-reauthorize-url");
+        if (reauth && /charges|confirm/i.test(reauth)) {
+          return json({ confirmationUrl: reauth });
+        }
+        // Anything else: capture forensics, then rethrow so App Bridge can
+        // recover genuine session bounces.
         await recordBillingFailure(e, session);
         throw e;
       }
