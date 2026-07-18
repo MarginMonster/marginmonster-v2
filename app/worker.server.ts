@@ -4,6 +4,7 @@
 
 import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
 import { postDueSlots } from "./lib/social-post.server";
+import { backfillDeadImages } from "./lib/image-generation.server";
 
 declare global {
   var __mm_worker_started__: boolean | undefined;
@@ -19,6 +20,7 @@ async function tick() {
     await reclaimOrphanJobs(STUCK_MS);
     // Publish READY slots whose post time arrived (self-throttled to ~5 min).
     await postDueSlots();
+    await backfillDeadImages().catch((e) => console.error("[worker] image backfill (non-fatal):", e));
     // Drain any pending jobs each tick.
     let processed = true;
     let guard = 0;

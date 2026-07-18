@@ -172,9 +172,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (confirmationUrl) return json({ confirmationUrl });
       }
       if (e instanceof Response) {
-        const body = await e.text().catch(() => "");
-        console.error("[billing] request failed:", e.status, body.slice(0, 300));
-        return json({ error: billingIsTest() ? `Billing couldn't start (HTTP ${e.status}): ${body.slice(0, 260) || "(empty body)"}` : "Billing couldn't start — give it another try in a moment." });
+        // NON-3xx Responses are the SDK's session-recovery bounces (e.g. an
+        // expired online token throws 401 + headers App Bridge understands).
+        // RETHROW so the client re-exchanges the token and retries — catching
+        // this was why checkout "couldn't start."
+        throw e;
       }
       const anyErr = e as { message?: string; errorData?: unknown };
       const detail = anyErr?.errorData ? JSON.stringify(anyErr.errorData) : anyErr?.message || String(e);
