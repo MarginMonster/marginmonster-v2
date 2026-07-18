@@ -305,6 +305,25 @@ export default function Plans() {
     submit({ planKey }, { method: "post" });
   };
 
+  // 💰 the money moment gets the level-up treatment — coins, companion, the works
+  const [celebration, setCelebration] = useState<null | { kind: "plan"; key: PlanKey } | { kind: "tokens"; n: number }>(() =>
+    welcome && PLAN_BY_KEY[welcome as PlanKey]
+      ? { kind: "plan", key: welcome as PlanKey }
+      : topped
+        ? { kind: "tokens", n: Number(topped) || 0 }
+        : null
+  );
+  const closeCelebration = () => {
+    setCelebration(null);
+    // strip only OUR params — the embedded host/id_token must survive
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("welcome");
+      u.searchParams.delete("topped");
+      window.history.replaceState({}, "", u.toString());
+    } catch { /* cosmetic */ }
+  };
+
   return (
     <Page
       fullWidth
@@ -333,20 +352,48 @@ export default function Plans() {
             </Banner>
           </Layout.Section>
         )}
-        {welcome && (
-          <Layout.Section>
-            <Banner tone="success" title={`🎉 ${PLAN_BY_KEY[welcome as PlanKey]?.name || welcome} is live`}>
-              <p>Subscription confirmed — your quotas and token allowance are loaded. Time to launch something.</p>
-            </Banner>
-          </Layout.Section>
-        )}
-        {topped && (
-          <Layout.Section>
-            <Banner tone="success" title={`🪙 +${Number(topped).toLocaleString()} tokens banked`}>
-              <p>Top-up confirmed and credited to your wallet.</p>
-            </Banner>
-          </Layout.Section>
-        )}
+        {celebration && (() => {
+          const pkg = celebration.kind === "plan" ? PACKAGES[celebration.key] : null;
+          const tier = celebration.kind === "plan" ? PLAN_BY_KEY[celebration.key] : null;
+          return (
+            <div className="mm-lvlup-overlay" role="dialog" aria-label="Purchase confirmed">
+              <div className="mm-lvlup-card">
+                <div className="mm-lvlup-coins" aria-hidden="true">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <span key={i} className={`c c${i + 1}`}>🪙</span>
+                  ))}
+                </div>
+                {selSrcs ? (
+                  <div className="mm-lvlup-partner">
+                    <Partner img={selId || "custom"} accent={pkg?.accent || "#F0B429"} srcs={selSrcs} />
+                  </div>
+                ) : pkg ? (
+                  <div className="mm-lvlup-partner"><img src={pkg.img} alt="" style={{ width: 120 }} /></div>
+                ) : null}
+                {celebration.kind === "plan" ? (
+                  <>
+                    <div className="mm-lvlup-title">🎉 {pkg?.title || celebration.key} IS LIVE! 🎉</div>
+                    <p className="mm-lvlup-msg">Subscription confirmed. Your expedition is funded and your crew is on the clock.</p>
+                    <div className="mm-lvlup-gift">
+                      💰 LOADED: {tier ? `${tier.monthlyTokens.toLocaleString()} 🪙 tokens` : "fresh tokens"}
+                      {tier && tier.videoQuota > 0 ? ` · 🎬 ${tier.videoQuota} video takes` : ""}
+                      {tier ? ` · 📝 ${tier.blogQuota} blogs` : ""} — every month
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mm-lvlup-title">🪙 +{celebration.n.toLocaleString()} TOKENS! 🪙</div>
+                    <p className="mm-lvlup-msg">Payment confirmed — the coins just hit your wallet.</p>
+                    <div className="mm-lvlup-gift">💰 Spend them on anything: videos, campaigns, the works.</div>
+                  </>
+                )}
+                <button type="button" className="pp-cta-hero" style={{ marginTop: 14 }} onClick={closeCelebration}>
+                  ▶ LET'S GO
+                </button>
+              </div>
+            </div>
+          );
+        })()}
         {billingError && (
           <Layout.Section>
             <Banner tone="critical" title="Couldn't start checkout">
