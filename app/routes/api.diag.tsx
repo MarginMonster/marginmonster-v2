@@ -15,6 +15,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (url.searchParams.get("key") !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
+  // Billing forensics — the last failed billing.request (status/headers/body/
+  // session snapshot) captured in memory by recordBillingFailure.
+  if (url.searchParams.get("mode") === "billing") {
+    const { lastBillingFailure } = await import("../lib/billing-debug.server");
+    return json({ lastFailure: lastBillingFailure() });
+  }
+
   // Voice-casting audit — every presenter's derived traits + the exact voice
   // the scorer gives them. Curate mismatches into VOICE_OVERRIDES.
   if (url.searchParams.get("mode") === "voices") {

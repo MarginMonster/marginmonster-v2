@@ -9,6 +9,7 @@ import {
   Banner,
 } from "@shopify/polaris";
 import { authenticate, billingIsTest, TOKEN_PACK_PLANS, TOKENS_BY_PACK } from "../shopify.server";
+import { recordBillingFailure } from "../lib/billing-debug.server";
 import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, type PlanKey } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
@@ -172,10 +173,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (confirmationUrl) return json({ confirmationUrl });
       }
       if (e instanceof Response) {
-        // NON-3xx Responses are the SDK's session-recovery bounces (e.g. an
-        // expired online token throws 401 + headers App Bridge understands).
-        // RETHROW so the client re-exchanges the token and retries — catching
-        // this was why checkout "couldn't start."
+        // Forensics first (readable at /api/diag?mode=billing), then RETHROW —
+        // non-3xx Responses are the SDK's session-recovery bounces that App
+        // Bridge must see to re-exchange tokens.
+        await recordBillingFailure(e, session);
         throw e;
       }
       const anyErr = e as { message?: string; errorData?: unknown };
