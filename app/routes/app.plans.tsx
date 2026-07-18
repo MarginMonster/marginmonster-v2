@@ -28,8 +28,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // an active subscription. No confirmation, no plan — no free rides.
   const activate = url.searchParams.get("activate") as PlanKey | null;
   if (activate && PLAN_BY_KEY[activate]) {
-    const { hasActivePayment } = await billing.check({ plans: [activate] as never, isTest: billingIsTest() });
-    if (hasActivePayment) {
+    // Verify the EXACT approved charge from the return URL — billing.check
+    // can throw the SDK's 401 bounce here, which hijacks the iframe into
+    // accounts.shopify.com ("refused to connect"). A direct node query on the
+    // charge id never throws that way (same pattern as token packs).
+    let confirmed = false;
+    const subChargeId = (url.searchParams.get("charge_id") || "").replace(/[^0-9]/g, "");
+    try {
+      if (subChargeId) {
+        const res = await admin.graphql(
+          `{ node(id: "gid://shopify/AppSubscription/${subChargeId}") { ... on AppSubscription { status } } }`
+        );
+        const j = (await res.json()) as { data?: { node?: { status?: string } } };
+        confirmed = j.data?.node?.status === "ACTIVE";
+      } else {
+        const { hasActivePayment } = await billing.check({ plans: [activate] as never, isTest: billingIsTest() });
+        confirmed = hasActivePayment;
+      }
+    } catch (e) {
+      if (!(e instanceof Response)) console.error("[billing] activate verify failed:", e);
+      // Response bounce or query hiccup: fall through unconfirmed — merchant
+      // lands on a clean page instead of a hijacked frame; retrying the URL
+      // (or the plan button) completes activation.
+    }
+    if (confirmed) {
       const shopRow = await db.shop.findUnique({ where: { domain: session.shop } });
       if (shopRow) {
         const tier = PLAN_BY_KEY[activate];
