@@ -205,8 +205,8 @@ export default function Dashboard() {
                   </Badge>
                 </InlineStack>
                 <SetupStep done={steps.analyzed} title="Analyze your store" desc="Learn your brand voice & products" href="/app" />
-                <SetupStep done={steps.planned} title="Choose a plan" desc="Pick your marketing goal" href="/app/plans" />
-                <SetupStep done={steps.connected} title="Connect an ad account" desc="Link Meta or TikTok to publish" href="/app/connect" />
+                <SetupStep done={steps.planned} title="Choose a package" desc="Fund your expedition — quotas & tokens" href="/app/plans" />
+                <SetupStep done={steps.connected} title="Connect your socials" desc="Link TikTok, Instagram & Facebook — auto-posting arms itself" href="/app/connect" />
                 <SetupStep done={steps.reviewed} title="Approve your first content" desc="Review what we generate" href="/app/assets" />
               </BlockStack>
             </Card>
@@ -486,46 +486,34 @@ const QUICK = [
 function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boolean; pendingAssets: number; liveCampaigns: number }) {
   return (
     <>
-      <div className="mm-hero">
-        <div className="mm-brand">
-          <svg className="mm-brand-mark" viewBox="0 0 512 512" role="img" aria-label="AdArcade">
-            <defs>
-              <linearGradient id="mmcy" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#7bf3f1" /><stop offset="100%" stopColor="#1fb6b3" />
-              </linearGradient>
-            </defs>
-            <rect x="16" y="16" width="480" height="480" rx="112" fill="#12101E" stroke="#34E7E4" strokeWidth="10" />
-            <rect x="120" y="120" width="272" height="272" rx="36" fill="#05131B" stroke="#34E7E4" strokeWidth="6" />
-            <g stroke="#34E7E4" strokeWidth="4" opacity="0.12">
-              <line x1="132" y1="168" x2="380" y2="168" /><line x1="132" y1="212" x2="380" y2="212" /><line x1="132" y1="256" x2="380" y2="256" /><line x1="132" y1="300" x2="380" y2="300" /><line x1="132" y1="344" x2="380" y2="344" />
-            </g>
-            <path d="M214 186 L344 256 L214 326 Z" fill="url(#mmcy)" />
-          </svg>
-          <span className="mm-brand-word">Ad<span className="c">Arcade</span><span className="io">.io</span></span>
-        </div>
-        <span className="mm-eyebrow">▶ INSERT COIN · PLAYER 1 READY</span>
-        <h1><span className="mm-marquee">Let's beat yesterday's high score.</span></h1>
-        <p>
-          Drop a coin and the arcade goes to work — writing the content,
-          launching the ads, and pushing your ROI up the leaderboard while you
-          run your business. You bring the store; we bring the power-ups.
+      <div className="pp-hero" style={{ marginBottom: 18 }}>
+        <span className="pp-eyebrow">Marketing Autopilot</span>
+        <h1>Your store's marketing, <em>running itself.</em></h1>
+        <p className="pp-sub">
+          Videos starring your Brand Face, scroll-stopping ads, and articles that
+          rank — created, scheduled, and posted to your socials every day. You
+          watch the map light up gold where shoppers click through.
         </p>
-        <Link to={hasPlan ? "/app/performance" : "/app/plans"} className="mm-hero-cta">
-          {hasPlan ? "▶ PRESS START" : "▶ CHOOSE YOUR PARTNER"}
-        </Link>
-        <div className="mm-hero-stats">
-          <div className="mm-hero-stat">
-            <div className="k">HI-SCORE · ROI</div>
-            <div className="v">{liveCampaigns > 0 ? "LIVE" : "—"}</div>
+        <div className="pp-stats">
+          <div className="pp-stat">
+            <div className="v">{liveCampaigns > 0 ? <span className="g">RUNNING</span> : "—"}</div>
+            <div className="l">Autopilot</div>
           </div>
-          <div className="mm-hero-stat">
-            <div className="k">CONTENT READY</div>
-            <div className="v cyan">{pendingAssets}</div>
+          <div className="pp-stat">
+            <div className="v">{pendingAssets}</div>
+            <div className="l">Content ready</div>
           </div>
-          <div className="mm-hero-stat">
-            <div className="k">CAMPAIGNS LIVE</div>
-            <div className="v cyan">{liveCampaigns}</div>
+          <div className="pp-stat">
+            <div className="v">{liveCampaigns}</div>
+            <div className="l">Campaigns live</div>
           </div>
+        </div>
+        <div style={{ marginTop: 18, position: "relative" }}>
+          <Link to={hasPlan ? "/app/campaigns" : "/app/plans"} style={{ textDecoration: "none" }}>
+            <span className="pp-cta gold" style={{ display: "inline-block" }}>
+              {hasPlan ? "Launch a campaign" : "Choose your package"}
+            </span>
+          </Link>
         </div>
       </div>
 
