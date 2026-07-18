@@ -118,7 +118,7 @@ export function linkedFromCache(socialsJson: string | null | undefined): string[
 export async function publishPost(
   username: string,
   params: { title: string; mediaUrl: string; isVideo: boolean; platforms: string[] }
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; urls?: Record<string, string> }> {
   if (!socialProviderEnabled()) return { ok: false, error: "no-api-key" };
   try {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -144,11 +144,18 @@ export async function publishPost(
       headers: authHeader(),
       body: form,
     });
-    const j = (await r.json().catch(() => ({}))) as { success?: boolean; results?: Record<string, { success?: boolean }> };
+    const j = (await r.json().catch(() => ({}))) as { success?: boolean; results?: Record<string, { success?: boolean; url?: string }> };
     const anySuccess =
       j.success === true ||
       (j.results ? Object.values(j.results).some((v) => v && v.success) : false);
-    if (r.ok && anySuccess) return { ok: true };
+    if (r.ok && anySuccess) {
+      // live post URLs per platform — the map's "view the post" links
+      const urls: Record<string, string> = {};
+      for (const [p, res] of Object.entries(j.results || {})) {
+        if (res?.url) urls[p] = res.url;
+      }
+      return { ok: true, urls };
+    }
     console.error("[social] post failed:", r.status, JSON.stringify(j).slice(0, 300));
     return { ok: false, error: `post-${r.status}` };
   } catch (e) {

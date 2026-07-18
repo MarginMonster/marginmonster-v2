@@ -3,6 +3,7 @@ import {
   ApiVersion,
   AppDistribution,
   BillingInterval,
+  DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
@@ -58,16 +59,16 @@ const shopify = shopifyApp({
   billing: { ...BILLING_PLANS, ...TOKEN_PACK_PLANS } as any,
   webhooks: {
     APP_UNINSTALLED: {
-      deliveryMethod: "http" as const,
+      deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks",
     },
     PRODUCTS_CREATE: {
-      deliveryMethod: "http" as const,
+      deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks",
     },
     // Billing truth: cancellations/declines flip the plan off server-side
     APP_SUBSCRIPTIONS_UPDATE: {
-      deliveryMethod: "http" as const,
+      deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks",
     },
   },

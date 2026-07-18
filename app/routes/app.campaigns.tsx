@@ -84,7 +84,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       slots: QuestSlot[]; dayOf: number; duration: number;
       tokenCost: number; xpReward: number; progress: number; reviewMode: string;
     }[],
-    products: [] as { id: string; title: string; image: string | null }[],
+    products: [] as { id: string; title: string; image: string | null; url: string | null }[],
     tokens: 0, tier: "STARTER",
     brandFace: null as { id: string; variant: number } | null,
     castAvail: {} as Record<string, boolean>,
@@ -95,13 +95,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
   if (!shop) return json(empty);
 
-  let products: { id: string; title: string; image: string | null }[] = [];
+  let products: { id: string; title: string; image: string | null; url: string | null }[] = [];
   try {
     const res = await admin.graphql(
-      `{ products(first: 32, sortKey: UPDATED_AT, reverse: true) { edges { node { id title featuredImage { url } } } } }`
+      `{ products(first: 32, sortKey: UPDATED_AT, reverse: true) { edges { node { id title handle onlineStoreUrl featuredImage { url } } } } }`
     );
     const j = (await res.json()) as { data?: { products?: { edges?: { node: { id: string; title: string; featuredImage?: { url?: string } } }[] } } };
-    products = (j.data?.products?.edges || []).map((e) => ({ id: e.node.id, title: e.node.title, image: e.node.featuredImage?.url || null }));
+    products = (j.data?.products?.edges || []).map((e) => ({ id: e.node.id, title: e.node.title, image: e.node.featuredImage?.url || null, url: (e.node as { onlineStoreUrl?: string; handle?: string }).onlineStoreUrl || ((e.node as { handle?: string }).handle ? `https://${session.shop}/products/${(e.node as { handle?: string }).handle}` : null) }));
   } catch { /* picker just renders empty */ }
 
   const castAvail: Record<string, boolean> = {};
@@ -217,7 +217,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop) return json({ error: "Shop not found" });
 
   if (intent === "accept") {
-    let bag: { title: string; image: string | null }[] = [];
+    let bag: { title: string; image: string | null; url?: string | null }[] = [];
     try { bag = JSON.parse((form.get("bag") as string) || "[]"); } catch { /* empty */ }
     const res = await acceptQuestline({
       shopId: shop.id,
@@ -1376,10 +1376,12 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           const s = p.slot;
           const done = s.status === "READY" || s.status === "POSTED";
           const failed = s.status === "FAILED";
+          // GOLD STOP: this post is pulling real shoppers — the receipt on the map
+          const earning = (s.clicks || 0) > 0;
           const activeHere = !contentDone && nextStop && s.idx === nextStop.slot.idx;
           const sel = selectedIdx === s.idx;
-          const fill = done ? "#2fbf8a" : failed ? "#d24b4b" : activeHere ? "#ffd76a" : "#3a3560";
-          const ring = done ? "#0d4a33" : failed ? "#571414" : activeHere ? "#7a4c08" : "#171430";
+          const fill = earning ? "#f5b83d" : done ? "#2fbf8a" : failed ? "#d24b4b" : activeHere ? "#ffd76a" : "#3a3560";
+          const ring = earning ? "#7a4c08" : done ? "#0d4a33" : failed ? "#571414" : activeHere ? "#7a4c08" : "#171430";
           const labelUp = p.y > 330;
           const lane = (i % 2) * 26;
           const ly = labelUp ? p.y - 34 - lane : p.y + 44 + lane;
@@ -1393,11 +1395,21 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
                   <animate attributeName="opacity" values="0.9;0" dur="1.7s" repeatCount="indefinite" />
                 </circle>
               )}
+              {earning && (
+                <circle cx={p.x} cy={p.y} fill="none" stroke="#f5b83d" strokeWidth="3">
+                  <animate attributeName="r" values="16;34" dur="2.4s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;0" dur="2.4s" repeatCount="indefinite" />
+                </circle>
+              )}
               {sel && <circle cx={p.x} cy={p.y} r="24" fill="none" stroke="#34E7E4" strokeWidth="4" />}
               <circle cx={p.x} cy={p.y} r={activeHere ? 17 : 13} fill={fill} stroke={ring} strokeWidth="4" />
               <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize={activeHere ? 17 : 14}>
-                {done ? "✓" : failed ? "✕" : NODE_ICON[s.type] || "•"}
+                {earning ? "💰" : done ? "✓" : failed ? "✕" : NODE_ICON[s.type] || "•"}
               </text>
+              {earning && (
+                <text x={p.x + 18} y={p.y - 14} textAnchor="start" fontSize="15" fontFamily="monospace" fontWeight="bold"
+                  fill="#ffe9b0" stroke="#14102a" strokeWidth="5" paintOrder="stroke">{s.clicks}</text>
+              )}
               {activeHere ? (
                 <g>
                   <text x={p.x} y={ly} textAnchor="middle" fontSize="23" fontFamily="monospace" fontWeight="bold"
@@ -1516,7 +1528,7 @@ export default function Campaigns() {
   const available = AVATARS.filter((a) => castAvail[a.id]);
   const [starId, setStarId] = useState<string>(brandFace?.id && castAvail[brandFace.id] ? brandFace.id : available[0]?.id || "");
   const starVariant = brandFace?.id === starId ? brandFace.variant : 0;
-  const [bag, setBag] = useState<{ id: string; title: string; image: string | null }[]>([]);
+  const [bag, setBag] = useState<{ id: string; title: string; image: string | null; url?: string | null }[]>([]);
   const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("REVIEW_FIRST");
   const [editSel, setEditSel] = useState<{ qid: string; idx: number } | null>(null);
   const [daySel, setDaySel] = useState<{ qid: string; day: number } | null>(null);
@@ -1588,7 +1600,7 @@ export default function Campaigns() {
     submit(
       {
         intent: "accept", template: sel.key,
-        bag: JSON.stringify(bagCapped.map((b) => ({ title: b.title, image: b.image }))),
+        bag: JSON.stringify(bagCapped.map((b) => ({ title: b.title, image: b.image, url: b.url || null }))),
         avatarId: starId, avatarVariant: String(starVariant), reviewMode,
       },
       { method: "post" }
@@ -1612,14 +1624,14 @@ export default function Campaigns() {
 
   /** Unique items riding in a quest's bag: total drops + how many are still
    *  swappable (not yet forged). */
-  const bagContents = (slots: QuestSlot[]): { title: string; image: string | null; drops: number; future: number }[] => {
-    const m = new Map<string, { title: string; image: string | null; drops: number; future: number }>();
+  const bagContents = (slots: QuestSlot[]): { title: string; image: string | null; drops: number; future: number; clicks: number }[] => {
+    const m = new Map<string, { title: string; image: string | null; drops: number; future: number; clicks: number }>();
     for (const s of slots) {
       if (!s.productTitle) continue;
       const swappable = s.status === "SCHEDULED" || s.status === "FAILED" ? 1 : 0;
       const cur = m.get(s.productTitle);
-      if (cur) { cur.drops++; cur.future += swappable; }
-      else m.set(s.productTitle, { title: s.productTitle, image: s.productImageUrl, drops: 1, future: swappable });
+      if (cur) { cur.drops++; cur.future += swappable; cur.clicks += s.clicks || 0; }
+      else m.set(s.productTitle, { title: s.productTitle, image: s.productImageUrl, drops: 1, future: swappable, clicks: s.clicks || 0 });
     }
     return Array.from(m.values());
   };
@@ -1679,6 +1691,7 @@ export default function Campaigns() {
             ▶ {q.name.toUpperCase()} → {DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
             <span className="r">
               DAY {q.dayOf} OF {q.duration} · {q.slots.filter((s) => s.status === "READY" || s.status === "POSTED").length} FORGED · {q.slots.filter((s) => s.status === "SCHEDULED" || s.status === "FORGING").length} SCHEDULED
+              {(() => { const c = q.slots.reduce((n, s) => n + (s.clicks || 0), 0); return c > 0 ? ` · 💰 ${c} CLICKS` : ""; })()}
               {q.avatarId && AVATAR_BY_ID[q.avatarId] ? ` · ★ ${AVATAR_BY_ID[q.avatarId].name}` : ""}
             </span>
           </span>
@@ -1708,12 +1721,23 @@ export default function Campaigns() {
             return (
               <div className="qh-slot-editor">
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <div className="spot">{NODE_ICON[s.type]} {s.spot} — DAY {s.day}</div>
+                  <div className="spot">{NODE_ICON[s.type]} {s.spot} — DAY {s.day}{(s.clicks || 0) > 0 && <span style={{ color: "#f5b83d" }}> · 💰 {s.clicks} shopper{s.clicks === 1 ? "" : "s"} clicked through</span>}</div>
                   <div className="meta">
-                    {locked
+                    {s.status === "POSTED"
+                      ? `LIVE. ${pName} posted this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — ${(s.clicks || 0) > 0 ? `it's pulling shoppers to your store (${s.clicks} so far).` : "the click counter starts the moment a shopper taps its link."}`
+                      : locked
                       ? `${pName} already forged this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — it's waiting in your library. ✓`
                       : `${pName} forges a ${kind} here${s.productTitle ? ` starring ${s.productTitle}` : ""}${s.topic ? ` about "${s.topic}"` : ""}, ready for ${fmtDow(s.date)} at ${fmtTime(s.time)}. Change the plan below — the whole schedule obeys.`}
                   </div>
+                  {s.postedUrls && Object.keys(s.postedUrls).length > 0 && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                      {Object.entries(s.postedUrls).map(([plat, url]) => (
+                        <a key={plat} className="qh-mini-btn" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                          ▶ View on {plat === "facebook" ? "Facebook" : plat === "instagram" ? "Instagram" : plat === "tiktok" ? "TikTok" : plat}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {!locked && (
                   <>
@@ -1834,8 +1858,8 @@ export default function Campaigns() {
                           <div key={i} className="qh-bagpanel-item">
                             {it.image ? <img src={it.image} alt="" /> : <span style={{ fontSize: 22 }}>🛍️</span>}
                             <span>
-                              <span className="nm">{it.title}</span>
-                              <span className="ct">{it.drops} DROP{it.drops === 1 ? "" : "S"}{it.future > 0 ? ` · ${it.future} TO FORGE` : " · ALL FORGED"}</span>
+                              <span className="nm">{it.title}{it.clicks > 0 && it.clicks === Math.max(...items.map((x) => x.clicks)) && <span style={{ color: "#f5b83d", fontWeight: 800 }}> ★ TOP PERFORMER</span>}</span>
+                              <span className="ct">{it.drops} DROP{it.drops === 1 ? "" : "S"}{it.future > 0 ? ` · ${it.future} TO FORGE` : " · ALL FORGED"}{it.clicks > 0 ? ` · 💰 ${it.clicks} CLICK${it.clicks === 1 ? "" : "S"}` : ""}</span>
                             </span>
                             <button
                               type="button" className="qh-mini-btn" style={{ marginLeft: 6 }}

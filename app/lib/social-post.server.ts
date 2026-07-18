@@ -31,7 +31,7 @@ async function publishContent(
   linked: string[],
   profileKey: string,
   item: Publishable
-): Promise<{ ok: boolean; pending?: string }> {
+): Promise<{ ok: boolean; pending?: string; urls?: Record<string, string> }> {
   if (item.type === "blog") return { ok: false, pending: "blog-not-social" };
   if (!item.assetId) return { ok: false, pending: "no-asset" };
   const { publishPost, socialProviderEnabled } = await import("./social-provider.server");
@@ -49,14 +49,20 @@ async function publishContent(
   const platforms = linked.filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
   if (platforms.length === 0) return { ok: false, pending: "no-platforms" };
 
-  const title = `${item.productTitle}${item.topic ? ` — ${item.topic}` : ""}`.trim() || "New from our shop";
+  // ATTRIBUTION: the caption links through OUR /go turnstile, which counts
+  // the click on this exact slot and forwards to the product with UTM tags —
+  // the "which post made money" loop starts at this line.
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const goUrl = base ? `${base}/go/${item.questlineId}/${item.slotIdx}` : "";
+  const caption = `${item.productTitle}${item.topic ? ` — ${item.topic}` : ""}`.trim() || "New from our shop";
+  const title = goUrl ? `${caption}\n🛒 ${goUrl}` : caption;
   const res = await publishPost(profileKey, {
     title,
     mediaUrl,
     isVideo: item.type === "video",
     platforms,
   });
-  return res.ok ? { ok: true } : { ok: false, pending: res.error };
+  return res.ok ? { ok: true, urls: res.urls } : { ok: false, pending: res.error };
 }
 
 let lastScan = 0;
@@ -101,6 +107,7 @@ export async function postDueSlots(): Promise<void> {
         });
         if (res.ok) {
           s.status = "POSTED";
+          if (res.urls && Object.keys(res.urls).length) s.postedUrls = res.urls;
           changed = true;
           posted++;
         }

@@ -15,7 +15,7 @@ import {
  * marks its map slot READY, drips XP, and pays weekly + completion bonuses. */
 
 type Objective = { key: string; label: string; type: ObjectiveType; target: number; done: number };
-type BagItem = { title: string; image: string | null };
+type BagItem = { title: string; image: string | null; url?: string | null };
 
 const GEN_LEAD_MS = 24 * 60 * 60 * 1000; // forge content a day before its slot
 const WEEK_BONUS_XP = 100;
@@ -71,6 +71,7 @@ export function buildSchedule(templateKey: string, bag: BagItem[], start: Date):
       spot: spotName(type, sn),
       productTitle: item.title,
       productImageUrl: item.image,
+      productUrl: item.url || null,
       status: "SCHEDULED" as const,
     };
   });
@@ -132,7 +133,10 @@ export async function acceptQuestline(params: {
     },
   });
 
-  // One PRE-PAID job per slot, scheduled to forge ~24h before its post time.
+  // One PRE-PAID job per slot, scheduled to forge ~24h before its post time —
+  // except the FIRST video, which forges IMMEDIATELY so the merchant sees a
+  // finished take within minutes of signing (the demo moment).
+  let firstVideoBoosted = false;
   for (const slot of slots) {
     const objective = objectives.find((o) => o.type === slot.type);
     const base = {
@@ -143,7 +147,8 @@ export async function acceptQuestline(params: {
       slotIdx: slot.idx,
       prePaid: true,
     };
-    const runAt = slotRunAt(slot);
+    let runAt = slotRunAt(slot);
+    if (slot.type === "video" && !firstVideoBoosted) { firstVideoBoosted = true; runAt = new Date(); }
     if (slot.type === "video") {
       // holdProduct: campaign drips auto-compose the presenter holding the
       // product (hands-off in-hand demos; falls back to plain portrait)
