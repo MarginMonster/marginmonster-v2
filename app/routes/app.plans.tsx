@@ -23,6 +23,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, billing, admin } = await authenticate.admin(request);
   const url = new URL(request.url);
 
+  // Embedded iframes lose their session if a redirect drops the host/id_token
+  // query params ("accounts.shopify.com refused to connect") — so return-leg
+  // redirects carry the ORIGINAL embedded params and only swap ours.
+  const embeddedRedirect = (set: Record<string, string>): never => {
+    const u = new URL(request.url);
+    for (const k of ["activate", "review", "pack", "charge_id", "welcome", "topped"]) u.searchParams.delete(k);
+    for (const [k, v] of Object.entries(set)) u.searchParams.set(k, v);
+    throw redirect(`${u.pathname}?${u.searchParams.toString()}`);
+  };
+
   // ---- BILLING RETURN LEG 1: subscription approved → activate the plan ----
   // Payment comes FIRST now; the plan row only exists once Shopify confirms
   // an active subscription. No confirmation, no plan — no free rides.
@@ -73,9 +83,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
         await unlockAchievement(shopRow.id, "INSERT_COIN");
       }
-      throw redirect("/app/plans?welcome=" + activate);
+      embeddedRedirect({ welcome: activate });
     }
-    throw redirect("/app/plans"); // declined/abandoned — nothing activates
+    embeddedRedirect({}); // declined/abandoned — nothing activates
   }
 
   // ---- BILLING RETURN LEG 2: token pack paid → credit ONCE (chargeId unique) ----
@@ -103,11 +113,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             where: { shopId: shopRow.id },
             data: { tokensExtra: { increment: TOKENS_BY_PACK[packKey] } },
           });
-          throw redirect("/app/plans?topped=" + TOKENS_BY_PACK[packKey]);
+          embeddedRedirect({ topped: String(TOKENS_BY_PACK[packKey]) });
         }
       }
     }
-    throw redirect("/app/plans");
+    embeddedRedirect({});
   }
 
   const shop = await db.shop.findUnique({
