@@ -16,7 +16,7 @@ export type CompanionDef = {
   accent: string; // aura color
 };
 
-export const COMPANION_V = "3"; // bump to bust image cache on regen
+export const COMPANION_V = "4"; // bump to bust image cache on regen
 
 export const CATEGORY_LABEL: Record<CompanionCategory, string> = {
   troop: "🐒 Partner Monkeys",

@@ -8,7 +8,7 @@
 
 export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
 
-export const ART_V = "7"; // bump to bust cache when renders change
+export const ART_V = "8"; // bump to bust cache when renders change
 
 export const PARTNER_BY_PLAN: Record<
   PlanKey,
