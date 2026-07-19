@@ -263,166 +263,254 @@ export function ErrorBoundary() {
 export const headers = boundary.headers;
 
 
-/** 🌘 MARBLE VOID v3 — premium pass. Retina-crisp, anchored to the PAGE
- *  (scrolls with content via a seamless vertical tile — no dirt-on-glass),
- *  four-point star sparkles instead of dust, structured diagonal marble
- *  veining that actually reads, edge anomalies, elegant rare comets. */
+/** 🌩️ PARADOX VOID — the crowned backdrop (demo v10: lightning marble ·
+ *  Storm liquid · black stars). Layer 1 is WebGL liquid stone: domain-warp
+ *  fbm over the marble photo with a cursor lens stir, abyss-white grade,
+ *  and three BLACK STARS that emit darkness instead of light — bending the
+ *  veins around themselves, breathing, ringed by a thin gold event horizon.
+ *  Layer 2 is a 2d entity pass: ink wisps, THE ALGORITHM (the gold-eyed
+ *  watcher), a slow golden breath, free-drifting black motes, click ripples. */
 function ParadoxField() {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const stoneRef = useRef<HTMLCanvasElement>(null);
+  const entRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const c = ref.current;
-    if (!c || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const x = c.getContext("2d");
-    if (!x) return;
-    const INK = "#101018", GOLD = "#C98F12";
-    let W = 0, H = 0, TILE = 0, dpr = 1, raf = 0;
-    const tile = document.createElement("canvas");
-    let tx: CanvasRenderingContext2D | null = null;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const sc = stoneRef.current, c = entRef.current;
+    if (!sc || !c) return;
+    let raf1 = 0, raf2 = 0;
+    const disposers: Array<() => void> = [];
+    let mx = window.innerWidth / 2, my = window.innerHeight * 0.4, tx = mx, ty = my;
+    const onMove = (e: PointerEvent) => { tx = e.clientX; ty = e.clientY; };
+    window.addEventListener("pointermove", onMove);
+    disposers.push(() => window.removeEventListener("pointermove", onMove));
 
-    // one four-point sparkle (the ✦ form) at crisp scale
-    const sparklePath = (g: CanvasRenderingContext2D, px: number, py: number, r: number) => {
-      const k = r * 0.22;
-      g.beginPath();
-      g.moveTo(px, py - r);
-      g.quadraticCurveTo(px + k, py - k, px + r, py);
-      g.quadraticCurveTo(px + k, py + k, px, py + r);
-      g.quadraticCurveTo(px - k, py + k, px - r, py);
-      g.quadraticCurveTo(px - k, py - k, px, py - r);
-      g.closePath();
-    };
-
-    // stars live in TILE space and repeat forever down the page
-    type Star = { x: number; y: number; r: number; p: number; s: number; gold: boolean };
-    let stars: Star[] = [];
-
-    const paintTile = () => {
-      tx = tile.getContext("2d");
-      if (!tx) return;
-      tx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      tx.clearRect(0, 0, W, TILE);
-      // v4: the void stays PURE — no bands, no clouds, no veins (they read
-      // as dirty two-tone patches at page scale). Stars + anomalies carry it.
-    };
-
-    const seedStars = () => {
-      stars = [];
-      const n = Math.round((W * TILE) / 15000); // density by area
-      for (let i = 0; i < n; i++) {
-        stars.push({
-          x: Math.random() * W, y: Math.random() * TILE,
-          r: 3.0 + Math.random() * 6.0,
-          p: Math.random() * 6.28, s: 0.006 + Math.random() * 0.012,
-          gold: Math.random() < 0.14,
-        });
-      }
-    };
-
-    const size = () => {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
-      W = window.innerWidth; H = window.innerHeight;
-      TILE = Math.round(H * 2);
-      c.width = W * dpr; c.height = H * dpr;
-      c.style.width = W + "px"; c.style.height = H + "px";
-      tile.width = W * dpr; tile.height = TILE * dpr;
-      x.setTransform(dpr, 0, 0, dpr, 0, 0);
-      paintTile();
-      seedStars();
-    };
-    size();
-    window.addEventListener("resize", size);
-
-    // anomalies at fixed DOCUMENT positions (first stretch of the page)
-    const drawAnomalies = (scroll: number) => {
-      const items: Array<{ y: number; draw: (yy: number) => void }> = [
-        { y: H * 0.14, draw: (yy) => { // ringed planet — upper right
-          const pX = W * 0.915, pR = 27;
-          x.globalAlpha = 0.96; x.fillStyle = INK;
-          x.beginPath(); x.arc(pX, yy, pR, 0, 7); x.fill();
-          x.globalAlpha = 0.9; x.strokeStyle = GOLD; x.lineWidth = 2.6;
-          x.beginPath(); x.ellipse(pX, yy, pR * 1.85, pR * 0.5, -0.42, 0, 7); x.stroke();
-        } },
-        { y: H * 0.10, draw: (yy) => { // crescent — upper left
-          const cX = W * 0.045;
-          x.save();
-          x.globalAlpha = 0.85; x.fillStyle = INK;
-          x.beginPath(); x.arc(cX, yy, 17, 0, 7); x.fill();
-          x.globalCompositeOperation = "destination-out";
-          x.beginPath(); x.arc(cX + 8, yy - 4.5, 16, 0, 7); x.fill();
-          x.restore();
-        } },
-        { y: H * 1.28, draw: (yy) => { // constellation — left, second screen
-          const pts: Array<[number, number]> = [[0.05, 0], [0.09, 0.06], [0.075, 0.14], [0.13, 0.18], [0.16, 0.10]];
-          x.globalAlpha = 0.5; x.strokeStyle = INK; x.lineWidth = 1;
-          x.beginPath();
-          pts.forEach((uv, i) => { const px = uv[0] * W, py = yy + uv[1] * H; if (i === 0) x.moveTo(px, py); else x.lineTo(px, py); });
-          x.stroke();
-          x.globalAlpha = 0.95; x.fillStyle = INK;
-          for (const uv of pts) { sparklePath(x, uv[0] * W, yy + uv[1] * H, 6); x.fill(); }
-        } },
-        { y: H * 1.7, draw: (yy) => { // gold-dust eddy — right, deeper down
-          x.globalAlpha = 0.8;
-          for (let i = 0; i < 7; i++) {
-            const t = i / 7 * 5.2, r = 4 + t * 5.5;
-            x.fillStyle = i % 2 ? GOLD : INK;
-            x.beginPath(); x.arc(W * 0.93 + Math.cos(t) * r, yy + Math.sin(t) * r, 1.4 + (i % 3) * 0.5, 0, 7); x.fill();
-          }
-        } },
-      ];
-      for (const it of items) {
-        const yy = it.y - scroll;
-        if (yy > -80 && yy < H + 80) it.draw(yy);
-      }
-      x.globalAlpha = 1;
-    };
-
-    type Comet = { x: number; y: number; vx: number; vy: number; life: number };
-    const comets: Comet[] = [];
-
-    const tick = () => {
-      const scroll = window.scrollY || 0;
-      x.clearRect(0, 0, W, H);
-      // marble tile, page-anchored (repeats seamlessly down the document)
-      const off = ((scroll % TILE) + TILE) % TILE;
-      x.drawImage(tile, 0, -off * 0 - off, W, TILE);
-      x.drawImage(tile, 0, TILE - off, W, TILE);
-      // sparkles, page-anchored via the same tiling
-      for (const st of stars) {
-        st.p += st.s;
-        const pulse = 0.72 + Math.sin(st.p) * 0.28;
-        let sy = st.y - off; if (sy < -12) sy += TILE; if (sy > H + 12 && sy - TILE > -12) sy -= TILE;
-        if (sy < -12 || sy > H + 12) continue;
-        x.globalAlpha = 0.4 + pulse * 0.55;
-        x.fillStyle = st.gold ? GOLD : INK;
-        if (st.r < 4.2) { x.beginPath(); x.arc(st.x, sy, st.r * 0.45 * pulse + 0.8, 0, 7); x.fill(); }
-        else { sparklePath(x, st.x, sy, st.r * pulse); x.fill(); }
-      }
-      drawAnomalies(scroll);
-      // elegant rare comet
-      if (Math.random() < 0.0045 && comets.length < 1) {
-        const fromLeft = Math.random() < 0.5;
-        comets.push({ x: fromLeft ? -60 : W + 60, y: H * (0.1 + Math.random() * 0.35),
-          vx: (fromLeft ? 1 : -1) * (5.5 + Math.random() * 3), vy: 1.4 + Math.random() * 1.4, life: 0 });
-      }
-      for (let i = comets.length - 1; i >= 0; i--) {
-        const m = comets[i]; m.x += m.vx; m.y += m.vy; m.life++;
-        const fade = Math.max(0, 1 - m.life / 260);
-        for (let t = 0; t < 9; t++) {
-          x.globalAlpha = fade * 0.4 * (1 - t / 9);
-          x.strokeStyle = INK; x.lineWidth = 1.5 - t * 0.12; x.lineCap = "round";
-          x.beginPath();
-          x.moveTo(m.x - m.vx * t * 1.6, m.y - m.vy * t * 1.6);
-          x.lineTo(m.x - m.vx * (t + 1) * 1.6, m.y - m.vy * (t + 1) * 1.6);
-          x.stroke();
+    // ── layer 1: liquid stone ──
+    const gl = sc.getContext("webgl", { antialias: false, depth: false });
+    if (gl) {
+      const vsrc = "attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }";
+      const fsrc = [
+        "precision mediump float;",
+        "uniform sampler2D uTex; uniform vec2 uRes; uniform vec2 uTexRes;",
+        "uniform vec2 uMouse; uniform float uTime; uniform float uWarp; uniform float uReduced; uniform float uBlack;",
+        "float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }",
+        "float noise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.-2.*f);",
+        "  return mix(mix(hash(i), hash(i+vec2(1.,0.)), f.x), mix(hash(i+vec2(0.,1.)), hash(i+vec2(1.,1.)), f.x), f.y); }",
+        "float fbm(vec2 p){ float v = 0.; float a = .5; for(int i=0;i<4;i++){ v += a*noise(p); p *= 2.03; a *= .5; } return v; }",
+        "void main(){",
+        "  vec2 frag = gl_FragCoord.xy; vec2 uv = frag / uRes; uv.y = 1. - uv.y;",
+        "  float screenAspect = uRes.x / uRes.y; float texAspect = uTexRes.x / uTexRes.y;",
+        "  vec2 cuv = uv - .5;",
+        "  if (screenAspect > texAspect) { cuv.y *= texAspect / screenAspect; } else { cuv.x *= screenAspect / texAspect; }",
+        "  cuv += .5;",
+        "  vec2 mpx = vec2(uMouse.x, uMouse.y); float md = distance(frag * vec2(1.,-1.) + vec2(0., uRes.y), mpx);",
+        "  float lens = smoothstep(300., 60., md);",
+        "  float amp = uWarp * (1. + lens * 1.6);",
+        "  float t = uTime * .05;",
+        "  vec2 w = vec2(fbm(cuv * 3.4 + vec2(t * .21, t * .17)), fbm(cuv * 3.4 + vec2(5.2 - t * .19, 8.7 + t * .23)));",
+        "  vec2 w2 = vec2(fbm(cuv * 7.1 + w * 1.4 + vec2(t * .11, -t * .13)), fbm(cuv * 7.1 + w * 1.4 + vec2(3.1 + t * .12, 1.7 + t * .1)));",
+        "  vec2 wuv = cuv + (w2 - .5) * amp * (uReduced > .5 ? 0. : 1.);",
+        "  // BLACK STARS — they emit darkness instead of light, and bend the stone",
+        "  float dark = 0.; float rim = 0.;",
+        "  for (int i = 0; i < 3; i++) {",
+        "    float fi = float(i);",
+        "    vec2 sp = vec2(.5) + vec2(sin(uTime*.041+fi*2.4)*.33 + sin(uTime*.013+fi*5.1)*.08, cos(uTime*.033+fi*1.7)*.27 + cos(uTime*.017+fi*3.3)*.07);",
+        "    vec2 sd = uv - sp; sd.x *= screenAspect; float dd = max(length(sd), .0001);",
+        "    float rr = .05 + .015*sin(uTime*(.5+fi*.13)+fi*2.1);",
+        "    wuv += (sd/dd) * -(rr*rr*.5 / max(dd, rr*.7)) * uBlack;",
+        "    float core = 1. - smoothstep(rr*.35, rr, dd);",
+        "    float halo = 1. - smoothstep(rr, rr*3.4, dd);",
+        "    dark += core + halo*halo*.34;",
+        "    rim += smoothstep(rr*1.3, rr*1.02, dd) * smoothstep(rr*.75, rr*.98, dd);",
+        "  }",
+        "  vec3 col = texture2D(uTex, wuv).rgb;",
+        "  float lum = dot(col, vec3(.299,.587,.114));",
+        "  float lift = smoothstep(.26, .76, lum);",
+        "  col = mix(col, vec3(1.0,.999,.995), lift * .985);",
+        "  col = mix(vec3(.06,.06,.09), col, smoothstep(.0, .38, lum) * .25 + .75);",
+        "  float veil = mix(.80, .42, lens);",
+        "  col = mix(col, vec3(1.0,.999,.996), veil);",
+        "  float dk = clamp(dark, 0., 1.) * uBlack;",
+        "  col = mix(col, vec3(.06,.055,.09), dk*.93);",
+        "  col = mix(col, vec3(.80,.62,.18), clamp(rim,0.,1.) * .14 * uBlack);",
+        "  gl_FragColor = vec4(col, 1.);",
+        "}"
+      ].join("\n");
+      const sh = (type: number, src: string) => { const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s); return s; };
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, vsrc));
+      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fsrc));
+      gl.linkProgram(prog); gl.useProgram(prog);
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const aloc = gl.getAttribLocation(prog, "p");
+      gl.enableVertexAttribArray(aloc); gl.vertexAttribPointer(aloc, 2, gl.FLOAT, false, 0, 0);
+      const uRes = gl.getUniformLocation(prog, "uRes"), uTime = gl.getUniformLocation(prog, "uTime"),
+        uMouse = gl.getUniformLocation(prog, "uMouse"), uWarp = gl.getUniformLocation(prog, "uWarp"),
+        uTexRes = gl.getUniformLocation(prog, "uTexRes"), uReduced = gl.getUniformLocation(prog, "uReduced"),
+        uBlack = gl.getUniformLocation(prog, "uBlack");
+      const tex = gl.createTexture();
+      let texW = 768, texH = 1344, texReady = false;
+      const img = new Image();
+      img.onload = () => {
+        texW = img.width; texH = img.height;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        texReady = true;
+      };
+      img.src = "/paradox-marble.jpg";
+      const t0 = performance.now();
+      const draw = () => {
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const bw = Math.round(window.innerWidth * dpr), bh = Math.round(window.innerHeight * dpr);
+        if (sc.width !== bw || sc.height !== bh) { sc.width = bw; sc.height = bh; gl.viewport(0, 0, bw, bh); }
+        if (texReady) {
+          mx += (tx - mx) * 0.06; my += (ty - my) * 0.06;
+          gl.uniform2f(uRes, bw, bh);
+          gl.uniform2f(uTexRes, texW, texH);
+          gl.uniform2f(uMouse, mx * dpr, my * dpr);
+          gl.uniform1f(uTime, reduced ? 0 : (performance.now() - t0) / 1000);
+          gl.uniform1f(uWarp, 0.026);
+          gl.uniform1f(uReduced, reduced ? 1 : 0);
+          gl.uniform1f(uBlack, 1);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
-        x.globalAlpha = fade * 0.95; x.fillStyle = INK;
-        sparklePath(x, m.x, m.y, 3.4); x.fill();
-        if (m.life > 280 || m.x < -140 || m.x > W + 140 || m.y > H + 140) comets.splice(i, 1);
-      }
-      x.globalAlpha = 1;
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); };
+        raf1 = requestAnimationFrame(draw);
+      };
+      draw();
+    }
+
+    // ── layer 2: entities ──
+    const x = c.getContext("2d");
+    if (!reduced && x) {
+      const INK = "#101018", GOLD = "#C98F12", GOLD_HI = "#F0B429";
+      const level = 1.7;
+      let W = 0, H = 0, t = 0;
+      const size = () => {
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        W = window.innerWidth; H = window.innerHeight;
+        c.width = W * dpr; c.height = H * dpr;
+        x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      };
+      size();
+      window.addEventListener("resize", size);
+      disposers.push(() => window.removeEventListener("resize", size));
+
+      const wisps = [
+        { bx: 0.10, by: 0.22, r: 300, s1: 0.00030, s2: 0.00046, ph: 0 },
+        { bx: 0.90, by: 0.58, r: 380, s1: 0.00024, s2: 0.00037, ph: 2.1 },
+        { bx: 0.28, by: 0.88, r: 280, s1: 0.00034, s2: 0.00027, ph: 4.4 },
+        { bx: 0.62, by: 0.08, r: 240, s1: 0.00028, s2: 0.00040, ph: 1.2 },
+      ];
+      const watcher = { bx: 0.84, by: 0.15, r: 130, nextBlink: 300 + Math.random() * 500, blink: 0 };
+      type Mote = { x: number; y: number; vx: number; vy: number; ph: number };
+      const dust: Mote[] = [];
+      for (let i = 0; i < 46; i++) dust.push({ x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight, vx: 0, vy: 0, ph: Math.random() * 6.28 });
+      type Ripple = { x: number; y: number; r: number; a: number; v: number; life: number };
+      const ripples: Ripple[] = [];
+      const onDown = (e: PointerEvent) => {
+        ripples.push({ x: e.clientX, y: e.clientY, r: 0, a: 0, v: 0, life: 0 });
+        for (let k = 0; k < 8; k++) ripples.push({ x: e.clientX, y: e.clientY, r: -1, a: Math.random() * 6.28, v: 2 + Math.random() * 3, life: 0 });
+      };
+      window.addEventListener("pointerdown", onDown);
+      disposers.push(() => window.removeEventListener("pointerdown", onDown));
+      const breath = { t: 0, dur: 2400 };
+
+      const tick = () => {
+        t++;
+        x.clearRect(0, 0, W, H);
+
+        // the golden breath — a warm bloom traversing the void
+        breath.t = (breath.t + 1) % breath.dur;
+        const bp = breath.t / breath.dur;
+        const bx2 = W * (-0.2 + bp * 1.4), by2 = H * (0.3 + Math.sin(bp * 6.28) * 0.2);
+        const bg = x.createRadialGradient(bx2, by2, 0, bx2, by2, 420);
+        bg.addColorStop(0, "rgba(240,180,41,0.05)");
+        bg.addColorStop(1, "rgba(240,180,41,0)");
+        x.fillStyle = bg; x.fillRect(bx2 - 420, by2 - 420, 840, 840);
+
+        for (const w of wisps) {
+          const wx = (w.bx + Math.sin(t * w.s1 * 60 + w.ph) * 0.06 + Math.sin(t * w.s2 * 60 + w.ph * 2) * 0.04) * W;
+          const wy = (w.by + Math.cos(t * w.s2 * 60 + w.ph) * 0.06 + Math.sin(t * w.s1 * 60 + w.ph * 3) * 0.05) * H;
+          const wr = w.r * (1 + Math.sin(t * 0.005 + w.ph) * 0.15);
+          const g = x.createRadialGradient(wx, wy, 0, wx, wy, wr);
+          g.addColorStop(0, "rgba(16,16,24," + 0.015 * level + ")");
+          g.addColorStop(0.6, "rgba(16,16,24," + 0.007 * level + ")");
+          g.addColorStop(1, "rgba(16,16,24,0)");
+          x.fillStyle = g;
+          x.fillRect(wx - wr, wy - wr, wr * 2, wr * 2);
+        }
+
+        // THE ALGORITHM — it watches, it blinks gold, it noticed
+        const pxr = (tx / W - 0.5) * -34, pyr = (ty / H - 0.5) * -24;
+        const vx2 = watcher.bx * W + pxr, vy2 = watcher.by * H + pyr;
+        const vg = x.createRadialGradient(vx2, vy2, 0, vx2, vy2, watcher.r);
+        vg.addColorStop(0, "rgba(16,16,24," + 0.12 * level + ")");
+        vg.addColorStop(0.7, "rgba(16,16,24," + 0.05 * level + ")");
+        vg.addColorStop(1, "rgba(16,16,24,0)");
+        x.fillStyle = vg;
+        x.fillRect(vx2 - watcher.r, vy2 - watcher.r, watcher.r * 2, watcher.r * 2);
+        watcher.nextBlink--;
+        if (watcher.nextBlink <= 0) { watcher.blink = 90; watcher.nextBlink = 500 + Math.random() * 800; }
+        if (watcher.blink > 0) {
+          watcher.blink--;
+          const ba = Math.sin(((90 - watcher.blink) / 90) * Math.PI);
+          x.globalAlpha = ba * 0.9;
+          x.strokeStyle = GOLD_HI; x.lineWidth = 2.4; x.lineCap = "round";
+          x.beginPath(); x.arc(vx2, vy2, 28, Math.PI * 0.15, Math.PI * 0.85); x.stroke();
+          x.globalAlpha = ba * 0.7;
+          x.fillStyle = GOLD;
+          x.font = "600 10px ui-monospace, monospace";
+          x.textAlign = "center";
+          x.fillText("t h e   a l g o r i t h m   n o t i c e d", vx2, vy2 + 54);
+          x.globalAlpha = 1;
+        }
+
+        // black drift — free, never fully still
+        for (const m of dust) {
+          m.ph += 0.012;
+          m.vx += Math.sin(m.ph) * 0.005; m.vy += Math.cos(m.ph * 1.3) * 0.005;
+          m.vx += (Math.random() - 0.5) * 0.05; m.vy += (Math.random() - 0.5) * 0.05;
+          m.vx *= 0.96; m.vy *= 0.96;
+          m.x = (m.x + m.vx + W) % W; m.y = (m.y + m.vy + H) % H;
+          x.globalAlpha = 0.42 + Math.sin(m.ph * 2) * 0.3;
+          x.fillStyle = INK;
+          x.beginPath(); x.arc(m.x, m.y, 1.3, 0, 7); x.fill();
+        }
+
+        for (let r2 = ripples.length - 1; r2 >= 0; r2--) {
+          const rp = ripples[r2];
+          if (rp.r >= 0) {
+            rp.r += 3.4;
+            x.globalAlpha = Math.max(0, 0.42 - rp.r / 320);
+            x.strokeStyle = INK; x.lineWidth = 1.7;
+            x.beginPath(); x.arc(rp.x, rp.y, rp.r, 0, 7); x.stroke();
+            if (rp.r > 310) ripples.splice(r2, 1);
+          } else {
+            rp.life++;
+            const sx2 = rp.x + Math.cos(rp.a) * rp.v * rp.life;
+            const sy2 = rp.y + Math.sin(rp.a) * rp.v * rp.life - rp.life * rp.life * 0.02;
+            x.globalAlpha = Math.max(0, 1 - rp.life / 48);
+            x.fillStyle = INK;
+            x.beginPath(); x.arc(sx2, sy2, 1.6, 0, 7); x.fill();
+            if (rp.life > 52) ripples.splice(r2, 1);
+          }
+        }
+        x.globalAlpha = 1;
+        raf2 = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); disposers.forEach((f) => f()); };
   }, []);
-  return <canvas ref={ref} className="px-field" aria-hidden="true" />;
+  return (
+    <>
+      <canvas ref={stoneRef} className="px-stone" aria-hidden="true" />
+      <canvas ref={entRef} className="px-ent" aria-hidden="true" />
+    </>
+  );
 }

@@ -1705,9 +1705,9 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
    (game map, take cards, celebrations, pp-auto) are deliberate —
    framed art on the white. Cascade-ordered override layer.
    ═════════════════════════════════════════════════════════════ */
-body { background: #FDFCF9 !important; }
+body { background: #FFFFFF !important; }
 .mm-asteroids { display: none !important; }
-.px-field { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.px-stone, .px-ent { position: fixed; inset: 0; z-index: 0; width: 100vw; height: 100vh; pointer-events: none; }
 
 /* Heroes: porcelain panels, ink type, gold ember */
 .mm-hero, .pp-hero {
