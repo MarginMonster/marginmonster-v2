@@ -1836,6 +1836,11 @@ body[data-page="calendar"] { background-image: url(/bg/calendar.jpg) !important;
 body[data-page="performance"] { background-image: url(/bg/performance.jpg) !important; }
 body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
 
+/* the living island — ambient loop video above the body jpg, beneath all content */
+.em-bgvid { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .em-bgvid { display: none; } }
+@media (max-width: 900px) { .em-bgvid { display: none; } }
+
 /* overlay palms retired (looked cheap) — motion moves into the backgrounds themselves */
 .em-palm { display: none !important; }
 .mm-hud-head { height: 24px; width: auto; image-rendering: pixelated; align-self: center; }

@@ -161,10 +161,15 @@ export default function App() {
   const { apiKey, hud, levelUp } = useLoaderData<typeof loader>();
   const location = useLocation();
   // each page gets its own island scene (brand.css body[data-page] rules)
+  const [pageKey, setPageKey] = useState("dashboard");
   useEffect(() => {
     const seg = location.pathname.split("/")[2] || "dashboard";
     const alias: Record<string, string> = { assets: "queue", products: "seo", strategy: "campaigns", connect: "queue", funnels: "plans" };
-    document.body.dataset.page = alias[seg] ?? seg;
+    const KNOWN = ["dashboard", "campaigns", "videos", "seo", "queue", "calendar", "performance", "plans"];
+    const key = alias[seg] ?? seg;
+    const resolved = KNOWN.includes(key) ? key : "dashboard";
+    document.body.dataset.page = resolved;
+    setPageKey(resolved);
   }, [location.pathname]);
   const [showLevelUp, setShowLevelUp] = useState(!!levelUp);
   // re-arm when a new level-up flash arrives on a later revalidation
@@ -259,6 +264,18 @@ export default function App() {
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
+      {/* the living island — per-page ambient loop; poster/body bg carry when the clip is absent */}
+      <video
+        key={pageKey}
+        className="em-bgvid"
+        src={`/bg/${pageKey}.mp4`}
+        poster={`/bg/${pageKey}.jpg`}
+        muted
+        autoPlay
+        loop
+        playsInline
+        aria-hidden="true"
+      />
       <Outlet />
     </AppProvider>
   );
