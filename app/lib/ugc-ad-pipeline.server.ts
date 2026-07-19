@@ -2,7 +2,8 @@
  * raw video generation:
  *   1. SCRIPT  — Claude writes a ~13s hook-driven spoken script (AIDA/PAS) in
  *                the brand's voice
- *   2. VOICE   — minimax speech-02-turbo reads it (voice matched to presenter)
+ *   2. VOICE   — minimax speech-02-hd reads it with the presenter's own cast
+ *                signature (voice + pitch + speed + emotion; avatar-voices.json)
  *   3. TALKING — bytedance/omni-human: cast portrait + audio → lip-synced
  *                presenter performance ($0.14/s, ≤15s sweet spot)
  *   4. ASSEMBLY— ffmpeg: vertical 720x1280 canvas, product b-roll cut-in,
@@ -22,6 +23,7 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { animateAvatar, falEnabled } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
@@ -197,6 +199,24 @@ export function pickVoice(avatar: { id: string; gender: "f" | "m"; ageBand: "you
   });
   scored.sort((a, b) => b.score - a.score);
   return scored[0]?.id || "English_FriendlyPerson";
+}
+
+/** Hand-cast voice signatures — every presenter gets their OWN (voice, pitch,
+ *  speed) so no two avatars sound like the same person, and the base voice is
+ *  chosen to FIT the persona (not just gender/age buckets). Authored via the
+ *  audition board; pitch is MiniMax-native semitones (kept within ±3 so reads
+ *  stay natural). Precedence: VOICE_OVERRIDES pin > cast entry > scorer. */
+type VoiceCast = { voice: string; pitch: number; speed: number };
+const AVATAR_CAST = AVATAR_CAST_RAW as Record<string, VoiceCast>;
+
+export function castFor(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" }): VoiceCast & { emotion: string } {
+  const emotion = avatar.energy === "calm" ? "neutral" : "happy";
+  const pinned = VOICE_OVERRIDES[avatar.id];
+  const entry = AVATAR_CAST[avatar.id];
+  if (pinned) return { voice: pinned, pitch: entry?.pitch ?? 0, speed: entry?.speed ?? 1.0, emotion };
+  if (entry) return { ...entry, emotion };
+  const fallbackSpeed = avatar.energy === "hype" ? 1.08 : avatar.energy === "calm" ? 0.95 : 1.0;
+  return { voice: pickVoice(avatar), pitch: 0, speed: fallbackSpeed, emotion };
 }
 
 /* ---------- Caption + assembly helpers ---------- */
@@ -405,20 +425,18 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
 
   // 2) VOICE — TTS is 3s/$0.001, so regenerating on a dead resume URL is fine.
   // We always end up with the audio BYTES (validated), sent inline downstream.
-  // speech-02-hd + emotion/speed derived from the presenter's energy: the voice
-  // ACTS the persona instead of flat-reading it. Same mp3 feeds every engine
-  // (fal/HeyGen lip-sync, omni-human, kling voiceover), so this lifts all takes.
-  const delivery =
-    avatar.energy === "hype" ? { emotion: "happy", speed: 1.08 }
-    : avatar.energy === "warm" ? { emotion: "happy", speed: 1.0 }
-    : { emotion: "neutral", speed: 0.95 };
+  // speech-02-hd + the presenter's OWN cast signature (voice + pitch + speed +
+  // emotion): every avatar is a distinct, fitting speaker. Same mp3 feeds every
+  // engine (fal/HeyGen lip-sync, omni-human, kling voiceover) — lifts all takes.
+  const delivery = castFor(avatar);
   const freshTts = async (): Promise<string> => {
     try {
       const ttsId = await repCreate("minimax/speech-02-hd", {
         text: script,
-        voice_id: pickVoice(avatar),
+        voice_id: delivery.voice,
         emotion: delivery.emotion,
         speed: delivery.speed,
+        pitch: delivery.pitch,
         english_normalization: true,
         language_boost: "English",
       });
@@ -428,7 +446,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       console.log("[ugc:tts] hd+delivery failed, falling back to turbo:", (e as Error).message);
       const ttsId = await repCreate("minimax/speech-02-turbo", {
         text: script,
-        voice_id: pickVoice(avatar),
+        voice_id: delivery.voice,
       });
       return await repPoll(ttsId, 3 * 60_000, "tts");
     }
@@ -580,8 +598,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           style: "AI_AVATAR",
           engine,
           heldProduct, // the presenter is holding the product in-frame
-          voiceId: pickVoice(avatar), // which voice spoke — curation data
-          voiceDelivery: delivery, // emotion + speed the read was acted with
+          voiceId: delivery.voice, // which voice spoke — curation data
+          voiceDelivery: delivery, // full cast signature: pitch/speed/emotion
           videoUrl: `/renders/${fileName}`,
           prompt: script,
           script,
