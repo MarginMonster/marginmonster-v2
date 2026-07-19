@@ -34,7 +34,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { domain: session.shop },
     include: { activePlan: true },
   });
-  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video });
+  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video, stills: [] as { id: string; title: string; imageUrl: string | null; createdAt: Date }[], stillTokenCost: TOKEN_COST.image });
 
   const videos = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD" },
@@ -123,6 +123,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { linkedFromCache, socialProviderEnabled } = await import("../lib/social-provider.server");
   const linkedSocials = linkedFromCache(shop.socialsJson);
 
+  // 🖼 THE STILL LAB — recent image ads, newest first
+  const stillRows = await db.asset.findMany({
+    where: { shopId: shop.id, type: "IMAGE_AD" },
+    orderBy: { createdAt: "desc" },
+    take: 18,
+  });
+  const stills = stillRows.map((a) => {
+    let imageUrl: string | null = null;
+    try { imageUrl = (JSON.parse(a.bodyJson) as { imageUrl?: string }).imageUrl || null; } catch { /* ignore */ }
+    return { id: a.id, title: a.title || "Still", imageUrl, createdAt: a.createdAt };
+  }).filter((a) => !!a.imageUrl);
+
   return json({
     videos,
     plan: plan
@@ -136,6 +148,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     posterEnabled: socialProviderEnabled(),
     tokens: plan ? tokensRemaining(plan) : 0,
     videoTokenCost: TOKEN_COST.video,
+    stills,
+    stillTokenCost: TOKEN_COST.image,
     brandFace: shop.brandAvatarId
       ? { id: shop.brandAvatarId, variant: shop.brandAvatarVariant ?? 0 }
       : null,
@@ -312,6 +326,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       prePaid,
     });
     return json({ ok: true, queued: true });
+  }
+
+  // 🖼 THE STILL LAB — forge one image ad on demand. Pure token economy:
+  // every still costs TOKEN_COST.image from the wallet (prePaid skips any
+  // downstream quota accounting, matching how campaign drips pay).
+  if (intent === "generateImage") {
+    if (!shop.brandProfile) {
+      return json({ error: "Analyze your store first (on the dashboard) so stills match your brand." });
+    }
+    if (!shop.activePlan || !shop.activePlan.active) {
+      return json({ error: "Pick a package first — stills roll on tokens." });
+    }
+    const productTitle = (form.get("productTitle") as string)?.trim();
+    const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
+    if (!productTitle) return json({ error: "Pick a product for your still." });
+    try {
+      await spendTokens(shop.id, TOKEN_COST.image);
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." });
+    }
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, prePaid: true });
+    return json({ ok: true, stillQueued: true });
   }
 
   // ---- In-hand demo: compose "presenter holding the product" frames for the
@@ -537,7 +573,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Pick = { id: string | null; title: string; image: string | null; description: string };
 
 export default function Videos() {
-  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost, stills, stillTokenCost } = useLoaderData<typeof loader>();
+  const stillFx = useFetcher<typeof action>();
+  const [stillProduct, setStillProduct] = useState("");
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -1351,6 +1389,61 @@ export default function Videos() {
               </div>
             </BlockStack>
           )}
+        </Layout.Section>
+
+        {/* ── 🖼 THE STILL LAB — image ads on demand, tokens per shot ── */}
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center">
+                <Text as="h2" variant="headingMd">🖼 The Still Lab</Text>
+                <Badge tone="attention">{`${stillTokenCost} 🪙 per still`}</Badge>
+              </InlineStack>
+              <Text as="p" tone="subdued">
+                Scroll-stopping image ads for any product — same brand brain as your campaigns, ready in about a minute.
+              </Text>
+              <stillFx.Form method="post">
+                <input type="hidden" name="intent" value="generateImage" />
+                <input type="hidden" name="productTitle" value={products.find((p) => p.id === stillProduct)?.title || ""} />
+                <input type="hidden" name="productImageUrl" value={products.find((p) => p.id === stillProduct)?.image || ""} />
+                <InlineStack gap="300" blockAlign="end" wrap>
+                  <Box minWidth="260px">
+                    <Select
+                      label="Product"
+                      options={[{ label: "Pick a product…", value: "" }, ...products.map((p) => ({ label: p.title, value: p.id }))]}
+                      value={stillProduct}
+                      onChange={setStillProduct}
+                    />
+                  </Box>
+                  <Button submit variant="primary" disabled={!stillProduct || stillFx.state !== "idle"} loading={stillFx.state !== "idle"}>
+                    {`Forge still · ${stillTokenCost} 🪙`}
+                  </Button>
+                </InlineStack>
+              </stillFx.Form>
+              {stillFx.data && (stillFx.data as { stillQueued?: boolean }).stillQueued && (
+                <Banner tone="success"><p>Still queued — it lands in the gallery below in about a minute (refresh to see it).</p></Banner>
+              )}
+              {stillFx.data && (stillFx.data as { error?: string }).error && (
+                <Banner tone="warning"><p>{(stillFx.data as { error?: string }).error}</p></Banner>
+              )}
+              {stills.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
+                  {stills.map((st) => (
+                    <a key={st.id} href={st.imageUrl || "#"} target="_blank" rel="noreferrer" style={{ display: "block" }}>
+                      <img
+                        src={st.imageUrl || ""}
+                        alt={st.title}
+                        style={{ display: "block", width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 10, border: "1px solid rgba(20,18,31,.12)" }}
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <Text as="p" tone="subdued">No stills yet — forge your first one above.</Text>
+              )}
+            </BlockStack>
+          </Card>
         </Layout.Section>
       </Layout>
     </Page>
