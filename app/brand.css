@@ -1836,13 +1836,8 @@ body[data-page="calendar"] { background-image: url(/bg/calendar.jpg) !important;
 body[data-page="performance"] { background-image: url(/bg/performance.jpg) !important; }
 body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
 
-/* the island breeze — palms are their own layer so they can actually sway */
-.em-palm { position: fixed; bottom: -52px; height: 52vh; max-height: 500px; width: auto; z-index: 0; pointer-events: none; image-rendering: pixelated; transform-origin: bottom center; }
-.em-palm.l { left: -34px; animation: palmsway 7s ease-in-out infinite alternate; }
-.em-palm.r { right: -34px; animation: palmsway 8.6s ease-in-out infinite alternate-reverse; }
-@keyframes palmsway { from { transform: rotate(-1.7deg); } to { transform: rotate(1.4deg); } }
-@media (prefers-reduced-motion: reduce) { .em-palm { animation: none; } }
-@media (max-width: 900px) { .em-palm { display: none; } }
+/* overlay palms retired (looked cheap) — motion moves into the backgrounds themselves */
+.em-palm { display: none !important; }
 .mm-hud-head { height: 24px; width: auto; image-rendering: pixelated; align-self: center; }
 .em-beach { display: none; }
 @media (max-width: 900px) { .em-beach { display: none; } }

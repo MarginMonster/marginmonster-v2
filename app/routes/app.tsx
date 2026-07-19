@@ -259,8 +259,6 @@ export default function App() {
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
-      <img src="/bg/palm-left.png" className="em-palm l" alt="" aria-hidden="true" />
-      <img src="/bg/palm-right.png" className="em-palm r" alt="" aria-hidden="true" />
       <Outlet />
     </AppProvider>
   );
