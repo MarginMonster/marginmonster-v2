@@ -540,9 +540,13 @@ const WORLD_SETS: Record<string, WorldDef[]> = {
   ],
 };
 
-/* 🏝️ ISLAND ERA OVERRIDE — every campaign walks the blessed island journey.
- * Delete this single line to revert to the per-campaign classic sets above. */
-Object.assign(WORLD_SETS, { GET_SEEN: ISLAND, LAUNCH_IT: ISLAND, STAY_STEADY: ISLAND, OWN_THE_SEARCH: ISLAND });
+/* 🏝️ ISLAND ERA OVERRIDE — every campaign (diamond lines included) walks the
+ * blessed island journey. Delete this single line to revert to classic sets. */
+Object.assign(WORLD_SETS, {
+  CLASSIC: ISLAND,
+  GET_SEEN: ISLAND, LAUNCH_IT: ISLAND, STAY_STEADY: ISLAND, OWN_THE_SEARCH: ISLAND,
+  DAILY_FEED: ISLAND, VIDEO_STORM: ISLAND, AD_BLITZ: ISLAND, OMNIPRESENCE: ISLAND,
+});
 
 function worldsFor(setKey: string): WorldDef[] {
   return WORLD_SETS[setKey] || CLASSIC;
