@@ -1218,7 +1218,7 @@ export default function Videos() {
                         <video
                           src={body.videoUrl}
                           controls
-                          style={{ width: "100%", maxWidth: 320, borderRadius: 12 }}
+                          style={{ display: "block", width: "100%", maxWidth: 320, borderRadius: 12, margin: "0 auto" }}
                         />
                       ) : (
                         <Banner tone={pendingProvider ? "info" : "warning"}>
