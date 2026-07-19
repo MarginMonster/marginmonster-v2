@@ -285,17 +285,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 const NODE_ICON: Record<string, string> = { video: "🎬", image: "🖼", blog: "📝", post: "📣" };
 
-/* Each campaign's banner wears its finale world. */
+/* Each campaign's banner wears an island chapter (old w-* art kept on disk for revert). */
 const BANNER_ART: Record<string, string> = {
-  GET_SEEN: "/quests/w-gs4.jpg",
-  LAUNCH_IT: "/quests/w-li4.jpg",
-  STAY_STEADY: "/quests/w-ss4.jpg",
-  OWN_THE_SEARCH: "/quests/w-os4.jpg",
-  // diamond shelf — distinct art per line (own painted sets on the art backlog)
-  DAILY_FEED: "/quests/w-gs2.jpg",
-  VIDEO_STORM: "/quests/w-li3.jpg",
-  AD_BLITZ: "/quests/w-os2.jpg",
-  OMNIPRESENCE: "/quests/w-ss3.jpg",
+  GET_SEEN: "/quests/island-w4.jpg",
+  LAUNCH_IT: "/quests/island-w1.jpg",
+  STAY_STEADY: "/quests/island-w2.jpg",
+  OWN_THE_SEARCH: "/quests/island-w3.jpg",
+  // diamond shelf — island chapters spread for variety
+  DAILY_FEED: "/quests/island-w2.jpg",
+  VIDEO_STORM: "/quests/island-w3.jpg",
+  AD_BLITZ: "/quests/island-w1.jpg",
+  OMNIPRESENCE: "/quests/island-w4.jpg",
 };
 
 /* Benefit meters — the "difficulty bar" of a questline, but for what it pays
@@ -416,6 +416,32 @@ const CLASSIC: WorldDef[] = [
   },
 ];
 
+/* 🏝️ THE ISLAND JOURNEY (EasyMode era) — one blessed four-chapter arc:
+ * arrival beach → jungle interior → arcade cove → golden summit.
+ * Anchors kept sparse (sea ripples only) since the art carries its own life. */
+const ISLAND: WorldDef[] = [
+  {
+    src: "/quests/island-w1.jpg", biome: "meadow",
+    route: [[90, 470], [300, 430], [520, 450], [760, 420], [980, 440], [1200, 420], [1470, 430]],
+    anchors: [{ kind: "ripple", x: 1100, y: 330 }, { kind: "wave", x: 900, y: 345 }],
+  },
+  {
+    src: "/quests/island-w2.jpg", biome: "meadow",
+    route: [[100, 560], [350, 540], [600, 560], [820, 540], [1050, 480], [1250, 440], [1470, 460]],
+    anchors: [{ kind: "ripple", x: 900, y: 435 }],
+  },
+  {
+    src: "/quests/island-w3.jpg", biome: "meadow",
+    route: [[90, 520], [330, 545], [560, 540], [790, 520], [1020, 530], [1250, 540], [1470, 500]],
+    anchors: [{ kind: "ripple", x: 700, y: 400 }, { kind: "wave", x: 780, y: 425 }],
+  },
+  {
+    src: "/quests/island-w4.jpg", biome: "meadow",
+    route: [[80, 560], [300, 580], [540, 560], [760, 520], [900, 430], [1000, 330], [1020, 250]],
+    anchors: [{ kind: "ripple", x: 300, y: 600 }, { kind: "wave", x: 1200, y: 580 }],
+  },
+];
+
 /* Campaign world sets — every campaign owns a themed, tuned 4-world map.
  * GET SEEN: a celebration tour. LAUNCH IT: jungle camp to the beacon.
  * STAY STEADY: the four seasons. OWN THE SEARCH: an archaeology expedition. */
@@ -513,6 +539,10 @@ const WORLD_SETS: Record<string, WorldDef[]> = {
     },
   ],
 };
+
+/* 🏝️ ISLAND ERA OVERRIDE — every campaign walks the blessed island journey.
+ * Delete this single line to revert to the per-campaign classic sets above. */
+Object.assign(WORLD_SETS, { GET_SEEN: ISLAND, LAUNCH_IT: ISLAND, STAY_STEADY: ISLAND, OWN_THE_SEARCH: ISLAND });
 
 function worldsFor(setKey: string): WorldDef[] {
   return WORLD_SETS[setKey] || CLASSIC;
