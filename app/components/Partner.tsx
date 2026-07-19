@@ -14,10 +14,10 @@ export const PARTNER_BY_PLAN: Record<
   PlanKey,
   { tier: 1 | 2 | 3 | 4; accent: string; name: string; klass: string; img: string }
 > = {
-  STARTER: { tier: 1, accent: "#34E7E4", name: "BYTE", klass: "Rookie", img: "byte" },
-  GROWTH: { tier: 2, accent: "#FF3D8B", name: "KILO", klass: "Runner", img: "kilo" },
-  PRO: { tier: 3, accent: "#FFB020", name: "MEGA", klass: "Champion", img: "mega" },
-  SCALE: { tier: 4, accent: "#B77BFF", name: "GIGA", klass: "Legend", img: "giga" },
+  STARTER: { tier: 1, accent: "#3ED598", name: "SPROUT", klass: "Rookie", img: "sprout" },
+  GROWTH: { tier: 2, accent: "#F0B429", name: "OG", klass: "Runner", img: "og" },
+  PRO: { tier: 3, accent: "#E2503C", name: "STRONG", klass: "Champion", img: "strong" },
+  SCALE: { tier: 4, accent: "#B77BFF", name: "REX", klass: "Legend", img: "rex" },
 };
 
 export function Partner({
@@ -44,7 +44,7 @@ export function Partner({
   // also multiplies this for the sway/float/aura layers). Quarter-cycle spread
   // across the four partners = maximum visual desync. Deterministic, so server
   // and client render identically (no hydration mismatch).
-  const STAGGER: Record<string, number> = { byte: 0, kilo: -0.3, mega: -0.6, giga: -0.9, chaos: -0.45 };
+  const STAGGER: Record<string, number> = { sprout: 0, og: -0.3, strong: -0.6, rex: -0.9, chaos: -0.45 };
   const stagger = STAGGER[img] ?? -((img.length * 7) % 11) / 10;
   return (
     <span

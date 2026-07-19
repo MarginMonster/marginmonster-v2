@@ -1566,7 +1566,7 @@ export default function Campaigns() {
   };
 
   // The partner never bluffs — every line below derives from real state.
-  const pName = partner?.name || "BYTE";
+  const pName = partner?.name || "OG";
   const upcoming = active
     .flatMap((q) => q.slots)
     .filter((s) => s.status === "SCHEDULED" || s.status === "FORGING")

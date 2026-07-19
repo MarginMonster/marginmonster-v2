@@ -124,10 +124,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // Partner / stage labels so the dashboard reflects the arcade plan names
 // (kept in sync with FIGHTERS in app.plans.tsx).
 const PLAN_LABELS: Record<string, { fighter: string; rank: string }> = {
-  STARTER: { fighter: "BYTE", rank: "Starter" },
-  GROWTH: { fighter: "KILO", rank: "Growth" },
-  PRO: { fighter: "MEGA", rank: "Rapid Growth" },
-  SCALE: { fighter: "GIGA", rank: "Commercial Growth" },
+  STARTER: { fighter: "SPROUT", rank: "Starter" },
+  GROWTH: { fighter: "OG", rank: "Growth" },
+  PRO: { fighter: "STRONG", rank: "Rapid Growth" },
+  SCALE: { fighter: "REX", rank: "Commercial Growth" },
 };
 const planLabel = (type: string) => {
   const l = PLAN_LABELS[type];
