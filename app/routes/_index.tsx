@@ -31,19 +31,14 @@ export default function Index() {
         padding: 24,
       }}
     >
-      {/* EasyMode — the switch, flipped ON */}
-      <svg width="104" height="104" viewBox="0 0 512 512" role="img" aria-label="EasyMode" style={{ marginBottom: 20 }}>
-        <defs>
-          <linearGradient id="au" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#F5CE62" /><stop offset="55%" stopColor="#F0B429" /><stop offset="100%" stopColor="#C98F12" />
-          </linearGradient>
-        </defs>
-        <rect x="16" y="16" width="480" height="480" rx="112" fill="#14121F" />
-        <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="url(#au)" strokeWidth="8" opacity="0.9" />
-        <rect x="96" y="186" width="320" height="140" rx="70" fill="none" stroke="url(#au)" strokeWidth="16" />
-        <circle cx="346" cy="256" r="46" fill="url(#au)" />
-        <circle cx="332" cy="242" r="12" fill="#FFF6DC" opacity="0.85" />
-      </svg>
+      {/* EasyMode — the monkey above the name */}
+      <img
+        src="/easymode-head.png"
+        width="132"
+        height="104"
+        alt="EasyMode monkey"
+        style={{ marginBottom: 14, imageRendering: "pixelated", objectFit: "contain" }}
+      />
       <h1 style={{ fontFamily: "Poppins, sans-serif", fontSize: 40, fontWeight: 800, margin: 0 }}>
         Easy<span style={{ color: "#F0B429" }}>Mode</span>
         <span style={{ color: "#F5C451", fontSize: 24 }}>.io</span>

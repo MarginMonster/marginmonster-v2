@@ -196,6 +196,7 @@ export default function App() {
         {hudMin ? (
           <div className="mm-hud-body">
             <div className="mm-hud-top">
+              <img src="/easymode-head.png" className="mm-hud-head" alt="" />
               <span className="mm-hud-lvl" title={`Level ${hud.level} · ${hud.xpNeed - hud.xpInto} XP to level ${hud.level + 1}`}>LVL {hud.level}</span>
               <span className="mm-hud-stat" title="Token balance">🪙 {hud.tokens.toLocaleString()}</span>
               <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Expand HUD" aria-label="Expand HUD">▾</button>
@@ -204,6 +205,7 @@ export default function App() {
         ) : (
           <div className="mm-hud-body">
             <div className="mm-hud-top">
+              <img src="/easymode-head.png" className="mm-hud-head" alt="" />
               <span className="mm-hud-name">{hud.name}</span>
               <span className="mm-hud-lvl" title={`Level ${hud.level} — earn XP by forging, applying & spending tokens`}>LVL {hud.level}</span>
               <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
@@ -250,6 +252,7 @@ export default function App() {
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
+      <img src="/easymode-beach.png" className="em-beach" alt="" aria-hidden="true" />
       <Outlet />
     </AppProvider>
   );

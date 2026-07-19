@@ -1822,3 +1822,15 @@ body::before, body::after { display: none !important; }
 .pp-hero::before, .mm-hero::before { content: ""; position: absolute; top: 0; left: 24px; right: 24px; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, transparent, #F0B429 18%, #FFE9A8 50%, #F0B429 82%, transparent); opacity: .85; z-index: 1; }
 
 @media (prefers-reduced-motion: reduce) { .pp-stat .v .g::before { animation: none; } }
+
+/* ═══════════ 🏝️🐒 EASYMODE ISLAND — crowned 2026-07-19 ═══════════
+   Arcade on a deserted island: pixel cabinet beach behind a heavy top
+   veil, the monkey head in the HUD, Shades holding down the sand. */
+body {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.8) 40%, rgba(255,252,244,.6)),
+    url(/easymode-island.jpg) center bottom / cover fixed no-repeat !important;
+}
+.mm-hud-head { height: 24px; width: auto; image-rendering: pixelated; align-self: center; }
+.em-beach { position: fixed; bottom: 10px; left: 2.4%; height: 118px; z-index: 0; pointer-events: none; image-rendering: pixelated; }
+@media (max-width: 900px) { .em-beach { display: none; } }
