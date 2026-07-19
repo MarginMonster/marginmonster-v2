@@ -1826,11 +1826,23 @@ body::before, body::after { display: none !important; }
 /* ═══════════ 🏝️🐒 EASYMODE ISLAND — crowned 2026-07-19 ═══════════
    Arcade on a deserted island: pixel cabinet beach behind a heavy top
    veil, the monkey head in the HUD, Shades holding down the sand. */
-body {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.8) 40%, rgba(255,252,244,.6)),
-    url(/easymode-island.jpg) center bottom / cover fixed no-repeat !important;
-}
+/* per-page island scenes — bright open centers, no veil (user: overlays are trash) */
+body { background: #FAF9F6 url(/bg/dashboard.jpg) center bottom / cover fixed no-repeat !important; }
+body[data-page="campaigns"] { background-image: url(/bg/campaigns.jpg) !important; }
+body[data-page="videos"] { background-image: url(/bg/videos.jpg) !important; }
+body[data-page="seo"] { background-image: url(/bg/seo.jpg) !important; }
+body[data-page="queue"] { background-image: url(/bg/queue.jpg) !important; }
+body[data-page="calendar"] { background-image: url(/bg/calendar.jpg) !important; }
+body[data-page="performance"] { background-image: url(/bg/performance.jpg) !important; }
+body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
+
+/* the island breeze — palms are their own layer so they can actually sway */
+.em-palm { position: fixed; bottom: -16px; height: 46vh; max-height: 440px; width: auto; z-index: 0; pointer-events: none; image-rendering: pixelated; transform-origin: bottom center; }
+.em-palm.l { left: -34px; animation: palmsway 7s ease-in-out infinite alternate; }
+.em-palm.r { right: -34px; animation: palmsway 8.6s ease-in-out infinite alternate-reverse; }
+@keyframes palmsway { from { transform: rotate(-1.7deg); } to { transform: rotate(1.4deg); } }
+@media (prefers-reduced-motion: reduce) { .em-palm { animation: none; } }
+@media (max-width: 900px) { .em-palm { display: none; } }
 .mm-hud-head { height: 24px; width: auto; image-rendering: pixelated; align-self: center; }
-.em-beach { position: fixed; bottom: 10px; left: 2.4%; height: 118px; z-index: 0; pointer-events: none; image-rendering: pixelated; }
+.em-beach { display: none; }
 @media (max-width: 900px) { .em-beach { display: none; } }

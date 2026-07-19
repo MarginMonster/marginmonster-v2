@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
+import { Link, Outlet, useLoaderData, useLocation, useRouteError } from "@remix-run/react";
 import { useState, useEffect, useRef } from "react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
@@ -159,6 +159,13 @@ function LevelUpPopup({ level, gift, img, accent, srcs, onClose }: { level: numb
 
 export default function App() {
   const { apiKey, hud, levelUp } = useLoaderData<typeof loader>();
+  const location = useLocation();
+  // each page gets its own island scene (brand.css body[data-page] rules)
+  useEffect(() => {
+    const seg = location.pathname.split("/")[2] || "dashboard";
+    const alias: Record<string, string> = { assets: "queue", products: "seo", strategy: "campaigns", connect: "queue", funnels: "plans" };
+    document.body.dataset.page = alias[seg] ?? seg;
+  }, [location.pathname]);
   const [showLevelUp, setShowLevelUp] = useState(!!levelUp);
   // re-arm when a new level-up flash arrives on a later revalidation
   useEffect(() => { setShowLevelUp(!!levelUp); }, [levelUp]);
@@ -252,7 +259,8 @@ export default function App() {
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
-      <img src="/easymode-beach.png" className="em-beach" alt="" aria-hidden="true" />
+      <img src="/bg/palm-left.png" className="em-palm l" alt="" aria-hidden="true" />
+      <img src="/bg/palm-right.png" className="em-palm r" alt="" aria-hidden="true" />
       <Outlet />
     </AppProvider>
   );
