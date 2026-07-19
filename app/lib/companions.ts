@@ -6,7 +6,7 @@
  * flicker frames as the animation program lands. Client-safe: no server
  * imports. */
 
-export type CompanionCategory = "troop" | "beast" | "monster" | "undead" | "fantasy" | "human" | "scifi" | "mythic";
+export type CompanionCategory = "troop" | "others";
 
 export type CompanionDef = {
   id: string;
@@ -16,17 +16,11 @@ export type CompanionDef = {
   accent: string; // aura color
 };
 
-export const COMPANION_V = "2"; // bump to bust image cache on regen
+export const COMPANION_V = "3"; // bump to bust image cache on regen
 
 export const CATEGORY_LABEL: Record<CompanionCategory, string> = {
-  troop: "🐒 The Troop",
-  beast: "🦊 Beast-folk",
-  monster: "👾 Monsters",
-  undead: "💀 Undead",
-  fantasy: "⚔️ Fantasy",
-  human: "🧑 Humans",
-  scifi: "🛸 Sci-fi",
-  mythic: "🐉 Mythics",
+  troop: "🐒 Partner Monkeys",
+  others: "✨ Others",
 };
 
 export const COMPANIONS: CompanionDef[] = [
@@ -58,16 +52,16 @@ export const COMPANIONS: CompanionDef[] = [
   { id: "lobster", name: "LOBSTER", vibe: "Snappy campaigns", cat: "troop", accent: "#e24b4a" },
   { id: "knight", name: "SIR MONKALOT", vibe: "Defends the brand", cat: "troop", accent: "#c9ccd6" },
   // Legends of the old world
-  { id: "mummsy", name: "WRAPS", vibe: "Fully bandaged brand", cat: "undead", accent: "#d9c9a0" },
-  { id: "ghosty", name: "BOOBERT", vibe: "Transparent reporting", cat: "undead", accent: "#cfd0ee" },
-  { id: "shroom", name: "PORTOBELLO", vibe: "Fun guy", cat: "monster", accent: "#e24b4a" },
-  { id: "viking", name: "BJORN", vibe: "Raids the charts", cat: "human", accent: "#38bdf8" },
-  { id: "greyby", name: "ZORP", vibe: "Definitely not spying", cat: "scifi", accent: "#8ee89c" },
-  { id: "robo", name: "BLEEP", vibe: "Beep boop, budget optimized", cat: "scifi", accent: "#34E7E4" },
-  { id: "mechacat", name: "NEKO-9", vibe: "Purrs in binary", cat: "scifi", accent: "#38bdf8" },
-  { id: "ufosquid", name: "UFSEO", vibe: "Probing the market", cat: "scifi", accent: "#c084fc" },
-  { id: "droid", name: "UNIT-7", vibe: "Compliance is joy", cat: "scifi", accent: "#e8e8f0" },
-  { id: "unicot", name: "PRISM", vibe: "Actually a unicorn", cat: "mythic", accent: "#f2a3c4" },
+  { id: "mummsy", name: "WRAPS", vibe: "Fully bandaged brand", cat: "others", accent: "#d9c9a0" },
+  { id: "ghosty", name: "BOOBERT", vibe: "Transparent reporting", cat: "others", accent: "#cfd0ee" },
+  { id: "shroom", name: "PORTOBELLO", vibe: "Fun guy", cat: "others", accent: "#e24b4a" },
+  { id: "viking", name: "BJORN", vibe: "Raids the charts", cat: "others", accent: "#38bdf8" },
+  { id: "greyby", name: "ZORP", vibe: "Definitely not spying", cat: "others", accent: "#8ee89c" },
+  { id: "robo", name: "BLEEP", vibe: "Beep boop, budget optimized", cat: "others", accent: "#34E7E4" },
+  { id: "mechacat", name: "NEKO-9", vibe: "Purrs in binary", cat: "others", accent: "#38bdf8" },
+  { id: "ufosquid", name: "UFSEO", vibe: "Probing the market", cat: "others", accent: "#c084fc" },
+  { id: "droid", name: "UNIT-7", vibe: "Compliance is joy", cat: "others", accent: "#e8e8f0" },
+  { id: "unicot", name: "PRISM", vibe: "Actually a unicorn", cat: "others", accent: "#f2a3c4" },
 ];
 
 export const COMPANION_BY_ID: Record<string, CompanionDef> = Object.fromEntries(
