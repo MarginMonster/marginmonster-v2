@@ -1,4 +1,4 @@
-# AdArcade — design system v2: "One arcade, many cabinets"
+# EasyMode — design system v2: "One arcade, many cabinets"
 
 > **North star:** classic golden-age arcade — lively, vibrant, upbeat, encouraging,
 > and extremely simple to use. Think vintage Donkey Kong marquee art, Pac-Man dots,

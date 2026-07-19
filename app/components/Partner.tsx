@@ -1,4 +1,4 @@
-/* AdArcade partners — AI-rendered vintage monster companions (90s
+/* EasyMode partners — AI-rendered vintage monster companions (90s
  * creature-collector vibe), one per plan tier. TRUE sprite animation: each
  * partner has multiple art frames (base / blink / cheer) generated via img2img
  * from the same render so the character stays consistent, hard-cut like a real

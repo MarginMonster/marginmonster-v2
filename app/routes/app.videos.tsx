@@ -189,7 +189,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ) {
         return json({ pullError: "That URL isn't allowed." });
       }
-      const ua = { "user-agent": "Mozilla/5.0 (compatible; AdArcade product import)", accept: "text/html,application/json" };
+      const ua = { "user-agent": "Mozilla/5.0 (compatible; EasyMode product import)", accept: "text/html,application/json" };
 
       // Shopify storefront shortcut: /products/{handle}.js returns clean JSON
       if (/\/products\/[^/?#]+\/?$/.test(u.pathname)) {
@@ -463,7 +463,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             userErrors { message }
           }
         }`,
-        { variables: { input: [{ resource: "VIDEO", filename: "adarcade-take.mp4", mimeType: "video/mp4", fileSize: String(buf.length), httpMethod: "POST" }] } }
+        { variables: { input: [{ resource: "VIDEO", filename: "easymode-take.mp4", mimeType: "video/mp4", fileSize: String(buf.length), httpMethod: "POST" }] } }
       );
       const sj = (await staged.json()) as {
         data?: { stagedUploadsCreate?: { stagedTargets?: { url: string; resourceUrl: string; parameters: { name: string; value: string }[] }[]; userErrors?: { message: string }[] } };
@@ -475,7 +475,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // 2) upload the bytes
       const fd = new FormData();
       for (const p of target.parameters) fd.append(p.name, p.value);
-      fd.append("file", new Blob([buf], { type: "video/mp4" }), "adarcade-take.mp4");
+      fd.append("file", new Blob([buf], { type: "video/mp4" }), "easymode-take.mp4");
       const up = await fetch(target.url, { method: "POST", body: fd });
       if (!up.ok && up.status !== 201) return json({ opError: `Upload failed (${up.status}).` });
 
@@ -487,7 +487,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             mediaUserErrors { message }
           }
         }`,
-        { variables: { productId, media: [{ mediaContentType: "VIDEO", originalSource: target.resourceUrl, alt: asset.title || "AdArcade video" }] } }
+        { variables: { productId, media: [{ mediaContentType: "VIDEO", originalSource: target.resourceUrl, alt: asset.title || "EasyMode video" }] } }
       );
       const mj = (await media.json()) as { data?: { productCreateMedia?: { mediaUserErrors?: { message: string }[] } } };
       const errs2 = mj.data?.productCreateMedia?.mediaUserErrors || [];

@@ -1,4 +1,4 @@
-# AdArcade — Shopify App Store Listing (copy/paste)
+# EasyMode — Shopify App Store Listing (copy/paste)
 
 Every field the Shopify App Store submission asks for. Character limits noted in **(…)**.
 
@@ -6,16 +6,16 @@ Every field the Shopify App Store submission asks for. Character limits noted in
 
 ## App name  (max 30 chars)
 ```
-AdArcade — AI Marketing
+EasyMode — AI Marketing
 ```
 Alternates (all ≤30):
 ```
-AdArcade: Marketing Autopilot
-AdArcade — AI Ads & Content
+EasyMode: Marketing Autopilot
+EasyMode — AI Ads & Content
 ```
 
 ## App icon
-`AdArcade-app-icon.jpg` — cyan play button in a CRT arcade screen (1200×1200).
+`EasyMode-app-icon.jpg` — cyan play button in a CRT arcade screen (1200×1200).
 
 ## Subtitle / app-card tagline  (max 62 chars)
 ```
@@ -24,7 +24,7 @@ AI content, videos & ads that run your marketing on autopilot
 
 ## App introduction  (max 100 chars — the search one-liner)
 ```
-AdArcade writes your blogs, makes product videos, runs ads, and tracks ROI — automatically.
+EasyMode writes your blogs, makes product videos, runs ads, and tracks ROI — automatically.
 ```
 
 ---
@@ -33,11 +33,11 @@ AdArcade writes your blogs, makes product videos, runs ads, and tracks ROI — a
 
 **Your store's marketing, fully on autopilot.**
 
-You didn't start a business to spend your nights writing blog posts, editing videos, and babysitting ad campaigns. AdArcade studies your brand and quietly runs your marketing for you — so your store keeps growing whether you're working or not.
+You didn't start a business to spend your nights writing blog posts, editing videos, and babysitting ad campaigns. EasyMode studies your brand and quietly runs your marketing for you — so your store keeps growing whether you're working or not.
 
-Unlike generic AI tools, AdArcade is grounded in *your* real products and brand voice. Every blog, video, and ad it creates sounds and looks like you — not like a template.
+Unlike generic AI tools, EasyMode is grounded in *your* real products and brand voice. Every blog, video, and ad it creates sounds and looks like you — not like a template.
 
-**What AdArcade does for you, on autopilot:**
+**What EasyMode does for you, on autopilot:**
 
 - **SEO blog posts** that rank for what your customers actually Google, published to your store on a schedule to pull in free organic traffic.
 - **Product videos** built from your catalog — UGC-style avatars or slick product highlights — formatted for TikTok, Reels, and Shorts.
@@ -109,7 +109,7 @@ ai marketing, marketing automation, seo blog, blog posts, ai content, product vi
 ---
 
 ## Screenshots to upload  (min 3 · 1600×900 · with captions)
-1. **Dashboard** — "AdArcade studies your store and runs the marketing." (hero + brand profile with real product thumbnails)
+1. **Dashboard** — "EasyMode studies your store and runs the marketing." (hero + brand profile with real product thumbnails)
 2. **Choose your plan** — "Pick your plan and go." (the arcade tier grid with 'Most popular')
 3. **Content queue** — "Review everything before it goes live." (a generated blog + image ad awaiting approval)
 4. **Video Studio** — "Scroll-stopping product videos in a click." (prompt + style picker + generated video)

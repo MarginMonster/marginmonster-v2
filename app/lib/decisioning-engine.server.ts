@@ -62,7 +62,7 @@ async function evaluateCampaign(campaign: {
       impressions: perf.impressions,
       clicks: perf.clicks,
       conversions: perf.conversions,
-      spendCents,
+      spendCents: spentCents,
       revenueCents: Math.round(perf.revenue * 100),
       roas: perf.roas,
     },

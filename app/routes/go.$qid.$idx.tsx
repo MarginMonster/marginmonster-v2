@@ -35,7 +35,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 
       const base = slot?.productUrl || `https://${q.shop.domain}`;
       const u = new URL(base);
-      u.searchParams.set("utm_source", "adarcade");
+      u.searchParams.set("utm_source", "easymode");
       u.searchParams.set("utm_medium", "social");
       u.searchParams.set("utm_campaign", q.template.toLowerCase());
       u.searchParams.set("utm_content", `day${slot?.day ?? 0}`);

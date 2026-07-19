@@ -1,15 +1,15 @@
-# AdArcade — Shopify App Store Listing Copy
+# EasyMode — Shopify App Store Listing Copy
 
 Fill these into the Partner Dashboard → App listing. Character limits noted where Shopify enforces them.
 
 ---
 
 ## App name
-**AdArcade: AI Marketing**
-*(alt if name taken: "AdArcade — Ads & Content AI")*
+**EasyMode: AI Marketing**
+*(alt if name taken: "EasyMode — Ads & Content AI")*
 
 ## App icon
-`adarcade-icon-1200.png` — cyan play button glowing inside a retro CRT arcade screen on deep space-indigo. (Vector master: `public/adarcade-icon.svg`.)
+`easymode-icon-1200.png` — cyan play button glowing inside a retro CRT arcade screen on deep space-indigo. (Vector master: `public/easymode-icon.svg`.)
 
 ## Primary category
 Marketing and conversion → **Advertising**
@@ -29,7 +29,7 @@ Alternates:
 ---
 
 ## App introduction  (≤ 100 chars — the one-liner in search)
-AdArcade generates content, launches ads, and tracks ROI automatically — grounded in your store.
+EasyMode generates content, launches ads, and tracks ROI automatically — grounded in your store.
 
 ---
 
@@ -37,9 +37,9 @@ AdArcade generates content, launches ads, and tracks ROI automatically — groun
 
 **Grow your store while you live your life.**
 
-You didn't start a business to spend nights writing blog posts, editing videos, and babysitting ad campaigns. AdArcade studies your brand and quietly does the marketing for you — so your store grows whether you're working or not.
+You didn't start a business to spend nights writing blog posts, editing videos, and babysitting ad campaigns. EasyMode studies your brand and quietly does the marketing for you — so your store grows whether you're working or not.
 
-Unlike generic AI tools, AdArcade is grounded in *your* real products and brand voice. Everything it makes sounds and looks like you.
+Unlike generic AI tools, EasyMode is grounded in *your* real products and brand voice. Everything it makes sounds and looks like you.
 
 **What it does, on autopilot:**
 
@@ -67,7 +67,7 @@ Unlike generic AI tools, AdArcade is grounded in *your* real products and brand 
 
 Need more? Top up with tokens anytime. Cancel or switch whenever you like.
 
-**Why merchants choose AdArcade:**
+**Why merchants choose EasyMode:**
 - Set-and-forget marketing that runs 24/7
 - Every post, video, and ad built from your actual products
 - Real ROI tracking, not vanity metrics
@@ -90,7 +90,7 @@ ai marketing, marketing automation, seo blog, blog posts, ai content, product vi
 ---
 
 ## Demo store / screenshots to capture (in order)
-1. Dashboard — AdArcade hero + brand profile ("We've studied your store") with real product thumbnails
+1. Dashboard — EasyMode hero + brand profile ("We've studied your store") with real product thumbnails
 2. Choose your plan — the arcade "Choose Your Fighter" tier grid with "Most popular"
 3. Content queue — a generated blog post + image ad awaiting review
 4. Video Studio — prompt + style picker + a generated video

@@ -18,11 +18,11 @@ export default function Privacy() {
 
   return (
     <div style={wrap}>
-      <h1 style={h1}>AdArcade — Privacy Policy</h1>
+      <h1 style={h1}>EasyMode — Privacy Policy</h1>
       <p style={{ color: "#6B5F4F", marginTop: 0 }}>Last updated: July 2026</p>
 
       <p>
-        AdArcade ("we", "the app") helps Shopify merchants generate marketing
+        EasyMode ("we", "the app") helps Shopify merchants generate marketing
         content and run advertising campaigns. This policy explains what data we
         access, why, and how we protect it.
       </p>

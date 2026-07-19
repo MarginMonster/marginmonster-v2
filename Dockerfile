@@ -1,4 +1,4 @@
-# AdArcade — Docker runtime for Render.
+# EasyMode — Docker runtime for Render.
 # Why Docker: the UGC ad pipeline needs a FULL ffmpeg (drawtext/freetype for
 # burned-in captions). npm's static Linux build lacks filters; Debian's ffmpeg
 # has the complete set. openssl is required by Prisma on slim images.

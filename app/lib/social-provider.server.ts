@@ -64,11 +64,11 @@ export async function connectUrl(shopId: string, returnUrl?: string): Promise<st
       headers: { ...authHeader(), "Content-Type": "application/json" },
       body: JSON.stringify({
         username,
-        connect_title: "Connect your socials to AdArcade",
+        connect_title: "Connect your socials to EasyMode",
         connect_description: "Link TikTok, Instagram, and Facebook — your campaigns auto-post from here. Hands off, all month.",
         platforms: ["tiktok", "instagram", "facebook"],
         show_calendar: false,
-        ...(returnUrl ? { redirect_url: returnUrl, redirect_button_text: "← Back to AdArcade" } : {}),
+        ...(returnUrl ? { redirect_url: returnUrl, redirect_button_text: "← Back to EasyMode" } : {}),
       }),
     });
     if (!r.ok) {
@@ -136,7 +136,7 @@ export async function publishPost(
     } else {
       const mediaRes = await fetch(mediaAbs);
       if (!mediaRes.ok) return { ok: false, error: `media-${mediaRes.status}` };
-      form.append("photos[]", await mediaRes.blob(), "adarcade.jpg");
+      form.append("photos[]", await mediaRes.blob(), "easymode.jpg");
     }
 
     const r = await fetch(`${API}/${params.isVideo ? "upload" : "upload_photos"}`, {
