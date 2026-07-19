@@ -1837,7 +1837,8 @@ body[data-page="performance"] { background-image: url(/bg/performance.jpg) !impo
 body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
 
 /* the living island — ambient loop video above the body jpg, beneath all content */
-.em-bgvid { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
+.em-bgvid { display: none !important; } /* v1 loops benched (motion too timid) — cinema pass pending review */
+.em-bgvid-armed { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .em-bgvid { display: none; } }
 @media (max-width: 900px) { .em-bgvid { display: none; } }
 
