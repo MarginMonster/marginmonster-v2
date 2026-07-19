@@ -1780,3 +1780,7 @@ body { background: linear-gradient(180deg, #FEFDFB 0%, #FAF8F2 60%, #F6F3EA 100%
   .pp-cta-hero, .mm-arcade-btn, .mm-hero-cta { animation: none !important; }
   .pp-hero h1 em { animation: none !important; }
 }
+
+/* PARADOX v3: the arcade-era CRT overlays are retired — scanlines and ghost
+   dots were striping the porcelain ("trailer park" verdict, correctly) */
+body::before, body::after { display: none !important; }

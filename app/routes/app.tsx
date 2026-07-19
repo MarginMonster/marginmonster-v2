@@ -263,10 +263,10 @@ export function ErrorBoundary() {
 export const headers = boundary.headers;
 
 
-/** 🌘 MARBLE VOID — the Paradox ground, v2. White void with smoky marble
- *  veining, a confident ink-star field, and edge ANOMALIES (ringed planet,
- *  hairline constellation, crescent, ink swirl) plus the rare ink comet.
- *  Anomalies live at the viewport edges — never behind content. */
+/** 🌘 MARBLE VOID v3 — premium pass. Retina-crisp, anchored to the PAGE
+ *  (scrolls with content via a seamless vertical tile — no dirt-on-glass),
+ *  four-point star sparkles instead of dust, structured diagonal marble
+ *  veining that actually reads, edge anomalies, elegant rare comets. */
 function ParadoxField() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -274,125 +274,191 @@ function ParadoxField() {
     if (!c || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const x = c.getContext("2d");
     if (!x) return;
-    let W = 0, H = 0, raf = 0;
-    const stat = document.createElement("canvas");
-    const sx = stat.getContext("2d");
-    if (!sx) return;
+    const INK = "#14121F", GOLD = "#C98F12";
+    let W = 0, H = 0, TILE = 0, dpr = 1, raf = 0;
+    const tile = document.createElement("canvas");
+    let tx: CanvasRenderingContext2D | null = null;
 
-    // ------- static layer: marble veins + anomalies (repainted on resize)
-    const paintStatic = () => {
-      sx.clearRect(0, 0, W, H);
-      const vein = (x0: number, y0: number, steps: number, alpha: number, color: string, width: number) => {
-        sx.strokeStyle = color; sx.globalAlpha = alpha; sx.lineWidth = width; sx.lineCap = "round";
-        sx.beginPath(); sx.moveTo(x0, y0);
-        let px = x0, py = y0, ang = Math.random() * 6.28;
-        for (let i = 0; i < steps; i++) {
-          ang += (Math.random() - 0.5) * 1.1;
-          const len = 60 + Math.random() * 120;
-          const nx = px + Math.cos(ang) * len, ny = py + Math.sin(ang) * len;
-          sx.quadraticCurveTo(px + Math.cos(ang + 0.5) * len * 0.5, py + Math.sin(ang + 0.5) * len * 0.5, nx, ny);
+    // one four-point sparkle (the ✦ form) at crisp scale
+    const sparklePath = (g: CanvasRenderingContext2D, px: number, py: number, r: number) => {
+      const k = r * 0.22;
+      g.beginPath();
+      g.moveTo(px, py - r);
+      g.quadraticCurveTo(px + k, py - k, px + r, py);
+      g.quadraticCurveTo(px + k, py + k, px, py + r);
+      g.quadraticCurveTo(px - k, py + k, px - r, py);
+      g.quadraticCurveTo(px - k, py - k, px, py - r);
+      g.closePath();
+    };
+
+    // stars live in TILE space and repeat forever down the page
+    type Star = { x: number; y: number; r: number; p: number; s: number; gold: boolean };
+    let stars: Star[] = [];
+
+    const paintTile = () => {
+      tx = tile.getContext("2d");
+      if (!tx) return;
+      tx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      tx.clearRect(0, 0, W, TILE);
+      // ---- marble: one consistent diagonal flow (~-28°) ----
+      const ang = -0.49;
+      // broad smoke bands
+      for (let i = 0; i < 3; i++) {
+        tx.save();
+        tx.translate(Math.random() * W, (i + 0.3) * (TILE / 3));
+        tx.rotate(ang);
+        const bw = 220 + Math.random() * 260;
+        const g = tx.createLinearGradient(0, -bw / 2, 0, bw / 2);
+        g.addColorStop(0, "rgba(20,18,31,0)");
+        g.addColorStop(0.5, "rgba(20,18,31,0.05)");
+        g.addColorStop(1, "rgba(20,18,31,0)");
+        tx.fillStyle = g;
+        tx.fillRect(-W * 1.5, -bw / 2, W * 3, bw);
+        tx.restore();
+      }
+      // primary veins following the flow, with branches
+      const vein = (x0: number, y0: number, len: number, alpha: number, color: string, width: number, branch: boolean) => {
+        if (!tx) return;
+        tx.strokeStyle = color; tx.globalAlpha = alpha; tx.lineWidth = width; tx.lineCap = "round";
+        tx.shadowColor = color; tx.shadowBlur = 2.5;
+        tx.beginPath(); tx.moveTo(x0, y0);
+        let px = x0, py = y0, a = ang + (Math.random() - 0.5) * 0.2;
+        const segs = 7 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < segs; i++) {
+          a += (Math.random() - 0.5) * 0.4;
+          const l = len * (0.7 + Math.random() * 0.6);
+          const nx = px + Math.cos(a) * l, ny = py + Math.sin(a) * l;
+          tx.quadraticCurveTo(px + Math.cos(a + 0.4) * l * 0.5, py + Math.sin(a + 0.4) * l * 0.5, nx, ny);
+          if (branch && i === Math.floor(segs / 2)) {
+            tx.moveTo(nx, ny);
+            const ba = a + 0.9;
+            tx.lineTo(nx + Math.cos(ba) * l * 0.8, ny + Math.sin(ba) * l * 0.8);
+            tx.moveTo(nx, ny);
+          }
           px = nx; py = ny;
         }
-        sx.stroke();
-        sx.globalAlpha = 1;
+        tx.stroke();
+        tx.shadowBlur = 0; tx.globalAlpha = 1;
       };
-      for (let i = 0; i < 7; i++) vein(Math.random() * W, Math.random() * H, 6 + Math.floor(Math.random() * 5), 0.045, "#14121F", 1 + Math.random() * 1.6);
-      for (let i = 0; i < 2; i++) vein(Math.random() * W, Math.random() * H, 5, 0.05, "#C98F12", 0.8);
-      for (let i = 0; i < 5; i++) {
-        const gx = Math.random() * W, gy = Math.random() * H, gr = 180 + Math.random() * 260;
-        const g = sx.createRadialGradient(gx, gy, 0, gx, gy, gr);
-        g.addColorStop(0, "rgba(20,18,31,0.028)"); g.addColorStop(1, "rgba(20,18,31,0)");
-        sx.fillStyle = g; sx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2);
+      for (let i = 0; i < 6; i++) vein(Math.random() * W * 1.4 - W * 0.2, Math.random() * TILE, 90, 0.10, INK, 0.9 + Math.random(), true);
+      for (let i = 0; i < 2; i++) vein(Math.random() * W, Math.random() * TILE, 80, 0.085, GOLD, 0.8, false);
+      // fine crackle
+      for (let i = 0; i < 9; i++) vein(Math.random() * W, Math.random() * TILE, 34, 0.06, INK, 0.6, false);
+    };
+
+    const seedStars = () => {
+      stars = [];
+      const n = Math.round((W * TILE) / 26000); // density by area
+      for (let i = 0; i < n; i++) {
+        stars.push({
+          x: Math.random() * W, y: Math.random() * TILE,
+          r: 2.6 + Math.random() * 5.4,
+          p: Math.random() * 6.28, s: 0.006 + Math.random() * 0.012,
+          gold: Math.random() < 0.14,
+        });
       }
-      const ink = "#14121F";
-      // ringed dark planet — upper right, gold ring
-      const pX = W * 0.90, pY = H * 0.16, pR = 26;
-      sx.globalAlpha = 0.85; sx.fillStyle = ink;
-      sx.beginPath(); sx.arc(pX, pY, pR, 0, 7); sx.fill();
-      sx.globalAlpha = 0.7; sx.strokeStyle = "#C98F12"; sx.lineWidth = 2;
-      sx.beginPath(); sx.ellipse(pX, pY, pR * 1.9, pR * 0.55, -0.42, 0, 7); sx.stroke();
-      // crescent — upper left
-      const cX = W * 0.07, cY = H * 0.12;
-      sx.globalAlpha = 0.8; sx.fillStyle = ink;
-      sx.beginPath(); sx.arc(cX, cY, 15, 0, 7); sx.fill();
-      sx.globalCompositeOperation = "destination-out";
-      sx.beginPath(); sx.arc(cX + 7, cY - 4, 14, 0, 7); sx.fill();
-      sx.globalCompositeOperation = "source-over";
-      // hairline constellation — lower left
-      const pts: Array<[number, number]> = [[0.06, 0.62], [0.10, 0.68], [0.085, 0.76], [0.14, 0.80], [0.17, 0.72]];
-      const stars = pts.map(function (uv): [number, number] { return [uv[0] * W, uv[1] * H]; });
-      sx.globalAlpha = 0.35; sx.strokeStyle = ink; sx.lineWidth = 0.8;
-      sx.beginPath(); sx.moveTo(stars[0][0], stars[0][1]);
-      for (let i = 1; i < stars.length; i++) sx.lineTo(stars[i][0], stars[i][1]);
-      sx.stroke();
-      sx.globalAlpha = 0.9; sx.fillStyle = ink;
-      for (const sp of stars) { sx.beginPath(); sx.arc(sp[0], sp[1], 2.4, 0, 7); sx.fill(); }
-      // ink swirl — lower right
-      const wX = W * 0.93, wY = H * 0.82;
-      sx.globalAlpha = 0.4; sx.strokeStyle = ink; sx.lineWidth = 1.4;
-      sx.beginPath();
-      for (let t = 0; t < 5.4; t += 0.12) {
-        const r = 3 + t * 4.4;
-        const px2 = wX + Math.cos(t * 1.9) * r, py2 = wY + Math.sin(t * 1.9) * r;
-        if (t === 0) sx.moveTo(px2, py2); else sx.lineTo(px2, py2);
-      }
-      sx.stroke();
-      sx.globalAlpha = 1;
     };
 
     const size = () => {
-      W = c.width = stat.width = window.innerWidth;
-      H = c.height = stat.height = window.innerHeight;
-      paintStatic();
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = window.innerWidth; H = window.innerHeight;
+      TILE = Math.round(H * 2);
+      c.width = W * dpr; c.height = H * dpr;
+      c.style.width = W + "px"; c.style.height = H + "px";
+      tile.width = W * dpr; tile.height = TILE * dpr;
+      x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paintTile();
+      seedStars();
     };
     size();
     window.addEventListener("resize", size);
 
-    // ------- dynamic layer: bold star spatter + rare ink comets
-    type Dot = { x: number; y: number; r: number; p: number; s: number; dx: number; dy: number; gold: boolean };
-    const dots: Dot[] = [];
-    const spawn = (n: number, rMin: number, rMax: number, sat: boolean) => {
-      for (let i = 0; i < n; i++) {
-        const d: Dot = { x: Math.random(), y: Math.random(), r: rMin + Math.random() * (rMax - rMin),
-          p: Math.random() * 6.28, s: 0.008 + Math.random() * 0.024,
-          dx: (Math.random() - 0.5) * 0.000025, dy: (Math.random() - 0.5) * 0.00002,
-          gold: Math.random() < 0.09 };
-        dots.push(d);
-        if (sat) for (let k = 0, m = 1 + Math.floor(Math.random() * 3); k < m; k++) {
-          dots.push({ x: d.x + (Math.random() - 0.5) * 0.022, y: d.y + (Math.random() - 0.5) * 0.04,
-            r: 0.5 + Math.random() * 1.1, p: Math.random() * 6.28, s: 0.01 + Math.random() * 0.02,
-            dx: d.dx, dy: d.dy, gold: false });
-        }
+    // anomalies at fixed DOCUMENT positions (first stretch of the page)
+    const drawAnomalies = (scroll: number) => {
+      const items: Array<{ y: number; draw: (yy: number) => void }> = [
+        { y: H * 0.14, draw: (yy) => { // ringed planet — upper right
+          const pX = W * 0.915, pR = 20;
+          x.globalAlpha = 0.9; x.fillStyle = INK;
+          x.beginPath(); x.arc(pX, yy, pR, 0, 7); x.fill();
+          x.globalAlpha = 0.75; x.strokeStyle = GOLD; x.lineWidth = 1.8;
+          x.beginPath(); x.ellipse(pX, yy, pR * 1.85, pR * 0.5, -0.42, 0, 7); x.stroke();
+        } },
+        { y: H * 0.10, draw: (yy) => { // crescent — upper left
+          const cX = W * 0.045;
+          x.save();
+          x.globalAlpha = 0.85; x.fillStyle = INK;
+          x.beginPath(); x.arc(cX, yy, 13, 0, 7); x.fill();
+          x.globalCompositeOperation = "destination-out";
+          x.beginPath(); x.arc(cX + 6, yy - 3.5, 12.2, 0, 7); x.fill();
+          x.restore();
+        } },
+        { y: H * 1.28, draw: (yy) => { // constellation — left, second screen
+          const pts: Array<[number, number]> = [[0.05, 0], [0.09, 0.06], [0.075, 0.14], [0.13, 0.18], [0.16, 0.10]];
+          x.globalAlpha = 0.3; x.strokeStyle = INK; x.lineWidth = 0.8;
+          x.beginPath();
+          pts.forEach((uv, i) => { const px = uv[0] * W, py = yy + uv[1] * H; if (i === 0) x.moveTo(px, py); else x.lineTo(px, py); });
+          x.stroke();
+          x.globalAlpha = 0.95; x.fillStyle = INK;
+          for (const uv of pts) { sparklePath(x, uv[0] * W, yy + uv[1] * H, 4.4); x.fill(); }
+        } },
+        { y: H * 1.7, draw: (yy) => { // gold-dust eddy — right, deeper down
+          x.globalAlpha = 0.8;
+          for (let i = 0; i < 7; i++) {
+            const t = i / 7 * 5.2, r = 4 + t * 5.5;
+            x.fillStyle = i % 2 ? GOLD : INK;
+            x.beginPath(); x.arc(W * 0.93 + Math.cos(t) * r, yy + Math.sin(t) * r, 1.4 + (i % 3) * 0.5, 0, 7); x.fill();
+          }
+        } },
+      ];
+      for (const it of items) {
+        const yy = it.y - scroll;
+        if (yy > -80 && yy < H + 80) it.draw(yy);
       }
+      x.globalAlpha = 1;
     };
-    spawn(150, 0.5, 1.3, false);
-    spawn(48, 1.4, 2.6, false);
-    spawn(15, 2.8, 4.6, true);
-    const comets: Array<{ x: number; y: number; vx: number; vy: number; life: number }> = [];
+
+    type Comet = { x: number; y: number; vx: number; vy: number; life: number };
+    const comets: Comet[] = [];
 
     const tick = () => {
+      const scroll = window.scrollY || 0;
       x.clearRect(0, 0, W, H);
-      x.drawImage(stat, 0, 0);
-      for (const d of dots) {
-        d.p += d.s;
-        d.x = (d.x + d.dx + 1) % 1; d.y = (d.y + d.dy + 1) % 1;
-        x.globalAlpha = Math.max(0.12, 0.5 + Math.sin(d.p) * 0.3);
-        x.fillStyle = d.gold ? "#C98F12" : "#14121F";
-        x.beginPath(); x.arc(d.x * W, d.y * H, d.r, 0, 7); x.fill();
+      // marble tile, page-anchored (repeats seamlessly down the document)
+      const off = ((scroll % TILE) + TILE) % TILE;
+      x.drawImage(tile, 0, -off * 0 - off, W, TILE);
+      x.drawImage(tile, 0, TILE - off, W, TILE);
+      // sparkles, page-anchored via the same tiling
+      for (const st of stars) {
+        st.p += st.s;
+        const pulse = 0.72 + Math.sin(st.p) * 0.28;
+        let sy = st.y - off; if (sy < -12) sy += TILE; if (sy > H + 12 && sy - TILE > -12) sy -= TILE;
+        if (sy < -12 || sy > H + 12) continue;
+        x.globalAlpha = 0.28 + pulse * 0.5;
+        x.fillStyle = st.gold ? GOLD : INK;
+        sparklePath(x, st.x, sy, st.r * pulse);
+        x.fill();
       }
-      if (Math.random() < 0.0035 && comets.length < 1) {
+      drawAnomalies(scroll);
+      // elegant rare comet
+      if (Math.random() < 0.002 && comets.length < 1) {
         const fromLeft = Math.random() < 0.5;
-        comets.push({ x: fromLeft ? -40 : W + 40, y: Math.random() * H * 0.5,
-          vx: (fromLeft ? 1 : -1) * (7 + Math.random() * 5), vy: 2 + Math.random() * 2, life: 0 });
+        comets.push({ x: fromLeft ? -60 : W + 60, y: H * (0.1 + Math.random() * 0.35),
+          vx: (fromLeft ? 1 : -1) * (5.5 + Math.random() * 3), vy: 1.4 + Math.random() * 1.4, life: 0 });
       }
       for (let i = comets.length - 1; i >= 0; i--) {
         const m = comets[i]; m.x += m.vx; m.y += m.vy; m.life++;
-        x.globalAlpha = Math.max(0, 0.5 - m.life / 220);
-        x.strokeStyle = "#14121F"; x.lineWidth = 1.6; x.lineCap = "round";
-        x.beginPath(); x.moveTo(m.x, m.y); x.lineTo(m.x - m.vx * 6, m.y - m.vy * 6); x.stroke();
-        x.globalAlpha = Math.min(0.85, 0.5 - m.life / 220 + 0.35);
-        x.fillStyle = "#14121F"; x.beginPath(); x.arc(m.x, m.y, 2.2, 0, 7); x.fill();
-        if (m.life > 240 || m.x < -80 || m.x > W + 80 || m.y > H + 80) comets.splice(i, 1);
+        const fade = Math.max(0, 1 - m.life / 260);
+        for (let t = 0; t < 9; t++) {
+          x.globalAlpha = fade * 0.4 * (1 - t / 9);
+          x.strokeStyle = INK; x.lineWidth = 1.5 - t * 0.12; x.lineCap = "round";
+          x.beginPath();
+          x.moveTo(m.x - m.vx * t * 1.6, m.y - m.vy * t * 1.6);
+          x.lineTo(m.x - m.vx * (t + 1) * 1.6, m.y - m.vy * (t + 1) * 1.6);
+          x.stroke();
+        }
+        x.globalAlpha = fade * 0.95; x.fillStyle = INK;
+        sparklePath(x, m.x, m.y, 3.4); x.fill();
+        if (m.life > 280 || m.x < -140 || m.x > W + 140 || m.y > H + 140) comets.splice(i, 1);
       }
       x.globalAlpha = 1;
       raf = requestAnimationFrame(tick);
