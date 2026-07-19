@@ -1705,7 +1705,7 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
    (game map, take cards, celebrations, pp-auto) are deliberate —
    framed art on the white. Cascade-ordered override layer.
    ═════════════════════════════════════════════════════════════ */
-body { background: linear-gradient(180deg, #FEFDFB 0%, #FAF8F2 60%, #F6F3EA 100%) !important; }
+body { background: #FDFCF9 !important; }
 .mm-asteroids { display: none !important; }
 .px-field { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 

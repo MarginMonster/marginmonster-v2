@@ -274,7 +274,7 @@ function ParadoxField() {
     if (!c || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const x = c.getContext("2d");
     if (!x) return;
-    const INK = "#14121F", GOLD = "#C98F12";
+    const INK = "#101018", GOLD = "#C98F12";
     let W = 0, H = 0, TILE = 0, dpr = 1, raf = 0;
     const tile = document.createElement("canvas");
     let tx: CanvasRenderingContext2D | null = null;
@@ -300,59 +300,17 @@ function ParadoxField() {
       if (!tx) return;
       tx.setTransform(dpr, 0, 0, dpr, 0, 0);
       tx.clearRect(0, 0, W, TILE);
-      // ---- marble: one consistent diagonal flow (~-28°) ----
-      const ang = -0.49;
-      // broad smoke bands
-      for (let i = 0; i < 3; i++) {
-        tx.save();
-        tx.translate(Math.random() * W, (i + 0.3) * (TILE / 3));
-        tx.rotate(ang);
-        const bw = 220 + Math.random() * 260;
-        const g = tx.createLinearGradient(0, -bw / 2, 0, bw / 2);
-        g.addColorStop(0, "rgba(20,18,31,0)");
-        g.addColorStop(0.5, "rgba(20,18,31,0.05)");
-        g.addColorStop(1, "rgba(20,18,31,0)");
-        tx.fillStyle = g;
-        tx.fillRect(-W * 1.5, -bw / 2, W * 3, bw);
-        tx.restore();
-      }
-      // primary veins following the flow, with branches
-      const vein = (x0: number, y0: number, len: number, alpha: number, color: string, width: number, branch: boolean) => {
-        if (!tx) return;
-        tx.strokeStyle = color; tx.globalAlpha = alpha; tx.lineWidth = width; tx.lineCap = "round";
-        tx.shadowColor = color; tx.shadowBlur = 2.5;
-        tx.beginPath(); tx.moveTo(x0, y0);
-        let px = x0, py = y0, a = ang + (Math.random() - 0.5) * 0.2;
-        const segs = 7 + Math.floor(Math.random() * 5);
-        for (let i = 0; i < segs; i++) {
-          a += (Math.random() - 0.5) * 0.4;
-          const l = len * (0.7 + Math.random() * 0.6);
-          const nx = px + Math.cos(a) * l, ny = py + Math.sin(a) * l;
-          tx.quadraticCurveTo(px + Math.cos(a + 0.4) * l * 0.5, py + Math.sin(a + 0.4) * l * 0.5, nx, ny);
-          if (branch && i === Math.floor(segs / 2)) {
-            tx.moveTo(nx, ny);
-            const ba = a + 0.9;
-            tx.lineTo(nx + Math.cos(ba) * l * 0.8, ny + Math.sin(ba) * l * 0.8);
-            tx.moveTo(nx, ny);
-          }
-          px = nx; py = ny;
-        }
-        tx.stroke();
-        tx.shadowBlur = 0; tx.globalAlpha = 1;
-      };
-      for (let i = 0; i < 6; i++) vein(Math.random() * W * 1.4 - W * 0.2, Math.random() * TILE, 90, 0.10, INK, 0.9 + Math.random(), true);
-      for (let i = 0; i < 2; i++) vein(Math.random() * W, Math.random() * TILE, 80, 0.085, GOLD, 0.8, false);
-      // fine crackle
-      for (let i = 0; i < 9; i++) vein(Math.random() * W, Math.random() * TILE, 34, 0.06, INK, 0.6, false);
+      // v4: the void stays PURE — no bands, no clouds, no veins (they read
+      // as dirty two-tone patches at page scale). Stars + anomalies carry it.
     };
 
     const seedStars = () => {
       stars = [];
-      const n = Math.round((W * TILE) / 26000); // density by area
+      const n = Math.round((W * TILE) / 15000); // density by area
       for (let i = 0; i < n; i++) {
         stars.push({
           x: Math.random() * W, y: Math.random() * TILE,
-          r: 2.6 + Math.random() * 5.4,
+          r: 3.0 + Math.random() * 6.0,
           p: Math.random() * 6.28, s: 0.006 + Math.random() * 0.012,
           gold: Math.random() < 0.14,
         });
@@ -377,29 +335,29 @@ function ParadoxField() {
     const drawAnomalies = (scroll: number) => {
       const items: Array<{ y: number; draw: (yy: number) => void }> = [
         { y: H * 0.14, draw: (yy) => { // ringed planet — upper right
-          const pX = W * 0.915, pR = 20;
-          x.globalAlpha = 0.9; x.fillStyle = INK;
+          const pX = W * 0.915, pR = 27;
+          x.globalAlpha = 0.96; x.fillStyle = INK;
           x.beginPath(); x.arc(pX, yy, pR, 0, 7); x.fill();
-          x.globalAlpha = 0.75; x.strokeStyle = GOLD; x.lineWidth = 1.8;
+          x.globalAlpha = 0.9; x.strokeStyle = GOLD; x.lineWidth = 2.6;
           x.beginPath(); x.ellipse(pX, yy, pR * 1.85, pR * 0.5, -0.42, 0, 7); x.stroke();
         } },
         { y: H * 0.10, draw: (yy) => { // crescent — upper left
           const cX = W * 0.045;
           x.save();
           x.globalAlpha = 0.85; x.fillStyle = INK;
-          x.beginPath(); x.arc(cX, yy, 13, 0, 7); x.fill();
+          x.beginPath(); x.arc(cX, yy, 17, 0, 7); x.fill();
           x.globalCompositeOperation = "destination-out";
-          x.beginPath(); x.arc(cX + 6, yy - 3.5, 12.2, 0, 7); x.fill();
+          x.beginPath(); x.arc(cX + 8, yy - 4.5, 16, 0, 7); x.fill();
           x.restore();
         } },
         { y: H * 1.28, draw: (yy) => { // constellation — left, second screen
           const pts: Array<[number, number]> = [[0.05, 0], [0.09, 0.06], [0.075, 0.14], [0.13, 0.18], [0.16, 0.10]];
-          x.globalAlpha = 0.3; x.strokeStyle = INK; x.lineWidth = 0.8;
+          x.globalAlpha = 0.5; x.strokeStyle = INK; x.lineWidth = 1;
           x.beginPath();
           pts.forEach((uv, i) => { const px = uv[0] * W, py = yy + uv[1] * H; if (i === 0) x.moveTo(px, py); else x.lineTo(px, py); });
           x.stroke();
           x.globalAlpha = 0.95; x.fillStyle = INK;
-          for (const uv of pts) { sparklePath(x, uv[0] * W, yy + uv[1] * H, 4.4); x.fill(); }
+          for (const uv of pts) { sparklePath(x, uv[0] * W, yy + uv[1] * H, 6); x.fill(); }
         } },
         { y: H * 1.7, draw: (yy) => { // gold-dust eddy — right, deeper down
           x.globalAlpha = 0.8;
@@ -433,14 +391,14 @@ function ParadoxField() {
         const pulse = 0.72 + Math.sin(st.p) * 0.28;
         let sy = st.y - off; if (sy < -12) sy += TILE; if (sy > H + 12 && sy - TILE > -12) sy -= TILE;
         if (sy < -12 || sy > H + 12) continue;
-        x.globalAlpha = 0.28 + pulse * 0.5;
+        x.globalAlpha = 0.4 + pulse * 0.55;
         x.fillStyle = st.gold ? GOLD : INK;
-        sparklePath(x, st.x, sy, st.r * pulse);
-        x.fill();
+        if (st.r < 4.2) { x.beginPath(); x.arc(st.x, sy, st.r * 0.45 * pulse + 0.8, 0, 7); x.fill(); }
+        else { sparklePath(x, st.x, sy, st.r * pulse); x.fill(); }
       }
       drawAnomalies(scroll);
       // elegant rare comet
-      if (Math.random() < 0.002 && comets.length < 1) {
+      if (Math.random() < 0.0045 && comets.length < 1) {
         const fromLeft = Math.random() < 0.5;
         comets.push({ x: fromLeft ? -60 : W + 60, y: H * (0.1 + Math.random() * 0.35),
           vx: (fromLeft ? 1 : -1) * (5.5 + Math.random() * 3), vy: 1.4 + Math.random() * 1.4, life: 0 });
