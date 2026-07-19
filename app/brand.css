@@ -1836,6 +1836,21 @@ body[data-page="calendar"] { background-image: url(/bg/calendar.jpg) !important;
 body[data-page="performance"] { background-image: url(/bg/performance.jpg) !important; }
 body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
 
+/* mobile: tall narrow viewports get true portrait crops (attention-framed on the
+ * palms/props) — the desktop landscapes cover-crop to an empty color wash there.
+ * background-attachment: fixed is also broken in iOS webviews (renders as a
+ * zoomed smear), so mobile scrolls the backdrop instead. */
+@media (max-width: 820px) {
+  body { background: #FAF9F6 url(/bg/dashboard-m.jpg) center top / cover scroll no-repeat !important; }
+  body[data-page="campaigns"] { background-image: url(/bg/campaigns-m.jpg) !important; }
+  body[data-page="videos"] { background-image: url(/bg/videos-m.jpg) !important; }
+  body[data-page="seo"] { background-image: url(/bg/seo-m.jpg) !important; }
+  body[data-page="queue"] { background-image: url(/bg/queue-m.jpg) !important; }
+  body[data-page="calendar"] { background-image: url(/bg/calendar-m.jpg) !important; }
+  body[data-page="performance"] { background-image: url(/bg/performance-m.jpg) !important; }
+  body[data-page="plans"] { background-image: url(/bg/plans-m.jpg) !important; }
+}
+
 /* the living island — ambient loop video above the body jpg, beneath all content */
 .em-bgvid { display: none !important; } /* v1 loops benched (motion too timid) — cinema pass pending review */
 .em-bgvid-armed { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
