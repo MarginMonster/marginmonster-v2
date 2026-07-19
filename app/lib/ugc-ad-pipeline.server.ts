@@ -405,12 +405,33 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
 
   // 2) VOICE — TTS is 3s/$0.001, so regenerating on a dead resume URL is fine.
   // We always end up with the audio BYTES (validated), sent inline downstream.
+  // speech-02-hd + emotion/speed derived from the presenter's energy: the voice
+  // ACTS the persona instead of flat-reading it. Same mp3 feeds every engine
+  // (fal/HeyGen lip-sync, omni-human, kling voiceover), so this lifts all takes.
+  const delivery =
+    avatar.energy === "hype" ? { emotion: "happy", speed: 1.08 }
+    : avatar.energy === "warm" ? { emotion: "happy", speed: 1.0 }
+    : { emotion: "neutral", speed: 0.95 };
   const freshTts = async (): Promise<string> => {
-    const ttsId = await repCreate("minimax/speech-02-turbo", {
-      text: script,
-      voice_id: pickVoice(avatar),
-    });
-    return repPoll(ttsId, 3 * 60_000, "tts");
+    try {
+      const ttsId = await repCreate("minimax/speech-02-hd", {
+        text: script,
+        voice_id: pickVoice(avatar),
+        emotion: delivery.emotion,
+        speed: delivery.speed,
+        english_normalization: true,
+        language_boost: "English",
+      });
+      return await repPoll(ttsId, 3 * 60_000, "tts");
+    } catch (e) {
+      // input-schema drift or hd outage must never kill a take — bare turbo read
+      console.log("[ugc:tts] hd+delivery failed, falling back to turbo:", (e as Error).message);
+      const ttsId = await repCreate("minimax/speech-02-turbo", {
+        text: script,
+        voice_id: pickVoice(avatar),
+      });
+      return await repPoll(ttsId, 3 * 60_000, "tts");
+    }
   };
   let audioBuf: Buffer | null = null;
   let audioHostedUrl = resume.audioUrl || ""; // hosted mp3 (Replicate CDN) — what fal/HeyGen fetches
@@ -560,6 +581,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           engine,
           heldProduct, // the presenter is holding the product in-frame
           voiceId: pickVoice(avatar), // which voice spoke — curation data
+          voiceDelivery: delivery, // emotion + speed the read was acted with
           videoUrl: `/renders/${fileName}`,
           prompt: script,
           script,
