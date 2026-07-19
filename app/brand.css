@@ -1705,9 +1705,8 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
    (game map, take cards, celebrations, pp-auto) are deliberate —
    framed art on the white. Cascade-ordered override layer.
    ═════════════════════════════════════════════════════════════ */
-body { background: #FFFFFF !important; }
+body { background: radial-gradient(ellipse 100% 44% at 50% -6%, #FFFDF6, transparent 55%), #FAF9F6 !important; }
 .mm-asteroids { display: none !important; }
-.px-stone, .px-ent { position: fixed; inset: 0; z-index: 0; width: 100vw; height: 100vh; pointer-events: none; }
 
 /* Heroes: porcelain panels, ink type, gold ember */
 .mm-hero, .pp-hero {
@@ -1784,3 +1783,42 @@ body { background: #FFFFFF !important; }
 /* PARADOX v3: the arcade-era CRT overlays are retired — scanlines and ghost
    dots were striping the porcelain ("trailer park" verdict, correctly) */
 body::before, body::after { display: none !important; }
+
+
+/* ═══════════ 🕹️ ARCADE DONE RIGHT — crowned 2026-07-18 ═══════════
+   The soul without the costume: porcelain room, arcade in the objects.
+   No scanlines, no pixel type, no neon. */
+
+/* START buttons: real press travel */
+.pp-cta-hero, .mm-arcade-btn, .mm-hero-cta { transition: transform .07s ease, box-shadow .07s ease; }
+.pp-cta-hero:active, .mm-arcade-btn:active, .mm-hero-cta:active {
+  transform: translateY(4px) !important;
+  animation: none !important;
+  box-shadow: 0 1px 0 #0B0A12, 0 4px 12px rgba(20,18,31,.3), inset 0 0 0 1.5px rgba(240,180,41,.85) !important;
+}
+
+/* hi-score digits: odometer discipline, warm glow */
+.pp-stat .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; text-shadow: 0 0 10px rgba(240,180,41,.20); letter-spacing: .02em; }
+.pp-stat .v .g::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3ED598; box-shadow: 0 0 6px rgba(62,213,152,.8); margin-right: 8px; vertical-align: 2px; animation: adr-led 2.2s ease-out infinite; }
+@keyframes adr-led { 0% { box-shadow: 0 0 0 0 rgba(62,213,152,.5); } 70% { box-shadow: 0 0 0 7px rgba(62,213,152,0); } 100% { box-shadow: 0 0 0 0 rgba(62,213,152,0); } }
+
+/* the coin slot: token top-up chip in the HUD */
+.mm-hud-top-up {
+  display: inline-flex !important; align-items: center; gap: 7px;
+  background: linear-gradient(180deg, #FFFFFF, #F6F4EE) !important;
+  border: 1px solid rgba(20,18,31,.16) !important; border-radius: 999px !important;
+  box-shadow: inset 0 1px 0 #fff, 0 2px 6px rgba(20,18,31,.08);
+}
+.mm-hud-top-up::before { content: ""; width: 15px; height: 15px; border-radius: 50%; background: radial-gradient(circle at 34% 30%, #FFE9A8, #F0B429 55%, #C98F12); box-shadow: inset 0 0 0 1.5px rgba(138,98,7,.35), 0 1px 2px rgba(20,18,31,.25); flex: 0 0 auto; }
+.mm-hud-top-up:hover { background: linear-gradient(180deg, #FFFDF4, #F8F2E2) !important; }
+.mm-hud-top-up:active { transform: translateY(1px); }
+
+/* cabinets: thin gold marquee wakes on hover */
+.pp-tool { position: relative; }
+.pp-tool::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2.5px; border-radius: 12px 12px 0 0; background: linear-gradient(90deg, #F0B429, #FFE9A8, #F0B429); opacity: 0; transition: opacity .2s; pointer-events: none; }
+.pp-tool:hover::after { opacity: 1; }
+
+/* heroes: one restrained backlit marquee strip */
+.pp-hero::before, .mm-hero::before { content: ""; position: absolute; top: 0; left: 24px; right: 24px; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, transparent, #F0B429 18%, #FFE9A8 50%, #F0B429 82%, transparent); opacity: .85; z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) { .pp-stat .v .g::before { animation: none; } }
