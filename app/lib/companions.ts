@@ -73,7 +73,7 @@ export const COMPANIONS: CompanionDef[] = [
   { id: "robo", name: "BLEEP", vibe: "Beep boop, budget optimized", cat: "scifi", accent: "#34E7E4" },
   { id: "mechacat", name: "NEKO-9", vibe: "Purrs in binary", cat: "scifi", accent: "#38bdf8" },
   { id: "starblob", name: "NOVA", vibe: "Sleepy cosmic intern", cat: "scifi", accent: "#ffd76a" },
-  { id: "ufosquid", name: "SQUIDLEY", vibe: "Probing the market", cat: "scifi", accent: "#c084fc" },
+  { id: "ufosquid", name: "UFSEO", vibe: "Probing the market", cat: "scifi", accent: "#c084fc" },
   { id: "droid", name: "UNIT-7", vibe: "Compliance is joy", cat: "scifi", accent: "#e8e8f0" },
   // Mythics
   { id: "phoenixchick", name: "CINDER", vibe: "Rises from flop eras", cat: "mythic", accent: "#ff9d4d" },
