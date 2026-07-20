@@ -15,9 +15,9 @@ export type AchievementDef = {
 export const ACHIEVEMENTS: AchievementDef[] = [
   { key: "SCANNER", icon: "🔍", label: "Scanner", desc: "Analyze your store's brand voice", xp: 20, tokens: 0 },
   { key: "INSERT_COIN", icon: "🕹️", label: "Insert Coin", desc: "Choose your partner", xp: 30, tokens: 0 },
-  { key: "FIRST_FORGE", icon: "🔨", label: "First Forge", desc: "Forge your first listing", xp: 15, tokens: 5 },
-  { key: "HAMMER_TIME", icon: "⚒️", label: "Hammer Time", desc: "Forge 10 listings", xp: 40, tokens: 10 },
-  { key: "SHIPPED_IT", icon: "🚀", label: "Shipped It", desc: "Apply a forged listing to your store", xp: 20, tokens: 5 },
+  { key: "FIRST_FORGE", icon: "✨", label: "First Spark", desc: "Create your first listing", xp: 15, tokens: 5 },
+  { key: "HAMMER_TIME", icon: "🔥", label: "On a Roll", desc: "Create 10 listings", xp: 40, tokens: 10 },
+  { key: "SHIPPED_IT", icon: "🚀", label: "Shipped It", desc: "Apply a finished listing to your store", xp: 20, tokens: 5 },
   { key: "BATCH_MASTER", icon: "📦", label: "Batch Master", desc: "Apply 5 listings in one combo", xp: 30, tokens: 10 },
   { key: "BIG_SPENDER", icon: "🪙", label: "Big Spender", desc: "Spend 100 lifetime tokens", xp: 50, tokens: 15 },
   { key: "PLAYER_ONE", icon: "⭐", label: "Player One", desc: "Reach level 5", xp: 0, tokens: 10 },
@@ -27,8 +27,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   // 🏝️ island era — the jumping shelf
   { key: "FIRST_TAKE", icon: "🎬", label: "Action!", desc: "Roll your first video take", xp: 0, tokens: 10 },
   { key: "SHOW_RUNNER", icon: "🎞️", label: "Show Runner", desc: "Deliver 10 video takes", xp: 60, tokens: 25 },
-  { key: "STILL_LIFE", icon: "🖼️", label: "Still Life", desc: "Forge your first image ad", xp: 15, tokens: 5 },
-  { key: "GALLERY_WALL", icon: "🗂️", label: "Gallery Wall", desc: "Forge 15 image ads", xp: 50, tokens: 20 },
+  { key: "STILL_LIFE", icon: "🖼️", label: "Still Life", desc: "Create your first image ad", xp: 15, tokens: 5 },
+  { key: "GALLERY_WALL", icon: "🗂️", label: "Gallery Wall", desc: "Create 15 image ads", xp: 50, tokens: 20 },
   { key: "FIRST_VOYAGE", icon: "🗺️", label: "First Voyage", desc: "Launch your first campaign", xp: 25, tokens: 10 },
   { key: "FLEET_ADMIRAL", icon: "⚓", label: "Fleet Admiral", desc: "Run 2 campaigns at the same time", xp: 40, tokens: 25 },
   { key: "GOLD_RUSH", icon: "💰", label: "Gold Rush", desc: "A shopper clicks through one of your posts", xp: 30, tokens: 15 },

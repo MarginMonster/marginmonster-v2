@@ -164,14 +164,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     items = [];
   }
   items = items.filter((it) => it.title?.trim()).slice(0, 12); // cap a batch at 12
-  if (!items.length) return json({ error: "Pick or type at least one product to forge." });
+  if (!items.length) return json({ error: "Pick or type at least one product to write." });
 
   const perCost = TOKEN_COST.description;
   const totalCost = perCost * items.length;
   const have = tokensRemaining(shop.activePlan);
   if (have < totalCost) {
     return json({
-      error: `Not enough tokens — forging ${items.length} listing${items.length > 1 ? "s" : ""} needs ${totalCost}, you have ${have}. Top up on the Plans page.`,
+      error: `Not enough tokens — writing ${items.length} listing${items.length > 1 ? "s" : ""} needs ${totalCost}, you have ${have}. Top up on the Plans page.`,
       outOfTokens: true,
     });
   }
@@ -343,7 +343,7 @@ export default function Products() {
 
   if (!hasBrand) {
     return (
-      <Page title="SEO Forge" backAction={{ content: "Home", url: "/app" }}>
+      <Page title="Listing Studio" backAction={{ content: "Home", url: "/app" }}>
         <EmptyState heading="Analyze your store first" image="" action={{ content: "Go to dashboard", url: "/app" }}>
           <p>We learn your brand voice first, so every description sounds like you.</p>
         </EmptyState>
@@ -400,7 +400,7 @@ export default function Products() {
                 onChange={setManualName}
                 autoComplete="off"
                 placeholder="e.g. Blue Razz Gummy Worms"
-                helpText={products.length > 0 ? "Or select several from your catalog below." : "Type the product to forge."}
+                helpText={products.length > 0 ? "Or select several from your catalog below." : "Type the product to write about."}
               />
               {manualName.trim() !== "" && (
                 <TextField
@@ -442,11 +442,11 @@ export default function Products() {
             <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
-                  <Text variant="headingMd" as="h2">Pick products to forge</Text>
+                  <Text variant="headingMd" as="h2">Pick products to write</Text>
                   {selectedList.length > 0 && <Badge tone="success">{`${selectedList.length} selected`}</Badge>}
                 </InlineStack>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Tap to select — pick as many as you like, then hit Forge. Each listing costs {cost} ⚡.
+                  Tap to select — pick as many as you like, then hit Write. Each listing costs {cost} ⚡.
                 </Text>
                 <div className="mm-prodgrid">
                   {products.map((p) => {
@@ -552,7 +552,7 @@ export default function Products() {
               <BlockStack gap="300">
                 <Text variant="headingMd" as="h3">{r.title}</Text>
                 {r.error ? (
-                  <Banner tone="warning"><p>Couldn't forge this one: {r.error}</p></Banner>
+                  <Banner tone="warning"><p>Couldn't write this one: {r.error}</p></Banner>
                 ) : r.copy ? (
                   <>
                     <BlockStack gap="100">

@@ -171,7 +171,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!shop) return json({ error: "Shop not found" });
     const id = (form.get("companionId") as string) || "";
     if (id !== "custom" && !COMPANION_BY_ID[id]) return json({ error: "Unknown companion" });
-    if (id === "custom" && !shop.companionArt) return json({ error: "Forge a custom companion first" });
+    if (id === "custom" && !shop.companionArt) return json({ error: "Create a custom companion first" });
     const nick = ((form.get("companionName") as string) || "").trim().slice(0, 24);
     await db.shop.update({
       where: { id: shop.id },
@@ -246,18 +246,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 
 
-/* Package identities — expedition scale, not characters. Companions are the
- * merchant's own pick now; these emblems carry the tier flex instead. */
-type Pkg = { title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string; stats: { label: string; v: number }[] };
+/* Package identities — a crew-rank ladder: the bigger your voyage, the higher
+ * your rank. Companions are the merchant's own pick now; these crests carry the
+ * tier flex. whoFor + why power the "flip for details" back of each card. */
+type Pkg = {
+  title: string; ref: string; rank: string; power: 1 | 2 | 3 | 4; accent: string; img: string;
+  stats: { label: string; v: number }[];
+  whoFor: string; why: string;
+};
 const PACKAGES: Record<string, Pkg> = {
-  STARTER: { title: 'STARTER SHOP', ref: 'Starter', rank: 'EXPEDITION I', power: 1, accent: '#34E7E4', img: '/plans/pkg-camp.png',
-    stats: [{ label: 'CONTENT', v: 2 }, { label: 'ADS', v: 0 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
-  GROWTH: { title: 'RISING BRAND', ref: 'Growth', rank: 'EXPEDITION II', power: 2, accent: '#FF3D8B', img: '/plans/pkg-caravan.png',
-    stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 3 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }] },
-  PRO: { title: 'FLAGSHIP BRAND', ref: 'Rapid Growth', rank: 'EXPEDITION III', power: 3, accent: '#FFB020', img: '/plans/pkg-galleon.png',
-    stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 4 }, { label: 'VIDEO', v: 3 }, { label: 'AUTOPILOT', v: 5 }] },
-  SCALE: { title: 'HOUSEHOLD NAME', ref: 'Commercial Growth', rank: 'EXPEDITION IV', power: 4, accent: '#B77BFF', img: '/plans/pkg-citadel.png',
-    stats: [{ label: 'CONTENT', v: 5 }, { label: 'ADS', v: 5 }, { label: 'VIDEO', v: 5 }, { label: 'AUTOPILOT', v: 5 }] },
+  STARTER: { title: 'DECKHAND', ref: 'Get found', rank: 'CREW RANK I', power: 1, accent: '#34E7E4', img: '/plans/rank-deckhand.png',
+    stats: [{ label: 'CONTENT', v: 2 }, { label: 'ADS', v: 0 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }],
+    whoFor: 'Brand-new stores that just need to get found on Google.',
+    why: 'Every blog post is a line in the water. Cast enough and free traffic starts washing in — day and night, on autopilot.' },
+  GROWTH: { title: 'NAVIGATOR', ref: 'Get seen', rank: 'CREW RANK II', power: 2, accent: '#FF3D8B', img: '/plans/rank-navigator.png',
+    stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 3 }, { label: 'VIDEO', v: 0 }, { label: 'AUTOPILOT', v: 5 }],
+    whoFor: 'Stores ready to show up in the feed, not just in search.',
+    why: 'Blogs pull them in from Google; scroll-stopping image ads catch them mid-scroll. Two nets in the water, twice the catch.' },
+  PRO: { title: 'CAPTAIN', ref: 'Get selling', rank: 'CREW RANK III', power: 3, accent: '#FFB020', img: '/plans/rank-captain.png',
+    stats: [{ label: 'CONTENT', v: 4 }, { label: 'ADS', v: 4 }, { label: 'VIDEO', v: 3 }, { label: 'AUTOPILOT', v: 5 }],
+    whoFor: 'Growing brands that want video doing the heavy selling.',
+    why: 'Video is the crew that never sleeps — selling on TikTok while you’re on the beach. And Autopilot runs the whole month, hands off.' },
+  SCALE: { title: 'ADMIRAL', ref: 'Go all-in', rank: 'CREW RANK IV', power: 4, accent: '#B77BFF', img: '/plans/rank-admiral.png',
+    stats: [{ label: 'CONTENT', v: 5 }, { label: 'ADS', v: 5 }, { label: 'VIDEO', v: 5 }, { label: 'AUTOPILOT', v: 5 }],
+    whoFor: 'Stores going all-in — everywhere, every day, at once.',
+    why: 'Maximum firepower: the most videos, the most ads, the best token rate. When you’re ready to own every feed, this is the flagship.' },
 };
 
 export default function Plans() {
@@ -269,6 +282,12 @@ export default function Plans() {
   const forgeQueued = !!(actionData && "forgeQueued" in actionData);
   const submit = useSubmit();
   const nav = useNavigation();
+
+  // plan cards flip to a plain-English detail back
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  const toggleFlip = (k: string) => setFlipped((prev) => {
+    const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
+  });
 
   // companion gallery state
   const installedSet = new Set(installed);
@@ -328,19 +347,19 @@ export default function Plans() {
     <Page
       fullWidth
       backAction={{ content: "Home", url: "/app" }}
-      title="Expedition Packages"
-      subtitle="Pick the scale of your expedition, then choose (or forge) the companion who runs it for you."
+      title="Packages & Companions"
+      subtitle="Pick your rank, then choose (or create) the companion who runs the whole operation for you."
     >
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
-            <span className="mm-eyebrow">▶ EXPEDITION PACKAGES</span>
-            <h1><span className="mm-marquee">Pick your package. Choose your companion.</span></h1>
+            <span className="mm-eyebrow">▶ CHOOSE YOUR RANK</span>
+            <h1><span className="mm-marquee">Pick your rank. Choose your companion.</span></h1>
             <p>
               You didn't start a business to grind through blog posts and video
-              edits. Choose how big your expedition runs — then pick any
-              companion you like to run it. Your buddy is yours forever, no
-              matter how your package changes.
+              edits. Pick how big your voyage runs — then choose any companion
+              you like to captain it. Your buddy is yours forever, no matter how
+              your rank changes.
             </p>
           </div>
         </Layout.Section>
@@ -412,63 +431,101 @@ export default function Plans() {
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
               const f = PACKAGES[tier.key];
+              const isFlipped = flipped.has(tier.key);
+              const buyBtn = (
+                <button
+                  className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
+                  onClick={() => buy(tier.key)}
+                  disabled={isCurrent}
+                >
+                  {isCurrent ? "★ YOUR RANK" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SET SAIL"}
+                </button>
+              );
               return (
                 <div
                   key={tier.key}
-                  className={`mm-fighter-card${tier.highlight ? " is-featured" : ""}`}
+                  className={`mm-flip${isFlipped ? " flipped" : ""}${tier.highlight ? " is-featured" : ""}`}
                   style={{ ["--fx" as string]: f.accent }}
                 >
                   {tier.highlight && <div className="mm-plan-ribbon">★ Player favorite</div>}
-
-                  <div className="mm-fighter-portrait">
-                    <div className="mm-fighter-rank">{f.rank}</div>
-                    <div className="pkg-emblem" style={{ ["--acc" as string]: f.accent }}>
-                      <img src={f.img} alt={f.title} loading="lazy" />
-                    </div>
-                    <div className="mm-fighter-power">
-                      {[1, 2, 3, 4].map((n) => (
-                        <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mm-fighter-name">{f.title}</div>
-                  <div className="mm-fighter-plan">
-                    <span className="mm-fighter-ref">"{f.ref}"</span>
-                    {isCurrent && <span className="mm-fighter-current">YOURS</span>}
-                  </div>
-                  <p className="mm-plan-price" style={{ margin: "6px 0 4px" }}>
-                    ${tier.price}<small> /mo</small>
-                  </p>
-                  <div className="mm-fighter-tokens">⚡ {tier.monthlyTokens.toLocaleString()} tokens / mo</div>
-
-                  <div className="mm-fighter-stats">
-                    {f.stats.map((s) => (
-                      <div className="mm-stat" key={s.label}>
-                        <span className="sl">{s.label}</span>
-                        <span className="sb">
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <i key={n} className={n <= s.v ? "on" : ""} />
+                  <div className="mm-flip-inner">
+                    {/* FRONT — the flex */}
+                    <div className="mm-fighter-card mm-flip-face">
+                      <div className="mm-fighter-portrait">
+                        <div className="mm-fighter-rank">{f.rank}</div>
+                        <div className="pkg-emblem" style={{ ["--acc" as string]: f.accent }}>
+                          <img src={f.img} alt={f.title} loading="lazy" />
+                        </div>
+                        <div className="mm-fighter-power">
+                          {[1, 2, 3, 4].map((n) => (
+                            <span key={n} className={`pw${n <= f.power ? " on" : ""}`} />
                           ))}
-                        </span>
+                        </div>
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="mm-fighter-features">
-                    {tier.features.slice(0, 4).map((ft) => (
-                      <div className="ff" key={ft}><span>▸</span>{ft}</div>
-                    ))}
-                  </div>
+                      <div className="mm-fighter-name">{f.title}</div>
+                      <div className="mm-fighter-plan">
+                        <span className="mm-fighter-ref">"{f.ref}"</span>
+                        {isCurrent && <span className="mm-fighter-current">YOURS</span>}
+                      </div>
+                      <p className="mm-plan-price" style={{ margin: "6px 0 4px" }}>
+                        ${tier.price}<small> /mo</small>
+                      </p>
+                      <div className="mm-fighter-tokens">⚡ {tier.monthlyTokens.toLocaleString()} tokens / mo</div>
 
-                  <div style={{ flexGrow: 1 }} />
-                  <button
-                    className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
-                    onClick={() => buy(tier.key)}
-                    disabled={isCurrent}
-                  >
-                    {isCurrent ? "★ YOUR PACKAGE" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SET OUT"}
-                  </button>
+                      <div className="mm-fighter-stats">
+                        {f.stats.map((s) => (
+                          <div className="mm-stat" key={s.label}>
+                            <span className="sl">{s.label}</span>
+                            <span className="sb">
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <i key={n} className={n <= s.v ? "on" : ""} />
+                              ))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mm-fighter-features">
+                        {tier.features.slice(0, 4).map((ft) => (
+                          <div className="ff" key={ft}><span>▸</span>{ft}</div>
+                        ))}
+                      </div>
+
+                      <div style={{ flexGrow: 1 }} />
+                      <button type="button" className="mm-flip-btn" onClick={() => toggleFlip(tier.key)}>
+                        ⟲ View more
+                      </button>
+                      {buyBtn}
+                    </div>
+
+                    {/* BACK — plain-English detail + motivation */}
+                    <div className="mm-fighter-card mm-flip-face mm-flip-back">
+                      <div className="mm-flip-rank">{f.rank} · {f.title}</div>
+                      <div className="mm-flip-block">
+                        <b>🧭 WHO IT'S FOR</b>
+                        <p>{f.whoFor}</p>
+                      </div>
+                      <div className="mm-flip-block">
+                        <b>📦 EVERY MONTH, HANDS-OFF</b>
+                        <ul>
+                          {tier.blogQuota > 0 && <li><span>📝 {tier.blogQuota} SEO blog posts</span><em>ranks you on Google</em></li>}
+                          {tier.imageQuota > 0 && <li><span>🖼 {tier.imageQuota} image ads</span><em>+ TikTok/Meta copy</em></li>}
+                          {tier.videoQuota > 0 && <li><span>🎬 {tier.videoQuota} product videos</span><em>the crew that sells</em></li>}
+                          <li><span>🪙 {tier.monthlyTokens.toLocaleString()} tokens</span><em>spend on anything extra</em></li>
+                        </ul>
+                      </div>
+                      <div className="mm-flip-block why">
+                        <b>💡 WHY IT WORKS</b>
+                        <p>{f.why}</p>
+                      </div>
+                      <div style={{ flexGrow: 1 }} />
+                      <button type="button" className="mm-flip-btn" onClick={() => toggleFlip(tier.key)}>
+                        ⟲ Back
+                      </button>
+                      {buyBtn}
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -517,8 +574,8 @@ export default function Plans() {
           )}
           {(forgeQueued || forging) && (
             <div style={{ marginBottom: 12 }}>
-              <Banner tone="info" title="⚒️ The forge is lit">
-                <p>Your custom companion is being forged — three animation frames, hand-cut. It installs itself automatically in a couple of minutes; check back or refresh.</p>
+              <Banner tone="info" title="🥥 On it!">
+                <p>Your custom companion is being created — three animation frames, hand-cut. It installs itself automatically in a couple of minutes; check back or refresh.</p>
               </Banner>
             </div>
           )}
@@ -584,15 +641,15 @@ export default function Plans() {
                 )}
                 {hasCustom && selId !== "custom" && (
                   <button type="button" className="qh-mini-btn" style={{ marginTop: 10, width: "100%" }} onClick={() => setSelId("custom")}>
-                    👁 View your forged companion
+                    👁 View your custom companion
                   </button>
                 )}
               </div>
 
               {/* the forge — free, always */}
               <div className="cmp-forge">
-                <div className="cmp-forge-title">⚒️ FORGE YOUR OWN — FREE</div>
-                <p className="cmp-forge-sub">Describe any companion you can imagine. We forge it in the house style with full animation frames.</p>
+                <div className="cmp-forge-title">🎨 CREATE YOUR OWN — FREE</div>
+                <p className="cmp-forge-sub">Describe any companion you can imagine. We create it in the house style with full animation frames.</p>
                 <input
                   className="qh-input" style={{ width: "100%", marginBottom: 8 }}
                   placeholder="Name it (e.g. SPROCKET)" maxLength={24}
@@ -609,7 +666,7 @@ export default function Plans() {
                   disabled={nav.state !== "idle" || forging || forgeQueued || forgePrompt.trim().length < 8}
                   onClick={() => submit({ intent: "forgeCompanion", name: forgeName, prompt: forgePrompt }, { method: "post" })}
                 >
-                  {forging || forgeQueued ? "⚒️ FORGING…" : "⚒️ FORGE COMPANION"}
+                  {forging || forgeQueued ? "🎨 CREATING…" : "🎨 CREATE COMPANION"}
                 </button>
               </div>
             </div>

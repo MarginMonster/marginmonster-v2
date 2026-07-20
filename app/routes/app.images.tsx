@@ -129,10 +129,10 @@ export default function ImageStudio() {
             <span className="pp-eyebrow">Image Studio</span>
             <h1>Scroll-stoppers, <em>on demand.</em></h1>
             <p className="pp-sub">
-              The focused forge for image ads — pick a product, tap once, and a
+              The focused studio for image ads — pick a product, tap once, and a
               branded still lands in your library, ready for the feed. Hands-on
               when you want control; for true easy mode,{" "}
-              <Link to="/app/campaigns">a Marketing Campaign</Link> forges and
+              <Link to="/app/campaigns">a Marketing Campaign</Link> creates and
               posts stills like these all month while you do anything else.
             </p>
             <div className="pp-stats">
@@ -152,7 +152,7 @@ export default function ImageStudio() {
           <Card>
             {queued && (
               <div style={{ marginBottom: 12 }}>
-                <Banner tone="success" title="🖼 The forge is lit">
+                <Banner tone="success" title="🖼 On it!">
                   <p>Your still is rendering — it lands in the gallery below in about a minute. Refresh to see it shine.</p>
                 </Banner>
               </div>
@@ -178,7 +178,7 @@ export default function ImageStudio() {
                   />
                 </div>
                 <Button submit variant="primary" disabled={!picked || busy} loading={busy}>
-                  {`Forge still · ${stillTokenCost} 🪙`}
+                  {`Create still · ${stillTokenCost} 🪙`}
                 </Button>
                 <Badge tone="attention">{`${stillTokenCost} 🪙 per still`}</Badge>
               </div>
@@ -209,7 +209,7 @@ export default function ImageStudio() {
           <span className="mm-section-label">▶ THE GALLERY<span className="mm-dots">· · · · ·</span></span>
           {stills.length === 0 ? (
             <Card>
-              <p style={{ padding: 8 }}>No stills yet — forge your first above, or let a campaign fill this gallery on autopilot.</p>
+              <p style={{ padding: 8 }}>No stills yet — create your first above, or let a campaign fill this gallery on autopilot.</p>
             </Card>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
@@ -217,7 +217,7 @@ export default function ImageStudio() {
                 <div key={s.id} style={{ background: "#fff", border: "1px solid rgba(20,18,31,.12)", borderRadius: 12, overflow: "hidden" }}>
                   {broken[s.id] ? (
                     <div style={{ width: "100%", aspectRatio: "1/1", display: "grid", placeItems: "center", background: "#F4F0E4", color: "#8A8598", fontSize: 12, textAlign: "center", padding: 10 }}>
-                      🌫 media expired on the server<br />re-forge to restore
+                      🌫 media expired on the server<br />remake to restore
                     </div>
                   ) : (
                     <img

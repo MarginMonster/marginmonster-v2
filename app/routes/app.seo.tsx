@@ -51,7 +51,7 @@ export default function SeoHub() {
               articles that pull free traffic, landing pages that close it.
             </p>
             <div className="pp-stats">
-              <div className="pp-stat"><div className="v">{forged.toLocaleString()}</div><div className="l">Listings forged</div></div>
+              <div className="pp-stat"><div className="v">{forged.toLocaleString()}</div><div className="l">Listings created</div></div>
               <div className="pp-stat"><div className="v">{blogs.toLocaleString()} <span className="g">· {blogsLive} live</span></div><div className="l">Blog posts</div></div>
               <div className="pp-stat"><div className="v">{pages.toLocaleString()}</div><div className="l">Landing pages</div></div>
               <div className="pp-stat"><div className="v"><span className="g">{tokens.toLocaleString()}</span></div><div className="l">Token balance</div></div>
@@ -73,7 +73,7 @@ export default function SeoHub() {
                 voice — SEO-weighted and pushed live to Shopify in one click.
               </p>
               <div className="pp-meta">
-                <span className="pp-count">{forged.toLocaleString()} <span>forged so far</span></span>
+                <span className="pp-count">{forged.toLocaleString()} <span>created so far</span></span>
                 <span className="pp-chip"><span className="pp-coin" />{TOKEN_COST.description} / listing</span>
               </div>
               <span className="pp-cta">Open listings</span>

@@ -1470,7 +1470,7 @@ export default function Videos() {
                     />
                   </Box>
                   <Button submit variant="primary" disabled={!stillProduct || stillFx.state !== "idle"} loading={stillFx.state !== "idle"}>
-                    {`Forge still · ${stillTokenCost} 🪙`}
+                    {`Create still · ${stillTokenCost} 🪙`}
                   </Button>
                 </InlineStack>
               </stillFx.Form>
@@ -1494,7 +1494,7 @@ export default function Videos() {
                   ))}
                 </div>
               ) : (
-                <Text as="p" tone="subdued">No stills yet — forge your first one above.</Text>
+                <Text as="p" tone="subdued">No stills yet — create your first one above, or head to the Image Studio.</Text>
               )}
             </BlockStack>
           </Card>

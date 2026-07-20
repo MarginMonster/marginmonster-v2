@@ -312,7 +312,7 @@ export async function swapQuestlineItem(
       changed.add(s.idx);
     }
   }
-  if (changed.size === 0) return { ok: false, error: "Every drop starring that item is already forged — nothing left to swap." };
+  if (changed.size === 0) return { ok: false, error: "Every drop starring that item is already made — nothing left to swap." };
 
   await db.questline.update({
     where: { id: q.id },

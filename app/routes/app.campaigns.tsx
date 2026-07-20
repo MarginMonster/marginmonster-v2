@@ -162,7 +162,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       } else if (j.status === "IN_PROGRESS") {
         const msg =
           p.ckTalkingUrl ? `${pd.name} is stitching the final cut at ${spot} 🎬` :
-          p.ckOmniId ? `${pd.name} is forging the ${spot} take at the anvil ⚒️` :
+          p.ckOmniId ? `${pd.name} is putting the ${spot} take together 🎬` :
           p.ckAudioUrl ? `A voice echoes through ${spot} — the recording is done 🎙️` :
           p.ckScript ? `${pd.name} penned a script by the ${spot} campfire ✍️` :
           `${pd.name} is hard at work at ${spot}`;
@@ -586,11 +586,36 @@ const OVERWORLD: WorldDef[] = [
   },
 ];
 
+/* Per-campaign island worlds — each questline gets its OWN themed map so no two
+ * campaigns look alike. Routes reuse the overworld's left→right trail geometry
+ * (all four sets share the same 21:9 SNES composition); srcs + biomes + finale
+ * glow differ. Nudge waypoints per-art if a stop drifts off its trail. */
+const themeWorld = (prefix: string, biomes: Biome[]): WorldDef[] =>
+  OVERWORLD.map((w, i) => ({
+    src: `/quests/${prefix}-w${i + 1}.jpg`,
+    biome: biomes[i],
+    route: w.route,
+    // keep sea-life ripples; drop the overworld's art-specific set pieces; the
+    // finale tile (i===3) always gets a treasure glow (chest/beacon/temple)
+    anchors: [
+      ...w.anchors.filter((a) => a.kind === "ripple" || a.kind === "wave"),
+      ...(i === 3 ? [{ kind: "glow" as const, x: 760, y: 300 }] : []),
+    ],
+  }));
+
+// LAUNCH HYPE — jungle camp → ember flats → rocket ridge → the lit beacon
+const LAUNCH_WORLD = themeWorld("li", ["meadow", "volcano", "volcano", "volcano"]);
+// SEARCH MAGNET — tide pools → ruined shallows → kelp canyon → sunken temple
+const SEARCH_WORLD = themeWorld("os", ["meadow", "meadow", "meadow", "meadow"]);
+// ALWAYS ON — one island through dawn → noon → sunset → moonlight
+const STEADY_WORLD = themeWorld("ss", ["meadow", "meadow", "meadow", "meadow"]);
+
 Object.assign(WORLD_SETS, {
   // REVERT: point these back at ISLAND (or delete the assign for classic sets)
   CLASSIC: OVERWORLD,
-  GET_SEEN: OVERWORLD, LAUNCH_IT: OVERWORLD, STAY_STEADY: OVERWORLD, OWN_THE_SEARCH: OVERWORLD,
-  DAILY_FEED: OVERWORLD, VIDEO_STORM: OVERWORLD, AD_BLITZ: OVERWORLD, OMNIPRESENCE: OVERWORLD,
+  GET_SEEN: OVERWORLD, LAUNCH_IT: LAUNCH_WORLD, STAY_STEADY: STEADY_WORLD, OWN_THE_SEARCH: SEARCH_WORLD,
+  // diamond lines borrow the themed worlds so they're varied too
+  DAILY_FEED: OVERWORLD, VIDEO_STORM: LAUNCH_WORLD, AD_BLITZ: SEARCH_WORLD, OMNIPRESENCE: STEADY_WORLD,
 });
 
 function worldsFor(setKey: string): WorldDef[] {
@@ -1505,7 +1530,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
                     fill="#fff3c9" stroke="#14102a" strokeWidth="6" paintOrder="stroke">{`DAY ${s.day}`}</text>
                   <text x={p.x} y={labelUp ? ly2 + 46 : ly2} textAnchor="middle" fontSize="19" fontFamily="monospace"
                     fill={rendering ? "#7ff5f2" : "#e0d9b8"} stroke="#14102a" strokeWidth="5" paintOrder="stroke">
-                    {rendering ? "FORGING…" : `${fmtDow(s.date)} ${fmtTime(s.time)}`}
+                    {rendering ? "MAKING…" : `${fmtDow(s.date)} ${fmtTime(s.time)}`}
                   </text>
                 </g>
               ) : (
@@ -1583,7 +1608,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
           <Partner img={partner.img} accent={partner.accent} srcs={partner.srcs} />
           {rendering && <span className="qh-work-tool" aria-hidden="true">⚒️</span>}
           <span className={`tag${rendering ? " working" : ""}`}>
-            {rendering ? `FORGING AT ${curSpot}` : curSpot}
+            {rendering ? `MAKING · ${curSpot}` : curSpot}
           </span>
         </div>
       )}
@@ -1668,7 +1693,7 @@ export default function Campaigns() {
   const nextDropLabel = upcoming.length ? `${fmtDow(upcoming[0].date)} ${fmtTime(upcoming[0].time)}` : "—";
   let dialog: string;
   if (accepted) {
-    dialog = "Contract signed. I've mapped the whole month — every stop has a date, a time, and an item from the bag. First forge fires a day before its slot. Check the board.";
+    dialog = "Locked in! I've mapped the whole month — every stop has a date, a time, and an item from the bag. I make the first piece a day before its slot. Check the board.";
   } else if (active.length > 0) {
     const q = active[0];
     const isRendering = renderingIds.includes(q.id);
@@ -1680,14 +1705,14 @@ export default function Campaigns() {
     } else if (next) {
       dialog = `Day ${q.dayOf} of ${q.duration}. Next stop: day ${next.day} — a ${next.type} drop on ${fmtDow(next.date)} at ${fmtTime(next.time)}${next.productTitle ? ` featuring ${next.productTitle}` : ""}. Click any stop on the board to move its date.`;
     } else {
-      dialog = `Every stop on "${q.name}" is forged. The vault opens — check the completed log.`;
+      dialog = `Every stop on "${q.name}" is done. The vault opens — check the completed log.`;
     }
   } else if (done.length > 0) {
     dialog = `Quest complete — ${done[0].xpReward.toLocaleString()} XP banked. Pick next month's mission and I'm back on the road.`;
   } else if (tokens < questlineTokenCost(firstUnlocked)) {
     dialog = "Your token balance won't cover a quest yet — hit INSERT TOKENS in the HUD and I'll get to work the second we're funded.";
   } else {
-    dialog = "No expedition running. Pick a monthly quest below — I plan the calendar, forge every piece a day early, and man every stop on the map.";
+    dialog = "No expedition running. Pick a monthly quest below — I plan the calendar, make every piece a day early, and work every stop on the map.";
   }
 
   const startQuest = () => {
@@ -1751,7 +1776,7 @@ export default function Campaigns() {
           <div className="mm-hero-stat"><div className="k">NEXT AUTO-DROP</div><div className="v">{nextDropLabel}</div></div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <span className="qh-chip" title="The AI autopilot plans the month, forges content on schedule, and posts it">
+          <span className="qh-chip" title="The AI autopilot plans the month, makes content on schedule, and posts it">
             <span className="dot" />AI AUTOPILOT · {working ? "WORKING" : "ONLINE"}
           </span>
           <span className="qh-chip idle"><span className="dot" />🪙 {tokens.toLocaleString()}</span>
@@ -1769,13 +1794,13 @@ export default function Campaigns() {
         <Box paddingBlockEnd="300"><Banner tone="critical" title="Couldn't do that"><p>{err}</p></Banner></Box>
       )}
       {refunded > 0 && (
-        <Box paddingBlockEnd="300"><Banner tone="success" title="Quest abandoned"><p>{refunded} tokens refunded for content that hadn't been forged yet. Finished content stays in your library.</p></Banner></Box>
+        <Box paddingBlockEnd="300"><Banner tone="success" title="Quest abandoned"><p>{refunded} tokens refunded for content that hadn't been made yet. Finished content stays in your library.</p></Banner></Box>
       )}
       {actionData && "dropAdded" in actionData && (
-        <Box paddingBlockEnd="300"><Banner tone="success" title="🗓 Drop scheduled"><p>{actionData.dropAdded as number} tokens charged. {pName} will forge it about a day early and it posts automatically at peak time. It's on the map.</p></Banner></Box>
+        <Box paddingBlockEnd="300"><Banner tone="success" title="🗓 Drop scheduled"><p>{actionData.dropAdded as number} tokens charged. {pName} will make it about a day early and it posts automatically at peak time. It's on the map.</p></Banner></Box>
       )}
       {actionData && "swapped" in actionData && (
-        <Box paddingBlockEnd="300"><Banner tone="success" title="⇄ Cargo swapped"><p>{actionData.swapped as number} upcoming drop{(actionData.swapped as number) === 1 ? "" : "s"} now star the new item. Already-forged content keeps its original star.</p></Banner></Box>
+        <Box paddingBlockEnd="300"><Banner tone="success" title="⇄ Cargo swapped"><p>{actionData.swapped as number} upcoming drop{(actionData.swapped as number) === 1 ? "" : "s"} now star the new item. Already-made content keeps its original star.</p></Banner></Box>
       )}
 
       {/* Active expeditions — rollable scroll boards: one map unrolled at a
@@ -1788,7 +1813,7 @@ export default function Campaigns() {
             <span className="qh-label" style={{ marginBottom: 0 }}>
               ▶ {q.name.toUpperCase()} → {DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
               <span className="r">
-                DAY {q.dayOf} OF {q.duration} · {q.slots.filter((s) => s.status === "READY" || s.status === "POSTED").length} FORGED · {q.slots.filter((s) => s.status === "SCHEDULED" || s.status === "FORGING").length} SCHEDULED
+                DAY {q.dayOf} OF {q.duration} · {q.slots.filter((s) => s.status === "READY" || s.status === "POSTED").length} MADE · {q.slots.filter((s) => s.status === "SCHEDULED" || s.status === "FORGING").length} SCHEDULED
                 {(() => { const c = q.slots.reduce((n, s) => n + (s.clicks || 0), 0); return c > 0 ? ` · 💰 ${c} CLICKS` : ""; })()}
                 {q.avatarId && AVATAR_BY_ID[q.avatarId] ? ` · ★ ${AVATAR_BY_ID[q.avatarId].name}` : ""}
               </span>
@@ -1842,8 +1867,8 @@ export default function Campaigns() {
                     {s.status === "POSTED"
                       ? `LIVE. ${pName} posted this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — ${(s.clicks || 0) > 0 ? `it's pulling shoppers to your store (${s.clicks} so far).` : "the click counter starts the moment a shopper taps its link."}`
                       : locked
-                      ? `${pName} already forged this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — it's waiting in your library. ✓`
-                      : `${pName} forges a ${kind} here${s.productTitle ? ` starring ${s.productTitle}` : ""}${s.topic ? ` about "${s.topic}"` : ""}, ready for ${fmtDow(s.date)} at ${fmtTime(s.time)}. Change the plan below — the whole schedule obeys.`}
+                      ? `${pName} already made this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — it's waiting in your library. ✓`
+                      : `${pName} makes a ${kind} here${s.productTitle ? ` starring ${s.productTitle}` : ""}${s.topic ? ` about "${s.topic}"` : ""}, ready for ${fmtDow(s.date)} at ${fmtTime(s.time)}. Change the plan below — the whole schedule obeys.`}
                   </div>
                   {s.postedUrls && Object.keys(s.postedUrls).length > 0 && (
                     <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
@@ -1911,7 +1936,7 @@ export default function Campaigns() {
                     </div>
                     <label className="qh-field-label" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                       <input type="checkbox" checked={dropInstant} onChange={(e) => setDropInstant(e.target.checked)} />
-                      ⚡ Instant drop — forge it right now instead of waiting for the schedule
+                      ⚡ Instant drop — make it right now instead of waiting for the schedule
                     </label>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button type="button" className="qh-mini-btn" disabled={busy} onClick={() => submit({ intent: "addDrop", questlineId: q.id, day: String(d), dropType: "video", instant: dropInstant ? "1" : "", dropProduct, dropTopic }, { method: "post" })}>🎬 Video · 60🪙</button>
@@ -1945,7 +1970,7 @@ export default function Campaigns() {
                     <>
                       <div className="spot">⇄ SWAP OUT: {swapping}</div>
                       <div className="meta" style={{ margin: "6px 0 10px" }}>
-                        Pick the new star from your catalog. Every drop of {swapping} that isn't forged yet switches over — finished content keeps its original star.
+                        Pick the new star from your catalog. Every drop of {swapping} that isn't made yet switches over — finished content keeps its original star.
                       </div>
                       <div className="qh-bag" style={{ maxHeight: 200 }}>
                         {products.filter((p) => !inBagTitles.has(p.title)).map((p) => (
@@ -1980,7 +2005,7 @@ export default function Campaigns() {
                             <button
                               type="button" className="qh-mini-btn" style={{ marginLeft: 6 }}
                               disabled={it.future === 0 || busy}
-                              title={it.future === 0 ? "All of this item's drops are already forged" : `Swap ${it.title} out of the remaining ${it.future} drop${it.future === 1 ? "" : "s"}`}
+                              title={it.future === 0 ? "All of this item's drops are already made" : `Swap ${it.title} out of the remaining ${it.future} drop${it.future === 1 ? "" : "s"}`}
                               onClick={() => setSwapSel({ qid: q.id, fromTitle: it.title })}
                             >
                               ⇄ Swap
@@ -2005,7 +2030,7 @@ export default function Campaigns() {
               </button>
               <button
                 type="button" className="qh-mini-btn danger"
-                onClick={() => { if (confirm("Abandon this expedition? Tokens for unforged content are refunded; finished content stays in your library.")) submit({ intent: "delete", questlineId: q.id }, { method: "post" }); }}
+                onClick={() => { if (confirm("Abandon this expedition? Tokens for unmade content are refunded; finished content stays in your library.")) submit({ intent: "delete", questlineId: q.id }, { method: "post" }); }}
               >
                 ✕ Abandon
               </button>
@@ -2276,12 +2301,12 @@ export default function Campaigns() {
                         disabled={busy || bagCapped.length === 0 || tokens < questlineCostFor(selSku, tier) || !starId}
                         onClick={startQuest}
                       >
-                        {busy ? "SIGNING THE CONTRACT…" : `▶ START ${c.headline} · ${PUSH_NAME[selSku.tier] || selSku.tier} — ${questlineCostFor(selSku, tier).toLocaleString()} 🪙`}
+                        {busy ? "SETTING SAIL…" : `▶ START ${c.headline} · ${PUSH_NAME[selSku.tier] || selSku.tier} — ${questlineCostFor(selSku, tier).toLocaleString()} 🪙`}
                       </button>
                       <div className="qh-hint">
                         {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
                           tokens < questlineCostFor(selSku, tier) ? `This tier costs ${questlineCostFor(selSku, tier).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT TOKENS in the HUD to top up.` :
-                          "Tokens cover the month's content — after this, your marketing is officially on easy mode. Abandon anytime (unforged pieces refund). Ad spend always stays on your own accounts. Stack another campaign whenever you like."}
+                          "Tokens cover the month's content — after this, your marketing is officially on easy mode. Abandon anytime (unmade pieces refund). Ad spend always stays on your own accounts. Stack another campaign whenever you like."}
                       </div>
                     </>
                   ) : (

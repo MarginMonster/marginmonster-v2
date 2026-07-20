@@ -2224,3 +2224,57 @@ body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
 .mm-lvlinfo li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px dashed rgba(20, 18, 31, 0.1); }
 .mm-lvlinfo li i { font-style: normal; color: #5C5872; }
 .mm-lvlinfo li em { font-style: normal; font-weight: 800; color: #8A6207; white-space: nowrap; }
+
+/* ═══════════ 🎴 PLAN FLIP CARDS (2026-07-20) ═══════════
+   "View more" flips the rank card to a plain-English detail + motivation back.
+   Front is in flow (defines height); back is absolute, pre-rotated. */
+.mm-flip { position: relative; perspective: 1600px; }
+.mm-flip-inner {
+  position: relative; width: 100%; height: 100%;
+  transform-style: preserve-3d; transition: transform .6s cubic-bezier(.2, .8, .25, 1);
+}
+.mm-flip.flipped .mm-flip-inner { transform: rotateY(180deg); }
+.mm-flip-face {
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  height: 100%;
+}
+.mm-flip-back {
+  position: absolute; inset: 0; transform: rotateY(180deg);
+  display: flex; flex-direction: column;
+}
+/* featured pop follows onto the wrapper */
+.mm-flip.is-featured .mm-flip-face {
+  border-color: var(--fx, #F0B429);
+  box-shadow: 0 0 0 2px var(--fx, #F0B429), 0 18px 40px rgba(20, 18, 31, .28);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-flip-inner { transition: none; }
+}
+
+/* the little ⟲ view-more / back link above the buy button */
+.mm-flip-btn {
+  width: 100%; background: transparent; border: 1px dashed rgba(255, 255, 255, .28);
+  color: var(--fx, #F0B429); font-weight: 800; font-size: 12px; letter-spacing: .04em;
+  border-radius: 10px; padding: 7px; margin-bottom: 8px; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.mm-flip-btn:hover { background: rgba(255, 255, 255, .06); border-color: var(--fx, #F0B429); }
+
+/* the detail back */
+.mm-flip-rank {
+  font-family: var(--font-pixel, ui-monospace, monospace); font-size: 8px; letter-spacing: .1em;
+  color: var(--fx, #F0B429); text-align: center; margin: 2px 0 12px;
+}
+.mm-flip-block { margin-bottom: 12px; }
+.mm-flip-block b {
+  display: block; font-size: 10.5px; letter-spacing: .1em; color: #ffe9a8; margin-bottom: 5px;
+}
+.mm-flip-block p { font-size: 12.5px; line-height: 1.5; color: #cfc9ea; margin: 0; }
+.mm-flip-block.why p { font-style: italic; color: #b9b2dd; }
+.mm-flip-block ul { list-style: none; margin: 0; padding: 0; }
+.mm-flip-block li {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, .08); font-size: 12.5px;
+}
+.mm-flip-block li span { color: #f2eeff; font-weight: 700; }
+.mm-flip-block li em { font-style: normal; color: #8f88b8; font-size: 10.5px; text-align: right; }
