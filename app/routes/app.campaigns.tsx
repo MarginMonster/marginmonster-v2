@@ -610,12 +610,18 @@ const SEARCH_WORLD = themeWorld("os", ["meadow", "meadow", "meadow", "meadow"]);
 // ALWAYS ON — one island through dawn → noon → sunset → moonlight
 const STEADY_WORLD = themeWorld("ss", ["meadow", "meadow", "meadow", "meadow"]);
 
+// 💎 PREMIUM DIAMOND WORLDS — opulent gold, each autopilot line its own flex
+const DAILY_WORLD = themeWorld("df", ["meadow", "meadow", "meadow", "meadow"]);   // golden bazaar that never closes
+const STORM_WORLD = themeWorld("vs", ["volcano", "volcano", "volcano", "volcano"]); // cinematic storm-lit studio
+const BLITZ_WORLD = themeWorld("ab", ["meadow", "meadow", "meadow", "meadow"]);   // neon billboard bazaar
+const THRONE_WORLD = themeWorld("om", ["meadow", "meadow", "meadow", "meadow"]);  // golden throne kingdom
+
 Object.assign(WORLD_SETS, {
   // REVERT: point these back at ISLAND (or delete the assign for classic sets)
   CLASSIC: OVERWORLD,
   GET_SEEN: OVERWORLD, LAUNCH_IT: LAUNCH_WORLD, STAY_STEADY: STEADY_WORLD, OWN_THE_SEARCH: SEARCH_WORLD,
-  // diamond lines borrow the themed worlds so they're varied too
-  DAILY_FEED: OVERWORLD, VIDEO_STORM: LAUNCH_WORLD, AD_BLITZ: SEARCH_WORLD, OMNIPRESENCE: STEADY_WORLD,
+  // diamond lines each get their OWN premium gold-drenched map
+  DAILY_FEED: DAILY_WORLD, VIDEO_STORM: STORM_WORLD, AD_BLITZ: BLITZ_WORLD, OMNIPRESENCE: THRONE_WORLD,
 });
 
 function worldsFor(setKey: string): WorldDef[] {
