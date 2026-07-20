@@ -38,11 +38,11 @@
    "batch": "batch16-50usd"
   },
   "isla": {
-   "voiceId": "ttv-voice-2026072008423426-6UKYdjKu",
+   "voiceId": "ttv-voice-2026072008550826-grrHJZfA",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "redo-v2",
-   "replaced": "ttv-voice-2026072008242326-jjcSgQfp"
+   "batch": "fix-picker-crowned",
+   "replaced": "ttv-voice-2026072008423426-6UKYdjKu"
   },
   "keiko": {
    "voiceId": "ttv-voice-2026072008245026-mkID51Tq",
@@ -81,11 +81,11 @@
    "batch": "batch16-50usd"
   },
   "esther": {
-   "voiceId": "ttv-voice-2026072008430926-HaJxKift",
+   "voiceId": "ttv-voice-2026072008560526-R9PEF2PR",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "redo-v2",
-   "replaced": "ttv-voice-2026072008280726-CYOzJcAP"
+   "batch": "fix-picker-crowned",
+   "replaced": "ttv-voice-2026072008430926-HaJxKift"
   },
   "hana": {
    "voiceId": "ttv-voice-2026072008285426-vkQgto88",
@@ -100,11 +100,11 @@
    "batch": "batch16-50usd"
   },
   "ravi": {
-   "voiceId": "ttv-voice-2026072008434526-e75tn5Rt",
+   "voiceId": "ttv-voice-2026072008570126-dN2Xg38w",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "redo-v2",
-   "replaced": "ttv-voice-2026072008300726-Z6vYCrUC"
+   "batch": "fix-picker-crowned",
+   "replaced": "ttv-voice-2026072008434526-e75tn5Rt"
   },
   "fatima": {
    "voiceId": "ttv-voice-2026072008303526-FXLU04f9",
@@ -213,54 +213,5 @@
   "theo",
   "vera"
  ],
- "candidates": {
-  "isla": [
-   {
-    "tag": "A",
-    "voiceId": "ttv-voice-2026072008542426-eQrSZc68",
-    "f0": 148,
-    "verdict": "REJECT-male",
-    "keepalive": true
-   },
-   {
-    "tag": "B",
-    "voiceId": "ttv-voice-2026072008550826-grrHJZfA",
-    "f0": 190,
-    "verdict": "PASS-FEMALE",
-    "keepalive": true
-   }
-  ],
-  "esther": [
-   {
-    "tag": "A",
-    "voiceId": "ttv-voice-2026072008553726-QFDxpF2h",
-    "f0": 155,
-    "verdict": "PASS-FEMALE",
-    "keepalive": true
-   },
-   {
-    "tag": "B",
-    "voiceId": "ttv-voice-2026072008560526-R9PEF2PR",
-    "f0": 176,
-    "verdict": "PASS-FEMALE",
-    "keepalive": true
-   }
-  ],
-  "ravi": [
-   {
-    "tag": "A",
-    "voiceId": "ttv-voice-2026072008563626-TXAyMs4g",
-    "f0": 129,
-    "verdict": "male-any",
-    "keepalive": true
-   },
-   {
-    "tag": "B",
-    "voiceId": "ttv-voice-2026072008570126-dN2Xg38w",
-    "f0": 130,
-    "verdict": "male-any",
-    "keepalive": true
-   }
-  ]
- }
+ "candidates": {}
 }
