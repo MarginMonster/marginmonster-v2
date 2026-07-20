@@ -147,14 +147,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       if (j.status === "IN_PROGRESS") { working = true; renderingIds.push(qid); }
       const ql = qlById.get(qid)!;
       const slot = typeof p.slotIdx === "number" ? ql.slots.find((s) => s.idx === p.slotIdx) : undefined;
-      const spot = slot?.spot || "the trail";
+      const spot = slot?.day ? `day ${slot.day}` : "the trail"; // island rebrand: days, not fantasy place names
       const kind = j.type === "GENERATE_IMAGE_AD" ? "image ad" : j.type === "GENERATE_BLOG_POST" ? "blog post" : "video take";
       const ts = j.updatedAt.getTime();
       const t = rel(ts, now);
       if (j.status === "COMPLETED") {
         feed.push({
           ts, t, tone: "ok",
-          msg: `${pd.name} delivered the ${spot} ${kind} — +25 XP found! ✨`,
+          msg: `${pd.name} delivered ${spot}'s ${kind} — +25 XP found! ✨`,
           href: j.type === "GENERATE_VIDEO_AD" ? "/app/videos" : "/app/assets",
         });
       } else if (j.status === "FAILED") {
@@ -1351,7 +1351,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
   const contentDone = slots.every((s) => s.status === "READY" || s.status === "POSTED");
   const here = contentDone ? end : routePoint(ROUTE, dayT(Math.min(dayOf, duration), duration));
   const nextStop = stopPts.find((p) => p.slot.status === "FORGING" || p.slot.status === "SCHEDULED" || p.slot.status === "FAILED");
-  const curSpot = contentDone ? destination : rendering && nextStop ? nextStop.slot.spot : `DAY ${dayOf}`;
+  const curSpot = contentDone ? destination : rendering && nextStop ? `DAY ${nextStop.slot.day}` : `DAY ${dayOf}`;
 
   const routeD = ROUTE.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
 
@@ -1502,17 +1502,17 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
               {activeHere ? (
                 <g>
                   <text x={p.x} y={ly} textAnchor="middle" fontSize="23" fontFamily="monospace" fontWeight="bold"
-                    fill="#fff3c9" stroke="#14102a" strokeWidth="6" paintOrder="stroke">{s.spot}</text>
+                    fill="#fff3c9" stroke="#14102a" strokeWidth="6" paintOrder="stroke">{`DAY ${s.day}`}</text>
                   <text x={p.x} y={labelUp ? ly2 + 46 : ly2} textAnchor="middle" fontSize="19" fontFamily="monospace"
                     fill={rendering ? "#7ff5f2" : "#e0d9b8"} stroke="#14102a" strokeWidth="5" paintOrder="stroke">
-                    {`DAY ${s.day} · ${rendering ? "FORGING…" : `${fmtDow(s.date)} ${fmtTime(s.time)}`}`}
+                    {rendering ? "FORGING…" : `${fmtDow(s.date)} ${fmtTime(s.time)}`}
                   </text>
                 </g>
               ) : (
                 <text x={p.x} y={ly} textAnchor="middle" fontSize="19" fontFamily="monospace" fontWeight="bold"
                   fill={done ? "#c9f5e2" : failed ? "#ffb8b8" : "#f2f0ff"}
                   stroke="#0b0918" strokeWidth="6" paintOrder="stroke">
-                  {failed ? `${s.spot} · GOBLIN!` : done ? `${s.spot} ✓` : `${s.spot} · D${s.day}`}
+                  {failed ? `DAY ${s.day} · GOBLIN!` : done ? `DAY ${s.day} ✓` : `DAY ${s.day}`}
                 </text>
               )}
               {failed && (
@@ -1674,7 +1674,7 @@ export default function Campaigns() {
     } else if (isRendering && next) {
       dialog = `Working at ${next.spot} right now — the DAY ${next.day} ${next.type} drop${next.productTitle ? ` starring ${next.productTitle}` : ""}. It'll be READY before its ${fmtDow(next.date)} ${fmtTime(next.time)} slot.`;
     } else if (next) {
-      dialog = `Day ${q.dayOf} of ${q.duration}. Next stop: ${next.spot} — a ${next.type} drop on ${fmtDow(next.date)} at ${fmtTime(next.time)}${next.productTitle ? ` featuring ${next.productTitle}` : ""}. Click any stop on the board to move its date.`;
+      dialog = `Day ${q.dayOf} of ${q.duration}. Next stop: day ${next.day} — a ${next.type} drop on ${fmtDow(next.date)} at ${fmtTime(next.time)}${next.productTitle ? ` featuring ${next.productTitle}` : ""}. Click any stop on the board to move its date.`;
     } else {
       dialog = `Every stop on "${q.name}" is forged. The vault opens — check the completed log.`;
     }
@@ -1811,7 +1811,7 @@ export default function Campaigns() {
             return (
               <div className="qh-slot-editor">
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <div className="spot">{NODE_ICON[s.type]} {s.spot} — DAY {s.day}{(s.clicks || 0) > 0 && <span style={{ color: "#f5b83d" }}> · 💰 {s.clicks} shopper{s.clicks === 1 ? "" : "s"} clicked through</span>}</div>
+                  <div className="spot">{NODE_ICON[s.type]} DAY {s.day} — {s.type === "video" ? "VIDEO DROP" : s.type === "image" ? "IMAGE AD DROP" : "BLOG DROP"}{(s.clicks || 0) > 0 && <span style={{ color: "#f5b83d" }}> · 💰 {s.clicks} shopper{s.clicks === 1 ? "" : "s"} clicked through</span>}</div>
                   <div className="meta">
                     {s.status === "POSTED"
                       ? `LIVE. ${pName} posted this ${kind}${s.productTitle ? ` starring ${s.productTitle}` : ""} — ${(s.clicks || 0) > 0 ? `it's pulling shoppers to your store (${s.clicks} so far).` : "the click counter starts the moment a shopper taps its link."}`
@@ -1861,7 +1861,7 @@ export default function Campaigns() {
             const msg = passed
               ? `${pName} passed through here on DAY ${d} — a quiet stretch of road, nothing dropped.`
               : today
-                ? `${pName} is camped here right now — DAY ${d} of ${q.duration}.${next ? ` Next drop ahead: ${next.spot} on ${fmtDow(next.date)} at ${fmtTime(next.time)}.` : ""}`
+                ? `${pName} is camped here right now — DAY ${d} of ${q.duration}.${next ? ` Next drop ahead: day ${next.day}, ${fmtDow(next.date)} at ${fmtTime(next.time)}.` : ""}`
                 : `DAY ${d} · ${fmtDow(date)} — a travel day. Nothing is scheduled to drop here${next ? `; the next drop is ${next.spot} on DAY ${next.day}` : ""}.`;
             return (
               <div className="qh-slot-editor">
@@ -1981,7 +1981,7 @@ export default function Campaigns() {
                 <span className="dg">📍 DAY {q.dayOf} OF {q.duration}</span>
                 {nxt && (
                   <span className="dg next">
-                    NEXT: {ICO[nxt.type] || nxt.type} at {nxt.spot} · day {nxt.day}{nxt.time ? ` · ${nxt.time}` : ""}
+                    NEXT: {ICO[nxt.type] || nxt.type} · day {nxt.day}{nxt.time ? ` · ${nxt.time}` : ""}
                   </span>
                 )}
                 <span className="dg end">❌ DAY {q.duration} = THE TREASURE · {q.xpReward.toLocaleString()} XP</span>
@@ -2013,7 +2013,7 @@ export default function Campaigns() {
 
       {/* Quest Journal — tales from the road, real events in the partner's voice */}
       <div className="qh-win" style={{ marginBottom: 16 }}>
-        <span className="qh-label">📖 QUEST JOURNAL<span className="r">tales from the road</span></span>
+        <span className="qh-label">📖 CAPTAIN'S LOG<span className="r">your marketing, day by day</span></span>
         {feed.length === 0 ? (
           <div className="qh-feed"><div><span className="t">--</span>The journal is blank — sign a questline below and {pName} starts writing.</div></div>
         ) : (
@@ -2032,9 +2032,9 @@ export default function Campaigns() {
       {/* The campaign catalog — marketing-first headlines, three tiers each.
           Tier = intensity AND journey length across the panorama. */}
       <div className="qh-win gold" style={{ marginBottom: 16 }}>
-        <span className="qh-label gold">📣 MARKETING CAMPAIGNS<span className="r">pick a focus · pick how hard to push</span></span>
+        <span className="qh-label gold">📣 MARKETING CAMPAIGNS<span className="r">stack as many as you like — they run side by side</span></span>
         <div className="qh-howto">
-          <div className="step"><span className="n">1</span><span className="t">Pick a campaign and how hard to push</span></div>
+          <div className="step"><span className="n">1</span><span className="t">Pick a campaign and how hard to push — run several at once if you like</span></div>
           <div className="step"><span className="n">2</span><span className="t">Pack your products, pick your presenter</span></div>
           <div className="step"><span className="n">3</span><span className="t">{pName} journeys the map — creating and scheduling your content all month</span></div>
         </div>
@@ -2068,29 +2068,30 @@ export default function Campaigns() {
           })}
         </div>
 
-        {/* DIAMOND AUTOPILOT — one calm row, four flavors, no hidden tiers */}
-        <div className="qh-dia-row">
-          <span className="qh-dia-title">◆ DAILY AUTOPILOT<i>a drop lands every single day — fully hands off</i></span>
-          <div className="qh-dia-chips">
-            {DIAMOND_CAMPAIGNS.map((d) => {
-              const dSku = QUESTLINE_BY_KEY[`${d.key}_DIAMOND`];
-              if (!dSku) return null;
-              const dv = dSku.objectives.find((o) => o.type === "video")?.target || 0;
-              const di = dSku.objectives.find((o) => o.type === "image")?.target || 0;
-              const db = dSku.objectives.find((o) => o.type === "blog")?.target || 0;
-              return (
-                <button
-                  key={d.key} type="button"
-                  className={`qh-dia-chip${openKey === d.key ? " on" : ""}`}
-                  onClick={() => { setOpenKey(d.key); setSelKey(dSku.key); }}
-                >
-                  <b>{d.icon} {d.headline}</b>
-                  <span>{[dv > 0 && `🎬${dv}`, di > 0 && `🖼${di}`, db > 0 && `📝${db}`].filter(Boolean).join(" ")} / month</span>
-                  <em>{questlineCostFor(dSku, tier).toLocaleString()} 🪙</em>
-                </button>
-              );
-            })}
-          </div>
+        {/* PREMIUM PLANS — same parchment cards as the goals, own proud shelf */}
+        <div className="qh-stepline prem"><span className="n">◆</span> PREMIUM PLANS — MAX CONTENT<i>a drop lands every single day, fully hands off · these run alongside your other campaigns too</i></div>
+        <div className="qh-goal-grid">
+          {DIAMOND_CAMPAIGNS.map((d) => {
+            const dSku = QUESTLINE_BY_KEY[`${d.key}_DIAMOND`];
+            if (!dSku) return null;
+            const dActive = active.find((a) => a.template.startsWith(d.key));
+            const dv = dSku.objectives.find((o) => o.type === "video")?.target || 0;
+            const di = dSku.objectives.find((o) => o.type === "image")?.target || 0;
+            const db = dSku.objectives.find((o) => o.type === "blog")?.target || 0;
+            return (
+              <button
+                key={d.key} type="button"
+                className={`qh-goal prem${openKey === d.key ? " on" : ""}`}
+                onClick={() => { setOpenKey(d.key); setSelKey(dSku.key); }}
+              >
+                <span className="gi">{d.icon}</span>
+                <b>{d.headline}</b>
+                <i>{d.label}</i>
+                <span className="gd">{[dv > 0 && `🎬 ${dv} videos`, di > 0 && `🖼 ${di} image ads`, db > 0 && `📝 ${db} blogs`].filter(Boolean).join(" · ")} / month</span>
+                {dActive ? <em className="grun">⚑ RUNNING · DAY {dActive.dayOf}</em> : <em>{questlineCostFor(dSku, tier).toLocaleString()} 🪙</em>}
+              </button>
+            );
+          })}
         </div>
 
         {/* STEP 2 — the selected goal's push levels, ALWAYS visible */}
@@ -2170,7 +2171,7 @@ export default function Campaigns() {
                   ) : selSku ? (
                     <>
                       <div className="qh-auto">
-                        <div className="qh-auto-title">⚡ Fully automated after launch</div>
+                        <div className="qh-auto-title">⚡ EASY MODE: ENGAGED — fully automated after launch</div>
                         <div className="qh-auto-grid">
                           <span>🎬 Creates every video & image ad — starring your Brand Face</span>
                           <span>🗓 Picks posting days & peak times for you ({selSku.cadence})</span>
@@ -2269,7 +2270,7 @@ export default function Campaigns() {
                       <div className="qh-hint">
                         {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
                           tokens < questlineCostFor(selSku, tier) ? `This tier costs ${questlineCostFor(selSku, tier).toLocaleString()} tokens — you carry ${tokens.toLocaleString()}. INSERT TOKENS in the HUD to top up.` :
-                          "Tokens cover the month's content. Abandon anytime — unforged pieces are refunded. Ad spend always stays on your own connected accounts."}
+                          "Tokens cover the month's content — after this, your marketing is officially on easy mode. Abandon anytime (unforged pieces refund). Ad spend always stays on your own accounts. Stack another campaign whenever you like."}
                       </div>
                     </>
                   ) : (

@@ -2131,3 +2131,45 @@ body[data-page="campaigns"] .qh-dia-chip.on {
 
 /* talking-head sampler — the portrait becomes the video, same footprint */
 .mm-cast video.mm-cast-video { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; background: #0B0A17; }
+
+/* ═══════════ 📜 SNAP PASS 2 (2026-07-20) ═══════════ */
+
+/* talking-head sampler: mirror the portrait's exact frame — no expansion,
+ * no letterbox bars; the 9:16 video crops into the same 3/3.4 window */
+.mm-cast video.mm-cast-video {
+  width: 100%; aspect-ratio: 3 / 3.4; object-fit: cover; object-position: top center;
+  display: block; margin-bottom: 8px; background: #0B0A17;
+}
+
+/* HUD was covering page headers — more runway */
+.mm-hud-spacer { height: 152px; }
+.mm-hud-spacer.slim { height: 118px; }
+@media (max-width: 560px) { .mm-hud-spacer { height: 128px; } }
+
+/* the captain's log writes in ink, not neon green */
+body[data-page="campaigns"] .qh-feed .ok { color: #3B2E1A !important; }
+
+/* PREMIUM PLANS — goal cards in gold-foil dress */
+body[data-page="campaigns"] .qh-stepline.prem { color: #8A6207; }
+body[data-page="campaigns"] .qh-stepline.prem .n {
+  background: linear-gradient(180deg, #FFE08A, #F0B429); font-size: 13px;
+}
+body[data-page="campaigns"] .qh-goal.prem {
+  background: linear-gradient(180deg, #FFF6DC, #FFE9A8);
+  border-color: #C98F12;
+  box-shadow: 0 0 0 1px rgba(201, 143, 18, 0.35), 0 6px 16px rgba(138, 98, 7, 0.18);
+  position: relative; overflow: hidden;
+}
+body[data-page="campaigns"] .qh-goal.prem::before {
+  content: "◆"; position: absolute; top: 6px; right: 9px; color: #C98F12; font-size: 12px;
+}
+body[data-page="campaigns"] .qh-goal.prem::after {
+  content: ""; position: absolute; top: -60%; bottom: -60%; width: 44px; left: -70px;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: rotate(12deg); animation: qh-dia-sheen 6s ease-in-out infinite; pointer-events: none;
+}
+body[data-page="campaigns"] .qh-goal.prem.on {
+  border-color: #8A6207; box-shadow: 0 0 0 3px rgba(201, 143, 18, 0.5);
+}
+body[data-page="campaigns"] .qh-goal.prem em { background: #14121F; color: #FFD778; }
+body[data-page="campaigns"] .qh-goal.prem em.grun { background: #DFF3E2; color: #2E7D3A; }

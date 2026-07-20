@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation, useFetcher, useRevalidator, useActionData } from "@remix-run/react";
+import { Link, useLoaderData, useSubmit, useNavigation, useFetcher, useRevalidator, useActionData } from "@remix-run/react";
 import { useState, useEffect, useRef } from "react";
 import fs from "node:fs";
 import path from "node:path";
@@ -803,9 +803,12 @@ export default function Videos() {
             <span className="pp-eyebrow">Video Studio</span>
             <h1>Lights. Camera. <em>Sales.</em></h1>
             <p className="pp-sub">
-              Cast a presenter (or go product-only), give your direction, and a
-              scroll-stopping vertical video comes back — your presenter holding
-              your product, cut for TikTok, Reels, and Shorts.
+              This is the director's chair — hands-on, high-focus, one perfect take
+              at a time. Cast a presenter (or go product-only), give your direction,
+              and a scroll-stopping vertical video comes back, cut for TikTok, Reels,
+              and Shorts. Prefer true easy mode? <Link to="/app/campaigns">Launch a
+              Marketing Campaign</Link> and takes like these get created, scheduled,
+              and posted for you all month — no chair required.
             </p>
             <div className="pp-stats">
               <div className="pp-stat">

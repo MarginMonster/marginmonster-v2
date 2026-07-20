@@ -19,8 +19,8 @@ export type CompanionDef = {
 export const COMPANION_V = "4"; // bump to bust image cache on regen
 
 export const CATEGORY_LABEL: Record<CompanionCategory, string> = {
-  troop: "🐒 Partner Monkeys",
-  others: "✨ Others",
+  troop: "🐒 Monkey Partners",
+  others: "🛸 Honorary Monkeys",
 };
 
 export const COMPANIONS: CompanionDef[] = [

@@ -273,7 +273,7 @@ export default function Plans() {
   // companion gallery state
   const installedSet = new Set(installed);
   const gallery = COMPANIONS.filter((c) => installedSet.has(c.id));
-  const [cat, setCat] = useState<CompanionCategory | "all">("all");
+  const [cat, setCat] = useState<CompanionCategory | "all">("troop"); // monkeys lead; no ALL tab
   const [selId, setSelId] = useState<string | null>(companionId);
   const [nick, setNick] = useState<string>(companionName || "");
   const [forgeName, setForgeName] = useState("");
@@ -526,7 +526,6 @@ export default function Plans() {
           <div className="cmp-wrap">
             <div className="cmp-left">
               <div className="cmp-filters">
-                <button type="button" className={`cmp-chip${cat === "all" ? " on" : ""}`} onClick={() => setCat("all")}>ALL ({gallery.length})</button>
                 {(Object.keys(CATEGORY_LABEL) as CompanionCategory[]).map((k) => (
                   <button key={k} type="button" className={`cmp-chip${cat === k ? " on" : ""}`} onClick={() => setCat(k)}>{CATEGORY_LABEL[k]}</button>
                 ))}
