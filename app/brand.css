@@ -927,10 +927,11 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-bagart { position: relative; width: 340px; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45)); }
 .qh-bagart > img { display: block; width: 100%; }
 .qh-pouches {
-  position: absolute; left: 32%; right: 32%; top: 53%; bottom: 16%;
+  /* island banana bag (bagB): pouch grid sits on its big front pocket */
+  position: absolute; left: 25%; right: 25%; top: 56%; bottom: 20%;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; align-content: center;
 }
-.qh-pouches.big { top: 30%; }
+.qh-pouches.big { top: 34%; }
 .qh-pouch {
   position: relative; aspect-ratio: 1; background: rgba(24, 12, 4, 0.55); border: 2px dashed rgba(255, 205, 120, 0.45);
   border-radius: 7px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0; cursor: default;

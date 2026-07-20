@@ -1591,7 +1591,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
     </div>
     {cargo.length > 0 && (
       <button type="button" className="qh-cargo bagbtn" onClick={onOpenBag} title="Open the bag — see everything auto-posting this month">
-        <img className="bagimg" src="/quests/backpack.png" alt="" />
+        <img className="bagimg" src="/quests/backpack.png?v=2" alt="" />
         <span>
           <span className="l1">IN THE BAG · ×{cargo.length}</span>
           <span className="l2">auto-posting this month — tap to peek</span>
@@ -2237,7 +2237,7 @@ export default function Campaigns() {
                             <div className="qh-bagcol">
                               <span className="qh-field-label">🎒 YOUR PACK — {selSku.bagSize} pouches · click a pouch to unpack</span>
                               <div key={bagCapped.length} className="qh-bagart" style={{ animation: bagCapped.length ? "qh-bag-wiggle .4s ease" : undefined }}>
-                                <img src="/quests/backpack.png" alt="Merchant's treasure pack" />
+                                <img src="/quests/backpack.png?v=2" alt="Merchant's treasure pack" />
                                 <div className={`qh-pouches${selSku.bagSize > 6 ? " big" : ""}`}>
                                   {Array.from({ length: selSku.bagSize }).map((_, i) => {
                                     const item = bagCapped[i];
