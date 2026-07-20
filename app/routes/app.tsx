@@ -279,6 +279,7 @@ export default function App() {
         <Link to="/app/campaigns">Marketing Campaigns</Link>
         <Link to="/app/videos">Video Studio</Link>
         <Link to="/app/images">Image Studio</Link>
+        <Link to="/app/email">Email Studio</Link>
         <Link to="/app/seo">SEO Hub</Link>
         <Link to="/app/assets">Content Queue</Link>
         <Link to="/app/calendar">Content Calendar</Link>
