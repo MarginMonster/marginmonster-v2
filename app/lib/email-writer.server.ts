@@ -39,6 +39,7 @@ export async function writeMarketingEmail(
     productDescription?: string;
     topic?: string;
     storeName?: string;
+    ctaUrl?: string;
   }
 ): Promise<WrittenEmail> {
   let voice: { tone?: string; values?: string; samplePhrases?: string[] } = {};
@@ -82,7 +83,7 @@ Rules: 2 to 4 body sections, tight and scannable, on-brand, no fake discounts or
       : [{ text: "We've got something we think you'll love. Take a look." }];
   const cta = (parsed.cta_text || "Shop now").slice(0, 24);
 
-  return { subject, preheader, html: renderEmailHtml({ subject, preheader, sections, cta, storeName: input.storeName || "" }) };
+  return { subject, preheader, html: renderEmailHtml({ subject, preheader, sections, cta, storeName: input.storeName || "", ctaUrl: input.ctaUrl }) };
 }
 
 const esc = (s: string) =>
@@ -95,7 +96,9 @@ function renderEmailHtml(e: {
   sections: Section[];
   cta: string;
   storeName: string;
+  ctaUrl?: string;
 }): string {
+  const href = e.ctaUrl && /^https?:\/\//.test(e.ctaUrl) ? e.ctaUrl : "#";
   const body = e.sections
     .map(
       (s) => `
@@ -116,7 +119,7 @@ function renderEmailHtml(e: {
       <tr><td style="padding:8px 32px 18px;font:800 24px/1.25 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14121F;">${esc(e.subject)}</td></tr>
       ${body}
       <tr><td style="padding:8px 32px 30px;">
-        <a href="#" style="display:inline-block;background:#14121F;color:#FFD778;text-decoration:none;font:800 15px/1 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:14px 26px;border-radius:10px;">${esc(e.cta)} &nbsp;→</a>
+        <a href="${href}" style="display:inline-block;background:#14121F;color:#FFD778;text-decoration:none;font:800 15px/1 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:14px 26px;border-radius:10px;">${esc(e.cta)} &nbsp;→</a>
       </td></tr>
       <tr><td style="padding:18px 32px 26px;border-top:1px solid #EEE9DC;font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#8A8598;">
         Sent with 🏝️ EasyMode · <a href="#" style="color:#8A8598;">Unsubscribe</a>

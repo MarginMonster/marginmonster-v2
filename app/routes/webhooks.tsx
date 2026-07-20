@@ -85,6 +85,68 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       break;
     }
 
+    // ---- Abandoned-cart flow. A left-behind checkout is stored and a delayed
+    // SEND_ABANDONED_CART job fires ~1h later; a matching order marks it
+    // recovered so no email sends. Checkout/order payloads carry customer email
+    // → these only deliver once Protected Customer Data approval lands. ----
+    case "CHECKOUTS_CREATE":
+    case "CHECKOUTS_UPDATE": {
+      const c = payload as {
+        token?: string; id?: number; email?: string; abandoned_checkout_url?: string;
+        line_items?: { title?: string; quantity?: number; image_url?: string }[]; total_price?: string;
+      };
+      const token = c.token || (c.id ? String(c.id) : "");
+      if (!token) break;
+      const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+      if (!shopRecord) break;
+      const items = (c.line_items || []).slice(0, 6).map((li) => ({ title: li.title || "Item", qty: li.quantity || 1, image: li.image_url || null }));
+      const existing = await db.abandonedCheckout.findUnique({
+        where: { shopId_checkoutToken: { shopId: shopRecord.id, checkoutToken: token } },
+      });
+      if (existing) {
+        // refresh the cart contents; keep status + the single scheduled job
+        await db.abandonedCheckout.update({
+          where: { id: existing.id },
+          data: {
+            email: c.email || existing.email,
+            recoveryUrl: c.abandoned_checkout_url || existing.recoveryUrl,
+            itemsJson: JSON.stringify(items),
+            totalPrice: c.total_price || existing.totalPrice,
+          },
+        });
+      } else {
+        const rec = await db.abandonedCheckout.create({
+          data: {
+            shopId: shopRecord.id, checkoutToken: token, email: c.email || null,
+            recoveryUrl: c.abandoned_checkout_url || null, itemsJson: JSON.stringify(items),
+            totalPrice: c.total_price || null, status: "pending",
+          },
+        });
+        await enqueueJob(shopRecord.id, "SEND_ABANDONED_CART", { abandonedCheckoutId: rec.id }, new Date(Date.now() + 60 * 60 * 1000));
+      }
+      break;
+    }
+
+    case "ORDERS_CREATE": {
+      // a purchase closes the loop — mark that shopper's pending checkouts recovered
+      const o = payload as { email?: string; checkout_token?: string };
+      const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+      if (!shopRecord) break;
+      if (o.checkout_token) {
+        await db.abandonedCheckout.updateMany({
+          where: { shopId: shopRecord.id, checkoutToken: o.checkout_token, status: "pending" },
+          data: { status: "recovered" },
+        });
+      }
+      if (o.email) {
+        await db.abandonedCheckout.updateMany({
+          where: { shopId: shopRecord.id, email: o.email, status: "pending" },
+          data: { status: "recovered" },
+        });
+      }
+      break;
+    }
+
     // ---- Mandatory GDPR / privacy compliance webhooks (required for App Store
     // approval). This app requests NO protected customer data — scopes are
     // read/write_products + write_marketing_events only, so we never store

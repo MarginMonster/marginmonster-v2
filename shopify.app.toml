@@ -35,6 +35,11 @@ api_version = "2025-01"
   topics = ["app_subscriptions/update"]
   uri = "/webhooks"
 
+  # abandoned-cart flow (delivers once Protected Customer Data approval lands)
+  [[webhooks.subscriptions]]
+  topics = ["checkouts/create", "checkouts/update", "orders/create"]
+  uri = "/webhooks"
+
   # mandatory GDPR / privacy compliance webhooks (required for App Store review)
   [[webhooks.subscriptions]]
   topics = ["customers/data_request", "customers/redact", "shop/redact"]

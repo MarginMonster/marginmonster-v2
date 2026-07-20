@@ -261,6 +261,36 @@ async function runJob(
       break;
     }
 
+    case "SEND_ABANDONED_CART": {
+      // Fires ~1h after a checkout was abandoned. Send only if still pending
+      // (no order came through), we have an email, and email is connected.
+      const id = payload.abandonedCheckoutId as string;
+      const ac = await db.abandonedCheckout.findUnique({ where: { id } });
+      if (!ac || ac.status !== "pending") break; // recovered / already handled
+      const { emailEnabled, sendEmail } = await import("./email-provider.server");
+      if (!ac.email || !emailEnabled()) {
+        await db.abandonedCheckout.update({ where: { id }, data: { status: "skipped" } });
+        break;
+      }
+      const s = await db.shop.findUnique({ where: { id: shopId }, include: { brandProfile: true } });
+      if (!s?.brandProfile) {
+        await db.abandonedCheckout.update({ where: { id }, data: { status: "skipped" } });
+        break;
+      }
+      let items: { title?: string }[] = [];
+      try { items = JSON.parse(ac.itemsJson); } catch { /* empty */ }
+      const { writeMarketingEmail } = await import("./email-writer.server");
+      const email = await writeMarketingEmail(s.brandProfile, {
+        kind: "abandoned_cart",
+        productTitle: items[0]?.title,
+        storeName: s.domain.replace(/\.myshopify\.com$/, ""),
+        ctaUrl: ac.recoveryUrl || undefined,
+      });
+      const res = await sendEmail({ to: ac.email, subject: email.subject, html: email.html });
+      await db.abandonedCheckout.update({ where: { id }, data: { status: res.ok ? "emailed" : "skipped" } });
+      break;
+    }
+
     case "FORGE_COMPANION": {
       // Free custom companion: base + blink + cheer frames, cut out, stored
       // in the DB, installed as the shop's active partner. Lazy import keeps
