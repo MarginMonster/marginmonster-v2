@@ -1,6 +1,7 @@
 /* TEMPORARY internal runner — designs custom MiniMax voices via fal.ai using
  * the server's FAL_KEY (key never leaves Render). Secret-gated, one voice per
- * call. STRIP THIS ROUTE after the voice cast is finalized. */
+ * call. Modes: design (prompt) or keepalive (voiceId only — TTS an existing
+ * designed voice to lock it permanent). STRIP THIS ROUTE after the cast final. */
 
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -17,9 +18,9 @@ async function falQueue(model: string, input: Record<string, unknown>, maxPolls 
     headers: falHeaders(),
     body: JSON.stringify(input),
   });
-  if (!submit.ok) throw new Error(`fal submit ${submit.status}: ${(await submit.text()).slice(0, 300)}`);
+  if (!submit.ok) throw new Error(`submit ${submit.status}: ${(await submit.text()).slice(0, 400)}`);
   const q = (await submit.json()) as { status_url?: string; response_url?: string };
-  if (!q.status_url || !q.response_url) throw new Error("fal: no queue urls");
+  if (!q.status_url || !q.response_url) throw new Error("no queue urls");
   for (let i = 0; i < maxPolls; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
@@ -29,25 +30,64 @@ async function falQueue(model: string, input: Record<string, unknown>, maxPolls 
     if (sj.status === "FAILED" || sj.status === "ERROR") {
       const err = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } })
         .then((r) => r.text()).catch(() => "");
-      throw new Error(`fal ${sj.status}: ${err.slice(0, 300)}`);
+      throw new Error(`${sj.status}: ${err.slice(0, 400)}`);
     }
-    if (i === maxPolls - 1) throw new Error("fal: poll timeout");
+    if (i === maxPolls - 1) throw new Error("poll timeout");
   }
   const res = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
-  if (!res.ok) throw new Error(`fal result ${res.status}`);
-  return res.json();
+  const bodyText = await res.text();
+  if (!res.ok) throw new Error(`result ${res.status}: ${bodyText.slice(0, 400)}`);
+  return JSON.parse(bodyText);
+}
+
+/** TTS with a designed voice — tries schema variants + a propagation delay so a
+ *  fresh voice id that hasn't replicated yet doesn't fail the whole call. */
+async function ttsWithVoice(voiceId: string, text: string): Promise<{ url: string | null; attempts: string[] }> {
+  const attempts: string[] = [];
+  const variants: Record<string, unknown>[] = [
+    {
+      text,
+      voice_setting: { voice_id: voiceId, speed: 1, vol: 1 },
+      audio_setting: { sample_rate: "32000", bitrate: "128000", format: "mp3", channel: "1" },
+      output_format: "url",
+    },
+    { text, voice_setting: { voice_id: voiceId, speed: 1, vol: 1 }, output_format: "url" },
+    { text, voice_setting: { voice_id: voiceId, speed: 1, vol: 1, pitch: 0, emotion: "happy" }, output_format: "url" },
+  ];
+  for (let round = 0; round < 2; round++) {
+    for (let v = 0; v < variants.length; v++) {
+      try {
+        const r = await falQueue("fal-ai/minimax/speech-02-hd", variants[v]);
+        const url = r.audio?.url || null;
+        if (url) { attempts.push(`round${round}/v${v}: OK`); return { url, attempts }; }
+        attempts.push(`round${round}/v${v}: no url in ${JSON.stringify(r).slice(0, 160)}`);
+      } catch (e) {
+        attempts.push(`round${round}/v${v}: ${(e as Error).message.slice(0, 220)}`);
+      }
+    }
+    // fresh voice ids can lag behind the design call — wait then re-try all
+    await new Promise((r) => setTimeout(r, 12000));
+  }
+  return { url: null, attempts };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   const body = (await request.json().catch(() => ({}))) as {
-    secret?: string; id?: string; prompt?: string; preview_text?: string; tts_text?: string;
+    secret?: string; id?: string; prompt?: string; preview_text?: string;
+    tts_text?: string; voiceId?: string;
   };
   if (body.secret !== RUN_SECRET) return json({ error: "not found" }, { status: 404 });
   if (!process.env.FAL_KEY) return json({ error: "FAL_KEY not set" }, { status: 500 });
-  if (!body.id || !body.prompt || !body.preview_text) return json({ error: "id, prompt, preview_text required" }, { status: 400 });
 
   try {
-    // 1) design the voice from the text description
+    // keepalive mode: TTS an already-designed voice
+    if (body.voiceId) {
+      const tts = await ttsWithVoice(body.voiceId, body.tts_text || "Keepalive check, locking this voice in.");
+      return json({ id: body.id || null, voiceId: body.voiceId, ttsUrl: tts.url, ttsAttempts: tts.attempts });
+    }
+
+    if (!body.id || !body.prompt || !body.preview_text) return json({ error: "id, prompt, preview_text required" }, { status: 400 });
+
     const design = await falQueue("fal-ai/minimax/voice-design", {
       prompt: body.prompt,
       preview_text: body.preview_text,
@@ -56,23 +96,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const previewUrl: string | undefined = design.audio?.url;
     if (!voiceId) return json({ error: "no voice id in design result", raw: design }, { status: 502 });
 
-    // 2) keepalive TTS with the designed voice — locks it permanent AND proves
-    // the design->tts handshake; returns the audition mp3 url
-    let ttsUrl: string | null = null;
-    let ttsError: string | null = null;
-    try {
-      const tts = await falQueue("fal-ai/minimax/speech-02-hd", {
-        text: body.tts_text || body.preview_text,
-        voice_setting: { voice_id: voiceId, speed: 1, vol: 1 },
-        audio_setting: { sample_rate: "32000", bitrate: "128000", format: "mp3", channel: "1" },
-        output_format: "url",
-      });
-      ttsUrl = tts.audio?.url || null;
-    } catch (e) {
-      ttsError = (e as Error).message;
-    }
-
-    return json({ id: body.id, voiceId, previewUrl, ttsUrl, ttsError });
+    const tts = await ttsWithVoice(voiceId, body.tts_text || body.preview_text);
+    return json({ id: body.id, voiceId, previewUrl, ttsUrl: tts.url, ttsAttempts: tts.attempts });
   } catch (e) {
     return json({ error: (e as Error).message }, { status: 502 });
   }
