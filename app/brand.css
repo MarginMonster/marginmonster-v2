@@ -2045,3 +2045,88 @@ body[data-page="campaigns"] .qh-pack-say,
 body[data-page="campaigns"] .qh-load-row { color: #6B5638 !important; }
 body[data-page="campaigns"] .qh-load-bar { background: #E8D5A4 !important; }
 body[data-page="campaigns"] .qh-load-bar i { background: linear-gradient(90deg, #F0B429, #C98F12) !important; }
+
+/* ═══════════ 📜 CAPTAIN'S LOG — SNAP PASS (user punch list 2026-07-20) ═══════════ */
+
+/* 1/2/3 how-to steps were still console-navy — now parchment tags */
+body[data-page="campaigns"] .qh-howto .step {
+  background: #FFF3D6 !important; border: 1.5px solid #C9A96A !important; border-radius: 11px !important;
+}
+
+/* gold pixel text was illegible on parchment — ink it */
+body[data-page="campaigns"] .qh-quest-foot .xp { color: #8A6207 !important; text-shadow: none !important; }
+body[data-page="campaigns"] .qh-quest-foot { border-color: #C9A96A !important; }
+
+/* map hint chip goes parchment tag */
+body[data-page="campaigns"] .qh-map-hint {
+  background: #FFF3D6 !important; border: 1.5px solid #B98D4F !important;
+  color: #7A4E12 !important; border-radius: 999px !important; text-shadow: none !important;
+}
+
+/* journal legibility: darker ink, honest link color */
+body[data-page="campaigns"] .qh-feed div { color: #3B2E1A !important; }
+body[data-page="campaigns"] .qh-feed .t { color: #A5854E !important; }
+body[data-page="campaigns"] .qh-feed .good, body[data-page="campaigns"] .qh-feed .gold { color: #1F6B2E !important; }
+body[data-page="campaigns"] .qh-feed .bad, body[data-page="campaigns"] .qh-feed .warn { color: #A33B2A !important; }
+body[data-page="campaigns"] .qh-journal-link { color: #A06A00 !important; font-weight: 800 !important; }
+
+/* bag copy was clipping the panel edge */
+body[data-page="campaigns"] .qh-bagcol { width: auto !important; max-width: 360px; }
+body[data-page="campaigns"] .qh-pack-say { white-space: normal !important; padding: 0 8px; line-height: 1.5; }
+
+/* the 3-chip digest — where you are, what lands next, what's at the X */
+body[data-page="campaigns"] .qh-digest { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+body[data-page="campaigns"] .qh-digest .dg {
+  background: #FFF3D6; border: 1.5px solid #B98D4F; border-radius: 999px;
+  color: #7A4E12; font-weight: 800; font-size: 11.5px; letter-spacing: .04em;
+  padding: 6px 12px;
+}
+body[data-page="campaigns"] .qh-digest .dg.next {
+  background: #FFE9A8; border-color: #8A6207; color: #5C430A;
+  box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.28);
+}
+body[data-page="campaigns"] .qh-digest .dg.end { background: #14121F; border-color: #C98F12; color: #FFD778; }
+
+/* ◆ DAILY AUTOPILOT — the flagship shelf, dressed like it costs the most.
+   Deep midnight galleon band, double gold foil, sheen drifting across. */
+body[data-page="campaigns"] .qh-dia-row {
+  position: relative; overflow: hidden;
+  background: linear-gradient(160deg, #101D2E 0%, #0A1220 55%, #131B0E 130%) !important;
+  border: 2px solid #C98F12 !important;
+  box-shadow: 0 0 0 1px rgba(20, 18, 31, 1), 0 0 0 3px rgba(201, 143, 18, 0.35), 0 14px 34px rgba(10, 14, 24, 0.5) !important;
+  border-radius: 15px !important; padding: 14px 16px 16px !important;
+}
+body[data-page="campaigns"] .qh-dia-row::after {
+  content: ""; position: absolute; top: -60%; bottom: -60%; width: 60px;
+  background: linear-gradient(100deg, transparent, rgba(255, 231, 160, 0.12), transparent);
+  transform: rotate(12deg); left: -80px; animation: qh-dia-sheen 5.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes qh-dia-sheen { 0%, 55% { left: -80px; } 90%, 100% { left: 115%; } }
+body[data-page="campaigns"] .qh-dia-title {
+  color: #FFD778 !important; font-size: 13px !important; letter-spacing: .14em !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+body[data-page="campaigns"] .qh-dia-title::after {
+  content: "SCALE EXCLUSIVE ◆"; float: right; font-size: 9px; letter-spacing: .18em;
+  color: #0E0C16; background: linear-gradient(180deg, #FFE08A, #F0B429);
+  border-radius: 999px; padding: 3px 10px; box-shadow: 0 2px 0 #A87F0E;
+}
+body[data-page="campaigns"] .qh-dia-title i { color: rgba(255, 231, 160, 0.66) !important; }
+body[data-page="campaigns"] .qh-dia-chip {
+  background: linear-gradient(180deg, rgba(255, 224, 138, 0.08), rgba(255, 224, 138, 0.02)) !important;
+  border: 1.5px solid rgba(201, 143, 18, 0.55) !important; border-radius: 12px !important;
+  color: #F4EFDD !important; padding: 10px 8px !important;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+body[data-page="campaigns"] .qh-dia-chip:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45); }
+body[data-page="campaigns"] .qh-dia-chip b { font-size: 12px !important; color: #FFE9A8 !important; letter-spacing: .04em; }
+body[data-page="campaigns"] .qh-dia-chip span { color: rgba(244, 239, 221, 0.75) !important; }
+body[data-page="campaigns"] .qh-dia-chip em { font-size: 13px !important; color: #FFD778 !important; }
+body[data-page="campaigns"] .qh-dia-chip.on {
+  background: linear-gradient(180deg, rgba(255, 224, 138, 0.22), rgba(255, 224, 138, 0.08)) !important;
+  border-color: #FFD778 !important; box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.35) !important;
+}
+
+/* talking-head sampler — the portrait becomes the video, same footprint */
+.mm-cast video.mm-cast-video { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; background: #0B0A17; }

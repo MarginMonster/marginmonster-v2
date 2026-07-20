@@ -606,18 +606,30 @@ export default function Videos() {
 
   // voice samplers — every head can speak before you cast them. One shared
   // <audio>: tapping a new head stops the last, tapping the same toggles.
+  // Designed presenters go further: the portrait becomes a TALKING VIDEO in
+  // the card (HeyGen lip-sync of their easy-mode line); audio is the fallback.
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const [voicePlaying, setVoicePlaying] = useState<string | null>(null);
-  const sampleVoice = (id: string) => {
-    const cur = voiceRef.current;
-    if (voicePlaying === id && cur) { cur.pause(); setVoicePlaying(null); return; }
-    if (cur) cur.pause();
+  const [videoPlaying, setVideoPlaying] = useState<string | null>(null);
+  const stopAll = () => {
+    voiceRef.current?.pause();
+    setVoicePlaying(null);
+    setVideoPlaying(null);
+  };
+  const playAudioSample = (id: string) => {
     const a = new Audio(`/voices/${id}.mp3?v=3`);
     voiceRef.current = a;
     a.onended = () => setVoicePlaying((p) => (p === id ? null : p));
     a.onerror = () => setVoicePlaying((p) => (p === id ? null : p));
     a.play().catch(() => setVoicePlaying(null));
     setVoicePlaying(id);
+  };
+  const sampleVoice = (id: string) => {
+    const wasPlaying = voicePlaying === id || videoPlaying === id;
+    stopAll();
+    if (wasPlaying) return;
+    if (DESIGNED_VOICES.has(id)) { setVideoPlaying(id); return; }
+    playAudioSample(id);
   };
 
   // Take Library filters — reference cuts by presenter/product/status instead
@@ -846,21 +858,32 @@ export default function Videos() {
                 {brandFace?.id === a.id && <span className="mm-bf-tag">★ BRAND FACE</span>}
                 {DESIGNED_VOICES.has(a.id) && <span className="mm-voice-tag">✦ TRUE VOICE</span>}
                 <span
-                  className={`mm-voice-btn${voicePlaying === a.id ? " playing" : ""}${DESIGNED_VOICES.has(a.id) ? " prem" : ""}`}
+                  className={`mm-voice-btn${voicePlaying === a.id || videoPlaying === a.id ? " playing" : ""}${DESIGNED_VOICES.has(a.id) ? " prem" : ""}`}
                   role="button"
                   tabIndex={0}
                   aria-label={`Hear ${a.name}'s voice`}
-                  title={`Hear ${a.name}'s voice`}
+                  title={DESIGNED_VOICES.has(a.id) ? `Watch ${a.name} speak` : `Hear ${a.name}'s voice`}
                   onClick={(e) => { e.stopPropagation(); sampleVoice(a.id); }}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); sampleVoice(a.id); } }}
                 >
-                  {voicePlaying === a.id ? "♪" : "🔊"}
+                  {voicePlaying === a.id || videoPlaying === a.id ? "♪" : DESIGNED_VOICES.has(a.id) ? "▶" : "🔊"}
                 </span>
-                <img
-                  src={castImg(a.id, avatarId === a.id ? avatarVariant : 0)}
-                  alt={`${a.name} — ${a.vibe}`}
-                  loading="lazy"
-                />
+                {videoPlaying === a.id ? (
+                  <video
+                    className="mm-cast-video"
+                    src={`/voice-videos/${a.id}.mp4?v=1`}
+                    autoPlay
+                    playsInline
+                    onEnded={() => setVideoPlaying(null)}
+                    onError={() => { setVideoPlaying(null); playAudioSample(a.id); }}
+                  />
+                ) : (
+                  <img
+                    src={castImg(a.id, avatarId === a.id ? avatarVariant : 0)}
+                    alt={`${a.name} — ${a.vibe}`}
+                    loading="lazy"
+                  />
+                )}
                 <div className="nm">{a.name}</div>
                 <div className="vb">{a.vibe}</div>
               </button>

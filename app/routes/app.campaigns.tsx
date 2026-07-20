@@ -1971,6 +1971,23 @@ export default function Campaigns() {
               </div>
             );
           })()}
+          {/* the 3-chip digest — the map is flavor, THIS is the read:
+              where you are, what lands next, what's waiting at the X */}
+          {(() => {
+            const nxt = (q.slots || []).find((s) => s.status === "SCHEDULED" || s.status === "FORGING");
+            const ICO: Record<string, string> = { video: "🎬 video", image: "🖼 image ad", blog: "📝 blog" };
+            return (
+              <div className="qh-digest">
+                <span className="dg">📍 DAY {q.dayOf} OF {q.duration}</span>
+                {nxt && (
+                  <span className="dg next">
+                    NEXT: {ICO[nxt.type] || nxt.type} at {nxt.spot} · day {nxt.day}{nxt.time ? ` · ${nxt.time}` : ""}
+                  </span>
+                )}
+                <span className="dg end">❌ DAY {q.duration} = THE TREASURE · {q.xpReward.toLocaleString()} XP</span>
+              </div>
+            );
+          })()}
           <div className="qh-quest-foot">
             <span className="xp">🏆 {q.xpReward.toLocaleString()} XP IN THE VAULT · +100 XP PER PERFECT WEEK</span>
             <span style={{ display: "inline-flex", gap: 8 }}>
@@ -2192,9 +2209,10 @@ export default function Campaigns() {
                       {products.length > 0 && (() => {
                         const drops = selSku.objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.target, 0);
                         const say =
-                          bagCapped.length === 0 ? "Pack at least 1 item to march." :
-                          bagCapped.length >= selSku.bagSize ? `Fully loaded (${selSku.bagSize} items)! Want more products in the rotation? ${selSku.tier === "GOLD" ? "GOLD carries the biggest bag — upgrade your package for more monthly firepower." : selSku.tier === "SILVER" ? "GOLD carries 10 pouches." : "SILVER carries 6 pouches, GOLD carries 10."}` :
-                          `${bagCapped.length} packed — ${pName} rotates ${bagCapped.length === 1 ? "it" : "them"} across the month's ${drops} drops.`;
+                          bagCapped.length === 0 ? `Pack at least 1 product — ${pName} won't march empty-handed.` :
+                          bagCapped.length >= selSku.bagSize ? `Fully loaded! More products = more of your catalog advertised. Fewer = each one gets the spotlight more often. ${selSku.tier === "GOLD" ? "" : "(Bigger bags at higher push levels.)"}` :
+                          bagCapped.length === 1 ? `1 packed — every one of the month's ${drops} drops promotes this product. Maximum focus. Add more to spread the spotlight.` :
+                          `${bagCapped.length} packed — ${pName} rotates them across ${drops} drops. Add more to advertise more of your catalog, or unpack to focus fire on fewer.`;
                         return (
                           <div className="qh-packgrid" style={{ marginBottom: 14 }}>
                             <div>
