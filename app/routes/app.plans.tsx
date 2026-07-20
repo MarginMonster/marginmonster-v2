@@ -16,6 +16,9 @@ import { Partner } from "../components/Partner";
 import { unlockAchievement } from "../lib/xp.server";
 import { COMPANIONS, COMPANION_BY_ID, CATEGORY_LABEL, companionSrcs, type CompanionCategory } from "../lib/companions";
 import { enqueueJob } from "../lib/job-queue.server";
+import { spendTokens } from "../lib/tokens.server";
+
+const COMPANION_TOKEN_COST = 1; // creating a custom companion costs 1 token (anti-spam)
 import fsMod from "node:fs";
 import pathMod from "node:path";
 
@@ -180,11 +183,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ companionSet: true });
   }
   if (intent === "forgeCompanion") {
-    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true } });
     if (!shop) return json({ error: "Shop not found" });
+    if (!shop.activePlan || !shop.activePlan.active) return json({ error: "Pick a package first — creating a companion costs 1 token." });
     const prompt = ((form.get("prompt") as string) || "").trim();
     const name = ((form.get("name") as string) || "").trim();
     if (prompt.length < 8) return json({ error: "Describe your companion in a few words first." });
+    // anti-spam: only one in flight at a time (blocks spam-clicking the button)
+    const already = await db.job.findFirst({
+      where: { shopId: shop.id, type: "FORGE_COMPANION", status: { in: ["PENDING", "IN_PROGRESS"] } },
+    });
+    if (already) return json({ error: "You've already got a companion being created — let it finish first." });
+    // costs 1 token; spendTokens throws if the wallet can't cover it
+    try {
+      await spendTokens(shop.id, COMPANION_TOKEN_COST);
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : "Not enough tokens — a companion costs 1 token." });
+    }
     await enqueueJob(shop.id, "FORGE_COMPANION", { prompt, name: name || "PARTNER" });
     return json({ forgeQueued: true });
   }
@@ -646,10 +661,10 @@ export default function Plans() {
                 )}
               </div>
 
-              {/* the forge — free, always */}
+              {/* create your own — 1 token, saved to your profile */}
               <div className="cmp-forge">
-                <div className="cmp-forge-title">🎨 CREATE YOUR OWN — FREE</div>
-                <p className="cmp-forge-sub">Describe any companion you can imagine. We create it in the house style with full animation frames.</p>
+                <div className="cmp-forge-title">🎨 CREATE YOUR OWN — 1 🪙</div>
+                <p className="cmp-forge-sub">Describe any companion you can imagine. We create it in the house style with full animation frames and save it to your profile — yours forever.</p>
                 <input
                   className="qh-input" style={{ width: "100%", marginBottom: 8 }}
                   placeholder="Name it (e.g. SPROCKET)" maxLength={24}
@@ -666,7 +681,7 @@ export default function Plans() {
                   disabled={nav.state !== "idle" || forging || forgeQueued || forgePrompt.trim().length < 8}
                   onClick={() => submit({ intent: "forgeCompanion", name: forgeName, prompt: forgePrompt }, { method: "post" })}
                 >
-                  {forging || forgeQueued ? "🎨 CREATING…" : "🎨 CREATE COMPANION"}
+                  {forging || forgeQueued ? "🎨 CREATING…" : "🎨 CREATE COMPANION · 1 🪙"}
                 </button>
               </div>
             </div>
