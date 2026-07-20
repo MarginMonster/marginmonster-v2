@@ -97,34 +97,32 @@ export async function generateImageAd(
   const direction =
     PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;
 
-  // stylePrompt (Image Studio style chips) leads when present — the hands-on
-  // merchant's art direction beats the derived default. Quality tail is what
-  // keeps flux from producing the "monster people" that schnell used to.
-  const prompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
-
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
 
-  // flux-DEV (28 steps) — schnell at 4 steps mangled faces into "monsters" and
-  // broke the premium promise. Dev is the quality tier; model-slug endpoint so
-  // we never chase a stale version hash.
-  const createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${replicateToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      input: {
-        prompt,
-        num_inference_steps: 30,
-        guidance: 3,
-        aspect_ratio: "1:1",
-        output_format: "jpg",
-        output_quality: 92,
-      },
-    }),
-  });
+  const jsonHeaders = { Authorization: `Bearer ${replicateToken}`, "Content-Type": "application/json" };
+  const hasProductImg = !!productImageUrl && /^https?:\/\//.test(productImageUrl);
+
+  // WHEN WE HAVE THE REAL PRODUCT PHOTO → flux-KONTEXT rebuilds a premium scene
+  // AROUND the actual product (keeps its exact shape/color/logo). Without it,
+  // fall back to flux-DEV text2img from the title (schnell at 4 steps mangled
+  // faces into "monsters" — dev at 30 steps is the quality tier).
+  let createRes: Response;
+  if (hasProductImg) {
+    const scenePrompt = `Place this exact product, unchanged, as the hero of a premium advertising photograph. ${stylePrompt ? `${stylePrompt}. ` : ""}${direction}. ${visual.imageStyle || "clean professional product photography"}. Keep the product identical in shape, color, materials, logos and every detail. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
+    createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ input: { prompt: scenePrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" } }),
+    });
+  } else {
+    const prompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+    createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ input: { prompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
+    });
+  }
 
   if (!createRes.ok) {
     throw new Error(`Replicate create failed: ${createRes.status}`);
