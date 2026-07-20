@@ -133,12 +133,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const files = new Set(fsMod.readdirSync(pathMod.join(process.cwd(), "public", "companions")));
     installed = COMPANIONS.filter((c) => files.has(`${c.id}.png`)).map((c) => c.id);
   } catch { /* gallery not installed yet */ }
-  // is a forge currently running?
+  // companion job status — the LATEST job drives both flags so a later success
+  // suppresses an earlier failure. forgeFailed → show the refund message.
   let forging = false;
+  let forgeFailed = false;
   try {
     if (shop) {
-      const j = await db.job.findFirst({ where: { shopId: shop.id, type: "FORGE_COMPANION", status: { in: ["PENDING", "IN_PROGRESS"] } } });
-      forging = !!j;
+      const last = await db.job.findFirst({
+        where: { shopId: shop.id, type: "FORGE_COMPANION" },
+        orderBy: { createdAt: "desc" },
+      });
+      forging = last?.status === "PENDING" || last?.status === "IN_PROGRESS";
+      forgeFailed = last?.status === "FAILED" && (Date.now() - new Date(last.updatedAt).getTime() < 10 * 60_000);
     }
   } catch { /* non-fatal */ }
   return json({
@@ -150,6 +156,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopId: shop?.id || "",
     installed,
     forging,
+    forgeFailed,
     billingTest: billingIsTest(),
     welcome: url.searchParams.get("welcome"),
     topped: url.searchParams.get("topped"),
@@ -289,7 +296,7 @@ const PACKAGES: Record<string, Pkg> = {
 };
 
 export default function Plans() {
-  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging, billingTest, welcome, topped, packs } = useLoaderData<typeof loader>();
+  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging, forgeFailed, billingTest, welcome, topped, packs } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const billingError = actionData && "error" in actionData ? actionData.error : null;
   const confirmationUrl = actionData && "confirmationUrl" in actionData ? actionData.confirmationUrl : null;
@@ -591,6 +598,13 @@ export default function Plans() {
             <div style={{ marginBottom: 12 }}>
               <Banner tone="info" title="🥥 On it!">
                 <p>Your custom companion is being created — three animation frames, hand-cut. It installs itself automatically in a couple of minutes; check back or refresh.</p>
+              </Banner>
+            </div>
+          )}
+          {forgeFailed && !forging && !forgeQueued && (
+            <div style={{ marginBottom: 12 }}>
+              <Banner tone="warning" title="🌊 Server was busy — token refunded, try again!">
+                <p>That one didn't come through, so we gave your token back. Give it another go — it usually works the second time.</p>
               </Banner>
             </div>
           )}

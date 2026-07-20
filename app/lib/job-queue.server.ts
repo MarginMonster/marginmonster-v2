@@ -9,6 +9,7 @@ import { generateVideoAd } from "./video-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
+import { refundTokens } from "./tokens.server";
 import { generateAdCopy } from "./ad-copy-generation.server";
 import { launchCampaign } from "./campaign-launch.server";
 import { runDecisioningPass } from "./decisioning-engine.server";
@@ -103,9 +104,13 @@ export async function processNextJob(): Promise<boolean> {
       data: { status: nextStatus, lastError },
     });
     console.error(`Job ${job.id} (${job.type}) failed:`, lastError);
-    // Out of retries on a questline job → mark its map slot FAILED (non-fatal)
+    // Out of retries → mark the questline slot FAILED (non-fatal), and refund
+    // the token a custom companion cost so a server-busy failure is free.
     if (nextStatus === "FAILED") {
       try { await maybeTickQuestline(JSON.parse(job.payload), job.shopId, false); } catch { /* skip */ }
+      if (job.type === "FORGE_COMPANION") {
+        try { await refundTokens(job.shopId, 1); } catch { /* non-fatal */ }
+      }
     }
   }
 
