@@ -14,8 +14,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const key = url.searchParams.get("key");
   const shop = url.searchParams.get("shop");
 
-  if (key !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
-    return json({ error: "unauthorized" }, { status: 401 });
+  // Disabled unless PURGE_KEY is explicitly set on the server. No hardcoded fallback.
+  if (!process.env.PURGE_KEY || key !== process.env.PURGE_KEY) {
+    return json({ error: "not found" }, { status: 404 });
   }
   if (!shop) return json({ error: "shop query param required" }, { status: 400 });
 

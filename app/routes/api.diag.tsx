@@ -12,8 +12,10 @@ import { db } from "../db.server";
  *  we can see exactly why Shopify 403s. Protected by the shared key. */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  if (url.searchParams.get("key") !== (process.env.PURGE_KEY || "adarcade-fix-2026")) {
-    return json({ error: "unauthorized" }, { status: 401 });
+  // Disabled unless PURGE_KEY is explicitly set on the server (unset in prod →
+  // this debug endpoint is fully dead). No hardcoded fallback secret.
+  if (!process.env.PURGE_KEY || url.searchParams.get("key") !== process.env.PURGE_KEY) {
+    return json({ error: "not found" }, { status: 404 });
   }
   // Billing forensics — the last failed billing.request (status/headers/body/
   // session snapshot) captured in memory by recordBillingFailure.

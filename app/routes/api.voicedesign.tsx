@@ -6,7 +6,9 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 
-const RUN_SECRET = "em-vd-x9k27qmw84zh51tpva36";
+// Voice-design tool secret comes from the env only — unset in prod → the whole
+// route is dead (see the guard below). No hardcoded secret in the repo.
+const RUN_SECRET = process.env.VOICEDESIGN_SECRET;
 
 function falHeaders(): Record<string, string> {
   return { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" };
@@ -77,7 +79,7 @@ export async function action({ request }: ActionFunctionArgs) {
     tts_text?: string; voiceId?: string;
     mode?: string; imageUrl?: string; audioUrl?: string; statusUrl?: string; responseUrl?: string;
   };
-  if (body.secret !== RUN_SECRET) return json({ error: "not found" }, { status: 404 });
+  if (!RUN_SECRET || body.secret !== RUN_SECRET) return json({ error: "not found" }, { status: 404 });
   if (!process.env.FAL_KEY) return json({ error: "FAL_KEY not set" }, { status: 500 });
 
   try {

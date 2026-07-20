@@ -30,6 +30,16 @@ api_version = "2025-01"
   topics = ["app/uninstalled"]
   uri = "/webhooks"
 
+  # billing status sync — handled by APP_SUBSCRIPTIONS_UPDATE in webhooks.tsx
+  [[webhooks.subscriptions]]
+  topics = ["app_subscriptions/update"]
+  uri = "/webhooks"
+
+  # mandatory GDPR / privacy compliance webhooks (required for App Store review)
+  [[webhooks.subscriptions]]
+  topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "/webhooks"
+
 [app_proxy]
 url = "https://marginmonster-fiew.onrender.com/proxy"
 subpath = "profit-tracker"

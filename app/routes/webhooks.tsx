@@ -85,6 +85,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       break;
     }
 
+    // ---- Mandatory GDPR / privacy compliance webhooks (required for App Store
+    // approval). This app requests NO protected customer data — scopes are
+    // read/write_products + write_marketing_events only, so we never store
+    // customer PII. The data-request / customer-redact handlers therefore have
+    // nothing to return or erase; shop/redact wipes every trace of the shop. ----
+    case "CUSTOMERS_DATA_REQUEST": {
+      console.log(`[gdpr] customers/data_request for ${shop} — app stores no customer personal data`);
+      break;
+    }
+
+    case "CUSTOMERS_REDACT": {
+      console.log(`[gdpr] customers/redact for ${shop} — no customer personal data to erase`);
+      break;
+    }
+
+    case "SHOP_REDACT": {
+      // Fires ~48h after uninstall — the guaranteed final erasure. Uninstall
+      // already clears most of this; repeat it idempotently so nothing lingers.
+      await db.session.deleteMany({ where: { shop } });
+      const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+      if (shopRecord) await db.shop.delete({ where: { id: shopRecord.id } });
+      console.log(`[gdpr] shop/redact complete for ${shop} — all shop data erased`);
+      break;
+    }
+
     default:
       console.log(`Unhandled webhook topic: ${topic}`);
   }
