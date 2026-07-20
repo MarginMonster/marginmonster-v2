@@ -823,8 +823,16 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 .qh-label.gold { color: var(--arc-yellow); }
 
 /* world map — a panorama you travel across, not a screen you cram */
-.qh-mapwrap { position: relative; }
-.qh-map { position: relative; border-radius: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #3a3560 #12122a; }
+/* 🗺️ the scroll chrome — the map module IS a held-open parchment scroll:
+ * rolled ends left/right, torn edges top/bottom (border-image slices of
+ * /quests/scroll-frame.jpg), the world scrolling inside on the parchment. */
+.qh-mapwrap {
+  position: relative;
+  border: 16px solid transparent; border-left-width: 46px; border-right-width: 46px;
+  border-image: url(/quests/scroll-frame.jpg) 60 235 60 235 fill stretch;
+}
+@media (max-width: 820px) { .qh-mapwrap { border-left-width: 24px; border-right-width: 24px; border-top-width: 10px; border-bottom-width: 10px; } }
+.qh-map { position: relative; border-radius: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #b98d4f #f3e4bc; }
 .qh-map-inner { position: relative; }
 .qh-map svg { display: block; height: auto; }
 .qh-map.grabby { cursor: grab; user-select: none; -webkit-user-select: none; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }

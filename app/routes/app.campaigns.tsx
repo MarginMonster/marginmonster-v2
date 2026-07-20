@@ -542,10 +542,52 @@ const WORLD_SETS: Record<string, WorldDef[]> = {
 
 /* 🏝️ ISLAND ERA OVERRIDE — every campaign (diamond lines included) walks the
  * blessed island journey. Delete this single line to revert to classic sets. */
+/* 🗺️ THE OVERWORLD SCROLL (user-crowned: concept B + A's scroll frame) —
+ * one treasure-hunt questline: dock trailhead → jungle statue → volcano gold
+ * road → the X and the open chest. Rendered inside the parchment scroll chrome
+ * (.qh-mapwrap border-image). Anchors keep it ALIVE: sea ripples + lapping
+ * waves, the statue's eyes glow, the volcano smokes over its own lava glow,
+ * gold light breathes on the treasure chest, parrots circle the palms. */
+const OVERWORLD: WorldDef[] = [
+  {
+    src: "/quests/ow-w1.jpg", biome: "meadow",
+    route: [[300, 450], [400, 360], [520, 300], [640, 260], [760, 300], [860, 340], [980, 320], [1140, 300], [1300, 320], [1470, 340]],
+    anchors: [
+      { kind: "ripple", x: 180, y: 590 }, { kind: "wave", x: 760, y: 565 },
+      { kind: "ripple", x: 1380, y: 560 }, { kind: "perch", x: 1210, y: 60 },
+    ],
+  },
+  {
+    src: "/quests/ow-w2.jpg", biome: "meadow",
+    route: [[70, 300], [240, 280], [400, 260], [520, 330], [660, 295], [820, 340], [960, 380], [1120, 370], [1300, 390], [1470, 400]],
+    anchors: [
+      { kind: "glow", x: 762, y: 115 }, { kind: "ripple", x: 520, y: 555 },
+      { kind: "ripple", x: 1250, y: 545 }, { kind: "wave", x: 850, y: 590 }, { kind: "perch", x: 1400, y: 80 },
+    ],
+  },
+  {
+    src: "/quests/ow-w3.jpg", biome: "volcano",
+    route: [[70, 390], [250, 350], [430, 280], [600, 220], [700, 260], [780, 350], [920, 395], [1060, 340], [1200, 330], [1350, 300], [1470, 300]],
+    anchors: [
+      { kind: "smoke", x: 1120, y: 55 }, { kind: "glow", x: 1120, y: 145 },
+      { kind: "glow", x: 1105, y: 255 }, { kind: "ripple", x: 600, y: 600 }, { kind: "wave", x: 900, y: 590 },
+    ],
+  },
+  {
+    src: "/quests/ow-w4.jpg", biome: "meadow",
+    route: [[70, 420], [230, 450], [390, 430], [520, 380], [650, 330], [760, 290], [860, 245]],
+    anchors: [
+      { kind: "glow", x: 595, y: 325 }, { kind: "ripple", x: 180, y: 560 },
+      { kind: "wave", x: 1050, y: 560 }, { kind: "ripple", x: 700, y: 590 }, { kind: "perch", x: 1350, y: 100 },
+    ],
+  },
+];
+
 Object.assign(WORLD_SETS, {
-  CLASSIC: ISLAND,
-  GET_SEEN: ISLAND, LAUNCH_IT: ISLAND, STAY_STEADY: ISLAND, OWN_THE_SEARCH: ISLAND,
-  DAILY_FEED: ISLAND, VIDEO_STORM: ISLAND, AD_BLITZ: ISLAND, OMNIPRESENCE: ISLAND,
+  // REVERT: point these back at ISLAND (or delete the assign for classic sets)
+  CLASSIC: OVERWORLD,
+  GET_SEEN: OVERWORLD, LAUNCH_IT: OVERWORLD, STAY_STEADY: OVERWORLD, OWN_THE_SEARCH: OVERWORLD,
+  DAILY_FEED: OVERWORLD, VIDEO_STORM: OVERWORLD, AD_BLITZ: OVERWORLD, OMNIPRESENCE: OVERWORLD,
 });
 
 function worldsFor(setKey: string): WorldDef[] {

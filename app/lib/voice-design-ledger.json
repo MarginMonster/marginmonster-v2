@@ -38,10 +38,11 @@
    "batch": "batch16-50usd"
   },
   "isla": {
-   "voiceId": "ttv-voice-2026072008242326-jjcSgQfp",
+   "voiceId": "ttv-voice-2026072008423426-6UKYdjKu",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "batch16-50usd"
+   "batch": "redo-v2",
+   "replaced": "ttv-voice-2026072008242326-jjcSgQfp"
   },
   "keiko": {
    "voiceId": "ttv-voice-2026072008245026-mkID51Tq",
@@ -80,10 +81,11 @@
    "batch": "batch16-50usd"
   },
   "esther": {
-   "voiceId": "ttv-voice-2026072008280726-CYOzJcAP",
+   "voiceId": "ttv-voice-2026072008430926-HaJxKift",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "batch16-50usd"
+   "batch": "redo-v2",
+   "replaced": "ttv-voice-2026072008280726-CYOzJcAP"
   },
   "hana": {
    "voiceId": "ttv-voice-2026072008285426-vkQgto88",
@@ -98,10 +100,11 @@
    "batch": "batch16-50usd"
   },
   "ravi": {
-   "voiceId": "ttv-voice-2026072008300726-Z6vYCrUC",
+   "voiceId": "ttv-voice-2026072008434526-e75tn5Rt",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "batch16-50usd"
+   "batch": "redo-v2",
+   "replaced": "ttv-voice-2026072008300726-Z6vYCrUC"
   },
   "fatima": {
    "voiceId": "ttv-voice-2026072008303526-FXLU04f9",
@@ -122,10 +125,11 @@
    "batch": "batch16-50usd"
   },
   "marquis": {
-   "voiceId": "ttv-voice-2026072008320726-p1s8msWX",
+   "voiceId": "ttv-voice-2026072008441126-8jCKUzuF",
    "designedAt": "2026-07-20",
    "keepalive": true,
-   "batch": "batch16-50usd"
+   "batch": "redo-v2",
+   "replaced": "ttv-voice-2026072008320726-p1s8msWX"
   }
  },
  "pending": [
