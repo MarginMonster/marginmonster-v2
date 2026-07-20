@@ -1841,12 +1841,15 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
  * background-attachment: fixed is also broken in iOS webviews (renders as a
  * zoomed smear), so mobile scrolls the backdrop instead. */
 @media (max-width: 820px) {
-  /* backdrop rides a FIXED underlay (iOS renders background-attachment:fixed as
-   * a zoomed smear, and scroll-attached bgs leave a white void past one screen) */
-  body { background: #FAF9F6 !important; }
+  /* backdrop rides a FIXED underlay so it travels with the scroll (iOS renders
+   * background-attachment:fixed as a zoomed smear, and scroll-attached bgs leave
+   * a white void past one screen). Base tone is island sand, not white — even a
+   * first-paint flash or rubber-band overscroll reads warm, never a void. */
+  html { background: #EFE3C4; }
+  body { background: #EFE3C4 !important; }
   body::before {
     content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background: url(/bg/dashboard-m.jpg) center top / cover no-repeat;
+    background: #EFE3C4 url(/bg/dashboard-m.jpg) center top / cover no-repeat;
   }
   body[data-page="campaigns"]::before { background-image: url(/bg/campaigns-m.jpg); }
   body[data-page="videos"]::before { background-image: url(/bg/videos-m.jpg); }
