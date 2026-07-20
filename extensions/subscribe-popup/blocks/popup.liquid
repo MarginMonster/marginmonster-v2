@@ -1,0 +1,111 @@
+{% comment %}
+  EasyMode email signup popup — an app embed block. The merchant toggles it on
+  under Theme editor → App embeds. Shows after a delay, remembers dismissal /
+  success in localStorage, and POSTs the email to the app proxy
+  (/apps/easymode/subscribe), which is PCD-free consented capture.
+{% endcomment %}
+
+<div id="em-popup-root" data-delay="{{ block.settings.delay }}" style="display:none;">
+  <div class="em-pop-overlay" data-em-close></div>
+  <div class="em-pop-card" role="dialog" aria-label="Newsletter signup">
+    <button class="em-pop-x" data-em-close aria-label="Close">&times;</button>
+    <div class="em-pop-emoji">🏝️</div>
+    <h2 class="em-pop-h">{{ block.settings.heading }}</h2>
+    <p class="em-pop-sub">{{ block.settings.subtext }}</p>
+    <form class="em-pop-form">
+      <input class="em-pop-input" type="email" name="email" required placeholder="you@email.com" autocomplete="email" />
+      <button class="em-pop-btn" type="submit">{{ block.settings.button }}</button>
+    </form>
+    <div class="em-pop-msg" aria-live="polite"></div>
+    <div class="em-pop-fine">No spam. Unsubscribe anytime.</div>
+  </div>
+</div>
+
+<style>
+  #em-popup-root { position: fixed; inset: 0; z-index: 999999; }
+  .em-pop-overlay { position: absolute; inset: 0; background: rgba(10,10,20,.55); }
+  .em-pop-card {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) scale(.96);
+    width: min(92vw, 380px); background: {{ block.settings.bg }}; color: {{ block.settings.text }};
+    border-radius: 18px; padding: 26px 24px 20px; text-align: center;
+    box-shadow: 0 24px 60px rgba(0,0,0,.35); opacity: 0;
+    transition: opacity .25s ease, transform .25s ease;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  #em-popup-root.em-show .em-pop-card { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  .em-pop-x { position: absolute; top: 10px; right: 12px; background: none; border: none; font-size: 24px; line-height: 1; cursor: pointer; color: inherit; opacity: .5; }
+  .em-pop-emoji { font-size: 34px; }
+  .em-pop-h { font-size: 21px; font-weight: 800; margin: 8px 0 4px; }
+  .em-pop-sub { font-size: 14px; opacity: .85; margin: 0 0 16px; line-height: 1.45; }
+  .em-pop-form { display: flex; flex-direction: column; gap: 8px; }
+  .em-pop-input { padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(0,0,0,.2); font-size: 15px; width: 100%; box-sizing: border-box; }
+  .em-pop-btn { padding: 12px 14px; border-radius: 10px; border: none; cursor: pointer; font-size: 15px; font-weight: 800; background: {{ block.settings.accent }}; color: {{ block.settings.accent_text }}; }
+  .em-pop-btn:disabled { opacity: .6; cursor: default; }
+  .em-pop-msg { font-size: 13px; margin-top: 10px; min-height: 16px; font-weight: 600; }
+  .em-pop-fine { font-size: 11px; opacity: .6; margin-top: 8px; }
+</style>
+
+<script>
+  (function () {
+    var KEY = "em_popup_done";
+    var root = document.getElementById("em-popup-root");
+    if (!root) return;
+    try { if (localStorage.getItem(KEY)) return; } catch (e) {}
+
+    var delay = (parseInt(root.getAttribute("data-delay"), 10) || 5) * 1000;
+    var shown = false;
+    function show() {
+      if (shown) return; shown = true;
+      root.style.display = "block";
+      requestAnimationFrame(function () { root.classList.add("em-show"); });
+    }
+    function close() {
+      root.classList.remove("em-show");
+      setTimeout(function () { root.style.display = "none"; }, 250);
+      try { localStorage.setItem(KEY, "1"); } catch (e) {}
+    }
+    setTimeout(show, delay);
+    root.querySelectorAll("[data-em-close]").forEach(function (el) { el.addEventListener("click", close); });
+
+    var form = root.querySelector(".em-pop-form");
+    var msg = root.querySelector(".em-pop-msg");
+    var btn = root.querySelector(".em-pop-btn");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var email = form.email.value.trim();
+      if (!email) return;
+      btn.disabled = true; msg.style.color = "inherit"; msg.textContent = "Signing you up…";
+      var data = new FormData(); data.append("email", email);
+      fetch("/apps/easymode/subscribe", { method: "POST", body: data })
+        .then(function (r) { return r.json().catch(function () { return { ok: r.ok }; }); })
+        .then(function (j) {
+          if (j && j.ok) {
+            msg.style.color = "#1a8f4b"; msg.textContent = "You're in! 🎉";
+            try { localStorage.setItem(KEY, "1"); } catch (e) {}
+            setTimeout(close, 1400);
+          } else {
+            btn.disabled = false; msg.style.color = "#c0392b";
+            msg.textContent = (j && j.error) ? j.error : "Something went wrong — try again.";
+          }
+        })
+        .catch(function () { btn.disabled = false; msg.style.color = "#c0392b"; msg.textContent = "Network error — try again."; });
+    });
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "EasyMode Signup Popup",
+  "target": "body",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Headline", "default": "Get 10% off your first order" },
+    { "type": "text", "id": "subtext", "label": "Subtext", "default": "Join the list for deals, drops, and good stuff — straight to your inbox." },
+    { "type": "text", "id": "button", "label": "Button text", "default": "Sign me up" },
+    { "type": "range", "id": "delay", "label": "Show after (seconds)", "min": 0, "max": 30, "step": 1, "unit": "s", "default": 5 },
+    { "type": "color", "id": "bg", "label": "Background", "default": "#FFFFFF" },
+    { "type": "color", "id": "text", "label": "Text", "default": "#14121F" },
+    { "type": "color", "id": "accent", "label": "Button color", "default": "#14121F" },
+    { "type": "color", "id": "accent_text", "label": "Button text color", "default": "#FFD778" }
+  ]
+}
+{% endschema %}

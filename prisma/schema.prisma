@@ -69,6 +69,8 @@ model Shop {
   landingPages   LandingPage[]
   questlines     Questline[]
   tokenPurchases TokenPurchase[]
+  subscribers        Subscriber[]
+  abandonedCheckouts AbandonedCheckout[]
 }
 
 // One row per PAID token top-up — chargeId is unique so a purchase can never
@@ -252,6 +254,7 @@ enum JobType {
   LAUNCH_CAMPAIGN
   DECISIONING_PASS
   FORGE_COMPANION
+  SEND_ABANDONED_CART
 }
 
 enum JobStatus {
@@ -337,4 +340,41 @@ model PerformanceMetric {
   spendCents      Int      @default(0)
   revenueCents    Int      @default(0)
   roas            Float    @default(0)
+}
+
+// 📧 Email list built by EasyMode's own signup popup (PCD-free — these are
+// people who opted in through OUR form, so we own the consent and don't need
+// Shopify customer-data approval to email them).
+model Subscriber {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  email     String
+  source    String   @default("popup") // popup | manual | import
+  status    String   @default("subscribed") // subscribed | unsubscribed
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, email])
+  @@index([shopId])
+}
+
+// 🛒 Abandoned checkouts captured from the checkouts webhooks. A delayed
+// SEND_ABANDONED_CART job fires ~1h later; if still "pending" (no matching
+// order) and email is connected, the AI recovery email sends. Webhook payloads
+// carry customer email → this only receives data once PCD approval lands.
+model AbandonedCheckout {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  checkoutToken String
+  email         String?
+  recoveryUrl   String?
+  itemsJson     String   @default("[]") // [{title,image,qty}]
+  totalPrice    String?
+  status        String   @default("pending") // pending | recovered | emailed | skipped
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([shopId, checkoutToken])
+  @@index([shopId, status])
 }

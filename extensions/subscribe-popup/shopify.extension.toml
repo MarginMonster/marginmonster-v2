@@ -1,0 +1,6 @@
+api_version = "2025-01"
+
+[[extensions]]
+type = "theme"
+name = "EasyMode Signup Popup"
+handle = "easymode-popup"

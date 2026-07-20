@@ -40,9 +40,10 @@ api_version = "2025-01"
   topics = ["customers/data_request", "customers/redact", "shop/redact"]
   uri = "/webhooks"
 
+# storefront app proxy — powers the email signup popup (POSTs to /proxy/subscribe)
 [app_proxy]
 url = "https://marginmonster-fiew.onrender.com/proxy"
-subpath = "profit-tracker"
+subpath = "easymode"
 prefix = "apps"
 
 [pos]

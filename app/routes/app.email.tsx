@@ -32,11 +32,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     /* non-fatal */
   }
 
+  const subCount = shop ? await db.subscriber.count({ where: { shopId: shop.id, status: "subscribed" } }) : 0;
+  const recentSubs = shop
+    ? (await db.subscriber.findMany({
+        where: { shopId: shop.id, status: "subscribed" },
+        orderBy: { createdAt: "desc" },
+        take: 6,
+        select: { email: true, source: true, createdAt: true },
+      }))
+    : [];
+
   return json({
     products,
     hasPlan: !!shop?.activePlan?.active,
     hasBrand: !!shop?.brandProfile,
     emailReady: emailEnabled(),
+    subCount,
+    recentSubs,
     storeName: session.shop.replace(/\.myshopify\.com$/, ""),
   });
 };
@@ -75,7 +87,7 @@ const FLOWS: { key: EmailKind; title: string; icon: string; when: string; why: s
 ];
 
 export default function EmailStudio() {
-  const { products, hasPlan, hasBrand, emailReady, storeName } = useLoaderData<typeof loader>();
+  const { products, hasPlan, hasBrand, emailReady, subCount, recentSubs, storeName } = useLoaderData<typeof loader>();
   const fx = useFetcher<typeof action>();
   const [kind, setKind] = useState<EmailKind>("broadcast");
   const [productTitle, setProductTitle] = useState("");
@@ -122,6 +134,41 @@ export default function EmailStudio() {
             </Banner>
           </Layout.Section>
         )}
+
+        {/* YOUR LIST — PCD-free list building via the signup popup */}
+        <Layout.Section>
+          <Card>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ textAlign: "center", minWidth: 120 }}>
+                <div style={{ fontSize: 40, fontWeight: 900, color: "#14121F", lineHeight: 1 }}>{subCount.toLocaleString()}</div>
+                <div style={{ fontSize: 11, letterSpacing: ".1em", color: "#8A8598", fontWeight: 700, marginTop: 4 }}>SUBSCRIBERS</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#14121F" }}>📥 Build your list — no approval needed</div>
+                <p style={{ fontSize: 13, color: "#5C5872", margin: "4px 0 8px", lineHeight: 1.5 }}>
+                  Turn on the <b>EasyMode Signup Popup</b> and it collects consented emails
+                  right on your storefront. These are yours — you can email them the day you
+                  connect a sender, <i>without</i> waiting on Shopify's customer-data approval.
+                </p>
+                <div style={{ fontSize: 12, color: "#7A4E12", background: "#FFF3D6", border: "1px solid #E3CE97", borderRadius: 8, padding: "8px 11px" }}>
+                  <b>To switch it on:</b> Shopify admin → <b>Online Store → Themes → Customize</b> → <b>App embeds</b> (bottom-left) → toggle on <b>EasyMode Signup Popup</b> → Save.
+                </div>
+              </div>
+            </div>
+            {recentSubs.length > 0 && (
+              <div style={{ marginTop: 14, borderTop: "1px solid #EEE9DC", paddingTop: 12 }}>
+                <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#8A8598", fontWeight: 700, marginBottom: 6 }}>LATEST SIGNUPS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {recentSubs.map((s, i) => (
+                    <span key={i} style={{ fontSize: 12, background: "#F4F0E6", borderRadius: 999, padding: "4px 10px", color: "#5C5872" }}>
+                      {s.email} <span style={{ color: "#B0AAC4" }}>· {s.source}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        </Layout.Section>
 
         {/* GENERATOR */}
         <Layout.Section>
