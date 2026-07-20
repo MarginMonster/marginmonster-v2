@@ -3,10 +3,10 @@
  * (GENERATE_IMAGE_AD, pure token economy) — this page is the hands-on,
  * high-focus counterpart; campaigns are the true easy mode. */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Link, useLoaderData, useFetcher } from "@remix-run/react";
+import { Link, useLoaderData, useFetcher, useRevalidator } from "@remix-run/react";
 import { Page, Layout, Card, Banner, Button, Badge } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -24,6 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({
       products: [] as { id: string; title: string; image: string | null }[],
       stills: [] as { id: string; title: string; imageUrl: string | null; createdAt: Date }[],
+      jobs: [] as { id: string; status: string; title: string; productImage: string | null; scheduledFor: string | null; createdAt: Date }[],
       tokens: 0,
       stillTokenCost: TOKEN_COST.image,
     });
@@ -61,13 +62,48 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((a) => !!a.imageUrl);
 
+  // in-flight image jobs — on-demand renders (rendering now / in line) AND
+  // campaign image drops still scheduled for the future. Mirrors the Video
+  // Studio's Scheduled & rendering tab.
+  const nowMs = Date.now();
+  const jobRows = await db.job.findMany({
+    where: { shopId: shop.id, type: "GENERATE_IMAGE_AD", status: { in: ["PENDING", "IN_PROGRESS"] } },
+    orderBy: { createdAt: "desc" },
+    take: 24,
+  });
+  const jobs = jobRows.map((j) => {
+    let p: { productTitle?: string; productImageUrl?: string } = {};
+    try { p = JSON.parse(j.payload); } catch { /* keep defaults */ }
+    return {
+      id: j.id,
+      status: j.status,
+      title: p.productTitle ? `Ad image for ${p.productTitle}` : "Image ad",
+      productImage: p.productImageUrl || null,
+      scheduledFor: j.runAt && j.runAt.getTime() > nowMs ? j.runAt.toISOString() : null,
+      createdAt: j.createdAt,
+    };
+  });
+
   return json({
     products,
     stills,
+    jobs,
     tokens: shop.activePlan ? tokensRemaining(shop.activePlan) : 0,
     stillTokenCost: TOKEN_COST.image,
   });
 };
+
+/* Friendly "Thu, Jul 24 · 6PM" for a scheduled drop — UTC-deterministic so
+ * server and client agree (no hydration mismatch). */
+function fmtDayTime(iso: string): string {
+  const d = new Date(iso);
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const mons = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let h = d.getUTCHours();
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${days[d.getUTCDay()]}, ${mons[d.getUTCMonth()]} ${d.getUTCDate()} · ${h}${ap}`;
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -110,16 +146,36 @@ const STYLES: { key: string; label: string; prompt: string }[] = [
 ];
 
 export default function ImageStudio() {
-  const { products, stills, tokens, stillTokenCost } = useLoaderData<typeof loader>();
+  const { products, stills, jobs, tokens, stillTokenCost } = useLoaderData<typeof loader>();
   const fx = useFetcher<typeof action>();
+  const revalidator = useRevalidator();
   const [productId, setProductId] = useState("");
   const [styleKey, setStyleKey] = useState("");
   const [broken, setBroken] = useState<Record<string, boolean>>({});
+  const [libTab, setLibTab] = useState<"GALLERY" | "OVEN">("GALLERY");
   const picked = products.find((p) => p.id === productId);
   const pickedStyle = STYLES.find((s) => s.key === styleKey);
   const busy = fx.state !== "idle";
   const queued = !!(fx.data && "stillQueued" in fx.data && fx.data.stillQueued);
   const err = fx.data && "error" in fx.data ? (fx.data.error as string) : null;
+
+  // any job still cooking → poll the loader so finished stills pop in on their
+  // own, and a fresh submit shows up in the oven without a manual refresh
+  const cooking = jobs.length > 0;
+  useEffect(() => {
+    if (!cooking) return;
+    const t = setInterval(() => revalidator.revalidate(), 8000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cooking]);
+  // the moment a still is queued, jump to the oven + pull the new job in
+  useEffect(() => {
+    if (queued) { setLibTab("OVEN"); revalidator.revalidate(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queued]);
+  // client-only clock for "N min in" (SSR-safe)
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
 
   return (
     <Page>
@@ -222,8 +278,26 @@ export default function ImageStudio() {
         </Layout.Section>
 
         <Layout.Section>
-          <span className="mm-section-label">▶ THE GALLERY<span className="mm-dots">· · · · ·</span></span>
-          {stills.length === 0 ? (
+          {/* tabs — finished gallery vs the oven (rendering + scheduled), like
+              the Video Studio's Ready / Scheduled & rendering split */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`mm-chip mm-filter-chip${libTab === "GALLERY" ? " on" : ""}`}
+              onClick={() => setLibTab("GALLERY")}
+            >
+              🖼 The Gallery ({stills.length})
+            </button>
+            <button
+              type="button"
+              className={`mm-chip mm-filter-chip${libTab === "OVEN" ? " on" : ""}`}
+              onClick={() => setLibTab("OVEN")}
+            >
+              🔥 In the Oven ({jobs.length})
+            </button>
+          </div>
+
+          {libTab === "GALLERY" && (stills.length === 0 ? (
             <Card>
               <p style={{ padding: 8 }}>No stills yet — create your first above, or let a campaign fill this gallery on autopilot.</p>
             </Card>
@@ -248,7 +322,48 @@ export default function ImageStudio() {
                 </div>
               ))}
             </div>
-          )}
+          ))}
+
+          {libTab === "OVEN" && (jobs.length === 0 ? (
+            <Card>
+              <p style={{ padding: 8 }}>Nothing cooking right now — hit <b>Create still</b> above, or a campaign will schedule image drops here automatically.</p>
+            </Card>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+              {jobs.map((j) => {
+                const mins = now ? Math.max(1, Math.round((now - new Date(j.createdAt).getTime()) / 60_000)) : null;
+                const scheduled = j.status === "PENDING" && !!j.scheduledFor;
+                return (
+                  <div key={j.id} style={{ background: "#fff", border: "1px solid rgba(20,18,31,.12)", borderRadius: 12, overflow: "hidden" }}>
+                    <div style={{ position: "relative", width: "100%", aspectRatio: "1/1", background: "#0b0a17" }}>
+                      {j.productImage
+                        ? <img src={j.productImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.35 }} />
+                        : <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontSize: 30 }}>🖼</div>}
+                      {scheduled ? (
+                        <div className="mm-sched-overlay" aria-hidden="true">
+                          <span className="ico">🗓️</span>
+                          <span className="lb">SCHEDULED</span>
+                          <span className="dt">{fmtDayTime(j.scheduledFor as string)}</span>
+                        </div>
+                      ) : (
+                        <div className="mm-buffer" aria-hidden="true"><span className="ring" /></div>
+                      )}
+                    </div>
+                    <div style={{ padding: "8px 9px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{j.title}</div>
+                      <div style={{ fontSize: 10.5, color: "#8A8598", marginTop: 2 }}>
+                        {scheduled
+                          ? `Auto-creates ${fmtDayTime(j.scheduledFor as string)} — a campaign makes this a day before it posts.`
+                          : j.status === "IN_PROGRESS"
+                          ? `Rendering now${mins ? ` · ${mins} min in` : ""} · usually under a minute. Updates automatically.`
+                          : "In line — starts the moment the one ahead finishes."}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </Layout.Section>
       </Layout>
     </Page>
