@@ -212,5 +212,55 @@
   "abdul",
   "theo",
   "vera"
- ]
+ ],
+ "candidates": {
+  "isla": [
+   {
+    "tag": "A",
+    "voiceId": "ttv-voice-2026072008542426-eQrSZc68",
+    "f0": 148,
+    "verdict": "REJECT-male",
+    "keepalive": true
+   },
+   {
+    "tag": "B",
+    "voiceId": "ttv-voice-2026072008550826-grrHJZfA",
+    "f0": 190,
+    "verdict": "PASS-FEMALE",
+    "keepalive": true
+   }
+  ],
+  "esther": [
+   {
+    "tag": "A",
+    "voiceId": "ttv-voice-2026072008553726-QFDxpF2h",
+    "f0": 155,
+    "verdict": "PASS-FEMALE",
+    "keepalive": true
+   },
+   {
+    "tag": "B",
+    "voiceId": "ttv-voice-2026072008560526-R9PEF2PR",
+    "f0": 176,
+    "verdict": "PASS-FEMALE",
+    "keepalive": true
+   }
+  ],
+  "ravi": [
+   {
+    "tag": "A",
+    "voiceId": "ttv-voice-2026072008563626-TXAyMs4g",
+    "f0": 129,
+    "verdict": "male-any",
+    "keepalive": true
+   },
+   {
+    "tag": "B",
+    "voiceId": "ttv-voice-2026072008570126-dN2Xg38w",
+    "f0": 130,
+    "verdict": "male-any",
+    "keepalive": true
+   }
+  ]
+ }
 }
