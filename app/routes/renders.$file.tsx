@@ -17,7 +17,9 @@ import path from "node:path";
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   try {
     const name = params.file || "";
-    if (!/^[a-zA-Z0-9_-]+\.mp4$/.test(name)) {
+    // allow the image ad formats too — this guard used to be .mp4-only, which
+    // 404'd every img-*.jpg and made all image ads render blank.
+    if (!/^[a-zA-Z0-9_-]+\.(mp4|jpe?g|png|webp)$/.test(name)) {
       return new Response("Not found", { status: 404 });
     }
     const filePath = path.join(process.cwd(), "data", "renders", name);
