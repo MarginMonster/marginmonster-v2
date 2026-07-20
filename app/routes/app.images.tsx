@@ -7,7 +7,7 @@ import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useLoaderData, useFetcher } from "@remix-run/react";
-import { Page, Layout, Card, Banner, Select, TextField, Button, Badge } from "@shopify/polaris";
+import { Page, Layout, Card, Banner, Button, Badge } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -168,22 +168,29 @@ export default function ImageStudio() {
               <input type="hidden" name="productTitle" value={picked?.title || ""} />
               <input type="hidden" name="productImageUrl" value={picked?.image || ""} />
               <input type="hidden" name="stylePrompt" value={pickedStyle?.prompt || ""} />
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 260, flex: 1 }}>
-                  <Select
-                    label="Star product"
-                    options={[{ label: products.length ? "Pick a product…" : "No products found", value: "" }, ...products.map((p) => ({ label: p.title, value: p.id }))]}
-                    value={productId}
-                    onChange={setProductId}
-                  />
+
+              {/* 1 · visual product picker — tap a product's image, no dropdown */}
+              <span className="mm-section-label" style={{ fontSize: 11 }}>▶ 1 · PICK A PRODUCT<span className="mm-dots">· · · · ·</span></span>
+              {products.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#8A8598", margin: "6px 2px" }}>No products found in your catalog.</p>
+              ) : (
+                <div className="mm-prodgrid" style={{ marginTop: 6 }}>
+                  {products.map((p) => {
+                    const on = productId === p.id;
+                    return (
+                      <button key={p.id} type="button" className={`mm-prodcard${on ? " on" : ""}`} onClick={() => setProductId(on ? "" : p.id)}>
+                        {on && <span className="mm-prodcheck">✓</span>}
+                        {p.image ? <img src={p.image} alt="" loading="lazy" /> : <div className="mm-prodph">🛍️</div>}
+                        <span className="mm-prodtitle">{p.title}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <Button submit variant="primary" disabled={!picked || busy} loading={busy}>
-                  {`Create still · ${stillTokenCost} 🪙`}
-                </Button>
-                <Badge tone="attention">{`${stillTokenCost} 🪙 per still`}</Badge>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <span className="mm-section-label" style={{ fontSize: 11 }}>🎨 ART DIRECTION — optional, for the hands-on</span>
+              )}
+
+              {/* 2 · art direction chips */}
+              <div style={{ marginTop: 16 }}>
+                <span className="mm-section-label" style={{ fontSize: 11 }}>▶ 2 · ART DIRECTION <span style={{ fontWeight: 400, color: "#8A8598" }}>— optional</span></span>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
                   {STYLES.map((s) => (
                     <button
@@ -200,6 +207,15 @@ export default function ImageStudio() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* 3 · create */}
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 18 }}>
+                <Button submit variant="primary" disabled={!picked || busy} loading={busy}>
+                  {`Create still · ${stillTokenCost} 🪙`}
+                </Button>
+                {picked && <Badge tone="success">{`★ ${picked.title.length > 28 ? picked.title.slice(0, 28) + "…" : picked.title}`}</Badge>}
+                <Badge tone="attention">{`${stillTokenCost} 🪙 per still · Balance ${tokens.toLocaleString()} 🪙`}</Badge>
               </div>
             </fx.Form>
           </Card>
