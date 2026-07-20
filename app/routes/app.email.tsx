@@ -245,22 +245,29 @@ export default function EmailStudio() {
           </Card>
         </Layout.Section>
 
-        {/* FLOWS — the automations that arm on connect */}
+        {/* FLOWS — themed as house pp-tool sections */}
         <Layout.Section>
-          <span className="mm-section-label">▶ AUTOMATED FLOWS<span className="mm-dots">· · · · ·</span></span>
-          <p style={{ fontSize: 13.5, color: "#FFFFFF", textShadow: "1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000", margin: "0 0 12px", maxWidth: "60ch" }}>
-            What Klaviyo charges a consultant to set up, EasyMode writes and runs for you — automatically, in your voice. These arm the moment email is connected.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+          <div className="pp-head">
+            <h2>Automated flows</h2>
+            <span className="pp-sub2">What Klaviyo makes you build (often with a paid consultant), EasyMode writes and runs — in your voice, automatically.</span>
+          </div>
+          <div className="pp-tools">
             {FLOWS.map((f) => (
-              <div key={f.key} style={{ background: "#fff", border: "1px solid rgba(20,18,31,.12)", borderRadius: 14, padding: 16, boxShadow: "0 7px 18px rgba(20,18,31,.05)" }}>
-                <div style={{ fontSize: 22 }}>{f.icon}</div>
-                <div style={{ fontSize: 15, fontWeight: 900, marginTop: 4 }}>{f.title}</div>
-                <div style={{ fontSize: 11, color: "#C98F12", fontWeight: 700, margin: "2px 0 8px" }}>{f.when}</div>
-                <div style={{ fontSize: 12.5, color: "#5C5872", lineHeight: 1.5 }}>{f.why}</div>
-                <div style={{ marginTop: 10, display: "inline-block", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", color: emailReady ? "#1F6B2E" : "#8A8598", background: emailReady ? "#DFF3E2" : "#F1EFF7", borderRadius: 999, padding: "3px 10px" }}>
-                  {emailReady ? "● ARMED" : "○ ARMS ON CONNECT"}
-                </div>
+              <div key={f.key} className="pp-tool">
+                <span className="ico">{f.icon}</span>
+                <h3>{f.title}</h3>
+                <div style={{ fontSize: 11, color: "var(--pp-gold-hi)", fontWeight: 700, letterSpacing: ".02em" }}>{f.when}</div>
+                <p>{f.why}</p>
+                <span
+                  style={{
+                    alignSelf: "flex-start", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em",
+                    color: emailReady ? "#1F6B2E" : "#8A8598",
+                    background: emailReady ? "#DFF3E2" : "#F1EFF7",
+                    borderRadius: 999, padding: "3px 10px",
+                  }}
+                >
+                  {f.key === "welcome" && !emailReady ? "○ NEEDS EMAIL ONLY" : emailReady ? "● ARMED" : "○ ARMS ON CONNECT"}
+                </span>
               </div>
             ))}
           </div>

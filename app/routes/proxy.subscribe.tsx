@@ -11,6 +11,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
+import { enqueueJob } from "../lib/job-queue.server";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -38,11 +39,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop) return json({ ok: false }, { status: 404 });
 
   try {
-    await db.subscriber.upsert({
+    const existing = await db.subscriber.findUnique({
       where: { shopId_email: { shopId: shop.id, email } },
-      create: { shopId: shop.id, email, source: "popup", status: "subscribed" },
-      update: { status: "subscribed" },
     });
+    if (existing) {
+      if (existing.status !== "subscribed") {
+        await db.subscriber.update({ where: { id: existing.id }, data: { status: "subscribed" } });
+      }
+    } else {
+      await db.subscriber.create({ data: { shopId: shop.id, email, source: "popup", status: "subscribed" } });
+      // WELCOME flow — fires for brand-new subscribers only. PCD-free: this is
+      // our own consented opt-in. Inert-safe (job no-ops if email not connected).
+      await enqueueJob(shop.id, "SEND_WELCOME", { email });
+    }
   } catch (e) {
     console.error("[subscribe] failed:", e);
     return json({ ok: false, error: "Could not save right now." }, { status: 500 });

@@ -71,6 +71,7 @@ model Shop {
   tokenPurchases TokenPurchase[]
   subscribers        Subscriber[]
   abandonedCheckouts AbandonedCheckout[]
+  customerLifecycles CustomerLifecycle[]
 }
 
 // One row per PAID token top-up — chargeId is unique so a purchase can never
@@ -255,6 +256,9 @@ enum JobType {
   DECISIONING_PASS
   FORGE_COMPANION
   SEND_ABANDONED_CART
+  SEND_WELCOME
+  SEND_POST_PURCHASE
+  SEND_WINBACK
 }
 
 enum JobStatus {
@@ -377,4 +381,20 @@ model AbandonedCheckout {
 
   @@unique([shopId, checkoutToken])
   @@index([shopId, status])
+}
+
+// 💌 Win-back timing. Each order upserts lastOrderAt and schedules a SEND_WINBACK
+// job at +45d carrying that order's timestamp; the job only fires if lastOrderAt
+// hasn't advanced (i.e. they didn't order again), so only the latest order's
+// timer ever sends. No periodic sweep needed.
+model CustomerLifecycle {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  email       String
+  lastOrderAt DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shopId, email])
+  @@index([shopId])
 }

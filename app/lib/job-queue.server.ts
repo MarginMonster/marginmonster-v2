@@ -291,6 +291,30 @@ async function runJob(
       break;
     }
 
+    case "SEND_WELCOME": {
+      const { sendBrandEmail } = await import("./email-flows.server");
+      await sendBrandEmail(shopId, { to: payload.email as string, kind: "welcome" });
+      break;
+    }
+
+    case "SEND_POST_PURCHASE": {
+      const { sendBrandEmail } = await import("./email-flows.server");
+      await sendBrandEmail(shopId, { to: payload.email as string, kind: "post_purchase", productTitle: payload.productTitle as string | undefined });
+      break;
+    }
+
+    case "SEND_WINBACK": {
+      // fires +45d after an order — but only if they haven't ordered AGAIN since
+      // (a newer order advances lastOrderAt past this timer's snapshot → skip).
+      const email = payload.email as string;
+      const orderAt = payload.orderAt as string;
+      const lc = await db.customerLifecycle.findUnique({ where: { shopId_email: { shopId, email } } });
+      if (!lc || (orderAt && lc.lastOrderAt.getTime() > new Date(orderAt).getTime())) break;
+      const { sendBrandEmail } = await import("./email-flows.server");
+      await sendBrandEmail(shopId, { to: email, kind: "winback" });
+      break;
+    }
+
     case "FORGE_COMPANION": {
       // Free custom companion: base + blink + cheer frames, cut out, stored
       // in the DB, installed as the shop's active partner. Lazy import keeps

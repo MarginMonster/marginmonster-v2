@@ -128,10 +128,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     case "ORDERS_CREATE": {
-      // a purchase closes the loop — mark that shopper's pending checkouts recovered
-      const o = payload as { email?: string; checkout_token?: string };
+      const o = payload as { email?: string; checkout_token?: string; line_items?: { title?: string }[] };
       const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
       if (!shopRecord) break;
+
+      // 1) a purchase closes the abandoned-cart loop — mark it recovered
       if (o.checkout_token) {
         await db.abandonedCheckout.updateMany({
           where: { shopId: shopRecord.id, checkoutToken: o.checkout_token, status: "pending" },
@@ -143,6 +144,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           where: { shopId: shopRecord.id, email: o.email, status: "pending" },
           data: { status: "recovered" },
         });
+
+        // 2) POST-PURCHASE thank-you
+        await enqueueJob(shopRecord.id, "SEND_POST_PURCHASE", {
+          email: o.email,
+          productTitle: o.line_items?.[0]?.title,
+        });
+
+        // 3) WIN-BACK timer — record the order and schedule a nudge +45d that only
+        // fires if they don't order again (see CustomerLifecycle in the job).
+        const now = new Date();
+        await db.customerLifecycle.upsert({
+          where: { shopId_email: { shopId: shopRecord.id, email: o.email } },
+          create: { shopId: shopRecord.id, email: o.email, lastOrderAt: now },
+          update: { lastOrderAt: now },
+        });
+        await enqueueJob(
+          shopRecord.id,
+          "SEND_WINBACK",
+          { email: o.email, orderAt: now.toISOString() },
+          new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000)
+        );
       }
       break;
     }
