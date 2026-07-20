@@ -1905,3 +1905,143 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
 .mm-hud-head { height: 24px; width: auto; image-rendering: pixelated; align-self: center; }
 .em-beach { display: none; }
 @media (max-width: 900px) { .em-beach { display: none; } }
+
+/* ═══════════ 📜 CAPTAIN'S LOG — campaigns page skin (crowned 2026-07-20) ═══════════
+   User: "seriously conflicting schemes" — dark console panels clashed with the
+   sunny island. Every campaign panel becomes island material: parchment paper,
+   driftwood ink, wax-gold accents. Scoped to the campaigns page only. */
+
+body[data-page="campaigns"] .qh-win {
+  background: linear-gradient(180deg, #F7EBCB, #EFDDB0) !important;
+  border: 2px solid #B98D4F !important;
+  color: #3B2E1A !important;
+  box-shadow: 0 8px 22px rgba(59, 46, 26, 0.28), inset 0 1px 0 #FFF7E0 !important;
+  border-radius: 14px !important;
+}
+body[data-page="campaigns"] .qh-win::before,
+body[data-page="campaigns"] .qh-win::after { display: none !important; } /* corner brackets = console era */
+body[data-page="campaigns"] .qh-label { color: #7A4E12 !important; }
+body[data-page="campaigns"] .qh-label .r { color: #A5854E !important; }
+body[data-page="campaigns"] .qh-label.gold { color: #8A6207 !important; }
+
+body[data-page="campaigns"] .qh-win p,
+body[data-page="campaigns"] .qh-desc { color: #4A3A22 !important; }
+body[data-page="campaigns"] .qh-lore { color: #8A6F47 !important; }
+body[data-page="campaigns"] .qh-dialog .nm { color: #7A4E12 !important; }
+body[data-page="campaigns"] .qh-curs { color: #B8860B !important; }
+
+body[data-page="campaigns"] .qh-feed div { color: #4A3A22 !important; }
+body[data-page="campaigns"] .qh-feed .t { color: #A5854E !important; }
+body[data-page="campaigns"] .qh-feed .good { color: #2E7D3A !important; }
+body[data-page="campaigns"] .qh-feed .bad { color: #A33B2A !important; }
+body[data-page="campaigns"] .qh-journal-link { color: #B8860B !important; }
+
+body[data-page="campaigns"] .qh-howto .step .t { color: #4A3A22 !important; }
+body[data-page="campaigns"] .qh-howto .step .n {
+  background: #F0B429 !important; color: #3B2E1A !important; box-shadow: 0 2px 0 #A87F0E !important;
+}
+body[data-page="campaigns"] .qh-hint { color: #8A6F47 !important; }
+body[data-page="campaigns"] .qh-field-label { color: #7A4E12 !important; }
+body[data-page="campaigns"] .qh-select {
+  background: #FFF3D6 !important; color: #3B2E1A !important;
+  border: 1.5px solid #B98D4F !important; border-radius: 9px !important;
+}
+body[data-page="campaigns"] .qh-auto {
+  background: #FFF3D6 !important; border: 1.5px dashed #C9A96A !important; color: #4A3A22 !important;
+}
+body[data-page="campaigns"] .qh-auto-title { color: #8A6207 !important; }
+body[data-page="campaigns"] .qh-auto-grid span { color: #4A3A22 !important; }
+
+/* ── STEP headers ── */
+body[data-page="campaigns"] .qh-stepline {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 900; letter-spacing: .1em; font-size: 12.5px; color: #7A4E12;
+  margin: 14px 2px 10px;
+}
+body[data-page="campaigns"] .qh-stepline i { font-style: italic; font-weight: 400; letter-spacing: 0; color: #A5854E; font-size: 11px; }
+body[data-page="campaigns"] .qh-stepline .n {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: #F0B429; color: #3B2E1A; font-size: 12px; box-shadow: 0 2px 0 #A87F0E;
+}
+
+/* ── STEP 1: goal cards ── */
+body[data-page="campaigns"] .qh-goal-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px;
+}
+@media (max-width: 860px) { body[data-page="campaigns"] .qh-goal-grid { grid-template-columns: repeat(2, 1fr); } }
+body[data-page="campaigns"] .qh-goal {
+  border: 2px solid #B98D4F; background: #FFF3D6; border-radius: 13px;
+  padding: 12px 10px; cursor: pointer; text-align: center; color: #3B2E1A;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+body[data-page="campaigns"] .qh-goal:hover { transform: translateY(-2px); }
+body[data-page="campaigns"] .qh-goal .gi { font-size: 26px; display: block; }
+body[data-page="campaigns"] .qh-goal b { display: block; font-size: 13px; letter-spacing: .05em; margin-top: 4px; }
+body[data-page="campaigns"] .qh-goal i { display: block; font-style: normal; font-size: 10px; color: #A5854E; }
+body[data-page="campaigns"] .qh-goal .gd { display: block; font-size: 10.5px; color: #6B5638; line-height: 1.35; margin-top: 6px; min-height: 40px; }
+body[data-page="campaigns"] .qh-goal em {
+  display: inline-block; font-style: normal; font-weight: 900; font-size: 11px; color: #8A6207;
+  background: #FFE9A8; border-radius: 999px; padding: 2px 9px; margin-top: 8px;
+}
+body[data-page="campaigns"] .qh-goal em.grun { background: #DFF3E2; color: #2E7D3A; }
+body[data-page="campaigns"] .qh-goal.on {
+  background: #FFE9A8; border-color: #8A6207; box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.4);
+}
+
+/* ── DIAMOND row ── */
+body[data-page="campaigns"] .qh-dia-row {
+  background: rgba(9, 38, 46, 0.92); border: 1.5px solid rgba(155, 232, 255, 0.4);
+  border-radius: 13px; padding: 10px 14px 12px; margin-bottom: 6px;
+}
+body[data-page="campaigns"] .qh-dia-title {
+  display: block; color: #9BE8FF; font-weight: 900; letter-spacing: .1em; font-size: 12px; margin-bottom: 8px;
+}
+body[data-page="campaigns"] .qh-dia-title i { font-style: italic; font-weight: 400; letter-spacing: 0; color: rgba(207, 239, 247, 0.65); font-size: 10.5px; margin-left: 8px; }
+body[data-page="campaigns"] .qh-dia-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 860px) { body[data-page="campaigns"] .qh-dia-chips { grid-template-columns: repeat(2, 1fr); } }
+body[data-page="campaigns"] .qh-dia-chip {
+  border: 1.5px solid rgba(155, 232, 255, 0.4); background: rgba(155, 232, 255, 0.08);
+  border-radius: 10px; padding: 8px; cursor: pointer; text-align: center; color: #CFEFF7;
+}
+body[data-page="campaigns"] .qh-dia-chip b { display: block; font-size: 11px; }
+body[data-page="campaigns"] .qh-dia-chip span { display: block; font-size: 10px; color: rgba(207, 239, 247, 0.75); margin-top: 2px; }
+body[data-page="campaigns"] .qh-dia-chip em { display: block; font-style: normal; font-weight: 900; font-size: 11px; color: #9BE8FF; margin-top: 3px; }
+body[data-page="campaigns"] .qh-dia-chip.on { background: rgba(155, 232, 255, 0.22); border-color: #9BE8FF; box-shadow: 0 0 0 2px rgba(155, 232, 255, 0.35); }
+
+/* ── selected-goal crumb (replaces the giant art banner) ── */
+body[data-page="campaigns"] .qh-goal-crumb {
+  position: relative; border-radius: 12px; overflow: hidden;
+  background-size: cover; background-position: center;
+  padding: 12px 14px; margin-bottom: 10px;
+  display: flex; align-items: baseline; gap: 10px;
+  border: 2px solid #B98D4F;
+}
+body[data-page="campaigns"] .qh-goal-crumb::before {
+  content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(20, 14, 5, 0.72), rgba(20, 14, 5, 0.25));
+}
+body[data-page="campaigns"] .qh-goal-crumb span { position: relative; font-weight: 900; letter-spacing: .06em; color: #FFE9A8; font-size: 14px; }
+body[data-page="campaigns"] .qh-goal-crumb i { position: relative; font-style: normal; color: rgba(255, 243, 214, 0.85); font-size: 11px; }
+
+/* ── push-level cards on parchment ── */
+body[data-page="campaigns"] .qh-tier {
+  background: #FFF3D6 !important; border: 2px solid #B98D4F !important;
+  color: #3B2E1A !important; border-radius: 13px !important;
+}
+body[data-page="campaigns"] .qh-tier .tname { color: #3B2E1A !important; letter-spacing: .08em; }
+body[data-page="campaigns"] .qh-tier .tblurb { color: #6B5638 !important; }
+body[data-page="campaigns"] .qh-tier .trec span { color: #4A3A22 !important; background: #F7EBCB; border: 1px solid #D9C08D; border-radius: 999px; padding: 1px 7px; }
+body[data-page="campaigns"] .qh-tier .tjourney { color: #8A6F47 !important; }
+body[data-page="campaigns"] .qh-tier .tcost { color: #8A6207 !important; }
+body[data-page="campaigns"] .qh-tier .tsave { color: #0E7D74 !important; }
+body[data-page="campaigns"] .qh-tier.on {
+  background: #FFE9A8 !important; border-color: #8A6207 !important;
+  box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.4) !important;
+}
+body[data-page="campaigns"] .qh-tier .tpop { background: #F0B429 !important; color: #3B2E1A !important; }
+body[data-page="campaigns"] .qh-meters { filter: saturate(0.85) brightness(0.82); }
+
+/* pack + start stay high-contrast; start button keeps the obsidian-gold press */
+body[data-page="campaigns"] .qh-pack-say,
+body[data-page="campaigns"] .qh-load-row { color: #6B5638 !important; }
+body[data-page="campaigns"] .qh-load-bar { background: #E8D5A4 !important; }
+body[data-page="campaigns"] .qh-load-bar i { background: linear-gradient(90deg, #F0B429, #C98F12) !important; }

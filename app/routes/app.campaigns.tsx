@@ -300,6 +300,9 @@ const BANNER_ART: Record<string, string> = {
 
 /* Benefit meters — the "difficulty bar" of a questline, but for what it pays
  * out: posting pace + what the line is rich in. 5 segments each. */
+/* push-level display names — keys stay BRONZE/SILVER/GOLD/DIAMOND in the engine */
+const PUSH_NAME: Record<string, string> = { BRONZE: "🌴 CHILL", SILVER: "🔥 STEADY", GOLD: "🚀 FULL SEND", DIAMOND: "◆ DAILY" };
+
 function meterSegs(sku: { objectives: { type: string; target: number }[] }) {
   const g = (t: string) => sku.objectives.find((o) => o.type === t)?.target || 0;
   const v = g("video"), i = g("image"), b = g("blog");
@@ -1624,7 +1627,8 @@ export default function Campaigns() {
   const canRun = (minTier: string) => (TIER_RANK[tier] ?? 0) >= (TIER_RANK[minTier] ?? 1);
   const firstUnlocked = QUESTLINES.find((q) => canRun(q.minTier)) || QUESTLINES[0];
   const [selKey, setSelKey] = useState(firstUnlocked.key);
-  const [openKey, setOpenKey] = useState<string | null>(null); // campaign key
+  // truly-easy catalog: the selected GOAL is always open — no accordion hunting
+  const [openKey, setOpenKey] = useState<string | null>("GET_SEEN"); // campaign key
   const sel = QUESTLINE_BY_KEY[selKey] || firstUnlocked;
 
   /** Calendar date for an arbitrary day of a quest (UTC math — hydration-safe). */
@@ -2017,63 +2021,76 @@ export default function Campaigns() {
           <div className="step"><span className="n">2</span><span className="t">Pack your products, pick your presenter</span></div>
           <div className="step"><span className="n">3</span><span className="t">{pName} journeys the map — creating and scheduling your content all month</span></div>
         </div>
-        {[
-          ...[...CAMPAIGNS].sort((a, b) => {
-            // catalog reads cheapest → priciest (entry cost of each focus)
+        {/* STEP 1 — pick the goal: all four visible, one tap, nothing hidden */}
+        <div className="qh-stepline"><span className="n">1</span> WHAT DO YOU WANT?</div>
+        <div className="qh-goal-grid">
+          {[...CAMPAIGNS].sort((a, b) => {
             const costOf = (c: typeof a) =>
               Math.min(...TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean).map((s) => questlineTokenCost(s)));
             return costOf(a) - costOf(b);
-          }),
-          // the DIAMOND shelf renders after the standard catalog, behind its own divider
-          ...[...DIAMOND_CAMPAIGNS].sort(
-            (a, b) => questlineTokenCost(QUESTLINE_BY_KEY[`${a.key}_DIAMOND`]) - questlineTokenCost(QUESTLINE_BY_KEY[`${b.key}_DIAMOND`])
-          ),
-        ].map((c, ci, arr) => {
+          }).map((g) => {
+            const gActive = active.find((a) => QUESTLINE_BY_KEY[a.template]?.campaign === g.key || a.template.startsWith(g.key));
+            const gCheapest = Math.min(...TIERS.map((t) => QUESTLINE_BY_KEY[`${g.key}_${t.key}`]).filter(Boolean).map((s) => questlineTokenCost(s)));
+            return (
+              <button
+                key={g.key} type="button"
+                className={`qh-goal${openKey === g.key ? " on" : ""}`}
+                onClick={() => {
+                  setOpenKey(g.key);
+                  const first = TIERS.map((t) => QUESTLINE_BY_KEY[`${g.key}_${t.key}`]).filter(Boolean).find((s) => s.tier === "SILVER");
+                  if (first) setSelKey(first.key);
+                }}
+              >
+                <span className="gi">{g.icon}</span>
+                <b>{g.headline}</b>
+                <i>{g.label}</i>
+                <span className="gd">{g.desc}</span>
+                {gActive ? <em className="grun">⚑ RUNNING · DAY {gActive.dayOf}</em> : <em>from {gCheapest.toLocaleString()} 🪙</em>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* DIAMOND AUTOPILOT — one calm row, four flavors, no hidden tiers */}
+        <div className="qh-dia-row">
+          <span className="qh-dia-title">◆ DAILY AUTOPILOT<i>a drop lands every single day — fully hands off</i></span>
+          <div className="qh-dia-chips">
+            {DIAMOND_CAMPAIGNS.map((d) => {
+              const dSku = QUESTLINE_BY_KEY[`${d.key}_DIAMOND`];
+              if (!dSku) return null;
+              const dv = dSku.objectives.find((o) => o.type === "video")?.target || 0;
+              const di = dSku.objectives.find((o) => o.type === "image")?.target || 0;
+              const db = dSku.objectives.find((o) => o.type === "blog")?.target || 0;
+              return (
+                <button
+                  key={d.key} type="button"
+                  className={`qh-dia-chip${openKey === d.key ? " on" : ""}`}
+                  onClick={() => { setOpenKey(d.key); setSelKey(dSku.key); }}
+                >
+                  <b>{d.icon} {d.headline}</b>
+                  <span>{[dv > 0 && `🎬${dv}`, di > 0 && `🖼${di}`, db > 0 && `📝${db}`].filter(Boolean).join(" ")} / month</span>
+                  <em>{questlineCostFor(dSku, tier).toLocaleString()} 🪙</em>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* STEP 2 — the selected goal's push levels, ALWAYS visible */}
+        <div className="qh-stepline"><span className="n">2</span> HOW HARD DO WE PUSH?<i>every level shows exactly what lands</i></div>
+        {[...CAMPAIGNS, ...DIAMOND_CAMPAIGNS].filter((c) => c.key === openKey).map((c) => {
           const skus = c.diamond
             ? [QUESTLINE_BY_KEY[`${c.key}_DIAMOND`]].filter(Boolean)
             : TIERS.map((t) => QUESTLINE_BY_KEY[`${c.key}_${t.key}`]).filter(Boolean);
-          const firstDiamond = !!c.diamond && (ci === 0 || !arr[ci - 1].diamond);
           const activeQ = active.find((a) => QUESTLINE_BY_KEY[a.template]?.campaign === c.key || a.template.startsWith(c.key));
-          const open = openKey === c.key;
-          const cheapest = Math.min(...skus.map((s) => questlineTokenCost(s)));
-          const world = WORLD_META[c.homeWorld];
-          // banner subtitle = WHAT'S INSIDE, not where the road ends
-          const rng = (type: string) => {
-            const ns = skus.map((s) => s.objectives.find((o) => o.type === type)?.target || 0);
-            const lo = Math.min(...ns), hi = Math.max(...ns);
-            return hi === 0 ? null : lo === hi ? `${hi}` : `${lo}–${hi}`;
-          };
-          const inside = [
-            rng("video") && `🎬 ${rng("video")} videos`,
-            rng("image") && `🖼 ${rng("image")} image ads`,
-            rng("blog") && `📝 ${rng("blog")} blogs`,
-          ].filter(Boolean).join(" · ");
+          const open = true;
           const selSku = skus.find((s) => s.key === selKey) || skus.find((s) => canRun(s.minTier)) || skus[0];
           return (
             <Fragment key={c.key}>
-            {firstDiamond && (
-              <div className="qh-diamond-divider">
-                <span className="dt">◆ DIAMOND AUTOPILOT</span>
-                <span className="ds">Daily social presence, fully hands off — a drop lands every single day. Scale exclusive.</span>
+            <div className="qh-quest-entry open">
+              <div className="qh-goal-crumb" style={{ backgroundImage: `url(${BANNER_ART[c.key] || ""})` }}>
+                <span>{c.icon} {c.headline}</span><i>{c.label} · 📲 auto-posted all month</i>
               </div>
-            )}
-            <div className={`qh-quest-entry${open ? " open" : ""}`}>
-              <button
-                type="button"
-                className={`qh-camp-banner${open ? " on" : ""}${c.diamond ? " diamond" : ""}`}
-                style={{ backgroundImage: `url(${BANNER_ART[c.key] || ""})` }}
-                onClick={() => { setOpenKey(open ? null : c.key); if (!open && selSku) setSelKey(selSku.key); }}
-              >
-                <span className="head">
-                  <span className="hl"><span className="ico">{c.icon}</span>{c.headline}</span>
-                  <span className="sub">{c.label} · {inside} · 📲 auto-posted all month</span>
-                </span>
-                <span className="side">
-                  {activeQ ? <span className="run">⚑ Running · Day {activeQ.dayOf}</span> : (
-                    <span className="price">from {cheapest.toLocaleString()} 🪙</span>
-                  )}
-                </span>
-              </button>
               {open && (
                 <div className="qh-qbody">
                   <p className="qh-desc">{c.desc}</p>
@@ -2098,7 +2115,7 @@ export default function Campaigns() {
                           className={`qh-tier${on ? " on" : ""}${locked ? " locked" : ""} t-${sku.tier.toLowerCase()}`}
                           onClick={() => setSelKey(sku.key)}
                         >
-                          <span className="tname">{sku.tier}</span>
+                          <span className="tname">{PUSH_NAME[sku.tier] || sku.tier}</span>
                           {sku.tier === "SILVER" && !locked && <span className="tpop">★ Most popular</span>}
                           {sku.tier === "DIAMOND" && <span className="tpop tdaily">◆ DAILY DROPS</span>}
                           <span className="tblurb">{tierMeta?.blurb || "The daily engine"}</span>
@@ -2229,7 +2246,7 @@ export default function Campaigns() {
                         disabled={busy || bagCapped.length === 0 || tokens < questlineCostFor(selSku, tier) || !starId}
                         onClick={startQuest}
                       >
-                        {busy ? "SIGNING THE CONTRACT…" : `▶ START ${c.headline} · ${selSku.tier} — ${questlineCostFor(selSku, tier).toLocaleString()} 🪙`}
+                        {busy ? "SIGNING THE CONTRACT…" : `▶ START ${c.headline} · ${PUSH_NAME[selSku.tier] || selSku.tier} — ${questlineCostFor(selSku, tier).toLocaleString()} 🪙`}
                       </button>
                       <div className="qh-hint">
                         {bagCapped.length === 0 ? `Pack the bag first — ${pName} won't march empty-handed.` :
