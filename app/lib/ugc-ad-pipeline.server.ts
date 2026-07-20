@@ -21,7 +21,7 @@ import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
-import { animateAvatar, falEnabled } from "./fal-video.server";
+import { animateAvatar, falEnabled, falTts } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
@@ -430,6 +430,19 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // engine (fal/HeyGen lip-sync, omni-human, kling voiceover) — lifts all takes.
   const delivery = castFor(avatar);
   const freshTts = async (): Promise<string> => {
+    // designed voices (ttv-voice-*) live on the fal MiniMax account — they can
+    // ONLY be spoken there. On any fal failure, fall through to the legacy
+    // scored stock voice on Replicate so a take never dies over casting.
+    if (delivery.voice.startsWith("ttv-")) {
+      try {
+        return await falTts(script, delivery.voice, delivery.speed);
+      } catch (e) {
+        console.log("[ugc:tts] designed voice failed, falling back to stock:", (e as Error).message);
+        const stock = pickVoice(avatar);
+        const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: stock });
+        return await repPoll(ttsId, 3 * 60_000, "tts");
+      }
+    }
     try {
       const ttsId = await repCreate("minimax/speech-02-hd", {
         text: script,

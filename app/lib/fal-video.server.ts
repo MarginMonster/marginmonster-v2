@@ -17,6 +17,53 @@ function headers(): Record<string, string> {
   return { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" };
 }
 
+/** TTS through fal's MiniMax speech-02-hd — REQUIRED for custom designed
+ *  voices (ttv-voice-*): they live on the fal MiniMax account and do not
+ *  resolve on Replicate's. Returns a hosted mp3 url. Tries the full schema,
+ *  then a minimal variant (fal has 422'd on audio_setting before). */
+export async function falTts(text: string, voiceId: string, speed = 1): Promise<string> {
+  if (!falEnabled()) throw new Error("FAL_KEY not set");
+  const variants: Record<string, unknown>[] = [
+    {
+      text,
+      voice_setting: { voice_id: voiceId, speed, vol: 1 },
+      audio_setting: { sample_rate: "32000", bitrate: "128000", format: "mp3", channel: "1" },
+      output_format: "url",
+    },
+    { text, voice_setting: { voice_id: voiceId, speed, vol: 1 }, output_format: "url" },
+  ];
+  let lastErr = "";
+  for (const input of variants) {
+    try {
+      const submit = await fetch("https://queue.fal.run/fal-ai/minimax/speech-02-hd", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(input),
+      });
+      if (!submit.ok) throw new Error(`fal tts submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+      const q = (await submit.json()) as { status_url?: string; response_url?: string };
+      if (!q.status_url || !q.response_url) throw new Error("fal tts: no queue urls");
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+        if (!s.ok) continue;
+        const sj = (await s.json()) as { status?: string };
+        if (sj.status === "COMPLETED") break;
+        if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`fal tts ${sj.status}`);
+        if (i === 59) throw new Error("fal tts: poll timeout");
+      }
+      const res = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      if (!res.ok) throw new Error(`fal tts result ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      const rj = (await res.json()) as { audio?: { url?: string } };
+      if (rj.audio?.url) return rj.audio.url;
+      throw new Error("fal tts: no audio url");
+    } catch (e) {
+      lastErr = (e as Error).message;
+    }
+  }
+  throw new Error(`fal tts failed: ${lastErr}`);
+}
+
 /** Animate a portrait into a lip-synced talking video. Takes HOSTED urls —
  *  fal routes this model to HeyGen's servers, which fetch the inputs by URL
  *  (data URIs bounce; that was the first live failure). Uses the async queue
