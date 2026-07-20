@@ -5,6 +5,7 @@
  * picked — is who appears. Persona data: avatars-data.json. */
 
 import RAW from "./avatars-data.json";
+import LEDGER from "./voice-design-ledger.json";
 
 export type Gender = "f" | "m";
 export type AgeBand = "young" | "mid" | "mature"; // ~20s / 30s-40s / 50s+
@@ -45,7 +46,11 @@ function deriveEnergy(vibe: string, desc: string): Energy {
   return "warm";
 }
 
-export const AVATARS: Avatar[] = (RAW as [string, string, string, string][]).map(
+/** Presenters with hand-designed premium voices (accent/ethnicity matched via
+ *  MiniMax Voice Design) — they lead the cast picker and wear the ✦ sampler. */
+export const DESIGNED_VOICES: Set<string> = new Set(Object.keys((LEDGER as { designed: Record<string, unknown> }).designed || {}));
+
+const ALL_AVATARS: Avatar[] = (RAW as [string, string, string, string][]).map(
   ([id, name, vibe, desc]) => ({
     id, name, vibe, desc,
     gender: deriveGender(desc),
@@ -53,6 +58,12 @@ export const AVATARS: Avatar[] = (RAW as [string, string, string, string][]).map
     energy: deriveEnergy(vibe, desc),
   })
 );
+
+// premium-voiced cast first (stable order within both groups)
+export const AVATARS: Avatar[] = [
+  ...ALL_AVATARS.filter((a) => DESIGNED_VOICES.has(a.id)),
+  ...ALL_AVATARS.filter((a) => !DESIGNED_VOICES.has(a.id)),
+];
 
 export const AVATAR_BY_ID: Record<string, Avatar> = Object.fromEntries(
   AVATARS.map((a) => [a.id, a])

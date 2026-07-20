@@ -1306,6 +1306,30 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
 }
 
 /* Brand Face — the merchant's signature presenter */
+/* 🔊 voice samplers — every head can speak before you cast them */
+.mm-voice-btn {
+  position: absolute; top: 8px; right: 8px; z-index: 3;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px; line-height: 1;
+  background: rgba(11, 10, 23, 0.82); border: 1px solid rgba(255,255,255,0.22);
+  color: #EDEAF6; cursor: pointer; user-select: none;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.mm-voice-btn:hover { transform: scale(1.12); }
+.mm-voice-btn:focus-visible { outline: 2px solid var(--arc-yellow); outline-offset: 2px; }
+.mm-voice-btn.prem { border-color: var(--arc-yellow); box-shadow: 0 0 10px rgba(240,180,41,.35); }
+.mm-voice-btn.playing {
+  background: linear-gradient(180deg, #ffe08a, var(--arc-yellow)); color: #1F1500;
+  animation: mm-voice-pulse 1s ease-in-out infinite;
+}
+@keyframes mm-voice-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+.mm-voice-tag {
+  position: absolute; bottom: 44px; right: 6px; z-index: 2;
+  font-family: var(--font-pixel); font-size: 5.5px; letter-spacing: .06em;
+  color: #1F1500; background: linear-gradient(180deg, #ffe08a, var(--arc-yellow));
+  padding: 2px 6px; border-radius: 999px; box-shadow: 0 1px 0 #A87F0E;
+}
+
 .mm-bf-tag {
   position: absolute; top: 8px; left: 8px; z-index: 2;
   font-family: var(--font-pixel); font-size: 6.5px; letter-spacing: .06em;

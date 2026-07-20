@@ -1,102 +1,502 @@
 {
-  "maya": { "voice": "English_PlayfulGirl", "pitch": 1, "speed": 1.08 },
-  "jake": { "voice": "English_magnetic_voiced_man", "pitch": 1, "speed": 1.09 },
-  "sophia": { "voice": "English_SereneWoman", "pitch": -1, "speed": 0.95 },
-  "marcus": { "voice": "English_Trustworth_Man", "pitch": 0, "speed": 1.0 },
-  "lena": { "voice": "English_FriendlyPerson", "pitch": 0, "speed": 1.0 },
-  "kai": { "voice": "English_Comedian", "pitch": 1, "speed": 1.07 },
-  "grace": { "voice": "English_Soft-spokenGirl", "pitch": 0, "speed": 0.95 },
-  "diego": { "voice": "English_Comedian", "pitch": 0, "speed": 1.08 },
-  "amara": { "voice": "English_captivating_female1", "pitch": 1, "speed": 1.03 },
-  "tyrell": { "voice": "English_magnetic_voiced_man", "pitch": 0, "speed": 1.04 },
-  "mei": { "voice": "English_Soft-spokenGirl", "pitch": 2, "speed": 0.97 },
-  "hiro": { "voice": "English_Diligent_Man", "pitch": 1, "speed": 1.02 },
-  "priya": { "voice": "English_Kind-heartedGirl", "pitch": 1, "speed": 1.04 },
-  "arjun": { "voice": "English_magnetic_voiced_man", "pitch": 2, "speed": 1.07 },
-  "valentina": { "voice": "English_ConfidentWoman", "pitch": 1, "speed": 1.06 },
-  "mateo": { "voice": "English_Trustworth_Man", "pitch": 2, "speed": 1.05 },
-  "yasmin": { "voice": "English_captivating_female1", "pitch": -1, "speed": 0.99 },
-  "omar": { "voice": "English_Deep-VoicedGentleman", "pitch": 1, "speed": 0.98 },
-  "nina": { "voice": "English_PlayfulGirl", "pitch": 2, "speed": 1.06 },
-  "finn": { "voice": "English_ReservedYoungMan", "pitch": -1, "speed": 0.97 },
-  "zoe": { "voice": "English_UpsetGirl", "pitch": -1, "speed": 1.0 },
-  "andre": { "voice": "English_magnetic_voiced_man", "pitch": -1, "speed": 1.06 },
-  "rosa": { "voice": "English_Wiselady", "pitch": 0, "speed": 0.97 },
-  "stanley": { "voice": "English_MaturePartner", "pitch": 0, "speed": 1.0 },
-  "ingrid": { "voice": "English_CalmWoman", "pitch": 0, "speed": 0.95 },
-  "viktor": { "voice": "English_ManWithDeepVoice", "pitch": 0, "speed": 0.94 },
-  "keiko": { "voice": "English_Graceful_Lady", "pitch": 0, "speed": 0.96 },
-  "raj": { "voice": "English_MaturePartner", "pitch": 1, "speed": 1.05 },
-  "tasha": { "voice": "English_ConfidentWoman", "pitch": -1, "speed": 1.02 },
-  "dev": { "voice": "English_ReservedYoungMan", "pitch": 0, "speed": 0.98 },
-  "chloe": { "voice": "English_Kind-heartedGirl", "pitch": 0, "speed": 0.99 },
-  "leo": { "voice": "English_Gentle-voiced_man", "pitch": 0, "speed": 0.98 },
-  "fatima": { "voice": "English_SereneWoman", "pitch": 1, "speed": 0.97 },
-  "malik": { "voice": "English_Gentle-voiced_man", "pitch": 1, "speed": 0.97 },
-  "hana": { "voice": "English_PlayfulGirl", "pitch": 0, "speed": 1.04 },
-  "lucas": { "voice": "English_Comedian", "pitch": -1, "speed": 1.02 },
-  "gabriela": { "voice": "English_ConfidentWoman", "pitch": 2, "speed": 1.08 },
-  "samir": { "voice": "English_Comedian", "pitch": 2, "speed": 1.05 },
-  "wren": { "voice": "English_UpsetGirl", "pitch": 0, "speed": 0.98 },
-  "tunde": { "voice": "English_magnetic_voiced_man", "pitch": -2, "speed": 1.08 },
-  "sakura": { "voice": "English_Kind-heartedGirl", "pitch": 2, "speed": 1.02 },
-  "nathan": { "voice": "English_Diligent_Man", "pitch": 0, "speed": 1.0 },
-  "imani": { "voice": "English_ConfidentWoman", "pitch": 0, "speed": 0.98 },
-  "carlos": { "voice": "English_PatientMan", "pitch": 0, "speed": 0.98 },
-  "elif": { "voice": "English_CalmWoman", "pitch": 1, "speed": 0.97 },
-  "minho": { "voice": "English_ReservedYoungMan", "pitch": 2, "speed": 1.05 },
-  "harper": { "voice": "English_FriendlyPerson", "pitch": 1, "speed": 1.03 },
-  "kofi": { "voice": "English_Trustworth_Man", "pitch": 1, "speed": 1.04 },
-  "anika": { "voice": "English_captivating_female1", "pitch": 0, "speed": 1.02 },
-  "jesse": { "voice": "English_Comedian", "pitch": -2, "speed": 1.03 },
-  "michelle": { "voice": "English_ConfidentWoman", "pitch": -2, "speed": 1.04 },
-  "ren": { "voice": "English_PatientMan", "pitch": -1, "speed": 0.94 },
-  "paloma": { "voice": "English_SereneWoman", "pitch": 0, "speed": 0.98 },
-  "gus": { "voice": "English_ManWithDeepVoice", "pitch": 2, "speed": 1.0 },
-  "leila": { "voice": "English_captivating_female1", "pitch": -2, "speed": 0.95 },
-  "dante": { "voice": "English_Aussie_Bloke", "pitch": 2, "speed": 1.08 },
-  "bea": { "voice": "English_Wiselady", "pitch": 1, "speed": 0.99 },
-  "jerome": { "voice": "English_Deep-VoicedGentleman", "pitch": 0, "speed": 0.96 },
-  "xia": { "voice": "English_PlayfulGirl", "pitch": -2, "speed": 1.0 },
-  "tomas": { "voice": "English_PatientMan", "pitch": 1, "speed": 1.0 },
-  "aditi": { "voice": "English_PlayfulGirl", "pitch": -1, "speed": 1.07 },
-  "brady": { "voice": "English_Aussie_Bloke", "pitch": 1, "speed": 1.09 },
-  "nia": { "voice": "English_UpsetGirl", "pitch": 2, "speed": 1.05 },
-  "kenji": { "voice": "English_PatientMan", "pitch": 2, "speed": 0.97 },
-  "sierra": { "voice": "English_FriendlyPerson", "pitch": 2, "speed": 1.06 },
-  "ali": { "voice": "English_Diligent_Man", "pitch": 2, "speed": 1.06 },
-  "camila": { "voice": "English_Kind-heartedGirl", "pitch": -1, "speed": 1.08 },
-  "desmond": { "voice": "English_ManWithDeepVoice", "pitch": 1, "speed": 0.97 },
-  "june": { "voice": "English_Soft-spokenGirl", "pitch": -2, "speed": 0.99 },
-  "pete": { "voice": "English_Diligent_Man", "pitch": -1, "speed": 0.99 },
-  "zara": { "voice": "English_CalmWoman", "pitch": -1, "speed": 1.0 },
-  "ravi": { "voice": "English_Trustworth_Man", "pitch": -1, "speed": 1.07 },
-  "maren": { "voice": "English_SereneWoman", "pitch": 2, "speed": 0.99 },
-  "tariq": { "voice": "English_Gentle-voiced_man", "pitch": -1, "speed": 0.95 },
-  "lin": { "voice": "English_CalmWoman", "pitch": -2, "speed": 0.94 },
-  "rafa": { "voice": "English_ReservedYoungMan", "pitch": 1, "speed": 1.07 },
-  "opal": { "voice": "English_Wiselady", "pitch": 2, "speed": 1.02 },
-  "stefan": { "voice": "English_Gentle-voiced_man", "pitch": -2, "speed": 0.99 },
-  "amira": { "voice": "English_Kind-heartedGirl", "pitch": -2, "speed": 1.04 },
-  "junho": { "voice": "English_Gentle-voiced_man", "pitch": 2, "speed": 0.96 },
-  "daisy": { "voice": "English_FriendlyPerson", "pitch": -1, "speed": 1.05 },
-  "elias": { "voice": "English_ReservedYoungMan", "pitch": -2, "speed": 1.0 },
-  "simone": { "voice": "English_Soft-spokenGirl", "pitch": 1, "speed": 0.98 },
-  "hasan": { "voice": "English_Trustworth_Man", "pitch": -2, "speed": 1.08 },
-  "noor": { "voice": "English_Whispering_girl", "pitch": 0, "speed": 0.94 },
-  "cole": { "voice": "English_Aussie_Bloke", "pitch": 0, "speed": 1.0 },
-  "mimi": { "voice": "English_Soft-spokenGirl", "pitch": -1, "speed": 1.06 },
-  "andres": { "voice": "English_MaturePartner", "pitch": -1, "speed": 1.02 },
-  "tori": { "voice": "English_captivating_female1", "pitch": 2, "speed": 1.08 },
-  "clay": { "voice": "English_PatientMan", "pitch": -2, "speed": 0.96 },
-  "esther": { "voice": "English_Wiselady", "pitch": -1, "speed": 0.96 },
-  "kavya": { "voice": "English_SereneWoman", "pitch": -2, "speed": 1.0 },
-  "marco": { "voice": "English_Deep-VoicedGentleman", "pitch": -1, "speed": 1.01 },
-  "sunny": { "voice": "English_FriendlyPerson", "pitch": -2, "speed": 1.06 },
-  "abdul": { "voice": "English_Deep-VoicedGentleman", "pitch": -2, "speed": 0.97 },
-  "poppy": { "voice": "English_UpsetGirl", "pitch": -2, "speed": 1.05 },
-  "marquis": { "voice": "English_Aussie_Bloke", "pitch": -1, "speed": 1.07 },
-  "isla": { "voice": "English_CalmWoman", "pitch": 2, "speed": 0.95 },
-  "theo": { "voice": "English_Diligent_Man", "pitch": -2, "speed": 0.98 },
-  "vera": { "voice": "English_Graceful_Lady", "pitch": -2, "speed": 1.0 }
+ "maya": {
+  "voice": "English_PlayfulGirl",
+  "pitch": 1,
+  "speed": 1.08
+ },
+ "jake": {
+  "voice": "English_magnetic_voiced_man",
+  "pitch": 1,
+  "speed": 1.09
+ },
+ "sophia": {
+  "voice": "English_SereneWoman",
+  "pitch": -1,
+  "speed": 0.95
+ },
+ "marcus": {
+  "voice": "English_Trustworth_Man",
+  "pitch": 0,
+  "speed": 1
+ },
+ "lena": {
+  "voice": "English_FriendlyPerson",
+  "pitch": 0,
+  "speed": 1
+ },
+ "kai": {
+  "voice": "English_Comedian",
+  "pitch": 1,
+  "speed": 1.07
+ },
+ "grace": {
+  "voice": "English_Soft-spokenGirl",
+  "pitch": 0,
+  "speed": 0.95
+ },
+ "diego": {
+  "voice": "English_Comedian",
+  "pitch": 0,
+  "speed": 1.08
+ },
+ "amara": {
+  "voice": "English_captivating_female1",
+  "pitch": 1,
+  "speed": 1.03
+ },
+ "tyrell": {
+  "voice": "English_magnetic_voiced_man",
+  "pitch": 0,
+  "speed": 1.04
+ },
+ "mei": {
+  "voice": "ttv-voice-2026072007545026-oWATAlRl",
+  "pitch": 0,
+  "speed": 1
+ },
+ "hiro": {
+  "voice": "English_Diligent_Man",
+  "pitch": 1,
+  "speed": 1.02
+ },
+ "priya": {
+  "voice": "English_Kind-heartedGirl",
+  "pitch": 1,
+  "speed": 1.04
+ },
+ "arjun": {
+  "voice": "English_magnetic_voiced_man",
+  "pitch": 2,
+  "speed": 1.07
+ },
+ "valentina": {
+  "voice": "ttv-voice-2026072008293826-0eVHuNuV",
+  "pitch": 0,
+  "speed": 1
+ },
+ "mateo": {
+  "voice": "English_Trustworth_Man",
+  "pitch": 2,
+  "speed": 1.05
+ },
+ "yasmin": {
+  "voice": "English_captivating_female1",
+  "pitch": -1,
+  "speed": 0.99
+ },
+ "omar": {
+  "voice": "ttv-voice-2026072008252526-bvlGzgPZ",
+  "pitch": 0,
+  "speed": 1
+ },
+ "nina": {
+  "voice": "English_PlayfulGirl",
+  "pitch": 2,
+  "speed": 1.06
+ },
+ "finn": {
+  "voice": "English_ReservedYoungMan",
+  "pitch": -1,
+  "speed": 0.97
+ },
+ "zoe": {
+  "voice": "English_UpsetGirl",
+  "pitch": -1,
+  "speed": 1
+ },
+ "andre": {
+  "voice": "English_magnetic_voiced_man",
+  "pitch": -1,
+  "speed": 1.06
+ },
+ "rosa": {
+  "voice": "ttv-voice-2026072007523226-Tjt5ZLMA",
+  "pitch": 0,
+  "speed": 1
+ },
+ "stanley": {
+  "voice": "English_MaturePartner",
+  "pitch": 0,
+  "speed": 1
+ },
+ "ingrid": {
+  "voice": "ttv-voice-2026072008264426-u85Dft5L",
+  "pitch": 0,
+  "speed": 1
+ },
+ "viktor": {
+  "voice": "English_ManWithDeepVoice",
+  "pitch": 0,
+  "speed": 0.94
+ },
+ "keiko": {
+  "voice": "ttv-voice-2026072008245026-mkID51Tq",
+  "pitch": 0,
+  "speed": 1
+ },
+ "raj": {
+  "voice": "ttv-voice-2026072007540726-IVYK0w4k",
+  "pitch": 0,
+  "speed": 1
+ },
+ "tasha": {
+  "voice": "English_ConfidentWoman",
+  "pitch": -1,
+  "speed": 1.02
+ },
+ "dev": {
+  "voice": "English_ReservedYoungMan",
+  "pitch": 0,
+  "speed": 0.98
+ },
+ "chloe": {
+  "voice": "English_Kind-heartedGirl",
+  "pitch": 0,
+  "speed": 0.99
+ },
+ "leo": {
+  "voice": "English_Gentle-voiced_man",
+  "pitch": 0,
+  "speed": 0.98
+ },
+ "fatima": {
+  "voice": "ttv-voice-2026072008303526-FXLU04f9",
+  "pitch": 0,
+  "speed": 1
+ },
+ "malik": {
+  "voice": "English_Gentle-voiced_man",
+  "pitch": 1,
+  "speed": 0.97
+ },
+ "hana": {
+  "voice": "ttv-voice-2026072008285426-vkQgto88",
+  "pitch": 0,
+  "speed": 1
+ },
+ "lucas": {
+  "voice": "English_Comedian",
+  "pitch": -1,
+  "speed": 1.02
+ },
+ "gabriela": {
+  "voice": "English_ConfidentWoman",
+  "pitch": 2,
+  "speed": 1.08
+ },
+ "samir": {
+  "voice": "English_Comedian",
+  "pitch": 2,
+  "speed": 1.05
+ },
+ "wren": {
+  "voice": "English_UpsetGirl",
+  "pitch": 0,
+  "speed": 0.98
+ },
+ "tunde": {
+  "voice": "ttv-voice-2026072008235726-yihAAbAg",
+  "pitch": 0,
+  "speed": 1
+ },
+ "sakura": {
+  "voice": "English_Kind-heartedGirl",
+  "pitch": 2,
+  "speed": 1.02
+ },
+ "nathan": {
+  "voice": "English_Diligent_Man",
+  "pitch": 0,
+  "speed": 1
+ },
+ "imani": {
+  "voice": "English_ConfidentWoman",
+  "pitch": 0,
+  "speed": 0.98
+ },
+ "carlos": {
+  "voice": "English_PatientMan",
+  "pitch": 0,
+  "speed": 0.98
+ },
+ "elif": {
+  "voice": "English_CalmWoman",
+  "pitch": 1,
+  "speed": 0.97
+ },
+ "minho": {
+  "voice": "English_ReservedYoungMan",
+  "pitch": 2,
+  "speed": 1.05
+ },
+ "harper": {
+  "voice": "English_FriendlyPerson",
+  "pitch": 1,
+  "speed": 1.03
+ },
+ "kofi": {
+  "voice": "English_Trustworth_Man",
+  "pitch": 1,
+  "speed": 1.04
+ },
+ "anika": {
+  "voice": "English_captivating_female1",
+  "pitch": 0,
+  "speed": 1.02
+ },
+ "jesse": {
+  "voice": "English_Comedian",
+  "pitch": -2,
+  "speed": 1.03
+ },
+ "michelle": {
+  "voice": "English_ConfidentWoman",
+  "pitch": -2,
+  "speed": 1.04
+ },
+ "ren": {
+  "voice": "English_PatientMan",
+  "pitch": -1,
+  "speed": 0.94
+ },
+ "paloma": {
+  "voice": "English_SereneWoman",
+  "pitch": 0,
+  "speed": 0.98
+ },
+ "gus": {
+  "voice": "ttv-voice-2026072008310226-maTglACH",
+  "pitch": 0,
+  "speed": 1
+ },
+ "leila": {
+  "voice": "English_captivating_female1",
+  "pitch": -2,
+  "speed": 0.95
+ },
+ "dante": {
+  "voice": "English_Aussie_Bloke",
+  "pitch": 2,
+  "speed": 1.08
+ },
+ "bea": {
+  "voice": "English_Wiselady",
+  "pitch": 1,
+  "speed": 0.99
+ },
+ "jerome": {
+  "voice": "English_Deep-VoicedGentleman",
+  "pitch": 0,
+  "speed": 0.96
+ },
+ "xia": {
+  "voice": "English_PlayfulGirl",
+  "pitch": -2,
+  "speed": 1
+ },
+ "tomas": {
+  "voice": "English_PatientMan",
+  "pitch": 1,
+  "speed": 1
+ },
+ "aditi": {
+  "voice": "ttv-voice-2026072008261826-O93YWj17",
+  "pitch": 0,
+  "speed": 1
+ },
+ "brady": {
+  "voice": "English_Aussie_Bloke",
+  "pitch": 1,
+  "speed": 1.09
+ },
+ "nia": {
+  "voice": "English_UpsetGirl",
+  "pitch": 2,
+  "speed": 1.05
+ },
+ "kenji": {
+  "voice": "English_PatientMan",
+  "pitch": 2,
+  "speed": 0.97
+ },
+ "sierra": {
+  "voice": "English_FriendlyPerson",
+  "pitch": 2,
+  "speed": 1.06
+ },
+ "ali": {
+  "voice": "English_Diligent_Man",
+  "pitch": 2,
+  "speed": 1.06
+ },
+ "camila": {
+  "voice": "English_Kind-heartedGirl",
+  "pitch": -1,
+  "speed": 1.08
+ },
+ "desmond": {
+  "voice": "ttv-voice-2026072007551426-g4FKRrYH",
+  "pitch": 0,
+  "speed": 1
+ },
+ "june": {
+  "voice": "English_Soft-spokenGirl",
+  "pitch": -2,
+  "speed": 0.99
+ },
+ "pete": {
+  "voice": "English_Diligent_Man",
+  "pitch": -1,
+  "speed": 0.99
+ },
+ "zara": {
+  "voice": "English_CalmWoman",
+  "pitch": -1,
+  "speed": 1
+ },
+ "ravi": {
+  "voice": "ttv-voice-2026072008570126-dN2Xg38w",
+  "pitch": 0,
+  "speed": 1
+ },
+ "maren": {
+  "voice": "English_SereneWoman",
+  "pitch": 2,
+  "speed": 0.99
+ },
+ "tariq": {
+  "voice": "English_Gentle-voiced_man",
+  "pitch": -1,
+  "speed": 0.95
+ },
+ "lin": {
+  "voice": "ttv-voice-2026072008312926-XVPuQo0X",
+  "pitch": 0,
+  "speed": 1
+ },
+ "rafa": {
+  "voice": "English_ReservedYoungMan",
+  "pitch": 1,
+  "speed": 1.07
+ },
+ "opal": {
+  "voice": "English_Wiselady",
+  "pitch": 2,
+  "speed": 1.02
+ },
+ "stefan": {
+  "voice": "English_Gentle-voiced_man",
+  "pitch": -2,
+  "speed": 0.99
+ },
+ "amira": {
+  "voice": "English_Kind-heartedGirl",
+  "pitch": -2,
+  "speed": 1.04
+ },
+ "junho": {
+  "voice": "English_Gentle-voiced_man",
+  "pitch": 2,
+  "speed": 0.96
+ },
+ "daisy": {
+  "voice": "English_FriendlyPerson",
+  "pitch": -1,
+  "speed": 1.05
+ },
+ "elias": {
+  "voice": "English_ReservedYoungMan",
+  "pitch": -2,
+  "speed": 1
+ },
+ "simone": {
+  "voice": "English_Soft-spokenGirl",
+  "pitch": 1,
+  "speed": 0.98
+ },
+ "hasan": {
+  "voice": "English_Trustworth_Man",
+  "pitch": -2,
+  "speed": 1.08
+ },
+ "noor": {
+  "voice": "English_Whispering_girl",
+  "pitch": 0,
+  "speed": 0.94
+ },
+ "cole": {
+  "voice": "ttv-voice-2026072008273826-gN8LD3O2",
+  "pitch": 0,
+  "speed": 1
+ },
+ "mimi": {
+  "voice": "English_Soft-spokenGirl",
+  "pitch": -1,
+  "speed": 1.06
+ },
+ "andres": {
+  "voice": "ttv-voice-2026072008255226-pzOFMNRC",
+  "pitch": 0,
+  "speed": 1
+ },
+ "tori": {
+  "voice": "English_captivating_female1",
+  "pitch": 2,
+  "speed": 1.08
+ },
+ "clay": {
+  "voice": "English_PatientMan",
+  "pitch": -2,
+  "speed": 0.96
+ },
+ "esther": {
+  "voice": "ttv-voice-2026072008560526-R9PEF2PR",
+  "pitch": 0,
+  "speed": 1
+ },
+ "kavya": {
+  "voice": "English_SereneWoman",
+  "pitch": -2,
+  "speed": 1
+ },
+ "marco": {
+  "voice": "English_Deep-VoicedGentleman",
+  "pitch": -1,
+  "speed": 1.01
+ },
+ "sunny": {
+  "voice": "English_FriendlyPerson",
+  "pitch": -2,
+  "speed": 1.06
+ },
+ "abdul": {
+  "voice": "English_Deep-VoicedGentleman",
+  "pitch": -2,
+  "speed": 0.97
+ },
+ "poppy": {
+  "voice": "ttv-voice-2026072007525326-kqsNOfvM",
+  "pitch": 0,
+  "speed": 1
+ },
+ "marquis": {
+  "voice": "ttv-voice-2026072008441126-8jCKUzuF",
+  "pitch": 0,
+  "speed": 1
+ },
+ "isla": {
+  "voice": "ttv-voice-2026072008550826-grrHJZfA",
+  "pitch": 0,
+  "speed": 1
+ },
+ "theo": {
+  "voice": "English_Diligent_Man",
+  "pitch": -2,
+  "speed": 0.98
+ },
+ "vera": {
+  "voice": "English_Graceful_Lady",
+  "pitch": -2,
+  "speed": 1
+ }
 }

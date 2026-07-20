@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation, useFetcher, useRevalidator, useActionData } from "@remix-run/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -26,7 +26,7 @@ import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens, tokensRemaining } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
-import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS, OUTFITS, CAST_PREVIEW_COUNT, avatarImg } from "../lib/avatars";
+import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS, OUTFITS, CAST_PREVIEW_COUNT, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -604,6 +604,22 @@ export default function Videos() {
   const castImg = (id: string, v: number) =>
     castAvail[id] === "variants" ? avatarImg(id, v) : `/avatars/${id}.jpg`;
 
+  // voice samplers — every head can speak before you cast them. One shared
+  // <audio>: tapping a new head stops the last, tapping the same toggles.
+  const voiceRef = useRef<HTMLAudioElement | null>(null);
+  const [voicePlaying, setVoicePlaying] = useState<string | null>(null);
+  const sampleVoice = (id: string) => {
+    const cur = voiceRef.current;
+    if (voicePlaying === id && cur) { cur.pause(); setVoicePlaying(null); return; }
+    if (cur) cur.pause();
+    const a = new Audio(`/voices/${id}.mp3?v=1`);
+    voiceRef.current = a;
+    a.onended = () => setVoicePlaying((p) => (p === id ? null : p));
+    a.onerror = () => setVoicePlaying((p) => (p === id ? null : p));
+    a.play().catch(() => setVoicePlaying(null));
+    setVoicePlaying(id);
+  };
+
   // Take Library filters — reference cuts by presenter/product/status instead
   // of scrolling the full reel
   const [libTab, setLibTab] = useState<"READY" | "PENDING">("READY");
@@ -828,6 +844,18 @@ export default function Videos() {
                 onClick={() => castAvatar(a.id)}
               >
                 {brandFace?.id === a.id && <span className="mm-bf-tag">★ BRAND FACE</span>}
+                {DESIGNED_VOICES.has(a.id) && <span className="mm-voice-tag">✦ TRUE VOICE</span>}
+                <span
+                  className={`mm-voice-btn${voicePlaying === a.id ? " playing" : ""}${DESIGNED_VOICES.has(a.id) ? " prem" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Hear ${a.name}'s voice`}
+                  title={`Hear ${a.name}'s voice`}
+                  onClick={(e) => { e.stopPropagation(); sampleVoice(a.id); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); sampleVoice(a.id); } }}
+                >
+                  {voicePlaying === a.id ? "♪" : "🔊"}
+                </span>
                 <img
                   src={castImg(a.id, avatarId === a.id ? avatarVariant : 0)}
                   alt={`${a.name} — ${a.vibe}`}
