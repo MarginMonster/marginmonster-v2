@@ -1317,11 +1317,15 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
     if (el) el.scrollLeft = (here.x / PANO_W) * RENDER_W - el.clientWidth / 2;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Mouse gets the grab-drag; touch gets NATIVE horizontal scroll (the JS drag
+  // + pointer capture was fighting iOS touch scrolling and the map froze on
+  // phones). Tap-to-pick works on both: any pointer that barely moved picks.
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el) return;
-    drag.current = { on: true, x: e.clientX, left: el.scrollLeft, moved: false, tgt: e.target };
-    el.setPointerCapture(e.pointerId);
+    const mouse = e.pointerType === "mouse";
+    drag.current = { on: mouse, x: e.clientX, left: el.scrollLeft, moved: false, tgt: e.target };
+    if (mouse) el.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
@@ -1330,10 +1334,15 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
     if (Math.abs(dx) > 5) drag.current.moved = true;
     el.scrollLeft = drag.current.left - dx;
   };
-  const onPointerUp = () => {
+  const onPointerCancel = () => {
+    // native scroll took over (touch) — never treat it as a tap
+    drag.current = { ...drag.current, on: false, moved: true, tgt: null };
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     drag.current = { ...d, on: false };
-    if (d.moved || !d.tgt) return;
+    const dx = Math.abs(e.clientX - d.x);
+    if (d.moved || dx > 8 || !d.tgt) return;
     const hit = (d.tgt as Element).closest?.("[data-slot],[data-day]");
     if (!hit) return;
     const slotAttr = hit.getAttribute("data-slot");
@@ -1350,6 +1359,7 @@ function TrailMap({ slots, xpReward, rendering, partner, cargo, onPick, onPickDa
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerUp}
     >
     <div className="qh-map-inner" style={{ width: RENDER_W }}>
