@@ -194,7 +194,10 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   box-shadow: 0 12px 40px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.03);
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
-.mm-fighter-card:hover { transform: translateY(-5px); border-color: var(--fx); box-shadow: 0 18px 52px rgba(0,0,0,0.6), 0 0 24px color-mix(in srgb, var(--fx) 35%, transparent); }
+/* NOT the flip faces — a hover transform on a backface-hidden face inside the
+   3D flip context makes the card cull/disappear. Plan cards react to the flip
+   button only, never to hover. */
+.mm-fighter-card:not(.mm-flip-face):hover { transform: translateY(-5px); border-color: var(--fx); box-shadow: 0 18px 52px rgba(0,0,0,0.6), 0 0 24px color-mix(in srgb, var(--fx) 35%, transparent); }
 .mm-fighter-card.is-featured { border: 2px solid var(--fx); box-shadow: 0 16px 50px color-mix(in srgb, var(--fx) 28%, rgba(0,0,0,0.5)); }
 
 .mm-fighter-portrait {
