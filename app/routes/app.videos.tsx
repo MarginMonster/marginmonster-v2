@@ -612,7 +612,7 @@ export default function Videos() {
     const cur = voiceRef.current;
     if (voicePlaying === id && cur) { cur.pause(); setVoicePlaying(null); return; }
     if (cur) cur.pause();
-    const a = new Audio(`/voices/${id}.mp3?v=1`);
+    const a = new Audio(`/voices/${id}.mp3?v=3`);
     voiceRef.current = a;
     a.onended = () => setVoicePlaying((p) => (p === id ? null : p));
     a.onerror = () => setVoicePlaying((p) => (p === id ? null : p));

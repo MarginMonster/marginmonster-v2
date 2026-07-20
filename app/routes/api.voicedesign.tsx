@@ -75,11 +75,43 @@ export async function action({ request }: ActionFunctionArgs) {
   const body = (await request.json().catch(() => ({}))) as {
     secret?: string; id?: string; prompt?: string; preview_text?: string;
     tts_text?: string; voiceId?: string;
+    mode?: string; imageUrl?: string; audioUrl?: string; statusUrl?: string; responseUrl?: string;
   };
   if (body.secret !== RUN_SECRET) return json({ error: "not found" }, { status: 404 });
   if (!process.env.FAL_KEY) return json({ error: "FAL_KEY not set" }, { status: 500 });
 
   try {
+    // talking-head sampler modes — HeyGen renders take minutes, so submit
+    // returns the fal queue urls and the caller polls via animCheck.
+    if (body.mode === "animSubmit") {
+      if (!body.imageUrl || !body.audioUrl) return json({ error: "imageUrl, audioUrl required" }, { status: 400 });
+      const submit = await fetch("https://queue.fal.run/fal-ai/heygen/avatar4/image-to-video", {
+        method: "POST",
+        headers: falHeaders(),
+        body: JSON.stringify({
+          image_url: body.imageUrl,
+          audio_url: body.audioUrl,
+          talking_style: "expressive",
+          aspect_ratio: "9:16",
+          resolution: "720p",
+        }),
+      });
+      if (!submit.ok) return json({ error: `submit ${submit.status}: ${(await submit.text()).slice(0, 300)}` }, { status: 502 });
+      const q = (await submit.json()) as { status_url?: string; response_url?: string };
+      return json({ statusUrl: q.status_url, responseUrl: q.response_url });
+    }
+    if (body.mode === "animCheck") {
+      if (!body.statusUrl || !body.responseUrl) return json({ error: "statusUrl, responseUrl required" }, { status: 400 });
+      const s = await fetch(body.statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      const sj = (await s.json().catch(() => ({}))) as { status?: string };
+      if (sj.status === "COMPLETED") {
+        const res = await fetch(body.responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+        const rj = (await res.json().catch(() => ({}))) as { video?: { url?: string } };
+        return json({ status: "COMPLETED", videoUrl: rj.video?.url || null });
+      }
+      return json({ status: sj.status || "UNKNOWN" });
+    }
+
     // keepalive mode: TTS an already-designed voice
     if (body.voiceId) {
       const tts = await ttsWithVoice(body.voiceId, body.tts_text || "Keepalive check, locking this voice in.");
