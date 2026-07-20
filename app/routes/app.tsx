@@ -268,7 +268,7 @@ export default function App() {
       <video
         key={pageKey}
         className="em-bgvid"
-        src={`/bg/${pageKey}.mp4`}
+        src={`/bg/${pageKey}.mp4?v=2`}
         poster={`/bg/${pageKey}.jpg`}
         muted
         autoPlay

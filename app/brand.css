@@ -1892,11 +1892,13 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
   body[data-page="plans"]::before { background-image: url(/bg/plans-m.jpg); }
 }
 
-/* the living island — ambient loop video above the body jpg, beneath all content */
-.em-bgvid { display: none !important; } /* v1 loops benched (motion too timid) — cinema pass pending review */
-.em-bgvid-armed { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .em-bgvid { display: none; } }
-@media (max-width: 900px) { .em-bgvid { display: none; } }
+/* the living island — ambient loop video above the body jpg, beneath all
+ * content. BLESSED 2026-07-20: calm-breeze set (small waves, swaying palms,
+ * slow clouds — kling v2.1, water-violence gate). Stills stay as poster/body
+ * fallback; mobile + reduced-motion keep the stills. */
+.em-bgvid { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .em-bgvid { display: none !important; } }
+@media (max-width: 900px) { .em-bgvid { display: none !important; } }
 
 /* overlay palms retired (looked cheap) — motion moves into the backgrounds themselves */
 .em-palm { display: none !important; }
