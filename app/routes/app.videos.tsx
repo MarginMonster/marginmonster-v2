@@ -28,13 +28,15 @@ import { spendTokens, tokensRemaining } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS, OUTFITS, CAST_PREVIEW_COUNT, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 
+const BOOST_FEE = 25; // token SERVICE fee per boost (AI setup + optimization); ad spend is the merchant's own account
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
-    include: { activePlan: true },
+    include: { activePlan: true, adAccounts: true },
   });
-  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video, stills: [] as { id: string; title: string; imageUrl: string | null; createdAt: Date }[], stillTokenCost: TOKEN_COST.image });
+  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video, stills: [] as { id: string; title: string; imageUrl: string | null; createdAt: Date }[], stillTokenCost: TOKEN_COST.image, adPlatforms: [] as string[], boostedAssetIds: [] as string[], boostFee: 0 });
 
   const videos = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD" },
@@ -135,6 +137,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return { id: a.id, title: a.title || "Still", imageUrl, createdAt: a.createdAt };
   }).filter((a) => !!a.imageUrl);
 
+  // 🚀 Boost (Model A — paid amplification on the MERCHANT'S own ad account).
+  // adPlatforms = which ad accounts are connected; boostedAssetIds = takes that
+  // already have a paid campaign. boostFee = token SERVICE fee (never ad spend).
+  const adPlatforms = shop.adAccounts.map((a) => a.platform);
+  const boostedRows = await db.campaign.findMany({ where: { shopId: shop.id }, select: { assetId: true } });
+  const boostedAssetIds = [...new Set(boostedRows.map((c) => c.assetId))];
+
   return json({
     videos,
     plan: plan
@@ -153,6 +162,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFace: shop.brandAvatarId
       ? { id: shop.brandAvatarId, variant: shop.brandAvatarVariant ?? 0 }
       : null,
+    adPlatforms,
+    boostedAssetIds,
+    boostFee: BOOST_FEE,
   });
 };
 
@@ -469,6 +481,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       : json({ opError: `Posting failed (${res.error || "unknown"}). Check your connected accounts.` });
   }
 
+  // 🚀 BOOST — paid amplification on the merchant's OWN ad account (Model A).
+  // Charges a token SERVICE fee only; the ad spend is billed by the platform to
+  // the merchant's connected account. Runs through the existing launch engine.
+  if (intent === "boost") {
+    const assetId = (form.get("assetId") as string) || "";
+    const platform = (form.get("platform") as string) || "";
+    const budgetDaily = Math.max(1, Math.min(500, Number(form.get("budget") || 10)));
+    const shopRec = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true, adAccounts: true } });
+    if (!shopRec?.activePlan?.active) return json({ opError: "Pick a plan first to boost." });
+    if (!shopRec.adAccounts.find((a) => a.platform === platform)) {
+      return json({ opError: "Connect your ad account first (Ad Accounts tab) — you set the budget, it spends from your account." });
+    }
+    const asset = await db.asset.findFirst({ where: { id: assetId, shopId: shopRec.id } });
+    if (!asset) return json({ opError: "Take not found." });
+    try {
+      await spendTokens(shopRec.id, BOOST_FEE);
+    } catch (e) {
+      return json({ opError: e instanceof Error ? e.message : "Not enough tokens for the boost service fee." });
+    }
+    await db.asset.update({ where: { id: assetId }, data: { status: "APPROVED" } });
+    await enqueueJob(shopRec.id, "LAUNCH_CAMPAIGN", { assetId, platform, weeklyBudgetCents: Math.round(budgetDaily * 7 * 100) });
+    return json({ ok: true, boosted: platform });
+  }
+
   if (intent === "attachProduct") {
     const id = (form.get("assetId") as string) || "";
     const productId = (form.get("productId") as string) || "";
@@ -573,7 +609,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Pick = { id: string | null; title: string; image: string | null; description: string };
 
 export default function Videos() {
-  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost, stills, stillTokenCost } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost, stills, stillTokenCost, adPlatforms, boostedAssetIds, boostFee } = useLoaderData<typeof loader>();
   const stillFx = useFetcher<typeof action>();
   const [stillProduct, setStillProduct] = useState("");
   const actionData = useActionData<typeof action>();
@@ -679,6 +715,11 @@ export default function Videos() {
 
   // take-card ops: attach flow state
   const [attachingId, setAttachingId] = useState<string | null>(null);
+  // 🚀 boost (paid amplification on the merchant's own ad account)
+  const [boostId, setBoostId] = useState<string | null>(null);
+  const [boostBudget, setBoostBudget] = useState(10);
+  const plat = (adPlatforms[0] as string) || "";
+  const platLabel = plat === "META" ? "Meta" : plat === "TIKTOK" ? "TikTok" : plat;
   const [attachPick, setAttachPick] = useState<string>("");
   useEffect(() => {
     if (taker.state === "idle" && taker.data && "ok" in taker.data && taker.data.ok) setAttachingId(null);
@@ -1389,6 +1430,29 @@ export default function Videos() {
                               >
                                 {linkedSocials.length === 0 ? "📲 Connect socials first" : `📲 Post now → ${linkedSocials.map((p: string) => p === "facebook" ? "FB" : p === "instagram" ? "IG" : "TikTok").join("+")}`}
                               </Button>
+                            )}
+                            {/* 🚀 BOOST — paid amplification, merchant's own ad account */}
+                            {boostedAssetIds.includes(v.id) ? (
+                              <Badge tone="success">🚀 Boosting</Badge>
+                            ) : adPlatforms.length === 0 ? (
+                              <Button size="slim" url="/app/connect">🚀 Boost — connect ad account</Button>
+                            ) : boostId === v.id ? (
+                              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                                <span>$</span>
+                                <input
+                                  type="number" min={1} max={500} value={boostBudget}
+                                  onChange={(e) => setBoostBudget(Math.max(1, Math.min(500, Number(e.target.value))))}
+                                  style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid rgba(20,18,31,.3)" }}
+                                />
+                                <span style={{ color: "#8A8598" }}>/day on {platLabel}</span>
+                                <Button size="slim" variant="primary" loading={taker.state !== "idle"}
+                                  onClick={() => taker.submit({ intent: "boost", assetId: v.id, platform: plat, budget: String(boostBudget) }, { method: "post" })}>
+                                  {`Launch · ${boostFee}🪙`}
+                                </Button>
+                                <Button size="slim" variant="tertiary" onClick={() => setBoostId(null)}>✕</Button>
+                              </span>
+                            ) : (
+                              <Button size="slim" onClick={() => setBoostId(v.id)}>🚀 Boost</Button>
                             )}
                           </>
                         )}
