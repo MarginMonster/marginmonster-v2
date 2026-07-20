@@ -1,0 +1,212 @@
+{
+ "note": "MiniMax designed voices via fal (temp route api.voicedesign). $3/voice + preview pennies. A designed voice must complete one TTS within 7 days or fal deletes it (keepalive:true = locked permanent). voiceId goes into avatar-voices.json when the avatar switches to designed.",
+ "designed": {
+  "rosa": {
+   "voiceId": "ttv-voice-2026072007523226-Tjt5ZLMA",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "proof5"
+  },
+  "poppy": {
+   "voiceId": "ttv-voice-2026072007525326-kqsNOfvM",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "proof5"
+  },
+  "raj": {
+   "voiceId": "ttv-voice-2026072007540726-IVYK0w4k",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "proof5"
+  },
+  "mei": {
+   "voiceId": "ttv-voice-2026072007545026-oWATAlRl",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "proof5"
+  },
+  "desmond": {
+   "voiceId": "ttv-voice-2026072007551426-g4FKRrYH",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "proof5"
+  },
+  "tunde": {
+   "voiceId": "ttv-voice-2026072008235726-yihAAbAg",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "isla": {
+   "voiceId": "ttv-voice-2026072008242326-jjcSgQfp",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "keiko": {
+   "voiceId": "ttv-voice-2026072008245026-mkID51Tq",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "omar": {
+   "voiceId": "ttv-voice-2026072008252526-bvlGzgPZ",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "andres": {
+   "voiceId": "ttv-voice-2026072008255226-pzOFMNRC",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "aditi": {
+   "voiceId": "ttv-voice-2026072008261826-O93YWj17",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "ingrid": {
+   "voiceId": "ttv-voice-2026072008264426-u85Dft5L",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "cole": {
+   "voiceId": "ttv-voice-2026072008273826-gN8LD3O2",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "esther": {
+   "voiceId": "ttv-voice-2026072008280726-CYOzJcAP",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "hana": {
+   "voiceId": "ttv-voice-2026072008285426-vkQgto88",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "valentina": {
+   "voiceId": "ttv-voice-2026072008293826-0eVHuNuV",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "ravi": {
+   "voiceId": "ttv-voice-2026072008300726-Z6vYCrUC",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "fatima": {
+   "voiceId": "ttv-voice-2026072008303526-FXLU04f9",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "gus": {
+   "voiceId": "ttv-voice-2026072008310226-maTglACH",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "lin": {
+   "voiceId": "ttv-voice-2026072008312926-XVPuQo0X",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  },
+  "marquis": {
+   "voiceId": "ttv-voice-2026072008320726-p1s8msWX",
+   "designedAt": "2026-07-20",
+   "keepalive": true,
+   "batch": "batch16-50usd"
+  }
+ },
+ "pending": [
+  "maya",
+  "jake",
+  "sophia",
+  "marcus",
+  "lena",
+  "kai",
+  "grace",
+  "diego",
+  "amara",
+  "tyrell",
+  "hiro",
+  "priya",
+  "arjun",
+  "mateo",
+  "yasmin",
+  "nina",
+  "finn",
+  "zoe",
+  "andre",
+  "stanley",
+  "viktor",
+  "tasha",
+  "dev",
+  "chloe",
+  "leo",
+  "malik",
+  "lucas",
+  "gabriela",
+  "samir",
+  "wren",
+  "sakura",
+  "nathan",
+  "imani",
+  "carlos",
+  "elif",
+  "minho",
+  "harper",
+  "kofi",
+  "anika",
+  "jesse",
+  "michelle",
+  "ren",
+  "paloma",
+  "leila",
+  "dante",
+  "bea",
+  "jerome",
+  "xia",
+  "tomas",
+  "brady",
+  "nia",
+  "kenji",
+  "sierra",
+  "ali",
+  "camila",
+  "june",
+  "pete",
+  "zara",
+  "maren",
+  "tariq",
+  "rafa",
+  "opal",
+  "stefan",
+  "amira",
+  "junho",
+  "daisy",
+  "elias",
+  "simone",
+  "hasan",
+  "noor",
+  "mimi",
+  "tori",
+  "clay",
+  "kavya",
+  "marco",
+  "sunny",
+  "abdul",
+  "theo",
+  "vera"
+ ]
+}
