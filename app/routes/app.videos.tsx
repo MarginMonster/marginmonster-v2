@@ -792,11 +792,7 @@ export default function Videos() {
   const selectedAvatar = avatarId ? AVATAR_BY_ID[avatarId] : null;
 
   return (
-    <Page
-      title="Video Studio"
-      backAction={{ content: "Home", url: "/app" }}
-      subtitle="Pick your presenter, direct the shot, and roll camera — ready-to-post videos for TikTok, Reels & Shorts."
-    >
+    <Page backAction={{ content: "Home", url: "/app" }}>
       <Layout>
         <Layout.Section>
           <div className="pp-hero">

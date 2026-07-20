@@ -343,7 +343,7 @@ export default function Products() {
 
   if (!hasBrand) {
     return (
-      <Page title="Listing Studio" backAction={{ content: "Home", url: "/app" }}>
+      <Page backAction={{ content: "Home", url: "/app" }}>
         <EmptyState heading="Analyze your store first" image="" action={{ content: "Go to dashboard", url: "/app" }}>
           <p>We learn your brand voice first, so every description sounds like you.</p>
         </EmptyState>

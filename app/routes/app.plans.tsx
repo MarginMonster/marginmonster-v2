@@ -366,12 +366,7 @@ export default function Plans() {
   };
 
   return (
-    <Page
-      fullWidth
-      backAction={{ content: "Home", url: "/app" }}
-      title="Packages & Companions"
-      subtitle="Pick your rank, then choose (or create) the companion who runs the whole operation for you."
-    >
+    <Page fullWidth backAction={{ content: "Home", url: "/app" }}>
       <Layout>
         <Layout.Section>
           <div className="mm-hero">
@@ -703,11 +698,11 @@ export default function Plans() {
         </Layout.Section>
 
         <Layout.Section>
-          <Text variant="bodySm" as="p" tone="subdued" alignment="center">
+          <p className="mm-floor-note">
             Need more than your package includes? Drop in tokens anytime — no
             upgrade required. Cancel or switch packages whenever you like. Your
             companion stays with you either way.
-          </Text>
+          </p>
         </Layout.Section>
       </Layout>
     </Page>

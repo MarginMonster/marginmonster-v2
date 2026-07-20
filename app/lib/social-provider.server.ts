@@ -64,8 +64,10 @@ export async function connectUrl(shopId: string, returnUrl?: string): Promise<st
       headers: { ...authHeader(), "Content-Type": "application/json" },
       body: JSON.stringify({
         username,
-        connect_title: "Connect your socials to EasyMode",
-        connect_description: "Link TikTok, Instagram, and Facebook — your campaigns auto-post from here. Hands off, all month.",
+        // brand the white-label hosted page as hard as its params allow
+        logo_image: `${process.env.SHOPIFY_APP_URL || "https://marginmonster-fiew.onrender.com"}/easymode-head.png`,
+        connect_title: "Connect your socials to EasyMode 🏝️",
+        connect_description: "One tap links TikTok, Instagram & Facebook. From here on, EasyMode auto-posts every drop for you — hands off, all month long.",
         platforms: ["tiktok", "instagram", "facebook"],
         show_calendar: false,
         ...(returnUrl ? { redirect_url: returnUrl, redirect_button_text: "← Back to EasyMode" } : {}),

@@ -2281,3 +2281,28 @@ body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
 }
 .mm-flip-block li span { color: #f2eeff; font-weight: 700; }
 .mm-flip-block li em { font-style: normal; color: #8f88b8; font-size: 10.5px; text-align: right; }
+
+/* ═══════════ 📖 LEGIBILITY OVER THE ISLAND (2026-07-20) ═══════════
+   Section labels, headers and captions that sit directly on the animated
+   island bg were washing out. A white halo (text-shadow) makes dark/grey
+   text pop on the busy-but-light island without dimming the island itself
+   (no veil — the user has rejected veils before). */
+.mm-section-label {
+  color: #6E6796 !important;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.85), 0 0 10px rgba(255,255,255,0.65);
+}
+.pp-head h2, .pp-sub2 {
+  text-shadow: 0 1px 2px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.6);
+}
+.pp-sub2 { color: #5C5872 !important; }
+/* free-floating caption below the package cards */
+.mm-floor-note {
+  text-align: center; max-width: 60ch; margin: 0 auto; font-size: 13px; line-height: 1.55;
+  color: #46425C; font-weight: 500;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.6);
+}
+/* the Polaris back-link ("← Home") sits on the island too — give it a halo */
+.Polaris-Page-Header .Polaris-Breadcrumbs__Breadcrumb,
+.Polaris-Page-Header button[type="button"] {
+  text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+}

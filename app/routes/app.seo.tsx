@@ -39,7 +39,7 @@ export default function SeoHub() {
   const { forged, blogs, blogsLive, pages, tokens } = useLoaderData<typeof loader>();
 
   return (
-    <Page title="SEO Hub" backAction={{ content: "Home", url: "/app" }}>
+    <Page backAction={{ content: "Home", url: "/app" }}>
       <Layout>
         <Layout.Section>
           <div className="pp-hero">

@@ -98,27 +98,30 @@ export async function generateImageAd(
     PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;
 
   // stylePrompt (Image Studio style chips) leads when present — the hands-on
-  // merchant's art direction beats the derived default
-  const prompt = `${stylePrompt ? `${stylePrompt}, ` : ""}${direction}, ${visual.imageStyle || "clean product photography"}, for product: ${productTitle}, professional advertising quality, 1:1 aspect ratio, vibrant colors, no text overlay`;
+  // merchant's art direction beats the derived default. Quality tail is what
+  // keeps flux from producing the "monster people" that schnell used to.
+  const prompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
 
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
 
-  // Create prediction with Flux schnell
-  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+  // flux-DEV (28 steps) — schnell at 4 steps mangled faces into "monsters" and
+  // broke the premium promise. Dev is the quality tier; model-slug endpoint so
+  // we never chase a stale version hash.
+  const createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${replicateToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      version:
-        "5f24084160c9089501c1b3545d9be3c27883ae2239b6f412990e82d4a6210f8f",
       input: {
         prompt,
-        num_inference_steps: 4,
-        width: 1024,
-        height: 1024,
+        num_inference_steps: 30,
+        guidance: 3,
+        aspect_ratio: "1:1",
+        output_format: "jpg",
+        output_quality: 92,
       },
     }),
   });
