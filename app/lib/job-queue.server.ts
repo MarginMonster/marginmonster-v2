@@ -7,7 +7,7 @@ import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
-import { awardXp, checkLevelAchievements } from "./xp.server";
+import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
 import { generateAdCopy } from "./ad-copy-generation.server";
 import { launchCampaign } from "./campaign-launch.server";
@@ -164,9 +164,16 @@ async function runJob(
         shop.brandProfile,
         shop.activePlan,
         payload.productTitle as string,
-        payload.productImageUrl as string | undefined
+        payload.productImageUrl as string | undefined,
+        payload.stylePrompt as string | undefined
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
+      // still-count achievements
+      try {
+        const stills = await db.asset.count({ where: { shopId, type: "IMAGE_AD" } });
+        if (stills >= 1) await unlockAchievement(shopId, "STILL_LIFE");
+        if (stills >= 15) await unlockAchievement(shopId, "GALLERY_WALL");
+      } catch { /* non-fatal */ }
       break;
     }
 
@@ -240,6 +247,12 @@ async function runJob(
       } catch (e) {
         console.error("[job] video accounting failed (non-fatal):", e);
       }
+      // take-count achievements (campaign + studio takes both count)
+      try {
+        const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
+        if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
+        if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
+      } catch { /* non-fatal */ }
       break;
     }
 

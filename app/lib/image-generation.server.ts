@@ -90,13 +90,16 @@ export async function generateImageAd(
   brandProfile: BrandProfile,
   plan: Plan,
   productTitle: string,
-  productImageUrl?: string
+  productImageUrl?: string,
+  stylePrompt?: string
 ): Promise<string> {
   const visual = JSON.parse(brandProfile.visualJson);
   const direction =
     PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;
 
-  const prompt = `${direction}, ${visual.imageStyle || "clean product photography"}, for product: ${productTitle}, professional advertising quality, 1:1 aspect ratio, vibrant colors, no text overlay`;
+  // stylePrompt (Image Studio style chips) leads when present — the hands-on
+  // merchant's art direction beats the derived default
+  const prompt = `${stylePrompt ? `${stylePrompt}, ` : ""}${direction}, ${visual.imageStyle || "clean product photography"}, for product: ${productTitle}, professional advertising quality, 1:1 aspect ratio, vibrant colors, no text overlay`;
 
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");

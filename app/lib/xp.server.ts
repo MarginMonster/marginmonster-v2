@@ -91,6 +91,8 @@ export async function checkLevelAchievements(shopId: string, level: number): Pro
   if (level >= 5) { const a = await unlockAchievement(shopId, "PLAYER_ONE"); if (a) out.push(a); }
   if (level >= 10) { const a = await unlockAchievement(shopId, "ARCADE_REGULAR"); if (a) out.push(a); }
   if (level >= 25) { const a = await unlockAchievement(shopId, "HIGH_SCORE"); if (a) out.push(a); }
+  if (level >= 40) { const a = await unlockAchievement(shopId, "ISLAND_LEGEND"); if (a) out.push(a); }
+  if (level >= 50) { const a = await unlockAchievement(shopId, "CROWNED"); if (a) out.push(a); }
   return out;
 }
 

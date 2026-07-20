@@ -2173,3 +2173,54 @@ body[data-page="campaigns"] .qh-goal.prem.on {
 }
 body[data-page="campaigns"] .qh-goal.prem em { background: #14121F; color: #FFD778; }
 body[data-page="campaigns"] .qh-goal.prem em.grun { background: #DFF3E2; color: #2E7D3A; }
+
+/* ═══════════ 🏝️ JUMP PASS (2026-07-20): rollable maps + HUD level help ═══════════ */
+
+/* rollable campaign boards — the map unrolls like the scroll it lives in */
+body[data-page="campaigns"] .qh-unroll-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; background: transparent; border: none; padding: 0; margin: 0 0 8px;
+  cursor: pointer; text-align: left;
+}
+body[data-page="campaigns"] .qh-unroll-cue {
+  flex: none; font-weight: 900; font-size: 11px; letter-spacing: .08em;
+  color: #1F1500; background: linear-gradient(180deg, #FFE08A, #F0B429);
+  border-radius: 999px; padding: 6px 12px; box-shadow: 0 2px 0 #A87F0E;
+  transition: transform .12s ease;
+}
+body[data-page="campaigns"] .qh-unroll-bar:hover .qh-unroll-cue { transform: scale(1.06); }
+body[data-page="campaigns"] .qh-unroll-cue.closed { background: #FFF3D6; box-shadow: 0 2px 0 #C9A96A; border: 1.5px solid #B98D4F; color: #7A4E12; }
+body[data-page="campaigns"] .qh-unroll {
+  overflow: hidden; transform-origin: top center;
+  max-height: 6000px; opacity: 1; transform: scaleY(1);
+  transition: max-height .8s cubic-bezier(.2, .85, .3, 1), opacity .45s ease, transform .8s cubic-bezier(.2, .85, .3, 1);
+}
+body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
+  max-height: 0; opacity: 0; transform: scaleY(.75);
+}
+@media (prefers-reduced-motion: reduce) {
+  body[data-page="campaigns"] .qh-unroll { transition: none; }
+}
+
+/* HUD level help — "?" + the rewards ledger popover */
+.mm-hud-help {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid rgba(20, 18, 31, 0.35); background: #fff;
+  color: #14121F; font-size: 11px; font-weight: 900; line-height: 1;
+  cursor: pointer; display: grid; place-items: center; padding: 0;
+}
+.mm-hud-help:hover { background: #FFE9A8; border-color: #C98F12; }
+.mm-lvlinfo {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  width: 300px; background: #fff; color: #14121F;
+  border: 2px solid #C98F12; border-radius: 14px; padding: 14px 16px;
+  box-shadow: 0 18px 44px rgba(20, 18, 31, 0.3);
+  font-size: 12px; line-height: 1.45; text-align: left;
+}
+.mm-lvlinfo b { display: block; font-size: 12.5px; letter-spacing: .08em; margin-bottom: 6px; color: #8A6207; }
+.mm-lvlinfo p { margin: 0 0 8px; color: #5C5872; }
+.mm-lvlinfo p.foot { margin: 8px 0 0; font-style: italic; color: #8A8598; font-size: 11px; }
+.mm-lvlinfo ul { list-style: none; margin: 0; padding: 0; }
+.mm-lvlinfo li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px dashed rgba(20, 18, 31, 0.1); }
+.mm-lvlinfo li i { font-style: normal; color: #5C5872; }
+.mm-lvlinfo li em { font-style: normal; font-weight: 800; color: #8A6207; white-space: nowrap; }

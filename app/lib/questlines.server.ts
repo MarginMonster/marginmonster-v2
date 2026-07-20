@@ -162,6 +162,13 @@ export async function acceptQuestline(params: {
     }
   }
 
+  // voyage achievements: first launch + running a fleet of 2 at once
+  try {
+    const running = await db.questline.count({ where: { shopId: params.shopId, status: { notIn: ["COMPLETE"] } } });
+    await unlockAchievement(params.shopId, "FIRST_VOYAGE");
+    if (running >= 2) await unlockAchievement(params.shopId, "FLEET_ADMIRAL");
+  } catch { /* non-fatal */ }
+
   return { ok: true, id: q.id };
 }
 
@@ -411,6 +418,7 @@ export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey
         if (weekSlots.length > 0 && weekSlots.every((s) => s.status === "READY" || s.status === "POSTED")) {
           schedule.weeksAwarded.push(week);
           weeklyBonus = WEEK_BONUS_XP;
+          try { await unlockAchievement(shopId, "PERFECT_WEEK"); } catch { /* non-fatal */ }
         }
       }
     }

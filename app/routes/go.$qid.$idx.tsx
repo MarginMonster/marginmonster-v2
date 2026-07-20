@@ -31,6 +31,13 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
           where: { id: q.id },
           data: { scheduleJson: JSON.stringify(schedule) },
         });
+        // gold-rush achievements — a real shopper just walked the plank
+        try {
+          const { unlockAchievement } = await import("../lib/xp.server");
+          const total = schedule.slots.reduce((n, s) => n + (s.clicks || 0), 0);
+          if (total >= 1) await unlockAchievement(q.shopId, "GOLD_RUSH");
+          if (total >= 25) await unlockAchievement(q.shopId, "TREASURE_HUNTER");
+        } catch { /* never break a shopper's redirect */ }
       }
 
       const base = slot?.productUrl || `https://${q.shop.domain}`;

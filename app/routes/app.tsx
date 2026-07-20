@@ -180,6 +180,8 @@ export default function App() {
   const toggleHud = () => {
     setHudMin((m) => { localStorage.setItem("mmHudMin", m ? "0" : "1"); return !m; });
   };
+  // level-help popover: what leveling YOUR STORE earns you
+  const [lvlInfo, setLvlInfo] = useState(false);
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
@@ -219,7 +221,29 @@ export default function App() {
             <div className="mm-hud-top">
               <img src="/easymode-head.png" className="mm-hud-head" alt="" />
               <span className="mm-hud-name">{hud.name}</span>
-              <span className="mm-hud-lvl" title={`Level ${hud.level} — earn XP by forging, applying & spending tokens`}>LVL {hud.level}</span>
+              <span className="mm-hud-lvl" title={`Level ${hud.level} — your store's level`}>LVL {hud.level}</span>
+              <button
+                type="button"
+                className="mm-hud-help"
+                aria-label="What does leveling up do?"
+                title="What does leveling up do?"
+                onClick={() => setLvlInfo((v) => !v)}
+              >?</button>
+              {lvlInfo && (
+                <div className="mm-lvlinfo" role="dialog" aria-label="Store level rewards">
+                  <b>🏪 YOUR STORE IS LEVELING UP</b>
+                  <p>Everything EasyMode does for your shop — takes, stills, campaigns, even tokens spent — earns XP. Levels pay you back in free tokens, automatically:</p>
+                  <ul>
+                    <li><i>Every level</i><em>+5 🪙</em></li>
+                    <li><i>Every 5th level</i><em>+15 🪙</em></li>
+                    <li><i>Levels 10 · 20 · 25 · 30</i><em>+60 🪙 — a free video</em></li>
+                    <li><i>Level 40</i><em>+100 🪙 · 🌋 Island Legend</em></li>
+                    <li><i>Level 50</i><em>+150 🪙 · 👑 Crowned</em></li>
+                    <li><i>Levels 75 · 99</i><em>+250 · +500 🪙</em></li>
+                  </ul>
+                  <p className="foot">Achievements drop bonus tokens on top. Keep the island working — the wallet grows itself.</p>
+                </div>
+              )}
               <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
               <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Collapse HUD" aria-label="Collapse HUD">▴</button>
             </div>

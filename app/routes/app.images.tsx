@@ -86,21 +86,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   const productTitle = (form.get("productTitle") as string)?.trim();
   const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
+  const stylePrompt = ((form.get("stylePrompt") as string) || "").trim() || undefined;
   if (!productTitle) return json({ error: "Pick a product for your still." });
   try {
     await spendTokens(shop.id, TOKEN_COST.image);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." });
   }
-  await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, prePaid: true });
+  await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt, prePaid: true });
   return json({ ok: true, stillQueued: true });
 };
+
+/* art-direction chips — for merchants who like getting hands-on */
+const STYLES: { key: string; label: string; prompt: string }[] = [
+  { key: "studio", label: "🎬 Clean Studio", prompt: "clean studio product photography, seamless backdrop, soft key light" },
+  { key: "lifestyle", label: "🏠 Lifestyle", prompt: "warm lifestyle scene, product in real everyday use, natural light, candid" },
+  { key: "luxury", label: "💎 Luxury Minimal", prompt: "luxury minimal aesthetic, marble and soft shadows, editorial elegance" },
+  { key: "neon", label: "🌈 Neon Pop", prompt: "bold neon pop art style, electric gradient background, high energy" },
+  { key: "island", label: "🏝️ Island Vibes", prompt: "tropical island scene, golden beach light, palm shadows, vacation energy" },
+  { key: "ugc", label: "🤳 UGC Candid", prompt: "authentic UGC phone photo look, slightly imperfect, real-person energy" },
+  { key: "bold", label: "📣 Meme Bold", prompt: "bold attention-grabbing thumbnail style, dramatic zoom, high contrast punch" },
+  { key: "noir", label: "🖤 Noir Drama", prompt: "dramatic noir lighting, deep shadows, single spotlight, cinematic mood" },
+];
 
 export default function ImageStudio() {
   const { products, stills, tokens, stillTokenCost } = useLoaderData<typeof loader>();
   const fx = useFetcher<typeof action>();
   const [productId, setProductId] = useState("");
+  const [styleKey, setStyleKey] = useState("");
+  const [broken, setBroken] = useState<Record<string, boolean>>({});
   const picked = products.find((p) => p.id === productId);
+  const pickedStyle = STYLES.find((s) => s.key === styleKey);
   const busy = fx.state !== "idle";
   const queued = !!(fx.data && "stillQueued" in fx.data && fx.data.stillQueued);
   const err = fx.data && "error" in fx.data ? (fx.data.error as string) : null;
@@ -121,12 +137,8 @@ export default function ImageStudio() {
             </p>
             <div className="pp-stats">
               <div className="pp-stat">
-                <b>{stillTokenCost} 🪙</b>
-                <span>per still · rolling on tokens</span>
-              </div>
-              <div className="pp-stat">
-                <b>{tokens.toLocaleString()}</b>
-                <span>tokens in the wallet</span>
+                <b>{stillTokenCost} 🪙 &nbsp;·&nbsp; Balance {tokens.toLocaleString()} 🪙</b>
+                <span>per still &nbsp;·&nbsp; your token wallet</span>
               </div>
               <div className="pp-stat">
                 <b>{stills.length}</b>
@@ -155,6 +167,7 @@ export default function ImageStudio() {
             <fx.Form method="post">
               <input type="hidden" name="productTitle" value={picked?.title || ""} />
               <input type="hidden" name="productImageUrl" value={picked?.image || ""} />
+              <input type="hidden" name="stylePrompt" value={pickedStyle?.prompt || ""} />
               <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 260, flex: 1 }}>
                   <Select
@@ -168,6 +181,25 @@ export default function ImageStudio() {
                   {`Forge still · ${stillTokenCost} 🪙`}
                 </Button>
                 <Badge tone="attention">{`${stillTokenCost} 🪙 per still`}</Badge>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <span className="mm-section-label" style={{ fontSize: 11 }}>🎨 ART DIRECTION — optional, for the hands-on</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                  {STYLES.map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => setStyleKey(styleKey === s.key ? "" : s.key)}
+                      style={{
+                        border: styleKey === s.key ? "2px solid #C98F12" : "1px solid rgba(20,18,31,.2)",
+                        background: styleKey === s.key ? "#FFE9A8" : "#fff",
+                        borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </fx.Form>
           </Card>
@@ -183,7 +215,19 @@ export default function ImageStudio() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
               {stills.map((s) => (
                 <div key={s.id} style={{ background: "#fff", border: "1px solid rgba(20,18,31,.12)", borderRadius: 12, overflow: "hidden" }}>
-                  <img src={s.imageUrl || ""} alt={s.title} loading="lazy" style={{ width: "100%", aspectRatio: "9/16", objectFit: "cover", display: "block" }} />
+                  {broken[s.id] ? (
+                    <div style={{ width: "100%", aspectRatio: "1/1", display: "grid", placeItems: "center", background: "#F4F0E4", color: "#8A8598", fontSize: 12, textAlign: "center", padding: 10 }}>
+                      🌫 media expired on the server<br />re-forge to restore
+                    </div>
+                  ) : (
+                    <img
+                      src={s.imageUrl || ""}
+                      alt={s.title}
+                      loading="lazy"
+                      style={{ width: "100%", aspectRatio: "1/1", objectFit: "cover", display: "block" }}
+                      onError={() => setBroken((b) => ({ ...b, [s.id]: true }))}
+                    />
+                  )}
                   <div style={{ padding: "6px 9px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
                 </div>
               ))}

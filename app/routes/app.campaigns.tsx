@@ -1629,6 +1629,9 @@ export default function Campaigns() {
   const [selKey, setSelKey] = useState(firstUnlocked.key);
   // truly-easy catalog: the selected GOAL is always open — no accordion hunting
   const [openKey, setOpenKey] = useState<string | null>("GET_SEEN"); // campaign key
+  // rollable boards: only one campaign map unrolled at a time (first by
+  // default; "" = everything rolled). Derived below once `active` exists.
+  const [unrolledIdRaw, setUnrolledId] = useState<string | null>(null);
   const sel = QUESTLINE_BY_KEY[selKey] || firstUnlocked;
 
   /** Calendar date for an arbitrary day of a quest (UTC math — hydration-safe). */
@@ -1645,6 +1648,7 @@ export default function Campaigns() {
   const bagCapped = bag.slice(0, sel.bagSize);
 
   const active = questlines.filter((q) => q.status !== "COMPLETE");
+  const unrolledId = unrolledIdRaw === null ? (active[0]?.id ?? "") : unrolledIdRaw;
   const done = questlines.filter((q) => q.status === "COMPLETE");
 
   const toggleItem = (p: { id: string; title: string; image: string | null }) => {
@@ -1774,17 +1778,39 @@ export default function Campaigns() {
         <Box paddingBlockEnd="300"><Banner tone="success" title="⇄ Cargo swapped"><p>{actionData.swapped as number} upcoming drop{(actionData.swapped as number) === 1 ? "" : "s"} now star the new item. Already-forged content keeps its original star.</p></Banner></Box>
       )}
 
-      {/* Active expeditions — the adventure boards */}
-      {active.map((q) => (
-        <div key={q.id} className="qh-win" style={{ marginBottom: 16 }}>
-          <span className="qh-label">
-            ▶ {q.name.toUpperCase()} → {DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
-            <span className="r">
-              DAY {q.dayOf} OF {q.duration} · {q.slots.filter((s) => s.status === "READY" || s.status === "POSTED").length} FORGED · {q.slots.filter((s) => s.status === "SCHEDULED" || s.status === "FORGING").length} SCHEDULED
-              {(() => { const c = q.slots.reduce((n, s) => n + (s.clicks || 0), 0); return c > 0 ? ` · 💰 ${c} CLICKS` : ""; })()}
-              {q.avatarId && AVATAR_BY_ID[q.avatarId] ? ` · ★ ${AVATAR_BY_ID[q.avatarId].name}` : ""}
+      {/* Active expeditions — rollable scroll boards: one map unrolled at a
+          time, the rest stay rolled with their 3-chip digest still readable */}
+      {active.map((q) => {
+        const unrolled = unrolledId === q.id;
+        return (
+        <div key={q.id} className={`qh-win qh-quest-board${unrolled ? "" : " rolled"}`} style={{ marginBottom: 16 }}>
+          <button type="button" className="qh-unroll-bar" onClick={() => setUnrolledId(unrolled ? "" : q.id)}>
+            <span className="qh-label" style={{ marginBottom: 0 }}>
+              ▶ {q.name.toUpperCase()} → {DESTINATION_BY_KEY[q.template] || "JOURNEY'S END"}
+              <span className="r">
+                DAY {q.dayOf} OF {q.duration} · {q.slots.filter((s) => s.status === "READY" || s.status === "POSTED").length} FORGED · {q.slots.filter((s) => s.status === "SCHEDULED" || s.status === "FORGING").length} SCHEDULED
+                {(() => { const c = q.slots.reduce((n, s) => n + (s.clicks || 0), 0); return c > 0 ? ` · 💰 ${c} CLICKS` : ""; })()}
+                {q.avatarId && AVATAR_BY_ID[q.avatarId] ? ` · ★ ${AVATAR_BY_ID[q.avatarId].name}` : ""}
+              </span>
             </span>
-          </span>
+            <span className={`qh-unroll-cue${unrolled ? "" : " closed"}`}>{unrolled ? "⤴ ROLL UP THE MAP" : "🗺 UNROLL THE MAP"}</span>
+          </button>
+          {(() => {
+            const nxt = (q.slots || []).find((s) => s.status === "SCHEDULED" || s.status === "FORGING");
+            const ICO: Record<string, string> = { video: "🎬 video", image: "🖼 image ad", blog: "📝 blog" };
+            return (
+              <div className="qh-digest">
+                <span className="dg">📍 DAY {q.dayOf} OF {q.duration}</span>
+                {nxt && (
+                  <span className="dg next">
+                    NEXT: {ICO[nxt.type] || nxt.type} · day {nxt.day}{nxt.time ? ` · ${nxt.time}` : ""}
+                  </span>
+                )}
+                <span className="dg end">❌ DAY {q.duration} = THE TREASURE · {q.xpReward.toLocaleString()} XP</span>
+              </div>
+            );
+          })()}
+          <div className="qh-unroll" aria-hidden={!unrolled}>
           <TrailMap
             slots={q.slots}
             xpReward={q.xpReward}
@@ -1971,23 +1997,6 @@ export default function Campaigns() {
               </div>
             );
           })()}
-          {/* the 3-chip digest — the map is flavor, THIS is the read:
-              where you are, what lands next, what's waiting at the X */}
-          {(() => {
-            const nxt = (q.slots || []).find((s) => s.status === "SCHEDULED" || s.status === "FORGING");
-            const ICO: Record<string, string> = { video: "🎬 video", image: "🖼 image ad", blog: "📝 blog" };
-            return (
-              <div className="qh-digest">
-                <span className="dg">📍 DAY {q.dayOf} OF {q.duration}</span>
-                {nxt && (
-                  <span className="dg next">
-                    NEXT: {ICO[nxt.type] || nxt.type} · day {nxt.day}{nxt.time ? ` · ${nxt.time}` : ""}
-                  </span>
-                )}
-                <span className="dg end">❌ DAY {q.duration} = THE TREASURE · {q.xpReward.toLocaleString()} XP</span>
-              </div>
-            );
-          })()}
           <div className="qh-quest-foot">
             <span className="xp">🏆 {q.xpReward.toLocaleString()} XP IN THE VAULT · +100 XP PER PERFECT WEEK</span>
             <span style={{ display: "inline-flex", gap: 8 }}>
@@ -2002,8 +2011,10 @@ export default function Campaigns() {
               </button>
             </span>
           </div>
+          </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Partner dialog — state-aware, always true */}
       <div className="qh-win qh-dialog" style={{ marginBottom: 16 }}>
@@ -2153,7 +2164,7 @@ export default function Campaigns() {
                               </span>
                             );
                           })()}
-                          <span className="tjourney">📲 auto-posted to TikTok + Meta</span>
+                          <span className="tjourney">📲 each drop auto-posts to all connected socials at once</span>
                           <span className="tjourney" style={{ color: "#9a94c2" }}>🗓 {sku.cadence}</span>
                           <span className="tcost">
                             {cost.toLocaleString()}🪙 · +{sku.xpReward.toLocaleString()} XP{sku.recurring ? " · renews monthly" : ""}
@@ -2175,7 +2186,7 @@ export default function Campaigns() {
                         <div className="qh-auto-grid">
                           <span>🎬 Creates every video & image ad — starring your Brand Face</span>
                           <span>🗓 Picks posting days & peak times for you ({selSku.cadence})</span>
-                          <span>{socialsArmed ? "📲 Auto-posts to TikTok + Meta — armed and hands off" : "📲 Auto-posts to TikTok + Meta — connect your accounts once (Ad Accounts tab) to arm it"}</span>
+                          <span>{socialsArmed ? "📲 Every drop posts to ALL your connected socials at once — TikTok, Instagram AND Facebook simultaneously" : "📲 Every drop posts to ALL your connected socials at once (TikTok + Instagram + Facebook) — connect them once in Ad Accounts to arm it"}</span>
                           <span>🎛 You stay in control: review anything, move any drop on the map</span>
                         </div>
                       </div>
