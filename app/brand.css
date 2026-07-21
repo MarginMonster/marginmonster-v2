@@ -2170,6 +2170,9 @@ body[data-page="campaigns"] .qh-dia-chip.on {
   object-fit: cover; object-position: top center;
   display: block; margin: 0; border-radius: inherit; aspect-ratio: auto;
 }
+/* Portraits are framed subject-at-top; talking-head videos carry headroom, so
+   center them — otherwise a light headroom band shows at the top of the video. */
+.mm-cast-frame > video.mm-cast-video { object-position: center; }
 
 /* HUD was covering page headers — more runway */
 .mm-hud-spacer { height: 152px; }
