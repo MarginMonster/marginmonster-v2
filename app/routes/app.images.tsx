@@ -135,14 +135,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 /* art-direction chips — for merchants who like getting hands-on */
 const STYLES: { key: string; label: string; prompt: string }[] = [
-  { key: "studio", label: "🎬 Clean Studio", prompt: "clean studio product photography, seamless backdrop, soft key light" },
-  { key: "lifestyle", label: "🏠 Lifestyle", prompt: "warm lifestyle scene, product in real everyday use, natural light, candid" },
-  { key: "luxury", label: "💎 Luxury Minimal", prompt: "luxury minimal aesthetic, marble and soft shadows, editorial elegance" },
-  { key: "neon", label: "🌈 Neon Pop", prompt: "bold neon pop art style, electric gradient background, high energy" },
-  { key: "island", label: "🏝️ Island Vibes", prompt: "tropical island scene, golden beach light, palm shadows, vacation energy" },
-  { key: "ugc", label: "🤳 UGC Candid", prompt: "authentic UGC phone photo look, slightly imperfect, real-person energy" },
-  { key: "bold", label: "📣 Meme Bold", prompt: "bold attention-grabbing thumbnail style, dramatic zoom, high contrast punch" },
-  { key: "noir", label: "🖤 Noir Drama", prompt: "dramatic noir lighting, deep shadows, single spotlight, cinematic mood" },
+  { key: "studio", label: "🎬 Clean Studio", prompt: "clean high-end studio product photography on a seamless gradient backdrop, soft diffused key light with a gentle rim light, crisp subtle reflections, minimalist premium composition" },
+  { key: "lifestyle", label: "🏠 Lifestyle", prompt: "warm lifestyle scene with the product in real everyday use, cozy lived-in home setting, soft natural window light, candid unposed moment, shallow depth of field" },
+  { key: "luxury", label: "💎 Luxury Minimal", prompt: "ultra-luxury minimal editorial aesthetic, polished marble and brushed-metal surfaces, dramatic soft shadows, generous negative space, magazine-cover elegance with subtle gold accents" },
+  { key: "neon", label: "🌈 Neon Pop", prompt: "bold neon pop-art style, electric magenta-and-cyan gradient background, glowing neon rim light, high-saturation vibrant color, playful eye-catching energy" },
+  { key: "island", label: "🏝️ Island Vibes", prompt: "sun-drenched tropical island scene, warm golden-hour beach light, soft palm-frond shadows, turquoise water bokeh, breezy aspirational vacation energy" },
+  { key: "ugc", label: "🤳 UGC Candid", prompt: "authentic user-generated phone-photo look, slightly imperfect framing, natural on-camera flash or window light, hand-held real-person candid energy, relatable and unpolished" },
+  { key: "bold", label: "📣 Meme Bold", prompt: "bold scroll-stopping thumbnail style, dramatic close-up zoom, punchy high-contrast lighting, saturated colors, exaggerated energy that demands a tap" },
+  { key: "noir", label: "🖤 Noir Drama", prompt: "cinematic film-noir lighting, deep inky shadows, a single hard spotlight, moody high-contrast chiaroscuro, dramatic and premium" },
 ];
 
 export default function ImageStudio() {

@@ -402,6 +402,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     `Rules: The FIRST sentence must be a scroll-stopping hook. Use PAS or AIDA.`,
     `30 to 40 words TOTAL (about 13 seconds spoken). Conversational, first person,`,
     `like recommending to a friend. End with a short call to action.`,
+    `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
   ]
     .filter(Boolean)
@@ -420,6 +421,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     if (!script) throw new Error("[ugc:script] empty script from model");
     const w = script.split(" ");
     if (w.length > 45) script = w.slice(0, 45).join(" ");
+    // give the voice model a clean final stop so it doesn't rush/trail the ending
+    if (script && !/[.!?]$/.test(script)) script += ".";
     await ckpt({ ckScript: script });
   }
 
