@@ -1753,7 +1753,7 @@ body { background: radial-gradient(ellipse 100% 44% at 50% -6%, #FFFDF6, transpa
 .mm-hero::after { background: radial-gradient(circle, rgba(240,180,41,0.15) 0%, transparent 70%) !important; }
 .mm-hero h1, .pp-hero h1 { color: #14121F !important; }
 .pp-hero h1 em {
-  background: linear-gradient(100deg, #C98F12 10%, #F0B429 40%, #8A6207 60%, #F5CE62 80%, #C98F12 95%);
+  background: linear-gradient(100deg, #0A7A52 10%, #12B981 40%, #076B47 60%, #4FE3AE 80%, #0A7A52 95%);
   background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: px-sheen 3.4s ease-in-out infinite;
 }
@@ -1855,7 +1855,7 @@ body::before, body::after { display: none !important; }
 .pp-tool:hover::after { opacity: 1; }
 
 /* heroes: one restrained backlit marquee strip */
-.pp-hero::before, .mm-hero::before { content: ""; position: absolute; top: 0; left: 24px; right: 24px; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, transparent, #F0B429 18%, #FFE9A8 50%, #F0B429 82%, transparent); opacity: .85; z-index: 1; }
+.pp-hero::before, .mm-hero::before { content: ""; position: absolute; top: 0; left: 24px; right: 24px; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, transparent, #12B981 18%, #7FE9C4 50%, #12B981 82%, transparent); opacity: .9; z-index: 1; }
 
 @media (prefers-reduced-motion: reduce) { .pp-stat .v .g::before { animation: none; } }
 
@@ -2308,6 +2308,10 @@ body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
   font-size: 13.5px; line-height: 1.6; font-weight: 600;
 }
 .pp-sub2 { font-weight: 600; }
+/* Picker step-labels ("PICK A PRODUCT", "ART DIRECTION") sit inside white Polaris
+   cards, where the over-island white+outline renders invisible (white-on-white).
+   Give card-bound labels crisp dark ink so they read cleanly on the card. */
+.Polaris-Card .mm-section-label { color: #14121F !important; text-shadow: none !important; }
 /* Polaris back-link ("← Home") sits on the island too */
 .Polaris-Page-Header a,
 .Polaris-Page-Header button[type="button"],
