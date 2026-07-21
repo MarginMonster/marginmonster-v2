@@ -22,6 +22,14 @@ redirect_urls = [
 [webhooks]
 api_version = "2025-10"
 
+  # Mandatory GDPR / privacy-compliance webhooks (required for App Store review).
+  # These are NOT subscription topics — they use their own block with dedicated
+  # URL keys. All point at /webhooks, which dispatches by the X-Shopify-Topic header.
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://marginmonster-fiew.onrender.com/webhooks"
+  customer_deletion_url = "https://marginmonster-fiew.onrender.com/webhooks"
+  shop_deletion_url = "https://marginmonster-fiew.onrender.com/webhooks"
+
   [[webhooks.subscriptions]]
   topics = ["products/create"]
   uri = "/webhooks"
@@ -35,15 +43,12 @@ api_version = "2025-10"
   topics = ["app_subscriptions/update"]
   uri = "/webhooks"
 
-  # abandoned-cart flow (delivers once Protected Customer Data approval lands)
-  [[webhooks.subscriptions]]
-  topics = ["checkouts/create", "checkouts/update", "orders/create"]
-  uri = "/webhooks"
-
-  # mandatory GDPR / privacy compliance webhooks (required for App Store review)
-  [[webhooks.subscriptions]]
-  topics = ["customers/data_request", "customers/redact", "shop/redact"]
-  uri = "/webhooks"
+  # abandoned-cart / order webhooks require read_orders (Protected Customer Data),
+  # which Shopify REJECTS at deploy time without PCD approval. Re-enable this
+  # block (and add read_orders to scopes) once PCD is granted.
+  # [[webhooks.subscriptions]]
+  # topics = ["checkouts/create", "checkouts/update", "orders/create"]
+  # uri = "/webhooks"
 
 # storefront app proxy — powers the email signup popup (POSTs to /proxy/subscribe)
 [app_proxy]
