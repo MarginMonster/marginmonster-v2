@@ -14,6 +14,8 @@ import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
 import { Partner, PARTNER_BY_PLAN } from "../components/Partner";
 import { getCompanion } from "../lib/companion.server";
 import { totalXpForLevel } from "../lib/achievements";
+import { paidAdsEnabled } from "../lib/feature-flags.server";
+import { socialProviderEnabled } from "../lib/social-provider.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
@@ -122,7 +124,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.error("[app hud] failed to load player stats:", e);
   }
 
-  return json({ apiKey: process.env.SHOPIFY_API_KEY || "", hud, levelUp });
+  return json({
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    hud,
+    levelUp,
+    // launch-time visibility gates (plumbing stays; UI hides until approval lands)
+    features: { paidAds: paidAdsEnabled(), socialOn: socialProviderEnabled() },
+  });
 };
 
 function LevelUpPopup({ level, gift, img, accent, srcs, onClose }: { level: number; gift: number; img: string | null; accent: string; srcs?: { a: string; b?: string; c?: string }; onClose: () => void }) {
@@ -158,7 +166,7 @@ function LevelUpPopup({ level, gift, img, accent, srcs, onClose }: { level: numb
 }
 
 export default function App() {
-  const { apiKey, hud, levelUp } = useLoaderData<typeof loader>();
+  const { apiKey, hud, levelUp, features } = useLoaderData<typeof loader>();
   const location = useLocation();
   // each page gets its own island scene (brand.css body[data-page] rules)
   const [pageKey, setPageKey] = useState("dashboard");
@@ -284,8 +292,10 @@ export default function App() {
         <Link to="/app/assets">Content Queue</Link>
         <Link to="/app/calendar">Content Calendar</Link>
         <Link to="/app/strategy">Strategy</Link>
-        <Link to="/app/connect">Ad Accounts</Link>
-        <Link to="/app/performance">Performance & ROI</Link>
+        {(features.socialOn || features.paidAds) && (
+          <Link to="/app/connect">{features.paidAds ? "Ad Accounts" : "Auto-Posting"}</Link>
+        )}
+        {features.paidAds && <Link to="/app/performance">Performance & ROI</Link>}
         <Link to="/app/plans">Packages & Companions</Link>
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}

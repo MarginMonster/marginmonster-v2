@@ -16,6 +16,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { socialProviderEnabled, connectUrl, refreshLinkedPlatforms, linkedFromCache } from "../lib/social-provider.server";
+import { paidAdsEnabled } from "../lib/feature-flags.server";
 
 // Meta OAuth: direct user to Facebook auth, then handle callback at /app/connect/meta/callback
 // TikTok OAuth: similar flow via /app/connect/tiktok/callback
@@ -45,6 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tiktokOAuthUrl: buildTikTokOAuthUrl(session.shop),
     posterEnabled: socialProviderEnabled(),
     linked,
+    paidAds: paidAdsEnabled(),
   });
 };
 
@@ -82,7 +84,7 @@ function buildTikTokOAuthUrl(shop: string): string {
 }
 
 export default function Connect() {
-  const { metaAccount, tiktokAccount, metaOAuthUrl, tiktokOAuthUrl, posterEnabled, linked } =
+  const { metaAccount, tiktokAccount, metaOAuthUrl, tiktokOAuthUrl, posterEnabled, linked, paidAds } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
@@ -101,7 +103,13 @@ export default function Connect() {
   const isLinked = (p: string) => linked.includes(p);
 
   return (
-    <Page title="Connect Accounts" backAction={{ content: "Home", url: "/app" }} subtitle="Link your socials for auto-posting, and your ad accounts to launch paid campaigns.">
+    <Page
+      title={paidAds ? "Connect Accounts" : "Auto-Posting"}
+      backAction={{ content: "Home", url: "/app" }}
+      subtitle={paidAds
+        ? "Link your socials for auto-posting, and your ad accounts to launch paid campaigns."
+        : "Link your socials once and your campaigns post themselves — hands-free."}
+    >
       <Layout>
         {/* THE headline capability: auto-posting to socials */}
         <Layout.Section>
@@ -119,8 +127,8 @@ export default function Connect() {
               {connectErr && <Banner tone="critical"><p>{connectErr}</p></Banner>}
 
               {!posterEnabled ? (
-                <Banner tone="warning" title="Auto-posting isn't switched on yet">
-                  <p>The posting service key (UPLOADPOST_API_KEY) isn't configured on the server. Once it's set, this becomes one-click.</p>
+                <Banner tone="info" title="Auto-posting isn't available yet">
+                  <p>Once auto-posting is enabled for your store, linking your TikTok, Instagram, and Facebook accounts takes one click.</p>
                 </Banner>
               ) : (
                 <>
@@ -151,6 +159,7 @@ export default function Connect() {
           </Card>
         </Layout.Section>
 
+        {paidAds && (<>
         <Layout.Section>
           <Banner tone="info" title="Ad accounts (optional) — for paid campaigns">
             <p>Auto-posting above covers organic content. Connect Meta/TikTok ad accounts below only when you want to run paid ad spend (that always runs on your own account — we never touch your budget).</p>
@@ -218,6 +227,7 @@ export default function Connect() {
             </Card>
           </InlineStack>
         </Layout.Section>
+        </>)}
       </Layout>
     </Page>
   );

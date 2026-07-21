@@ -27,6 +27,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens, tokensRemaining } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, AVATAR_BY_ID, DIRECTION_CHIPS, OUTFITS, CAST_PREVIEW_COUNT, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
+import { paidAdsEnabled } from "../lib/feature-flags.server";
 
 const BOOST_FEE = 25; // token SERVICE fee per boost (AI setup + optimization); ad spend is the merchant's own account
 
@@ -36,7 +37,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { domain: session.shop },
     include: { activePlan: true, adAccounts: true },
   });
-  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video, stills: [] as { id: string; title: string; imageUrl: string | null; createdAt: Date }[], stillTokenCost: TOKEN_COST.image, adPlatforms: [] as string[], boostedAssetIds: [] as string[], boostFee: 0 });
+  if (!shop) return json({ videos: [], plan: null, hasVideoPlan: false, products: [], castAvail: {} as Record<string, string>, renderJobs: [] as never[], linkedSocials: [] as string[], posterEnabled: false, brandFace: null, tokens: 0, videoTokenCost: TOKEN_COST.video, stills: [] as { id: string; title: string; imageUrl: string | null; createdAt: Date }[], stillTokenCost: TOKEN_COST.image, adPlatforms: [] as string[], boostedAssetIds: [] as string[], boostFee: 0, paidAds: false });
 
   const videos = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD" },
@@ -165,6 +166,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     adPlatforms,
     boostedAssetIds,
     boostFee: BOOST_FEE,
+    paidAds: paidAdsEnabled(),
   });
 };
 
@@ -609,7 +611,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Pick = { id: string | null; title: string; image: string | null; description: string };
 
 export default function Videos() {
-  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost, stills, stillTokenCost, adPlatforms, boostedAssetIds, boostFee } = useLoaderData<typeof loader>();
+  const { videos, plan, hasVideoPlan, products, brandFace, castAvail, renderJobs, linkedSocials, posterEnabled, tokens, videoTokenCost, stills, stillTokenCost, adPlatforms, boostedAssetIds, boostFee, paidAds } = useLoaderData<typeof loader>();
   const stillFx = useFetcher<typeof action>();
   const [stillProduct, setStillProduct] = useState("");
   const actionData = useActionData<typeof action>();
@@ -1431,8 +1433,9 @@ export default function Videos() {
                                 {linkedSocials.length === 0 ? "📲 Connect socials first" : `📲 Post now → ${linkedSocials.map((p: string) => p === "facebook" ? "FB" : p === "instagram" ? "IG" : "TikTok").join("+")}`}
                               </Button>
                             )}
-                            {/* 🚀 BOOST — paid amplification, merchant's own ad account */}
-                            {boostedAssetIds.includes(v.id) ? (
+                            {/* 🚀 BOOST — paid amplification on the merchant's own ad account.
+                                Hidden until FEATURE_PAID_ADS is on (Meta/TikTok Marketing API approval). */}
+                            {paidAds && (boostedAssetIds.includes(v.id) ? (
                               <Badge tone="success">🚀 Boosting</Badge>
                             ) : adPlatforms.length === 0 ? (
                               <Button size="slim" url="/app/connect">🚀 Boost — connect ad account</Button>
@@ -1453,7 +1456,7 @@ export default function Videos() {
                               </span>
                             ) : (
                               <Button size="slim" onClick={() => setBoostId(v.id)}>🚀 Boost</Button>
-                            )}
+                            ))}
                           </>
                         )}
                         <Button

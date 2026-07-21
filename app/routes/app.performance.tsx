@@ -1,6 +1,6 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
+import { useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -16,47 +16,33 @@ import {
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { getPerformanceSummary } from "../lib/performance.server";
-import { seedDemoData, clearDemoData } from "../lib/demo-seed.server";
+import { paidAdsEnabled } from "../lib/feature-flags.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
+  // Paid-campaign ROI is gated on Marketing API approval. Until FEATURE_PAID_ADS
+  // is on, this page is hidden from the nav and renders an honest locked state
+  // (never fabricated demo numbers).
+  if (!paidAdsEnabled()) return json({ summary: null, available: false });
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
-  if (!shop) return json({ summary: null });
+  if (!shop) return json({ summary: null, available: true });
   const summary = await getPerformanceSummary(shop.id);
-  return json({ summary });
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
-  if (!shop) return json({ ok: false });
-  const intent = (await request.formData()).get("intent");
-  if (intent === "seed") await seedDemoData(shop.id);
-  if (intent === "clear") await clearDemoData(shop.id);
-  return json({ ok: true });
+  return json({ summary, available: true });
 };
 
 const money = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Performance() {
-  const { summary } = useLoaderData<typeof loader>();
-  const submit = useSubmit();
-  const nav = useNavigation();
-  const seed = () => submit({ intent: "seed" }, { method: "post" });
-  const clear = () => submit({ intent: "clear" }, { method: "post" });
+  const { summary, available } = useLoaderData<typeof loader>();
 
-  if (!summary || !summary.hasData) {
+  if (!available || !summary || !summary.hasData) {
     return (
       <Page title="Performance & ROI" backAction={{ content: "Home", url: "/app" }}>
-        <EmptyState
-          heading="No campaign data yet"
-          image=""
-          action={{ content: "Load sample data", onAction: seed, loading: nav.state !== "idle" }}
-        >
+        <EmptyState heading={available ? "No campaign data yet" : "Performance tracking"} image="">
           <p>
-            Once you launch campaigns, this is where you'll see ad spend,
-            revenue, ROI, traffic sources, and conversions — all in one place.
-            (Load sample data to preview it.)
+            {available
+              ? "Launch a paid campaign and this fills with real ad spend, revenue, ROI, traffic sources, and conversions — all in one place."
+              : "This dashboard activates once paid advertising is enabled for your store — then every dollar in and out is tracked here automatically: ad spend, revenue, ROI, and conversions."}
           </p>
         </EmptyState>
       </Page>
@@ -90,10 +76,6 @@ export default function Performance() {
       title="Performance & ROI"
       backAction={{ content: "Home", url: "/app" }}
       subtitle="Every dollar in, every dollar out — ad spend, revenue, ROI, traffic, and conversions."
-      secondaryActions={[
-        { content: "Reload sample data", onAction: seed },
-        { content: "Clear sample data", onAction: clear, destructive: true },
-      ]}
     >
       <Layout>
         <Layout.Section>

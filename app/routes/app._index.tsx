@@ -20,6 +20,8 @@ import { db } from "../db.server";
 import { generateBrandProfile } from "../lib/brand-voice.server";
 import { unlockAchievement } from "../lib/xp.server";
 import { ACHIEVEMENTS } from "../lib/achievements";
+import { paidAdsEnabled } from "../lib/feature-flags.server";
+import { socialProviderEnabled } from "../lib/social-provider.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, billing } = await authenticate.admin(request);
@@ -79,6 +81,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandJobError: brandJob?.lastError ?? null,
     billingStatus,
     steps,
+    paidAds: paidAdsEnabled(),
+    socialOn: socialProviderEnabled(),
   });
 };
 
@@ -135,7 +139,7 @@ const planLabel = (type: string) => {
 };
 
 export default function Dashboard() {
-  const { shop, pendingAssets, brandJobError, billingStatus, steps } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, brandJobError, billingStatus, steps, paidAds, socialOn } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -191,22 +195,26 @@ export default function Dashboard() {
             hasPlan={hasPlan}
             pendingAssets={pendingAssets}
             liveCampaigns={shop.campaigns.filter((c) => c.status === "ACTIVE").length}
+            paidAds={paidAds}
+            socialOn={socialOn}
           />
         </Layout.Section>
 
-        {steps && !(steps.analyzed && steps.planned && steps.connected && steps.reviewed) && (
+        {steps && !(steps.analyzed && steps.planned && ((socialOn || paidAds) ? steps.connected : true) && steps.reviewed) && (
           <Layout.Section>
             <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
                   <Text variant="headingMd" as="h2">Get set up</Text>
                   <Badge tone="info">
-                    {`${[steps.analyzed, steps.planned, steps.connected, steps.reviewed].filter(Boolean).length} of 4 done`}
+                    {`${[steps.analyzed, steps.planned, ...((socialOn || paidAds) ? [steps.connected] : []), steps.reviewed].filter(Boolean).length} of ${(socialOn || paidAds) ? 4 : 3} done`}
                   </Badge>
                 </InlineStack>
                 <SetupStep done={steps.analyzed} title="Analyze your store" desc="Learn your brand voice & products" href="/app" />
                 <SetupStep done={steps.planned} title="Choose a package" desc="Fund your expedition — quotas & tokens" href="/app/plans" />
-                <SetupStep done={steps.connected} title="Connect your socials" desc="Link TikTok, Instagram & Facebook — auto-posting arms itself" href="/app/connect" />
+                {(socialOn || paidAds) && (
+                  <SetupStep done={steps.connected} title="Connect your socials" desc="Link TikTok, Instagram & Facebook — auto-posting arms itself" href="/app/connect" />
+                )}
                 <SetupStep done={steps.reviewed} title="Approve your first content" desc="Review what we generate" href="/app/assets" />
               </BlockStack>
             </Card>
@@ -448,7 +456,7 @@ export default function Dashboard() {
           </div>
         </Layout.Section>
 
-        {campaignRows.length > 0 && (
+        {paidAds && campaignRows.length > 0 && (
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
@@ -467,12 +475,6 @@ export default function Dashboard() {
   );
 }
 
-const MODES = [
-  { mi: "✦", mt: "Create", md: "AI blogs, videos, ads and pages — in your brand voice, on demand.", go: "ENTER →", a: "a1", route: "/app/strategy" },
-  { mi: "◆", mt: "Launch", md: "Publish and auto-optimize campaigns across Meta and TikTok.", go: "ENTER →", a: "a2", route: "/app/campaigns" },
-  { mi: "▲", mt: "Track", md: "Watch ad spend, revenue and ROI climb the high-score board.", go: "ENTER →", a: "a3", route: "/app/performance" },
-];
-
 const QUICK = [
   { l: "Plans", route: "/app/plans" },
   { l: "Video Studio", route: "/app/videos" },
@@ -483,7 +485,19 @@ const QUICK = [
   { l: "Ad Accounts", route: "/app/connect" },
 ];
 
-function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boolean; pendingAssets: number; liveCampaigns: number }) {
+function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns, paidAds, socialOn }: { hasPlan: boolean; pendingAssets: number; liveCampaigns: number; paidAds: boolean; socialOn: boolean }) {
+  // "Track" points at the paid ROI dashboard only when paid ads are live; otherwise
+  // it points at the campaign map (organic click-through attribution works today).
+  const modes = [
+    { mi: "✦", mt: "Create", md: "AI blogs, videos, ads and pages — in your brand voice, on demand.", go: "ENTER →", a: "a1", route: "/app/strategy" },
+    { mi: "◆", mt: "Launch", md: "Publish and schedule campaigns to your socials — hands-free, every day.", go: "ENTER →", a: "a2", route: "/app/campaigns" },
+    paidAds
+      ? { mi: "▲", mt: "Track", md: "Watch ad spend, revenue and ROI climb the high-score board.", go: "ENTER →", a: "a3", route: "/app/performance" }
+      : { mi: "▲", mt: "Track", md: "Watch the map light up gold where shoppers click through and buy.", go: "ENTER →", a: "a3", route: "/app/campaigns" },
+  ];
+  const quick = QUICK
+    .filter((q) => q.route !== "/app/connect" || socialOn || paidAds)
+    .map((q) => (q.route === "/app/connect" ? { ...q, l: paidAds ? "Ad Accounts" : "Auto-Posting" } : q));
   return (
     <>
       <div className="pp-hero" style={{ marginBottom: 18 }}>
@@ -518,7 +532,7 @@ function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boo
       </div>
 
       <div className="mm-modes">
-        {MODES.map((m) => (
+        {modes.map((m) => (
           <Link key={m.mt} to={m.route} className={`mm-mode ${m.a}`}>
             <div className="mi">{m.mi}</div>
             <div className="mt">{m.mt}</div>
@@ -530,7 +544,7 @@ function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns }: { hasPlan: boo
 
       <span className="mm-section-label" style={{ marginTop: 22 }}>QUICK ACCESS</span>
       <div className="mm-quick">
-        {QUICK.map((q) => (
+        {quick.map((q) => (
           <Link key={q.l} to={q.route} className="mm-chip">{q.l}</Link>
         ))}
       </div>
