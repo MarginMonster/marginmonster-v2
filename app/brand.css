@@ -1882,9 +1882,12 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
    * a white void past one screen). Base tone is island sand, not white — even a
    * first-paint flash or rubber-band overscroll reads warm, never a void. */
   html { background: #EFE3C4; }
-  body { background: #EFE3C4 !important; }
+  /* backdrop now TRAVELS with the scroll (absolute underlay spanning the full
+     page height) instead of a fixed pane the content slides over into flat sand.
+     position:relative anchors the ::before to the body's full content height. */
+  body { background: #EFE3C4 !important; position: relative; }
   body::before {
-    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
     background: #EFE3C4 url(/bg/dashboard-m.jpg) center top / cover no-repeat;
   }
   body[data-page="campaigns"]::before { background-image: url(/bg/campaigns-m.jpg); }
@@ -2143,6 +2146,11 @@ body[data-page="campaigns"] .qh-dia-chip.on {
   width: 100%; aspect-ratio: 3 / 3.4; object-fit: cover; object-position: top center;
   display: block; margin-bottom: 8px; background: #0B0A17;
 }
+/* iOS renders a playing <video> on its own layer that ignores the card's
+   overflow:hidden, so the sampler spilled past the rounded corners on mobile.
+   Give the video its own matching top radius + isolate the card so the clip holds. */
+.mm-cast { isolation: isolate; }
+.mm-cast video.mm-cast-video { border-radius: 14px 14px 0 0; }
 
 /* HUD was covering page headers — more runway */
 .mm-hud-spacer { height: 152px; }
