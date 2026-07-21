@@ -100,7 +100,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       hud = {
         ...hud,
         planKey: plan.type as PlanKey,
-        planLabel: PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type,
+        // badge reflects the ACTUAL active plan — an inactive/cancelled plan reads "No Plan"
+        planLabel: plan.active ? (PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type) : "No Plan",
         img: partner?.img ?? null,
         accent: partner?.accent ?? "#34E7E4",
         tokens: remaining,
@@ -273,11 +274,11 @@ export default function App() {
             </div>
             <div className="mm-hud-stats">
               <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
-                <span title="Token balance">🪙 {hud.tokens.toLocaleString()}</span>
+                <span title="Token balance">{hud.tokens.toLocaleString()}</span>
                 <span className="mm-hud-plus">+ INSERT TOKENS</span>
               </Link>
-              <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos}</span>
-              <span className="mm-hud-stat" title="Ad generations you can afford">🖼 {hud.ads}</span>
+              <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos} Videos</span>
+              <span className="mm-hud-stat" title="Image generations you can afford">🖼 {hud.ads} Images</span>
             </div>
           </div>
         )}

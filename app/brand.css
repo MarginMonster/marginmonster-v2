@@ -1909,7 +1909,7 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
 
 /* overlay palms retired (looked cheap) — motion moves into the backgrounds themselves */
 .em-palm { display: none !important; }
-.mm-hud-head { height: 24px; width: auto; image-rendering: pixelated; align-self: center; }
+.mm-hud-head { height: 26px; width: 26px; border-radius: 7px; object-fit: cover; align-self: center; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .em-beach { display: none; }
 @media (max-width: 900px) { .em-beach { display: none; } }
 
@@ -2313,7 +2313,27 @@ body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
 .Polaris-Page-Header button[type="button"],
 .Polaris-Page-Header .Polaris-Breadcrumbs__Breadcrumb {
   color: #FFFFFF !important;
+  font-weight: 800 !important;
   text-shadow:
-    1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000,
-    0 2px 5px rgba(0,0,0,0.6) !important;
+    1.5px 1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px -1.5px 0 #000,
+    0 2px 6px rgba(0,0,0,0.7) !important;
+}
+/* dominant back button — an emerald chip with a gold edge + white arrow */
+.Polaris-Page-Header .Polaris-Breadcrumbs__Breadcrumb {
+  background: rgba(10,58,44,0.78) !important;
+  border: 1.5px solid rgba(216,180,92,0.6) !important;
+  border-radius: 10px !important;
+  padding: 6px 12px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45) !important;
+}
+.Polaris-Page-Header .Polaris-Breadcrumbs__Breadcrumb svg { fill: #FFFFFF !important; }
+/* "View more avatars" reads over the island */
+.mm-viewmore-wrap .mm-ghost-btn {
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 2px 6px rgba(0,0,0,0.7) !important;
+  background: rgba(10,58,44,0.6) !important;
+  border: 1px solid rgba(216,180,92,0.45) !important;
+  border-radius: 999px !important;
+  padding: 7px 16px !important;
 }
