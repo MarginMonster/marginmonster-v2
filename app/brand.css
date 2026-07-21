@@ -1885,10 +1885,13 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
   /* backdrop now TRAVELS with the scroll (absolute underlay spanning the full
      page height) instead of a fixed pane the content slides over into flat sand.
      position:relative anchors the ::before to the body's full content height. */
-  body { background: #EFE3C4 !important; position: relative; }
+  body { background: #EFE3C4 !important; }
+  /* FIXED island backdrop: always sits behind the scrolling content, filling the
+     viewport. (The old absolute/full-height approach collapsed in the embedded-app
+     scroll context and left flat sand past the first screen.) */
   body::before {
-    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-    background: #EFE3C4 url(/bg/dashboard-m.jpg) center top / cover no-repeat;
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: #EFE3C4 url(/bg/dashboard-m.jpg) center center / cover no-repeat;
   }
   body[data-page="campaigns"]::before { background-image: url(/bg/campaigns-m.jpg); }
   body[data-page="videos"]::before { background-image: url(/bg/videos-m.jpg); }
@@ -2150,7 +2153,23 @@ body[data-page="campaigns"] .qh-dia-chip.on {
    overflow:hidden, so the sampler spilled past the rounded corners on mobile.
    Give the video its own matching top radius + isolate the card so the clip holds. */
 .mm-cast { isolation: isolate; }
-.mm-cast video.mm-cast-video { border-radius: 14px 14px 0 0; }
+
+/* CAST MEDIA FRAME (2026-07-21): portrait + talking-head live in a fixed-ratio
+   frame that owns the clip. A playing <video> escapes a parent's overflow on iOS
+   (and mis-sizes as a bare flex item on desktop), so the FRAME is the clipping
+   box and the media fills it ABSOLUTELY — the one pattern both desktop and iOS
+   clip reliably. Replaces the isolation/border-radius workaround. */
+.mm-cast-frame {
+  position: relative; width: 100%; aspect-ratio: 3 / 3.4;
+  overflow: hidden; border-radius: 14px 14px 0 0; background: #0B0A17;
+  margin-bottom: 8px;
+}
+.mm-cast-frame > img,
+.mm-cast-frame > video.mm-cast-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: top center;
+  display: block; margin: 0; border-radius: inherit; aspect-ratio: auto;
+}
 
 /* HUD was covering page headers — more runway */
 .mm-hud-spacer { height: 152px; }

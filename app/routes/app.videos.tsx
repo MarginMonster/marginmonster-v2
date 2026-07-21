@@ -910,22 +910,24 @@ export default function Videos() {
                 >
                   {voicePlaying === a.id || videoPlaying === a.id ? "♪" : DESIGNED_VOICES.has(a.id) ? "▶" : "🔊"}
                 </span>
-                {videoPlaying === a.id ? (
-                  <video
-                    className="mm-cast-video"
-                    src={`/voice-videos/${a.id}.mp4?v=1`}
-                    autoPlay
-                    playsInline
-                    onEnded={() => setVideoPlaying(null)}
-                    onError={() => { setVideoPlaying(null); playAudioSample(a.id); }}
-                  />
-                ) : (
-                  <img
-                    src={castImg(a.id, avatarId === a.id ? avatarVariant : 0)}
-                    alt={`${a.name} — ${a.vibe}`}
-                    loading="lazy"
-                  />
-                )}
+                <div className="mm-cast-frame">
+                  {videoPlaying === a.id ? (
+                    <video
+                      className="mm-cast-video"
+                      src={`/voice-videos/${a.id}.mp4?v=1`}
+                      autoPlay
+                      playsInline
+                      onEnded={() => setVideoPlaying(null)}
+                      onError={() => { setVideoPlaying(null); playAudioSample(a.id); }}
+                    />
+                  ) : (
+                    <img
+                      src={castImg(a.id, avatarId === a.id ? avatarVariant : 0)}
+                      alt={`${a.name} — ${a.vibe}`}
+                      loading="lazy"
+                    />
+                  )}
+                </div>
                 <div className="nm">{a.name}</div>
                 <div className="vb">{a.vibe}</div>
               </button>
