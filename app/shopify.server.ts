@@ -41,7 +41,7 @@ export function billingIsTest(): boolean {
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  apiVersion: ApiVersion.January25,
+  apiVersion: ApiVersion.October25,
   // Hardcoded (not from env) so the app's requested scopes always match the
   // released app version. read_orders/read_customers are intentionally NOT
   // here — they are protected customer data that 403-gates all Admin API
@@ -113,7 +113,7 @@ const shopify = shopifyApp({
 });
 
 export default shopify;
-export const apiVersion = ApiVersion.January25;
+export const apiVersion = ApiVersion.October25;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;
