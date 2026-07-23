@@ -2738,6 +2738,9 @@ body[data-page="dashboard"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .eh-status .st + .st { border-left:1px solid rgba(255,255,255,.12); padding-left:16px; }
 .eh-status .st .n { font-size:23px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .eh-status .st .k { font-size:10.5px; color:#9DC4B0; font-weight:600; margin-top:2px; }
+.eh-status .eh-review { display:flex; align-items:center; gap:9px; margin-top:15px; padding:11px 13px; border-radius:12px; background:rgba(231,200,121,.14); border:1px solid rgba(231,200,121,.3); text-decoration:none; color:#F4FBF6; font-size:13px; font-weight:650; position:relative; }
+.eh-status .eh-review .rv-n { display:inline-grid; place-items:center; min-width:22px; height:22px; padding:0 6px; border-radius:999px; background:linear-gradient(180deg,#E7C879,#C99A2E); color:#2A1F05; font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
+.eh-status .eh-review svg { width:8px; height:13px; margin-left:auto; stroke:rgba(244,251,246,.75); fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
 .eh-acts { margin-top:18px; display:flex; flex-direction:column; gap:12px; }
 .eh-btn { position:relative; display:block; text-decoration:none; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:18px; padding:17px 48px 17px 17px; box-shadow:0 1px 2px rgba(20,22,15,.04), 0 3px 10px rgba(20,22,15,.05); transition:transform .14s ease, box-shadow .14s ease; }
 .eh-btn:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(20,22,15,.06), 0 18px 44px rgba(20,22,15,.09); }

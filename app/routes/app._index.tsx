@@ -177,6 +177,13 @@ export default function Dashboard() {
               {hasPlan ? "Start a campaign" : "Choose a plan to start"}<IChev />
             </Link>
           )}
+          {toReview > 0 && (
+            <Link className="eh-review" to="/app/assets">
+              <span className="rv-n">{toReview}</span>
+              {toReview === 1 ? "piece waiting for your review" : "pieces waiting for your review"}
+              <IChev />
+            </Link>
+          )}
         </div>
 
         <div className="eh-acts">
