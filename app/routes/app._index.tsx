@@ -168,7 +168,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        <span className="eh-ey">On autopilot</span>
         <h1>Your marketing, handled.</h1>
         <p className="eh-sub">EasyMode makes videos, images and posts from your products — then posts them to your socials on a schedule. You approve, it ships.</p>
 
