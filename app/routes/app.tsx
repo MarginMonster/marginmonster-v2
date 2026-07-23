@@ -191,6 +191,19 @@ export default function App() {
   };
   // level-help popover: what leveling YOUR STORE earns you
   const [lvlInfo, setLvlInfo] = useState(false);
+  // Ambient background video. React doesn't reliably reflect the `muted` prop to
+  // the DOM *property*, and mobile webviews (incl. the Shopify mobile app) block
+  // autoplay unless the element is muted at the property level + played inline.
+  // Force it here so the living island animates on phones, not just desktop.
+  const bgRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = bgRef.current;
+    if (!v) return;
+    v.muted = true;
+    v.defaultMuted = true;
+    const p = v.play();
+    if (p && typeof p.catch === "function") p.catch(() => {/* autoplay blocked → poster/still fallback shows */});
+  }, [pageKey]);
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
@@ -304,6 +317,7 @@ export default function App() {
       {/* the living island — per-page ambient loop; poster/body bg carry when the clip is absent */}
       <video
         key={pageKey}
+        ref={bgRef}
         className="em-bgvid"
         src={`/bg/${pageKey}.mp4?v=2`}
         poster={`/bg/${pageKey}.jpg`}
@@ -311,6 +325,7 @@ export default function App() {
         autoPlay
         loop
         playsInline
+        preload="auto"
         aria-hidden="true"
       />
       <Outlet />

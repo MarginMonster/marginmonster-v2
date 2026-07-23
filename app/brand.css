@@ -1890,6 +1890,10 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
      viewport. (The old absolute/full-height approach collapsed in the embedded-app
      scroll context and left flat sand past the first screen.) */
   body::before {
+    /* display:block !important is REQUIRED here — the global rule up top
+       (`body::before, body::after { display:none !important }`, retiring the old
+       CRT overlays) otherwise wins and leaves mobile on flat sand with no island. */
+    display: block !important;
     content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
     background: #EFE3C4 url(/bg/dashboard-m.jpg) center center / cover no-repeat;
   }
@@ -1906,9 +1910,16 @@ body[data-page="plans"] { background-image: url(/bg/plans.jpg) !important; }
  * content. BLESSED 2026-07-20: calm-breeze set (small waves, swaying palms,
  * slow clouds — kling v2.1, water-violence gate). Stills stay as poster/body
  * fallback; mobile + reduced-motion keep the stills. */
-.em-bgvid { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; pointer-events: none; }
+/* width:100% (not 100vw) avoids the horizontal-scroll gutter when a scrollbar is
+   present; inset:0 already stretches it to the viewport. Fixed <video> is fine on
+   iOS — it's `background-attachment:fixed` specifically that iOS webviews break,
+   which is why the still fallback lives on body::before, not on the body bg. */
+.em-bgvid { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; pointer-events: none; }
+/* Reduced-motion keeps the still island (poster + body backdrop). */
 @media (prefers-reduced-motion: reduce) { .em-bgvid { display: none !important; } }
-@media (max-width: 900px) { .em-bgvid { display: none !important; } }
+/* Mobile now KEEPS the animated island (was force-hidden ≤900px). The -m.jpg
+   still on body::before sits beneath it as the fallback if a webview blocks
+   autoplay, so mobile shows the living island — never flat sand. */
 
 /* overlay palms retired (looked cheap) — motion moves into the backgrounds themselves */
 .em-palm { display: none !important; }
