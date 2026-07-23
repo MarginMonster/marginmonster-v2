@@ -2759,6 +2759,10 @@ body[data-page="dashboard"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .eh-btn.primary .ti { color:#fff; }
 .eh-btn.primary .ds { color:rgba(233,247,239,.92); }
 .eh-btn.primary .chev { color:rgba(237,251,243,.8); }
+/* real, labeled CTA button inside the Automated Marketing card */
+.eh-btn.primary .eh-cta { position:relative; z-index:1; display:inline-flex; align-items:center; gap:9px; margin-top:16px; background:#FDFCF7; color:#0A3D26; font-weight:800; font-size:14px; letter-spacing:-.01em; padding:12px 18px; border-radius:12px; box-shadow:0 5px 16px rgba(6,20,12,.28), inset 0 0 0 1px rgba(10,61,38,.06); }
+.eh-btn.primary:hover .eh-cta { box-shadow:0 8px 22px rgba(6,20,12,.34), inset 0 0 0 1px rgba(10,61,38,.06); }
+.eh-btn.primary .eh-cta svg { width:8px; height:13px; stroke:currentColor; fill:none; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
 .eh-acts2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .eh-btn.sm { padding:16px 15px; }
 .eh-btn.sm .hd { flex-direction:column; align-items:flex-start; gap:11px; }

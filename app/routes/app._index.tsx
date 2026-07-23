@@ -204,7 +204,7 @@ export default function Dashboard() {
               <span className="chip ig" title="Instagram"><IInsta /></span>
               <span className="chip fb" title="Facebook"><IFacebook /></span>
             </div>
-            <span className="chev"><IChev /></span>
+            <span className="eh-cta">{hasPlan ? "View or launch a campaign" : "Choose a plan to start"}<IChev /></span>
           </Link>
           <div className="eh-acts2">
             <Link className="eh-btn sm" to="/app/videos">
