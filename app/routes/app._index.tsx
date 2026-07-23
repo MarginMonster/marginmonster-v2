@@ -500,6 +500,18 @@ function ArcadeCabinet({ hasPlan, pendingAssets, liveCampaigns, paidAds, socialO
     .map((q) => (q.route === "/app/connect" ? { ...q, l: paidAds ? "Ad Accounts" : "Auto-Posting" } : q));
   return (
     <>
+      <div className="em-brandhome">
+        <div className="em-mark"><span>E</span></div>
+        <div className="em-word">Easy<b>Mode</b></div>
+        <div className="em-flourish" />
+        <p className="em-tag">Made, scheduled &amp; posted for you — every day.</p>
+        {(liveCampaigns > 0 || pendingAssets > 0) && (
+          <span className="em-welcome">
+            ● {liveCampaigns > 0 ? "Autopilot running" : "Ready to go"}
+            {pendingAssets > 0 ? ` · ${pendingAssets} to review` : ""}
+          </span>
+        )}
+      </div>
       <div className="pp-hero" style={{ marginBottom: 18 }}>
         <span className="pp-eyebrow">Marketing Autopilot</span>
         <h1>Your store's marketing, <em>running itself.</em></h1>
