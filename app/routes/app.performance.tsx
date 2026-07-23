@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, Link } from "@remix-run/react";
+import { useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -17,10 +17,12 @@ import { db } from "../db.server";
 import { getPerformanceSummary } from "../lib/performance.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import type { PlatformStats } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats, refreshShopStats, SOCIAL_PLATFORMS } from "../lib/social-insights.server";
 import { parseSchedule } from "../lib/questlines";
 
 type RecentPost = { title: string; platform: string; url: string; date: string };
+type Totals = ReturnType<typeof sumStats>;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -34,6 +36,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // ── Organic results path — followers + engagement from the socials ───────
+  const emptyOrganic = () => json({
+    mode: "organic" as const, socialOn: socialProviderEnabled(), linked: [] as string[],
+    platforms: {} as Record<string, PlatformStats>, fetchedAt: null as string | null,
+    totals: sumStats(parseSocialStats(null)), recent: [] as RecentPost[],
+  });
+
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
     select: {
@@ -41,7 +49,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       questlines: { orderBy: { createdAt: "desc" }, take: 12, select: { name: true, scheduleJson: true } },
     },
   });
-  if (!shop) return json({ mode: "organic" as const, socialOn: socialProviderEnabled(), linked: [], stats: parseSocialStats(null), recent: [] as RecentPost[] });
+  if (!shop) return emptyOrganic();
 
   const linked = linkedFromCache(shop.socialsJson).filter((p) => (SOCIAL_PLATFORMS as readonly string[]).includes(p));
   let stats = parseSocialStats(shop.socialStatsJson);
@@ -67,7 +75,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     mode: "organic" as const,
     socialOn: socialProviderEnabled(),
     linked,
-    stats,
+    platforms: stats.platforms,
+    fetchedAt: stats.fetchedAt,
+    totals: sumStats(stats),
     recent: recent.slice(0, 8),
   });
 };
@@ -96,19 +106,29 @@ function relDate(dateStr: string): string {
 export default function Results() {
   const data = useLoaderData<typeof loader>();
   if (data.mode === "paid") return <PaidROI summary={data.summary} />;
-  return <Organic {...data} />;
+  return (
+    <Organic
+      socialOn={data.socialOn}
+      linked={data.linked}
+      platforms={data.platforms}
+      fetchedAt={data.fetchedAt}
+      totals={data.totals}
+      recent={data.recent}
+    />
+  );
 }
 
 // ═══ Organic engagement dashboard ═══════════════════════════════════════════
-function Organic({ socialOn, linked, stats, recent }: {
+function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent }: {
   socialOn: boolean;
   linked: string[];
-  stats: ReturnType<typeof parseSocialStats>;
+  platforms: Record<string, PlatformStats>;
+  fetchedAt: string | null;
+  totals: Totals;
   recent: RecentPost[];
 }) {
-  const platformKeys = Object.keys(stats.platforms);
-  const hasStats = platformKeys.length > 0 && sumStats(stats).followers + sumStats(stats).views + sumStats(stats).likes > 0;
-  const totals = sumStats(stats);
+  const platformKeys = Object.keys(platforms);
+  const hasStats = platformKeys.length > 0 && totals.followers + totals.views + totals.likes > 0;
   const engagement = totals.likes + totals.comments + totals.shares;
 
   return (
@@ -127,7 +147,7 @@ function Organic({ socialOn, linked, stats, recent }: {
           <div className="er-note">
             <b>Connect your socials to see results</b>
             <p>Link TikTok, Instagram and Facebook and EasyMode starts tracking your reach and engagement automatically — one tap, no passwords shared with us.</p>
-            <Link className="er-cta" to="/app/connect">Connect socials</Link>
+            <a className="er-cta" href="/app/connect">Connect socials</a>
           </div>
         ) : !hasStats ? (
           <div className="er-note">
@@ -136,21 +156,19 @@ function Organic({ socialOn, linked, stats, recent }: {
           </div>
         ) : (
           <>
-            {/* headline totals */}
             <div className="er-tot">
               <div className="c"><div className="n">{nfmt(totals.followers)}</div><div className="k">Followers</div></div>
               <div className="c"><div className="n">{nfmt(totals.views || totals.reach)}</div><div className="k">Views</div></div>
               <div className="c"><div className="n">{nfmt(engagement)}</div><div className="k">Engagements</div></div>
             </div>
 
-            {/* per-platform breakdown */}
             <div className="er-plats">
               {platformKeys.map((p) => {
                 const m = platMeta(p);
-                const s = stats.platforms[p];
+                const s = platforms[p];
                 return (
                   <div className="er-plat" key={p}>
-                    <div className="hd"><span className="chip">{<m.Glyph />}</span><b>{m.label}</b><span className="fol">{nfmt(s.followers)} followers</span></div>
+                    <div className="hd"><span className="chip"><m.Glyph /></span><b>{m.label}</b><span className="fol">{nfmt(s.followers)} followers</span></div>
                     <div className="mets">
                       <div className="mt"><div className="n">{nfmt(s.views || s.reach)}</div><div className="k">Views</div></div>
                       <div className="mt"><div className="n">{nfmt(s.likes)}</div><div className="k">Likes</div></div>
@@ -161,13 +179,12 @@ function Organic({ socialOn, linked, stats, recent }: {
                 );
               })}
             </div>
-            {stats.fetchedAt && (
-              <p className="er-stamp">Updated {new Date(stats.fetchedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+            {fetchedAt && (
+              <p className="er-stamp">Updated {new Date(fetchedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
             )}
           </>
         )}
 
-        {/* recent posts feed */}
         {recent.length > 0 && (
           <>
             <div className="er-sec"><h2>Recently posted</h2></div>
@@ -176,7 +193,7 @@ function Organic({ socialOn, linked, stats, recent }: {
                 const m = platMeta(r.platform);
                 return (
                   <a className="er-item" href={r.url} target="_blank" rel="noreferrer" key={`${r.url}-${i}`}>
-                    <span className="chip">{<m.Glyph />}</span>
+                    <span className="chip"><m.Glyph /></span>
                     <span className="m"><b>{r.title}</b><span>{m.label} · {relDate(r.date)}</span></span>
                     <span className="go">View</span>
                   </a>
