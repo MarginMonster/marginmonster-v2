@@ -168,8 +168,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        <h1>Your marketing, handled.</h1>
-        <p className="eh-sub">EasyMode makes videos, images and posts from your products — then posts them to your socials on a schedule. You approve, it ships.</p>
+        <h1>Your store, on <span className="eh-em">EasyMode</span>.</h1>
+        <p className="eh-sub">It makes videos, images and posts from your products — then posts them to your socials on a schedule. You approve, it ships.</p>
 
         <div className={`eh-status${hasActiveCampaign ? "" : " idle"}`}>
           <div className="lab"><span className="dot" />{hasActiveCampaign ? "Autopilot running" : "Autopilot not running"}</div>

@@ -2727,6 +2727,8 @@ body[data-page="dashboard"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .eh-social .chip.fb svg { fill:#1877F2; stroke:none; }
 .eh-ey { font-size:11px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; color:var(--gold-deep); }
 .eh h1 { font-size:clamp(30px,8.4vw,40px); line-height:1.04; letter-spacing:-.035em; font-weight:800; margin:11px 0 12px; color:var(--ink); }
+/* EasyMode banger — green gradient with the money engraving clipped inside the letters + glow */
+.eh-em { font-weight:900; -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; background-image:var(--mm-guilloche), linear-gradient(96deg,#0C7A46,#12A85E 42%,#5FE29A 60%,#0F9152 78%,#0A5C38); background-repeat:repeat; filter:drop-shadow(0 2px 7px rgba(12,122,70,.28)); }
 .eh-sub { font-size:15px; color:var(--ink2); margin:0; max-width:38ch; line-height:1.55; }
 .eh-status { margin-top:18px; background:var(--mm-guilloche) repeat, linear-gradient(160deg,#0E5233,#0A3421 55%,#072617); border-radius:20px; padding:19px 20px; color:#EAF4EE; box-shadow:0 16px 40px rgba(8,42,26,.3), inset 0 0 0 1px rgba(231,200,121,.28), inset 0 1px 0 rgba(255,255,255,.06); position:relative; overflow:hidden; }
 .eh-status::after { content:""; position:absolute; inset:0; background:radial-gradient(120% 80% at 88% -10%, rgba(231,200,121,.14), transparent 55%); pointer-events:none; }
