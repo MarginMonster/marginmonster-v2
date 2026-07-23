@@ -234,7 +234,7 @@ export default function App() {
             <div className="mm-hud-top">
               <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
               <span className="mm-hud-lvl" title={`Level ${hud.level} · ${hud.xpNeed - hud.xpInto} XP to level ${hud.level + 1}`}>LVL {hud.level}</span>
-              <span className="mm-hud-stat" title="Token balance">🪙 {hud.tokens.toLocaleString()}</span>
+              <span className="mm-hud-stat" title="Token balance"><span className="mm-coin" aria-hidden="true" /> {hud.tokens.toLocaleString()}</span>
               <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Expand HUD" aria-label="Expand HUD">▾</button>
             </div>
           </div>
