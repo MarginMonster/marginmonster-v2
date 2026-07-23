@@ -102,13 +102,22 @@ const ITikTok = () => <svg viewBox="0 0 24 24"><path d="M16.5 3c.35 2.34 1.68 3.
 const IInsta = () => <svg viewBox="0 0 24 24"><rect x="3.3" y="3.3" width="17.4" height="17.4" rx="5" /><circle cx="12" cy="12" r="4.1" /><circle className="d" cx="17.4" cy="6.6" r="1.15" /></svg>;
 const IFacebook = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02V7.9c0-.9.26-1.5 1.56-1.5h1.66V3.62c-.29-.04-1.27-.12-2.42-.12-2.4 0-4.04 1.46-4.04 4.15V9.9H8.1v3.1h2.44V21h3.26z" /></svg>;
 
+function friendlyError(msg: string): string {
+  if (/403|forbidden/i.test(msg)) return "Shopify briefly blocked the scan (403). This is usually a temporary permissions hiccup — try Re-scan again in a moment. If it keeps happening, close and reopen EasyMode from your Shopify admin to refresh access.";
+  if (/401|unauthor/i.test(msg)) return "Your Shopify session expired. Reopen EasyMode from your Shopify admin, then try again.";
+  return msg;
+}
+
 export default function Dashboard() {
   const { shop, pendingAssets, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
   const building = nav.state !== "idle";
-  const liveError = (actionData && "error" in actionData ? actionData.error : null) || brandJobError;
+  // A re-scan the user JUST triggered failed (live, actionable).
+  const actionError = actionData && "error" in actionData ? actionData.error : null;
+  // Onboarding also surfaces the last stored job error (there's no profile yet).
+  const liveError = actionError || brandJobError;
   const buildProfile = () => submit({}, { method: "post" });
 
   if (!shop) {
@@ -150,7 +159,7 @@ export default function Dashboard() {
             <p>We'll learn your brand voice and products so everything we make sounds and looks like you. Takes about a minute.</p>
             {liveError && (
               <div style={{ marginBottom: 12 }}>
-                <Banner tone="warning" title="Last attempt hit a snag"><p>{liveError}</p></Banner>
+                <Banner tone="warning" title="Last attempt hit a snag"><p>{friendlyError(liveError)}</p></Banner>
               </div>
             )}
             <button type="button" onClick={buildProfile} disabled={building}>
@@ -225,9 +234,9 @@ export default function Dashboard() {
                 {building ? "Re-scanning…" : "Re-scan"}
               </button>
             </div>
-            {liveError && (
+            {actionError && (
               <div style={{ marginTop: 10 }}>
-                <Banner tone="warning" title="Last scan hit a snag"><p>{liveError}</p></Banner>
+                <Banner tone="warning" title="Re-scan hit a snag"><p>{friendlyError(actionError)}</p></Banner>
               </div>
             )}
 
