@@ -2539,3 +2539,34 @@ h1, h2, h3, .Polaris-Text--headingXl, .Polaris-Text--heading2xl, .Polaris-Text--
 
 /* ─── Calm the remaining ambient motion ─── */
 .mm-hero .mm-eyebrow, .pp-eyebrow, .pp-hero h1 em, .pp-stat .v .g::before { animation: none !important; }
+
+/* ─── Polaris surfaces adopt the luxe material ───────────────────────────────
+   The stark-white admin-kit cards clashed with the warm paper ground ("looks
+   unprofessional"). Retint Polaris's own design tokens to the Editorial Arcade
+   material so every card, popover and field reads as one system — warm ivory,
+   hairline borders, ink type — instead of a white box dropped on parchment. */
+:root, body, .Polaris-Frame {
+  --p-color-bg: transparent;
+  --p-color-bg-surface: var(--ea-surface);
+  --p-color-bg-surface-secondary: #F4F0E7;
+  --p-color-bg-surface-tertiary: #EFEADF;
+  --p-color-bg-surface-hover: #F3EEE4;
+  --p-color-bg-surface-active: #EFE9DE;
+  --p-color-bg-surface-selected: var(--ea-emerald-soft);
+  --p-color-bg-surface-secondary-hover: #EFEADF;
+  --p-color-border: var(--ea-line);
+  --p-color-border-secondary: var(--ea-line2);
+  --p-color-text: var(--ea-ink);
+  --p-color-text-secondary: var(--ea-ink2);
+  --p-color-text-disabled: var(--ea-ink3);
+  --p-color-bg-fill-brand: var(--ea-emerald);
+  --p-color-bg-fill-brand-hover: var(--ea-emerald2);
+}
+.Polaris-Card, .Polaris-ShadowBevel__Bevel {
+  background: var(--ea-surface) !important;
+  border: 1px solid var(--ea-line) !important;
+}
+/* nested/secondary cards step one shade warmer so hierarchy still reads */
+.Polaris-Card .Polaris-Card, .Polaris-Box[background="bg-surface-secondary"] {
+  background: #F4F0E7 !important;
+}
