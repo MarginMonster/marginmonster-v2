@@ -2384,12 +2384,15 @@ body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
    logo icon and now MEANS reward/currency. Appended last → wins the cascade.
    ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --ea-paper:#F2EFE8; --ea-paper2:#ECE7DB; --ea-surface:#FBF9F4; --ea-white:#FFFFFF;
-  --ea-ink:#1A1813; --ea-ink2:#5C574B; --ea-ink3:#8F897A;
-  --ea-line:#E3DDCE; --ea-line2:#D8D0BE;
+  /* Warmed to magicmonstersupply.com's cream/sand ground. */
+  --ea-paper:#F1EAD9; --ea-paper2:#EAE0C9; --ea-surface:#F7F1E3; --ea-white:#FFFFFF;
+  --ea-ink:#2A2620; --ea-ink2:#6B6458; --ea-ink3:#9A9280;
+  --ea-line:#E4DAC2; --ea-line2:#D8CBAC;
   --ea-emerald:#0A7A52; --ea-emerald2:#0C8C5E; --ea-emerald-pop:#12B981; --ea-emerald-soft:rgba(18,185,129,.10);
-  --ea-brass:#9C7A3C; --ea-brass-hi:#EAD6A2; --ea-brass-mid:#B8912F; --ea-brass-deep:#7C5C1D; --ea-brass-ink:#5A3F10;
-  --ea-serif:"Iowan Old Style","Palatino Linotype",ui-serif,Georgia,"Times New Roman",serif;
+  --ea-brass:#9C7A3C; --ea-brass-hi:#E6C978; --ea-brass-mid:#C9A24A; --ea-brass-deep:#A9822E; --ea-brass-ink:#3A2C08;
+  /* Display face is BOLD SANS (Poppins) to match the store — was serif. The
+     --ea-serif name is kept as an alias so existing refs still resolve. */
+  --ea-serif:"Poppins",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --ea-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,ui-sans-serif,sans-serif;
   /* retire the pixel font + rainbow marquee; serif carries display now */
   --font-pixel: var(--ea-sans);
@@ -2399,7 +2402,7 @@ body[data-page="campaigns"] .qh-quest-board.rolled .qh-unroll {
 /* ─── BACKGROUND OVERRIDE ── delete THIS block to bring the islands back
    (see docs/ISLAND-BACKGROUNDS.backup.md). Paper ground replaces the photos. */
 body, body[data-page] {
-  background: radial-gradient(120% 70% at 50% -8%, #F7F4ED, transparent 60%), var(--ea-paper) !important;
+  background: radial-gradient(120% 70% at 50% -8%, #F8F1DF, transparent 60%), var(--ea-paper) !important;
 }
 .em-bgvid, .em-beach, .em-palm { display: none !important; }   /* islands parked */
 body::before, body::after { display: none !important; }         /* mobile still + old overlays off */
@@ -2570,3 +2573,34 @@ h1, h2, h3, .Polaris-Text--headingXl, .Polaris-Text--heading2xl, .Polaris-Text--
 .Polaris-Card .Polaris-Card, .Polaris-Box[background="bg-surface-secondary"] {
   background: #F4F0E7 !important;
 }
+
+/* ─── Dashboard mode cards (Create · Launch · Track): dark → cream, numbered ───
+   These were a hardcoded dark gradient dropped on the paper ground (the
+   "outdated cards" screenshot). Remodel to warm cream cards with the store's
+   gold number badge + an emerald icon chip. Pure CSS — no markup change. */
+.mm-modes { counter-reset: mmmode; margin-top: 26px !important; }
+.mm-mode {
+  position: relative; margin-top: 8px;
+  background: var(--ea-surface) !important; border: 1px solid var(--ea-line) !important;
+  box-shadow: 0 3px 12px rgba(42,38,32,.05) !important; border-radius: 18px !important;
+}
+.mm-mode:hover { border-color: var(--ea-emerald) !important; box-shadow: 0 12px 28px rgba(42,38,32,.1) !important; transform: translateY(-3px); }
+.mm-mode::before {
+  counter-increment: mmmode; content: counter(mmmode);
+  position: absolute; top: -14px; left: 20px; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; font-family: var(--ea-serif); font-weight: 700; font-size: 14px;
+  background: radial-gradient(circle at 40% 32%, var(--ea-brass-hi), var(--ea-brass-mid) 62%, var(--ea-brass-deep));
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.4), 0 3px 7px rgba(169,130,46,.4);
+}
+.mm-mode .mi {
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  font-size: 22px; color: var(--ea-emerald) !important; background: var(--ea-emerald-soft); margin-top: 4px;
+}
+.mm-mode .mt { color: var(--ea-ink) !important; font-family: var(--ea-serif) !important; }
+.mm-mode .md { color: var(--ea-ink2) !important; }
+.mm-mode .mgo {
+  color: var(--ea-emerald) !important; font-family: var(--ea-sans) !important;
+  text-transform: uppercase; letter-spacing: .08em; font-weight: 700 !important; font-size: 11px !important;
+}
+.mm-mode.a1, .mm-mode.a2, .mm-mode.a3 { --mm-accent: var(--ea-emerald); }
+.mm-mode.a1 .mgo, .mm-mode.a2 .mgo, .mm-mode.a3 .mgo { color: var(--ea-emerald) !important; }
