@@ -9,6 +9,29 @@ import { unlockAchievement } from "../lib/xp.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { socialProviderEnabled } from "../lib/social-provider.server";
 
+type BrandResults = {
+  tone: string; tagline: string; positioning: string; imageStyle: string;
+  storeName: string; productCount: number; avgPrice: number;
+  vocabulary: string[]; values: string[]; samplePhrases: string[];
+  contentThemes: string[]; categories: string[]; productImages: string[];
+};
+
+function parseBrand(bp: { voiceJson: string; visualJson: string; productJson: string } | null): BrandResults | null {
+  if (!bp) return null;
+  const j = (s: string): Record<string, unknown> => { try { const v = JSON.parse(s); return v && typeof v === "object" ? v : {}; } catch { return {}; } };
+  const v = j(bp.voiceJson), vis = j(bp.visualJson), pr = j(bp.productJson);
+  const str = (x: unknown) => (typeof x === "string" ? x : "");
+  const arr = (x: unknown, n = 8): string[] => (Array.isArray(x) ? x.filter((y): y is string => typeof y === "string" && !!y.trim()).slice(0, n) : []);
+  const num = (x: unknown) => (typeof x === "number" ? x : typeof x === "string" ? parseFloat(x) || 0 : 0);
+  return {
+    tone: str(v.tone), tagline: str(v.tagline), positioning: str(pr.positioning), imageStyle: str(vis.imageStyle),
+    storeName: str(pr.storeName), productCount: typeof pr.productCount === "number" ? pr.productCount : 0, avgPrice: num(pr.avgPrice),
+    vocabulary: arr(v.vocabulary), values: arr(v.values, 4), samplePhrases: arr(v.samplePhrases, 3),
+    contentThemes: arr(vis.contentThemes), categories: arr(pr.categories, 6),
+    productImages: Array.isArray(vis.productImages) ? vis.productImages.filter((u): u is string => typeof u === "string").slice(0, 6) : [],
+  };
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
 
@@ -29,6 +52,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     shop,
     pendingAssets,
+    brand: parseBrand(shop?.brandProfile ?? null),
     brandJobError: brandJob?.lastError ?? null,
     paidAds: paidAdsEnabled(),
     socialOn: socialProviderEnabled(),
@@ -71,9 +95,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 const ISend = () => <svg viewBox="0 0 24 24"><path d="M22 2 L11 13" /><path d="M22 2 L15 22 L11 13 L2 9 Z" /></svg>;
 const IPen = () => <svg viewBox="0 0 24 24"><path d="M14 4 l6 6 -11 11 -6 0 0 -6 z" /><path d="M13 5 l6 6" /></svg>;
 const IChart = () => <svg viewBox="0 0 24 24"><path d="M4 4 L4 20 L20 20" /><path d="M7 15 L11 10 L14 12 L19 6" /><circle cx="19" cy="6" r="1.3" fill="currentColor" stroke="none" /></svg>;
-const IVideo = () => <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5" /><path d="M10 9.5 L15 12 L10 14.5 Z" fill="currentColor" stroke="none" /></svg>;
-const IImage = () => <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="M4 18 L10 13 L14 16 L20 10" /></svg>;
-const IDoc = () => <svg viewBox="0 0 24 24"><path d="M5 4 L15 4 L19 8 L19 20 L5 20 Z" /><path d="M8 11 L16 11 M8 15 L14 15" /></svg>;
 const IChev = () => <svg viewBox="0 0 10 16"><path d="M2 2 L8 8 L2 14" /></svg>;
 
 // ── real social glyphs (rendered on white chips, brand-colored via CSS) ─────
@@ -81,26 +102,8 @@ const ITikTok = () => <svg viewBox="0 0 24 24"><path d="M16.5 3c.35 2.34 1.68 3.
 const IInsta = () => <svg viewBox="0 0 24 24"><rect x="3.3" y="3.3" width="17.4" height="17.4" rx="5" /><circle cx="12" cy="12" r="4.1" /><circle className="d" cx="17.4" cy="6.6" r="1.15" /></svg>;
 const IFacebook = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02V7.9c0-.9.26-1.5 1.56-1.5h1.66V3.62c-.29-.04-1.27-.12-2.42-.12-2.4 0-4.04 1.46-4.04 4.15V9.9H8.1v3.1h2.44V21h3.26z" /></svg>;
 
-const TYPE_META: Record<string, { label: string; Icon: () => JSX.Element }> = {
-  VIDEO_AD: { label: "Video", Icon: IVideo },
-  IMAGE_AD: { label: "Image", Icon: IImage },
-  BLOG_POST: { label: "Blog", Icon: IDoc },
-  AD_COPY: { label: "Ad copy", Icon: IDoc },
-  EMAIL: { label: "Email", Icon: IDoc },
-};
-const typeMeta = (t: string) => TYPE_META[t] || { label: t, Icon: IDoc };
-
-function statusMeta(s: string): { chip: string; cls: string; sub: string } {
-  switch (s) {
-    case "PENDING": return { chip: "Review", cls: "rev", sub: "ready to review" };
-    case "APPROVED": return { chip: "Scheduled", cls: "sch", sub: "scheduled to post" };
-    case "PUBLISHED": return { chip: "Posted", cls: "sch", sub: "posted to your socials" };
-    default: return { chip: s.toLowerCase(), cls: "sch", sub: s.toLowerCase() };
-  }
-}
-
 export default function Dashboard() {
-  const { shop, pendingAssets, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -128,10 +131,6 @@ export default function Dashboard() {
   const scheduled = assets.filter((a) => a.status === "APPROVED").length;
   const toReview = pendingAssets;
 
-  // Queue: things needing attention first, then most recent.
-  const known = assets.filter((a) => TYPE_META[a.type]);
-  const queue = [...known.filter((a) => a.status === "PENDING"), ...known.filter((a) => a.status !== "PENDING")].slice(0, 3);
-
   const campaignHref = hasPlan ? "/app/campaigns" : "/app/plans";
   const big = hasActiveCampaign
     ? made > 0
@@ -145,7 +144,7 @@ export default function Dashboard() {
     <Page>
       <div className="eh">
 
-        {!hasProfile ? (
+        {!hasProfile && (
           <div className="eh-analyze">
             <b>Let's get to know your store</b>
             <p>We'll learn your brand voice and products so everything we make sounds and looks like you. Takes about a minute.</p>
@@ -156,17 +155,6 @@ export default function Dashboard() {
             )}
             <button type="button" onClick={buildProfile} disabled={building}>
               {building ? "Analyzing your store…" : "Analyze my store"}
-            </button>
-          </div>
-        ) : (
-          <div className="eh-analyze done">
-            <span className="ck" aria-hidden="true">✓</span>
-            <div className="tx">
-              <b>Brand analyzed</b>
-              <span>Your voice, colors and products are learned. Re-scan if your catalog changed.</span>
-            </div>
-            <button type="button" onClick={buildProfile} disabled={building}>
-              {building ? "Re-scanning…" : "Re-scan"}
             </button>
           </div>
         )}
@@ -215,21 +203,76 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {queue.length > 0 && (
+        {hasProfile && brand && (
           <>
-            <div className="eh-sec"><h2>In the queue</h2><Link to="/app/assets">Review all</Link></div>
-            <div className="eh-feed">
-              {queue.map((a) => {
-                const tm = typeMeta(a.type);
-                const sm = statusMeta(a.status);
-                return (
-                  <Link className="eh-item" to="/app/assets" key={a.id}>
-                    <span className="th"><tm.Icon /></span>
-                    <span className="m"><b>{a.title || `${tm.label} from your catalog`}</b><span>{tm.label} · {sm.sub}</span></span>
-                    <span className={`cg ${sm.cls}`}>{sm.chip}</span>
-                  </Link>
-                );
-              })}
+            <div className="eh-sec"><h2>Brand analyzer</h2></div>
+
+            {/* the analyzer ribbon — moved down here from the top */}
+            <div className="eh-analyze done">
+              <span className="ck" aria-hidden="true">✓</span>
+              <div className="tx">
+                <b>Brand analyzed{brand.storeName ? ` — ${brand.storeName}` : ""}</b>
+                <span>Your voice, look and catalog are learned. Re-scan if your store changed.</span>
+              </div>
+              <button type="button" onClick={buildProfile} disabled={building}>
+                {building ? "Re-scanning…" : "Re-scan"}
+              </button>
+            </div>
+            {liveError && (
+              <div style={{ marginTop: 10 }}>
+                <Banner tone="warning" title="Last scan hit a snag"><p>{liveError}</p></Banner>
+              </div>
+            )}
+
+            {/* the results */}
+            <div className="eh-brand">
+              {brand.tagline && <div className="bq">“{brand.tagline}”</div>}
+
+              {(brand.tone || brand.imageStyle) && (
+                <div className="btags">
+                  {brand.tone && <span className="bt tone">{brand.tone}</span>}
+                  {brand.imageStyle && <span className="bt">{brand.imageStyle}</span>}
+                </div>
+              )}
+
+              {brand.productImages.length > 0 && (
+                <div className="bstrip">
+                  {brand.productImages.map((u, i) => (
+                    <span key={i} className="bshot" style={{ backgroundImage: `url(${u})` }} />
+                  ))}
+                </div>
+              )}
+
+              <div className="battr">
+                {brand.values.length > 0 && (
+                  <div className="r"><span className="k">Values</span><span className="ch">{brand.values.map((x, i) => <em key={i}>{x}</em>)}</span></div>
+                )}
+                {brand.vocabulary.length > 0 && (
+                  <div className="r"><span className="k">Voice</span><span className="ch">{brand.vocabulary.map((x, i) => <em key={i}>{x}</em>)}</span></div>
+                )}
+                {brand.contentThemes.length > 0 && (
+                  <div className="r"><span className="k">Themes</span><span className="ch">{brand.contentThemes.map((x, i) => <em key={i}>{x}</em>)}</span></div>
+                )}
+                {brand.categories.length > 0 && (
+                  <div className="r"><span className="k">Catalog</span><span className="ch">{brand.categories.map((x, i) => <em key={i}>{x}</em>)}</span></div>
+                )}
+              </div>
+
+              {(brand.productCount > 0 || brand.avgPrice > 0) && (
+                <div className="bmeta">
+                  {brand.productCount > 0 && <span><b>{brand.productCount}</b> products scanned</span>}
+                  {brand.avgPrice > 0 && <span><b>${brand.avgPrice.toFixed(0)}</b> avg price</span>}
+                </div>
+              )}
+
+              {brand.positioning && <p className="bpos">{brand.positioning}</p>}
+
+              {brand.samplePhrases.length > 0 && (
+                <div className="bsample">
+                  <span className="k">In your voice</span>
+                  {brand.samplePhrases.map((x, i) => <p key={i}>“{x}”</p>)}
+                </div>
+              )}
             </div>
           </>
         )}
