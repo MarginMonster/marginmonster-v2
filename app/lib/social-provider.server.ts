@@ -113,6 +113,56 @@ export function linkedFromCache(socialsJson: string | null | undefined): string[
   } catch { return []; }
 }
 
+/** Per-platform profile analytics (followers + engagement). Provider endpoint:
+ *  GET /api/analytics/{username}?platforms=tiktok,instagram,facebook  (Apikey auth).
+ *  Response is keyed by platform: { instagram: { followers, reach, views,
+ *  impressions, likes, comments, shares, saves, ... }, ... }.
+ *
+ *  HONESTY RULE (same as the publisher): returns null on any failure or missing
+ *  key, so the UI shows "no numbers yet" instead of fabricated engagement. */
+export type PlatformStats = {
+  followers: number; reach: number; views: number; impressions: number;
+  likes: number; comments: number; shares: number; saves: number;
+};
+
+const toInt = (v: unknown): number => {
+  const n = typeof v === "string" ? parseInt(v.replace(/[^0-9.-]/g, ""), 10) : Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+};
+
+export async function fetchAnalytics(
+  username: string,
+  platforms: string[]
+): Promise<Record<string, PlatformStats> | null> {
+  if (!socialProviderEnabled() || !username || platforms.length === 0) return null;
+  try {
+    const qs = encodeURIComponent(platforms.join(","));
+    const r = await fetch(`${API}/analytics/${encodeURIComponent(username)}?platforms=${qs}`, { headers: authHeader() });
+    if (!r.ok) {
+      console.error("[social] analytics failed:", r.status, (await r.text()).slice(0, 200));
+      return null;
+    }
+    const j = (await r.json().catch(() => null)) as Record<string, Record<string, unknown>> | null;
+    if (!j || typeof j !== "object") return null;
+    const out: Record<string, PlatformStats> = {};
+    for (const p of platforms) {
+      const d = j[p];
+      // provider returns a per-platform message object for unsupported/unlinked
+      // accounts — skip anything without a usable followers/engagement shape
+      if (!d || typeof d !== "object" || "error" in d || "message" in d) continue;
+      out[p] = {
+        followers: toInt(d.followers), reach: toInt(d.reach), views: toInt(d.views),
+        impressions: toInt(d.impressions), likes: toInt(d.likes), comments: toInt(d.comments),
+        shares: toInt(d.shares), saves: toInt(d.saves),
+      };
+    }
+    return Object.keys(out).length ? out : null;
+  } catch (e) {
+    console.error("[social] analytics error:", e);
+    return null;
+  }
+}
+
 /** Publish one piece of media. Returns ok ONLY on confirmed provider success.
  *  Video: pass the media URL directly (upload-post's /api/upload `video` field
  *  accepts a URL) — no re-upload through our server. Photos: /api/upload_photos

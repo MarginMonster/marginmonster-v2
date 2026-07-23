@@ -208,9 +208,9 @@ export default function Dashboard() {
               <div className="hd"><span className="ic"><IPen /></span><span className="ti">Content Studio</span></div>
               <p className="ds">Make one piece by hand, in your voice.</p>
             </Link>
-            <Link className="eh-btn sm" to={paidAds ? "/app/performance" : "/app/calendar"}>
+            <Link className="eh-btn sm" to="/app/performance">
               <div className="hd"><span className="ic"><IChart /></span><span className="ti">Results</span></div>
-              <p className="ds">What shipped, and the clicks it drove.</p>
+              <p className="ds">{paidAds ? "Ad spend, revenue and ROI." : "Followers, views and engagement."}</p>
             </Link>
           </div>
         </div>

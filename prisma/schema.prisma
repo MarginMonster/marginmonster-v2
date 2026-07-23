@@ -58,6 +58,10 @@ model Shop {
   // socialsJson = cached list of platforms the merchant linked
   socialProfileKey String?
   socialsJson      String?
+  // Cached profile analytics per linked platform (followers, reach, views,
+  // likes, comments, shares, saves) + fetchedAt — refreshed hourly by the
+  // worker from the provider's analytics API. Powers the organic Results view.
+  socialStatsJson  String?
 
   brandProfile   BrandProfile?
   activePlan     Plan?
