@@ -133,11 +133,6 @@ export default function Dashboard() {
   return (
     <Page>
       <div className="eh">
-        <div className="eh-top">
-          <span className="eh-mk">E</span>
-          <span className="eh-wm">EasyMode</span>
-        </div>
-        <div className="eh-rule" />
 
         {!hasProfile && (
           <div className="eh-analyze">
