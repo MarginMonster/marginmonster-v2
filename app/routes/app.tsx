@@ -220,15 +220,6 @@ export default function App() {
       )}
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
       <div className={`mm-hud${hudMin ? " min" : ""}`} aria-label="Player status">
-        <Link to="/app/plans" className="mm-hud-avatar" title={`${hud.planLabel} — change plan`} style={{ ["--acc" as string]: hud.accent }}>
-          {hud.img ? (
-            <span className="mm-hud-sprite" aria-hidden="true">
-              <Partner img={hud.img} accent={hud.accent} srcs={hud.srcs} />
-            </span>
-          ) : (
-            <span className="mm-hud-face">🎮</span>
-          )}
-        </Link>
         {hudMin ? (
           <div className="mm-hud-body">
             <div className="mm-hud-top">
