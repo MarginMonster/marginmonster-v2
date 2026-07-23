@@ -18,6 +18,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       brandProfile: true,
       activePlan: true,
       assets: { orderBy: { createdAt: "desc" }, take: 12 },
+      questlines: { where: { status: "ACTIVE" }, orderBy: { createdAt: "desc" }, take: 1 },
       jobs: { where: { type: "GENERATE_BRAND_PROFILE" }, orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
@@ -75,6 +76,11 @@ const IImage = () => <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" heigh
 const IDoc = () => <svg viewBox="0 0 24 24"><path d="M5 4 L15 4 L19 8 L19 20 L5 20 Z" /><path d="M8 11 L16 11 M8 15 L14 15" /></svg>;
 const IChev = () => <svg viewBox="0 0 10 16"><path d="M2 2 L8 8 L2 14" /></svg>;
 
+// ── real social glyphs (rendered on white chips, brand-colored via CSS) ─────
+const ITikTok = () => <svg viewBox="0 0 24 24"><path d="M16.5 3c.35 2.34 1.68 3.9 3.9 4.12v2.86c-1.3.08-2.53-.28-3.68-.98v5.9c0 3.5-2.48 6-5.86 6C7.6 20.9 5.3 18.7 5.3 15.6c0-3.02 2.4-5.3 5.5-5.3.34 0 .67.03 1 .09v2.94c-.32-.1-.65-.15-1-.15-1.42 0-2.5 1.05-2.5 2.44 0 1.42 1.1 2.46 2.55 2.46 1.53 0 2.6-1.13 2.6-2.98V3h3.05z" /></svg>;
+const IInsta = () => <svg viewBox="0 0 24 24"><rect x="3.3" y="3.3" width="17.4" height="17.4" rx="5" /><circle cx="12" cy="12" r="4.1" /><circle className="d" cx="17.4" cy="6.6" r="1.15" /></svg>;
+const IFacebook = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02V7.9c0-.9.26-1.5 1.56-1.5h1.66V3.62c-.29-.04-1.27-.12-2.42-.12-2.4 0-4.04 1.46-4.04 4.15V9.9H8.1v3.1h2.44V21h3.26z" /></svg>;
+
 const TYPE_META: Record<string, { label: string; Icon: () => JSX.Element }> = {
   VIDEO_AD: { label: "Video", Icon: IVideo },
   IMAGE_AD: { label: "Image", Icon: IImage },
@@ -112,6 +118,8 @@ export default function Dashboard() {
 
   const hasPlan = !!shop.activePlan;
   const hasProfile = !!shop.brandProfile;
+  // "Autopilot" is on only when a content campaign (questline) is actively running.
+  const hasActiveCampaign = shop.questlines.length > 0;
 
   const assets = shop.assets;
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -124,17 +132,20 @@ export default function Dashboard() {
   const known = assets.filter((a) => TYPE_META[a.type]);
   const queue = [...known.filter((a) => a.status === "PENDING"), ...known.filter((a) => a.status !== "PENDING")].slice(0, 3);
 
-  const big = hasPlan
+  const campaignHref = hasPlan ? "/app/campaigns" : "/app/plans";
+  const big = hasActiveCampaign
     ? made > 0
       ? `This week it made ${made} ${made === 1 ? "piece" : "pieces"}${posted > 0 ? ` and posted ${posted} for you` : ""}.`
       : "Your engine is warming up — your first content is on the way."
-    : "Choose a plan and I'll start making content for your store, automatically.";
+    : hasPlan
+      ? "No campaign is running yet. Start one and I'll fill your calendar automatically."
+      : "Choose a plan and I'll start making content for your store, automatically.";
 
   return (
     <Page>
       <div className="eh">
 
-        {!hasProfile && (
+        {!hasProfile ? (
           <div className="eh-analyze">
             <b>Let's get to know your store</b>
             <p>We'll learn your brand voice and products so everything we make sounds and looks like you. Takes about a minute.</p>
@@ -147,26 +158,49 @@ export default function Dashboard() {
               {building ? "Analyzing your store…" : "Analyze my store"}
             </button>
           </div>
+        ) : (
+          <div className="eh-analyze done">
+            <span className="ck" aria-hidden="true">✓</span>
+            <div className="tx">
+              <b>Brand analyzed</b>
+              <span>Your voice, colors and products are learned. Re-scan if your catalog changed.</span>
+            </div>
+            <button type="button" onClick={buildProfile} disabled={building}>
+              {building ? "Re-scanning…" : "Re-scan"}
+            </button>
+          </div>
         )}
 
         <span className="eh-ey">On autopilot</span>
         <h1>Your marketing, handled.</h1>
         <p className="eh-sub">EasyMode makes videos, images and posts from your products — then posts them to your socials on a schedule. You approve, it ships.</p>
 
-        <div className="eh-status">
-          <div className="lab"><span className="dot" />{hasPlan ? "Autopilot running" : "Ready when you are"}</div>
+        <div className={`eh-status${hasActiveCampaign ? "" : " idle"}`}>
+          <div className="lab"><span className="dot" />{hasActiveCampaign ? "Autopilot running" : "Autopilot not running"}</div>
           <div className="big">{big}</div>
-          <div className="row">
-            <div className="st"><div className="n">{posted}</div><div className="k">Posted</div></div>
-            <div className="st"><div className="n">{scheduled}</div><div className="k">Scheduled</div></div>
-            <div className="st"><div className="n">{toReview}</div><div className="k">To review</div></div>
-          </div>
+          {hasActiveCampaign ? (
+            <div className="row">
+              <div className="st"><div className="n">{posted}</div><div className="k">Posted</div></div>
+              <div className="st"><div className="n">{scheduled}</div><div className="k">Scheduled</div></div>
+              <div className="st"><div className="n">{toReview}</div><div className="k">To review</div></div>
+            </div>
+          ) : (
+            <Link className="eh-start" to={campaignHref}>
+              {hasPlan ? "Start a campaign" : "Choose a plan to start"}<IChev />
+            </Link>
+          )}
         </div>
 
         <div className="eh-acts">
-          <Link className="eh-btn primary" to={hasPlan ? "/app/campaigns" : "/app/plans"}>
+          <Link className="eh-btn primary" to={campaignHref}>
             <div className="hd"><span className="ic"><ISend /></span><span className="ti">Automated Marketing</span></div>
             <p className="ds">{hasPlan ? "Pick a goal — we create and run a full month of content, start to finish." : "Choose a plan to switch on hands-free marketing."}</p>
+            <div className="eh-social">
+              <span className="lbl">Auto-posts to</span>
+              <span className="chip tt" title="TikTok"><ITikTok /></span>
+              <span className="chip ig" title="Instagram"><IInsta /></span>
+              <span className="chip fb" title="Facebook"><IFacebook /></span>
+            </div>
             <span className="chev"><IChev /></span>
           </Link>
           <div className="eh-acts2">
