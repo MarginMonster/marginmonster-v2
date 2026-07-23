@@ -28,6 +28,16 @@ const PLAN_AVATAR: Record<PlanKey, { label: string }> = {
   SCALE: { label: "Scale" },
 };
 
+// Level shown as a struck roman numeral on the HUD's brass medallion
+// (Editorial Arcade). Falls back to the plain number outside 1–3999.
+function toRoman(n: number): string {
+  if (!Number.isFinite(n) || n < 1 || n > 3999) return String(n);
+  const map: [number, string][] = [[1000,"M"],[900,"CM"],[500,"D"],[400,"CD"],[100,"C"],[90,"XC"],[50,"L"],[40,"XL"],[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];
+  let r = "", x = Math.floor(n);
+  for (const [v, s] of map) { while (x >= v) { r += s; x -= v; } }
+  return r;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
 
@@ -233,7 +243,7 @@ export default function App() {
           <div className="mm-hud-body">
             <div className="mm-hud-top">
               <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
-              <span className="mm-hud-lvl" title={`Level ${hud.level} · ${hud.xpNeed - hud.xpInto} XP to level ${hud.level + 1}`}>LVL {hud.level}</span>
+              <span className="mm-hud-lvl" title={`Level ${hud.level} · ${hud.xpNeed - hud.xpInto} XP to level ${hud.level + 1}`}>LVL {toRoman(hud.level)}</span>
               <span className="mm-hud-stat" title="Token balance">🪙 {hud.tokens.toLocaleString()}</span>
               <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Expand HUD" aria-label="Expand HUD">▾</button>
             </div>
@@ -243,7 +253,7 @@ export default function App() {
             <div className="mm-hud-top">
               <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
               <span className="mm-hud-name">{hud.name}</span>
-              <span className="mm-hud-lvl" title={`Level ${hud.level} — your store's level`}>LVL {hud.level}</span>
+              <span className="mm-hud-lvl" title={`Level ${hud.level} — your store's level`}>LVL {toRoman(hud.level)}</span>
               <button
                 type="button"
                 className="mm-hud-help"
@@ -271,7 +281,7 @@ export default function App() {
             </div>
             {/* Health = token wallet remaining */}
             <div className="mm-hud-barlabel">
-              <span>❤ HP · tokens</span>
+              <span>Token reserve</span>
               <span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span>
             </div>
             <div className="mm-hud-hp" title={`${hud.tokensPct}% of your token wallet remaining`}>
@@ -279,7 +289,7 @@ export default function App() {
             </div>
             {/* XP progress through the current level */}
             <div className="mm-hud-barlabel">
-              <span>⚡ XP</span>
+              <span>Standing</span>
               <span>{hud.xpInto.toLocaleString()} / {hud.xpNeed.toLocaleString()} · {(hud.xpNeed - hud.xpInto).toLocaleString()} to LVL {hud.level + 1}</span>
             </div>
             <div className="mm-hud-xp" title={`${hud.xpPct}% of the way to level ${hud.level + 1}`}>
@@ -288,7 +298,7 @@ export default function App() {
             <div className="mm-hud-stats">
               <Link to="/app/plans" className="mm-hud-top-up" title="Get more tokens">
                 <span title="Token balance">{hud.tokens.toLocaleString()}</span>
-                <span className="mm-hud-plus">+ INSERT TOKENS</span>
+                <span className="mm-hud-plus">Add tokens</span>
               </Link>
               <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos} Videos</span>
               <span className="mm-hud-stat" title="Image generations you can afford">🖼 {hud.ads} Images</span>
