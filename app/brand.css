@@ -3660,3 +3660,7 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .mm-ach .nm { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; font-size:10px !important; font-weight:700 !important; letter-spacing:.01em !important; }
 .mm-ach.earned { border-color:#0F9152 !important; box-shadow:0 0 14px rgba(12,122,70,.15) !important; }
 .mm-ach.earned .nm { color:#0C7A46 !important; }
+
+/* Ghost secondary button → GStyle (was light-on-dark, now dark-on-parchment) */
+.mm-ghost-btn { background:#fff !important; color:#14201A !important; border:1.5px solid #DBD6C6 !important; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; }
+.mm-ghost-btn:hover { border-color:#0F9152 !important; background:rgba(12,122,70,.06) !important; }
