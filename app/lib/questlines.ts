@@ -242,6 +242,23 @@ export const SOCIAL_PLAN_DEFS: QuestlineDef[] = [
     tagline: "Go all-in — daily drops, maximum reach.", lore: "",
     objectives: [{ type: "video", label: "Videos", target: 8 }, { type: "image", label: "Images", target: 12 }],
     platforms: [], recurring: true, minTier: "PRO", xpReward: 400, bagSize: 8, cadence: "daily", worldWindow: [0, 1], destination: "" },
+
+  /* ---- Plan archetypes (the Social Media Plans picker) ----
+   * Each is a standalone strategy activated PER account (acceptQuestline
+   * `platforms`). Token cost = objectives × TOKEN_COST, so:
+   *   Steady  3v·6i·2b = 230/acct   ·  Viral 8v·4i = 500/acct   ·  Found 8b·4i = 100/acct */
+  { key: "SOCIAL_STEADY", campaign: "SOCIAL", tier: "SILVER", name: "Steady Presence", icon: "🌿",
+    tagline: "Consistency compounds. Staying in the feed builds a following that actually buys.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 3 }, { type: "image", label: "Images", target: 6 }, { type: "blog", label: "Blog posts", target: 2 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 250, bagSize: 8, cadence: "~3 drops / week", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_VIRAL", campaign: "SOCIAL", tier: "GOLD", name: "Go Viral", icon: "🔥",
+    tagline: "Video pulls up to 3× the reach. Load short-form and swing for the fences.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 8 }, { type: "image", label: "Images", target: 4 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 500, bagSize: 8, cadence: "video daily", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_FOUND", campaign: "SOCIAL", tier: "BRONZE", name: "Get Found", icon: "🔎",
+    tagline: "SEO blogs bank free Google traffic that compounds for months — your cheapest customers.", lore: "",
+    objectives: [{ type: "blog", label: "Blog posts", target: 8 }, { type: "image", label: "Images", target: 4 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 200, bagSize: 8, cadence: "~2 blogs / week", worldWindow: [0, 1], destination: "" },
 ];
 
 export const QUESTLINES: QuestlineDef[] = [
@@ -331,7 +348,14 @@ export type QuestSchedule = { slots: QuestSlot[]; weeksAwarded: number[]; platfo
 export function parseSchedule(json: string | null | undefined): QuestSchedule {
   try {
     const s = JSON.parse(json || "{}");
-    if (Array.isArray(s?.slots)) return { slots: s.slots, weeksAwarded: s.weeksAwarded || [] };
+    if (Array.isArray(s?.slots)) {
+      return {
+        slots: s.slots,
+        weeksAwarded: s.weeksAwarded || [],
+        // preserve per-plan platform scoping across every read-modify-write
+        ...(Array.isArray(s.platforms) && s.platforms.length ? { platforms: s.platforms } : {}),
+      };
+    }
   } catch { /* fall through */ }
   return { slots: [], weeksAwarded: [] };
 }

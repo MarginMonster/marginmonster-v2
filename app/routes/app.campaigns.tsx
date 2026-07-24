@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, Link } from "@remix-run/react";
+import { useLoaderData, useActionData, useNavigation, useSubmit, Link } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { Page } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -33,6 +34,16 @@ function fmtNext(dateStr: string, timeStr: string): string {
   const t = mm === "00" ? `${h12}${ap}` : `${h12}:${mm}${ap}`;
   return `${MON[(m || 1) - 1]} ${d} · ${t}`;
 }
+function fmtTime(timeStr: string): string {
+  const h = parseInt((timeStr || "12:00").slice(0, 2), 10);
+  const mm = (timeStr || "12:00").slice(3, 5);
+  const ap = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return mm === "00" ? `${h12}${ap}` : `${h12}:${mm}${ap}`;
+}
+
+type DropInfo = { qid: string; name: string; slotIdx: number; type: "video" | "image" | "blog"; product: string; time: string; status: string };
+type ActiveCampaign = { id: string; name: string; createdDate: string; durationDays: number };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -42,16 +53,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const linked = shop ? linkedFromCache(shop.socialsJson).filter((p) => p in SHORT) : [];
-  // If nothing linked yet, still show the three platforms so the calendar reads.
   const platforms = linked.length ? linked : ["tiktok", "instagram", "facebook"];
   const platShorts = platforms.map((p) => SHORT[p]);
 
   const now = new Date();
   const year = now.getUTCFullYear();
   const month0 = now.getUTCMonth();
+  const todayDay = now.getUTCFullYear() === year && now.getUTCMonth() === month0 ? now.getUTCDate() : 0;
 
-  // Per-day content-type counts (the day cell shows what kind of content drops).
   const dropMap: Record<number, { video: number; image: number; blog: number }> = {};
+  const dayDrops: Record<number, DropInfo[]> = {};
+  const activeCampaigns: ActiveCampaign[] = [];
   const campaigns: {
     id: string; name: string; image: string | null; status: string;
     made: number; total: number; platforms: ("tt" | "ig" | "fb")[]; next: string | null;
@@ -69,10 +81,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       if (y === year && m - 1 === month0 && (s.type === "video" || s.type === "image" || s.type === "blog")) {
         const cell = (dropMap[d] = dropMap[d] || { video: 0, image: 0, blog: 0 });
         cell[s.type]++;
+        (dayDrops[d] = dayDrops[d] || []).push({ qid: q.id, name: q.name, slotIdx: s.idx, type: s.type, product: s.productTitle || "", time: s.time, status: s.status });
       }
       if ((s.status === "SCHEDULED" || s.status === "READY" || s.status === "FORGING") && s.date >= todayStr) {
         if (!next || s.date < next.date || (s.date === next.date && s.time < next.time)) next = { date: s.date, time: s.time };
       }
+    }
+    if (q.status !== "PAUSED") {
+      activeCampaigns.push({ id: q.id, name: q.name, createdDate: q.createdAt.toISOString().slice(0, 10), durationDays: q.durationDays || 30 });
     }
     campaigns.push({
       id: q.id, name: q.name, image: q.productImageUrl, status: q.status,
@@ -89,7 +105,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     platforms: platShorts,
     weeks: monthGrid(year, month0),
     monthLabel: `${MONTHS[month0]} ${year}`.toUpperCase(),
+    year, month0, todayDay,
     dropMap,
+    dayDrops,
+    activeCampaigns,
     total,
     campaigns,
   });
@@ -146,6 +165,9 @@ const IG = () => <svg viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWid
 const FB = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02V7.9c0-.9.26-1.5 1.56-1.5h1.66V3.62c-.29-.04-1.27-.12-2.42-.12-2.4 0-4.04 1.46-4.04 4.15V9.9H8.1v3.1h2.44V21h3.26z" fill="#1877F2" /></svg>;
 const GLYPH = { tt: TT, ig: IG, fb: FB } as const;
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+const TYPE_LABEL: Record<string, string> = { video: "Video", image: "Image", blog: "Blog" };
+const STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready", POSTED: "Posted", FAILED: "Retry needed" };
+const TYPE_COST: Record<string, number> = { video: 60, image: 5, blog: 10 };
 
 function typeLines(day: { video: number; image: number; blog: number }): string[] {
   const out: string[] = [];
@@ -154,13 +176,45 @@ function typeLines(day: { video: number; image: number; blog: number }): string[
   if (day.blog) out.push(`${day.blog > 1 ? day.blog + " " : ""}Blog`);
   return out;
 }
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function Campaigns() {
-  const { hasPlan, platforms, weeks, monthLabel, dropMap, total, campaigns } = useLoaderData<typeof loader>();
+  const { platforms, weeks, monthLabel, year, month0, todayDay, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const submit = useSubmit();
+  const nav = useNavigation();
+  const busy = nav.state !== "idle";
+  const [open, setOpen] = useState<number | null>(null); // selected day-of-month
+  const [schedType, setSchedType] = useState<"video" | "image" | "blog">("video");
+  const [schedCid, setSchedCid] = useState<string>(activeCampaigns[0]?.id ?? "");
+  const [schedTopic, setSchedTopic] = useState("");
+
+  // Close the sheet after a successful mutation.
+  useEffect(() => {
+    if (!actionData) return;
+    if ("rescheduled" in actionData || "dropAdded" in actionData) setOpen(null);
+  }, [actionData]);
+
+  const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
+  const drops = open != null ? dayDrops[open] || [] : [];
+  const monthName = MONTHS[month0];
+  const isPast = open != null && todayDay > 0 && open < todayDay;
+
+  const reschedule = (qid: string, slotIdx: number, date: string, time: string) =>
+    submit({ intent: "reschedule", questlineId: qid, slotIdx: String(slotIdx), date, time }, { method: "post" });
+
+  const scheduleDrop = () => {
+    if (open == null || !schedCid) return;
+    const camp = activeCampaigns.find((c) => c.id === schedCid);
+    if (!camp) return;
+    const target = `${year}-${pad(month0 + 1)}-${pad(open)}`;
+    const dayDiff = Math.round((Date.parse(`${target}T00:00:00Z`) - Date.parse(`${camp.createdDate}T00:00:00Z`)) / 86400000);
+    const campaignDay = dayDiff + 1;
+    submit({ intent: "addDrop", questlineId: schedCid, day: String(campaignDay), dropType: schedType, dropTopic: schedTopic.trim() }, { method: "post" });
+  };
 
   return (
     <Page>
-      {/* obsidian texture filter (renders as a background layer) */}
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
         <defs>
           <filter id="mm-obs">
@@ -174,7 +228,7 @@ export default function Campaigns() {
       <div className="dcal">
         <span className="dc-ey">Automated Marketing</span>
         <h1 className="dc-h1">Your drop calendar</h1>
-        <p className="dc-sub">Cut from obsidian, lit in gold — every post, every platform.</p>
+        <p className="dc-sub">Cut from obsidian, lit in gold — tap any day to see or schedule drops.</p>
 
         <Link className="dc-new" to="/app/campaigns/new">＋ New campaign</Link>
 
@@ -189,15 +243,26 @@ export default function Campaigns() {
                 if (d === 0) return <div className="dc-dy empty" key={i} />;
                 const day = dropMap[d];
                 const isDrop = !!day && (day.video + day.image + day.blog > 0);
+                const past = todayDay > 0 && d < todayDay;
+                const canSchedule = !past && activeCampaigns.length > 0;
+                const clickable = isDrop || canSchedule;
                 return (
-                  <div className={`dc-dy${isDrop ? " drop" : ""}`} key={i}>
+                  <button
+                    type="button"
+                    className={`dc-dy${isDrop ? " drop" : ""}${past ? " past" : ""}${clickable ? " tap" : ""}${d === todayDay ? " today" : ""}`}
+                    key={i}
+                    disabled={!clickable}
+                    onClick={() => clickable && setOpen(d)}
+                  >
                     <span className="dc-dn">{d}</span>
-                    {isDrop && (
+                    {isDrop ? (
                       <div className="dc-types">
                         {typeLines(day).map((t, j) => <span className="dc-t" key={j}>{t}</span>)}
                       </div>
-                    )}
-                  </div>
+                    ) : canSchedule ? (
+                      <span className="dc-plus">＋</span>
+                    ) : null}
+                  </button>
                 );
               })}
             </div>
@@ -238,6 +303,82 @@ export default function Campaigns() {
           </div>
         )}
       </div>
+
+      {/* ── day sheet ─────────────────────────────────────────────────────── */}
+      {open != null && (
+        <div className="dc-scrim" onClick={() => setOpen(null)}>
+          <div className="dc-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="dc-shbar" />
+            <div className="dc-shhd">
+              <div><span className="dc-shd">{monthName} {open}</span><span className="dc-shc">{drops.length ? `${drops.length} drop${drops.length > 1 ? "s" : ""}` : "Open day"}</span></div>
+              <button type="button" className="dc-shx" onClick={() => setOpen(null)}>✕</button>
+            </div>
+
+            {err && <div className="dc-sherr">{err}</div>}
+
+            {drops.length > 0 && (
+              <div className="dc-shlist">
+                {drops.map((dp) => (
+                  <DropRow key={`${dp.qid}-${dp.slotIdx}`} dp={dp} day={open} year={year} month0={month0} busy={busy} onMove={reschedule} />
+                ))}
+              </div>
+            )}
+
+            {!isPast && activeCampaigns.length > 0 && (
+              <div className="dc-shadd">
+                <div className="dc-shsub">{drops.length ? "Add another drop this day" : "Schedule a drop"}</div>
+                <div className="dc-fld">
+                  <label>Campaign</label>
+                  <select value={schedCid} onChange={(e) => setSchedCid(e.target.value)}>
+                    {activeCampaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="dc-fld">
+                  <label>Content</label>
+                  <div className="dc-seg">
+                    {(["video", "image", "blog"] as const).map((t) => (
+                      <button type="button" key={t} className={schedType === t ? "sel" : ""} onClick={() => setSchedType(t)}>{TYPE_LABEL[t]} <span>· {TYPE_COST[t]}</span></button>
+                    ))}
+                  </div>
+                </div>
+                <div className="dc-fld">
+                  <label>Direction <span className="opt">optional</span></label>
+                  <input type="text" value={schedTopic} maxLength={160} placeholder="e.g. Unboxing reveal, summer sale…" onChange={(e) => setSchedTopic(e.target.value)} />
+                </div>
+                <button type="button" className="dc-shcta" disabled={busy || !schedCid} onClick={scheduleDrop}>
+                  {busy ? "Scheduling…" : `Schedule ${TYPE_LABEL[schedType]} — ${TYPE_COST[schedType]} tokens`}
+                </button>
+              </div>
+            )}
+
+            {isPast && drops.length === 0 && <p className="dc-shpast">This day has already passed.</p>}
+          </div>
+        </div>
+      )}
     </Page>
+  );
+}
+
+function DropRow({ dp, day, year, month0, busy, onMove }: { dp: DropInfo; day: number; year: number; month0: number; busy: boolean; onMove: (qid: string, slotIdx: number, date: string, time: string) => void }) {
+  const [moving, setMoving] = useState(false);
+  const [date, setDate] = useState(`${year}-${pad(month0 + 1)}-${pad(day)}`);
+  const [time, setTime] = useState(dp.time || "12:00");
+  const canMove = dp.status === "SCHEDULED" || dp.status === "FAILED";
+  return (
+    <div className="dc-drow">
+      <span className={`dc-dtag ${dp.type}`}>{TYPE_LABEL[dp.type]}</span>
+      <div className="dc-dinfo">
+        <b>{dp.product || dp.name}</b>
+        <span>{dp.name} · {fmtTime(dp.time)} · {STATUS_LABEL[dp.status] || dp.status}</span>
+      </div>
+      {canMove && !moving && <button type="button" className="dc-dmove" onClick={() => setMoving(true)}>Move</button>}
+      {canMove && moving && (
+        <div className="dc-dmv">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          <button type="button" disabled={busy} onClick={() => onMove(dp.qid, dp.slotIdx, date, time)}>{busy ? "…" : "Save"}</button>
+        </div>
+      )}
+    </div>
   );
 }

@@ -8,65 +8,99 @@ import { db } from "../db.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline } from "../lib/questlines.server";
-import { TOKEN_COST } from "../lib/plan-config";
+import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
+import { AVATARS, avatarImg } from "../lib/avatars";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
 
-// cadence → per-account content pack (matches SOCIAL_PLAN_DEFS in questlines.ts)
-const CADENCE = {
-  light: { key: "SOCIAL_LIGHT", name: "Light", video: 2, image: 4, freq: "~2 drops / week", why: "A steady drip that keeps you on the feed without overposting." },
-  standard: { key: "SOCIAL_STANDARD", name: "Standard", video: 4, image: 8, freq: "~3 drops / week", why: "Post ~3× a week, every week. Brands this consistent get seen up to 4× more — it keeps the algorithm on your side." },
-  heavy: { key: "SOCIAL_HEAVY", name: "Heavy", video: 8, image: 12, freq: "daily drops", why: "All-in. A drop nearly every day for maximum reach and momentum." },
-} as const;
-type CadKey = keyof typeof CADENCE;
-const perAccount = (c: { video: number; image: number }) => c.video * TOKEN_COST.video + c.image * TOKEN_COST.image;
+/* Plan archetypes — the three strategies, keyed to SOCIAL_PLAN_DEFS. Each
+ * carries its own motivation + badge; the mix + cost come from the def so the
+ * token math is the single source of truth. */
+const ARCH_META: Record<string, { badge: string; freq: string; motivation: string }> = {
+  SOCIAL_STEADY: { badge: "Balanced", freq: "~3 drops / week, every week", motivation: "Brands that stay consistent get seen up to 4× more. This is the drumbeat that turns followers into repeat buyers." },
+  SOCIAL_VIRAL: { badge: "Video-heavy", freq: "a video nearly every day", motivation: "Short-form video is the single highest-reach format on every platform. Load the cannon and let one hit pay for the month." },
+  SOCIAL_FOUND: { badge: "SEO", freq: "~2 blogs / week + supporting ads", motivation: "Every blog is a storefront that ranks on Google and keeps pulling free traffic for months. The cheapest customers you'll ever get." },
+};
+const ARCH_ORDER = ["SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_FOUND"];
+
+function archetypes() {
+  return ARCH_ORDER.map((key) => {
+    const def = SOCIAL_PLAN_DEFS.find((d) => d.key === key)!;
+    const mix = { video: 0, image: 0, blog: 0 };
+    for (const o of def.objectives) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
+    return { key, name: def.name, icon: def.icon, ...ARCH_META[key], mix, cost: questlineTokenCost(def) };
+  });
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  const plan = shop ? await db.plan.findUnique({ where: { shopId: shop.id } }) : null;
   const linked = shop ? linkedFromCache(shop.socialsJson).filter((p) => p in PLAT_LABEL) : [];
+
+  // Real product catalog → the plan's showcase bag (a different one each drop).
+  let products: { title: string; image: string | null; url: string | null }[] = [];
+  try {
+    const res = await admin.graphql(`{ products(first: 12, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl featuredImage { url } } } } }`);
+    const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; handle?: string; onlineStoreUrl?: string; featuredImage?: { url?: string } } }[] } } };
+    products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
+  } catch { /* fall through */ }
+
+  // Presenter cast — the premium-voiced leads first (already ordered in AVATARS).
+  const cast = AVATARS.slice(0, 10).map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
+
   return json({
-    hasPlan: !!(shop && (await db.plan.findUnique({ where: { shopId: shop.id } }))?.active),
-    tokens: shop ? tokensRemaining(await db.plan.findUnique({ where: { shopId: shop.id } }) ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }) : 0,
+    hasPlan: !!plan?.active,
+    tokens: tokensRemaining(plan ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }),
     linked,
-    costs: Object.fromEntries(Object.entries(CADENCE).map(([k, v]) => [k, perAccount(v)])) as Record<CadKey, number>,
+    products,
+    cast,
+    defaultAvatar: shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : cast[0]?.id ?? null,
+    archetypes: archetypes(),
   });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const form = await request.formData();
-  const cadKey = (form.get("cadence") as CadKey) || "standard";
-  const accounts = Math.max(1, Math.min(3, parseInt((form.get("accounts") as string) || "1", 10)));
-  const cad = CADENCE[cadKey];
-  if (!cad) return json({ error: "Unknown plan." });
+  const archKey = (form.get("archetype") as string) || "SOCIAL_STEADY";
+  const def = SOCIAL_PLAN_DEFS.find((d) => d.key === archKey);
+  if (!def) return json({ error: "Unknown plan." });
+
+  const avatarId = (form.get("avatarId") as string) || null;
+  let platforms: string[] = [];
+  let picked: { title: string; image: string | null; url: string | null }[] = [];
+  try { platforms = JSON.parse((form.get("platforms") as string) || "[]"); } catch { /* ignore */ }
+  try { picked = JSON.parse((form.get("products") as string) || "[]"); } catch { /* ignore */ }
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true } });
   if (!shop) return json({ error: "Shop not found." });
   if (!shop.activePlan?.active) return json({ error: "Choose a subscription plan first, then activate a Social Media Plan." });
 
   const linked = linkedFromCache(shop.socialsJson).filter((p) => p in PLAT_LABEL);
-  if (linked.length < accounts) return json({ error: `Connect ${accounts} account${accounts > 1 ? "s" : ""} first — you have ${linked.length}.` });
+  platforms = platforms.filter((p) => linked.includes(p));
+  if (platforms.length === 0) return json({ error: "Pick at least one connected account for this plan to post to." });
 
-  // Auto-use the store's catalog as the plan's product bag.
-  let bag: { title: string; image: string | null; url: string | null }[] = [];
-  try {
-    const res = await admin.graphql(`{ products(first: 12, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl featuredImage { url } } } } }`);
-    const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; handle?: string; onlineStoreUrl?: string; featuredImage?: { url?: string } } }[] } } };
-    bag = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
-  } catch { /* fall through */ }
+  // Fall back to the freshest catalog products if the merchant didn't hand-pick.
+  let bag = picked.filter((p) => p.title?.trim());
+  if (bag.length === 0) {
+    try {
+      const res = await admin.graphql(`{ products(first: 8, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl featuredImage { url } } } } }`);
+      const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; handle?: string; onlineStoreUrl?: string; featuredImage?: { url?: string } } }[] } } };
+      bag = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
+    } catch { /* fall through */ }
+  }
   if (bag.length === 0) return json({ error: "Add at least one product to your store — plans make content about your products." });
 
-  // One platform-native plan per account (each posts only to its own account).
-  const targets = linked.slice(0, accounts);
+  // One platform-native plan per selected account (each posts only to its own).
   const created: string[] = [];
-  for (const platform of targets) {
+  for (const platform of platforms) {
     const r = await acceptQuestline({
       shopId: shop.id,
-      templateKey: cad.key,
-      avatarId: shop.brandAvatarId,
-      avatarVariant: shop.brandAvatarVariant ?? 0,
+      templateKey: def.key,
+      avatarId: avatarId ?? shop.brandAvatarId,
+      avatarVariant: avatarId && avatarId === shop.brandAvatarId ? (shop.brandAvatarVariant ?? 0) : 0,
       reviewMode: "REVIEW_FIRST",
       bag,
       platforms: [platform],
@@ -86,24 +120,38 @@ const FB = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02
 const GLYPH = { tt: TT, ig: IG, fb: FB } as const;
 
 export default function NewPlan() {
-  const { hasPlan, tokens, linked, costs } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, linked, products, cast, defaultAvatar, archetypes: archs } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const error = actionData && "error" in actionData ? actionData.error : null;
   const submit = useSubmit();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const [cadKey, setCadKey] = useState<CadKey>("standard");
-  const cad = CADENCE[cadKey];
-  const per = costs[cadKey];
-  const primary = linked[0];
-  const activate = (accounts: number) => submit({ cadence: cadKey, accounts: String(accounts) }, { method: "post" });
+
+  const [archKey, setArchKey] = useState(archs[0]?.key ?? "SOCIAL_STEADY");
+  const arch = archs.find((a) => a.key === archKey) ?? archs[0];
+  const [avatarId, setAvatarId] = useState<string | null>(defaultAvatar);
+  const [picked, setPicked] = useState<number[]>(products.length ? products.slice(0, Math.min(4, products.length)).map((_, i) => i) : []);
+  const [plats, setPlats] = useState<string[]>(linked.slice(0, Math.min(2, linked.length)));
+
+  const per = arch?.cost ?? 0;
+  const total = per * Math.max(1, plats.length);
+  const toggleProduct = (i: number) => setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
+  const togglePlat = (p: string) => setPlats((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
+
+  const activate = () => {
+    if (!plats.length) return;
+    submit(
+      { intent: "activate", archetype: archKey, avatarId: avatarId ?? "", platforms: JSON.stringify(plats), products: JSON.stringify(picked.map((i) => products[i]).filter(Boolean)) },
+      { method: "post" }
+    );
+  };
 
   return (
     <Page>
       <div className="smp">
         <span className="smp-ey">Automated Marketing</span>
         <h1 className="smp-h1">Social Media Plans</h1>
-        <p className="smp-sub">Pick a cadence. Each plan posts to one account — grow it to more anytime.</p>
+        <p className="smp-sub">Pick a strategy, cast your presenter, load your products — then run as many as you like, side by side.</p>
 
         {error && <div style={{ marginBottom: 14 }}><Banner tone="warning" title="Couldn't start the plan"><p>{error}</p></Banner></div>}
 
@@ -115,44 +163,81 @@ export default function NewPlan() {
           </div>
         ) : (
           <>
-            <div className="smp-lbl">Cadence</div>
-            <div className="smp-cads">
-              {(Object.keys(CADENCE) as CadKey[]).map((k) => {
-                const c = CADENCE[k];
-                return (
-                  <button type="button" className={`smp-cad${k === cadKey ? " sel" : ""}`} key={k} onClick={() => setCadKey(k)}>
-                    <span className="cn">{c.name}</span>
-                    <span className="cm">{c.video} Vid · {c.image} Img</span>
-                    <span className="cp">{costs[k]}<span>/acct</span></span>
+            {/* 1 — strategy */}
+            <div className="smp-step">1 · Choose your strategy</div>
+            <div className="smp-arch">
+              {archs.map((a) => (
+                <button type="button" key={a.key} className={`smp-ac${a.key === archKey ? " sel" : ""}`} onClick={() => setArchKey(a.key)}>
+                  <div className="ac-top">
+                    <span className="ac-badge">{a.badge}</span>
+                    <span className="ac-cost">{a.cost}<span>/acct</span></span>
+                  </div>
+                  <div className="ac-name">{a.icon} {a.name}</div>
+                  <div className="ac-mix">
+                    {a.mix.video ? <span>{a.mix.video} Video</span> : null}
+                    {a.mix.image ? <span>{a.mix.image} Image</span> : null}
+                    {a.mix.blog ? <span>{a.mix.blog} Blog</span> : null}
+                  </div>
+                  <p className="ac-why">{a.motivation}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* 2 — configure */}
+            <div className="smp-step">2 · Make it yours</div>
+            <div className="smp-cfg">
+              <div className="cfg-lbl">Presenter — who stars all month</div>
+              <div className="cfg-cast">
+                {cast.map((c) => (
+                  <button type="button" key={c.id} className={`cast${c.id === avatarId ? " sel" : ""}`} onClick={() => setAvatarId(c.id)}>
+                    <span className="ca-img" style={{ backgroundImage: `url(${c.img})` }}>{c.id === avatarId && <span className="ca-chk">✓</span>}</span>
+                    <span className="ca-nm">{c.name}</span>
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
 
-            <div className="smp-plan">
-              <div className="pt">{cad.name} plan</div>
-              <p className="pwhy">{cad.why}</p>
-              <div className="prow"><span className="pk">Posts</span><span className="pv">{cad.video} videos + {cad.image} images a month, native to the app</span></div>
-              <div className="prow"><span className="pk">Frequency</span><span className="pv">{cad.freq}, auto-scheduled</span></div>
-              <div className="prow"><span className="pk">Posts to</span><span className="pv"><span className="acct"><span className="lg">{(() => { const G = GLYPH[SHORT[primary]]; return <G />; })()}</span>{PLAT_LABEL[primary]}</span> — your primary account</span></div>
-            </div>
-
-            <div className="smp-tok"><div className="tt">Token cost · 1 account</div><div className="tb"><b>{per}</b><span>tokens / month</span></div></div>
-
-            <div className="smp-acts">
-              <button type="button" className="smp-cta go" disabled={busy} onClick={() => activate(1)}>{busy ? "Starting…" : `Activate — ${per} tokens / mo`}</button>
-              {linked.length >= 2 ? (
-                <button type="button" className="smp-cta up" disabled={busy} onClick={() => activate(2)}>＋ Post to 2 accounts <span className="plus">&nbsp;·&nbsp; +{per} tokens</span></button>
-              ) : (
-                <Link className="smp-cta up" to="/app/connect">＋ Connect a 2nd account</Link>
+              {products.length > 0 && (
+                <>
+                  <div className="cfg-lbl">Feature products — rotated at random</div>
+                  <div className="cfg-prods">
+                    {products.map((p, i) => (
+                      <button type="button" key={i} className={`prod${picked.includes(i) ? " sel" : ""}`} onClick={() => toggleProduct(i)} title={p.title}>
+                        <span className="pr-img" style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}>{picked.includes(i) && <span className="pr-chk">✓</span>}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="cfg-note">{picked.length ? `${picked.length} selected` : "All products"} — EasyMode showcases a different one each drop, no two the same.</p>
+                </>
               )}
-              {linked.length >= 3 ? (
-                <button type="button" className="smp-cta viral" disabled={busy} onClick={() => activate(3)}><span className="vwrap">🔥 GO VIRAL — all 3 accounts &nbsp;·&nbsp; +{per * 2}</span></button>
-              ) : (
-                <Link className="smp-cta viral" to="/app/connect"><span className="vwrap">🔥 GO VIRAL — connect all 3 accounts</span></Link>
-              )}
+
+              <div className="cfg-lbl">Post to — this plan only</div>
+              <div className="cfg-plats">
+                {linked.map((p) => {
+                  const G = GLYPH[SHORT[p]];
+                  const on = plats.includes(p);
+                  return (
+                    <button type="button" key={p} className={`plat${on ? " on" : ""}`} onClick={() => togglePlat(p)}>
+                      <span className="pl-lg"><G /></span>
+                      <span className="pl-nm">{PLAT_LABEL[p]}</span>
+                      <span className={`pl-sw${on ? " on" : ""}`}><span /></span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="smp-tok">
+                <div className="tt">Total · {plats.length || 1} account{plats.length === 1 ? "" : "s"}</div>
+                <div className="tb"><b>{total.toLocaleString()}</b><span>tokens / month</span></div>
+                {plats.length > 1 && <div className="tk-sub">{per.toLocaleString()} × {plats.length} plans, each native to its platform</div>}
+              </div>
+
+              <button type="button" className="smp-cta go" disabled={busy || !plats.length} onClick={activate}>
+                {busy ? "Starting…" : plats.length ? `Activate this plan — ${total.toLocaleString()} tokens / mo` : "Pick an account above"}
+              </button>
+              <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to activate."}</p>
             </div>
-            <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to activate."}</p>
+
+            <p className="smp-multi">💡 Run several at once — a <b>Go Viral</b> plan on TikTok and a <b>Get Found</b> blog plan can run side by side, each with its own presenter and products.</p>
           </>
         )}
       </div>
