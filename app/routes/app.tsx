@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation, useRouteError } from "@remix-run/react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
@@ -184,20 +184,6 @@ export default function App() {
   };
   // level-help popover: what leveling YOUR STORE earns you
   const [lvlInfo, setLvlInfo] = useState(false);
-  // Ambient background video. React doesn't reliably reflect the `muted` prop to
-  // the DOM *property*, and mobile webviews (incl. the Shopify mobile app) block
-  // autoplay unless the element is muted at the property level + played inline.
-  // Force it here so the living island animates on phones, not just desktop.
-  const bgRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const v = bgRef.current;
-    if (!v) return;
-    v.muted = true;
-    v.defaultMuted = true;
-    const p = v.play();
-    if (p && typeof p.catch === "function") p.catch(() => {/* autoplay blocked → poster/still fallback shows */});
-  }, [pageKey]);
-
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <style dangerouslySetInnerHTML={{ __html: brandStyles }} />
@@ -294,20 +280,6 @@ export default function App() {
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
-      {/* the living island — per-page ambient loop; poster/body bg carry when the clip is absent */}
-      <video
-        key={pageKey}
-        ref={bgRef}
-        className="em-bgvid"
-        src={`/bg/${pageKey}.mp4?v=2`}
-        poster={`/bg/${pageKey}.jpg`}
-        muted
-        autoPlay
-        loop
-        playsInline
-        preload="auto"
-        aria-hidden="true"
-      />
       <Outlet />
     </AppProvider>
   );
