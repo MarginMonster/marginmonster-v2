@@ -220,13 +220,14 @@ export default function App() {
               >?</button>
               {lvlInfo && (
                 <div className="mm-lvlinfo" role="dialog" aria-label="Store level rewards">
+                  <button type="button" className="mm-lvlinfo-x" aria-label="Close" onClick={() => setLvlInfo(false)}>✕</button>
                   <b>🏪 YOUR STORE IS LEVELING UP</b>
                   <p>Everything EasyMode does for your shop — takes, stills, campaigns, even tokens spent — earns XP. Levels pay you back in free tokens, automatically:</p>
                   <ul>
                     <li><i>Every level</i><em>+5 🪙</em></li>
                     <li><i>Every 5th level</i><em>+15 🪙</em></li>
                     <li><i>Levels 10 · 20 · 25 · 30</i><em>+60 🪙 — a free video</em></li>
-                    <li><i>Level 40</i><em>+100 🪙 · 🌋 Island Legend</em></li>
+                    <li><i>Level 40</i><em>+100 🪙 · 🏅 Marketer</em></li>
                     <li><i>Level 50</i><em>+150 🪙 · 👑 Crowned</em></li>
                     <li><i>Levels 75 · 99</i><em>+250 · +500 🪙</em></li>
                   </ul>

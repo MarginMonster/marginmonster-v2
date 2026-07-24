@@ -388,8 +388,8 @@ export default function Archive() {
                   const thumb = s.video || s.image;
                   return (
                     <div className="ar-sched" key={`${s.qid}-${s.slotIdx}`}>
-                      <div className="ar-sthumb" style={s.image ? { backgroundImage: `url(${s.image})` } : undefined}>
-                        {s.video && <video className="ar-svid" src={s.video} muted playsInline preload="metadata" />}
+                      <div className={`ar-sthumb${s.video ? " isvid" : ""}`} style={s.image ? { backgroundImage: `url(${s.image})` } : undefined}>
+                        {s.video && <video className="ar-svid" src={`${s.video}#t=0.1`} muted playsInline preload="metadata" />}
                         {!thumb && <span className={`dc-dtag ${s.type}`}>{TYPE_LABEL[s.type]}</span>}
                       </div>
                       <div className="ar-sbody">
@@ -453,8 +453,9 @@ export default function Archive() {
                 ) : (
                   <div className="ar-tile" key={c.id}>
                     <button type="button" className="ar-thumb" onClick={() => setViewer({ ...c, kind: tab })}>
-                      <div className="ar-timg" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined}>
-                        {c.video && <video className="ar-svid" src={c.video} muted playsInline preload="metadata" />}
+                      <div className={`ar-timg${c.video ? " isvid" : ""}`} style={c.image ? { backgroundImage: `url(${c.image})` } : undefined}>
+                        {c.video && <video className="ar-svid" src={`${c.video}#t=0.1`} muted playsInline preload="metadata" />}
+                        {c.video && <span className="ar-play" aria-hidden>▶</span>}
                         {c.daysLeft != null && <span className={`ar-cd${c.daysLeft <= 3 ? " urgent" : c.daysLeft <= 7 ? " warn" : ""}`} title={`Auto-clears in ${c.daysLeft} day${c.daysLeft === 1 ? "" : "s"} — tap Keep to save it`}>⏳ {c.daysLeft}d</span>}
                       </div>
                     </button>
