@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, useNavigation, useSubmit, Link } from "@remix-run/react";
+import { useLoaderData, useActionData, useNavigation, useSubmit, useSearchParams, Link } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
@@ -260,8 +260,17 @@ export default function Studio() {
   const error = actionData && "error" in actionData ? actionData.error : null;
   const queued = actionData && "queued" in actionData ? actionData.queued : null;
 
-  const [tab, setTab] = useState<Tab>("video");
-  const [picked, setPicked] = useState(0);
+  // Deep-link support: the dashboard "Next move" card links here with ?tab= and
+  // ?product=, so the right format and product are pre-selected on arrival.
+  const [searchParams] = useSearchParams();
+  const initTab = (["video", "image", "blog"] as const).find((t) => t === searchParams.get("tab")) as Tab | undefined;
+  const wantProduct = (searchParams.get("product") || "").toLowerCase();
+  const [tab, setTab] = useState<Tab>(initTab || "video");
+  const [picked, setPicked] = useState(() => {
+    if (!wantProduct) return 0;
+    const i = products.findIndex((p) => p.title.toLowerCase() === wantProduct);
+    return i >= 0 ? i : 0;
+  });
   const [avatarId, setAvatarId] = useState<string | null>(defaultAvatar);
   const [direction, setDirection] = useState(""); // image style / blog topic
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.

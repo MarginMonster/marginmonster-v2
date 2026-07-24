@@ -10,6 +10,8 @@ import { unlockAchievement } from "../lib/xp.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
+import { TOKEN_COST } from "../lib/plan-config";
+import { tokensRemaining } from "../lib/tokens.server";
 
 type BrandResults = {
   tone: string; tagline: string; positioning: string; imageStyle: string;
@@ -35,7 +37,7 @@ function parseBrand(bp: { voiceJson: string; visualJson: string; productJson: st
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
 
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
@@ -85,6 +87,50 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasData: totals.reach + totals.views + totals.followers + totals.likes > 0,
   };
 
+  // ── Next best move ─────────────────────────────────────────────────────
+  // One honest suggestion: the highest-value piece this store is missing, that
+  // the plan features and the wallet can afford. Kills the blank-page moment.
+  let nextMove: { kind: "video" | "image" | "blog"; productTitle: string | null; productImage: string | null; reason: string; cost: number } | null = null;
+  if (shop?.brandProfile && shop.activePlan?.active) {
+    try {
+      const plan = shop.activePlan;
+      const balance = tokensRemaining(plan);
+      const featuresVideo = plan.videoQuota > 0; // plan positions video (Pro/Scale)
+      const featuresImage = plan.imageQuota > 0; // Growth and up
+
+      // What already has content — match on the productTitle we store in metaJson.
+      const withType = async (type: "VIDEO_AD" | "IMAGE_AD") => {
+        const rows = await db.asset.findMany({ where: { shopId: shop.id, type }, select: { metaJson: true }, take: 400 });
+        const s = new Set<string>();
+        for (const r of rows) { try { const t = JSON.parse(r.metaJson || "{}").productTitle; if (t) s.add(String(t).toLowerCase()); } catch { /* skip */ } }
+        return s;
+      };
+
+      // Top products (best-sellers first) with a photo, for a concrete suggestion.
+      let products: { title: string; image: string | null }[] = [];
+      try {
+        const res = await admin.graphql(`{ products(first: 12, sortKey: BEST_SELLING) { edges { node { title featuredImage { url } } } } }`);
+        const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; featuredImage?: { url?: string } } }[] } } };
+        products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null }));
+      } catch { /* no catalog / API hiccup → fall back to a generic move */ }
+
+      const firstMissing = (has: Set<string>) => products.find((p) => !has.has(p.title.toLowerCase())) || null;
+
+      if (featuresVideo && balance >= TOKEN_COST.video) {
+        const p = firstMissing(await withType("VIDEO_AD"));
+        if (p) nextMove = { kind: "video", productTitle: p.title, productImage: p.image, reason: `${p.title} doesn't have a product video yet — video is what stops the scroll.`, cost: TOKEN_COST.video };
+      }
+      if (!nextMove && featuresImage && balance >= TOKEN_COST.image) {
+        const p = firstMissing(await withType("IMAGE_AD"));
+        if (p) nextMove = { kind: "image", productTitle: p.title, productImage: p.image, reason: `${p.title} has no scroll-stopping image ad yet.`, cost: TOKEN_COST.image };
+      }
+      if (!nextMove && balance >= TOKEN_COST.blog) {
+        const p = products[0] || null;
+        nextMove = { kind: "blog", productTitle: p?.title || null, productImage: p?.image || null, reason: p ? `A blog post around ${p.title} pulls in free Google traffic that keeps working.` : "A fresh SEO blog post pulls in free Google traffic that keeps working.", cost: TOKEN_COST.blog };
+      }
+    } catch { /* non-fatal — the card just won't render */ }
+  }
+
   return json({
     shop,
     pendingAssets,
@@ -92,6 +138,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     launch,
     wins,
     referral,
+    nextMove,
     brand: parseBrand(shop?.brandProfile ?? null),
     brandJobError: brandJob?.lastError ?? null,
     paidAds: paidAdsEnabled(),
@@ -166,7 +213,7 @@ function friendlyError(msg: string): string {
 }
 
 export default function Dashboard() {
-  const { shop, pendingAssets, askReview, launch, wins, referral, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, askReview, launch, wins, referral, nextMove, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
   const [refCopied, setRefCopied] = useState(false);
   const copyReferral = () => {
     if (!referral) return;
@@ -338,6 +385,25 @@ export default function Dashboard() {
             </div>
           );
         })()}
+
+        {nextMove && (
+          <Link
+            className="eh-next"
+            to={`/app/studio?tab=${nextMove.kind}${nextMove.productTitle ? `&product=${encodeURIComponent(nextMove.productTitle)}` : ""}`}
+          >
+            <div className="ehn-tag">Your next move</div>
+            <div className="ehn-row">
+              <span className="ehn-thumb" style={nextMove.productImage ? { backgroundImage: `url(${nextMove.productImage})` } : undefined}>
+                <span className="ehn-kind">{nextMove.kind === "video" ? "🎬" : nextMove.kind === "image" ? "🖼" : "✍️"}</span>
+              </span>
+              <div className="ehn-body">
+                <b>Make {nextMove.kind === "video" ? "a product video" : nextMove.kind === "image" ? "an image ad" : "a blog post"}</b>
+                <p>{nextMove.reason}</p>
+              </div>
+            </div>
+            <span className="ehn-cta">Create it — {nextMove.cost} tokens<IChev /></span>
+          </Link>
+        )}
 
         <div className="eh-acts">
           <Link className="eh-btn primary" to={campaignHref}>

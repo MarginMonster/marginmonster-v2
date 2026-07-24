@@ -2737,6 +2737,23 @@ body[data-page="dashboard"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ehw-st b { display:block; font-size:23px; font-weight:800; color:#FBE7A8; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
 .ehw-st span { font-size:11px; color:#9DC4B0; }
 /* Refer-a-store strip */
+/* Next best move — a single, tappable opportunity card (gold = opportunity) */
+.eh-next { display:block; text-decoration:none; color:var(--ink); margin-bottom:18px; position:relative; overflow:hidden;
+  background:linear-gradient(180deg,#FDFBF2,#FBF6E6); border:1px solid rgba(176,133,38,.42); border-radius:18px;
+  padding:16px 18px; box-shadow:0 2px 10px rgba(20,32,26,.05); transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
+.eh-next:hover { transform:translateY(-2px); border-color:var(--gold); box-shadow:0 14px 34px rgba(120,90,20,.14); }
+.ehn-tag { font-size:10.5px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#7E5E13; margin-bottom:11px; }
+.ehn-row { display:flex; gap:13px; align-items:center; }
+.ehn-thumb { position:relative; width:54px; height:54px; flex:none; border-radius:12px; background:#EFE9D6 center/cover no-repeat;
+  box-shadow:inset 0 0 0 1px rgba(176,133,38,.35); display:grid; place-items:center; }
+.ehn-kind { font-size:22px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+.ehn-thumb[style*="url"] .ehn-kind { position:absolute; bottom:-4px; right:-4px; font-size:15px; background:#FBF6E6;
+  border-radius:50%; width:22px; height:22px; display:grid; place-items:center; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+.ehn-body { flex:1; min-width:0; }
+.ehn-body b { display:block; font-size:15.5px; font-weight:800; color:var(--ink); letter-spacing:-.01em; }
+.ehn-body p { margin:3px 0 0; font-size:13px; color:var(--ink2); line-height:1.45; }
+.ehn-cta { display:inline-flex; align-items:center; gap:5px; margin-top:13px; font-size:13.5px; font-weight:800; color:#0A6B3E; }
+.ehn-cta svg { width:15px; height:15px; }
 .eh-refer { margin:20px 0 8px; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:var(--card); border:1px dashed var(--gold); border-radius:14px; padding:14px 16px; }
 .ehr-tx { display:flex; flex-direction:column; min-width:0; }
 .ehr-tx b { font-size:14px; font-weight:800; color:var(--ink); }
