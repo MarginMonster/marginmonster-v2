@@ -59,6 +59,8 @@ interface UgcAdParams {
   composedFrameUrl?: string;
   holdProduct?: boolean;
   wearProduct?: boolean; // apparel → presenter models (wears) the item instead of holding it
+  scene?: string; // merchant's setting/action → shapes the composed opening frame
+  clipMode?: "talking" | "action"; // talking = lip-synced presenter; action = motion clip, no script/lip-sync
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
     // NEVER re-spend on completed stages or abandon a live omni prediction
@@ -307,22 +309,33 @@ async function assemble(opts: {
   const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   // The performance defines the ad when it's lip-synced (never trim/loop the
   // synced clip); the narration defines it only for the silent fallback.
-  const duration = opts.lipSynced ? ffprobeDuration(opts.talkingPath) : ffprobeDuration(opts.audioPath);
+  const talkingDur = ffprobeDuration(opts.talkingPath);
+  const audioDur = ffprobeDuration(opts.audioPath);
+  // If a lip-sync engine truncated the clip shorter than the narration, using
+  // its (short) baked audio cuts the sentence. Detect it, freeze-extend the
+  // last frame to the full narration length, and play the complete TTS audio —
+  // a hair of lip drift at the tail beats a mid-word cut. Un-truncated clips are
+  // untouched (identical to before).
+  const truncated = opts.lipSynced && audioDur > talkingDur + 0.4;
+  const useBakedAudio = opts.lipSynced && !truncated;
+  const duration = useBakedAudio ? talkingDur : audioDur;
 
   const args: string[] = ["-y"];
-  if (!opts.lipSynced) args.push("-stream_loop", "-1"); // loop only the silent clip
+  if (!opts.lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
   args.push("-i", opts.talkingPath);
-  if (!opts.lipSynced) args.push("-i", opts.audioPath); // external narration only for fallback
-  const audioInputIndex = opts.lipSynced ? 0 : 1; // omni: video's own audio; kling: the mp3
+  if (!useBakedAudio) args.push("-i", opts.audioPath); // external narration for fallback + truncated recovery
+  const audioInputIndex = useBakedAudio ? 0 : 1; // omni/heygen: video's own audio; else: the mp3
 
   const filters: string[] = [];
   let vLabel = "[v0]";
-  filters.push(`[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[v0]`);
+  let base = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30`;
+  if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
+  filters.push(`${base}[v0]`);
 
   if (opts.productImagePath) {
     // b-roll product image = the next input. Lip-synced has [0]=video only, so
     // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
-    const brIdx = opts.lipSynced ? 1 : 2;
+    const brIdx = useBakedAudio ? 1 : 2;
     args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
     // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
     // reads as an intentional UGC cut, not a glitch)
@@ -374,6 +387,65 @@ export function resolvePortraitFile(id: string, variant: number): string {
   throw new Error(`[ugc] no portrait on disk for presenter "${id}"`);
 }
 
+/** ACTION CLIP — motion video from a prompt, no talking head. Isolated path. */
+async function generateActionClip(
+  params: UgcAdParams,
+  avatar: { id: string; name: string; desc: string },
+  portraitPublicUrl: string,
+  portraitDataUri: string
+): Promise<string> {
+  // 1) opening still — the presenter in the scene, holding/wearing the product
+  let startImage = portraitDataUri;
+  if (params.productImageUrl && portraitPublicUrl) {
+    try {
+      const { composeHoldingFrames, falImageEnabled } = await import("./fal-image.server");
+      if (falImageEnabled()) {
+        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene);
+        if (frames[0]) {
+          const buf = await downloadBuffer(frames[0]);
+          if (buf.length > 10_000) startImage = "data:image/jpeg;base64," + buf.toString("base64");
+        }
+      }
+    } catch (e) { console.error("[ugc:action] compose failed, using plain portrait:", e instanceof Error ? e.message : e); }
+  }
+
+  // 2) Kling image-to-video — the action itself, driven by the merchant's prompt
+  const motion = [params.scene, params.direction].map((s) => (s || "").trim()).filter(Boolean).join(". ").slice(0, 300)
+    || `${avatar.desc} showing the ${params.productTitle} to camera with natural movement`;
+  const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
+    start_image: startImage,
+    prompt: `${motion}. Photorealistic, natural motion, keep the person and the product consistent and undistorted, vertical video.`,
+    negative_prompt: "distortion, morphing, extra limbs, extra people, warped product, text, watermark, camera glitch",
+    duration: 5,
+    cfg_scale: 0.5,
+  });
+  const clipUrl = await repPoll(klingId, 12 * 60_000, "kling-action");
+
+  // 3) normalize to a 720x1280 vertical mp4
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-act-"));
+  try {
+    const clipPath = path.join(tmp, "clip.mp4");
+    await download(clipUrl, clipPath);
+    const rendersDir = path.join(process.cwd(), "data", "renders");
+    fs.mkdirSync(rendersDir, { recursive: true });
+    const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const outPath = path.join(rendersDir, fileName);
+    const run = await runFfmpeg(["-y", "-i", clipPath, "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30", "-t", "5", "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart", outPath]);
+    if (run.status !== 0 || !fs.existsSync(outPath)) throw new Error(`[ugc:action] ffmpeg failed: ${(run.stderr || "").slice(-300)}`);
+    const asset = await db.asset.create({
+      data: {
+        shopId: params.shopId, type: "VIDEO_AD", status: "PENDING",
+        title: `${avatar.name} — ${params.productTitle} (action)`,
+        bodyJson: JSON.stringify({ style: "ACTION", engine: "kling-action", videoUrl: `/renders/${fileName}`, prompt: motion }),
+        metaJson: JSON.stringify({ style: "ACTION", productTitle: params.productTitle, avatarId: avatar.id, direction: params.direction || null, scene: params.scene || null }),
+      },
+    });
+    return asset.id;
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
 export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const avatar = AVATAR_BY_ID[params.avatarId];
   if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
@@ -389,6 +461,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     ? `${process.env.SHOPIFY_APP_URL.replace(/\/$/, "")}/avatars/${path.basename(portraitFile)}`
     : "";
 
+  // ACTION CLIP — a motion video from the merchant's scene/action prompt, with
+  // NO script, voice, or lip-sync. Composes the presenter-in-scene still, then
+  // Kling image-to-video animates it. Fully isolated from the talking flow.
+  if (params.clipMode === "action") {
+    return await generateActionClip(params, avatar, portraitPublicUrl, portraitDataUri);
+  }
+
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
 
   // 1) SCRIPT — hook-first, ~13s spoken
@@ -401,7 +480,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
     ``,
     `Rules: The FIRST sentence must be a scroll-stopping hook. Use PAS or AIDA.`,
-    `30 to 40 words TOTAL (about 13 seconds spoken). Conversational, first person,`,
+    `26 to 32 words TOTAL (about 12 seconds spoken) — a punchy hook plus ONE clear point. Do NOT exceed 32 words. Conversational, first person,`,
     `like recommending to a friend. End with a short call to action.`,
     `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
@@ -421,7 +500,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       .trim();
     if (!script) throw new Error("[ugc:script] empty script from model");
     const w = script.split(" ");
-    if (w.length > 45) script = w.slice(0, 45).join(" ");
+    if (w.length > 34) script = w.slice(0, 34).join(" "); // 12s budget — hard cap so it never runs past the lip-sync sweet spot
     // give the voice model a clean final stop so it doesn't rush/trail the ending
     if (script && !/[.!?]$/.test(script)) script += ".";
     await ckpt({ ckScript: script });
@@ -496,7 +575,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     if (!composedUrl && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
       try {
         const { composeHoldingFrames } = await import("./fal-image.server");
-        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold");
+        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene);
         composedUrl = frames[0] || "";
         if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
       } catch (e) {

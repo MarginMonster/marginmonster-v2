@@ -32,6 +32,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!shop) return json({ hasPlan: false, tokens: 0, library: { video: [], image: [], blog: [] }, scheduled: [], cost: TOKEN_COST });
 
   const assets = await db.asset.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, take: 80 });
+
+  // Actively-generating jobs → buffering tiles at the top of the matching tab.
+  const jobs = await db.job.findMany({ where: { shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD"] }, status: { in: ["PENDING", "IN_PROGRESS"] } }, select: { type: true, status: true, runAt: true } });
+  const nowMs = Date.now();
+  const isActive = (j: { status: string; runAt: Date | null }) => j.status === "IN_PROGRESS" || !j.runAt || j.runAt.getTime() <= nowMs;
+  const generating = {
+    video: jobs.filter((j) => j.type === "GENERATE_VIDEO_AD" && isActive(j)).length,
+    image: jobs.filter((j) => j.type === "GENERATE_IMAGE_AD" && isActive(j)).length,
+  };
   const parse = (bodyJson: string) => { try { return JSON.parse(bodyJson); } catch { return {}; } };
   const byId = new Map(assets.map((a) => [a.id, a]));
   const toCard = (a: (typeof assets)[number]): Card => {
@@ -62,6 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tokens: shop.activePlan ? tokensRemaining(shop.activePlan) : 0,
     library,
     scheduled,
+    generating,
     cost: TOKEN_COST,
   });
 };
@@ -87,23 +97,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 const TABS = [
-  { key: "scheduled", label: "Scheduled", icon: "🗓" },
   { key: "video", label: "Videos", icon: "🎬" },
   { key: "image", label: "Images", icon: "🖼" },
   { key: "blog", label: "Blogs", icon: "✍️" },
+  { key: "scheduled", label: "Scheduled", icon: "🗓" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 const TYPE_LABEL: Record<string, string> = { video: "Video", image: "Image", blog: "Blog" };
 const STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready to post", FAILED: "Needs retry" };
 
 export default function Archive() {
-  const { hasPlan, tokens, library, scheduled, cost } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, library, scheduled, generating, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
-  const [tab, setTab] = useState<TabKey>("scheduled");
+  const [tab, setTab] = useState<TabKey>("video");
   const [viewer, setViewer] = useState<(Card & { kind: TabKey }) | null>(null);
 
   const early = (qid: string, slotIdx: number) => submit({ intent: "generateEarly", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
@@ -164,7 +174,17 @@ export default function Archive() {
           </>
         ) : (
           <>
-            {lib.length === 0 ? (
+            {(tab === "video" || tab === "image") && generating[tab] > 0 && (
+              <div className="ar-grid ar-gen">
+                {Array.from({ length: generating[tab] }).map((_, i) => (
+                  <div className="ar-tile" key={`gen-${i}`}>
+                    <div className="ar-timg ar-buffer"><span className="ar-spin" /></div>
+                    <span className="ar-tstatus s-forging">Creating…</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {lib.length === 0 && (tab !== "video" && tab !== "image" || generating[tab] === 0) ? (
               <div className="ar-empty"><b>No {TABS.find((t) => t.key === tab)?.label.toLowerCase()} yet</b><p>Make one in the Content Studio and it lands here.</p><Link className="dc-new" to="/app/studio">Open Content Studio</Link></div>
             ) : (
               <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
