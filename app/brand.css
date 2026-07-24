@@ -3566,3 +3566,36 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
   .smp, .dcal, .eh, .er { max-width: 840px; }
   .ar-grid { grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); }
 }
+
+/* ═══════════ HUD in GStyle — money card (retired the arcade neon) ═══════════ */
+.mm-hud { background:linear-gradient(180deg,#FDFCF7,#F4F1E6) !important; border:1px solid #E4DFCF !important;
+  box-shadow:0 12px 30px rgba(20,32,26,.16), inset 0 1px 0 rgba(255,255,255,.6) !important; color:#14201A !important; }
+.mm-hud-head { box-shadow:0 1px 3px rgba(20,32,26,.25), 0 0 0 1px rgba(176,133,38,.35) !important; }
+.mm-hud-name { color:#14201A !important; }
+.mm-hud-lvl { font-family:inherit !important; font-size:10px !important; font-weight:800 !important; letter-spacing:.04em !important;
+  color:#241A02 !important; background:linear-gradient(180deg,#F3D889,#D9AE4A) !important; box-shadow:0 2px 5px rgba(176,133,38,.35) !important; padding:3px 9px !important; }
+.mm-hud-plan { color:#fff !important; background:linear-gradient(165deg,#12A85E,#0B6B3E) !important; box-shadow:0 3px 8px rgba(12,122,70,.3) !important; }
+.mm-hud-plan:hover { filter:brightness(1.06) !important; }
+.mm-hud-help { color:#7E5E13 !important; background:var(--gold-soft,rgba(176,133,38,.14)) !important; border:1px solid rgba(176,133,38,.3) !important; }
+.mm-hud-help:hover { background:rgba(176,133,38,.22) !important; border-color:rgba(176,133,38,.5) !important; }
+.mm-hud-toggle { color:#7C8880 !important; background:rgba(12,122,70,.08) !important; }
+.mm-hud-toggle:hover { background:rgba(12,122,70,.16) !important; }
+.mm-hud-barlabel { color:#7C8880 !important; }
+.mm-hud-barlabel span:last-child { color:#14201A !important; }
+.mm-hud-hp { background:#EBE7D8 !important; border:1px solid rgba(12,122,70,.22) !important; box-shadow:inset 0 1px 2px rgba(20,32,26,.12) !important; }
+.mm-hud-hp > i { background:linear-gradient(90deg,#12A85E,#0B6B3E) !important; box-shadow:0 0 8px rgba(12,122,70,.4) !important; }
+.mm-hud-xp { background:#EBE7D8 !important; border:1px solid rgba(176,133,38,.28) !important; box-shadow:inset 0 1px 2px rgba(20,32,26,.12) !important; }
+.mm-hud-xp > i { background:linear-gradient(90deg,#C98F12,#E7C879) !important; box-shadow:0 0 8px rgba(176,133,38,.4) !important; }
+.mm-hud-stats { color:#4A554E !important; }
+.mm-hud-stat { color:#4A554E !important; }
+.mm-hud-top-up { color:#0A3D26 !important; background:rgba(12,122,70,.09) !important; border-radius:8px !important; }
+.mm-hud-top-up:hover { background:rgba(12,122,70,.16) !important; }
+.mm-hud-plus { background:linear-gradient(165deg,#12A85E,#0B6B3E) !important; color:#fff !important; }
+.mm-coin { background:radial-gradient(120% 120% at 30% 25%,#F3D889,#C98F12) !important; box-shadow:inset 0 0 0 1px rgba(126,94,19,.5) !important; }
+/* level-info popover in GStyle */
+.mm-lvlinfo { background:#FDFCF7 !important; border:1px solid #E4DFCF !important; color:#14201A !important; box-shadow:0 22px 50px rgba(20,32,26,.22) !important; }
+.mm-lvlinfo b { color:#0A3D26 !important; }
+.mm-lvlinfo p { color:#4A554E !important; }
+.mm-lvlinfo p.foot { color:#8A8578 !important; }
+.mm-lvlinfo em { color:#0C7A46 !important; }
+.mm-lvlinfo i { color:#14201A !important; }

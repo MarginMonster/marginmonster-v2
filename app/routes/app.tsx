@@ -230,7 +230,7 @@ export default function App() {
                     <li><i>Level 50</i><em>+150 🪙 · 👑 Crowned</em></li>
                     <li><i>Levels 75 · 99</i><em>+250 · +500 🪙</em></li>
                   </ul>
-                  <p className="foot">Achievements drop bonus tokens on top. Keep the island working — the wallet grows itself.</p>
+                  <p className="foot">Achievements drop bonus tokens on top. Keep creating — your wallet grows itself.</p>
                 </div>
               )}
               <Link to="/app/plans" className="mm-hud-plan" title="Change plan">{hud.planLabel}</Link>
@@ -276,7 +276,7 @@ export default function App() {
           <Link to="/app/connect">{features.paidAds ? "Ad Accounts" : "Auto-Posting"}</Link>
         )}
         {features.paidAds && <Link to="/app/performance">Performance & ROI</Link>}
-        <Link to="/app/plans">Packages & Companions</Link>
+        <Link to="/app/plans">Plans</Link>
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}
       <div className={`mm-hud-spacer${hudMin ? " slim" : ""}`} aria-hidden="true" />
