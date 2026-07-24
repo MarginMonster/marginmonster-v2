@@ -3101,9 +3101,18 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .smp-ac .ac-price b { font-size:15px; font-weight:800; color:#14160F; } .smp-ac .ac-price span { color:#8C8F82; font-weight:700; }
 .smp-ac .ac-price .coin { width:15px; height:15px; border-radius:50%; flex:none; background:radial-gradient(circle at 35% 30%,#FBE7A8,#C99A2E 60%,#9C7318); box-shadow:inset 0 0 0 1px rgba(126,94,19,.5), 0 1px 2px rgba(0,0,0,.2); }
 
-/* engraved money treatment — guilloché medallion + ribbon, matching the home cards */
-.smp-tok { background:var(--mm-medallion) no-repeat right -40px center / 190px 190px, var(--mm-ribbon) no-repeat center / 100% 100%, linear-gradient(160deg,#0E5233,#0A3421 55%,#072617); box-shadow:0 16px 40px rgba(8,42,26,.3), inset 0 0 0 1px rgba(231,200,121,.28), inset 0 1px 0 rgba(255,255,255,.06); position:relative; overflow:hidden; }
-.smp-cta.go { background:var(--mm-medallion) no-repeat right -26px center / 132px 132px, var(--mm-ribbon) no-repeat center / 100% 100%, linear-gradient(165deg,#0F9152,#0B6B3E); box-shadow:0 14px 32px rgba(12,122,70,.32), inset 0 1px 0 rgba(255,255,255,.14); position:relative; overflow:hidden; }
+/* engraved money treatment — guilloché medallion + ribbon, matching the home
+   cards. The medallion lives in a ::after layer so it can slowly rotate (alive),
+   and speeds up on hover. */
+.smp-tok { background:var(--mm-ribbon) no-repeat center / 100% 100%, linear-gradient(160deg,#0E5233,#0A3421 55%,#072617); box-shadow:0 16px 40px rgba(8,42,26,.3), inset 0 0 0 1px rgba(231,200,121,.28), inset 0 1px 0 rgba(255,255,255,.06); position:relative; overflow:hidden; isolation:isolate; }
+.smp-tok::after { content:""; position:absolute; z-index:-1; top:50%; right:-42px; width:196px; height:196px; margin-top:-98px; background:var(--mm-medallion) center / contain no-repeat; opacity:.92; animation:mm-medallion-cw 96s linear infinite; pointer-events:none; }
+.smp-tok:hover::after { animation-duration:26s; }
+.smp-cta.go { background:var(--mm-ribbon) no-repeat center / 100% 100%, linear-gradient(165deg,#0F9152,#0B6B3E); box-shadow:0 14px 32px rgba(12,122,70,.32), inset 0 1px 0 rgba(255,255,255,.14); position:relative; overflow:hidden; isolation:isolate; }
+.smp-cta.go::after { content:""; position:absolute; z-index:-1; top:50%; right:-28px; width:136px; height:136px; margin-top:-68px; background:var(--mm-medallion) center / contain no-repeat; opacity:.9; animation:mm-medallion-ccw 72s linear infinite; pointer-events:none; }
+.smp-cta.go:hover::after { animation-duration:9s; }
+@keyframes mm-medallion-cw { to { transform:rotate(360deg); } }
+@keyframes mm-medallion-ccw { to { transform:rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) { .smp-tok::after, .smp-cta.go::after { animation:none; } }
 
 /* connect-account nudge (link variant of the add-on row) */
 .addon.connect { text-decoration:none; border-color:#CBB67A; background:linear-gradient(180deg,#FEFCF4,#FBF6E6); }
