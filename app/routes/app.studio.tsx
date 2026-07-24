@@ -33,6 +33,12 @@ const STYLES: { label: string; prompt: string }[] = [
 ];
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
+const stripHtml = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const decodeEntities = (s: string) => s
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&nbsp;/g, " ")
+  .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true, brandProfile: true } });
@@ -78,6 +84,55 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const id = ((form.get("avatarId") as string) || "").trim() || null;
     await db.shop.update({ where: { id: shop.id }, data: { brandAvatarId: id, brandAvatarVariant: 0 } });
     return json({ brandFaceSet: true });
+  }
+
+  // Import a product by URL — the standalone (non-Shopify) path. Scrapes the
+  // page for a title + image so any storefront's product can be featured.
+  if (intent === "importUrl") {
+    const raw = ((form.get("url") as string) || "").trim();
+    try {
+      const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+      if (!/^https?:$/.test(u.protocol)) throw new Error("bad protocol");
+      const host = u.hostname.toLowerCase();
+      if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+        return json({ importError: "That URL isn't allowed." });
+      }
+      const ua = { "user-agent": "Mozilla/5.0 (compatible; EasyMode product import)", accept: "text/html,application/json" };
+      // Shopify storefront shortcut
+      if (/\/products\/[^/?#]+\/?$/.test(u.pathname)) {
+        try {
+          const jres = await fetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: ua });
+          if (jres.ok) {
+            const pj = (await jres.json()) as { title?: string; featured_image?: string };
+            if (pj?.title) {
+              const img = pj.featured_image ? (pj.featured_image.startsWith("//") ? `https:${pj.featured_image}` : pj.featured_image) : null;
+              return json({ imported: { title: pj.title.slice(0, 120), image: img, url: u.href } });
+            }
+          }
+        } catch { /* fall through */ }
+      }
+      const res = await fetch(u.href, { signal: AbortSignal.timeout(9000), headers: ua, redirect: "follow" });
+      if (!res.ok) return json({ importError: `Couldn't reach that page (${res.status}).` });
+      const html = (await res.text()).slice(0, 600_000);
+      let title: string | undefined;
+      let image: string | undefined;
+      const ldBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+      for (const block of ldBlocks) {
+        try {
+          const data = JSON.parse(block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, ""));
+          const nodes: { "@type"?: unknown; name?: string; image?: unknown }[] = Array.isArray(data) ? data : (data as { "@graph"?: [] })?.["@graph"] ? (data as { "@graph": [] })["@graph"] : [data];
+          const prod = nodes.find((n) => { const t = n?.["@type"]; return t === "Product" || (Array.isArray(t) && t.includes("Product")); });
+          if (prod) { title = prod.name; const im = Array.isArray(prod.image) ? prod.image[0] : prod.image; image = typeof im === "object" ? (im as { url?: string })?.url : (im as string); break; }
+        } catch { /* next */ }
+      }
+      const og = (p: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']og:${p}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1] || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:${p}["']`, "i"))?.[1];
+      title = title || og("title") || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+      image = image || og("image");
+      if (!title) return json({ importError: "Couldn't find product info on that page." });
+      return json({ imported: { title: decodeEntities(title.trim()).slice(0, 120), image: image || null, url: u.href } });
+    } catch {
+      return json({ importError: "Couldn't import from that URL — check the link and try again." });
+    }
   }
 
   if (!shop.brandProfile) return json({ error: "Analyze your store first (on the dashboard) so content matches your brand." });
@@ -208,9 +263,19 @@ export default function Studio() {
   const [saySomething, setSaySomething] = useState("");
   const [doWhat, setDoWhat] = useState("");
   const [where, setWhere] = useState("");
+  // Import-by-URL (works with or without a Shopify catalog).
+  const [extraProducts, setExtraProducts] = useState<{ title: string; image: string | null; url: string | null }[]>([]);
+  const [urlInput, setUrlInput] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const allProducts = [...extraProducts, ...products];
+  useEffect(() => {
+    const imp = actionData && "imported" in actionData ? (actionData as { imported: { title: string; image: string | null; url: string | null } }).imported : null;
+    if (imp) { setExtraProducts((prev) => (prev.some((p) => p.url === imp.url) ? prev : [imp, ...prev])); setPicked(0); setUrlInput(""); setShowImport(false); }
+  }, [actionData]);
+  const importErr = actionData && "importError" in actionData ? (actionData as { importError: string }).importError : null;
 
   const meta = TABS.find((t) => t.key === tab)!;
-  const product = products[picked];
+  const product = allProducts[picked];
   const videoFree = videoQuotaLeft > 0;
   // Presenter × product → hold vs wear. Auto-detect apparel; reset the override
   // when the product changes so detection leads.
@@ -290,17 +355,24 @@ export default function Studio() {
             <button type="button" className="cs-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>★ Make {cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face</button>
           )}
 
-          <div className="cfg-lbl">{tab === "blog" ? "Product to write about" : "Product to feature"}</div>
-          {products.length > 0 ? (
+          <div className="cfg-lbl cs-lblrow"><span>{tab === "blog" ? "Product to write about" : "Product to feature"}</span><button type="button" className="cs-viewall" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button></div>
+          {showImport && (
+            <div className="cs-import">
+              <input className="cs-input" type="url" value={urlInput} placeholder="Paste a product link…" onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" }); } }} />
+              <button type="button" className="cs-impbtn" disabled={busy || !urlInput.trim()} onClick={() => submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" })}>{busy ? "…" : "Import"}</button>
+            </div>
+          )}
+          {importErr && <p className="cfg-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+          {allProducts.length > 0 ? (
             <div className="cfg-prods">
-              {products.map((p, i) => (
+              {allProducts.map((p, i) => (
                 <button type="button" key={i} className={`prod${picked === i ? " sel" : ""}`} onClick={() => setPicked(i)} title={p.title}>
-                  <span className="pr-img" style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}>{picked === i && <span className="pr-chk">✓</span>}</span>
+                  <span className="pr-img" style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}>{picked === i && <span className="pr-chk">✓</span>}{i < extraProducts.length && <span className="pr-url">↗</span>}</span>
                 </button>
               ))}
             </div>
           ) : (
-            <p className="cfg-note">Add a product to your store to generate content.</p>
+            <p className="cfg-note">Pick a product from your store, or <b>Add by URL</b> above.</p>
           )}
           {product && <p className="cfg-note">Featuring <b>{product.title}</b></p>}
 

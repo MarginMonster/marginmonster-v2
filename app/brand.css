@@ -3252,6 +3252,11 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .cs-styles { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:10px; }
 .cs-chip { border:1.5px solid #E6E2D5; background:#fff; border-radius:999px; padding:8px 12px; font-family:inherit; font-size:12.5px; font-weight:700; color:#52564A; cursor:pointer; }
 .cs-chip.sel { border-color:#0F9152; background:rgba(12,122,70,.06); color:#0A6B3E; }
+.cs-import { display:flex; gap:8px; margin-bottom:10px; }
+.cs-import .cs-input { flex:1; }
+.cs-impbtn { flex:none; border:0; border-radius:12px; background:linear-gradient(165deg,#12A85E,#0B6B3E); color:#fff; font-family:inherit; font-size:14px; font-weight:800; padding:0 18px; cursor:pointer; }
+.cs-impbtn:disabled { opacity:.55; }
+.prod .pr-url { position:absolute; top:5px; left:5px; width:18px; height:18px; border-radius:50%; background:rgba(10,20,12,.6); color:#fff; font-size:10px; display:grid; place-items:center; }
 
 /* archetype card — drops headline, colored mix, value + tier-fit footer */
 .smp-ac .ac-drops { font-size:19px; font-weight:800; color:#0A6B3E; line-height:1; } .smp-ac .ac-drops span { font-size:10px; color:#8C8F82; font-weight:700; }
