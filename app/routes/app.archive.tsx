@@ -9,6 +9,7 @@ import { parseSchedule } from "../lib/questlines";
 import { generateSlotEarly, retrySlot } from "../lib/questlines.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { linkedFromCache } from "../lib/social-provider.server";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function fmtWhen(date: string, time: string): string {
@@ -80,6 +81,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     library,
     scheduled,
     jobCards,
+    linkedSocial: linkedFromCache(shop.socialsJson).filter((p) => p === "tiktok" || p === "instagram" || p === "facebook"),
     cost: TOKEN_COST,
   });
 };
@@ -109,6 +111,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date() } });
     return json({ jobRetried: true });
   }
+  if (intent === "keep") {
+    await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id }, data: { status: "APPROVED" } });
+    return json({ kept: true });
+  }
+  if (intent === "delete") {
+    await db.asset.deleteMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id } });
+    return json({ deleted: true });
+  }
+  if (intent === "post") {
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
+    if (!asset) return json({ error: "That piece is gone — refresh and try again." });
+    let media: string | undefined;
+    let title = asset.title || "New from our shop";
+    try { const b = JSON.parse(asset.bodyJson || "{}"); media = b.videoUrl || b.imageUrl; } catch { /* ignore */ }
+    try { const m = JSON.parse(asset.metaJson || "{}"); title = m.productTitle || title; } catch { /* ignore */ }
+    if (!media) return json({ error: "This piece has no rendered file yet." });
+    const { ensureProfile, refreshLinkedPlatforms, publishPost, socialProviderEnabled } = await import("../lib/social-provider.server");
+    if (!socialProviderEnabled()) return json({ error: "Auto-posting isn't switched on yet." });
+    const profileKey = await ensureProfile(shop.id);
+    if (!profileKey) return json({ error: "Couldn't reach the posting service." });
+    const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+    if (platforms.length === 0) return json({ error: "Connect a social account first, then post." });
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const mediaUrl = /^https?:\/\//.test(media) ? media : base ? `${base}${media}` : media;
+    const res = await publishPost(profileKey, { title, mediaUrl, isVideo: asset.type === "VIDEO_AD", platforms });
+    if (!res.ok) return json({ error: `Posting failed (${res.error || "unknown"}) — check your connected accounts.` });
+    await db.asset.update({ where: { id }, data: { status: "PUBLISHED" } });
+    return json({ posted: platforms.join(", ") });
+  }
   return json({ ok: true });
 };
 
@@ -123,7 +155,7 @@ const TYPE_LABEL: Record<string, string> = { video: "Video", image: "Image", blo
 const STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready to post", FAILED: "Needs retry" };
 
 export default function Archive() {
-  const { hasPlan, tokens, library, scheduled, jobCards, cost } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, library, scheduled, jobCards, linkedSocial, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -144,6 +176,12 @@ export default function Archive() {
   const early = (qid: string, slotIdx: number) => submit({ intent: "generateEarly", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
   const retry = (qid: string, slotIdx: number) => submit({ intent: "retry", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
+  const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
+  const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
+  const postAsset = (assetId: string) => submit({ intent: "post", assetId }, { method: "post" });
+  const posted = actionData && "posted" in actionData ? (actionData as { posted: string }).posted : null;
+  // Close the viewer once a piece is deleted or kept.
+  useEffect(() => { if (actionData && ("deleted" in actionData || "kept" in actionData)) setViewer(null); }, [actionData]);
   const costOf = (t: string) => (t === "video" ? cost.video : t === "image" ? cost.image : cost.blog);
   const fmtEta = (s: number) => (s <= 12 ? "almost done" : s < 90 ? `~${s}s left` : `~${Math.round(s / 60)}m left`);
 
@@ -257,7 +295,17 @@ export default function Archive() {
                 <div className="ar-read"><p>Still being made…</p></div>
               )}
               {viewer.kind !== "blog" && (
-                <div className="ar-vmeta"><b>{viewer.title}</b><span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Posted" : viewer.status === "APPROVED" ? "Approved" : "In review"}</span></div>
+                <div className="ar-vmeta">
+                  <div className="ar-vinfo">
+                    <b>{viewer.title}</b>
+                    {posted ? <span className="ar-vok">Posted to {posted} ✓</span> : err ? <span className="ar-verr">{err}</span> : <span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Posted" : viewer.status === "APPROVED" ? "Kept" : "New"}</span>}
+                  </div>
+                  <div className="ar-vacts">
+                    {linkedSocial.length > 0 && <button type="button" className="ar-vpost" disabled={busy} onClick={() => postAsset(viewer.id)}>{busy ? "Posting…" : "Post to socials"}</button>}
+                    <button type="button" className="ar-vkeep" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
+                    <button type="button" className="ar-vdel" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
