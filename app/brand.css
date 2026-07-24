@@ -2944,7 +2944,18 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .dc-dy.tap:not(.drop):hover { background:rgba(255,255,255,.07); box-shadow:inset 0 0 0 1px rgba(231,200,121,.4); }
 .dc-dy.tap.drop:hover { box-shadow:inset 0 0 0 1.5px rgba(231,200,121,1), 0 4px 12px rgba(0,0,0,.5); transform:translateY(-1px); }
 .dc-dy.tap:active { transform:scale(.97); }
-.dc-dy.past:not(.drop) { opacity:.4; }
+.dc-dy.past:not(.drop) { opacity:.6; }
+.dc-dy.past:not(.drop) .dc-dn { color:#7d8c82; }
+.dc-x { display:block; text-align:center; margin-top:7px; font-size:13px; font-weight:800; color:rgba(229,80,70,.85); }
+
+/* month paging */
+.dc-page { display:flex; align-items:center; gap:6px; }
+.dc-nav { color:#F6E4A6; font-size:22px; font-weight:700; line-height:1; text-decoration:none; padding:0 7px; border-radius:8px; opacity:.85; }
+.dc-nav:hover { opacity:1; background:rgba(231,200,121,.14); }
+
+/* inspirational quote below the calendar */
+.dc-quote { position:relative; text-align:center; font-style:italic; font-weight:800; font-size:16.5px; letter-spacing:-.01em; line-height:1.45; color:#0C3E28; margin:20px 14px 2px; padding:6px 6px; }
+.dc-qmark { color:#C99A2E; font-style:normal; font-weight:800; font-size:20px; vertical-align:-3px; padding:0 3px; }
 .dc-dy.today .dc-dn { color:#FBE7A8; }
 .dc-dy.today { box-shadow:inset 0 0 0 1.5px rgba(125,224,172,.7); }
 .dc-plus { display:block; text-align:center; margin-top:8px; font-size:15px; font-weight:700; color:rgba(231,200,121,.35); }
@@ -2998,8 +3009,11 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .dc-cx { flex:none; align-self:center; font-size:18px; color:#8C8F82; transition:transform .18s ease; margin-left:2px; }
 .dc-camp.open .dc-cx { transform:rotate(180deg); color:#0A6B3E; }
 .dc-cdrops { border-top:1px solid #EFEADF; max-height:320px; overflow-y:auto; padding:8px 12px 12px; -webkit-overflow-scrolling:touch; }
-.dc-cdrop { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid #F2EFE5; }
+.dc-cdrop { display:flex; align-items:center; gap:10px; width:100%; padding:9px 2px; border:0; border-bottom:1px solid #F2EFE5; background:none; font-family:inherit; text-align:left; cursor:pointer; border-radius:8px; }
 .dc-cdrop:last-child { border-bottom:0; }
+.dc-cdrop:hover { background:#FAF7EF; }
+.dc-cdgo { flex:none; color:#C0C3B6; font-size:17px; font-weight:700; margin-left:1px; }
+.dc-cdrop:hover .dc-cdgo { color:#0A6B3E; }
 .dc-cdinfo { flex:1; min-width:0; }
 .dc-cdinfo b { display:block; font-size:13px; font-weight:700; color:#14160F; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dc-cdinfo span { font-size:11.5px; color:#8C8F82; }

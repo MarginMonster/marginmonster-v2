@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, useNavigation, useSubmit, Link } from "@remix-run/react";
+import { useLoaderData, useActionData, useNavigation, useSubmit, useNavigate, Link } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Page } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
@@ -11,6 +11,18 @@ import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop } from "../lib/questlines.server";
 
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
+const QUOTES = [
+  "While they scroll, you sell.",
+  "Every post is a salesperson that never sleeps.",
+  "Consistency is the cheat code.",
+  "The feed rewards the relentless.",
+  "Fortune favors the brand that shows up.",
+  "Build the empire one drop at a time.",
+  "Your competition is posting. Are you?",
+  "Attention is the new currency — go take yours.",
+  "Show up daily. Get paid quietly.",
+  "Small drops, tidal waves.",
+];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -56,10 +68,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const platforms = linked.length ? linked : ["tiktok", "instagram", "facebook"];
   const platShorts = platforms.map((p) => SHORT[p]);
 
+  const url = new URL(request.url);
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month0 = now.getUTCMonth();
-  const todayDay = now.getUTCFullYear() === year && now.getUTCMonth() === month0 ? now.getUTCDate() : 0;
+  const curY = now.getUTCFullYear();
+  const curM = now.getUTCMonth();
+  let year = curY;
+  let month0 = curM;
+  const ymMatch = /^(\d{4})-(\d{2})$/.exec(url.searchParams.get("ym") || "");
+  if (ymMatch) {
+    const yy = parseInt(ymMatch[1], 10);
+    const mm = parseInt(ymMatch[2], 10) - 1;
+    if (yy >= 2000 && yy <= 2100 && mm >= 0 && mm <= 11) { year = yy; month0 = mm; }
+  }
+  const todayDay = curY === year && curM === month0 ? now.getUTCDate() : 0;
+  const ymStr = (y: number, m0: number) => `${y}-${String(m0 + 1).padStart(2, "0")}`;
+  const prevYm = ymStr(month0 === 0 ? year - 1 : year, month0 === 0 ? 11 : month0 - 1);
+  const nextYm = ymStr(month0 === 11 ? year + 1 : year, month0 === 11 ? 0 : month0 + 1);
+  const openParam = url.searchParams.get("open") || "";
+  const openDay = /^\d{1,2}$/.test(openParam) ? Math.min(31, Math.max(1, parseInt(openParam, 10))) : null;
 
   const dropMap: Record<number, { video: number; image: number; blog: number }> = {};
   const dayDrops: Record<number, DropInfo[]> = {};
@@ -112,7 +138,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     platforms: platShorts,
     weeks: monthGrid(year, month0),
     monthLabel: `${MONTHS[month0]} ${year}`.toUpperCase(),
-    year, month0, todayDay,
+    year, month0, todayDay, todayStr,
+    prevYm, nextYm,
+    openDay,
+    quote: QUOTES[now.getUTCDate() % QUOTES.length],
     dropMap,
     dayDrops,
     activeCampaigns,
@@ -186,12 +215,13 @@ function typeLines(day: { video: number; image: number; blog: number }): string[
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function Campaigns() {
-  const { platforms, weeks, monthLabel, year, month0, todayDay, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
+  const { platforms, weeks, monthLabel, year, month0, todayDay, todayStr, prevYm, nextYm, openDay, quote, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  const navigate = useNavigate();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const [open, setOpen] = useState<number | null>(null); // selected day-of-month
+  const [open, setOpen] = useState<number | null>(openDay); // selected day-of-month
   const [openCamp, setOpenCamp] = useState<string | null>(null); // expanded campaign
   const [schedType, setSchedType] = useState<"video" | "image" | "blog">("video");
   const [schedCid, setSchedCid] = useState<string>(activeCampaigns[0]?.id ?? "");
@@ -203,11 +233,21 @@ export default function Campaigns() {
     if (!actionData) return;
     if ("rescheduled" in actionData || "dropAdded" in actionData) setOpen(null);
   }, [actionData]);
+  // Deep-link / tap-a-schedule-row → open that day (openDay comes from the URL).
+  useEffect(() => { setOpen(openDay); }, [openDay]);
 
   const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
   const drops = open != null ? dayDrops[open] || [] : [];
   const monthName = MONTHS[month0];
-  const isPast = open != null && todayDay > 0 && open < todayDay;
+  const openDate = open != null ? `${year}-${pad(month0 + 1)}-${pad(open)}` : null;
+  const isPast = openDate != null && !!todayStr && openDate < todayStr;
+
+  // Jump to a specific drop's day (may live in another month → navigate there).
+  const goToDrop = (dateStr: string) => {
+    const [y, m, dd] = dateStr.split("-").map(Number);
+    if (y === year && m - 1 === month0) setOpen(dd);
+    else navigate(`?ym=${y}-${pad(m)}&open=${dd}`);
+  };
 
   const reschedule = (qid: string, slotIdx: number, date: string, time: string) =>
     submit({ intent: "reschedule", questlineId: qid, slotIdx: String(slotIdx), date, time }, { method: "post" });
@@ -245,20 +285,29 @@ export default function Campaigns() {
           <div className="dc-bg"><svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice" viewBox="0 0 460 560"><rect width="460" height="560" fill="#060b08" /><rect width="460" height="560" filter="url(#mm-obs)" /></svg></div>
           <div className="dc-frame" />
           <div className="dc-inner">
-            <div className="dc-hd"><span className="dc-mo">{monthLabel}</span><span className="dc-ct">{total} DROPS</span></div>
+            <div className="dc-hd">
+              <div className="dc-page">
+                <Link className="dc-nav" to={`?ym=${prevYm}`} aria-label="Previous month" prefetch="intent">‹</Link>
+                <span className="dc-mo">{monthLabel}</span>
+                <Link className="dc-nav" to={`?ym=${nextYm}`} aria-label="Next month" prefetch="intent">›</Link>
+              </div>
+              <span className="dc-ct">{total} DROPS</span>
+            </div>
             <div className="dc-grid">
               {DOW.map((x, i) => <div className="dc-dow" key={i}>{x}</div>)}
               {weeks.flat().map((d, i) => {
                 if (d === 0) return <div className="dc-dy empty" key={i} />;
                 const day = dropMap[d];
                 const isDrop = !!day && (day.video + day.image + day.blog > 0);
-                const past = todayDay > 0 && d < todayDay;
+                const cellDate = `${year}-${pad(month0 + 1)}-${pad(d)}`;
+                const past = !!todayStr && cellDate < todayStr;
+                const isToday = cellDate === todayStr;
                 const canSchedule = !past && activeCampaigns.length > 0;
                 const clickable = isDrop || canSchedule;
                 return (
                   <button
                     type="button"
-                    className={`dc-dy${isDrop ? " drop" : ""}${past ? " past" : ""}${clickable ? " tap" : ""}${d === todayDay ? " today" : ""}`}
+                    className={`dc-dy${isDrop ? " drop" : ""}${past ? " past" : ""}${clickable ? " tap" : ""}${isToday ? " today" : ""}`}
                     key={i}
                     disabled={!clickable}
                     onClick={() => clickable && setOpen(d)}
@@ -268,6 +317,8 @@ export default function Campaigns() {
                       <div className="dc-types">
                         {typeLines(day).map((t, j) => <span className="dc-t" key={j}>{t}</span>)}
                       </div>
+                    ) : past ? (
+                      <span className="dc-x">✕</span>
                     ) : canSchedule ? (
                       <span className="dc-plus">＋</span>
                     ) : null}
@@ -281,6 +332,8 @@ export default function Campaigns() {
             </div>
           </div>
         </div>
+
+        <div className="dc-quote"><span className="dc-qmark">“</span>{quote}<span className="dc-qmark r">”</span></div>
 
         {campaigns.length > 0 ? (
           <>
@@ -310,11 +363,12 @@ export default function Campaigns() {
                         <p className="dc-cempty">No drops scheduled yet.</p>
                       ) : (
                         c.drops.map((dp, i) => (
-                          <div className="dc-cdrop" key={i}>
+                          <button type="button" className="dc-cdrop" key={i} onClick={() => goToDrop(dp.date)}>
                             <span className={`dc-dtag ${dp.type}`}>{TYPE_LABEL[dp.type]}</span>
                             <div className="dc-cdinfo"><b>{dp.product || c.name}</b><span>{dp.when}</span></div>
                             <span className={`dc-cdst s-${dp.status.toLowerCase()}`}>{STATUS_LABEL[dp.status] || dp.status}</span>
-                          </div>
+                            <span className="dc-cdgo">›</span>
+                          </button>
                         ))
                       )}
                     </div>
