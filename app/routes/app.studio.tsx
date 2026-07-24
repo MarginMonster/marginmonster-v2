@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useActionData, useNavigation, useSubmit, Link } from "@remix-run/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -9,7 +9,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens } from "../lib/tokens.server";
 import { tokensRemaining } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
-import { AVATARS, avatarImg } from "../lib/avatars";
+import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 
 type Tab = "video" | "image" | "blog";
 const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string; noun: string }[] = [
@@ -30,8 +30,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
   } catch { /* fall through */ }
 
-  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) }));
+  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
   const videoQuotaLeft = plan ? Math.max(0, plan.videoQuota - plan.videoUsed + plan.videoCredits) : 0;
+  const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 
   return json({
     hasPlan: !!plan?.active,
@@ -39,7 +40,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tokens: tokensRemaining(plan ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }),
     products,
     cast,
-    defaultAvatar: shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : cast[0]?.id ?? null,
+    brandFaceId,
+    defaultAvatar: brandFaceId ?? cast[0]?.id ?? null,
     videoQuotaLeft,
   });
 };
@@ -90,25 +92,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ ok: true });
 };
 
-type CastItem = { id: string; name: string; img: string };
+type CastItem = { id: string; name: string; img: string; designed: boolean };
 
-function PresenterPicker({ cast, value, onChange, allowNone }: { cast: CastItem[]; value: string | null; onChange: (id: string | null) => void; allowNone: boolean }) {
+function PresenterPicker({ cast, value, onChange, allowNone, brandFaceId }: { cast: CastItem[]; value: string | null; onChange: (id: string | null) => void; allowNone: boolean; brandFaceId: string | null }) {
   const [open, setOpen] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
+
+  const stopAudio = () => { audioRef.current?.pause(); audioRef.current = null; setPlaying(null); };
+  const sample = (c: CastItem) => {
+    if (c.designed) { stopAudio(); setVideoId(c.id); return; } // premium "true voice" → lip-sync video
+    if (playing === c.id) { stopAudio(); return; }
+    stopAudio();
+    const a = new Audio(`/voices/${c.id}.mp3?v=3`);
+    audioRef.current = a; setPlaying(c.id);
+    a.onended = () => setPlaying(null);
+    a.play().catch(() => setPlaying(null));
+  };
+
+  // Brand Face leads the cast.
+  const ordered = brandFaceId ? [...cast.filter((c) => c.id === brandFaceId), ...cast.filter((c) => c.id !== brandFaceId)] : cast;
   const PREVIEW = 8;
-  const selIdx = value ? cast.findIndex((c) => c.id === value) : -1;
-  const preview = cast.slice(0, PREVIEW);
-  if (selIdx >= PREVIEW) preview.push(cast[selIdx]); // keep the chosen one visible
+  const selIdx = value ? ordered.findIndex((c) => c.id === value) : -1;
+  const preview = ordered.slice(0, PREVIEW);
+  if (selIdx >= PREVIEW) preview.push(ordered[selIdx]);
+
   const None = allowNone ? (
     <button type="button" className={`cast${value === null ? " sel" : ""}`} onClick={() => onChange(null)}>
       <span className="ca-img cs-none">🚫</span><span className="ca-nm">None</span>
     </button>
   ) : null;
-  const Tile = (c: CastItem) => (
-    <button type="button" key={c.id} className={`cast${c.id === value ? " sel" : ""}`} onClick={() => onChange(c.id)}>
-      <span className="ca-img" style={{ backgroundImage: `url(${c.img})` }}>{c.id === value && <span className="ca-chk">✓</span>}</span>
-      <span className="ca-nm">{c.name}</span>
-    </button>
-  );
+  const Tile = (c: CastItem) => {
+    const bf = c.id === brandFaceId;
+    return (
+      <div className={`cast${c.id === value ? " sel" : ""}${bf ? " bf" : ""}`} key={c.id}>
+        <button type="button" className="ca-pick" onClick={() => onChange(c.id)} aria-label={`Cast ${c.name}`}>
+          <span className="ca-img" style={{ backgroundImage: `url(${c.img})` }}>{c.id === value && <span className="ca-chk">✓</span>}</span>
+        </button>
+        <button type="button" className={`cs-samp${playing === c.id ? " on" : ""}${c.designed ? " prem" : ""}`} onClick={() => sample(c)} title={c.designed ? `Watch ${c.name} speak` : `Hear ${c.name}`} aria-label={c.designed ? `Watch ${c.name} speak` : `Hear ${c.name}'s voice`}>
+          {playing === c.id ? "♪" : c.designed ? "▶" : "🔊"}
+        </button>
+        <span className="ca-nm">{bf ? "★ Brand face" : c.name}</span>
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="cfg-lbl cs-lblrow">
@@ -116,16 +145,24 @@ function PresenterPicker({ cast, value, onChange, allowNone }: { cast: CastItem[
         <button type="button" className="cs-viewall" onClick={() => setOpen((o) => !o)}>{open ? "Show less" : `View all ${cast.length}`}</button>
       </div>
       {open ? (
-        <div className="cs-castgrid">{None}{cast.map(Tile)}</div>
+        <div className="cs-castgrid">{None}{ordered.map(Tile)}</div>
       ) : (
         <div className="cfg-cast">{None}{preview.map(Tile)}<button type="button" className="cast cs-moretile" onClick={() => setOpen(true)}><span className="ca-img cs-none">＋</span><span className="ca-nm">All</span></button></div>
+      )}
+      {videoId && (
+        <div className="cs-vscrim" onClick={() => setVideoId(null)}>
+          <div className="cs-vbox" onClick={(e) => e.stopPropagation()}>
+            <video src={`/voice-videos/${videoId}.mp4?v=1`} autoPlay controls playsInline className="cs-video" />
+            <button type="button" className="cs-vx" onClick={() => setVideoId(null)}>✕</button>
+          </div>
+        </div>
       )}
     </>
   );
 }
 
 export default function Studio() {
-  const { hasPlan, hasBrand, tokens, products, cast, defaultAvatar, videoQuotaLeft } = useLoaderData<typeof loader>();
+  const { hasPlan, hasBrand, tokens, products, cast, brandFaceId, defaultAvatar, videoQuotaLeft } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -202,7 +239,7 @@ export default function Studio() {
 
         <div className="smp-cfg">
           {(tab === "video" || tab === "image") && (
-            <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} />
+            <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
           )}
           {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
 

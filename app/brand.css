@@ -3143,6 +3143,23 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .cs-castgrid .cast { width:100%; }
 .cs-castgrid .cast .ca-img { width:100%; height:auto; aspect-ratio:1; }
 .cast.cs-moretile .ca-img { background:#F1EEE3; display:grid; place-items:center; font-size:20px; color:#8C8F82; }
+/* avatar tile is now a div (pick button + sampler); reset the pick button */
+.cast { position:relative; }
+.ca-pick { border:0; background:none; padding:0; margin:0; cursor:pointer; display:block; width:100%; font-family:inherit; }
+/* brand face — leads the cast, gold ring + label */
+.cast.bf .ca-img { box-shadow:0 0 0 3px #E7C879, 0 6px 14px rgba(176,133,38,.35); }
+.cast.bf.sel .ca-img { box-shadow:0 0 0 3px #E7C879, 0 0 0 6px rgba(15,145,82,.35); }
+.cast.bf .ca-nm { color:#9C7318; font-weight:800; font-size:9.5px; }
+/* voice / video sampler pill on each tile */
+.cs-samp { position:absolute; top:-6px; left:-6px; width:22px; height:22px; border-radius:50%; border:0; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,.28); font-size:10px; line-height:1; cursor:pointer; display:grid; place-items:center; padding:0; z-index:2; }
+.cs-samp.prem { background:linear-gradient(180deg,#E7C879,#C99A2E); color:#2A1F05; }
+.cs-samp.on { background:#0F9152; color:#fff; }
+.cs-castgrid .cs-samp { top:-4px; left:-4px; }
+/* designed-voice lip-sync overlay */
+.cs-vscrim { position:fixed; inset:0; background:rgba(6,14,9,.62); backdrop-filter:blur(2px); z-index:90; display:grid; place-items:center; padding:20px; }
+.cs-vbox { position:relative; width:min(320px,86vw); }
+.cs-video { width:100%; border-radius:18px; background:#000; box-shadow:0 20px 60px rgba(0,0,0,.5); display:block; }
+.cs-vx { position:absolute; top:-14px; right:-14px; width:34px; height:34px; border-radius:50%; border:0; background:#fff; font-size:15px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.35); }
 .cs-3w { display:flex; flex-direction:column; gap:12px; }
 .cs-wfield { display:flex; flex-direction:column; gap:6px; }
 .cs-wfield .cs-w { font-size:12.5px; font-weight:800; color:#0A6B3E; }
