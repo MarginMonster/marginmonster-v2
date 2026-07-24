@@ -46,18 +46,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const platforms = linked.length ? linked : ["tiktok", "instagram", "facebook"];
   const platShorts = platforms.map((p) => SHORT[p]);
 
-  // Which platforms a piece publishes to (blogs are store posts, not social).
-  const platsForType = (type: string): ("tt" | "ig" | "fb")[] => {
-    if (type === "video") return platShorts;
-    if (type === "image") return platShorts.filter((p) => p !== "tt");
-    return [];
-  };
-
   const now = new Date();
   const year = now.getUTCFullYear();
   const month0 = now.getUTCMonth();
 
-  const dropMap: Record<number, { tt: number; ig: number; fb: number }> = {};
+  // Per-day content-type counts (the day cell shows what kind of content drops).
+  const dropMap: Record<number, { video: number; image: number; blog: number }> = {};
   const campaigns: {
     id: string; name: string; image: string | null; status: string;
     made: number; total: number; platforms: ("tt" | "ig" | "fb")[]; next: string | null;
@@ -72,12 +66,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     for (const s of slots) {
       if (s.status === "POSTED") made++;
       const [y, m, d] = s.date.split("-").map(Number);
-      if (y === year && m - 1 === month0) {
-        const plats = platsForType(s.type);
-        if (plats.length) {
-          const cell = (dropMap[d] = dropMap[d] || { tt: 0, ig: 0, fb: 0 });
-          for (const p of plats) cell[p]++;
-        }
+      if (y === year && m - 1 === month0 && (s.type === "video" || s.type === "image" || s.type === "blog")) {
+        const cell = (dropMap[d] = dropMap[d] || { video: 0, image: 0, blog: 0 });
+        cell[s.type]++;
       }
       if ((s.status === "SCHEDULED" || s.status === "READY" || s.status === "FORGING") && s.date >= todayStr) {
         if (!next || s.date < next.date || (s.date === next.date && s.time < next.time)) next = { date: s.date, time: s.time };
@@ -90,11 +81,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  const total = Object.values(dropMap).reduce((a, v) => a + v.tt + v.ig + v.fb, 0);
+  const total = Object.values(dropMap).reduce((a, v) => a + v.video + v.image + v.blog, 0);
 
   return json({
     hasPlan: !!shop?.activePlan,
     tokens: shop?.activePlan ? tokensRemaining(shop.activePlan) : 0,
+    platforms: platShorts,
     weeks: monthGrid(year, month0),
     monthLabel: `${MONTHS[month0]} ${year}`.toUpperCase(),
     dropMap,
@@ -155,8 +147,16 @@ const FB = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02
 const GLYPH = { tt: TT, ig: IG, fb: FB } as const;
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 
+function typeLines(day: { video: number; image: number; blog: number }): string[] {
+  const out: string[] = [];
+  if (day.video) out.push(`${day.video > 1 ? day.video + " " : ""}Video`);
+  if (day.image) out.push(`${day.image > 1 ? day.image + " " : ""}Image`);
+  if (day.blog) out.push(`${day.blog > 1 ? day.blog + " " : ""}Blog`);
+  return out;
+}
+
 export default function Campaigns() {
-  const { hasPlan, weeks, monthLabel, dropMap, total, campaigns } = useLoaderData<typeof loader>();
+  const { hasPlan, platforms, weeks, monthLabel, dropMap, total, campaigns } = useLoaderData<typeof loader>();
 
   return (
     <Page>
@@ -188,27 +188,24 @@ export default function Campaigns() {
               {weeks.flat().map((d, i) => {
                 if (d === 0) return <div className="dc-dy empty" key={i} />;
                 const day = dropMap[d];
-                const isDrop = !!day && (day.tt + day.ig + day.fb > 0);
+                const isDrop = !!day && (day.video + day.image + day.blog > 0);
                 return (
                   <div className={`dc-dy${isDrop ? " drop" : ""}`} key={i}>
                     <span className="dc-dn">{d}</span>
                     {isDrop && (
-                      <div className="dc-pls">
-                        {(["tt", "ig", "fb"] as const).filter((p) => day[p] > 0).map((p) => {
-                          const G = GLYPH[p];
-                          return <span className="dc-pl" key={p}><G /><span className="dc-bd">{day[p]}</span></span>;
-                        })}
+                      <div className="dc-types">
+                        {typeLines(day).map((t, j) => <span className="dc-t" key={j}>{t}</span>)}
                       </div>
                     )}
                   </div>
                 );
               })}
             </div>
+            <div className="dc-posts">
+              <span className="dc-plabel">Auto-posts to</span>
+              {platforms.map((p) => { const G = GLYPH[p]; return <span className="dc-pchip" key={p}><G /></span>; })}
+            </div>
           </div>
-        </div>
-        <div className="dc-legend">
-          <span><span className="d" />Easy Drop day</span>
-          <span><span className="r" />drops on that platform</span>
         </div>
 
         {campaigns.length > 0 ? (
