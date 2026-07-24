@@ -410,16 +410,22 @@ async function generateActionClip(
   }
 
   // 2) Kling image-to-video — the action itself, driven by the merchant's prompt
+  // Model is env-swappable so we can move off Kling with no code change: set
+  // ACTION_VIDEO_MODEL to any Replicate image-to-video slug taking start_image
+  // + prompt (e.g. bytedance/seedance-1-pro, wan-video/wan-2.2-i2v-a14b).
+  const ACTION_MODEL = process.env.ACTION_VIDEO_MODEL || "kwaivgi/kling-v1.6-standard";
+  const ACTION_SECONDS = Number(process.env.ACTION_VIDEO_SECONDS) || 5;
   const motion = [params.scene, params.direction].map((s) => (s || "").trim()).filter(Boolean).join(". ").slice(0, 300)
     || `${avatar.desc} showing the ${params.productTitle} to camera with natural movement`;
-  const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
+  const clipId = await repCreate(ACTION_MODEL, {
     start_image: startImage,
+    image: startImage, // some models key the first frame as `image` not `start_image`
     prompt: `${motion}. Photorealistic, natural motion, keep the person and the product consistent and undistorted, vertical video.`,
     negative_prompt: "distortion, morphing, extra limbs, extra people, warped product, text, watermark, camera glitch",
-    duration: 5,
+    duration: ACTION_SECONDS,
     cfg_scale: 0.5,
   });
-  const clipUrl = await repPoll(klingId, 12 * 60_000, "kling-action");
+  const clipUrl = await repPoll(clipId, 12 * 60_000, "action-video");
 
   // 3) normalize to a 720x1280 vertical mp4
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-act-"));
