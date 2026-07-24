@@ -3649,3 +3649,14 @@ body[data-page="campaigns"] .qh-goal.sel,
 body[data-page="campaigns"] .qh-goal:hover { border-color:#0F9152 !important; box-shadow:0 8px 20px rgba(12,122,70,.14) !important; }
 body[data-page="campaigns"] .qh-journal-link,
 body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
+
+/* ═══════════ Achievement + level badges → GStyle (kept, recolored) ═══════════ */
+.mm-cheer { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; font-size:11px !important; font-weight:800 !important;
+  letter-spacing:.02em !important; color:#241A02 !important; background:linear-gradient(180deg,#F3D889,#D9AE4A) !important;
+  box-shadow:0 3px 0 #A87F0E, 0 6px 14px rgba(176,133,38,.3) !important; }
+.mm-levelup { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; font-size:12px !important; font-weight:800 !important;
+  letter-spacing:.02em !important; color:#fff !important; background:linear-gradient(165deg,#12A85E,#0B6B3E) !important;
+  box-shadow:0 6px 16px rgba(12,122,70,.32), inset 0 0 0 1px rgba(255,210,74,.4) !important; }
+.mm-ach .nm { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; font-size:10px !important; font-weight:700 !important; letter-spacing:.01em !important; }
+.mm-ach.earned { border-color:#0F9152 !important; box-shadow:0 0 14px rgba(12,122,70,.15) !important; }
+.mm-ach.earned .nm { color:#0C7A46 !important; }
