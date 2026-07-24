@@ -9,6 +9,7 @@ import { generateBrandProfile } from "../lib/brand-voice.server";
 import { unlockAchievement } from "../lib/xp.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 
 type BrandResults = {
   tone: string; tagline: string; positioning: string; imageStyle: string;
@@ -65,11 +66,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // published live). Peak-delight moment.
   const askReview = !!shop && !shop.reviewAskedAt && publishedCount > 0;
 
+  // Real organic results (from linked socials) → the "it's working" moment.
+  const totals = sumStats(parseSocialStats(shop?.socialStatsJson));
+  const wins = {
+    reach: totals.reach,
+    views: totals.views,
+    followers: totals.followers,
+    engagement: totals.likes + totals.comments + totals.shares + totals.saves,
+    hasData: totals.reach + totals.views + totals.followers + totals.likes > 0,
+  };
+
   return json({
     shop,
     pendingAssets,
     askReview,
     launch,
+    wins,
     brand: parseBrand(shop?.brandProfile ?? null),
     brandJobError: brandJob?.lastError ?? null,
     paidAds: paidAdsEnabled(),
@@ -144,7 +156,7 @@ function friendlyError(msg: string): string {
 }
 
 export default function Dashboard() {
-  const { shop, pendingAssets, askReview, launch, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, askReview, launch, wins, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -290,6 +302,26 @@ export default function Dashboard() {
             </Link>
           )}
         </div>
+
+        {wins.hasData && (() => {
+          const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
+          const tiles = [
+            wins.reach > 0 && { n: wins.reach, k: "reached" },
+            wins.views > 0 && { n: wins.views, k: "views" },
+            wins.engagement > 0 && { n: wins.engagement, k: "engagements" },
+            wins.followers > 0 && { n: wins.followers, k: "followers" },
+          ].filter(Boolean).slice(0, 4) as { n: number; k: string }[];
+          return (
+            <div className="eh-wins">
+              <div className="ehw-top">📈 Your content is working</div>
+              <div className="ehw-grid">
+                {tiles.map((t) => (
+                  <div className="ehw-st" key={t.k}><b>{fmt(t.n)}</b><span>{t.k}</span></div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="eh-acts">
           <Link className="eh-btn primary" to={campaignHref}>
