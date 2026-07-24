@@ -10,7 +10,6 @@ import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
 import { refundTokens } from "./tokens.server";
-import { generateAdCopy } from "./ad-copy-generation.server";
 import { launchCampaign } from "./campaign-launch.server";
 import { runDecisioningPass } from "./decisioning-engine.server";
 
@@ -330,19 +329,6 @@ async function runJob(
       break;
     }
 
-    case "GENERATE_AD_COPY": {
-      if (!shop?.brandProfile || !shop?.activePlan) {
-        throw new Error("Shop missing brand profile or active plan");
-      }
-      await generateAdCopy(
-        shopId,
-        shop.brandProfile,
-        shop.activePlan,
-        payload.productTitle as string,
-        payload.productDescription as string
-      );
-      break;
-    }
 
     case "LAUNCH_CAMPAIGN": {
       await launchCampaign({
