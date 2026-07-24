@@ -9,14 +9,21 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   const page = await db.landingPage.findUnique({ where: { slug } });
   if (!page || !page.published) throw new Response("Not found", { status: 404 });
   await db.landingPage.update({ where: { id: page.id }, data: { views: { increment: 1 } } });
+  // Self-marketing: every published landing page carries a tracked "Made with
+  // EasyMode" badge → the App Store. The people browsing a store's landing
+  // pages are disproportionately other store owners (competitor research), i.e.
+  // exactly EasyMode's buyer. UTM so we can see which pages convert installs.
+  const listing = process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com";
+  const badgeUrl = `${listing}${listing.includes("?") ? "&" : "?"}utm_source=merchant_landing&utm_medium=made_with_badge&utm_campaign=self_marketing`;
   return json({
     content: JSON.parse(page.contentJson) as LandingContent,
     productName: page.productName,
+    badgeUrl,
   });
 };
 
 export default function LandingPagePublic() {
-  const { content, productName } = useLoaderData<typeof loader>();
+  const { content, productName, badgeUrl } = useLoaderData<typeof loader>();
 
   const cta: React.CSSProperties = {
     display: "inline-block",
@@ -41,7 +48,9 @@ export default function LandingPagePublic() {
           background:repeating-conic-gradient(from 0deg,rgba(255,228,158,.15) 0deg 1.4deg,transparent 1.4deg 4deg),repeating-conic-gradient(from 0deg,rgba(255,228,158,.10) 0deg .7deg,transparent .7deg 7deg),repeating-radial-gradient(circle,rgba(255,228,158,.12) 0 1px,transparent 1px 6px);
           -webkit-mask:radial-gradient(circle,#000 60%,transparent 63%);mask:radial-gradient(circle,#000 60%,transparent 63%);opacity:.8;animation:lpmed 26s linear infinite;pointer-events:none}
         @keyframes lpmed{to{transform:rotate(360deg)}}
-        @media (prefers-reduced-motion:reduce){a.lp-cta::after{animation:none}}`}</style>
+        @media (prefers-reduced-motion:reduce){a.lp-cta::after{animation:none}}
+        a.em-badge{transition:background .15s,border-color .15s}
+        a.em-badge:hover{background:rgba(255,255,255,0.11)!important;border-color:rgba(231,200,121,0.6)!important}`}</style>
 
       <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(244,241,230,0.85)", backdropFilter: "blur(10px)", borderBottom: "1px solid #E4DFCF" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -82,7 +91,16 @@ export default function LandingPagePublic() {
         <h2 style={{ fontFamily: "Poppins, sans-serif", fontSize: 32, fontWeight: 800, margin: "0 0 14px", letterSpacing: "-0.02em", color: "#F4EAC8" }}>{content.hero}</h2>
         <p style={{ color: "rgba(220,240,225,0.82)", maxWidth: 480, margin: "0 auto 30px", fontSize: 16 }}>{content.subhead}</p>
         <a href="#" className="lp-cta" style={cta}>{content.ctaText}</a>
-        <div style={{ marginTop: 40, fontSize: 12, color: "rgba(220,240,225,0.5)", fontFamily: "Poppins, sans-serif", letterSpacing: "0.06em" }}>MADE WITH EASYMODE</div>
+        <a href={badgeUrl} target="_blank" rel="noopener noreferrer" className="em-badge" style={{
+          display: "inline-flex", alignItems: "center", gap: 8, marginTop: 42, padding: "8px 15px",
+          borderRadius: 999, textDecoration: "none",
+          background: "rgba(255,255,255,0.06)", border: "1px solid rgba(231,200,121,0.32)",
+          color: "rgba(233,247,239,0.72)", fontFamily: "Poppins, sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: "0.02em",
+        }}>
+          <span style={{ fontSize: 13 }}>✨</span>
+          Made with <b style={{ color: "#E7C879", fontWeight: 800 }}>EasyMode</b>
+          <span style={{ color: "rgba(233,247,239,0.5)", fontWeight: 500 }}>— build yours free ›</span>
+        </a>
       </section>
     </div>
   );
