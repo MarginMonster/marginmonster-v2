@@ -3255,6 +3255,23 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-failx { font-size:20px; }
 .ar-retry { border:0; border-radius:10px; background:#fff; color:#0A6B3E; font-family:inherit; font-size:11.5px; font-weight:800; padding:8px 12px; cursor:pointer; box-shadow:0 3px 8px rgba(0,0,0,.25); }
 .ar-retry:disabled { opacity:.6; }
+/* Tile thumbnail click target + quick-delete trash (bottom-right) */
+.ar-thumb { border:0; background:none; padding:0; margin:0; cursor:pointer; display:block; width:100%; font-family:inherit; }
+.ar-tiletrash { position:absolute; bottom:5px; right:5px; width:27px; height:27px; border-radius:8px; border:0; background:rgba(10,20,12,.6); color:#fff; font-size:12.5px; line-height:1; cursor:pointer; display:grid; place-items:center; z-index:3; opacity:.9; }
+.ar-tiletrash:hover { background:#9A3120; opacity:1; }
+.ar-tiletrash:disabled { opacity:.4; }
+.ar-tiletrash.inline { position:static; width:34px; height:34px; background:#fff; color:#9A3120; border:1.5px solid #E7CFC9; border-radius:10px; font-size:14px; opacity:1; }
+.ar-tiletrash.inline:hover { background:#FBEEEA; }
+/* Blog row: clickable body + corner trash */
+.ar-blogrow { position:relative; padding:0; overflow:hidden; }
+.ar-blogopen { border:0; background:none; padding:14px 44px 14px 15px; cursor:pointer; display:block; width:100%; text-align:left; font-family:inherit; }
+.ar-blogrow .ar-tiletrash { bottom:10px; right:10px; }
+/* Segregated wipeouts — kept out of the way of finished work */
+.ar-failsec { margin-top:22px; }
+.ar-faildiv { display:flex; align-items:center; gap:8px; font-size:11.5px; font-weight:600; color:#8A8D7E; margin:0 0 11px; padding-top:15px; border-top:1px dashed #E0DBCC; }
+.ar-faildiv span { color:#9A3120; font-weight:800; }
+.ar-failtile { opacity:.9; }
+.ar-failrow { display:flex; gap:8px; align-items:center; margin-top:2px; }
 /* Blog generation feedback — a real "creating…" card that resolves */
 .ar-genblogs { margin-bottom:10px; }
 .ar-blogbuf { display:flex; align-items:center; gap:12px; background:linear-gradient(160deg,#0E5233,#0A3421); border-color:rgba(231,200,121,.28); }

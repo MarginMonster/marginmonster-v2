@@ -130,6 +130,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date() } });
     return json({ jobRetried: true });
   }
+  if (intent === "dismissJob") {
+    // They don't want to retry a wipeout — clear it out of storage for good.
+    const jobId = (form.get("jobId") as string) || "";
+    await db.job.deleteMany({ where: { id: jobId, shopId: shop.id, status: "FAILED", type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
+    return json({ jobDismissed: true });
+  }
   if (intent === "publishBlog") {
     // Blogs publish to the store's Online Store blog (SEO), not to socials.
     const id = (form.get("assetId") as string) || "";
@@ -310,6 +316,7 @@ export default function Archive() {
   const early = (qid: string, slotIdx: number) => submit({ intent: "generateEarly", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
   const retry = (qid: string, slotIdx: number) => submit({ intent: "retry", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
+  const dismissJob = (jobId: string) => submit({ intent: "dismissJob", jobId }, { method: "post" });
   const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
   const publishBlog = (assetId: string) => submit({ intent: "publishBlog", assetId }, { method: "post" });
@@ -341,6 +348,9 @@ export default function Archive() {
   const fmtEta = (s: number) => (s <= 12 ? "almost done" : s < 90 ? `~${s}s left` : `~${Math.round(s / 60)}m left`);
 
   const lib = tab === "video" ? library.video : tab === "image" ? library.image : tab === "blog" ? library.blog : [];
+  // Segregate in-progress vs failed so wipeouts don't clutter finished work.
+  const genCards = jobCards.filter((j) => j.kind === tab && j.status === "generating");
+  const failCards = jobCards.filter((j) => j.kind === tab && j.status === "failed");
 
   return (
     <Page>
@@ -394,60 +404,78 @@ export default function Archive() {
           </>
         ) : (
           <>
-            {(tab === "video" || tab === "image") && jobCards.some((j) => j.kind === tab) && (
+            {(tab === "video" || tab === "image") && genCards.length > 0 && (
               <div className="ar-grid ar-gen">
-                {jobCards.filter((j) => j.kind === tab).map((j) => j.status === "generating" ? (
+                {genCards.map((j) => (
                   <div className="ar-tile" key={j.jobId}>
                     <div className="ar-timg" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
                       <span className="ar-bufwrap"><span className="ar-spin" /><span className="ar-eta">{fmtEta(j.etaSec)}</span></span>
                     </div>
                     <span className="ar-tstatus s-forging">Creating…</span>
                   </div>
-                ) : (
-                  <div className="ar-tile" key={j.jobId}>
-                    <div className="ar-timg ar-fail" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
-                      <span className="ar-failwrap"><span className="ar-failx">⚠</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button></span>
-                    </div>
-                    <span className="ar-tstatus s-failed">Lost in transit</span>
-                  </div>
                 ))}
               </div>
             )}
-            {tab === "blog" && jobCards.some((j) => j.kind === "blog") && (
+            {tab === "blog" && genCards.length > 0 && (
               <div className="ar-blogs ar-genblogs">
-                {jobCards.filter((j) => j.kind === "blog").map((j) => j.status === "generating" ? (
+                {genCards.map((j) => (
                   <div className="ar-blog ar-blogbuf" key={j.jobId}>
                     <span className="ar-blogspin"><span className="ar-spin" /></span>
                     <b>{j.productTitle ? `Writing about ${j.productTitle}…` : "Writing your article…"}</b>
                     <span className="ar-status s-forging">Creating · {fmtEta(j.etaSec)}</span>
                   </div>
+                ))}
+              </div>
+            )}
+            {lib.length === 0 && genCards.length === 0 && failCards.length === 0 ? (
+              <div className="ar-empty"><b>No {TABS.find((t) => t.key === tab)?.label.toLowerCase()} yet</b><p>Make one in the Content Studio and it lands here.</p><Link className="dc-new" to="/app/studio">Open Content Studio</Link></div>
+            ) : lib.length > 0 && (
+              <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
+                {lib.map((c) => tab === "blog" ? (
+                  <div className="ar-blog ar-blogrow" key={c.id}>
+                    <button type="button" className="ar-blogopen" onClick={() => setViewer({ ...c, kind: "blog" })}>
+                      <b>{c.title}</b>
+                      {c.snippet && <p>{c.snippet}…</p>}
+                      <span className={`ar-status s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Live on your blog" : c.status === "APPROVED" ? "Kept" : "Ready to publish"}</span>
+                    </button>
+                    <button type="button" className="ar-tiletrash" title="Delete this article" disabled={busy} onClick={() => deleteAsset(c.id)}>🗑</button>
+                  </div>
                 ) : (
-                  <div className="ar-blog ar-blogfail" key={j.jobId}>
-                    <b>{j.productTitle ? `Article on ${j.productTitle}` : "Your article"}</b>
-                    <span className="ar-status s-failed">⚠ Lost in transit</span>
-                    <button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button>
+                  <div className="ar-tile" key={c.id}>
+                    <button type="button" className="ar-thumb" onClick={() => setViewer({ ...c, kind: tab })}>
+                      <div className="ar-timg" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined}>
+                        {c.video && <video className="ar-svid" src={c.video} muted playsInline preload="metadata" />}
+                      </div>
+                    </button>
+                    <span className={`ar-tstatus s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Posted" : c.status === "APPROVED" ? "Kept" : "New"}</span>
+                    <button type="button" className="ar-tiletrash" title="Delete" disabled={busy} onClick={() => deleteAsset(c.id)}>🗑</button>
                   </div>
                 ))}
               </div>
             )}
-            {lib.length === 0 && !jobCards.some((j) => j.kind === tab) ? (
-              <div className="ar-empty"><b>No {TABS.find((t) => t.key === tab)?.label.toLowerCase()} yet</b><p>Make one in the Content Studio and it lands here.</p><Link className="dc-new" to="/app/studio">Open Content Studio</Link></div>
-            ) : (
-              <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
-                {lib.map((c) => tab === "blog" ? (
-                  <button type="button" className="ar-blog" key={c.id} onClick={() => setViewer({ ...c, kind: "blog" })}>
-                    <b>{c.title}</b>
-                    {c.snippet && <p>{c.snippet}…</p>}
-                    <span className={`ar-status s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Live on your blog" : c.status === "APPROVED" ? "Approved" : "In review"}</span>
-                  </button>
-                ) : (
-                  <button type="button" className="ar-tile" key={c.id} onClick={() => setViewer({ ...c, kind: tab })}>
-                    <div className="ar-timg" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined}>
-                      {c.video && <video className="ar-svid" src={c.video} muted playsInline preload="metadata" />}
+            {failCards.length > 0 && (
+              <div className="ar-failsec">
+                <div className="ar-faildiv"><span>🌊 Didn't land</span> retry free, or clear it out</div>
+                <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
+                  {failCards.map((j) => tab === "blog" ? (
+                    <div className="ar-blog ar-blogfail" key={j.jobId}>
+                      <b>{j.productTitle ? `Article on ${j.productTitle}` : "Your article"}</b>
+                      <span className="ar-status s-failed">🌊 Wiped out</span>
+                      <div className="ar-failrow">
+                        <button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button>
+                        <button type="button" className="ar-tiletrash inline" title="Clear it out" disabled={busy} onClick={() => dismissJob(j.jobId)}>🗑</button>
+                      </div>
                     </div>
-                    <span className={`ar-tstatus s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Posted" : c.status === "APPROVED" ? "Approved" : "In review"}</span>
-                  </button>
-                ))}
+                  ) : (
+                    <div className="ar-tile ar-failtile" key={j.jobId}>
+                      <div className="ar-timg ar-fail" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
+                        <span className="ar-failwrap"><span className="ar-failx">🌊</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button></span>
+                      </div>
+                      <span className="ar-tstatus s-failed">Wiped out</span>
+                      <button type="button" className="ar-tiletrash" title="Clear it out" disabled={busy} onClick={() => dismissJob(j.jobId)}>🗑</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </>
