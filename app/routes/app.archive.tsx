@@ -455,12 +455,12 @@ export default function Archive() {
             )}
             {failCards.length > 0 && (
               <div className="ar-failsec">
-                <div className="ar-faildiv"><span>🌊 Didn't land</span> retry free, or clear it out</div>
+                <div className="ar-faildiv"><span>Didn't come through</span> retry free, or clear it out</div>
                 <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
                   {failCards.map((j) => tab === "blog" ? (
                     <div className="ar-blog ar-blogfail" key={j.jobId}>
                       <b>{j.productTitle ? `Article on ${j.productTitle}` : "Your article"}</b>
-                      <span className="ar-status s-failed">🌊 Wiped out</span>
+                      <span className="ar-status s-failed">Didn't come through</span>
                       <div className="ar-failrow">
                         <button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button>
                         <button type="button" className="ar-tiletrash inline" title="Clear it out" disabled={busy} onClick={() => dismissJob(j.jobId)}>🗑</button>
@@ -469,9 +469,9 @@ export default function Archive() {
                   ) : (
                     <div className="ar-tile ar-failtile" key={j.jobId}>
                       <div className="ar-timg ar-fail" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
-                        <span className="ar-failwrap"><span className="ar-failx">🌊</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button></span>
+                        <span className="ar-failwrap"><span className="ar-failx">↻</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button></span>
                       </div>
-                      <span className="ar-tstatus s-failed">Wiped out</span>
+                      <span className="ar-tstatus s-failed">Didn't come through</span>
                       <button type="button" className="ar-tiletrash" title="Clear it out" disabled={busy} onClick={() => dismissJob(j.jobId)}>🗑</button>
                     </div>
                   ))}
