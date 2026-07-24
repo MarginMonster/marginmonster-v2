@@ -1890,7 +1890,7 @@ body, body[data-page] { background:
     radial-gradient(58% 42% at 50% -4%, rgba(15,145,82,.09), transparent 60%),
     radial-gradient(46% 38% at 94% 2%, rgba(176,133,38,.10), transparent 62%),
     #F4F1E6 !important;
-  background-attachment: fixed !important; }
+  background-attachment: scroll !important; }
 .em-bgvid { display: none !important; }
 
 /* mobile: tall narrow viewports get true portrait crops (attention-framed on the
