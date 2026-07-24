@@ -66,6 +66,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // published live). Peak-delight moment.
   const askReview = !!shop && !shop.reviewAskedAt && publishedCount > 0;
 
+  // Referral — surface the invite once they can earn (have a plan).
+  let referral: { code: string; reward: number; listing: string } | null = null;
+  if (shop?.activePlan) {
+    try {
+      const { ensureReferralCode, REFERRAL_REWARD_TOKENS } = await import("../lib/referral.server");
+      referral = { code: await ensureReferralCode(shop.id), reward: REFERRAL_REWARD_TOKENS, listing: process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com" };
+    } catch { /* non-fatal */ }
+  }
+
   // Real organic results (from linked socials) → the "it's working" moment.
   const totals = sumStats(parseSocialStats(shop?.socialStatsJson));
   const wins = {
@@ -82,6 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     askReview,
     launch,
     wins,
+    referral,
     brand: parseBrand(shop?.brandProfile ?? null),
     brandJobError: brandJob?.lastError ?? null,
     paidAds: paidAdsEnabled(),
@@ -156,7 +166,13 @@ function friendlyError(msg: string): string {
 }
 
 export default function Dashboard() {
-  const { shop, pendingAssets, askReview, launch, wins, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, askReview, launch, wins, referral, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const [refCopied, setRefCopied] = useState(false);
+  const copyReferral = () => {
+    if (!referral) return;
+    const msg = `Try EasyMode on Shopify — AI blogs, videos & auto-posting from your products. Use code ${referral.code} and we both get ${referral.reward} free tokens. ${referral.listing}`;
+    navigator.clipboard?.writeText(msg).then(() => { setRefCopied(true); setTimeout(() => setRefCopied(false), 1800); }).catch(() => { /* blocked */ });
+  };
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -419,6 +435,13 @@ export default function Dashboard() {
               )}
             </div>
           </>
+        )}
+
+        {referral && (
+          <div className="eh-refer">
+            <div className="ehr-tx"><b>Refer a store, you both get {referral.reward} 🪙</b><span>Share your code — tokens land when they start a paid plan.</span></div>
+            <div className="ehr-act"><span className="ehr-code">{referral.code}</span><button type="button" onClick={copyReferral}>{refCopied ? "Copied ✓" : "Copy invite"}</button></div>
+          </div>
         )}
       </div>
     </Page>
