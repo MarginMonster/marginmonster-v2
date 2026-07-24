@@ -3629,3 +3629,23 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .mm-hero h1 { color:#F4EAC8 !important; }
 .mm-hero p { color:rgba(220,240,225,.82) !important; }
 .mm-hero .mm-eyebrow { font-family:inherit !important; color:#7FE0AC !important; font-weight:800 !important; font-size:11px !important; letter-spacing:.2em !important; text-transform:uppercase !important; animation:none !important; }
+
+/* ═══════════ Campaigns builder — GStyle green into the ledger ═══════════ */
+body[data-page="campaigns"] .qh-start {
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; font-size:14px !important; font-weight:800 !important; letter-spacing:0 !important;
+  background:linear-gradient(165deg,#12A85E,#0B6B3E) !important; color:#fff !important; border-radius:12px !important;
+  box-shadow:0 8px 20px rgba(12,122,70,.3), inset 0 0 0 1px rgba(255,210,74,.35) !important; }
+body[data-page="campaigns"] .qh-start:hover { filter:brightness(1.06) !important; }
+body[data-page="campaigns"] .qh-stepline { color:#0A3D26 !important; }
+body[data-page="campaigns"] .qh-stepline .n,
+body[data-page="campaigns"] .qh-howto .step .n {
+  background:linear-gradient(165deg,#12A85E,#0B6B3E) !important; color:#fff !important; box-shadow:0 2px 0 #064e2e !important; }
+body[data-page="campaigns"] .qh-label,
+body[data-page="campaigns"] .qh-field-label,
+body[data-page="campaigns"] .qh-auto-title { color:#0A5230 !important; }
+body[data-page="campaigns"] .qh-select:focus,
+body[data-page="campaigns"] .qh-input:focus { border-color:#0F9152 !important; box-shadow:0 0 0 3px rgba(15,145,82,.12) !important; outline:none !important; }
+body[data-page="campaigns"] .qh-goal.sel,
+body[data-page="campaigns"] .qh-goal:hover { border-color:#0F9152 !important; box-shadow:0 8px 20px rgba(12,122,70,.14) !important; }
+body[data-page="campaigns"] .qh-journal-link,
+body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
