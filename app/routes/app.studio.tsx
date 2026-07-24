@@ -184,6 +184,14 @@ export default function Studio() {
   const product = products[picked];
   const videoFree = videoQuotaLeft > 0;
 
+  // Rotate the presenter's 4 wardrobe variants across generations so repeated
+  // content of the same face never looks stale (0→1→2→3→…, remembered locally).
+  const nextVariant = () => {
+    let n = 0;
+    try { n = ((parseInt(localStorage.getItem("csOutfit") || "0", 10) || 0) + 1); localStorage.setItem("csOutfit", String(n)); } catch { /* ignore */ }
+    return String(n % 4);
+  };
+
   const generate = () => {
     if (!product) return;
     const intent = tab === "video" ? "genVideo" : tab === "image" ? "genImage" : "genBlog";
@@ -198,10 +206,10 @@ export default function Studio() {
         dir = parts.join(". ");
       }
       fields.direction = dir;
-      if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = "0"; }
+      if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); }
     } else {
       fields.direction = direction.trim();
-      if (tab === "image" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = "0"; }
+      if (tab === "image" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); }
     }
     submit(fields, { method: "post" });
   };
@@ -242,6 +250,7 @@ export default function Studio() {
             <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
           )}
           {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
+          {(tab === "video" || tab === "image") && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
 
           <div className="cfg-lbl">{tab === "blog" ? "Product to write about" : "Product to feature"}</div>
           {products.length > 0 ? (
