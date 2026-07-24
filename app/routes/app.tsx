@@ -11,7 +11,7 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
 import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
-import { Partner, PARTNER_BY_PLAN } from "../components/Partner";
+import { PARTNER_BY_PLAN } from "../components/Partner";
 import { getCompanion } from "../lib/companion.server";
 import { totalXpForLevel } from "../lib/achievements";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
@@ -134,33 +134,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-function LevelUpPopup({ level, gift, img, accent, srcs, onClose }: { level: number; gift: number; img: string | null; accent: string; srcs?: { a: string; b?: string; c?: string }; onClose: () => void }) {
+function LevelUpPopup({ level, gift, onClose }: { level: number; gift: number; onClose: () => void }) {
   const isVideoGift = gift >= 60;
   return (
-    <div className="mm-lvlup-overlay" role="dialog" aria-label={`Level ${level} reached`}>
-      <div className="mm-lvlup-card">
-        <div className="mm-lvlup-coins" aria-hidden="true">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <span key={i} className={`c c${i + 1}`}>🪙</span>
+    <div className="lvc-scrim" role="dialog" aria-label={`Level ${level} reached`}>
+      <div className="lvc-card">
+        <div className="lvc-coins" aria-hidden="true">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <span key={i} className={`lvc-coin c${i + 1}`}>🪙</span>
           ))}
         </div>
-        {img && (
-          <div className="mm-lvlup-partner">
-            <Partner img={img} accent={accent} srcs={srcs} />
-          </div>
-        )}
-        <div className="mm-lvlup-title">⭐ LEVEL {level}! ⭐</div>
-        <p className="mm-lvlup-msg">Congratulations, Player One — your store just leveled up.</p>
+        <div className="lvc-medal"><span className="lvc-ml">LVL</span><b>{level}</b></div>
+        <div className="lvc-eyebrow">Store level up</div>
+        <div className="lvc-title">Level {level}!</div>
+        <p className="lvc-msg">Your store just leveled up — nice work.</p>
         {gift > 0 ? (
-          <div className="mm-lvlup-gift">
-            🎁 REWARD: +{gift} 🪙 tokens{isVideoGift ? " — a FREE VIDEO generation, on us!" : " — a free ad generation, on us!"}
-          </div>
+          <div className="lvc-gift">🎁 +{gift} 🪙 tokens{isVideoGift ? " — a free video, on us!" : " — a free ad, on us!"}</div>
         ) : (
-          <div className="mm-lvlup-gift">🎁 Pick a plan to start collecting level-up token gifts!</div>
+          <div className="lvc-gift">🎁 Pick a plan to start earning level-up token rewards!</div>
         )}
-        <button type="button" className="mm-arcade-btn mm-lvlup-btn" onClick={onClose}>
-          ▶ CONTINUE
-        </button>
+        <button type="button" className="lvc-btn" onClick={onClose}>Continue →</button>
       </div>
     </div>
   );
@@ -212,9 +205,6 @@ export default function App() {
         <LevelUpPopup
           level={levelUp.level}
           gift={levelUp.gift}
-          img={hud.img}
-          accent={hud.accent}
-          srcs={hud.srcs}
           onClose={() => setShowLevelUp(false)}
         />
       )}
