@@ -112,13 +112,24 @@ html,body{margin:0;padding:0}
 .lz-grad{background:linear-gradient(100deg,var(--green2),#12A85E 45%,var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent;}
 .lz-sub{font-size:clamp(15px,2.2vw,18px);line-height:1.62;color:var(--ink2);max-width:600px;margin:0 auto 30px;}
 .lz-ctas{display:flex;flex-direction:column;align-items:center;gap:11px;}
-.lz-cta{position:relative;display:inline-flex;isolation:isolate;text-decoration:none;border-radius:15px;padding:2px;
+.lz-cta{position:relative;overflow:hidden;display:inline-flex;isolation:isolate;text-decoration:none;border-radius:15px;padding:2px;
   background:
     repeating-linear-gradient(57deg,rgba(255,220,120,.12) 0 1px,transparent 1px 8px),
     repeating-linear-gradient(123deg,rgba(255,220,120,.09) 0 1px,transparent 1px 8px),
     linear-gradient(165deg,#12A85E,#0B6B3E);
   box-shadow:0 6px 0 #064e2e,0 16px 36px rgba(12,122,70,.34);transition:transform .09s,filter .12s;}
-.lz-cta::before{content:"";position:absolute;inset:6px;border:1px solid rgba(255,210,74,.45);border-radius:11px;pointer-events:none;}
+/* Spinning guilloché medallion — engine-turned money etching, CSS-only so the
+   public page stays light (no big SVG). Fine conic rays + radial waves spin. */
+.lz-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-18px;width:104px;height:104px;margin-top:-52px;border-radius:50%;
+  background:
+    repeating-conic-gradient(from 0deg,rgba(255,228,158,.15) 0deg 1.4deg,transparent 1.4deg 4deg),
+    repeating-conic-gradient(from 0deg,rgba(255,228,158,.10) 0deg .7deg,transparent .7deg 7deg),
+    repeating-radial-gradient(circle,rgba(255,228,158,.12) 0 1px,transparent 1px 6px);
+  -webkit-mask:radial-gradient(circle,#000 60%,transparent 63%);mask:radial-gradient(circle,#000 60%,transparent 63%);
+  opacity:.8;animation:lz-medallion 26s linear infinite;pointer-events:none;}
+@keyframes lz-medallion{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.lz-cta::after{animation:none}}
+.lz-cta::before{content:"";position:absolute;inset:6px;border:1px solid rgba(255,210,74,.45);border-radius:11px;pointer-events:none;z-index:1;}
 .lz-cta:hover{filter:brightness(1.05)}
 .lz-cta:active{transform:translateY(3px);box-shadow:0 3px 0 #064e2e,0 8px 18px rgba(12,122,70,.3)}
 .lz-arr-w{display:inline-flex;align-items:center;gap:10px;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:#fff;padding:15px 30px;}
