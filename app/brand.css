@@ -3109,3 +3109,15 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .addon.connect { text-decoration:none; border-color:#CBB67A; background:linear-gradient(180deg,#FEFCF4,#FBF6E6); }
 .addon.connect .ao-nm { color:#3A3D31; }
 .addon.connect .ao-plus { color:#9C7318; }
+
+/* can't-cover nudge — upgrade + buy-tokens options above the CTA */
+.smp-nudge { margin-top:16px; background:linear-gradient(180deg,#FEFBF2,#FBF4E0); border:1px solid #E7D9A9; border-radius:16px; padding:14px 15px; box-shadow:0 4px 14px rgba(176,133,38,.12); }
+.smp-nudge .nz-hd { font-size:13px; font-weight:800; color:#7E5E13; margin-bottom:11px; line-height:1.4; }
+.smp-nudge .nz-opts { display:flex; flex-direction:column; gap:9px; }
+.smp-nudge .nz-opt { display:flex; flex-direction:column; gap:1px; text-decoration:none; border-radius:12px; padding:12px 14px; }
+.smp-nudge .nz-opt .nz-t { font-size:14.5px; font-weight:800; }
+.smp-nudge .nz-opt .nz-s { font-size:11.5px; font-weight:600; }
+.smp-nudge .nz-opt.buy { background:linear-gradient(180deg,#E7C879,#C99A2E); box-shadow:0 6px 16px rgba(176,133,38,.3); }
+.smp-nudge .nz-opt.buy .nz-t { color:#2A1F05; } .smp-nudge .nz-opt.buy .nz-s { color:#5A420C; }
+.smp-nudge .nz-opt.up { background:#fff; border:1.5px solid #DBD6C6; }
+.smp-nudge .nz-opt.up .nz-t { color:#0A6B3E; } .smp-nudge .nz-opt.up .nz-s { color:#8C8F82; }

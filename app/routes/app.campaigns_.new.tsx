@@ -10,7 +10,7 @@ import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
 import { AVATARS, avatarImg } from "../lib/avatars";
-import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
+import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, type PlanKey } from "../lib/plan-config";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
@@ -70,6 +70,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasPlan: !!plan?.active,
     planName: tier?.name ?? null,
     allowance,
+    packs: TOKEN_PACKS,
+    tiers: PLAN_TIERS.map((t) => ({ name: t.name, monthlyTokens: t.monthlyTokens, price: t.price })),
     tokens: tokensRemaining(plan ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }),
     linked,
     products,
@@ -136,7 +138,7 @@ const FB = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02
 const GLYPH = { tt: TT, ig: IG, fb: FB } as const;
 
 export default function NewPlan() {
-  const { hasPlan, planName, tokens, linked, products, cast, defaultAvatar, archetypes: archs } = useLoaderData<typeof loader>();
+  const { hasPlan, planName, allowance, tokens, packs, tiers, linked, products, cast, defaultAvatar, archetypes: archs } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const error = actionData && "error" in actionData ? actionData.error : null;
   const submit = useSubmit();
@@ -155,6 +157,11 @@ export default function NewPlan() {
   const per = arch?.cost ?? 0;
   const accounts = 1 + addOns.length;
   const total = per * accounts;
+  const shortfall = Math.max(0, total - tokens); // can't cover from the wallet right now
+  const overAllowance = total > allowance; // bigger than the monthly refill → upgrade territory
+  const upgradeTier = tiers.find((t) => t.monthlyTokens >= total && t.monthlyTokens > allowance) || null;
+  const pack = packs.find((p) => p.tokens >= shortfall) || packs[packs.length - 1];
+  const needNudge = hasPlan && (shortfall > 0 || overAllowance);
   const toggleProduct = (i: number) => setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
   const toggleAddOn = (p: string) => setAddOns((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
 
@@ -274,8 +281,28 @@ export default function NewPlan() {
                 {accounts > 1 && <div className="tk-sub">{per.toLocaleString()} × {accounts} — each account gets its own platform-native plan</div>}
               </div>
 
-              <button type="button" className="smp-cta go" disabled={busy || !primary} onClick={activate}>
-                {busy ? "Starting…" : `Activate ${arch?.name ?? "plan"} — ${total.toLocaleString()} tokens / mo`}
+              {needNudge && (
+                <div className="smp-nudge">
+                  <div className="nz-hd">{shortfall > 0 ? `You're ${shortfall.toLocaleString()} tokens short for this plan` : `This plan runs ${total.toLocaleString()} tokens — more than your ${planName} allowance`}</div>
+                  <div className="nz-opts">
+                    {shortfall > 0 && (
+                      <Link className="nz-opt buy" to="/app/plans">
+                        <span className="nz-t">＋ Buy {pack.label}</span>
+                        <span className="nz-s">${pack.price} · covers it instantly</span>
+                      </Link>
+                    )}
+                    {upgradeTier && (
+                      <Link className="nz-opt up" to="/app/plans">
+                        <span className="nz-t">↑ Upgrade to {upgradeTier.name}</span>
+                        <span className="nz-s">{upgradeTier.monthlyTokens.toLocaleString()} tokens/mo — includes this every month</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <button type="button" className="smp-cta go" disabled={busy || !primary || shortfall > 0} onClick={activate}>
+                {busy ? "Starting…" : shortfall > 0 ? `Top up to activate — ${shortfall.toLocaleString()} short` : `Activate ${arch?.name ?? "plan"} — ${total.toLocaleString()} tokens / mo`}
               </button>
               <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens · ${planName} plan` : "Choose a subscription plan to activate."}</p>
             </div>
