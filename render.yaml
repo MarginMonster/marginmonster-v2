@@ -7,12 +7,14 @@ services:
     plan: standard
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
-    # Durable storage for rendered videos/photos — persists across deploys so
-    # Kept content is safe. Keep this at the size the live disk actually is:
-    # Render disks can only GROW, never shrink, and a blueprint requesting a
-    # smaller size than the live disk can fail the sync. To grow it, bump this
-    # AND confirm/apply the resize in the Render dashboard (Disks) — don't rely
-    # on the blueprint alone.
+    # Local render cache for videos/photos. This disk is now a FAST CACHE, not
+    # the source of truth: when the S3_* vars below are set, every render is
+    # mirrored to durable object storage and re-fetched on a cache miss, so
+    # Kept content survives even if this disk is resized, detached, or the
+    # instance is recreated. Keep it at the size the live disk actually is —
+    # Render disks can only GROW; a blueprint requesting a smaller size than the
+    # live disk can fail the sync. To grow it, bump this AND apply the resize in
+    # the Render dashboard (Disks) — don't rely on the blueprint alone.
     disk:
       name: renders
       mountPath: /app/data/renders
@@ -44,3 +46,16 @@ services:
         sync: false
       - key: TIKTOK_APP_SECRET
         sync: false
+      # Durable object storage for renders (Cloudflare R2 / AWS S3 / any
+      # S3-compatible). Set all four to make Kept content survive disk changes;
+      # leave unset to fall back to local-disk-only (original behavior).
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto

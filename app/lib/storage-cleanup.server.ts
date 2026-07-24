@@ -2,6 +2,7 @@ import { db } from "../db.server";
 import fs from "node:fs";
 import path from "node:path";
 import { parseSchedule } from "./questlines";
+import { deleteObject, renderKey } from "./object-storage.server";
 
 /* 30-day storage cache clear.
  *
@@ -62,14 +63,17 @@ export async function purgeStaleUnkept(): Promise<void> {
     const doomed = stale.filter((a) => !referenced.has(a.id));
     if (!doomed.length) return;
 
-    // Free the render files on disk before dropping the rows.
+    // Free the render files on disk AND in durable object storage before
+    // dropping the rows — otherwise the bucket would grow forever.
     for (const a of doomed) {
       try {
         const b = JSON.parse(a.bodyJson || "{}");
         for (const u of [b.videoUrl, b.imageUrl]) {
           if (typeof u === "string" && u.startsWith("/renders/")) {
-            const fp = path.join(rendersDir, path.basename(u));
+            const base = path.basename(u);
+            const fp = path.join(rendersDir, base);
             if (fp.startsWith(rendersDir)) fs.rmSync(fp, { force: true });
+            try { await deleteObject(renderKey(base)); } catch { /* non-fatal */ }
           }
         }
       } catch { /* ignore a single bad row */ }

@@ -14,6 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
+import { getObject, renderKey } from "../lib/object-storage.server";
 
 const BOOST_FEE = 25; // token service fee per boost; ad spend bills the merchant's own account
 
@@ -253,9 +254,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!mediaUrl) return json({ error: "This piece has no rendered file yet." });
       let buf: Buffer;
       if (String(mediaUrl).startsWith("/renders/")) {
-        const f = path.join(process.cwd(), "data", "renders", path.basename(mediaUrl));
-        if (!fs.existsSync(f)) return json({ error: "The file expired from storage — regenerate and attach a fresh one." });
-        buf = fs.readFileSync(f);
+        const base = path.basename(mediaUrl);
+        const f = path.join(process.cwd(), "data", "renders", base);
+        if (fs.existsSync(f)) {
+          buf = fs.readFileSync(f);
+        } else {
+          // Not on local disk — pull from durable object storage (fresh instance
+          // or a resized disk). Only "expired" if it's gone from both.
+          const obj = await getObject(renderKey(base));
+          if (!obj) return json({ error: "The file expired from storage — regenerate and attach a fresh one." });
+          buf = obj.buf;
+        }
       } else {
         const r = await fetch(mediaUrl);
         if (!r.ok) return json({ error: "The file expired — regenerate and attach a fresh one." });

@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
+import { getObject, renderKey, storageEnabled } from "../lib/object-storage.server";
 
 /* Serves assembled UGC ad videos from the runtime render directory.
  * (Runtime-generated files can't live in public/ — Vite copies that at build
@@ -26,6 +27,26 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       return new Response("Not found", { status: 404 });
     }
     const filePath = path.join(process.cwd(), "data", "renders", name);
+    // Read-fallback: if the file isn't on the local disk (fresh instance, or a
+    // disk that was resized/recreated), pull it from durable object storage and
+    // rehydrate the local copy so subsequent requests are fast. This is what
+    // makes "Kept" content survive any deploy or disk change.
+    if (!fs.existsSync(filePath) && storageEnabled()) {
+      const obj = await getObject(renderKey(name));
+      if (obj) {
+        try {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, obj.buf);
+        } catch (e) {
+          // If we can't write locally (disk full), still serve from memory.
+          console.error("[renders] rehydrate write failed:", e instanceof Error ? e.message : e);
+          const mime = obj.contentType;
+          return new Response(obj.buf, {
+            headers: { "Content-Type": mime, "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=31536000, immutable", "Content-Length": String(obj.buf.length) },
+          });
+        }
+      }
+    }
     if (!fs.existsSync(filePath)) {
       return new Response("Not found", { status: 404 });
     }

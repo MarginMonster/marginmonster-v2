@@ -21,6 +21,7 @@ import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
+import { mirrorRender } from "./object-storage.server";
 import { animateAvatar, falEnabled, falTts } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
@@ -616,6 +617,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       // only the silent kling fallback needs the TTS muxed over a looped clip.
       lipSynced: engine === "omni-human" || engine === "heygen-fal",
     });
+
+    // Mirror to durable object storage (no-op unless configured) so the clip
+    // survives disk resizes/instance changes.
+    try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
     const asset = await db.asset.create({
       data: {

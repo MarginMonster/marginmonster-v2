@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
+import { mirrorRender } from "./object-storage.server";
 
 /** SELF-HEALING BACKFILL — image ads forged before durable storage carry
  *  replicate.delivery URLs that expired (~1h), leaving blank cards. Re-forge
@@ -75,6 +76,7 @@ async function fluxToDisk(prompt: string): Promise<string> {
   fs.mkdirSync(dir, { recursive: true });
   const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
   fs.writeFileSync(path.join(dir, fileName), buf);
+  try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
   return `/renders/${fileName}`;
 }
 
@@ -125,6 +127,7 @@ export async function generateImageAd(
                 fs.mkdirSync(dir, { recursive: true });
                 const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
                 fs.writeFileSync(path.join(dir, fileName), buf);
+                try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
                 localUrl = `/renders/${fileName}`;
               }
             }
@@ -218,6 +221,7 @@ export async function generateImageAd(
         fs.mkdirSync(dir, { recursive: true });
         const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
         fs.writeFileSync(path.join(dir, fileName), buf);
+        try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
         localUrl = `/renders/${fileName}`;
       }
     }
