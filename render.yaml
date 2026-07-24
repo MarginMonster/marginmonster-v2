@@ -7,13 +7,19 @@ services:
     plan: standard
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
-    # Durable storage for rendered videos — WITHOUT this, Render's ephemeral
-    # container disk wipes data/renders on every deploy (videos 404 on refresh,
-    # and auto-posting can't fetch them). Mounted at the app's data/renders.
+    # Durable storage for rendered videos/photos — WITHOUT this, Render's
+    # ephemeral container disk would wipe data/renders on every deploy (videos
+    # 404 on refresh, auto-posting can't fetch them). This disk PERSISTS across
+    # deploys/restarts, so Kept content is safe. It's shared across all shops on
+    # this single instance and Kept content grows unbounded, so it's sized with
+    # real headroom; the worker logs usage and warns before it fills. Object
+    # storage (R2/S3) is the next step for redundancy + multi-instance/standalone.
+    # NOTE: Render disks can grow but never shrink — confirm the resize applied
+    # in the Render dashboard after this deploys.
     disk:
       name: renders
       mountPath: /app/data/renders
-      sizeGB: 5
+      sizeGB: 50
     envVars:
       - key: NODE_ENV
         value: production

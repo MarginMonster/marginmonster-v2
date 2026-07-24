@@ -26,6 +26,20 @@ export async function purgeStaleUnkept(): Promise<void> {
   if (now - lastRun < EVERY_MS) return;
   lastRun = now;
 
+  const rendersDir = path.join(process.cwd(), "data", "renders");
+
+  // Disk headroom watch — warn well before the renders disk fills so there's
+  // time to grow it (or move to object storage) instead of renders failing.
+  try {
+    const st = fs.statfsSync(rendersDir);
+    const totalGB = (st.blocks * st.bsize) / 1e9;
+    const freeGB = (st.bavail * st.bsize) / 1e9;
+    const usedPct = totalGB > 0 ? Math.round((1 - freeGB / totalGB) * 100) : 0;
+    const line = `renders disk ${usedPct}% used (${freeGB.toFixed(1)}GB free of ${totalGB.toFixed(0)}GB)`;
+    if (usedPct >= 80) console.warn(`[storage-cleanup] ⚠ ${line} — grow the disk or move to object storage soon`);
+    else console.log(`[storage-cleanup] ${line}`);
+  } catch { /* statfs unsupported on this platform — skip */ }
+
   try {
     const cutoff = new Date(now - CACHE_DAYS * 86_400_000);
     const stale = await db.asset.findMany({
@@ -49,7 +63,6 @@ export async function purgeStaleUnkept(): Promise<void> {
     if (!doomed.length) return;
 
     // Free the render files on disk before dropping the rows.
-    const rendersDir = path.join(process.cwd(), "data", "renders");
     for (const a of doomed) {
       try {
         const b = JSON.parse(a.bodyJson || "{}");

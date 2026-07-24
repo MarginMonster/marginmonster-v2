@@ -12,8 +12,11 @@ import path from "node:path";
  * when the video is delivered, reload works" bug). We read bytes into a buffer
  * and always return a plain Response — nothing can throw uncaught.
  *
- * Render's disk is ephemeral across redeploys — durable storage (R2/S3) is the
- * known follow-up. */
+ * These files live on a PERSISTENT Render disk (render.yaml: disk "renders"
+ * mounted at /app/data/renders), so they survive deploys and restarts — Kept
+ * content is durable. The disk is single-instance with no redundancy, so
+ * moving to object storage (R2/S3) is still the right call before scaling out
+ * or going standalone. */
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   try {
     const name = params.file || "";
