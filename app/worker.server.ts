@@ -6,6 +6,7 @@ import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
 import { postDueSlots } from "./lib/social-post.server";
 import { refreshSocialStats } from "./lib/social-insights.server";
 import { backfillDeadImages } from "./lib/image-generation.server";
+import { purgeStaleUnkept } from "./lib/storage-cleanup.server";
 
 declare global {
   var __mm_worker_started__: boolean | undefined;
@@ -24,6 +25,8 @@ async function tick() {
     // Pull organic follower/engagement analytics into the cache (self-throttled to ~1h).
     await refreshSocialStats().catch((e) => console.error("[worker] social insights (non-fatal):", e));
     await backfillDeadImages().catch((e) => console.error("[worker] image backfill (non-fatal):", e));
+    // Clear un-kept videos/photos older than 30 days (self-throttled to ~6h).
+    await purgeStaleUnkept().catch((e) => console.error("[worker] storage cleanup (non-fatal):", e));
     // Drain any pending jobs each tick.
     let processed = true;
     let guard = 0;

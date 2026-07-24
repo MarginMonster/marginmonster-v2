@@ -3272,6 +3272,8 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-faildiv span { color:#9A3120; font-weight:800; }
 .ar-failtile { opacity:.9; }
 .ar-failrow { display:flex; gap:8px; align-items:center; margin-top:2px; }
+.ar-cachenote { font-size:11.5px; line-height:1.5; color:#8A8D7E; background:#FBFAF4; border:1px solid #EDE9DC; border-radius:11px; padding:9px 12px; margin:0 0 12px; }
+.ar-cachenote b { color:#0A6B3E; font-weight:800; }
 /* Blog generation feedback — a real "creating…" card that resolves */
 .ar-genblogs { margin-bottom:10px; }
 .ar-blogbuf { display:flex; align-items:center; gap:12px; background:linear-gradient(160deg,#0E5233,#0A3421); border-color:rgba(231,200,121,.28); }

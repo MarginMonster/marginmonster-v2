@@ -404,6 +404,9 @@ export default function Archive() {
           </>
         ) : (
           <>
+            {(tab === "video" || tab === "image") && lib.length > 0 && (
+              <p className="ar-cachenote">Un-kept videos &amp; photos clear automatically after 30 days — tap a piece and hit <b>Keep</b> to save it for good.</p>
+            )}
             {(tab === "video" || tab === "image") && genCards.length > 0 && (
               <div className="ar-grid ar-gen">
                 {genCards.map((j) => (
