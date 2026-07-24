@@ -21,7 +21,7 @@ function fmtWhen(date: string, time: string): string {
 }
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
-type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string };
+type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string; full?: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -36,7 +36,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const byId = new Map(assets.map((a) => [a.id, a]));
   const toCard = (a: (typeof assets)[number]): Card => {
     const b = parse(a.bodyJson);
-    return { id: a.id, title: a.title || "Untitled", status: a.status, video: b.videoUrl, image: b.imageUrl, snippet: b.html ? stripHtml(b.html).slice(0, 140) : undefined };
+    const text = b.html ? stripHtml(b.html) : undefined;
+    return { id: a.id, title: a.title || "Untitled", status: a.status, video: b.videoUrl, image: b.imageUrl, snippet: text?.slice(0, 140), full: text?.slice(0, 4000) };
   };
   const library = {
     video: assets.filter((a) => a.type === "VIDEO_AD").map(toCard),
@@ -103,6 +104,7 @@ export default function Archive() {
   const busy = nav.state !== "idle";
   const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
   const [tab, setTab] = useState<TabKey>("scheduled");
+  const [viewer, setViewer] = useState<(Card & { kind: TabKey }) | null>(null);
 
   const early = (qid: string, slotIdx: number) => submit({ intent: "generateEarly", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
   const retry = (qid: string, slotIdx: number) => submit({ intent: "retry", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
@@ -167,22 +169,42 @@ export default function Archive() {
             ) : (
               <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
                 {lib.map((c) => tab === "blog" ? (
-                  <div className="ar-blog" key={c.id}>
+                  <button type="button" className="ar-blog" key={c.id} onClick={() => setViewer({ ...c, kind: "blog" })}>
                     <b>{c.title}</b>
                     {c.snippet && <p>{c.snippet}…</p>}
                     <span className={`ar-status s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Live on your blog" : c.status === "APPROVED" ? "Approved" : "In review"}</span>
-                  </div>
+                  </button>
                 ) : (
-                  <div className="ar-tile" key={c.id}>
+                  <button type="button" className="ar-tile" key={c.id} onClick={() => setViewer({ ...c, kind: tab })}>
                     <div className="ar-timg" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined}>
                       {c.video && <video className="ar-svid" src={c.video} muted playsInline preload="metadata" />}
                     </div>
                     <span className={`ar-tstatus s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Posted" : c.status === "APPROVED" ? "Approved" : "In review"}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </>
+        )}
+
+        {viewer && (
+          <div className="cs-scrim" onClick={() => setViewer(null)}>
+            <div className={`ar-viewer${viewer.kind === "blog" ? " read" : ""}`} onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="cs-vx" onClick={() => setViewer(null)}>✕</button>
+              {viewer.kind === "blog" ? (
+                <div className="ar-read"><h2>{viewer.title}</h2><p>{viewer.full || viewer.snippet}</p></div>
+              ) : viewer.video ? (
+                <video className="ar-vfull" src={viewer.video} controls autoPlay playsInline />
+              ) : viewer.image ? (
+                <img className="ar-vfull" src={viewer.image} alt={viewer.title} />
+              ) : (
+                <div className="ar-read"><p>Still being made…</p></div>
+              )}
+              {viewer.kind !== "blog" && (
+                <div className="ar-vmeta"><b>{viewer.title}</b><span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Posted" : viewer.status === "APPROVED" ? "Approved" : "In review"}</span></div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </Page>
