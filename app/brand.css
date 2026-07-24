@@ -2990,6 +2990,25 @@ body[data-page="performance"] { background: radial-gradient(90% 40% at 50% -4%, 
 .er-ey { font-size:11px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; color:var(--gold-deep); }
 .er-h1 { font-size:clamp(26px,7.4vw,34px); line-height:1.06; letter-spacing:-.03em; font-weight:800; margin:9px 0 10px; color:var(--ink); }
 .er-sub { font-size:14.5px; color:var(--ink2); margin:0 0 18px; max-width:44ch; line-height:1.55; }
+/* Proof-of-value band — deep-green guilloché, gold value headline. Always on. */
+.er-value { position:relative; margin:2px 0 22px; border-radius:20px; padding:20px 20px 16px; color:#EAF4EE; overflow:hidden; isolation:isolate;
+  background:repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 8px),repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 8px),var(--mm-ribbon) no-repeat center / 100% 100%,linear-gradient(160deg,#0E5233,#0A3421 58%,#062417);
+  box-shadow:0 16px 40px rgba(8,42,26,.3), inset 0 0 0 1px rgba(231,200,121,.28), inset 0 1px 0 rgba(255,255,255,.06); }
+.er-value::after { content:""; position:absolute; z-index:-1; top:50%; right:-46px; width:210px; height:210px; margin-top:-105px; background:var(--mm-medallion) center / contain no-repeat; opacity:.85; animation:mm-medallion-cw 92s linear infinite; pointer-events:none; }
+.er-value::before { content:""; position:absolute; inset:9px; border-radius:14px; border:1px solid rgba(255,210,74,.32); pointer-events:none; }
+.er-value-ey { font-size:10.5px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; color:var(--gold-hi); }
+.er-value-hd { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; margin-top:7px; }
+.er-value-hd b { font-family:Poppins,var(--sans); font-size:34px; font-weight:800; letter-spacing:-.03em; color:#F4EAC8; font-variant-numeric:tabular-nums; line-height:1; }
+.er-value-hd span { font-size:13px; color:rgba(220,240,225,.82); line-height:1.4; max-width:24ch; }
+.er-value-hd span i { font-style:normal; color:var(--gold-hi); }
+.er-value-hd.empty { margin-top:8px; }
+.er-value-hd.empty span { font-size:13.5px; max-width:none; }
+.er-value-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
+.er-value-grid .v { flex:1 1 68px; background:rgba(255,255,255,.06); border:1px solid rgba(231,200,121,.22); border-radius:12px; padding:9px 6px; text-align:center; }
+.er-value-grid .v b { display:block; font-family:Poppins,var(--sans); font-size:18px; font-weight:800; color:#F4EAC8; font-variant-numeric:tabular-nums; }
+.er-value-grid .v span { display:block; margin-top:2px; font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:rgba(220,240,225,.6); }
+.er-value-note { display:block; margin-top:12px; font-size:10.5px; color:rgba(220,240,225,.52); line-height:1.4; }
+@media (prefers-reduced-motion:reduce){ .er-value::after { animation:none; } }
 
 /* honest connect / warming states */
 .er-note { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 1px 2px rgba(20,22,15,.05); }

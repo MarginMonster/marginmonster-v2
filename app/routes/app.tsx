@@ -276,7 +276,7 @@ export default function App() {
         {(features.socialOn || features.paidAds) && (
           <Link to="/app/connect">{features.paidAds ? "Ad Accounts" : "Auto-Posting"}</Link>
         )}
-        {features.paidAds && <Link to="/app/performance">Performance & ROI</Link>}
+        <Link to="/app/performance">{features.paidAds ? "Performance & ROI" : "Results"}</Link>
         <Link to="/app/plans">Plans</Link>
       </NavMenu>
       {/* spacer so the fixed HUD never covers page header actions */}

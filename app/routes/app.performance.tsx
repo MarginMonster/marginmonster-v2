@@ -23,6 +23,7 @@ import { parseSchedule } from "../lib/questlines";
 
 type RecentPost = { title: string; platform: string; url: string; date: string };
 type Totals = ReturnType<typeof sumStats>;
+type Proof = { videos: number; images: number; blogs: number; blogsLive: number; landingViews: number; posts: number; valueCents: number };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -36,10 +37,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // ── Organic results path — followers + engagement from the socials ───────
+  const EMPTY_PROOF = { videos: 0, images: 0, blogs: 0, blogsLive: 0, landingViews: 0, posts: 0, valueCents: 0 };
   const emptyOrganic = () => json({
     mode: "organic" as const, socialOn: socialProviderEnabled(), linked: [] as string[],
     platforms: {} as Record<string, PlatformStats>, fetchedAt: null as string | null,
-    totals: sumStats(parseSocialStats(null)), recent: [] as RecentPost[],
+    totals: sumStats(parseSocialStats(null)), recent: [] as RecentPost[], proof: EMPTY_PROOF,
   });
 
   const shop = await db.shop.findUnique({
@@ -60,16 +62,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // Recent posts feed — pulled from what auto-posting actually shipped.
   const recent: RecentPost[] = [];
+  let posts = 0;
   for (const q of shop.questlines) {
     const sched = parseSchedule(q.scheduleJson);
     for (const s of sched.slots) {
       if (s.status !== "POSTED" || !s.postedUrls) continue;
       for (const [platform, url] of Object.entries(s.postedUrls)) {
-        if (url) recent.push({ title: s.productTitle || q.name, platform, url, date: s.date });
+        if (url) { recent.push({ title: s.productTitle || q.name, platform, url, date: s.date }); posts++; }
       }
     }
   }
   recent.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  // Proof-of-value band — always populated from data we can stand behind:
+  // real counts of what EasyMode produced, plus landing-page views we track
+  // ourselves. "Value created" is an explicit, conservative estimate of what
+  // the same output would cost outsourced (video $60 / still $12 / article $45).
+  const [videos, images, blogs, blogsLive, landingAgg] = await Promise.all([
+    db.asset.count({ where: { shopId: shop.id, type: "VIDEO_AD" } }),
+    db.asset.count({ where: { shopId: shop.id, type: "IMAGE_AD" } }),
+    db.asset.count({ where: { shopId: shop.id, type: "BLOG_POST" } }),
+    db.asset.count({ where: { shopId: shop.id, type: "BLOG_POST", status: "PUBLISHED" } }),
+    db.landingPage.aggregate({ where: { shopId: shop.id }, _sum: { views: true } }),
+  ]);
+  const landingViews = landingAgg._sum.views || 0;
+  const valueCents = videos * 6000 + images * 1200 + blogs * 4500;
+  const proof = { videos, images, blogs, blogsLive, landingViews, posts, valueCents };
 
   return json({
     mode: "organic" as const,
@@ -79,6 +97,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     fetchedAt: stats.fetchedAt,
     totals: sumStats(stats),
     recent: recent.slice(0, 8),
+    proof,
   });
 };
 
@@ -114,26 +133,55 @@ export default function Results() {
       fetchedAt={data.fetchedAt}
       totals={data.totals}
       recent={data.recent}
+      proof={data.proof}
     />
   );
 }
 
 // ═══ Organic engagement dashboard ═══════════════════════════════════════════
-function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent }: {
+function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent, proof }: {
   socialOn: boolean;
   linked: string[];
   platforms: Record<string, PlatformStats>;
   fetchedAt: string | null;
   totals: Totals;
   recent: RecentPost[];
+  proof: Proof;
 }) {
   const platformKeys = Object.keys(platforms);
   const hasStats = platformKeys.length > 0 && totals.followers + totals.views + totals.likes > 0;
   const engagement = totals.likes + totals.comments + totals.shares;
+  const madeTotal = proof.videos + proof.images + proof.blogs;
+  const dollars = Math.round(proof.valueCents / 100);
 
   return (
     <Page title="Results" backAction={{ content: "Home", url: "/app" }}>
       <div className="er">
+        {/* Always-on proof of value — real output + what it would've cost to
+            outsource. Visible on day one, before any socials are connected. */}
+        <div className="er-value">
+          <span className="er-value-ey">What EasyMode has made you</span>
+          {madeTotal > 0 ? (
+            <>
+              <div className="er-value-hd">
+                <b>${dollars.toLocaleString()}</b>
+                <span>in content — roughly what you'd pay to outsource it<i>*</i></span>
+              </div>
+              <div className="er-value-grid">
+                <div className="v"><b>{nfmt(proof.videos)}</b><span>Videos</span></div>
+                <div className="v"><b>{nfmt(proof.images)}</b><span>Images</span></div>
+                <div className="v"><b>{nfmt(proof.blogs)}</b><span>Articles</span></div>
+                {proof.blogsLive > 0 && <div className="v"><b>{nfmt(proof.blogsLive)}</b><span>Blogs live</span></div>}
+                {proof.landingViews > 0 && <div className="v"><b>{nfmt(proof.landingViews)}</b><span>Page views</span></div>}
+                {proof.posts > 0 && <div className="v"><b>{nfmt(proof.posts)}</b><span>Auto-posted</span></div>}
+              </div>
+              <span className="er-value-note">*Estimate at typical outsourced rates ($60 video · $12 image · $45 article). Your real cost was a fraction, in tokens.</span>
+            </>
+          ) : (
+            <div className="er-value-hd empty"><span>Make your first piece in the Content Studio and your running total lands here — every video, image and article, plus what it would've cost to outsource.</span></div>
+          )}
+        </div>
+
         <span className="er-ey">Your socials</span>
         <h1 className="er-h1">Reach &amp; engagement</h1>
         <p className="er-sub">Followers, views and engagement across every account EasyMode posts to — refreshed automatically.</p>
