@@ -336,7 +336,7 @@ export default function Studio() {
     <Page>
       <div className="smp">
         <h1 className="smp-h1">Content Studio</h1>
-        <p className="smp-sub">Make one piece by hand, in your voice — created now and dropped into your Content Queue.</p>
+        <p className="smp-sub">Make one piece by hand, in your voice — created now and dropped into your Archive Storage.</p>
 
         <div className="cs-tabs">
           {TABS.map((t) => (

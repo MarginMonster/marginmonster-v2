@@ -237,7 +237,7 @@ const QUICK = [
   { l: "Plans", route: "/app/plans" },
   { l: "Video Studio", route: "/app/videos" },
   { l: "Landing Pages", route: "/app/funnels" },
-  { l: "Content Queue", route: "/app/assets" },
+  { l: "Archive Storage", route: "/app/archive" },
   { l: "Calendar", route: "/app/calendar" },
   { l: "Ad Accounts", route: "/app/connect" },
   { l: "Performance", route: "/app/performance" },

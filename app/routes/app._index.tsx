@@ -186,9 +186,9 @@ export default function Dashboard() {
             </Link>
           )}
           {toReview > 0 && (
-            <Link className="eh-review" to="/app/assets">
+            <Link className="eh-review" to="/app/archive">
               <span className="rv-n">{toReview}</span>
-              {toReview === 1 ? "piece waiting for your review" : "pieces waiting for your review"}
+              {toReview === 1 ? "new piece in your Archive" : "new pieces in your Archive"}
               <IChev />
             </Link>
           )}

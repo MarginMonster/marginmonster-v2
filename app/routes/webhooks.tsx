@@ -55,12 +55,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             enqueueJob(shopRecord.id, "GENERATE_IMAGE_AD", {
               productTitle: product.title,
               productImageUrl: product.images?.[0]?.src,
-            }),
-            enqueueJob(shopRecord.id, "GENERATE_AD_COPY", {
-              productTitle: product.title,
-              productDescription: desc.slice(0, 300),
             })
           );
+          // (Ad-copy auto-gen removed: it only ever surfaced in the retired
+          //  Content Queue and nothing in the current flow consumes it — Boost
+          //  uses the image/video asset and captions are written at post time.)
         }
 
         await Promise.all(jobs);

@@ -79,7 +79,7 @@ export default function SeoHub() {
               <span className="pp-cta">Open listings</span>
             </Link>
 
-            <Link to="/app/assets" className="pp-tool">
+            <Link to="/app/archive?tab=blog" className="pp-tool">
               <span className="ico">📰</span>
               <h3>Blog posts</h3>
               <p>
