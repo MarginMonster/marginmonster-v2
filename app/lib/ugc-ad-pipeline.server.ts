@@ -60,7 +60,6 @@ interface UgcAdParams {
   holdProduct?: boolean;
   wearProduct?: boolean; // apparel → presenter models (wears) the item instead of holding it
   scene?: string; // merchant's setting/action → shapes the composed opening frame
-  clipMode?: "talking" | "action"; // talking = lip-synced presenter; action = motion clip, no script/lip-sync
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
     // NEVER re-spend on completed stages or abandon a live omni prediction
@@ -387,71 +386,6 @@ export function resolvePortraitFile(id: string, variant: number): string {
   throw new Error(`[ugc] no portrait on disk for presenter "${id}"`);
 }
 
-/** ACTION CLIP — motion video from a prompt, no talking head. Isolated path. */
-async function generateActionClip(
-  params: UgcAdParams,
-  avatar: { id: string; name: string; desc: string },
-  portraitPublicUrl: string,
-  portraitDataUri: string
-): Promise<string> {
-  // 1) opening still — the presenter in the scene, holding/wearing the product
-  let startImage = portraitDataUri;
-  if (params.productImageUrl && portraitPublicUrl) {
-    try {
-      const { composeHoldingFrames, falImageEnabled } = await import("./fal-image.server");
-      if (falImageEnabled()) {
-        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene);
-        if (frames[0]) {
-          const buf = await downloadBuffer(frames[0]);
-          if (buf.length > 10_000) startImage = "data:image/jpeg;base64," + buf.toString("base64");
-        }
-      }
-    } catch (e) { console.error("[ugc:action] compose failed, using plain portrait:", e instanceof Error ? e.message : e); }
-  }
-
-  // 2) Kling image-to-video — the action itself, driven by the merchant's prompt
-  // Model is env-swappable so we can move off Kling with no code change: set
-  // ACTION_VIDEO_MODEL to any Replicate image-to-video slug taking start_image
-  // + prompt (e.g. bytedance/seedance-1-pro, wan-video/wan-2.2-i2v-a14b).
-  const ACTION_MODEL = process.env.ACTION_VIDEO_MODEL || "kwaivgi/kling-v1.6-standard";
-  const ACTION_SECONDS = Number(process.env.ACTION_VIDEO_SECONDS) || 5;
-  const motion = [params.scene, params.direction].map((s) => (s || "").trim()).filter(Boolean).join(". ").slice(0, 300)
-    || `${avatar.desc} showing the ${params.productTitle} to camera with natural movement`;
-  const clipId = await repCreate(ACTION_MODEL, {
-    start_image: startImage,
-    image: startImage, // some models key the first frame as `image` not `start_image`
-    prompt: `${motion}. Photorealistic, natural motion, keep the person and the product consistent and undistorted, vertical video.`,
-    negative_prompt: "distortion, morphing, extra limbs, extra people, warped product, text, watermark, camera glitch",
-    duration: ACTION_SECONDS,
-    cfg_scale: 0.5,
-  });
-  const clipUrl = await repPoll(clipId, 12 * 60_000, "action-video");
-
-  // 3) normalize to a 720x1280 vertical mp4
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-act-"));
-  try {
-    const clipPath = path.join(tmp, "clip.mp4");
-    await download(clipUrl, clipPath);
-    const rendersDir = path.join(process.cwd(), "data", "renders");
-    fs.mkdirSync(rendersDir, { recursive: true });
-    const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    const outPath = path.join(rendersDir, fileName);
-    const run = await runFfmpeg(["-y", "-i", clipPath, "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30", "-t", "5", "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart", outPath]);
-    if (run.status !== 0 || !fs.existsSync(outPath)) throw new Error(`[ugc:action] ffmpeg failed: ${(run.stderr || "").slice(-300)}`);
-    const asset = await db.asset.create({
-      data: {
-        shopId: params.shopId, type: "VIDEO_AD", status: "PENDING",
-        title: `${avatar.name} — ${params.productTitle} (action)`,
-        bodyJson: JSON.stringify({ style: "ACTION", engine: "kling-action", videoUrl: `/renders/${fileName}`, prompt: motion }),
-        metaJson: JSON.stringify({ style: "ACTION", productTitle: params.productTitle, avatarId: avatar.id, direction: params.direction || null, scene: params.scene || null }),
-      },
-    });
-    return asset.id;
-  } finally {
-    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
-  }
-}
-
 export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const avatar = AVATAR_BY_ID[params.avatarId];
   if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
@@ -466,13 +400,6 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const portraitPublicUrl = process.env.SHOPIFY_APP_URL
     ? `${process.env.SHOPIFY_APP_URL.replace(/\/$/, "")}/avatars/${path.basename(portraitFile)}`
     : "";
-
-  // ACTION CLIP — a motion video from the merchant's scene/action prompt, with
-  // NO script, voice, or lip-sync. Composes the presenter-in-scene still, then
-  // Kling image-to-video animates it. Fully isolated from the talking flow.
-  if (params.clipMode === "action") {
-    return await generateActionClip(params, avatar, portraitPublicUrl, portraitDataUri);
-  }
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
 

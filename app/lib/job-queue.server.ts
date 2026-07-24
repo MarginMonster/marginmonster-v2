@@ -220,7 +220,6 @@ async function runJob(
           holdProduct: payload.holdProduct === true,
           wearProduct: payload.wearProduct === true,
           scene: payload.scene as string | undefined,
-          clipMode: payload.clipMode === "action" ? "action" : undefined,
           resume: {
             script: payload.ckScript as string | undefined,
             audioUrl: payload.ckAudioUrl as string | undefined,

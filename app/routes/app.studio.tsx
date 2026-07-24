@@ -70,7 +70,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const direction = ((form.get("direction") as string) || "").trim() || undefined;
   const wear = form.get("wear") === "1";
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
-  const clipMode = form.get("clipMode") === "action" ? "action" : undefined;
   if (!productTitle) return json({ error: "Pick a product to feature." });
 
   if (intent === "genVideo") {
@@ -83,7 +82,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       try { await spendTokens(shop.id, TOKEN_COST.video); prePaid = true; }
       catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     }
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: !!avatarId && wear, scene, clipMode, prePaid });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: !!avatarId && wear, scene, prePaid });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -191,7 +190,6 @@ export default function Studio() {
   const [saySomething, setSaySomething] = useState("");
   const [doWhat, setDoWhat] = useState("");
   const [where, setWhere] = useState("");
-  const [actionMode, setActionMode] = useState(false); // video: talking vs action clip
 
   const meta = TABS.find((t) => t.key === tab)!;
   const product = products[picked];
@@ -227,11 +225,10 @@ export default function Studio() {
         if (where.trim()) parts.push(`Setting: ${where.trim()}`);
         dir = parts.join(". ");
       }
-      // Visual scene = the action + setting (shapes the opening frame / motion)
+      // Visual scene = the setting/action → shapes the composed opening frame
       const sceneParts = [doWhat.trim(), where.trim()].filter(Boolean);
       if (sceneParts.length) fields.scene = sceneParts.join(". ");
       fields.direction = dir;
-      if (actionMode && avatarId) fields.clipMode = "action";
       if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
@@ -271,17 +268,6 @@ export default function Studio() {
           )}
           {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
           {(tab === "video" || tab === "image") && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
-
-          {tab === "video" && avatarId && (
-            <>
-              <div className="cfg-lbl">Video type</div>
-              <div className="dc-seg cs-wear">
-                <button type="button" className={!actionMode ? "sel" : ""} onClick={() => setActionMode(false)}>🗣 Talking</button>
-                <button type="button" className={actionMode ? "sel" : ""} onClick={() => setActionMode(true)}>🎬 Action clip</button>
-              </div>
-              {actionMode && <p className="cfg-note">A short motion clip from your <b>scene &amp; action</b> — no talking or captions. Fill in <b>What do they do / Where</b> under Advanced below.</p>}
-            </>
-          )}
 
           <div className="cfg-lbl">{tab === "blog" ? "Product to write about" : "Product to feature"}</div>
           {products.length > 0 ? (
