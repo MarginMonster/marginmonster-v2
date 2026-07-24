@@ -10,26 +10,35 @@ import { tokensRemaining } from "../lib/tokens.server";
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
 import { AVATARS, avatarImg } from "../lib/avatars";
+import { PLAN_TIERS, PLAN_BY_KEY, type PlanKey } from "../lib/plan-config";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
 
-/* Plan archetypes — the three strategies, keyed to SOCIAL_PLAN_DEFS. Each
- * carries its own motivation + badge; the mix + cost come from the def so the
- * token math is the single source of truth. */
-const ARCH_META: Record<string, { badge: string; freq: string; motivation: string }> = {
-  SOCIAL_STEADY: { badge: "Balanced", freq: "~3 drops / week, every week", motivation: "Brands that stay consistent get seen up to 4× more. This is the drumbeat that turns followers into repeat buyers." },
-  SOCIAL_VIRAL: { badge: "Video-heavy", freq: "a video nearly every day", motivation: "Short-form video is the single highest-reach format on every platform. Load the cannon and let one hit pay for the month." },
-  SOCIAL_FOUND: { badge: "SEO", freq: "~2 blogs / week + supporting ads", motivation: "Every blog is a storefront that ranks on Google and keeps pulling free traffic for months. The cheapest customers you'll ever get." },
+/* Plan archetypes — each is a full month of content that auto-posts across the
+ * next 30 days. Motivation + value anchor sell the deal; the mix + cost come
+ * from SOCIAL_PLAN_DEFS so token math is the single source of truth. */
+const ARCH_META: Record<string, { badge: string; freq: string; motivation: string; value: string }> = {
+  SOCIAL_FOUND: { badge: "SEO", freq: "~5 articles a week", motivation: "Every article targets what your buyers actually Google, then keeps ranking and pulling free traffic for months. The cheapest customers you'll ever get — and it's nearly all margin for you.", value: "≈ $2,000+ of agency SEO content" },
+  SOCIAL_STEADY: { badge: "Balanced", freq: "a drop most days", motivation: "Show up nearly every day across video, image and article. Brands this consistent get seen up to 4× more — it's the drumbeat that turns scrollers into repeat buyers.", value: "≈ a $1,500/mo content retainer" },
+  SOCIAL_VIRAL: { badge: "Video-heavy", freq: "a video nearly every day", motivation: "16 presenter-led videos a month, plus a wall of image posts. Short-form video is the single highest-reach format on every platform — you only need one to hit.", value: "≈ $2,000+ in UGC video alone" },
+  SOCIAL_EMPIRE: { badge: "Max firepower", freq: "several drops every day", motivation: "The whole machine, unleashed. 130 drops a month across every platform, every single day — 30 videos, 70 image posts, 30 articles. Some brands post. Yours is simply always there.", value: "≈ a $5,000/mo growth agency" },
 };
-const ARCH_ORDER = ["SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_FOUND"];
+const ARCH_ORDER = ["SOCIAL_FOUND", "SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMPIRE"];
 
-function archetypes() {
+function tierFor(cost: number): string {
+  const t = PLAN_TIERS.find((p) => p.monthlyTokens >= cost);
+  return t ? t.name : PLAN_TIERS[PLAN_TIERS.length - 1].name;
+}
+
+function archetypes(currentAllowance: number) {
   return ARCH_ORDER.map((key) => {
     const def = SOCIAL_PLAN_DEFS.find((d) => d.key === key)!;
     const mix = { video: 0, image: 0, blog: 0 };
     for (const o of def.objectives) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
-    return { key, name: def.name, icon: def.icon, ...ARCH_META[key], mix, cost: questlineTokenCost(def) };
+    const cost = questlineTokenCost(def);
+    const drops = mix.video + mix.image + mix.blog;
+    return { key, name: def.name, icon: def.icon, ...ARCH_META[key], mix, cost, drops, tier: tierFor(cost), fitsCurrent: currentAllowance >= cost };
   });
 }
 
@@ -38,8 +47,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   const plan = shop ? await db.plan.findUnique({ where: { shopId: shop.id } }) : null;
   const linked = shop ? linkedFromCache(shop.socialsJson).filter((p) => p in PLAT_LABEL) : [];
+  const tier = plan?.active ? PLAN_BY_KEY[plan.type as PlanKey] : null;
+  const allowance = tier?.monthlyTokens ?? 0;
 
-  // Real product catalog → the plan's showcase bag (a different one each drop).
   let products: { title: string; image: string | null; url: string | null }[] = [];
   try {
     const res = await admin.graphql(`{ products(first: 12, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl featuredImage { url } } } } }`);
@@ -47,17 +57,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
   } catch { /* fall through */ }
 
-  // Presenter cast — the premium-voiced leads first (already ordered in AVATARS).
   const cast = AVATARS.slice(0, 10).map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
 
   return json({
     hasPlan: !!plan?.active,
+    planName: tier?.name ?? null,
+    allowance,
     tokens: tokensRemaining(plan ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }),
     linked,
     products,
     cast,
     defaultAvatar: shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : cast[0]?.id ?? null,
-    archetypes: archetypes(),
+    archetypes: archetypes(allowance),
   });
 };
 
@@ -82,7 +93,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   platforms = platforms.filter((p) => linked.includes(p));
   if (platforms.length === 0) return json({ error: "Pick at least one connected account for this plan to post to." });
 
-  // Fall back to the freshest catalog products if the merchant didn't hand-pick.
   let bag = picked.filter((p) => p.title?.trim());
   if (bag.length === 0) {
     try {
@@ -93,7 +103,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   if (bag.length === 0) return json({ error: "Add at least one product to your store — plans make content about your products." });
 
-  // One platform-native plan per selected account (each posts only to its own).
   const created: string[] = [];
   for (const platform of platforms) {
     const r = await acceptQuestline({
@@ -120,25 +129,29 @@ const FB = () => <svg viewBox="0 0 24 24"><path d="M13.8 21v-8h2.6l.42-3.1h-3.02
 const GLYPH = { tt: TT, ig: IG, fb: FB } as const;
 
 export default function NewPlan() {
-  const { hasPlan, tokens, linked, products, cast, defaultAvatar, archetypes: archs } = useLoaderData<typeof loader>();
+  const { hasPlan, planName, tokens, linked, products, cast, defaultAvatar, archetypes: archs } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const error = actionData && "error" in actionData ? actionData.error : null;
   const submit = useSubmit();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
-  const [archKey, setArchKey] = useState(archs[0]?.key ?? "SOCIAL_STEADY");
+  const [archKey, setArchKey] = useState(archs[1]?.key ?? archs[0]?.key ?? "SOCIAL_STEADY");
   const arch = archs.find((a) => a.key === archKey) ?? archs[0];
   const [avatarId, setAvatarId] = useState<string | null>(defaultAvatar);
-  const [picked, setPicked] = useState<number[]>(products.length ? products.slice(0, Math.min(4, products.length)).map((_, i) => i) : []);
-  const [plats, setPlats] = useState<string[]>(linked.slice(0, Math.min(2, linked.length)));
+  const [picked, setPicked] = useState<number[]>(products.length ? products.slice(0, Math.min(5, products.length)).map((_, i) => i) : []);
+  const primary = linked[0];
+  const extras = linked.slice(1);
+  const [addOns, setAddOns] = useState<string[]>([]); // extra accounts beyond primary
 
   const per = arch?.cost ?? 0;
-  const total = per * Math.max(1, plats.length);
+  const accounts = 1 + addOns.length;
+  const total = per * accounts;
   const toggleProduct = (i: number) => setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
-  const togglePlat = (p: string) => setPlats((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
+  const toggleAddOn = (p: string) => setAddOns((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
 
   const activate = () => {
+    const plats = [primary, ...addOns].filter(Boolean);
     if (!plats.length) return;
     submit(
       { intent: "activate", archetype: archKey, avatarId: avatarId ?? "", platforms: JSON.stringify(plats), products: JSON.stringify(picked.map((i) => products[i]).filter(Boolean)) },
@@ -151,7 +164,7 @@ export default function NewPlan() {
       <div className="smp">
         <span className="smp-ey">Automated Marketing</span>
         <h1 className="smp-h1">Social Media Plans</h1>
-        <p className="smp-sub">Pick a strategy, cast your presenter, load your products — then run as many as you like, side by side.</p>
+        <p className="smp-sub">Pick a strategy and EasyMode creates <b>and auto-posts</b> a full month of content across the next 30 days — hands off.</p>
 
         {error && <div style={{ marginBottom: 14 }}><Banner tone="warning" title="Couldn't start the plan"><p>{error}</p></Banner></div>}
 
@@ -166,21 +179,28 @@ export default function NewPlan() {
             {/* 1 — strategy */}
             <div className="smp-step">1 · Choose your strategy</div>
             <div className="smp-arch">
-              {archs.map((a) => (
-                <button type="button" key={a.key} className={`smp-ac${a.key === archKey ? " sel" : ""}`} onClick={() => setArchKey(a.key)}>
-                  <div className="ac-top">
-                    <span className="ac-badge">{a.badge}</span>
-                    <span className="ac-cost">{a.cost}<span>/acct</span></span>
-                  </div>
-                  <div className="ac-name">{a.icon} {a.name}</div>
-                  <div className="ac-mix">
-                    {a.mix.video ? <span>{a.mix.video} Video</span> : null}
-                    {a.mix.image ? <span>{a.mix.image} Image</span> : null}
-                    {a.mix.blog ? <span>{a.mix.blog} Blog</span> : null}
-                  </div>
-                  <p className="ac-why">{a.motivation}</p>
-                </button>
-              ))}
+              {archs.map((a) => {
+                const sel = a.key === archKey;
+                return (
+                  <button type="button" key={a.key} className={`smp-ac${sel ? " sel" : ""}`} onClick={() => setArchKey(a.key)}>
+                    <div className="ac-top">
+                      <span className="ac-badge">{a.badge}</span>
+                      <span className="ac-drops">{a.drops}<span> drops / mo</span></span>
+                    </div>
+                    <div className="ac-name">{a.icon} {a.name}</div>
+                    <div className="ac-mix">
+                      {a.mix.video ? <span className="v">{a.mix.video} Video</span> : null}
+                      {a.mix.image ? <span className="i">{a.mix.image} Image</span> : null}
+                      {a.mix.blog ? <span className="b">{a.mix.blog} Article</span> : null}
+                    </div>
+                    <p className="ac-why">{a.motivation}</p>
+                    <div className="ac-foot">
+                      <span className="ac-val">{a.value}</span>
+                      <span className={`ac-fit${a.fitsCurrent ? " in" : ""}`}>{a.fitsCurrent ? "✓ Included in your plan" : `Fits ${a.tier}`}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {/* 2 — configure */}
@@ -210,37 +230,49 @@ export default function NewPlan() {
                 </>
               )}
 
-              <div className="cfg-lbl">Post to — this plan only</div>
-              <div className="cfg-plats">
-                {linked.map((p) => {
-                  const G = GLYPH[SHORT[p]];
-                  const on = plats.includes(p);
-                  return (
-                    <button type="button" key={p} className={`plat${on ? " on" : ""}`} onClick={() => togglePlat(p)}>
-                      <span className="pl-lg"><G /></span>
-                      <span className="pl-nm">{PLAT_LABEL[p]}</span>
-                      <span className={`pl-sw${on ? " on" : ""}`}><span /></span>
-                    </button>
-                  );
-                })}
+              <div className="cfg-lbl">Posts to</div>
+              <div className="cfg-primary">
+                {primary && (<><span className="pl-lg"><PLogo p={primary} /></span><span className="pp-nm">{PLAT_LABEL[primary]}</span><span className="pp-inc">Included</span></>)}
               </div>
+              {extras.length > 0 && (
+                <div className="cfg-addons">
+                  <div className="ca-lbl">Add another account</div>
+                  {extras.map((p) => {
+                    const on = addOns.includes(p);
+                    return (
+                      <button type="button" key={p} className={`addon${on ? " on" : ""}`} onClick={() => toggleAddOn(p)}>
+                        <span className="pl-lg"><PLogo p={p} /></span>
+                        <span className="ao-nm">{PLAT_LABEL[p]}</span>
+                        <span className="ao-plus">{on ? "✓ Added" : `＋ ${per.toLocaleString()} tokens`}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="smp-promise">Once activated, EasyMode creates and auto-posts all <b>{(arch?.drops ?? 0) * accounts} drops</b> across the next 30 days — no work from you.</div>
 
               <div className="smp-tok">
-                <div className="tt">Total · {plats.length || 1} account{plats.length === 1 ? "" : "s"}</div>
+                <div className="tt">Total{accounts > 1 ? ` · ${accounts} accounts` : ""}</div>
                 <div className="tb"><b>{total.toLocaleString()}</b><span>tokens / month</span></div>
-                {plats.length > 1 && <div className="tk-sub">{per.toLocaleString()} × {plats.length} plans, each native to its platform</div>}
+                {accounts > 1 && <div className="tk-sub">{per.toLocaleString()} × {accounts} — each account gets its own platform-native plan</div>}
               </div>
 
-              <button type="button" className="smp-cta go" disabled={busy || !plats.length} onClick={activate}>
-                {busy ? "Starting…" : plats.length ? `Activate this plan — ${total.toLocaleString()} tokens / mo` : "Pick an account above"}
+              <button type="button" className="smp-cta go" disabled={busy || !primary} onClick={activate}>
+                {busy ? "Starting…" : `Activate ${arch?.name ?? "plan"} — ${total.toLocaleString()} tokens / mo`}
               </button>
-              <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to activate."}</p>
+              <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens · ${planName} plan` : "Choose a subscription plan to activate."}</p>
             </div>
 
-            <p className="smp-multi">💡 Run several at once — a <b>Go Viral</b> plan on TikTok and a <b>Get Found</b> blog plan can run side by side, each with its own presenter and products.</p>
+            <p className="smp-multi">💡 Run several at once — a <b>Go Viral</b> plan on TikTok and a <b>Get Found</b> SEO plan can run side by side, each with its own presenter and products.</p>
           </>
         )}
       </div>
     </Page>
   );
+}
+
+function PLogo({ p }: { p: string }) {
+  const G = GLYPH[SHORT[p]];
+  return <G />;
 }

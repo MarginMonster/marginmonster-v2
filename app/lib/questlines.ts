@@ -244,21 +244,31 @@ export const SOCIAL_PLAN_DEFS: QuestlineDef[] = [
     platforms: [], recurring: true, minTier: "PRO", xpReward: 400, bagSize: 8, cadence: "daily", worldWindow: [0, 1], destination: "" },
 
   /* ---- Plan archetypes (the Social Media Plans picker) ----
-   * Each is a standalone strategy activated PER account (acceptQuestline
-   * `platforms`). Token cost = objectives × TOKEN_COST, so:
-   *   Steady  3v·6i·2b = 230/acct   ·  Viral 8v·4i = 500/acct   ·  Found 8b·4i = 100/acct */
-  { key: "SOCIAL_STEADY", campaign: "SOCIAL", tier: "SILVER", name: "Steady Presence", icon: "🌿",
-    tagline: "Consistency compounds. Staying in the feed builds a following that actually buys.", lore: "",
-    objectives: [{ type: "video", label: "Videos", target: 3 }, { type: "image", label: "Images", target: 6 }, { type: "blog", label: "Blog posts", target: 2 }],
-    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 250, bagSize: 8, cadence: "~3 drops / week", worldWindow: [0, 1], destination: "" },
-  { key: "SOCIAL_VIRAL", campaign: "SOCIAL", tier: "GOLD", name: "Go Viral", icon: "🔥",
-    tagline: "Video pulls up to 3× the reach. Load short-form and swing for the fences.", lore: "",
-    objectives: [{ type: "video", label: "Videos", target: 8 }, { type: "image", label: "Images", target: 4 }],
-    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 500, bagSize: 8, cadence: "video daily", worldWindow: [0, 1], destination: "" },
+   * A full month of content that auto-creates + auto-posts across 30 days.
+   * Sized to sit just under a subscription tier's monthly token allowance, so
+   * "your plan basically includes one full content plan." Blogs (~$0.02) and
+   * images (~$0.04) are near-pure margin, so plans are packed with them;
+   * only video (60 tok, the real cost) is metered hard.
+   *   Get Found  16b·6i          =  190 tok  → fits Starter/Growth  · 22 drops
+   *   Steady      6v·18i·8b       =  530 tok  → fits Growth         · 32 drops
+   *   Go Viral   16v·24i·8b       = 1160 tok  → fits Pro            · 48 drops
+   *   Empire     30v·70i·30b      = 2450 tok  → fits Scale          · 130 drops */
   { key: "SOCIAL_FOUND", campaign: "SOCIAL", tier: "BRONZE", name: "Get Found", icon: "🔎",
-    tagline: "SEO blogs bank free Google traffic that compounds for months — your cheapest customers.", lore: "",
-    objectives: [{ type: "blog", label: "Blog posts", target: 8 }, { type: "image", label: "Images", target: 4 }],
-    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 200, bagSize: 8, cadence: "~2 blogs / week", worldWindow: [0, 1], destination: "" },
+    tagline: "SEO articles that rank on Google and pull in free traffic for months — your cheapest customers, on autopilot.", lore: "",
+    objectives: [{ type: "blog", label: "SEO articles", target: 16 }, { type: "image", label: "Image posts", target: 6 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 300, bagSize: 8, cadence: "~5 blogs / week", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_STEADY", campaign: "SOCIAL", tier: "SILVER", name: "Steady Presence", icon: "🌿",
+    tagline: "A post nearly every day — video, image and article — so your feed never goes quiet and buyers never forget you.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 6 }, { type: "image", label: "Image posts", target: 18 }, { type: "blog", label: "SEO articles", target: 8 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 550, bagSize: 10, cadence: "a drop most days", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_VIRAL", campaign: "SOCIAL", tier: "GOLD", name: "Go Viral", icon: "🔥",
+    tagline: "16 scroll-stopping videos a month plus a wall of image posts. Short-form video is the single highest-reach format anywhere — swing for the fences.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 16 }, { type: "image", label: "Image posts", target: 24 }, { type: "blog", label: "SEO articles", target: 8 }],
+    platforms: [], recurring: true, minTier: "PRO", xpReward: 1200, bagSize: 12, cadence: "a video nearly every day", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_EMPIRE", campaign: "SOCIAL", tier: "DIAMOND", name: "Empire", icon: "👑",
+    tagline: "Total domination — 130 drops a month across every platform, every day. 30 videos, 70 image posts, 30 articles, all created and posted for you.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 30 }, { type: "image", label: "Image posts", target: 70 }, { type: "blog", label: "SEO articles", target: 30 }],
+    platforms: [], recurring: true, minTier: "SCALE", xpReward: 3000, bagSize: 16, cadence: "several drops every day", worldWindow: [0, 1], destination: "" },
 ];
 
 export const QUESTLINES: QuestlineDef[] = [
