@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation, useActionData, Link } from "@remix-run/react";
+import { useEffect } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -49,9 +50,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pendingAssets = shop?.assets.filter((a) => a.status === "PENDING").length ?? 0;
   const brandJob = shop?.jobs[0] || null;
 
+  // Reviews engine: ask for an App Store review exactly once, right after the
+  // first real WIN — something the merchant published live (a blog on their
+  // store or a post to socials both land as PUBLISHED). Peak-delight moment.
+  let askReview = false;
+  if (shop && !shop.reviewAskedAt) {
+    const wins = await db.asset.count({ where: { shopId: shop.id, status: "PUBLISHED" } });
+    askReview = wins > 0;
+  }
+
   return json({
     shop,
     pendingAssets,
+    askReview,
     brand: parseBrand(shop?.brandProfile ?? null),
     brandJobError: brandJob?.lastError ?? null,
     paidAds: paidAdsEnabled(),
@@ -82,9 +93,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return jsonRes.data;
   };
 
+  const form = await request.formData().catch(() => null);
+  if (form?.get("intent") === "reviewAsked") {
+    // Fired once the App Store review prompt has been shown — never ask again.
+    await db.shop.update({ where: { id: shop.id }, data: { reviewAskedAt: new Date() } });
+    return json({ ok: true });
+  }
+
   try {
     await generateBrandProfile(shop.id, graphql);
     await unlockAchievement(shop.id, "SCANNER");
+    // If a plan is already active, forge their first content right now (TTFV).
+    const { kickstartFirstContent } = await import("../lib/onboarding.server");
+    await kickstartFirstContent(shop.id, graphql);
     return json({ ok: true });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) });
@@ -109,11 +130,28 @@ function friendlyError(msg: string): string {
 }
 
 export default function Dashboard() {
-  const { shop, pendingAssets, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, askReview, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
   const building = nav.state !== "idle";
+
+  // Reviews engine: at the first real win, ask Shopify to show its native App
+  // Store review prompt (App Bridge injects window.shopify). We mark it asked
+  // regardless of outcome so the merchant is never nagged twice.
+  useEffect(() => {
+    if (!askReview) return;
+    let done = false;
+    const fire = async () => {
+      if (done) return; done = true;
+      try { await (window as unknown as { shopify?: { reviews?: { request: () => Promise<unknown> } } }).shopify?.reviews?.request(); }
+      catch { /* prompt ineligible or dismissed — fine */ }
+      submit({ intent: "reviewAsked" }, { method: "post" });
+    };
+    // small delay so it lands after the page settles, not mid-navigation
+    const t = setTimeout(fire, 1500);
+    return () => clearTimeout(t);
+  }, [askReview, submit]);
   // A re-scan the user JUST triggered failed (live, actionable).
   const actionError = actionData && "error" in actionData ? actionData.error : null;
   // Onboarding also surfaces the last stored job error (there's no profile yet).

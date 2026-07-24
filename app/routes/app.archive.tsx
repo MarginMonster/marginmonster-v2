@@ -525,6 +525,7 @@ export default function Archive() {
                     <b>{viewer.title}</b>
                     {posted ? <span className="ar-vok">Posted to {posted} ✓</span> : err ? <span className="ar-verr">{err}</span> : <span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Posted" : viewer.status === "APPROVED" ? "Kept" : "New"}</span>}
                     {!posted && !err && viewer.daysLeft != null && <span className={`ar-vcd${viewer.daysLeft <= 7 ? " warn" : ""}`}>⏳ Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — hit <b>Keep</b> to save it</span>}
+                    <span className="ar-aitag">✦ AI-generated — review before you post</span>
                   </div>
                   <div className="ar-vacts">
                     {linkedSocial.length > 0 && !capOpen && <button type="button" className="ar-vpost" disabled={busy} onClick={() => startPost(viewer.id)}>Post to socials</button>}

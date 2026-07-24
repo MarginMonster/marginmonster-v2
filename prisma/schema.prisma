@@ -62,6 +62,13 @@ model Shop {
   // likes, comments, shares, saves) + fetchedAt — refreshed hourly by the
   // worker from the provider's analytics API. Powers the organic Results view.
   socialStatsJson  String?
+  // Growth plumbing: when we fired the in-app App Store review request (once,
+  // after the first real win) and onboarding first-content + referral state.
+  reviewAskedAt    DateTime?
+  onboardKickAt    DateTime?
+  referralCode     String?   @unique
+  referredBy       String?   // referralCode of the shop that referred this one
+  referralCreditAt DateTime? // when we granted the referrer's reward
 
   brandProfile   BrandProfile?
   activePlan     Plan?

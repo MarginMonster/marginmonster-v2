@@ -61,6 +61,10 @@ Return ONLY the HTML body content (h1, h2, p, ul, li, strong tags only — no ht
       const lastOpen = html.lastIndexOf("<");
       if (lastOpen > lastClose) html = html.slice(0, lastOpen).trim(); // drop a dangling partial tag
 
+      // AI disclosure (FTC-aligned) — a subtle, honest footer on every published
+      // article. Neutral wording so it's appropriate on any merchant's store.
+      html += `\n<p style="margin-top:24px;font-size:13px;color:#8a8d82;font-style:italic;">This article was created with AI assistance and reviewed for your store.</p>`;
+
       const asset = await db.asset.create({
         data: {
           shopId,

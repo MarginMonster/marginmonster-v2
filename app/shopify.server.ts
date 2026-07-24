@@ -12,11 +12,15 @@ import "./worker.server"; // starts the in-process job worker on server boot
 
 // Subscription plans — amounts must match app/lib/plan-config.ts.
 // These names are the `plan` keys passed to billing.request().
+// Every plan opens with a 7-day free trial (the low-friction wedge): the
+// merchant approves the subscription but isn't charged until the trial ends,
+// so they can experience real value before paying a cent.
+const TRIAL_DAYS = 7;
 export const BILLING_PLANS = {
-  STARTER: { amount: 19, currencyCode: "USD", interval: BillingInterval.Every30Days },
-  GROWTH: { amount: 39, currencyCode: "USD", interval: BillingInterval.Every30Days },
-  PRO: { amount: 79, currencyCode: "USD", interval: BillingInterval.Every30Days },
-  SCALE: { amount: 149, currencyCode: "USD", interval: BillingInterval.Every30Days },
+  STARTER: { amount: 19, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  GROWTH: { amount: 39, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  PRO: { amount: 79, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  SCALE: { amount: 149, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
 } as const;
 
 // One-time token top-ups — amounts must match TOKEN_PACKS in plan-config.ts.

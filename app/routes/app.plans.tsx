@@ -85,6 +85,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           },
         });
         await unlockAchievement(shopRow.id, "INSERT_COIN");
+        // Plan just went live — if the brand's already analyzed, forge their
+        // first blog + image now so the Archive isn't empty (TTFV).
+        try {
+          const { kickstartFirstContent } = await import("../lib/onboarding.server");
+          const gql = async (q: string) => { const r = await admin.graphql(q); const j = (await r.json()) as { data?: unknown }; return j.data; };
+          await kickstartFirstContent(shopRow.id, gql);
+        } catch (e) { console.error("[plans] first-content kick failed (non-fatal):", e); }
       }
       embeddedRedirect({ welcome: activate });
     }
@@ -450,13 +457,16 @@ export default function Plans() {
               const f = PACKAGES[tier.key];
               const isFlipped = flipped.has(tier.key);
               const buyBtn = (
-                <button
-                  className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
-                  onClick={() => buy(tier.key)}
-                  disabled={isCurrent}
-                >
-                  {isCurrent ? "★ YOUR RANK" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ SET SAIL"}
-                </button>
+                <>
+                  <button
+                    className={`mm-fighter-select${nav.state !== "idle" && pending === tier.key ? " loading" : ""}`}
+                    onClick={() => buy(tier.key)}
+                    disabled={isCurrent}
+                  >
+                    {isCurrent ? "★ YOUR RANK" : nav.state !== "idle" && pending === tier.key ? "LOADING…" : "▶ START FREE"}
+                  </button>
+                  {!isCurrent && <div className="mm-fighter-trial">7-day free trial · cancel anytime</div>}
+                </>
               );
               return (
                 <div

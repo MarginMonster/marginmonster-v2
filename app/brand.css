@@ -388,6 +388,7 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-fighter-select:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 color-mix(in srgb, var(--fx) 45%, #000), 0 4px 12px color-mix(in srgb, var(--fx) 40%, transparent); }
 .mm-fighter-select:disabled { background: rgba(255,255,255,0.12); color: #8A84B6; cursor: default; box-shadow: none; }
 .mm-fighter-select.loading { opacity: .8; }
+.mm-fighter-trial { text-align: center; margin-top: 8px; font-family: var(--font-pixel); font-size: 7.5px; letter-spacing: .07em; color: color-mix(in srgb, var(--fx) 78%, #fff); opacity: .9; }
 
 /* price sits on the dark fighter card — force it bright */
 .mm-fighter-card .mm-plan-price { color: #fff; }
@@ -3282,6 +3283,7 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-vcd { font-size:11px; font-weight:700; color:#8A6A16; background:rgba(231,200,121,.18); border-radius:8px; padding:5px 9px; }
 .ar-vcd.warn { color:#9A3120; background:rgba(154,49,32,.1); }
 .ar-vcd b { font-weight:800; }
+.ar-aitag { font-size:10.5px; font-weight:700; color:#8A8D7E; letter-spacing:.02em; }
 /* Blog generation feedback — a real "creating…" card that resolves */
 .ar-genblogs { margin-bottom:10px; }
 .ar-blogbuf { display:flex; align-items:center; gap:12px; background:linear-gradient(160deg,#0E5233,#0A3421); border-color:rgba(231,200,121,.28); }
