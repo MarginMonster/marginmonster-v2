@@ -95,6 +95,16 @@ export const PLAN_BY_KEY: Record<PlanKey, PlanTier> = Object.fromEntries(
   PLAN_TIERS.map((t) => [t.key, t])
 ) as Record<PlanKey, PlanTier>;
 
+// Annual billing — pay for 10 months, get 12 (2 months free). Billing keys are
+// the tier key + "_ANNUAL"; the annual price is the monthly price × 10.
+export const ANNUAL_SUFFIX = "_ANNUAL";
+export const annualKey = (k: PlanKey): string => `${k}${ANNUAL_SUFFIX}`;
+export const annualPrice = (t: PlanTier): number => t.price * 10;
+export const ANNUAL_TO_TIER: Record<string, PlanKey> = Object.fromEntries(
+  PLAN_TIERS.map((t) => [annualKey(t.key), t.key])
+);
+export const isAnnualKey = (k: string): boolean => k.endsWith(ANNUAL_SUFFIX);
+
 // ---- Unified token wallet ----
 // Every AI action spends tokens from one shared balance. Each plan includes a
 // monthly allowance (monthlyTokens); top up for anything over budget. Video is

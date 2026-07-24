@@ -23,6 +23,15 @@ export const BILLING_PLANS = {
   SCALE: { amount: 149, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
 } as const;
 
+// Annual billing — pay for 10 months, get 12 (amounts = monthly × 10). Same
+// 7-day trial. Keys mirror the tier keys with an _ANNUAL suffix.
+export const BILLING_PLANS_ANNUAL = {
+  STARTER_ANNUAL: { amount: 190, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  GROWTH_ANNUAL: { amount: 390, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  PRO_ANNUAL: { amount: 790, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  SCALE_ANNUAL: { amount: 1490, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+} as const;
+
 // One-time token top-ups — amounts must match TOKEN_PACKS in plan-config.ts.
 export const TOKEN_PACK_PLANS = {
   TOKENS_250: { amount: 25, currencyCode: "USD", interval: BillingInterval.OneTime },
@@ -60,7 +69,7 @@ const shopify = shopifyApp({
   sessionStorage: new PrismaSessionStorage(db),
   distribution: AppDistribution.AppStore,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK generic inference quirk; runtime shape is correct
-  billing: { ...BILLING_PLANS, ...TOKEN_PACK_PLANS } as any,
+  billing: { ...BILLING_PLANS, ...BILLING_PLANS_ANNUAL, ...TOKEN_PACK_PLANS } as any,
   webhooks: {
     APP_UNINSTALLED: {
       deliveryMethod: DeliveryMethod.Http,

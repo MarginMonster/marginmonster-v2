@@ -11,7 +11,7 @@ import {
 import { authenticate, billingIsTest, TOKEN_PACK_PLANS, TOKENS_BY_PACK } from "../shopify.server";
 import { recordBillingFailure } from "../lib/billing-debug.server";
 import { db } from "../db.server";
-import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, type PlanKey } from "../lib/plan-config";
+import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, type PlanKey } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
 import { unlockAchievement } from "../lib/xp.server";
 import { COMPANIONS, COMPANION_BY_ID, CATEGORY_LABEL, companionSrcs, type CompanionCategory } from "../lib/companions";
@@ -39,7 +39,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // ---- BILLING RETURN LEG 1: subscription approved → activate the plan ----
   // Payment comes FIRST now; the plan row only exists once Shopify confirms
   // an active subscription. No confirmation, no plan — no free rides.
-  const activate = url.searchParams.get("activate") as PlanKey | null;
+  // activate may be a tier key (STARTER) or an annual key (STARTER_ANNUAL);
+  // normalize to the tier for the plan row — quotas/features are identical.
+  const rawActivate = url.searchParams.get("activate");
+  const activate = (rawActivate ? (ANNUAL_TO_TIER[rawActivate] || rawActivate) : null) as PlanKey | null;
   if (activate && PLAN_BY_KEY[activate]) {
     // Verify the EXACT approved charge from the return URL — billing.check
     // can throw the SDK's 401 bounce here, which hijacks the iframe into
@@ -55,7 +58,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const j = (await res.json()) as { data?: { node?: { status?: string } } };
         confirmed = j.data?.node?.status === "ACTIVE";
       } else {
-        const { hasActivePayment } = await billing.check({ plans: [activate] as never, isTest: billingIsTest() });
+        const { hasActivePayment } = await billing.check({ plans: [rawActivate || activate] as never, isTest: billingIsTest() });
         confirmed = hasActivePayment;
       }
     } catch (e) {
@@ -266,9 +269,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // ---- plan subscription: PAYMENT FIRST — activation happens on the return
   // leg (loader) only after Shopify confirms the subscription is active ----
-  const planKey = form.get("planKey") as PlanKey;
+  // planKey may be a tier key or an annual key; validate against the tier.
+  const planKey = form.get("planKey") as string;
+  const tierKey = (ANNUAL_TO_TIER[planKey] || planKey) as PlanKey;
   const reviewMode = (form.get("reviewMode") as "SET_AND_FORGET" | "REVIEW_FIRST") || "REVIEW_FIRST";
-  if (!PLAN_BY_KEY[planKey]) throw new Error("Invalid plan");
+  if (!PLAN_BY_KEY[tierKey]) throw new Error("Invalid plan");
   return requestCharge(planKey, `${adminBase}/app/plans?activate=${planKey}&review=${reviewMode}`);
 };
 
@@ -347,10 +352,11 @@ export default function Plans() {
     window.open(confirmationUrl, "_top");
   }, [confirmationUrl]);
   const [pending, setPending] = useState<PlanKey | null>(null);
+  const [annual, setAnnual] = useState(false);
 
-  const buy = (planKey: PlanKey) => {
-    setPending(planKey);
-    submit({ planKey }, { method: "post" });
+  const buy = (tierKey: PlanKey) => {
+    setPending(tierKey);
+    submit({ planKey: annual ? annualKey(tierKey) : tierKey }, { method: "post" });
   };
 
   // 💰 the money moment gets the level-up treatment — coins, companion, the works
@@ -451,6 +457,10 @@ export default function Plans() {
         {/* Package select — each tier is a bigger expedition */}
         <Layout.Section>
           <span className="mm-section-label">▶ CHOOSE YOUR PACKAGE<span className="mm-dots">· · · · ·</span></span>
+          <div className="mm-billtoggle" role="group" aria-label="Billing period">
+            <button type="button" className={annual ? "" : "on"} onClick={() => setAnnual(false)}>Monthly</button>
+            <button type="button" className={annual ? "on" : ""} onClick={() => setAnnual(true)}>Annual <span>2 months free</span></button>
+          </div>
           <div className="mm-fighter-grid">
             {PLAN_TIERS.map((tier) => {
               const isCurrent = currentPlan === tier.key;
@@ -496,8 +506,9 @@ export default function Plans() {
                         {isCurrent && <span className="mm-fighter-current">YOURS</span>}
                       </div>
                       <p className="mm-plan-price" style={{ margin: "6px 0 4px" }}>
-                        ${tier.price}<small> /mo</small>
+                        {annual ? <>${annualPrice(tier)}<small> /yr</small></> : <>${tier.price}<small> /mo</small></>}
                       </p>
+                      {annual && <div className="mm-fighter-save">${tier.price * 2} saved · 2 months free</div>}
                       <div className="mm-fighter-tokens">⚡ {tier.monthlyTokens.toLocaleString()} tokens / mo</div>
 
                       <div className="mm-fighter-stats">

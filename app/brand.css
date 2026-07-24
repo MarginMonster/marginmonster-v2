@@ -389,6 +389,13 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-fighter-select:disabled { background: rgba(255,255,255,0.12); color: #8A84B6; cursor: default; box-shadow: none; }
 .mm-fighter-select.loading { opacity: .8; }
 .mm-fighter-trial { text-align: center; margin-top: 8px; font-family: var(--font-pixel); font-size: 7.5px; letter-spacing: .07em; color: color-mix(in srgb, var(--fx) 78%, #fff); opacity: .9; }
+.mm-fighter-save { font-family: var(--font-pixel); font-size: 7px; letter-spacing: .05em; color: var(--mm-gold); margin: 0 0 8px; }
+/* Monthly / annual billing toggle */
+.mm-billtoggle { display: inline-flex; gap: 4px; margin: 14px 0 22px; padding: 4px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; }
+.mm-billtoggle button { display: inline-flex; align-items: center; gap: 7px; border: 0; background: none; cursor: pointer; font-family: var(--font-heading); font-weight: 800; font-size: 12px; color: #B9B4DE; padding: 9px 18px; border-radius: 999px; transition: background .15s ease, color .15s ease; }
+.mm-billtoggle button.on { background: var(--mm-cyan); color: #06231F; }
+.mm-billtoggle button span { font-family: var(--font-pixel); font-size: 7px; letter-spacing: .04em; padding: 3px 6px; border-radius: 999px; background: rgba(245,196,81,0.18); color: var(--mm-gold); }
+.mm-billtoggle button.on span { background: rgba(6,35,31,0.18); color: #0A3D26; }
 
 /* price sits on the dark fighter card — force it bright */
 .mm-fighter-card .mm-plan-price { color: #fff; }
