@@ -114,7 +114,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true, adAccounts: true } });
+  const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true, adAccounts: true, brandProfile: true } });
   if (!shop) return json({ error: "Shop not found." });
   const form = await request.formData();
   const intent = form.get("intent") as string;
@@ -160,6 +160,50 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "delete") {
     await db.asset.deleteMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id } });
     return json({ deleted: true });
+  }
+  if (intent === "remix") {
+    // "Remix" = make a fresh variation of a piece they already liked. We reuse
+    // the original's product + direction and enqueue the same kind of job; the
+    // avatar variant is nudged so the new take genuinely looks different, and
+    // the script/prompt vary naturally. Costs the same as making one new.
+    if (!shop.brandProfile) return json({ error: "Analyze your store first so remixes match your brand." });
+    if (!shop.activePlan?.active) return json({ error: "Pick a plan first — remixes run on tokens." });
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } } });
+    if (!asset) return json({ error: "That piece is gone — refresh and try again." });
+    let meta: { productTitle?: string; avatarId?: string; avatarVariant?: number; direction?: string; style?: string } = {};
+    try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* ignore */ }
+    const productTitle = (meta.productTitle || asset.title || "").trim();
+    if (!productTitle) return json({ error: "Couldn't tell which product this was — remake it from the Studio." });
+    const avatarId = meta.avatarId || undefined;
+    const direction = meta.direction || undefined;
+    const nextVariant = avatarId ? (((meta.avatarVariant ?? 0) + 1) % 4) : 0; // rotate the take
+    // Pull a current product photo (needed for avatar stills; a bonus for video).
+    let productImageUrl: string | undefined;
+    if (asset.type !== "BLOG_POST") {
+      try {
+        const q = productTitle.replace(/["\\]/g, " ");
+        const r = await admin.graphql(`{ products(first:1, query:${JSON.stringify(`title:${q}`)}) { edges { node { featuredImage { url } } } } }`);
+        const j = (await r.json()) as { data?: { products?: { edges?: { node: { featuredImage?: { url?: string } } }[] } } };
+        productImageUrl = j.data?.products?.edges?.[0]?.node?.featuredImage?.url || undefined;
+      } catch { /* optional — video works without it */ }
+    }
+    if (asset.type === "IMAGE_AD" && avatarId && !productImageUrl) {
+      return json({ error: "This product no longer has a photo to remix with — pick another." });
+    }
+    const type = asset.type === "VIDEO_AD" ? "video" : asset.type === "IMAGE_AD" ? "image" : "blog";
+    const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+    try { await spendTokens(shop.id, cost); }
+    catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
+    if (type === "video") {
+      const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: false, prePaid: true, initiator: "remix" });
+    } else if (type === "image") {
+      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant: nextVariant, wear: false, prePaid: true });
+    } else {
+      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true });
+    }
+    return json({ remixed: type });
   }
   if (intent === "draft") {
     // Suggest one editable caption for the manual post box. EasyMode: a single
@@ -336,7 +380,12 @@ export default function Archive() {
   const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
   const publishBlog = (assetId: string) => submit({ intent: "publishBlog", assetId }, { method: "post" });
+  const remix = (assetId: string) => submit({ intent: "remix", assetId }, { method: "post" });
   const blogPosted = actionData && "blogPosted" in actionData ? (actionData as { blogPosted: string }).blogPosted : null;
+  const remixed = actionData && "remixed" in actionData ? (actionData as { remixed: string }).remixed : null;
+  // A remix enqueues a fresh generation — close the viewer so the new
+  // "creating…" tile is visible, and let the auto-revalidator pick it up.
+  useEffect(() => { if (remixed) setViewer(null); }, [remixed]);
   const posted = actionData && "posted" in actionData ? (actionData as { posted: string }).posted : null;
   const draftText = actionData && "draft" in actionData ? (actionData as { draft: string }).draft : null;
   // Editable draft: opening "Post to socials" reveals one caption box we
@@ -383,6 +432,7 @@ export default function Archive() {
         </div>
 
         {err && <div style={{ marginBottom: 14 }}><Banner tone="warning" title="Couldn't do that"><p>{err}</p></Banner></div>}
+        {remixed && <div style={{ marginBottom: 14 }}><Banner tone="success" title="Remixing — a fresh take is on the way"><p>Your new {remixed === "blog" ? "article" : remixed} is being made. It'll land in this {remixed === "blog" ? "Blogs" : remixed === "video" ? "Videos" : "Images"} shelf in a minute.</p></Banner></div>}
 
         {tab === "scheduled" ? (
           <>
@@ -518,6 +568,7 @@ export default function Archive() {
                     </div>
                     <div className="ar-vacts">
                       {viewer.status !== "PUBLISHED" && !blogPosted && <button type="button" className="ar-vpost" disabled={busy} onClick={() => publishBlog(viewer.id)}>{busy ? "Publishing…" : "Publish to my blog"}</button>}
+                      <button type="button" className="ar-vtool remix" disabled={busy} title="Write a fresh article on the same product" onClick={() => remix(viewer.id)}>✨ Remix</button>
                       <button type="button" className="ar-vdel" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                     </div>
                     <span className="ar-caphint">Publishes to your store's <b>Online Store → Blog posts</b> — built for Google SEO, not social feeds.</span>
@@ -556,6 +607,7 @@ export default function Archive() {
                     </div>
                   )}
                   <div className="ar-vmore">
+                    <button type="button" className="ar-vtool remix" disabled={busy} title="Make a fresh variation of this piece" onClick={() => remix(viewer.id)}>✨ Remix — new take</button>
                     <button type="button" className={`ar-vtool${tool === "attach" ? " on" : ""}`} onClick={() => setTool(tool === "attach" ? null : "attach")}>🏷 Add to a product</button>
                     {paidAds && adPlatforms.length > 0 && <button type="button" className={`ar-vtool${tool === "boost" ? " on" : ""}`} onClick={() => setTool(tool === "boost" ? null : "boost")}>🚀 Boost</button>}
                   </div>

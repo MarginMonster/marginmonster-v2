@@ -3391,6 +3391,10 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-vmore { display:flex; gap:8px; }
 .ar-vtool { flex:1; border:1.5px solid #E6E2D5; background:#fff; color:#3A3D31; font-family:inherit; font-size:12.5px; font-weight:800; padding:10px; border-radius:11px; cursor:pointer; }
 .ar-vtool.on { border-color:#0F9152; background:rgba(12,122,70,.05); color:#0A6B3E; }
+/* Remix — a light gold "make another" affordance, distinct from the green tools */
+.ar-vtool.remix { border-color:rgba(176,133,38,.45); background:linear-gradient(180deg,#FBF6E6,#F6EECF); color:#7E5E13; }
+.ar-vtool.remix:hover:not(:disabled) { border-color:#B08526; filter:brightness(1.02); }
+.ar-vtool.remix:disabled { opacity:.55; cursor:default; }
 .ar-tool { display:flex; gap:8px; align-items:center; }
 .ar-tool select { flex:1; min-width:0; border:1px solid #DBD6C6; border-radius:10px; padding:10px; font-size:13px; font-family:inherit; background:#fff; }
 .ar-tool .ar-vpost { flex:none; padding:10px 14px; font-size:13px; }
