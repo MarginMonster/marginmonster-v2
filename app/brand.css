@@ -3297,3 +3297,18 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .smp-nudge .nz-opt.buy .nz-t { color:#2A1F05; } .smp-nudge .nz-opt.buy .nz-s { color:#5A420C; }
 .smp-nudge .nz-opt.up { background:#fff; border:1.5px solid #DBD6C6; }
 .smp-nudge .nz-opt.up .nz-t { color:#0A6B3E; } .smp-nudge .nz-opt.up .nz-s { color:#8C8F82; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — the design is mobile-first; on tablet/desktop widen the centred
+   columns and let the internal grids breathe (mobile is untouched). */
+@media (min-width: 760px) {
+  .smp, .dcal, .eh, .er { max-width: 720px; }
+  .smp-arch { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+  .ar-grid { grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); }
+  .cfg-prods { grid-template-columns:repeat(auto-fill,minmax(76px,1fr)); }
+  .cs-castgrid { grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); max-height:none; }
+}
+@media (min-width: 1200px) {
+  .smp, .dcal, .eh, .er { max-width: 840px; }
+  .ar-grid { grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); }
+}
