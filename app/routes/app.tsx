@@ -107,7 +107,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         tokens: remaining,
         tokensMax,
         tokensPct: Math.max(0, Math.min(100, Math.round((remaining / tokensMax) * 100))),
-        videos: Math.max(0, plan.videoQuota - plan.videoUsed),
+        // One wallet: show what the balance affords, not a separate quota.
+        videos: Math.floor(remaining / TOKEN_COST.video),
         ads: Math.floor(remaining / TOKEN_COST.image),
       };
     }
@@ -258,8 +259,8 @@ export default function App() {
                 <span title="Token balance">{hud.tokens.toLocaleString()}</span>
                 <span className="mm-hud-plus">Add tokens</span>
               </Link>
-              <span className="mm-hud-stat" title="Video generations left">🎬 {hud.videos} Videos</span>
-              <span className="mm-hud-stat" title="Image generations you can afford">🖼 {hud.ads} Images</span>
+              <span className="mm-hud-stat" title="Product videos your token balance affords">🎬 {hud.videos} Videos</span>
+              <span className="mm-hud-stat" title="Image ads your token balance affords">🖼 {hud.ads} Images</span>
             </div>
           </div>
         )}

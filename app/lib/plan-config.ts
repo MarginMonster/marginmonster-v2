@@ -31,7 +31,7 @@ export const PLAN_TIERS: PlanTier[] = [
     imageQuota: 0,
     campaignAutopilot: false,
     features: [
-      "15 SEO blog posts / month",
+      "Get found on Google with SEO blog posts",
       "Targets what your buyers search → ranks on Google",
       "Auto-published to your store on your schedule",
       "Review-first or set-and-forget",
@@ -48,8 +48,8 @@ export const PLAN_TIERS: PlanTier[] = [
     imageQuota: 30,
     campaignAutopilot: false,
     features: [
-      "30 SEO blog posts / month",
-      "30 AI image ads + Meta/TikTok ad copy",
+      "Everything in Starter",
+      "Scroll-stopping AI image ads + Meta/TikTok ad copy",
       "All content built from your real products",
       "Review-first or set-and-forget",
     ],
@@ -67,7 +67,7 @@ export const PLAN_TIERS: PlanTier[] = [
     campaignAutopilot: true,
     features: [
       "Everything in Growth",
-      "8 AI product videos / month (avatar or highlight)",
+      "AI product videos (avatar or highlight)",
       "Campaign Autopilot — auto-launch, kill losers, scale winners",
       "Vertical-formatted for TikTok, Reels & Shorts",
     ],
@@ -77,16 +77,16 @@ export const PLAN_TIERS: PlanTier[] = [
     name: "Scale",
     price: 149,
     tagline: "Full firepower for stores going all-in on growth.",
-    monthlyTokens: 3500,
+    monthlyTokens: 3000,
     blogQuota: 60,
     videoQuota: 20,
     imageQuota: 80,
     campaignAutopilot: true,
     features: [
-      "60 blog posts + 80 image ads / month",
-      "20 AI product videos / month",
+      "Everything in Pro",
+      "Our largest monthly token balance — best value per token",
       "Campaign Autopilot across Meta & TikTok",
-      "Priority generation + best token value",
+      "Priority generation",
     ],
   },
 ];
@@ -116,7 +116,11 @@ export const TOKEN_COST = {
   strategy: 6, // marketing plan
   blog: 10, // SEO blog post
   landing: 10, // landing page
-  video: 60, // AI product video (~$1-2 real cost) — margin protector
+  // AI product video — real COGS ~$2-3 (omni-human/HeyGen lip-sync + TTS +
+  // image). Priced so an all-video month stays margin-positive on every tier:
+  // Pro 1500/150 = 10 videos ≈ $30 on $79 (62%), Scale 3000/150 = 20 ≈ $60 on
+  // $149 (60%). This one number is the margin lever — raise it if COGS climbs.
+  video: 150,
 } as const;
 export type TokenAction = keyof typeof TOKEN_COST;
 
@@ -136,4 +140,43 @@ export const TOKEN_PACKS = [
   { tokens: 250, price: 25, label: "250 tokens" },
   { tokens: 750, price: 60, label: "750 tokens", best: false },
   { tokens: 2000, price: 140, label: "2,000 tokens", best: true },
+];
+
+// ---- Truthful capacity copy ----
+// One currency means we can DERIVE "what a plan makes" from its wallet instead
+// of hand-writing counts that drift. Each tier showcases the actions that fit
+// its positioning; counts are the wallet ÷ that action's cost (rounded).
+const PLAN_SHOWCASE: Record<PlanKey, TokenAction[]> = {
+  STARTER: ["blog"],
+  GROWTH: ["image", "blog"],
+  PRO: ["video", "blog", "image"],
+  SCALE: ["video", "blog", "image"],
+};
+const CAPACITY_NOUN: Partial<Record<TokenAction, string>> = {
+  video: "product videos",
+  blog: "blog posts",
+  image: "image ads",
+  landing: "landing pages",
+};
+export function planCapacity(tier: PlanTier): { action: TokenAction; count: number; noun: string }[] {
+  return PLAN_SHOWCASE[tier.key].map((action) => ({
+    action,
+    count: Math.round(tier.monthlyTokens / TOKEN_COST[action]),
+    noun: CAPACITY_NOUN[action] || action,
+  }));
+}
+/** e.g. "≈ 10 product videos, 150 blog posts, or 300 image ads" — always true,
+ *  because it's computed from the same wallet the app actually spends. */
+export function planCapacityLine(tier: PlanTier): string {
+  const parts = planCapacity(tier).map((c) => `${c.count.toLocaleString()} ${c.noun}`);
+  if (parts.length === 1) return `≈ ${parts[0]} a month`;
+  return `≈ ${parts.slice(0, -1).join(", ")}, or ${parts[parts.length - 1]}`;
+}
+
+/** Per-action token costs as a compact legend for the "one balance" explainer. */
+export const TOKEN_COST_LEGEND: { action: TokenAction; label: string; cost: number }[] = [
+  { action: "video", label: "Product video", cost: TOKEN_COST.video },
+  { action: "blog", label: "Blog post", cost: TOKEN_COST.blog },
+  { action: "image", label: "Image ad", cost: TOKEN_COST.image },
+  { action: "description", label: "Listing / ad copy", cost: TOKEN_COST.description },
 ];

@@ -2787,8 +2787,10 @@ body[data-page="dashboard"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .pl-card.feat .pl-price small { color:rgba(220,240,225,.6); }
 .pl-sub { font-size:11.5px; color:var(--ink3); margin-top:3px; }
 .pl-card.feat .pl-sub { color:rgba(220,240,225,.6); }
-.pl-tokens { font-size:12.5px; font-weight:800; color:var(--green); margin:14px 0 12px; padding:8px 11px; border-radius:10px; background:rgba(12,122,70,.08); display:inline-block; }
+.pl-tokens { font-size:12.5px; font-weight:800; color:var(--green); margin:14px 0 6px; padding:8px 11px; border-radius:10px; background:rgba(12,122,70,.08); display:inline-block; }
 .pl-card.feat .pl-tokens { color:#FBE7A8; background:rgba(255,255,255,.08); }
+.pl-cap { font-size:11.5px; color:var(--ink3); margin:0 0 12px; line-height:1.4; }
+.pl-card.feat .pl-cap { color:rgba(224,240,229,.72); }
 .pl-feats { list-style:none; margin:0 0 4px; padding:0; display:flex; flex-direction:column; gap:8px; }
 .pl-feats li { position:relative; padding-left:23px; font-size:13px; line-height:1.4; color:var(--ink2); }
 .pl-feats li::before { content:"✓"; position:absolute; left:0; top:0; font-weight:800; color:var(--green2); }
@@ -2807,6 +2809,15 @@ body[data-page="dashboard"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .pl-card.feat .pl-cta:not(.go) { background:rgba(255,255,255,.95); }
 .pl-trial { text-align:center; font-size:11px; color:var(--ink3); margin-top:9px; }
 .pl-card.feat .pl-trial { color:rgba(220,240,225,.6); }
+
+/* One-balance legend — token cost of each action */
+.pl-legend { margin-top:34px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; box-shadow:0 3px 14px rgba(20,32,26,.05); }
+.pl-legend-h { font-family:Poppins,sans-serif; font-size:15px; font-weight:800; letter-spacing:-.01em; color:var(--ink); margin-bottom:12px; }
+.pl-legend-row { display:flex; flex-wrap:wrap; gap:10px; }
+.pl-legend-item { flex:1 1 120px; display:flex; align-items:baseline; gap:8px; background:rgba(12,122,70,.06); border:1px solid rgba(12,122,70,.16); border-radius:11px; padding:10px 13px; }
+.pl-legend-item b { font-family:Poppins,sans-serif; font-size:19px; font-weight:800; color:var(--green); font-variant-numeric:tabular-nums; }
+.pl-legend-item span { font-size:12px; color:var(--ink2); }
+.pl-legend-note { font-size:12px; color:var(--ink3); margin-top:12px; line-height:1.5; }
 
 .pl-sec { margin-top:44px; }
 .pl-sec-h { font-size:18px; font-weight:800; letter-spacing:-.01em; color:var(--ink); }

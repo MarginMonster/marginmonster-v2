@@ -6,7 +6,7 @@ import { Page } from "@shopify/polaris";
 import { authenticate, billingIsTest, TOKEN_PACK_PLANS, TOKENS_BY_PACK } from "../shopify.server";
 import { recordBillingFailure } from "../lib/billing-debug.server";
 import { db } from "../db.server";
-import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, type PlanKey } from "../lib/plan-config";
+import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, planCapacityLine, TOKEN_COST_LEGEND, type PlanKey } from "../lib/plan-config";
 import { unlockAchievement } from "../lib/xp.server";
 import { REFERRAL_REWARD_TOKENS } from "../lib/referral.server";
 import { COMPANIONS, COMPANION_BY_ID } from "../lib/companions";
@@ -419,6 +419,7 @@ export default function Plans() {
                 </div>
                 <div className="pl-sub">{annual ? `Just $${Math.round((tier.price * 10) / 12)}/mo, billed yearly · 2 months free` : "billed monthly"}</div>
                 <div className="pl-tokens">🪙 {tier.monthlyTokens.toLocaleString()} tokens / mo</div>
+                <div className="pl-cap">{planCapacityLine(tier)}</div>
                 <ul className="pl-feats">
                   {tier.features.map((ft) => <li key={ft}>{ft}</li>)}
                 </ul>
@@ -436,6 +437,17 @@ export default function Plans() {
             );
           })}
         </div>
+
+        {/* One balance, one currency — what each action costs */}
+        <section className="pl-legend">
+          <div className="pl-legend-h">One balance runs everything</div>
+          <div className="pl-legend-row">
+            {TOKEN_COST_LEGEND.map((l) => (
+              <div className="pl-legend-item" key={l.action}><b>{l.cost}</b><span>{l.label}</span></div>
+            ))}
+          </div>
+          <div className="pl-legend-note">Every video, blog, image and listing spends from the same monthly token balance — no separate quotas to track. Run out mid-month? Top up below.</div>
+        </section>
 
         {/* Token top-ups — one-time purchases, credited on confirmed payment */}
         {currentPlan && (

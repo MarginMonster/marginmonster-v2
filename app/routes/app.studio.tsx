@@ -67,7 +67,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   } catch { /* fall through */ }
 
   const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
-  const videoQuotaLeft = plan ? Math.max(0, plan.videoQuota - plan.videoUsed + plan.videoCredits) : 0;
   const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 
   return json({
@@ -78,7 +77,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cast,
     brandFaceId,
     defaultAvatar: brandFaceId ?? cast[0]?.id ?? null,
-    videoQuotaLeft,
   });
 };
 
@@ -159,13 +157,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
-    let prePaid = false;
-    const left = shop.activePlan.videoQuota - shop.activePlan.videoUsed + shop.activePlan.videoCredits;
-    if (left <= 0) {
-      try { await spendTokens(shop.id, TOKEN_COST.video); prePaid = true; }
-      catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
-    }
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: !!avatarId && wear, scene, prePaid });
+    // One currency: video spends tokens like every other action (no separate
+    // free-video quota). Campaigns and the Studio now bill identically.
+    try { await spendTokens(shop.id, TOKEN_COST.video); }
+    catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: !!avatarId && wear, scene, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -256,7 +252,7 @@ function PresenterPicker({ cast, value, onChange, allowNone, brandFaceId }: { ca
 }
 
 export default function Studio() {
-  const { hasPlan, hasBrand, tokens, products, cast, brandFaceId, defaultAvatar, videoQuotaLeft } = useLoaderData<typeof loader>();
+  const { hasPlan, hasBrand, tokens, products, cast, brandFaceId, defaultAvatar } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -286,7 +282,6 @@ export default function Studio() {
 
   const meta = TABS.find((t) => t.key === tab)!;
   const product = allProducts[picked];
-  const videoFree = videoQuotaLeft > 0;
   // Presenter × product → hold vs wear. Auto-detect apparel; reset the override
   // when the product changes so detection leads.
   const [wearOverride, setWearOverride] = useState<boolean | null>(null);
@@ -330,7 +325,7 @@ export default function Studio() {
     submit(fields, { method: "post" });
   };
 
-  const costLabel = tab === "video" ? (videoFree ? "uses 1 plan video" : `${meta.cost} tokens`) : `${meta.cost} tokens`;
+  const costLabel = `${meta.cost} tokens`;
 
   return (
     <Page>
@@ -438,7 +433,7 @@ export default function Studio() {
             </>
           )}
 
-          <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{tab === "video" && videoFree ? "Free" : meta.cost}</b><span>{tab === "video" && videoFree ? "1 of your plan videos" : "tokens"}</span></div></div>
+          <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{meta.cost}</b><span>tokens</span></div></div>
 
           <button type="button" className="smp-cta go" disabled={busy || !product} onClick={generate}>
             {busy ? "Sending to the studio…" : `${meta.verb} ${meta.noun} — ${costLabel}`}
