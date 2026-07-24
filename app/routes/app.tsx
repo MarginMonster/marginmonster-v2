@@ -173,7 +173,7 @@ export default function App() {
   const [pageKey, setPageKey] = useState("dashboard");
   useEffect(() => {
     const seg = location.pathname.split("/")[2] || "dashboard";
-    const alias: Record<string, string> = { products: "seo", strategy: "campaigns", connect: "queue", funnels: "plans", images: "videos", studio: "campaigns", archive: "campaigns" };
+    const alias: Record<string, string> = { products: "seo", strategy: "campaigns", connect: "queue", funnels: "plans", studio: "campaigns", archive: "campaigns" };
     const KNOWN = ["dashboard", "campaigns", "videos", "seo", "queue", "calendar", "performance", "plans"];
     const key = alias[seg] ?? seg;
     const resolved = KNOWN.includes(key) ? key : "dashboard";
@@ -292,8 +292,6 @@ export default function App() {
         <Link to="/app/campaigns">Marketing Campaigns</Link>
         <Link to="/app/studio">Content Studio</Link>
         <Link to="/app/archive">Archive Storage</Link>
-        <Link to="/app/videos">Video Studio</Link>
-        <Link to="/app/images">Image Studio</Link>
         <Link to="/app/email">Email Studio</Link>
         <Link to="/app/seo">SEO Hub</Link>
         <Link to="/app/calendar">Content Calendar</Link>

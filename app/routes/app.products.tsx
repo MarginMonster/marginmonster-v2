@@ -235,7 +235,7 @@ type ForgeResult = { id: string | null; title: string; copy?: ProductCopy; error
 const QUICK = [
   { l: "Dashboard", route: "/app" },
   { l: "Plans", route: "/app/plans" },
-  { l: "Video Studio", route: "/app/videos" },
+  { l: "Content Studio", route: "/app/studio" },
   { l: "Landing Pages", route: "/app/funnels" },
   { l: "Archive Storage", route: "/app/archive" },
   { l: "Calendar", route: "/app/calendar" },
