@@ -177,7 +177,6 @@ export default function NewPlan() {
   return (
     <Page>
       <div className="smp">
-        <span className="smp-ey">Automated Marketing</span>
         <h1 className="smp-h1">Social Media Plans</h1>
         <p className="smp-sub">Pick a strategy and EasyMode creates <b>and auto-posts</b> a full month of content across the next 30 days — hands off.</p>
 

@@ -284,9 +284,8 @@ export default function Campaigns() {
       </svg>
 
       <div className="dcal">
-        <span className="dc-ey">Automated Marketing</span>
-        <h1 className="dc-h1">Your drop calendar</h1>
-        <p className="dc-sub">Cut from obsidian, lit in gold — tap any day to see or schedule drops.</p>
+        <h1 className="dc-h1">Your feed, on autopilot.</h1>
+        <p className="dc-sub">A month of content — forged and auto-posted on schedule. Tap any day to see or add drops.</p>
 
         <Link className="dc-new" to="/app/campaigns/new">＋ New campaign</Link>
 

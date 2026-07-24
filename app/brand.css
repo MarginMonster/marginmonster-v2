@@ -2878,7 +2878,7 @@ body[data-page="performance"] { background: radial-gradient(90% 40% at 50% -4%, 
 /* ══════════════════════════════════════════════════════════════════════════
    DROP CALENDAR  ·  /app/campaigns  (obsidian & gold on the home ivory ground) */
 body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #FCFAF3, transparent 60%), linear-gradient(180deg, #F3F1E8, #EAE7DC) !important; }
-.dcal { max-width:460px; margin:0 auto; padding:6px 16px 24px; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif; }
+.dcal { max-width:460px; margin:0 auto; padding:14px 16px 24px; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif; }
 .dcal svg { display:block; }
 .dc-ey { font-size:11px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; color:#7E5E13; }
 .dc-h1 { font-size:clamp(26px,7.6vw,32px); font-weight:800; letter-spacing:-.03em; margin:8px 0 4px; color:#14160F; }
@@ -3040,7 +3040,7 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 
 /* ══════════════════════════════════════════════════════════════════════════
    SOCIAL MEDIA PLANS  ·  /app/campaigns/new */
-.smp { max-width:460px; margin:0 auto; padding:6px 16px 28px; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif; }
+.smp { max-width:460px; margin:0 auto; padding:14px 16px 28px; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif; }
 .smp svg { display:block; }
 .smp-ey { font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; color:#7E5E13; }
 .smp-h1 { font-size:28px; font-weight:800; letter-spacing:-.03em; margin:8px 0 4px; color:#14160F; }
