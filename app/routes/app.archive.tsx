@@ -137,6 +137,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.asset.deleteMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id } });
     return json({ deleted: true });
   }
+  if (intent === "draft") {
+    // Suggest one editable caption for the manual post box. EasyMode: a single
+    // caption the merchant can tweak, not three per-platform boxes. Tuned to
+    // Instagram when linked (richest tag style), else the first linked network.
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
+    if (!asset) return json({ error: "That piece is gone — refresh and try again." });
+    let title = asset.title || "New from our shop";
+    try { const m = JSON.parse(asset.metaJson || "{}"); title = m.productTitle || title; } catch { /* ignore */ }
+    const isVideo = asset.type === "VIDEO_AD";
+    let platforms: string[] = [];
+    try {
+      const { refreshLinkedPlatforms, socialProviderEnabled } = await import("../lib/social-provider.server");
+      if (socialProviderEnabled()) platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+    } catch { /* ignore */ }
+    if (platforms.length === 0) platforms = ["instagram"];
+    const tune = platforms.includes("instagram") ? "instagram" : platforms[0];
+    const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("../lib/social-caption.server");
+    const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
+    const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
+    return json({ draft: buildPostTitle(captions[tune], "", fbText) });
+  }
   if (intent === "post") {
     const id = (form.get("assetId") as string) || "";
     const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
@@ -156,18 +178,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const mediaUrl = /^https?:\/\//.test(media) ? media : base ? `${base}${media}` : media;
     const isVideo = asset.type === "VIDEO_AD";
 
-    // AI caption + per-platform hashtags (cached on the asset), same writer the
-    // auto-poster uses. Each platform gets its own tuned caption, so we post
-    // per-platform and report success if any landed.
-    const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("../lib/social-caption.server");
-    const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
-    const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
+    // If the merchant edited a caption in the draft box, post THAT verbatim to
+    // every platform (their words win, no tokens spent). Otherwise fall back to
+    // the AI writer: a per-platform tuned caption, cached on the asset.
+    const custom = ((form.get("caption") as string) || "").trim();
+    let titleFor: (p: string) => string;
+    if (custom) {
+      titleFor = () => custom.slice(0, 900);
+    } else {
+      const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("../lib/social-caption.server");
+      const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
+      const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
+      titleFor = (p) => buildPostTitle(captions[p], "", fbText);
+    }
     const urls: Record<string, string> = {};
     let anyOk = false;
     let lastErr: string | undefined;
     for (const p of platforms) {
-      const postTitle = buildPostTitle(captions[p], "", fbText);
-      const r = await publishPost(profileKey, { title: postTitle, mediaUrl, isVideo, platforms: [p] });
+      const r = await publishPost(profileKey, { title: titleFor(p), mediaUrl, isVideo, platforms: [p] });
       if (r.ok) { anyOk = true; if (r.urls) Object.assign(urls, r.urls); }
       else lastErr = r.error;
     }
@@ -271,8 +299,18 @@ export default function Archive() {
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
   const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
-  const postAsset = (assetId: string) => submit({ intent: "post", assetId }, { method: "post" });
   const posted = actionData && "posted" in actionData ? (actionData as { posted: string }).posted : null;
+  const draftText = actionData && "draft" in actionData ? (actionData as { draft: string }).draft : null;
+  // Editable draft: opening "Post to socials" reveals one caption box we
+  // pre-fill with an AI suggestion the merchant can tweak or post as-is.
+  const [capOpen, setCapOpen] = useState(false);
+  const [caption, setCaption] = useState("");
+  const [draftPending, setDraftPending] = useState(false);
+  const startPost = (assetId: string) => { setCaption(""); setCapOpen(true); setDraftPending(true); submit({ intent: "draft", assetId }, { method: "post" }); };
+  const doPost = (assetId: string) => submit({ intent: "post", assetId, caption }, { method: "post" });
+  useEffect(() => { if (draftText != null) { setCaption(draftText); setDraftPending(false); } }, [draftText]);
+  useEffect(() => { setCapOpen(false); setCaption(""); setDraftPending(false); }, [viewer?.id]);
+  useEffect(() => { if (posted) setCapOpen(false); }, [posted]);
   const attached = actionData && "attached" in actionData ? (actionData as { attached: string }).attached : null;
   const boosted = actionData && "boosted" in actionData ? (actionData as { boosted: string }).boosted : null;
   const [tool, setTool] = useState<"attach" | "boost" | null>(null);
@@ -403,10 +441,22 @@ export default function Archive() {
                     {posted ? <span className="ar-vok">Posted to {posted} ✓</span> : err ? <span className="ar-verr">{err}</span> : <span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Posted" : viewer.status === "APPROVED" ? "Kept" : "New"}</span>}
                   </div>
                   <div className="ar-vacts">
-                    {linkedSocial.length > 0 && <button type="button" className="ar-vpost" disabled={busy} onClick={() => postAsset(viewer.id)}>{busy ? "Posting…" : "Post to socials"}</button>}
+                    {linkedSocial.length > 0 && !capOpen && <button type="button" className="ar-vpost" disabled={busy} onClick={() => startPost(viewer.id)}>Post to socials</button>}
                     <button type="button" className="ar-vkeep" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
                     <button type="button" className="ar-vdel" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                   </div>
+                  {capOpen && (
+                    <div className="ar-cap">
+                      <textarea className="ar-capbox" rows={5} value={caption} disabled={draftPending}
+                        placeholder={draftPending ? "✨ Writing a caption for you…" : "Write your caption…"}
+                        onChange={(e) => setCaption(e.target.value)} />
+                      <div className="ar-caprow">
+                        <button type="button" className="ar-vpost" disabled={busy || draftPending || !caption.trim()} onClick={() => doPost(viewer.id)}>{busy && !draftPending ? "Posting…" : "Post now"}</button>
+                        <button type="button" className="ar-capcancel" disabled={busy} onClick={() => setCapOpen(false)}>Cancel</button>
+                      </div>
+                      <span className="ar-caphint">Posts to {linkedSocial.join(" · ")}. Tweak it or post as-is.</span>
+                    </div>
+                  )}
                   <div className="ar-vmore">
                     <button type="button" className={`ar-vtool${tool === "attach" ? " on" : ""}`} onClick={() => setTool(tool === "attach" ? null : "attach")}>🏷 Add to a product</button>
                     {paidAds && adPlatforms.length > 0 && <button type="button" className={`ar-vtool${tool === "boost" ? " on" : ""}`} onClick={() => setTool(tool === "boost" ? null : "boost")}>🚀 Boost</button>}
