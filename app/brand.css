@@ -3810,3 +3810,11 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .sh-auto-grid span { position:relative; padding-left:22px; font-size:13.5px; line-height:1.5; color:var(--ink2); }
 .sh-auto-grid span::before { content:"✓"; position:absolute; left:0; top:0; color:var(--green2); font-weight:900; }
 @media (prefers-reduced-motion: reduce) { .sh-hero::after, .sh-cta.go::after { animation:none; } .sh-card, .sh-card:hover { transition:none; transform:none; } }
+
+/* Peak-delight referral row inside the Results value band */
+.er-refer { margin-top:14px; padding-top:14px; border-top:1px solid rgba(231,200,121,.22); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.er-refer-t { display:flex; flex-direction:column; gap:2px; }
+.er-refer-t b { font-size:13.5px; color:#F4EAC8; font-weight:800; }
+.er-refer-t span { font-size:12px; color:rgba(220,240,225,.7); }
+.er-refer-btn { flex:none; border:1px solid rgba(231,200,121,.5); background:rgba(255,255,255,.08); color:#F4EAC8; font-family:inherit; font-size:12.5px; font-weight:800; padding:9px 15px; border-radius:999px; cursor:pointer; transition:background .12s,border-color .12s; }
+.er-refer-btn:hover { background:rgba(231,200,121,.16); border-color:var(--gold-hi); }

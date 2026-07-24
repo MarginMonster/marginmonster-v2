@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Layout,
@@ -42,6 +43,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     mode: "organic" as const, socialOn: socialProviderEnabled(), linked: [] as string[],
     platforms: {} as Record<string, PlatformStats>, fetchedAt: null as string | null,
     totals: sumStats(parseSocialStats(null)), recent: [] as RecentPost[], proof: EMPTY_PROOF,
+    referral: null as { code: string; reward: number; listing: string } | null,
   });
 
   const shop = await db.shop.findUnique({
@@ -89,6 +91,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const valueCents = videos * 6000 + images * 1200 + blogs * 4500;
   const proof = { videos, images, blogs, blogsLive, landingViews, posts, valueCents };
 
+  // Peak-delight referral: the merchant is looking at real value they made —
+  // the best possible moment to ask them to bring a friend (you both win).
+  let referral: { code: string; reward: number; listing: string } | null = null;
+  try {
+    const { ensureReferralCode, REFERRAL_REWARD_TOKENS } = await import("../lib/referral.server");
+    referral = { code: await ensureReferralCode(shop.id), reward: REFERRAL_REWARD_TOKENS, listing: process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com" };
+  } catch { /* non-fatal */ }
+
   return json({
     mode: "organic" as const,
     socialOn: socialProviderEnabled(),
@@ -98,6 +108,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totals: sumStats(stats),
     recent: recent.slice(0, 8),
     proof,
+    referral,
   });
 };
 
@@ -134,12 +145,13 @@ export default function Results() {
       totals={data.totals}
       recent={data.recent}
       proof={data.proof}
+      referral={data.referral}
     />
   );
 }
 
 // ═══ Organic engagement dashboard ═══════════════════════════════════════════
-function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent, proof }: {
+function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent, proof, referral }: {
   socialOn: boolean;
   linked: string[];
   platforms: Record<string, PlatformStats>;
@@ -147,12 +159,16 @@ function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent, proof
   totals: Totals;
   recent: RecentPost[];
   proof: Proof;
+  referral: { code: string; reward: number; listing: string } | null;
 }) {
   const platformKeys = Object.keys(platforms);
   const hasStats = platformKeys.length > 0 && totals.followers + totals.views + totals.likes > 0;
   const engagement = totals.likes + totals.comments + totals.shares;
   const madeTotal = proof.videos + proof.images + proof.blogs;
   const dollars = Math.round(proof.valueCents / 100);
+  const referLink = referral ? `${referral.listing}${referral.listing.includes("?") ? "&" : "?"}ref=${referral.code}` : "";
+  const [copied, setCopied] = useState(false);
+  const copyRefer = () => { navigator.clipboard?.writeText(referLink).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => {}); };
 
   return (
     <Page title="Results" backAction={{ content: "Home", url: "/app" }}>
@@ -176,6 +192,12 @@ function Organic({ socialOn, linked, platforms, fetchedAt, totals, recent, proof
                 {proof.posts > 0 && <div className="v"><b>{nfmt(proof.posts)}</b><span>Auto-posted</span></div>}
               </div>
               <span className="er-value-note">*Estimate at typical outsourced rates ($60 video · $12 image · $45 article). Your real cost was a fraction, in tokens.</span>
+              {referral && (
+                <div className="er-refer">
+                  <div className="er-refer-t"><b>Know a store owner who'd want this?</b><span>Invite them — you each get {referral.reward} tokens when they subscribe.</span></div>
+                  <button type="button" className="er-refer-btn" onClick={copyRefer}>{copied ? "Link copied ✓" : "Copy invite link"}</button>
+                </div>
+              )}
             </>
           ) : (
             <div className="er-value-hd empty"><span>Make your first piece in the Content Studio and your running total lands here — every video, image and article, plus what it would've cost to outsource.</span></div>

@@ -32,6 +32,16 @@ export async function publishBlogAsset(shopDomain: string, assetId: string): Pro
   } catch { /* fall through */ }
   if (!html.trim()) return { ok: false, error: "no-body" };
 
+  // Self-marketing byline — added only on the PUBLIC store blog (not the in-app
+  // viewer). These posts get indexed by Google; readers who find them are often
+  // other store owners, so a subtle tracked credit turns organic blog traffic
+  // into EasyMode discovery. Honest (it IS made with EasyMode) and unobtrusive.
+  const listing = process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com";
+  const bylineUrl = `${listing}${listing.includes("?") ? "&" : "?"}utm_source=merchant_blog&utm_medium=written_with_byline&utm_campaign=self_marketing`;
+  if (!/written with .*easymode/i.test(html)) {
+    html += `\n<p style="margin-top:28px;padding-top:14px;border-top:1px solid #eee;font-size:13px;color:#9a9d92;">✨ Written with <a href="${bylineUrl}" rel="nofollow noopener" style="color:#0C7A46;font-weight:700;text-decoration:none;">EasyMode</a> — AI content &amp; auto-posting for Shopify.</p>`;
+  }
+
   // Pull a clean title: prefer the asset title, else the first <h1>.
   let title = (asset.title || "").trim();
   if (!title) {
