@@ -207,7 +207,7 @@ export default function Dashboard() {
             <span className="eh-cta">{hasPlan ? "View or launch a campaign" : "Choose a plan to start"}<IChev /></span>
           </Link>
           <div className="eh-acts2">
-            <Link className="eh-btn sm" to="/app/videos">
+            <Link className="eh-btn sm" to="/app/studio">
               <div className="hd"><span className="ic"><IPen /></span><span className="ti">Content Studio</span></div>
               <p className="ds">Make one piece by hand, in your voice.</p>
             </Link>

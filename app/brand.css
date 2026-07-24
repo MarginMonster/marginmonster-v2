@@ -3126,6 +3126,18 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .smp-multi { font-size:12.5px; line-height:1.55; color:#52564A; margin:18px 4px 0; text-align:center; }
 .smp-multi b { color:#0A6B3E; }
 
+/* ---- Content Studio · /app/studio (top tabs over the shared plan styles) ---- */
+.cs-tabs { display:flex; gap:6px; background:#F0ECE0; border:1px solid #E6E2D5; border-radius:15px; padding:5px; margin:4px 0 18px; position:sticky; top:6px; z-index:5; }
+.cs-tab { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; border:0; background:none; border-radius:11px; padding:11px 6px; font-family:inherit; font-size:14.5px; font-weight:800; color:#7C7F71; cursor:pointer; }
+.cs-tab .cs-ti { font-size:15px; }
+.cs-tab.sel { background:#fff; color:#0A6B3E; box-shadow:0 2px 8px rgba(20,22,15,.1), inset 0 0 0 1px rgba(12,122,70,.18); }
+.cs-opt { text-transform:none; letter-spacing:0; font-weight:600; color:#B4B7AA; }
+.ca-img.cs-none { display:grid; place-items:center; font-size:20px; background:#F1EEE3; }
+.cs-input { width:100%; box-sizing:border-box; border:1px solid #DBD6C6; border-radius:12px; padding:12px 13px; font-size:14.5px; font-family:inherit; background:#fff; color:#14160F; }
+.cs-ok { display:flex; flex-direction:column; gap:4px; background:linear-gradient(160deg,rgba(12,122,70,.09),rgba(12,122,70,.03)); border:1px solid rgba(12,122,70,.2); border-radius:14px; padding:13px 15px; margin-bottom:14px; }
+.cs-ok b { font-size:14px; font-weight:800; color:#0A3D26; }
+.cs-ok a { font-size:13px; font-weight:800; color:#0A6B3E; text-decoration:none; }
+
 /* archetype card — drops headline, colored mix, value + tier-fit footer */
 .smp-ac .ac-drops { font-size:19px; font-weight:800; color:#0A6B3E; line-height:1; } .smp-ac .ac-drops span { font-size:10px; color:#8C8F82; font-weight:700; }
 .smp-ac .ac-mix span.v { background:rgba(200,60,120,.1); color:#A6316B; }
