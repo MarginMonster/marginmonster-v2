@@ -170,7 +170,9 @@ async function runJob(
         shop.activePlan,
         payload.productTitle as string,
         payload.productImageUrl as string | undefined,
-        payload.stylePrompt as string | undefined
+        payload.stylePrompt as string | undefined,
+        payload.avatarId as string | undefined,
+        payload.avatarVariant as number | undefined
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements

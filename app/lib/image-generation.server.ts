@@ -91,8 +91,59 @@ export async function generateImageAd(
   plan: Plan,
   productTitle: string,
   productImageUrl?: string,
-  stylePrompt?: string
+  stylePrompt?: string,
+  avatarId?: string,
+  avatarVariant?: number
 ): Promise<string> {
+  // PRESENTER STILL — an avatar holding the product (Content Studio presenter
+  // path). Uses the same two-image compose engine as UGC video frames. Needs a
+  // real product photo; falls through to the product still if unavailable.
+  if (avatarId && productImageUrl && /^https?:\/\//.test(productImageUrl)) {
+    try {
+      const { submitCompose, pollCompose, falImageEnabled } = await import("./fal-image.server");
+      if (falImageEnabled()) {
+        const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
+        const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+        const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
+        const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1);
+        let composed: string | undefined;
+        for (let i = 0; i < 45; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const p = await pollCompose(q.statusUrl, q.responseUrl);
+          if (p.done) { composed = p.urls?.[0]; break; }
+        }
+        if (composed) {
+          let localUrl = composed;
+          try {
+            const res = await fetch(composed);
+            if (res.ok) {
+              const buf = Buffer.from(await res.arrayBuffer());
+              if (buf.length > 5_000) {
+                const dir = path.join(process.cwd(), "data", "renders");
+                fs.mkdirSync(dir, { recursive: true });
+                const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+                fs.writeFileSync(path.join(dir, fileName), buf);
+                localUrl = `/renders/${fileName}`;
+              }
+            }
+          } catch (e) { console.error("[image-ad] presenter still persist failed:", e); }
+          const asset = await db.asset.create({
+            data: {
+              shopId, type: "IMAGE_AD", status: "PENDING",
+              title: `${productTitle} — held by presenter`,
+              bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter holding ${productTitle}`, avatarId }),
+              metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle, avatarId }),
+            },
+          });
+          return asset.id;
+        }
+      }
+    } catch (e) {
+      console.error("[image-ad] presenter compose failed, falling back to product still:", e instanceof Error ? e.message : e);
+    }
+    // fall through to a normal product still if compose is unavailable/failed
+  }
+
   const visual = JSON.parse(brandProfile.visualJson);
   const direction =
     PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;

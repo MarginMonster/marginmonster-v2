@@ -30,7 +30,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
   } catch { /* fall through */ }
 
-  const cast = AVATARS.slice(0, 10).map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) }));
+  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) }));
   const videoQuotaLeft = plan ? Math.max(0, plan.videoQuota - plan.videoUsed + plan.videoCredits) : 0;
 
   return json({
@@ -73,9 +73,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
+    const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
+    const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+    if (avatarId && !productImageUrl) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
     try { await spendTokens(shop.id, TOKEN_COST.image); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant, prePaid: true });
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
@@ -86,6 +89,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   return json({ ok: true });
 };
+
+type CastItem = { id: string; name: string; img: string };
+
+function PresenterPicker({ cast, value, onChange, allowNone }: { cast: CastItem[]; value: string | null; onChange: (id: string | null) => void; allowNone: boolean }) {
+  const [open, setOpen] = useState(false);
+  const PREVIEW = 8;
+  const selIdx = value ? cast.findIndex((c) => c.id === value) : -1;
+  const preview = cast.slice(0, PREVIEW);
+  if (selIdx >= PREVIEW) preview.push(cast[selIdx]); // keep the chosen one visible
+  const None = allowNone ? (
+    <button type="button" className={`cast${value === null ? " sel" : ""}`} onClick={() => onChange(null)}>
+      <span className="ca-img cs-none">🚫</span><span className="ca-nm">None</span>
+    </button>
+  ) : null;
+  const Tile = (c: CastItem) => (
+    <button type="button" key={c.id} className={`cast${c.id === value ? " sel" : ""}`} onClick={() => onChange(c.id)}>
+      <span className="ca-img" style={{ backgroundImage: `url(${c.img})` }}>{c.id === value && <span className="ca-chk">✓</span>}</span>
+      <span className="ca-nm">{c.name}</span>
+    </button>
+  );
+  return (
+    <>
+      <div className="cfg-lbl cs-lblrow">
+        <span>Presenter {allowNone && <span className="cs-opt">— or none</span>}</span>
+        <button type="button" className="cs-viewall" onClick={() => setOpen((o) => !o)}>{open ? "Show less" : `View all ${cast.length}`}</button>
+      </div>
+      {open ? (
+        <div className="cs-castgrid">{None}{cast.map(Tile)}</div>
+      ) : (
+        <div className="cfg-cast">{None}{preview.map(Tile)}<button type="button" className="cast cs-moretile" onClick={() => setOpen(true)}><span className="ca-img cs-none">＋</span><span className="ca-nm">All</span></button></div>
+      )}
+    </>
+  );
+}
 
 export default function Studio() {
   const { hasPlan, hasBrand, tokens, products, cast, defaultAvatar, videoQuotaLeft } = useLoaderData<typeof loader>();
@@ -99,7 +136,13 @@ export default function Studio() {
   const [tab, setTab] = useState<Tab>("video");
   const [picked, setPicked] = useState(0);
   const [avatarId, setAvatarId] = useState<string | null>(defaultAvatar);
-  const [direction, setDirection] = useState("");
+  const [direction, setDirection] = useState(""); // image style / blog topic
+  // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
+  const [advanced, setAdvanced] = useState(false);
+  const [saySomething, setSaySomething] = useState("");
+  const [doWhat, setDoWhat] = useState("");
+  const [where, setWhere] = useState("");
+
   const meta = TABS.find((t) => t.key === tab)!;
   const product = products[picked];
   const videoFree = videoQuotaLeft > 0;
@@ -107,8 +150,22 @@ export default function Studio() {
   const generate = () => {
     if (!product) return;
     const intent = tab === "video" ? "genVideo" : tab === "image" ? "genImage" : "genBlog";
-    const fields: Record<string, string> = { intent, productTitle: product.title, productImageUrl: product.image || "", direction: direction.trim() };
-    if (tab === "video" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = "0"; }
+    const fields: Record<string, string> = { intent, productTitle: product.title, productImageUrl: product.image || "" };
+    if (tab === "video") {
+      let dir = "";
+      if (advanced) {
+        const parts: string[] = [];
+        if (saySomething.trim()) parts.push(`They say: ${saySomething.trim()}`);
+        if (doWhat.trim()) parts.push(`They do: ${doWhat.trim()}`);
+        if (where.trim()) parts.push(`Setting: ${where.trim()}`);
+        dir = parts.join(". ");
+      }
+      fields.direction = dir;
+      if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = "0"; }
+    } else {
+      fields.direction = direction.trim();
+      if (tab === "image" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = "0"; }
+    }
     submit(fields, { method: "post" });
   };
 
@@ -144,22 +201,10 @@ export default function Studio() {
         )}
 
         <div className="smp-cfg">
-          {tab === "video" && (
-            <>
-              <div className="cfg-lbl">Presenter <span className="cs-opt">— or none for a product-only clip</span></div>
-              <div className="cfg-cast">
-                <button type="button" className={`cast${avatarId === null ? " sel" : ""}`} onClick={() => setAvatarId(null)}>
-                  <span className="ca-img cs-none">🚫</span><span className="ca-nm">None</span>
-                </button>
-                {cast.map((c) => (
-                  <button type="button" key={c.id} className={`cast${c.id === avatarId ? " sel" : ""}`} onClick={() => setAvatarId(c.id)}>
-                    <span className="ca-img" style={{ backgroundImage: `url(${c.img})` }}>{c.id === avatarId && <span className="ca-chk">✓</span>}</span>
-                    <span className="ca-nm">{c.name}</span>
-                  </button>
-                ))}
-              </div>
-            </>
+          {(tab === "video" || tab === "image") && (
+            <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} />
           )}
+          {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
 
           <div className="cfg-lbl">{tab === "blog" ? "Product to write about" : "Product to feature"}</div>
           {products.length > 0 ? (
@@ -175,8 +220,37 @@ export default function Studio() {
           )}
           {product && <p className="cfg-note">Featuring <b>{product.title}</b></p>}
 
-          <div className="cfg-lbl">{tab === "blog" ? "What should it cover?" : "Direction"} <span className="cs-opt">optional</span></div>
-          <input className="cs-input" type="text" value={direction} maxLength={200} placeholder={tab === "video" ? "e.g. Unboxing reveal, big excited reaction…" : tab === "image" ? "e.g. Clean studio, lifestyle scene…" : "e.g. Best uses, buyer's guide, how-to…"} onChange={(e) => setDirection(e.target.value)} />
+          {tab === "video" ? (
+            <>
+              <div className="cfg-lbl cs-lblrow">
+                <span>Prompting</span>
+                <button type="button" className="cs-viewall" onClick={() => setAdvanced((a) => !a)}>{advanced ? "Use auto" : "Advanced ▾"}</button>
+              </div>
+              {!advanced ? (
+                <div className="cs-autobox">✨ <b>EasyMode decides</b> the scene &amp; script from your brand voice. Tap <b>Advanced</b> to direct it yourself.</div>
+              ) : (
+                <div className="cs-3w">
+                  <div className="cs-wfield">
+                    <span className="cs-w">What do they say?</span>
+                    <textarea className="cs-input cs-ta" value={saySomething} maxLength={400} placeholder="The hook + a couple talking points, in your voice…" onChange={(e) => setSaySomething(e.target.value)} />
+                  </div>
+                  <div className="cs-wfield">
+                    <span className="cs-w">What do they do?</span>
+                    <input className="cs-input" type="text" value={doWhat} maxLength={160} placeholder="unbox it, hold it up, demo a feature…" onChange={(e) => setDoWhat(e.target.value)} />
+                  </div>
+                  <div className="cs-wfield">
+                    <span className="cs-w">Where are they?</span>
+                    <input className="cs-input" type="text" value={where} maxLength={140} placeholder="a cozy cabin, a city rooftop, a snowy slope…" onChange={(e) => setWhere(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="cfg-lbl">{tab === "blog" ? "What should it cover?" : "Direction"} <span className="cs-opt">optional</span></div>
+              <input className="cs-input" type="text" value={direction} maxLength={200} placeholder={tab === "image" ? "e.g. Clean studio, lifestyle scene…" : "e.g. Best uses, buyer's guide, how-to…"} onChange={(e) => setDirection(e.target.value)} />
+            </>
+          )}
 
           <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{tab === "video" && videoFree ? "Free" : meta.cost}</b><span>{tab === "video" && videoFree ? "1 of your plan videos" : "tokens"}</span></div></div>
 
