@@ -28,7 +28,7 @@ function fmtWhen(date: string, time: string): string {
 }
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
-type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string; full?: string; html?: string };
+type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string; full?: string; html?: string; daysLeft?: number };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -67,10 +67,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
   const parse = (bodyJson: string) => { try { return JSON.parse(bodyJson); } catch { return {}; } };
   const byId = new Map(assets.map((a) => [a.id, a]));
+  const CACHE_DAYS = 30;
+  const nowT = Date.now();
   const toCard = (a: (typeof assets)[number]): Card => {
     const b = parse(a.bodyJson);
     const text = b.html ? stripHtml(b.html) : undefined;
-    return { id: a.id, title: a.title || "Untitled", status: a.status, video: b.videoUrl, image: b.imageUrl, snippet: text?.slice(0, 140), full: text?.slice(0, 4000), html: a.type === "BLOG_POST" && typeof b.html === "string" ? b.html : undefined };
+    // Un-kept media (PENDING video/photo) auto-clears at 30 days — surface a
+    // per-item countdown so nothing vanishes as a surprise. Blogs never expire.
+    const unkeptMedia = a.status === "PENDING" && (a.type === "VIDEO_AD" || a.type === "IMAGE_AD");
+    const daysLeft = unkeptMedia ? Math.max(0, CACHE_DAYS - Math.floor((nowT - a.createdAt.getTime()) / 86_400_000)) : undefined;
+    return { id: a.id, title: a.title || "Untitled", status: a.status, video: b.videoUrl, image: b.imageUrl, snippet: text?.slice(0, 140), full: text?.slice(0, 4000), html: a.type === "BLOG_POST" && typeof b.html === "string" ? b.html : undefined, daysLeft };
   };
   const library = {
     video: assets.filter((a) => a.type === "VIDEO_AD").map(toCard),
@@ -448,6 +454,7 @@ export default function Archive() {
                     <button type="button" className="ar-thumb" onClick={() => setViewer({ ...c, kind: tab })}>
                       <div className="ar-timg" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined}>
                         {c.video && <video className="ar-svid" src={c.video} muted playsInline preload="metadata" />}
+                        {c.daysLeft != null && <span className={`ar-cd${c.daysLeft <= 3 ? " urgent" : c.daysLeft <= 7 ? " warn" : ""}`} title={`Auto-clears in ${c.daysLeft} day${c.daysLeft === 1 ? "" : "s"} — tap Keep to save it`}>⏳ {c.daysLeft}d</span>}
                       </div>
                     </button>
                     <span className={`ar-tstatus s-${c.status.toLowerCase()}`}>{c.status === "PUBLISHED" ? "Posted" : c.status === "APPROVED" ? "Kept" : "New"}</span>
@@ -517,6 +524,7 @@ export default function Archive() {
                   <div className="ar-vinfo">
                     <b>{viewer.title}</b>
                     {posted ? <span className="ar-vok">Posted to {posted} ✓</span> : err ? <span className="ar-verr">{err}</span> : <span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Posted" : viewer.status === "APPROVED" ? "Kept" : "New"}</span>}
+                    {!posted && !err && viewer.daysLeft != null && <span className={`ar-vcd${viewer.daysLeft <= 7 ? " warn" : ""}`}>⏳ Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — hit <b>Keep</b> to save it</span>}
                   </div>
                   <div className="ar-vacts">
                     {linkedSocial.length > 0 && !capOpen && <button type="button" className="ar-vpost" disabled={busy} onClick={() => startPost(viewer.id)}>Post to socials</button>}

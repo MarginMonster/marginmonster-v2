@@ -3274,6 +3274,14 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-failrow { display:flex; gap:8px; align-items:center; margin-top:2px; }
 .ar-cachenote { font-size:11.5px; line-height:1.5; color:#8A8D7E; background:#FBFAF4; border:1px solid #EDE9DC; border-radius:11px; padding:9px 12px; margin:0 0 12px; }
 .ar-cachenote b { color:#0A6B3E; font-weight:800; }
+/* Per-item auto-clear countdown — a friendly nudge, urgent when time's short */
+.ar-cd { position:absolute; top:5px; left:5px; z-index:2; display:inline-flex; align-items:center; gap:2px; font-size:8.5px; font-weight:800; letter-spacing:.02em; color:#fff; background:rgba(10,20,12,.62); padding:3px 6px; border-radius:6px; }
+.ar-cd.warn { background:rgba(176,133,38,.92); }
+.ar-cd.urgent { background:rgba(154,49,32,.94); animation:ar-cdpulse 1.6s ease-in-out infinite; }
+@keyframes ar-cdpulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.ar-vcd { font-size:11px; font-weight:700; color:#8A6A16; background:rgba(231,200,121,.18); border-radius:8px; padding:5px 9px; }
+.ar-vcd.warn { color:#9A3120; background:rgba(154,49,32,.1); }
+.ar-vcd b { font-weight:800; }
 /* Blog generation feedback — a real "creating…" card that resolves */
 .ar-genblogs { margin-bottom:10px; }
 .ar-blogbuf { display:flex; align-items:center; gap:12px; background:linear-gradient(160deg,#0E5233,#0A3421); border-color:rgba(231,200,121,.28); }
@@ -3360,7 +3368,7 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .smp-cta.go::before { content:""; position:absolute; inset:7px; border:1px solid rgba(255,210,74,.4); border-radius:9px; pointer-events:none; z-index:0; }
 @keyframes mm-medallion-cw { to { transform:rotate(360deg); } }
 @keyframes mm-medallion-ccw { to { transform:rotate(-360deg); } }
-@media (prefers-reduced-motion: reduce) { .smp-tok::after, .smp-cta.go::after, .eh-status::after, .eh-btn.primary::after, .er-tot::after, .ar-btn.free::after, .ar-vpost::after { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .smp-tok::after, .smp-cta.go::after, .eh-status::after, .eh-btn.primary::after, .er-tot::after, .ar-btn.free::after, .ar-vpost::after, .ar-cd.urgent { animation:none; } }
 
 /* connect-account nudge (link variant of the add-on row) */
 .addon.connect { text-decoration:none; border-color:#CBB67A; background:linear-gradient(180deg,#FEFCF4,#FBF6E6); }
