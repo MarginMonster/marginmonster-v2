@@ -31,14 +31,21 @@ function tierFor(cost: number): string {
   return t ? t.name : PLAN_TIERS[PLAN_TIERS.length - 1].name;
 }
 
-function archetypes(currentAllowance: number) {
+function archetypes(allowance: number, planName: string | null) {
   return ARCH_ORDER.map((key) => {
     const def = SOCIAL_PLAN_DEFS.find((d) => d.key === key)!;
     const mix = { video: 0, image: 0, blog: 0 };
     for (const o of def.objectives) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
     const cost = questlineTokenCost(def);
     const drops = mix.video + mix.image + mix.blog;
-    return { key, name: def.name, icon: def.icon, ...ARCH_META[key], mix, cost, drops, tier: tierFor(cost), fitsCurrent: currentAllowance >= cost };
+    const tier = tierFor(cost);
+    const fits = allowance > 0 && allowance >= cost;
+    const fitLabel = fits
+      ? `✓ ${cost.toLocaleString()} of your ${allowance.toLocaleString()} monthly tokens`
+      : allowance > 0
+        ? `Costs ${cost.toLocaleString()} tokens — upgrade to ${tier}`
+        : `${cost.toLocaleString()} tokens — fits ${tier}`;
+    return { key, name: def.name, icon: def.icon, ...ARCH_META[key], mix, cost, drops, tier, fits, fitLabel, planName };
   });
 }
 
@@ -68,7 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products,
     cast,
     defaultAvatar: shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : cast[0]?.id ?? null,
-    archetypes: archetypes(allowance),
+    archetypes: archetypes(allowance, tier?.name ?? null),
   });
 };
 
@@ -142,6 +149,7 @@ export default function NewPlan() {
   const [picked, setPicked] = useState<number[]>(products.length ? products.slice(0, Math.min(5, products.length)).map((_, i) => i) : []);
   const primary = linked[0];
   const extras = linked.slice(1);
+  const unlinked = (["tiktok", "instagram", "facebook"] as const).filter((p) => !linked.includes(p));
   const [addOns, setAddOns] = useState<string[]>([]); // extra accounts beyond primary
 
   const per = arch?.cost ?? 0;
@@ -193,10 +201,11 @@ export default function NewPlan() {
                       {a.mix.image ? <span className="i">{a.mix.image} Image</span> : null}
                       {a.mix.blog ? <span className="b">{a.mix.blog} Article</span> : null}
                     </div>
+                    <div className="ac-price"><span className="coin" /><b>{a.cost.toLocaleString()}</b> tokens <span>/ month</span></div>
                     <p className="ac-why">{a.motivation}</p>
                     <div className="ac-foot">
                       <span className="ac-val">{a.value}</span>
-                      <span className={`ac-fit${a.fitsCurrent ? " in" : ""}`}>{a.fitsCurrent ? "✓ Included in your plan" : `Fits ${a.tier}`}</span>
+                      <span className={`ac-fit${a.fits ? " in" : ""}`}>{a.fitLabel}</span>
                     </div>
                   </button>
                 );
@@ -234,9 +243,9 @@ export default function NewPlan() {
               <div className="cfg-primary">
                 {primary && (<><span className="pl-lg"><PLogo p={primary} /></span><span className="pp-nm">{PLAT_LABEL[primary]}</span><span className="pp-inc">Included</span></>)}
               </div>
-              {extras.length > 0 && (
+              {(extras.length > 0 || unlinked.length > 0) && (
                 <div className="cfg-addons">
-                  <div className="ca-lbl">Add another account</div>
+                  <div className="ca-lbl">Reach more — same plan, posted everywhere</div>
                   {extras.map((p) => {
                     const on = addOns.includes(p);
                     return (
@@ -247,6 +256,13 @@ export default function NewPlan() {
                       </button>
                     );
                   })}
+                  {unlinked.map((p) => (
+                    <Link key={p} className="addon connect" to="/app/connect">
+                      <span className="pl-lg"><PLogo p={p} /></span>
+                      <span className="ao-nm">{PLAT_LABEL[p]}</span>
+                      <span className="ao-plus">＋ Connect · +{per.toLocaleString()} tokens</span>
+                    </Link>
+                  ))}
                 </div>
               )}
 
