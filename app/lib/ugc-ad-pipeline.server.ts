@@ -58,6 +58,7 @@ interface UgcAdParams {
   // failure NEVER blocks a render; it just falls back to the plain portrait.
   composedFrameUrl?: string;
   holdProduct?: boolean;
+  wearProduct?: boolean; // apparel → presenter models (wears) the item instead of holding it
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
     // NEVER re-spend on completed stages or abandon a live omni prediction
@@ -495,7 +496,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     if (!composedUrl && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
       try {
         const { composeHoldingFrames } = await import("./fal-image.server");
-        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1);
+        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold");
         composedUrl = frames[0] || "";
         if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
       } catch (e) {

@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useActionData, useNavigation, useSubmit, Link } from "@remix-run/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -18,16 +18,25 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
   { key: "blog", label: "Blog", icon: "✍️", cost: TOKEN_COST.blog, verb: "Write", noun: "article" },
 ];
 
+// Wearable products should be modeled (worn) by the presenter, not held.
+const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
+function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true, brandProfile: true } });
   const plan = shop?.activePlan ?? null;
 
-  let products: { title: string; image: string | null; url: string | null }[] = [];
+  let products: { title: string; image: string | null; url: string | null; apparel: boolean }[] = [];
   try {
-    const res = await admin.graphql(`{ products(first: 12, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl featuredImage { url } } } } }`);
-    const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; handle?: string; onlineStoreUrl?: string; featuredImage?: { url?: string } } }[] } } };
-    products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
+    const res = await admin.graphql(`{ products(first: 12, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl productType tags featuredImage { url } } } } }`);
+    const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; handle?: string; onlineStoreUrl?: string; productType?: string; tags?: string[]; featuredImage?: { url?: string } } }[] } } };
+    products = (j.data?.products?.edges || []).map((e) => ({
+      title: e.node.title,
+      image: e.node.featuredImage?.url || null,
+      url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null),
+      apparel: isApparel(`${e.node.title} ${e.node.productType || ""} ${(e.node.tags || []).join(" ")}`),
+    }));
   } catch { /* fall through */ }
 
   const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
@@ -59,6 +68,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productTitle = ((form.get("productTitle") as string) || "").trim();
   const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
   const direction = ((form.get("direction") as string) || "").trim() || undefined;
+  const wear = form.get("wear") === "1";
   if (!productTitle) return json({ error: "Pick a product to feature." });
 
   if (intent === "genVideo") {
@@ -71,7 +81,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       try { await spendTokens(shop.id, TOKEN_COST.video); prePaid = true; }
       catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     }
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, prePaid });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: !!avatarId && wear, prePaid });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -80,7 +90,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (avatarId && !productImageUrl) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
     try { await spendTokens(shop.id, TOKEN_COST.image); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant, wear: !!avatarId && wear, prePaid: true });
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
@@ -183,6 +193,12 @@ export default function Studio() {
   const meta = TABS.find((t) => t.key === tab)!;
   const product = products[picked];
   const videoFree = videoQuotaLeft > 0;
+  // Presenter × product → hold vs wear. Auto-detect apparel; reset the override
+  // when the product changes so detection leads.
+  const [wearOverride, setWearOverride] = useState<boolean | null>(null);
+  useEffect(() => { setWearOverride(null); }, [picked]);
+  const showWear = (tab === "video" || tab === "image") && !!avatarId && !!product;
+  const wear = wearOverride === null ? !!product?.apparel : wearOverride;
 
   // Rotate the presenter's 4 wardrobe variants across generations so repeated
   // content of the same face never looks stale (0→1→2→3→…, remembered locally).
@@ -206,10 +222,10 @@ export default function Studio() {
         dir = parts.join(". ");
       }
       fields.direction = dir;
-      if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); }
+      if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
-      if (tab === "image" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); }
+      if (tab === "image" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
     }
     submit(fields, { method: "post" });
   };
@@ -265,6 +281,16 @@ export default function Studio() {
             <p className="cfg-note">Add a product to your store to generate content.</p>
           )}
           {product && <p className="cfg-note">Featuring <b>{product.title}</b></p>}
+
+          {showWear && (
+            <>
+              <div className="cfg-lbl cs-lblrow"><span>How they show it</span>{product?.apparel && <span className="cs-opt">apparel detected</span>}</div>
+              <div className="dc-seg cs-wear">
+                <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}>✋ Holding it</button>
+                <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}>👕 Wearing it</button>
+              </div>
+            </>
+          )}
 
           {tab === "video" ? (
             <>

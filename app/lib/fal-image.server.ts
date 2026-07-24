@@ -17,18 +17,13 @@ export async function composeHoldingFrames(
   portraitUrl: string,
   productImageUrl: string,
   productTitle: string,
-  numImages = 1
+  numImages = 1,
+  mode: "hold" | "wear" = "hold"
 ): Promise<string[]> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
 
-  const prompt =
-    `The person from the first image holding the ${productTitle || "product"} from the second image ` +
-    `up at chest height in one hand, product facing the camera and clearly visible, natural relaxed grip, ` +
-    `exact same person — same face, same hairstyle, same outfit, same background and lighting as the first image, ` +
-    `candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture`;
-
   // Worker-context path (campaign drips): no request deadline, poll up to 2 min.
-  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages);
+  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode);
   for (let i = 0; i < 48; i++) {
     await new Promise((r) => setTimeout(r, 2500));
     const p = await pollCompose(q.statusUrl, q.responseUrl);
@@ -52,14 +47,23 @@ export async function submitCompose(
   portraitUrl: string,
   productImageUrl: string,
   productTitle: string,
-  numImages = 2
+  numImages = 2,
+  mode: "hold" | "wear" = "hold"
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
+  // Apparel → the presenter WEARS the garment (models it); everything else is
+  // held up to camera. "wear" drops the "same outfit" lock so the item replaces
+  // their top instead of being clutched on a hanger.
   const prompt =
-    `The person from the first image holding the ${productTitle || "product"} from the second image ` +
-    `up at chest height in one hand, product facing the camera and clearly visible, natural relaxed grip, ` +
-    `exact same person — same face, same hairstyle, same outfit, same background and lighting as the first image, ` +
-    `candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture`;
+    mode === "wear"
+      ? `The exact person from the first image WEARING the ${productTitle || "item"} from the second image — ` +
+        `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
+        `Same exact person: same face, same hairstyle, same skin tone, same background and lighting as the first image. ` +
+        `Waist-up vertical portrait, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
+      : `The person from the first image holding the ${productTitle || "product"} from the second image ` +
+        `up at chest height in one hand, product facing the camera and clearly visible, natural relaxed grip, ` +
+        `exact same person — same face, same hairstyle, same outfit, same background and lighting as the first image, ` +
+        `candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },

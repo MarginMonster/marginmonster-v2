@@ -93,7 +93,8 @@ export async function generateImageAd(
   productImageUrl?: string,
   stylePrompt?: string,
   avatarId?: string,
-  avatarVariant?: number
+  avatarVariant?: number,
+  wear?: boolean
 ): Promise<string> {
   // PRESENTER STILL — an avatar holding the product (Content Studio presenter
   // path). Uses the same two-image compose engine as UGC video frames. Needs a
@@ -105,7 +106,7 @@ export async function generateImageAd(
         const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
         const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
-        const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1);
+        const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1, wear ? "wear" : "hold");
         let composed: string | undefined;
         for (let i = 0; i < 45; i++) {
           await new Promise((r) => setTimeout(r, 2000));
