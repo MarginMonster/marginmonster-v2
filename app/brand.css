@@ -3115,6 +3115,9 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .smp-cta.go { background:var(--mm-ribbon) no-repeat center / 100% 100%, linear-gradient(165deg,#0F9152,#0B6B3E); box-shadow:0 14px 32px rgba(12,122,70,.32), inset 0 1px 0 rgba(255,255,255,.14); position:relative; overflow:hidden; isolation:isolate; }
 .smp-cta.go::after { content:""; position:absolute; z-index:-1; top:50%; right:-28px; width:136px; height:136px; margin-top:-68px; background:var(--mm-medallion) center / contain no-repeat; opacity:.9; animation:mm-medallion-ccw 72s linear infinite; pointer-events:none; }
 .smp-cta.go:hover::after { animation-duration:9s; }
+/* banknote frame — matches the home green cards */
+.smp-tok::before { content:""; position:absolute; inset:9px; border:1px solid rgba(255,210,74,.38); border-radius:11px; pointer-events:none; z-index:0; }
+.smp-cta.go::before { content:""; position:absolute; inset:7px; border:1px solid rgba(255,210,74,.4); border-radius:9px; pointer-events:none; z-index:0; }
 @keyframes mm-medallion-cw { to { transform:rotate(360deg); } }
 @keyframes mm-medallion-ccw { to { transform:rotate(-360deg); } }
 @media (prefers-reduced-motion: reduce) { .smp-tok::after, .smp-cta.go::after, .eh-status::after, .eh-btn.primary::after, .er-tot::after { animation:none; } }
