@@ -14,6 +14,7 @@ import { db } from "../db.server";
 import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, type PlanKey } from "../lib/plan-config";
 import { Partner } from "../components/Partner";
 import { unlockAchievement } from "../lib/xp.server";
+import { REFERRAL_REWARD_TOKENS } from "../lib/referral.server";
 import { COMPANIONS, COMPANION_BY_ID, CATEGORY_LABEL, companionSrcs, type CompanionCategory } from "../lib/companions";
 import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens } from "../lib/tokens.server";
@@ -95,6 +96,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           const gql = async (q: string) => { const r = await admin.graphql(q); const j = (await r.json()) as { data?: unknown }; return j.data; };
           await kickstartFirstContent(shopRow.id, gql);
         } catch (e) { console.error("[plans] first-content kick failed (non-fatal):", e); }
+        // Referral payout — if this store was referred, both sides earn tokens.
+        try {
+          const { creditReferralOnConversion } = await import("../lib/referral.server");
+          await creditReferralOnConversion(shopRow.id);
+        } catch (e) { console.error("[plans] referral credit failed (non-fatal):", e); }
       }
       embeddedRedirect({ welcome: activate });
     }
@@ -157,6 +163,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       forgeFailed = last?.status === "FAILED" && (Date.now() - new Date(last.updatedAt).getTime() < 10 * 60_000);
     }
   } catch { /* non-fatal */ }
+  // Referral: mint this store's code (once) + whether it already used one.
+  let referralCode = "";
+  let referredBy = false;
+  if (shop) {
+    try {
+      const { ensureReferralCode } = await import("../lib/referral.server");
+      referralCode = await ensureReferralCode(shop.id);
+      referredBy = !!shop.referredBy;
+    } catch { /* non-fatal */ }
+  }
+
   return json({
     currentPlan: shop?.activePlan?.type || null,
     currentReview: shop?.activePlan?.reviewMode || "REVIEW_FIRST",
@@ -168,6 +185,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     forging,
     forgeFailed,
     billingTest: billingIsTest(),
+    referralCode,
+    referredBy,
+    referralReward: REFERRAL_REWARD_TOKENS,
+    appListingUrl: process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com",
     welcome: url.searchParams.get("welcome"),
     topped: url.searchParams.get("topped"),
     packs: TOKEN_PACKS.map((p, i) => ({
@@ -258,6 +279,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Billing didn't respond — try again." });
   };
 
+  // ---- referral: a new store enters someone's code (paid out on conversion) ----
+  if (intent === "applyReferral") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return json({ error: "Shop not found." });
+    const { applyReferralCode } = await import("../lib/referral.server");
+    const r = await applyReferralCode(shop.id, (form.get("code") as string) || "");
+    return json(r.ok ? { referralApplied: true } : { error: r.error });
+  }
+
   // ---- token top-up: one-time charge, credited on confirmed return ----
   if (intent === "buyTokens") {
     const packKey = form.get("packKey") as keyof typeof TOKEN_PACK_PLANS;
@@ -308,7 +338,7 @@ const PACKAGES: Record<string, Pkg> = {
 };
 
 export default function Plans() {
-  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging, forgeFailed, billingTest, welcome, topped, packs } = useLoaderData<typeof loader>();
+  const { currentPlan, companionId, companionName, hasCustom, shopId, installed, forging, forgeFailed, billingTest, welcome, topped, packs, referralCode, referredBy, referralReward, appListingUrl } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const billingError = actionData && "error" in actionData ? actionData.error : null;
   const confirmationUrl = actionData && "confirmationUrl" in actionData ? actionData.confirmationUrl : null;
@@ -353,6 +383,13 @@ export default function Plans() {
   }, [confirmationUrl]);
   const [pending, setPending] = useState<PlanKey | null>(null);
   const [annual, setAnnual] = useState(false);
+  const [refInput, setRefInput] = useState("");
+  const [copied, setCopied] = useState(false);
+  const referralApplied = !!(actionData && "referralApplied" in actionData);
+  const shareMsg = `Try EasyMode on Shopify — AI blogs, videos & auto-posting built from your real products. Use my code ${referralCode} and we both get ${referralReward} free tokens. ${appListingUrl}`;
+  const copyRef = () => {
+    navigator.clipboard?.writeText(shareMsg).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }).catch(() => { /* clipboard blocked */ });
+  };
 
   const buy = (tierKey: PlanKey) => {
     setPending(tierKey);
@@ -598,6 +635,38 @@ export default function Plans() {
                   </button>
                 </div>
               ))}
+            </div>
+          </Layout.Section>
+        )}
+
+        {/* Referral — both stores earn tokens when a referred store converts */}
+        {referralCode && (
+          <Layout.Section>
+            <span className="mm-section-label">▶ REFER &amp; EARN<span className="mm-dots">· · · · ·</span></span>
+            <div className="pp-refer">
+              <div className="pp-refer-main">
+                <h3>Refer a store — you <em>both</em> get {referralReward} 🪙</h3>
+                <p>Share your code. When a store you refer starts a paid plan, {referralReward} tokens land in both wallets.</p>
+                <div className="pp-refer-code">
+                  <span className="pp-code">{referralCode}</span>
+                  <button type="button" className="pp-cta gold" onClick={copyRef}>{copied ? "Copied ✓" : "Copy invite"}</button>
+                </div>
+              </div>
+              {!referredBy ? (
+                <div className="pp-refer-enter">
+                  <label>Got a code from another store?</label>
+                  {referralApplied ? (
+                    <div className="pp-refer-ok">Code applied ✓ — your {referralReward} tokens land when you start a paid plan.</div>
+                  ) : (
+                    <div className="pp-refer-row">
+                      <input value={refInput} maxLength={12} placeholder="ENTER CODE" onChange={(e) => setRefInput(e.target.value.toUpperCase())} />
+                      <button type="button" className="pp-cta" disabled={nav.state !== "idle" || refInput.trim().length < 5} onClick={() => submit({ intent: "applyReferral", code: refInput.trim() }, { method: "post" })}>Apply</button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="pp-refer-enter"><div className="pp-refer-ok">You joined with a referral — enjoy your bonus tokens 🪙</div></div>
+              )}
             </div>
           </Layout.Section>
         )}

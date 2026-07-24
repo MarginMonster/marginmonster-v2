@@ -396,6 +396,20 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-billtoggle button.on { background: var(--mm-cyan); color: #06231F; }
 .mm-billtoggle button span { font-family: var(--font-pixel); font-size: 7px; letter-spacing: .04em; padding: 3px 6px; border-radius: 999px; background: rgba(245,196,81,0.18); color: var(--mm-gold); }
 .mm-billtoggle button.on span { background: rgba(6,35,31,0.18); color: #0A3D26; }
+/* Refer & earn */
+.pp-refer { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; background: var(--mm-space-2); border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; padding: 20px 22px; }
+.pp-refer-main h3 { font-family: var(--font-heading); font-size: 17px; font-weight: 800; color: #ECEAFB; margin: 0 0 6px; }
+.pp-refer-main h3 em { color: var(--mm-gold); font-style: normal; }
+.pp-refer-main p { font-size: 13px; color: #B9B4DE; margin: 0 0 14px; line-height: 1.5; }
+.pp-refer-code { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pp-code { font-family: var(--font-pixel); font-size: 15px; letter-spacing: .14em; color: var(--mm-cyan); background: rgba(52,231,228,0.10); border: 1px dashed rgba(52,231,228,0.4); border-radius: 10px; padding: 10px 16px; }
+.pp-refer-enter { border-left: 1px solid rgba(255,255,255,0.10); padding-left: 16px; display: flex; flex-direction: column; justify-content: center; }
+.pp-refer-enter label { font-size: 12px; font-weight: 700; color: #B9B4DE; margin-bottom: 8px; }
+.pp-refer-row { display: flex; gap: 8px; }
+.pp-refer-row input { flex: 1; min-width: 0; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; padding: 10px 12px; color: #ECEAFB; font-family: var(--font-pixel); font-size: 11px; letter-spacing: .1em; }
+.pp-refer-row input::placeholder { color: #6E6A94; }
+.pp-refer-ok { font-size: 12.5px; font-weight: 700; color: #7ffff9; background: rgba(52,231,228,0.08); border-radius: 10px; padding: 10px 12px; line-height: 1.45; }
+@media (max-width: 640px) { .pp-refer { grid-template-columns: 1fr; } .pp-refer-enter { border-left: 0; padding-left: 0; border-top: 1px solid rgba(255,255,255,0.10); padding-top: 16px; } }
 
 /* price sits on the dark fighter card — force it bright */
 .mm-fighter-card .mm-plan-price { color: #fff; }

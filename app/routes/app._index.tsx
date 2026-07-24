@@ -103,6 +103,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     await generateBrandProfile(shop.id, graphql);
     await unlockAchievement(shop.id, "SCANNER");
+    // Capture the store's own contact email (for the monthly digest) — the
+    // shop's own address, not customer data. Non-fatal if scopes block it.
+    try {
+      const d = await graphql(`{ shop { email } }`);
+      const email = (d as { shop?: { email?: string } })?.shop?.email;
+      if (email) await db.shop.update({ where: { id: shop.id }, data: { contactEmail: email } });
+    } catch { /* email capture non-fatal */ }
     // If a plan is already active, forge their first content right now (TTFV).
     const { kickstartFirstContent } = await import("../lib/onboarding.server");
     await kickstartFirstContent(shop.id, graphql);

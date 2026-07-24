@@ -69,6 +69,8 @@ model Shop {
   referralCode     String?   @unique
   referredBy       String?   // referralCode of the shop that referred this one
   referralCreditAt DateTime? // when we granted the referrer's reward
+  lastDigestAt     DateTime? // last monthly "here's what we made you" digest
+  contactEmail     String?   // store's own contact email (for the digest)
 
   brandProfile   BrandProfile?
   activePlan     Plan?
