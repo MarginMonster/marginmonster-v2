@@ -212,7 +212,7 @@ export async function rescheduleSlot(shopId: string, questlineId: string, slotId
  *  objective, and schedules the pre-paid forge job — fully automatic after. */
 export async function addDrop(
   shopId: string, questlineId: string, day: number, type: "video" | "image" | "blog",
-  opts: { instant?: boolean; productTitle?: string; direction?: string } = {}
+  opts: { instant?: boolean; productTitle?: string; direction?: string; time?: string } = {}
 ): Promise<{ ok: boolean; error?: string; cost?: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q || q.status === "COMPLETE") return { ok: false, error: "Campaign not found or already complete." };
@@ -245,9 +245,11 @@ export async function addDrop(
 
   const date = new Date(q.createdAt.getTime() + (day - 1) * 86400000).toISOString().slice(0, 10);
   const nowHM = new Date().toISOString().slice(11, 16);
+  const defTime = type === "video" ? "19:00" : type === "blog" ? "09:00" : "12:00";
+  const chosenTime = opts.time && /^\d{2}:\d{2}$/.test(opts.time) ? opts.time : defTime;
   const slot = {
     idx, day, date,
-    time: opts.instant ? nowHM : type === "video" ? "19:00" : type === "blog" ? "09:00" : "12:00",
+    time: opts.instant ? nowHM : chosenTime,
     type, spot: spotName(type, typeCount),
     productTitle: item.title, productImageUrl: item.image,
     status: "SCHEDULED" as const,

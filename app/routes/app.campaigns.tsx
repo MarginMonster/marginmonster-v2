@@ -67,6 +67,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const campaigns: {
     id: string; name: string; image: string | null; status: string;
     made: number; total: number; platforms: ("tt" | "ig" | "fb")[]; next: string | null;
+    drops: { when: string; date: string; type: string; product: string; status: string }[];
   }[] = [];
 
   const todayStr = now.toISOString().slice(0, 10);
@@ -90,10 +91,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (q.status !== "PAUSED") {
       activeCampaigns.push({ id: q.id, name: q.name, createdDate: q.createdAt.toISOString().slice(0, 10), durationDays: q.durationDays || 30 });
     }
+    const drops = slots
+      .filter((s) => s.type === "video" || s.type === "image" || s.type === "blog")
+      .slice()
+      .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
+      .map((s) => ({ when: fmtNext(s.date, s.time), date: s.date, type: s.type, product: s.productTitle || "", status: s.status }));
     campaigns.push({
       id: q.id, name: q.name, image: q.productImageUrl, status: q.status,
       made, total: slots.length, platforms: platShorts,
       next: next ? fmtNext(next.date, next.time) : null,
+      drops,
     });
   }
 
@@ -143,7 +150,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json(res.ok ? { swapped: res.swapped } : { error: res.error });
   }
   if (intent === "addDrop") {
-    const res = await addDrop(shop.id, (form.get("questlineId") as string) || "", parseInt((form.get("day") as string) || "0", 10), ((form.get("dropType") as string) || "video") as "video" | "image" | "blog", { instant: form.get("instant") === "1", productTitle: ((form.get("dropProduct") as string) || "").trim() || undefined, direction: ((form.get("dropTopic") as string) || "").trim() || undefined });
+    const res = await addDrop(shop.id, (form.get("questlineId") as string) || "", parseInt((form.get("day") as string) || "0", 10), ((form.get("dropType") as string) || "video") as "video" | "image" | "blog", { instant: form.get("instant") === "1", productTitle: ((form.get("dropProduct") as string) || "").trim() || undefined, direction: ((form.get("dropTopic") as string) || "").trim() || undefined, time: ((form.get("dropTime") as string) || "").trim() || undefined });
     return json(res.ok ? { dropAdded: res.cost, instant: form.get("instant") === "1" } : { error: res.error });
   }
   if (intent === "pauseToggle") {
@@ -185,9 +192,11 @@ export default function Campaigns() {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [open, setOpen] = useState<number | null>(null); // selected day-of-month
+  const [openCamp, setOpenCamp] = useState<string | null>(null); // expanded campaign
   const [schedType, setSchedType] = useState<"video" | "image" | "blog">("video");
   const [schedCid, setSchedCid] = useState<string>(activeCampaigns[0]?.id ?? "");
   const [schedTopic, setSchedTopic] = useState("");
+  const [schedTime, setSchedTime] = useState("12:00");
 
   // Close the sheet after a successful mutation.
   useEffect(() => {
@@ -210,7 +219,7 @@ export default function Campaigns() {
     const target = `${year}-${pad(month0 + 1)}-${pad(open)}`;
     const dayDiff = Math.round((Date.parse(`${target}T00:00:00Z`) - Date.parse(`${camp.createdDate}T00:00:00Z`)) / 86400000);
     const campaignDay = dayDiff + 1;
-    submit({ intent: "addDrop", questlineId: schedCid, day: String(campaignDay), dropType: schedType, dropTopic: schedTopic.trim() }, { method: "post" });
+    submit({ intent: "addDrop", questlineId: schedCid, day: String(campaignDay), dropType: schedType, dropTopic: schedTopic.trim(), dropTime: schedTime }, { method: "post" });
   };
 
   return (
@@ -279,18 +288,37 @@ export default function Campaigns() {
             {campaigns.map((c) => {
               const pct = c.total > 0 ? Math.round((c.made / c.total) * 100) : 0;
               const live = c.status === "ACTIVE";
+              const expanded = openCamp === c.id;
               return (
-                <div className="dc-camp" key={c.id}>
-                  <div className="dc-thumb" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined} />
-                  <div className="dc-cbody">
-                    <div className="dc-ctop"><b>{c.name}</b><span className={`dc-cstat ${live ? "on" : "off"}`}>{live ? "LIVE" : "PAUSED"}</span></div>
-                    <div className="dc-cmeta">
-                      {c.platforms.map((p) => { const G = GLYPH[p]; return <span className="dc-cchip" key={p}><G /></span>; })}
-                      {c.next && <span className="dc-cnext">Next drop {c.next}</span>}
+                <div className={`dc-camp${expanded ? " open" : ""}`} key={c.id}>
+                  <button type="button" className="dc-chead" onClick={() => setOpenCamp(expanded ? null : c.id)} aria-expanded={expanded}>
+                    <div className="dc-thumb" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined} />
+                    <div className="dc-cbody">
+                      <div className="dc-ctop"><b>{c.name}</b><span className={`dc-cstat ${live ? "on" : "off"}`}>{live ? "LIVE" : "PAUSED"}</span></div>
+                      <div className="dc-cmeta">
+                        {c.platforms.map((p) => { const G = GLYPH[p]; return <span className="dc-cchip" key={p}><G /></span>; })}
+                        {c.next && <span className="dc-cnext">Next drop {c.next}</span>}
+                      </div>
+                      <div className="dc-cbar"><i style={{ width: `${pct}%` }} /></div>
+                      <div className="dc-cprog">{c.made}/{c.total} drops made · <span className="dc-cmore">{expanded ? "hide schedule" : "view schedule"}</span></div>
                     </div>
-                    <div className="dc-cbar"><i style={{ width: `${pct}%` }} /></div>
-                    <div className="dc-cprog">{c.made}/{c.total} drops made</div>
-                  </div>
+                    <span className="dc-cx">⌄</span>
+                  </button>
+                  {expanded && (
+                    <div className="dc-cdrops">
+                      {c.drops.length === 0 ? (
+                        <p className="dc-cempty">No drops scheduled yet.</p>
+                      ) : (
+                        c.drops.map((dp, i) => (
+                          <div className="dc-cdrop" key={i}>
+                            <span className={`dc-dtag ${dp.type}`}>{TYPE_LABEL[dp.type]}</span>
+                            <div className="dc-cdinfo"><b>{dp.product || c.name}</b><span>{dp.when}</span></div>
+                            <span className={`dc-cdst s-${dp.status.toLowerCase()}`}>{STATUS_LABEL[dp.status] || dp.status}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -340,6 +368,11 @@ export default function Campaigns() {
                       <button type="button" key={t} className={schedType === t ? "sel" : ""} onClick={() => setSchedType(t)}>{TYPE_LABEL[t]} <span>· {TYPE_COST[t]}</span></button>
                     ))}
                   </div>
+                </div>
+                <div className="dc-fld">
+                  <label>Time</label>
+                  <input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} />
+                  {drops.length > 0 && <span className="dc-taken">Already this day: {drops.map((d) => fmtTime(d.time)).join(", ")}</span>}
                 </div>
                 <div className="dc-fld">
                   <label>Direction <span className="opt">optional</span></label>
