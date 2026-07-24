@@ -28,7 +28,7 @@ function fmtWhen(date: string, time: string): string {
 }
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
-type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string; full?: string };
+type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string; full?: string; html?: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const toCard = (a: (typeof assets)[number]): Card => {
     const b = parse(a.bodyJson);
     const text = b.html ? stripHtml(b.html) : undefined;
-    return { id: a.id, title: a.title || "Untitled", status: a.status, video: b.videoUrl, image: b.imageUrl, snippet: text?.slice(0, 140), full: text?.slice(0, 4000) };
+    return { id: a.id, title: a.title || "Untitled", status: a.status, video: b.videoUrl, image: b.imageUrl, snippet: text?.slice(0, 140), full: text?.slice(0, 4000), html: a.type === "BLOG_POST" && typeof b.html === "string" ? b.html : undefined };
   };
   const library = {
     video: assets.filter((a) => a.type === "VIDEO_AD").map(toCard),
@@ -125,10 +125,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "retryJob") {
     // Genuine generation failure (e.g. interrupted mid-render) → FREE retry.
     const jobId = (form.get("jobId") as string) || "";
-    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD"] } } });
+    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
     if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
     await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date() } });
     return json({ jobRetried: true });
+  }
+  if (intent === "publishBlog") {
+    // Blogs publish to the store's Online Store blog (SEO), not to socials.
+    const id = (form.get("assetId") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: "BLOG_POST" } });
+    if (!asset) return json({ error: "That article is gone — refresh and try again." });
+    const { publishBlogAsset } = await import("../lib/blog-publish.server");
+    const r = await publishBlogAsset(shop.domain, id);
+    if (!r.ok) return json({ error: `Couldn't publish (${r.error}) — check your store's blog permissions.` });
+    return json({ blogPosted: r.url || "your blog" });
   }
   if (intent === "keep") {
     await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id }, data: { status: "APPROVED" } });
@@ -302,6 +312,8 @@ export default function Archive() {
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
   const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
+  const publishBlog = (assetId: string) => submit({ intent: "publishBlog", assetId }, { method: "post" });
+  const blogPosted = actionData && "blogPosted" in actionData ? (actionData as { blogPosted: string }).blogPosted : null;
   const posted = actionData && "posted" in actionData ? (actionData as { posted: string }).posted : null;
   const draftText = actionData && "draft" in actionData ? (actionData as { draft: string }).draft : null;
   // Editable draft: opening "Post to socials" reveals one caption box we
@@ -443,10 +455,25 @@ export default function Archive() {
 
         {viewer && (
           <div className="cs-scrim" onClick={() => setViewer(null)}>
-            <div className={`ar-viewer${viewer.kind === "blog" ? " read" : ""}`} onClick={(e) => e.stopPropagation()}>
+            <div className={`ar-viewer${viewer.kind === "blog" ? " blogview" : ""}`} onClick={(e) => e.stopPropagation()}>
               <button type="button" className="cs-vx" onClick={() => setViewer(null)}>✕</button>
               {viewer.kind === "blog" ? (
-                <div className="ar-read"><h2>{viewer.title}</h2><p>{viewer.full || viewer.snippet}</p></div>
+                <>
+                  {viewer.html
+                    ? <div className="ar-read ar-readscroll" dangerouslySetInnerHTML={{ __html: viewer.html }} />
+                    : <div className="ar-read ar-readscroll"><h2>{viewer.title}</h2><p>{viewer.full || viewer.snippet}</p></div>}
+                  <div className="ar-vmeta">
+                    <div className="ar-vinfo">
+                      <b>{viewer.title}</b>
+                      {blogPosted ? <span className="ar-vok">Live on your blog ✓</span> : err ? <span className="ar-verr">{err}</span> : <span className={`ar-status s-${viewer.status.toLowerCase()}`}>{viewer.status === "PUBLISHED" ? "Live on your blog" : "Ready to publish"}</span>}
+                    </div>
+                    <div className="ar-vacts">
+                      {viewer.status !== "PUBLISHED" && !blogPosted && <button type="button" className="ar-vpost" disabled={busy} onClick={() => publishBlog(viewer.id)}>{busy ? "Publishing…" : "Publish to my blog"}</button>}
+                      <button type="button" className="ar-vdel" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
+                    </div>
+                    <span className="ar-caphint">Publishes to your store's <b>Online Store → Blog posts</b> — built for Google SEO, not social feeds.</span>
+                  </div>
+                </>
               ) : viewer.video ? (
                 <video className="ar-vfull" src={viewer.video} controls autoPlay playsInline />
               ) : viewer.image ? (

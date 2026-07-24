@@ -32,25 +32,34 @@ Product details: ${productDescription?.slice(0, 400) || ""}
 
 Marketing goal: ${intent}
 
-Write a complete blog post (600-900 words) with:
-- A compelling, SEO-friendly title (H1)
-- 3-4 sections with subheadings (H2)
-- Natural brand voice throughout
-- A clear CTA at the end that aligns with the goal: ${intent}
-- No generic filler — every paragraph should feel specific to this brand
+Write a COMPLETE blog post of 550-750 words. Follow this exact structure every time so all articles read as one house style:
+- One <h1> title: compelling and SEO-friendly (front-load the buyer keyword)
+- A short 1-2 sentence intro <p> that hooks the reader
+- Exactly 3 sections, each a <h2> subheading followed by 1-2 <p> paragraphs
+- Use one <ul> with 3-5 <li> bullets in the most list-friendly section
+- A final <h2> "The bottom line" (or similar) with a closing <p> that delivers a clear CTA aligned to: ${intent}
+- Natural brand voice throughout; no generic filler — every paragraph specific to this brand
 
-Return ONLY the HTML body content (h1, h2, p, ul tags only — no html/head/body tags).`;
+CRITICAL: The article MUST be fully finished — a complete final sentence and a closing CTA paragraph. Never stop mid-sentence or mid-tag. Stay within the word count so you finish cleanly.
+
+Return ONLY the HTML body content (h1, h2, p, ul, li, strong tags only — no html/head/body tags, no markdown fences).`;
 
   let attempts = 0;
   while (attempts < 3) {
     attempts++;
     try {
-      const html = (
+      let html = (
         await anthropicText(prompt, {
           model: "claude-sonnet-5",
-          maxTokens: 2048,
+          maxTokens: 4096,
         })
       ).trim();
+      // Strip any stray markdown fences and guarantee we never store a body
+      // that was cut off mid-tag (belt-and-suspenders on top of the word cap).
+      html = html.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      const lastClose = html.lastIndexOf("</");
+      const lastOpen = html.lastIndexOf("<");
+      if (lastOpen > lastClose) html = html.slice(0, lastOpen).trim(); // drop a dangling partial tag
 
       const asset = await db.asset.create({
         data: {

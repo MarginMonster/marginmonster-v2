@@ -33,6 +33,16 @@ const STYLES: { label: string; prompt: string }[] = [
 ];
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
+// One-tap blog angles — the picker that standardizes what kind of article you get.
+const BLOG_ANGLES: { label: string; prompt: string }[] = [
+  { label: "📋 Buyer's Guide", prompt: "a practical buyer's guide that helps a shopper choose the right option — what to look for, common mistakes to avoid, and why this product fits" },
+  { label: "🔧 How-To", prompt: "a step-by-step how-to that helps the reader get the most out of the product, with clear numbered steps and pro tips" },
+  { label: "⭐ Best-Of List", prompt: "a curated best-of listicle ranking top picks or use-cases, positioning this product as the standout choice" },
+  { label: "❓ FAQ", prompt: "an FAQ-style post answering the real questions shoppers ask before buying, each answer building confidence to purchase" },
+  { label: "📖 Brand Story", prompt: "a short brand-story feature connecting the product to a relatable customer moment and the values behind it" },
+  { label: "🎁 Gift Guide", prompt: "a gift-guide angle framing the product as the perfect gift for specific people and occasions" },
+];
+
 const stripHtml = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const decodeEntities = (s: string) => s
   .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
@@ -413,13 +423,18 @@ export default function Studio() {
             </>
           ) : (
             <>
-              <div className="cfg-lbl">{tab === "blog" ? "What should it cover?" : "Direction"} <span className="cs-opt">optional</span></div>
+              <div className="cfg-lbl">{tab === "blog" ? "Pick an angle" : "Direction"} <span className="cs-opt">optional</span></div>
               {tab === "image" && (
                 <div className="cs-styles">
                   {STYLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>)}
                 </div>
               )}
-              <input className="cs-input" type="text" value={direction} maxLength={300} placeholder={tab === "image" ? "Tap a style above, or describe your own…" : "e.g. Best uses, buyer's guide, how-to…"} onChange={(e) => setDirection(e.target.value)} />
+              {tab === "blog" && (
+                <div className="cs-styles">
+                  {BLOG_ANGLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>)}
+                </div>
+              )}
+              <input className="cs-input" type="text" value={direction} maxLength={300} placeholder={tab === "image" ? "Tap a style above, or describe your own…" : "Tap an angle above, or describe your own topic…"} onChange={(e) => setDirection(e.target.value)} />
             </>
           )}
 
