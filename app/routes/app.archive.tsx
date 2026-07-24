@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, useNavigation, useSubmit, useRevalidator, Link } from "@remix-run/react";
+import { useLoaderData, useActionData, useNavigation, useSubmit, useRevalidator, useSearchParams, Link } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import fs from "node:fs";
@@ -49,10 +49,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const assets = await db.asset.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, take: 80 });
 
   // In-flight + failed generation jobs → buffering / retry tiles on their tab.
-  const jobRows = await db.job.findMany({ where: { shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD"] }, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] } }, orderBy: { createdAt: "desc" }, take: 40 });
+  const jobRows = await db.job.findMany({ where: { shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] }, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] } }, orderBy: { createdAt: "desc" }, take: 40 });
   const nowMs = Date.now();
-  const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45 };
-  const jobCards: { jobId: string; kind: "video" | "image"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number }[] = [];
+  const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_BLOG_POST: 40 };
+  const KIND: Record<string, "video" | "image" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_BLOG_POST: "blog" };
+  const jobCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number }[] = [];
   for (const j of jobRows) {
     let p: { productImageUrl?: string; productTitle?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
@@ -62,7 +63,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (!failed && !generating) continue; // scheduled-future drip lives in the Scheduled tab
     const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
     const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
-    jobCards.push({ jobId: j.id, kind: j.type === "GENERATE_VIDEO_AD" ? "video" : "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec });
+    jobCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec });
   }
   const parse = (bodyJson: string) => { try { return JSON.parse(bodyJson); } catch { return {}; } };
   const byId = new Map(assets.map((a) => [a.id, a]));
@@ -283,7 +284,9 @@ export default function Archive() {
   const revalidator = useRevalidator();
   const busy = nav.state !== "idle";
   const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
-  const [tab, setTab] = useState<TabKey>("video");
+  const [searchParams] = useSearchParams();
+  const startTab = (["video", "image", "blog", "scheduled"] as const).find((t) => t === searchParams.get("tab")) as TabKey | undefined;
+  const [tab, setTab] = useState<TabKey>(startTab || "video");
   const [viewer, setViewer] = useState<(Card & { kind: TabKey }) | null>(null);
 
   // Keep buffering tiles + ETAs live while anything is generating.
@@ -398,7 +401,24 @@ export default function Archive() {
                 ))}
               </div>
             )}
-            {lib.length === 0 && (tab !== "video" && tab !== "image" || !jobCards.some((j) => j.kind === tab)) ? (
+            {tab === "blog" && jobCards.some((j) => j.kind === "blog") && (
+              <div className="ar-blogs ar-genblogs">
+                {jobCards.filter((j) => j.kind === "blog").map((j) => j.status === "generating" ? (
+                  <div className="ar-blog ar-blogbuf" key={j.jobId}>
+                    <span className="ar-blogspin"><span className="ar-spin" /></span>
+                    <b>{j.productTitle ? `Writing about ${j.productTitle}…` : "Writing your article…"}</b>
+                    <span className="ar-status s-forging">Creating · {fmtEta(j.etaSec)}</span>
+                  </div>
+                ) : (
+                  <div className="ar-blog ar-blogfail" key={j.jobId}>
+                    <b>{j.productTitle ? `Article on ${j.productTitle}` : "Your article"}</b>
+                    <span className="ar-status s-failed">⚠ Lost in transit</span>
+                    <button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {lib.length === 0 && !jobCards.some((j) => j.kind === tab) ? (
               <div className="ar-empty"><b>No {TABS.find((t) => t.key === tab)?.label.toLowerCase()} yet</b><p>Make one in the Content Studio and it lands here.</p><Link className="dc-new" to="/app/studio">Open Content Studio</Link></div>
             ) : (
               <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>

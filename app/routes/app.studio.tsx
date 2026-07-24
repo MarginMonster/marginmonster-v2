@@ -381,7 +381,7 @@ export default function Studio() {
               <div className="cfg-lbl cs-lblrow"><span>How they show it</span>{product?.apparel && <span className="cs-opt">apparel detected</span>}</div>
               <div className="dc-seg cs-wear">
                 <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}>✋ Holding it</button>
-                <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}>👕 Wearing it</button>
+                <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}>👕 Wearing it <span className="cs-wq">(generally for apparel)</span></button>
               </div>
             </>
           )}
@@ -437,7 +437,7 @@ export default function Studio() {
               <div className="cs-mi">✨</div>
               <b className="cs-mh">Your {queued} is being made</b>
               <p className="cs-mp">Find it — and everything else EasyMode makes — in your <b>Archive Storage</b>.</p>
-              <Link className="cs-mcta" to="/app/archive">Go to Archive Storage ›</Link>
+              <Link className="cs-mcta" to={`/app/archive?tab=${queued}`}>Go to Archive Storage ›</Link>
               <button type="button" className="cs-mclose" onClick={() => setShowDone(false)}>Make another</button>
             </div>
           </div>
