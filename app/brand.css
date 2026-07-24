@@ -3599,3 +3599,33 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .mm-lvlinfo p.foot { color:#8A8578 !important; }
 .mm-lvlinfo em { color:#0C7A46 !important; }
 .mm-lvlinfo i { color:#14201A !important; }
+
+/* ═══════════ pp- pages (SEO / Email / Funnels) → GStyle ═══════════ */
+.pp-hero { background:
+    repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),
+    repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),
+    linear-gradient(160deg,#0E5233,#0A3421 58%,#062417) !important;
+  color:#EAF4EE !important; box-shadow:0 22px 50px rgba(8,42,26,.34) !important; }
+.pp-hero::after { background:radial-gradient(120% 90% at 85% -10%, rgba(231,200,121,.2), transparent 55%) !important; }
+.pp-hero::before { background:linear-gradient(90deg, transparent, #E7C879 18%, #FBE7A8 50%, #E7C879 82%, transparent) !important; }
+.pp-hero .pp-sub { color:rgba(220,240,225,.8) !important; }
+.pp-eyebrow, .pp-hero h1 em { color:#E7C879 !important; }
+.pp-stat { background:rgba(255,255,255,.07) !important; border-color:rgba(231,200,121,.22) !important; }
+.pp-stat .v .g { color:#FBE7A8 !important; }
+.pp-tool { background:#FDFCF7 !important; border-color:#E4DFCF !important; }
+.pp-tool:hover { border-color:#0F9152 !important; box-shadow:0 12px 30px rgba(12,122,70,.14) !important; }
+.pp-tool .ico { background:linear-gradient(160deg,#0E5233,#083321) !important; }
+.pp-cta { background:linear-gradient(165deg,#12A85E,#0B6B3E) !important; color:#fff !important; }
+.pp-cta:hover { background:#0B6B3E !important; filter:brightness(1.06); }
+.pp-chip { color:#7E5E13 !important; background:rgba(176,133,38,.14) !important; }
+
+/* ═══════════ mm-hero (Strategy) → GStyle money band ═══════════ */
+.mm-hero { background:
+    repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),
+    repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),
+    linear-gradient(160deg,#0E5233,#0A3421 58%,#062417) !important;
+  border:1px solid rgba(231,200,121,.34) !important; color:#EAF4EE !important; box-shadow:0 22px 50px rgba(8,42,26,.34) !important; }
+.mm-hero::after { background:radial-gradient(circle, rgba(231,200,121,.16) 0%, transparent 70%) !important; }
+.mm-hero h1 { color:#F4EAC8 !important; }
+.mm-hero p { color:rgba(220,240,225,.82) !important; }
+.mm-hero .mm-eyebrow { font-family:inherit !important; color:#7FE0AC !important; font-weight:800 !important; font-size:11px !important; letter-spacing:.2em !important; text-transform:uppercase !important; animation:none !important; }
