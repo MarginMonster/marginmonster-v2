@@ -3818,3 +3818,15 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .er-refer-t span { font-size:12px; color:rgba(220,240,225,.7); }
 .er-refer-btn { flex:none; border:1px solid rgba(231,200,121,.5); background:rgba(255,255,255,.08); color:#F4EAC8; font-family:inherit; font-size:12.5px; font-weight:800; padding:9px 15px; border-radius:999px; cursor:pointer; transition:background .12s,border-color .12s; }
 .er-refer-btn:hover { background:rgba(231,200,121,.16); border-color:var(--gold-hi); }
+
+/* Brand-voice hand editor (dashboard) */
+.bvedit-toggle { margin-top:16px; border:1px solid var(--line); background:#fff; color:#0A6B3E; font-family:inherit; font-size:12.5px; font-weight:800; padding:8px 14px; border-radius:10px; cursor:pointer; }
+.bvedit-toggle:hover { border-color:#0F9152; background:rgba(12,122,70,.04); }
+.bvsaved { margin-left:10px; font-size:12.5px; font-weight:700; color:#0A6B3E; }
+.bvedit { margin-top:14px; display:flex; flex-direction:column; gap:12px; background:#FBFAF4; border:1px solid #E6E2D5; border-radius:14px; padding:16px; }
+.bvedit label { display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:800; color:#3A3D31; letter-spacing:.01em; }
+.bvedit label span { font-weight:600; color:#8C8F82; text-transform:none; letter-spacing:0; }
+.bvedit input, .bvedit textarea { font-family:inherit; font-size:14px; font-weight:500; color:#14201A; border:1.5px solid #DBD6C6; border-radius:10px; padding:10px 12px; background:#fff; resize:vertical; }
+.bvedit input:focus, .bvedit textarea:focus { outline:none; border-color:#0F9152; box-shadow:0 0 0 3px rgba(12,122,70,.12); }
+.bvsave { align-self:flex-start; border:0; border-radius:11px; padding:11px 22px; font-family:inherit; font-size:14px; font-weight:800; color:#fff; cursor:pointer; background:repeating-linear-gradient(57deg,rgba(255,220,120,.10) 0 1px,transparent 1px 8px),linear-gradient(165deg,#12A85E,#0B6B3E); box-shadow:0 8px 20px rgba(12,122,70,.28); }
+.bvsave:disabled { opacity:.55; }

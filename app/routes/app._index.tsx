@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useNavigation, useActionData, Link } from "@remix-run/react";
+import { useLoaderData, useSubmit, useNavigation, useActionData, Link, Form } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
@@ -175,6 +175,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.shop.update({ where: { id: shop.id }, data: { reviewAskedAt: new Date() } });
     return json({ ok: true });
   }
+  if (form?.get("intent") === "saveVoice") {
+    // Manual brand-voice edit — override the AI-detected voice with the
+    // merchant's own words (also how you set EasyMode's own voice for the
+    // house account). Merges into the existing voiceJson, keeps visual/product.
+    const list = (s: string, n: number) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean).slice(0, n);
+    const voice = {
+      tone: String(form.get("tone") || "").trim().slice(0, 80),
+      tagline: String(form.get("tagline") || "").trim().slice(0, 120),
+      values: list(String(form.get("values") || ""), 4),
+      vocabulary: list(String(form.get("vocabulary") || ""), 8),
+      samplePhrases: list(String(form.get("samplePhrases") || ""), 4),
+    };
+    const existing = await db.brandProfile.findUnique({ where: { shopId: shop.id } });
+    await db.brandProfile.upsert({
+      where: { shopId: shop.id },
+      create: { shopId: shop.id, voiceJson: JSON.stringify(voice), visualJson: "{}", productJson: JSON.stringify({ storeName: shop.domain }) },
+      update: { voiceJson: JSON.stringify(voice) },
+    });
+    return json({ voiceSaved: true, hadProfile: !!existing });
+  }
 
   try {
     await generateBrandProfile(shop.id, graphql);
@@ -244,6 +264,8 @@ export default function Dashboard() {
   // Launch Sequence — the activation tracker. Dismissible (per browser) and
   // auto-hides once every step is done.
   const [launchHidden, setLaunchHidden] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const voiceSaved = !!actionData && "voiceSaved" in actionData;
   useEffect(() => { try { if (localStorage.getItem("mmLaunchDone") === "1") setLaunchHidden(true); } catch { /* ignore */ } }, []);
   const dismissLaunch = () => { try { localStorage.setItem("mmLaunchDone", "1"); } catch { /* ignore */ } setLaunchHidden(true); };
 
@@ -498,6 +520,23 @@ export default function Dashboard() {
                   <span className="k">In your voice</span>
                   {brand.samplePhrases.map((x, i) => <p key={i}>“{x}”</p>)}
                 </div>
+              )}
+
+              <button type="button" className="bvedit-toggle" onClick={() => setVoiceOpen((v) => !v)}>
+                {voiceOpen ? "Close editor" : "✎ Edit voice by hand"}
+              </button>
+              {voiceSaved && !voiceOpen && <span className="bvsaved">Voice updated ✓ — new content will use it.</span>}
+
+              {voiceOpen && (
+                <Form method="post" className="bvedit" onSubmit={() => setVoiceOpen(false)}>
+                  <input type="hidden" name="intent" value="saveVoice" />
+                  <label>Tone<input name="tone" defaultValue={brand.tone} placeholder="confident, plain-spoken, a little swagger" maxLength={80} /></label>
+                  <label>Tagline<input name="tagline" defaultValue={brand.tagline} placeholder="Marketing that runs itself." maxLength={120} /></label>
+                  <label>Values <span>(comma-separated)</span><input name="values" defaultValue={brand.values.join(", ")} placeholder="simple, honest, results-first" /></label>
+                  <label>Signature words <span>(comma-separated)</span><input name="vocabulary" defaultValue={brand.vocabulary.join(", ")} placeholder="autopilot, hands-free, no camera, one tap" /></label>
+                  <label>Sample phrases <span>(one per line)</span><textarea name="samplePhrases" rows={3} defaultValue={brand.samplePhrases.join("\n")} placeholder={"Your store posts itself.\nNo camera, no crew."} /></label>
+                  <button type="submit" className="bvsave" disabled={building}>Save voice</button>
+                </Form>
               )}
             </div>
           </>
