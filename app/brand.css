@@ -2956,6 +2956,20 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 /* inspirational quote below the calendar */
 .dc-quote { position:relative; text-align:center; font-style:italic; font-weight:800; font-size:16.5px; letter-spacing:-.01em; line-height:1.45; color:#0C3E28; margin:20px 14px 2px; padding:6px 6px; }
 .dc-qmark { color:#C99A2E; font-style:normal; font-weight:800; font-size:20px; vertical-align:-3px; padding:0 3px; }
+
+/* end-of-campaign marker + no-plan (gap) days */
+.dc-dy.endday { box-shadow:inset 0 0 0 2px rgba(231,200,121,1), 0 3px 10px rgba(231,200,121,.35); }
+.dc-endtag { display:inline-block; margin-top:3px; font-size:7.5px; font-weight:800; letter-spacing:.06em; color:#20160a; background:linear-gradient(180deg,#FBE7A8,#C99A2E); padding:1px 5px; border-radius:4px; }
+.dc-dy.noplan { background:linear-gradient(160deg, rgba(231,200,121,.22), rgba(150,110,30,.1)); box-shadow:inset 0 0 0 1.5px rgba(231,200,121,.5); }
+.dc-dy.noplan .dc-dn { color:#F6E4A6; }
+.dc-noplan { display:block; text-align:center; margin-top:7px; font-size:8.5px; font-weight:800; letter-spacing:.02em; color:#F3D98A; }
+.dc-dy.tap.noplan:hover { box-shadow:inset 0 0 0 1.5px rgba(231,200,121,.9), 0 3px 10px rgba(231,200,121,.3); }
+
+.dc-shend { background:linear-gradient(180deg,#FEFBF2,#FBF4E0); border:1px solid #E7D9A9; border-radius:12px; padding:11px 13px; font-size:12.5px; font-weight:800; color:#7E5E13; margin-bottom:12px; line-height:1.4; }
+.dc-shnoplan { text-align:center; padding:10px 4px 6px; }
+.dc-shnoplan .np-hd { font-size:16.5px; font-weight:800; color:#14160F; }
+.dc-shnoplan .np-sub { font-size:13px; color:#52564A; line-height:1.5; margin:8px 6px 16px; }
+.dc-shnoplan .np-cta { display:inline-block; text-decoration:none; font-weight:800; font-size:14.5px; color:#2A1F05; background:linear-gradient(180deg,#E7C879,#C99A2E); padding:13px 20px; border-radius:12px; box-shadow:0 6px 16px rgba(176,133,38,.3); }
 .dc-dy.today .dc-dn { color:#FBE7A8; }
 .dc-dy.today { box-shadow:inset 0 0 0 1.5px rgba(125,224,172,.7); }
 .dc-plus { display:block; text-align:center; margin-top:8px; font-size:15px; font-weight:700; color:rgba(231,200,121,.35); }

@@ -132,9 +132,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const total = Object.values(dropMap).reduce((a, v) => a + v.video + v.image + v.blog, 0);
 
+  // When does coverage end? The last drop date across active (running) plans —
+  // days after it are "no plan" gaps that nudge a new Social Media Plan.
+  const activeDates = campaigns.filter((c) => c.status === "ACTIVE").flatMap((c) => c.drops.map((d) => d.date));
+  const lastDropDate = activeDates.length ? activeDates.reduce((a, b) => (a > b ? a : b)) : null;
+
   return json({
     hasPlan: !!shop?.activePlan,
     tokens: shop?.activePlan ? tokensRemaining(shop.activePlan) : 0,
+    lastDropDate,
     platforms: platShorts,
     weeks: monthGrid(year, month0),
     monthLabel: `${MONTHS[month0]} ${year}`.toUpperCase(),
@@ -215,7 +221,7 @@ function typeLines(day: { video: number; image: number; blog: number }): string[
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function Campaigns() {
-  const { platforms, weeks, monthLabel, year, month0, todayDay, todayStr, prevYm, nextYm, openDay, quote, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, lastDropDate, platforms, weeks, monthLabel, year, month0, todayDay, todayStr, prevYm, nextYm, openDay, quote, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigate = useNavigate();
@@ -241,6 +247,9 @@ export default function Campaigns() {
   const monthName = MONTHS[month0];
   const openDate = open != null ? `${year}-${pad(month0 + 1)}-${pad(open)}` : null;
   const isPast = openDate != null && !!todayStr && openDate < todayStr;
+  const openEnd = openDate != null && openDate === lastDropDate;
+  const openNoPlan = openDate != null && !!lastDropDate && openDate > lastDropDate && drops.length === 0;
+  const fmtDay = (ds: string) => { const [, m, d] = ds.split("-").map(Number); return `${MON[m - 1]} ${d}`; };
 
   // Jump to a specific drop's day (may live in another month → navigate there).
   const goToDrop = (dateStr: string) => {
@@ -302,12 +311,14 @@ export default function Campaigns() {
                 const cellDate = `${year}-${pad(month0 + 1)}-${pad(d)}`;
                 const past = !!todayStr && cellDate < todayStr;
                 const isToday = cellDate === todayStr;
-                const canSchedule = !past && activeCampaigns.length > 0;
-                const clickable = isDrop || canSchedule;
+                const endHere = !!lastDropDate && cellDate === lastDropDate;
+                const noPlan = !!lastDropDate && !past && !isDrop && cellDate > lastDropDate;
+                const canSchedule = !past && !noPlan && activeCampaigns.length > 0;
+                const clickable = isDrop || canSchedule || noPlan;
                 return (
                   <button
                     type="button"
-                    className={`dc-dy${isDrop ? " drop" : ""}${past ? " past" : ""}${clickable ? " tap" : ""}${isToday ? " today" : ""}`}
+                    className={`dc-dy${isDrop ? " drop" : ""}${past ? " past" : ""}${noPlan ? " noplan" : ""}${endHere ? " endday" : ""}${clickable ? " tap" : ""}${isToday ? " today" : ""}`}
                     key={i}
                     disabled={!clickable}
                     onClick={() => clickable && setOpen(d)}
@@ -316,9 +327,12 @@ export default function Campaigns() {
                     {isDrop ? (
                       <div className="dc-types">
                         {typeLines(day).map((t, j) => <span className="dc-t" key={j}>{t}</span>)}
+                        {endHere && <span className="dc-endtag">ENDS</span>}
                       </div>
                     ) : past ? (
                       <span className="dc-x">✕</span>
+                    ) : noPlan ? (
+                      <span className="dc-noplan">＋ Plan</span>
                     ) : canSchedule ? (
                       <span className="dc-plus">＋</span>
                     ) : null}
@@ -398,6 +412,8 @@ export default function Campaigns() {
 
             {err && <div className="dc-sherr">{err}</div>}
 
+            {openEnd && <div className="dc-shend">🏁 End of campaign — this is your plan's last scheduled drop.</div>}
+
             {drops.length > 0 && (
               <div className="dc-shlist">
                 {drops.map((dp) => (
@@ -406,7 +422,15 @@ export default function Campaigns() {
               </div>
             )}
 
-            {!isPast && activeCampaigns.length > 0 && (
+            {openNoPlan && (
+              <div className="dc-shnoplan">
+                <div className="np-hd">No plan covers this day</div>
+                <p className="np-sub">{lastDropDate ? `Your current plan's last drop is ${fmtDay(lastDropDate)}.` : ""} Start a Social Media Plan to keep posting past then — {hasPlan ? `you have ${tokens.toLocaleString()} tokens ready to spend` : "pick a plan to begin"}.</p>
+                <Link className="np-cta" to="/app/campaigns/new">Browse Social Media Plans ›</Link>
+              </div>
+            )}
+
+            {!openNoPlan && !isPast && activeCampaigns.length > 0 && (
               <div className="dc-shadd">
                 <div className="dc-shsub">{drops.length ? "Add another drop this day" : "Schedule a drop"}</div>
                 <div className="dc-fld">
