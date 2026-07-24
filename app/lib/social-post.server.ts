@@ -101,7 +101,10 @@ export async function postDueSlots(): Promise<void> {
         due++;
         const link = byShop.get(q.shopId);
         if (!link?.profileKey || link.linked.length === 0) continue; // nothing linked yet
-        const res = await publishContent(link.linked, link.profileKey, {
+        // Social Media Plans scope a plan to specific accounts — post only there.
+        const targets = schedule.platforms?.length ? link.linked.filter((p) => schedule.platforms!.includes(p)) : link.linked;
+        if (targets.length === 0) continue;
+        const res = await publishContent(targets, link.profileKey, {
           shopId: q.shopId, questlineId: q.id, slotIdx: s.idx,
           type: s.type, productTitle: s.productTitle, topic: s.topic, assetId: s.assetId,
         });

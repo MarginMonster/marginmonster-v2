@@ -176,7 +176,7 @@ export default function Campaigns() {
         <h1 className="dc-h1">Your drop calendar</h1>
         <p className="dc-sub">Cut from obsidian, lit in gold — every post, every platform.</p>
 
-        <Link className="dc-new" to={hasPlan ? "/app/strategy" : "/app/plans"}>＋ New campaign</Link>
+        <Link className="dc-new" to="/app/campaigns/new">＋ New campaign</Link>
 
         <div className="dc-slab">
           <div className="dc-bg"><svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice" viewBox="0 0 460 560"><rect width="460" height="560" fill="#060b08" /><rect width="460" height="560" filter="url(#mm-obs)" /></svg></div>
@@ -234,7 +234,7 @@ export default function Campaigns() {
           <div className="dc-empty">
             <b>No campaigns running yet</b>
             <p>Start one and EasyMode fills this calendar with drops — created and posted for you, automatically.</p>
-            <Link className="dc-new" to={hasPlan ? "/app/strategy" : "/app/plans"}>Start your first campaign</Link>
+            <Link className="dc-new" to="/app/campaigns/new">Start your first campaign</Link>
           </div>
         )}
       </div>

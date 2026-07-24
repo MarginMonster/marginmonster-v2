@@ -90,6 +90,7 @@ export async function acceptQuestline(params: {
   avatarVariant: number;
   reviewMode: "REVIEW_FIRST" | "SET_AND_FORGET";
   bag: BagItem[];
+  platforms?: string[]; // Social Media Plans: post this plan ONLY to these accounts
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const def = QUESTLINE_BY_KEY[params.templateKey];
   if (!def) return { ok: false, error: "Unknown questline." };
@@ -111,7 +112,7 @@ export async function acceptQuestline(params: {
     key: `${o.type}-${i}`, label: o.label, type: o.type, target: o.target, done: 0,
   }));
   const slots = buildSchedule(def.key, bag, new Date());
-  const schedule: QuestSchedule = { slots, weeksAwarded: [] };
+  const schedule: QuestSchedule = { slots, weeksAwarded: [], ...(params.platforms?.length ? { platforms: params.platforms } : {}) };
 
   const q = await db.questline.create({
     data: {

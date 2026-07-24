@@ -226,9 +226,28 @@ export const DIAMOND_LINES: QuestlineDef[] = DIAMOND_CAMPAIGNS.map((c) => {
   };
 });
 
+/* Social Media Plans — cadence-based, platform-native. Each is activated per
+ * account (see acceptQuestline `platforms`); token cost = objectives × TOKEN_COST
+ * (video 60 + image 5), so Light 140 / Standard 280 / Heavy 540 per account. */
+export const SOCIAL_PLAN_DEFS: QuestlineDef[] = [
+  { key: "SOCIAL_LIGHT", campaign: "SOCIAL", tier: "BRONZE", name: "Social Plan · Light", icon: "📱",
+    tagline: "A steady drip that keeps you in the feed.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 2 }, { type: "image", label: "Images", target: 4 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 100, bagSize: 4, cadence: "~2 / week", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_STANDARD", campaign: "SOCIAL", tier: "SILVER", name: "Social Plan · Standard", icon: "📱",
+    tagline: "Post ~3× a week and let the algorithm reward you.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 4 }, { type: "image", label: "Images", target: 8 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 200, bagSize: 6, cadence: "~3 / week", worldWindow: [0, 1], destination: "" },
+  { key: "SOCIAL_HEAVY", campaign: "SOCIAL", tier: "GOLD", name: "Social Plan · Heavy", icon: "📱",
+    tagline: "Go all-in — daily drops, maximum reach.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 8 }, { type: "image", label: "Images", target: 12 }],
+    platforms: [], recurring: true, minTier: "PRO", xpReward: 400, bagSize: 8, cadence: "daily", worldWindow: [0, 1], destination: "" },
+];
+
 export const QUESTLINES: QuestlineDef[] = [
   ...CAMPAIGNS.flatMap((c) => TIERS.map((t) => buildSku(c, t))),
   ...DIAMOND_LINES,
+  ...SOCIAL_PLAN_DEFS,
 ];
 
 /* Legacy questlines (pre-catalog) — kept so active expeditions and their
@@ -307,7 +326,7 @@ export type QuestSlot = {
   postedUrls?: Record<string, string>; // live post URLs per platform
 };
 
-export type QuestSchedule = { slots: QuestSlot[]; weeksAwarded: number[] };
+export type QuestSchedule = { slots: QuestSlot[]; weeksAwarded: number[]; platforms?: string[] };
 
 export function parseSchedule(json: string | null | undefined): QuestSchedule {
   try {
