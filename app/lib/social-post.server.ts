@@ -85,10 +85,10 @@ export async function postDueSlots(): Promise<void> {
     const shopIds = [...new Set(active.map((q) => q.shopId))];
     const shops = await db.shop.findMany({
       where: { id: { in: shopIds } },
-      select: { id: true, socialProfileKey: true, socialsJson: true },
+      select: { id: true, domain: true, socialProfileKey: true, socialsJson: true },
     });
     const { linkedFromCache } = await import("./social-provider.server");
-    const byShop = new Map(shops.map((s) => [s.id, { profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson) }]));
+    const byShop = new Map(shops.map((s) => [s.id, { domain: s.domain, profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson) }]));
 
     let due = 0;
     let posted = 0;
@@ -100,6 +100,24 @@ export async function postDueSlots(): Promise<void> {
         if (new Date(`${s.date}T${s.time}:00`).getTime() > now) continue;
         due++;
         const link = byShop.get(q.shopId);
+
+        // Blogs publish to the store's Online Store blog (SEO), not to socials —
+        // no linked account required. This is the "Get Found" delivery path.
+        if (s.type === "blog") {
+          if (!s.assetId || !link?.domain) continue;
+          const { publishBlogAsset } = await import("./blog-publish.server");
+          const br = await publishBlogAsset(link.domain, s.assetId);
+          if (br.ok) {
+            s.status = "POSTED";
+            if (br.url) s.postedUrls = { blog: br.url };
+            changed = true;
+            posted++;
+          } else {
+            console.log(`[blog-publish] slot ${q.id}#${s.idx} pending: ${br.error}`);
+          }
+          continue;
+        }
+
         if (!link?.profileKey || link.linked.length === 0) continue; // nothing linked yet
         // Social Media Plans scope a plan to specific accounts — post only there.
         const targets = schedule.platforms?.length ? link.linked.filter((p) => schedule.platforms!.includes(p)) : link.linked;

@@ -21,7 +21,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const [blogs, blogsLive, pages] = await Promise.all([
     db.asset.count({ where: { shopId: shop.id, type: "BLOG_POST" } }),
-    db.asset.count({ where: { shopId: shop.id, type: "BLOG_POST", status: "APPROVED" } }),
+    db.asset.count({ where: { shopId: shop.id, type: "BLOG_POST", status: "PUBLISHED" } }),
     db.landingPage.count({ where: { shopId: shop.id } }),
   ]);
 
