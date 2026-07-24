@@ -20,6 +20,17 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
 
 // Wearable products should be modeled (worn) by the presenter, not held.
 const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
+
+// One-tap art direction for image stills (ported from Image Studio).
+const STYLES: { label: string; prompt: string }[] = [
+  { label: "🎬 Clean Studio", prompt: "clean high-end studio product photography on a seamless gradient backdrop, soft diffused key light with a gentle rim light, minimalist premium composition" },
+  { label: "🏠 Lifestyle", prompt: "warm lifestyle scene with the product in real everyday use, cozy lived-in home setting, soft natural window light, candid moment, shallow depth of field" },
+  { label: "💎 Luxury", prompt: "ultra-luxury minimal editorial aesthetic, polished marble and brushed-metal surfaces, dramatic soft shadows, generous negative space, magazine elegance" },
+  { label: "🌈 Neon Pop", prompt: "bold neon pop-art style, electric magenta-and-cyan gradient background, glowing neon rim light, high-saturation vibrant color, playful energy" },
+  { label: "🏝️ Island", prompt: "sun-drenched tropical island scene, warm golden-hour beach light, soft palm-frond shadows, turquoise water bokeh, breezy vacation energy" },
+  { label: "🤳 UGC Candid", prompt: "authentic user-generated phone-photo look, slightly imperfect framing, natural window light, hand-held real-person candid energy, unpolished" },
+  { label: "🖤 Noir", prompt: "cinematic film-noir lighting, deep inky shadows, a single hard spotlight, moody high-contrast chiaroscuro, dramatic and premium" },
+];
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -61,6 +72,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop) return json({ error: "Shop not found." });
   const form = await request.formData();
   const intent = form.get("intent") as string;
+
+  // Crown a presenter as the Brand Face (no plan/brand gate needed).
+  if (intent === "setBrandFace") {
+    const id = ((form.get("avatarId") as string) || "").trim() || null;
+    await db.shop.update({ where: { id: shop.id }, data: { brandAvatarId: id, brandAvatarVariant: 0 } });
+    return json({ brandFaceSet: true });
+  }
 
   if (!shop.brandProfile) return json({ error: "Analyze your store first (on the dashboard) so content matches your brand." });
   if (!shop.activePlan?.active) return json({ error: "Pick a package first — content runs on tokens." });
@@ -268,6 +286,9 @@ export default function Studio() {
           )}
           {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
           {(tab === "video" || tab === "image") && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
+          {(tab === "video" || tab === "image") && avatarId && avatarId !== brandFaceId && (
+            <button type="button" className="cs-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>★ Make {cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face</button>
+          )}
 
           <div className="cfg-lbl">{tab === "blog" ? "Product to write about" : "Product to feature"}</div>
           {products.length > 0 ? (
@@ -321,7 +342,12 @@ export default function Studio() {
           ) : (
             <>
               <div className="cfg-lbl">{tab === "blog" ? "What should it cover?" : "Direction"} <span className="cs-opt">optional</span></div>
-              <input className="cs-input" type="text" value={direction} maxLength={200} placeholder={tab === "image" ? "e.g. Clean studio, lifestyle scene…" : "e.g. Best uses, buyer's guide, how-to…"} onChange={(e) => setDirection(e.target.value)} />
+              {tab === "image" && (
+                <div className="cs-styles">
+                  {STYLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>)}
+                </div>
+              )}
+              <input className="cs-input" type="text" value={direction} maxLength={300} placeholder={tab === "image" ? "Tap a style above, or describe your own…" : "e.g. Best uses, buyer's guide, how-to…"} onChange={(e) => setDirection(e.target.value)} />
             </>
           )}
 

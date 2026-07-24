@@ -3,13 +3,19 @@ import { json } from "@remix-run/node";
 import { useLoaderData, useActionData, useNavigation, useSubmit, useRevalidator, Link } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
+import fs from "node:fs";
+import path from "node:path";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { parseSchedule } from "../lib/questlines";
 import { generateSlotEarly, retrySlot } from "../lib/questlines.server";
-import { tokensRemaining } from "../lib/tokens.server";
+import { tokensRemaining, spendTokens } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { linkedFromCache } from "../lib/social-provider.server";
+import { enqueueJob } from "../lib/job-queue.server";
+import { paidAdsEnabled } from "../lib/feature-flags.server";
+
+const BOOST_FEE = 25; // token service fee per boost; ad spend bills the merchant's own account
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function fmtWhen(date: string, time: string): string {
@@ -25,12 +31,20 @@ const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g
 type Card = { id: string; title: string; status: string; video?: string; image?: string; snippet?: string; full?: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
-    include: { activePlan: true, questlines: { where: { status: { not: "COMPLETE" } }, orderBy: { createdAt: "desc" }, take: 30 } },
+    include: { activePlan: true, adAccounts: true, questlines: { where: { status: { not: "COMPLETE" } }, orderBy: { createdAt: "desc" }, take: 30 } },
   });
-  if (!shop) return json({ hasPlan: false, tokens: 0, library: { video: [], image: [], blog: [] }, scheduled: [], cost: TOKEN_COST });
+  if (!shop) return json({ hasPlan: false, tokens: 0, library: { video: [], image: [], blog: [] }, scheduled: [], jobCards: [], linkedSocial: [], products: [], adPlatforms: [], boostFee: BOOST_FEE, paidAds: false, cost: TOKEN_COST });
+
+  // Store products power the "add to a product" merchandising action.
+  let products: { id: string; title: string }[] = [];
+  try {
+    const res = await admin.graphql(`{ products(first: 30, sortKey: UPDATED_AT, reverse: true) { edges { node { id title } } } }`);
+    const j = (await res.json()) as { data?: { products?: { edges?: { node: { id: string; title: string } }[] } } };
+    products = (j.data?.products?.edges || []).map((e) => ({ id: e.node.id, title: e.node.title }));
+  } catch { /* fall through */ }
 
   const assets = await db.asset.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, take: 80 });
 
@@ -82,13 +96,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     scheduled,
     jobCards,
     linkedSocial: linkedFromCache(shop.socialsJson).filter((p) => p === "tiktok" || p === "instagram" || p === "facebook"),
+    products,
+    adPlatforms: shop.adAccounts.map((a) => a.platform),
+    boostFee: BOOST_FEE,
+    paidAds: paidAdsEnabled(),
     cost: TOKEN_COST,
   });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  const { session, admin } = await authenticate.admin(request);
+  const shop = await db.shop.findUnique({ where: { domain: session.shop }, include: { activePlan: true, adAccounts: true } });
   if (!shop) return json({ error: "Shop not found." });
   const form = await request.formData();
   const intent = form.get("intent") as string;
@@ -141,6 +159,65 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.asset.update({ where: { id }, data: { status: "PUBLISHED" } });
     return json({ posted: platforms.join(", ") });
   }
+  if (intent === "boost") {
+    const assetId = (form.get("assetId") as string) || "";
+    const platform = (form.get("platform") as string) || "";
+    const budgetDaily = Math.max(1, Math.min(500, Number(form.get("budget") || 10)));
+    if (!shop.activePlan?.active) return json({ error: "Pick a plan first to boost." });
+    if (!shop.adAccounts.find((a) => a.platform === platform)) return json({ error: "Connect your ad account first — you set the budget, it spends from your account." });
+    const asset = await db.asset.findFirst({ where: { id: assetId, shopId: shop.id } });
+    if (!asset) return json({ error: "That piece is gone." });
+    try { await spendTokens(shop.id, BOOST_FEE); } catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for the boost fee." }); }
+    await db.asset.update({ where: { id: assetId }, data: { status: "APPROVED" } });
+    await enqueueJob(shop.id, "LAUNCH_CAMPAIGN", { assetId, platform, weeklyBudgetCents: Math.round(budgetDaily * 7 * 100) });
+    return json({ boosted: platform });
+  }
+  if (intent === "attach") {
+    const id = (form.get("assetId") as string) || "";
+    const productId = (form.get("productId") as string) || "";
+    const productTitle = (form.get("productTitle") as string) || "";
+    const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
+    if (!asset || !productId) return json({ error: "Pick a product to attach this to." });
+    const isVideo = asset.type === "VIDEO_AD";
+    try {
+      const body = JSON.parse(asset.bodyJson || "{}");
+      const mediaUrl: string | undefined = body.videoUrl || body.imageUrl;
+      if (!mediaUrl) return json({ error: "This piece has no rendered file yet." });
+      let buf: Buffer;
+      if (String(mediaUrl).startsWith("/renders/")) {
+        const f = path.join(process.cwd(), "data", "renders", path.basename(mediaUrl));
+        if (!fs.existsSync(f)) return json({ error: "The file expired from storage — regenerate and attach a fresh one." });
+        buf = fs.readFileSync(f);
+      } else {
+        const r = await fetch(mediaUrl);
+        if (!r.ok) return json({ error: "The file expired — regenerate and attach a fresh one." });
+        buf = Buffer.from(await r.arrayBuffer());
+      }
+      const filename = isVideo ? "easymode.mp4" : "easymode.jpg";
+      const mime = isVideo ? "video/mp4" : "image/jpeg";
+      const staged = await admin.graphql(
+        `mutation Staged($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { message } } }`,
+        { variables: { input: [{ resource: isVideo ? "VIDEO" : "IMAGE", filename, mimeType: mime, fileSize: String(buf.length), httpMethod: "POST" }] } }
+      );
+      const sj = (await staged.json()) as { data?: { stagedUploadsCreate?: { stagedTargets?: { url: string; resourceUrl: string; parameters: { name: string; value: string }[] }[]; userErrors?: { message: string }[] } } };
+      const errs1 = sj.data?.stagedUploadsCreate?.userErrors || [];
+      const target = sj.data?.stagedUploadsCreate?.stagedTargets?.[0];
+      if (errs1.length || !target) return json({ error: errs1[0]?.message || "Shopify refused the upload slot." });
+      const fd = new FormData();
+      for (const p of target.parameters) fd.append(p.name, p.value);
+      fd.append("file", new Blob([buf], { type: mime }), filename);
+      const up = await fetch(target.url, { method: "POST", body: fd });
+      if (!up.ok && up.status !== 201) return json({ error: `Upload failed (${up.status}).` });
+      const media = await admin.graphql(
+        `mutation Attach($productId: ID!, $media: [CreateMediaInput!]!) { productCreateMedia(productId: $productId, media: $media) { mediaUserErrors { message } } }`,
+        { variables: { productId, media: [{ mediaContentType: isVideo ? "VIDEO" : "IMAGE", originalSource: target.resourceUrl, alt: asset.title || "EasyMode" }] } }
+      );
+      const mj = (await media.json()) as { data?: { productCreateMedia?: { mediaUserErrors?: { message: string }[] } } };
+      const errs2 = mj.data?.productCreateMedia?.mediaUserErrors || [];
+      if (errs2.length) return json({ error: errs2[0].message });
+      return json({ attached: productTitle });
+    } catch (e) { return json({ error: e instanceof Error ? e.message : String(e) }); }
+  }
   return json({ ok: true });
 };
 
@@ -155,7 +232,7 @@ const TYPE_LABEL: Record<string, string> = { video: "Video", image: "Image", blo
 const STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready to post", FAILED: "Needs retry" };
 
 export default function Archive() {
-  const { hasPlan, tokens, library, scheduled, jobCards, linkedSocial, cost } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, library, scheduled, jobCards, linkedSocial, products, adPlatforms, boostFee, paidAds, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -180,8 +257,17 @@ export default function Archive() {
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
   const postAsset = (assetId: string) => submit({ intent: "post", assetId }, { method: "post" });
   const posted = actionData && "posted" in actionData ? (actionData as { posted: string }).posted : null;
-  // Close the viewer once a piece is deleted or kept.
+  const attached = actionData && "attached" in actionData ? (actionData as { attached: string }).attached : null;
+  const boosted = actionData && "boosted" in actionData ? (actionData as { boosted: string }).boosted : null;
+  const [tool, setTool] = useState<"attach" | "boost" | null>(null);
+  const [attachId, setAttachId] = useState("");
+  const [boostPlat, setBoostPlat] = useState("");
+  const [boostBudget, setBoostBudget] = useState("10");
+  const attach = (assetId: string) => { const p = products.find((x) => x.id === attachId); submit({ intent: "attach", assetId, productId: attachId, productTitle: p?.title || "" }, { method: "post" }); };
+  const boost = (assetId: string) => submit({ intent: "boost", assetId, platform: boostPlat, budget: boostBudget }, { method: "post" });
+  // Close the viewer once a piece is deleted or kept; close tools on success.
   useEffect(() => { if (actionData && ("deleted" in actionData || "kept" in actionData)) setViewer(null); }, [actionData]);
+  useEffect(() => { if (attached || boosted) setTool(null); }, [attached, boosted]);
   const costOf = (t: string) => (t === "video" ? cost.video : t === "image" ? cost.image : cost.blog);
   const fmtEta = (s: number) => (s <= 12 ? "almost done" : s < 90 ? `~${s}s left` : `~${Math.round(s / 60)}m left`);
 
@@ -305,6 +391,31 @@ export default function Archive() {
                     <button type="button" className="ar-vkeep" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
                     <button type="button" className="ar-vdel" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                   </div>
+                  <div className="ar-vmore">
+                    <button type="button" className={`ar-vtool${tool === "attach" ? " on" : ""}`} onClick={() => setTool(tool === "attach" ? null : "attach")}>🏷 Add to a product</button>
+                    {paidAds && adPlatforms.length > 0 && <button type="button" className={`ar-vtool${tool === "boost" ? " on" : ""}`} onClick={() => setTool(tool === "boost" ? null : "boost")}>🚀 Boost</button>}
+                  </div>
+                  {attached && <div className="ar-vok">Added to {attached} ✓</div>}
+                  {boosted && <div className="ar-vok">Boost launching on {boosted} ✓</div>}
+                  {tool === "attach" && (
+                    <div className="ar-tool">
+                      <select value={attachId} onChange={(e) => setAttachId(e.target.value)}>
+                        <option value="">Choose a product…</option>
+                        {products.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                      </select>
+                      <button type="button" className="ar-vpost" disabled={busy || !attachId} onClick={() => attach(viewer.id)}>{busy ? "Adding…" : "Add to product page"}</button>
+                    </div>
+                  )}
+                  {tool === "boost" && (
+                    <div className="ar-tool">
+                      <select value={boostPlat} onChange={(e) => setBoostPlat(e.target.value)}>
+                        <option value="">Ad account…</option>
+                        {adPlatforms.map((p) => <option key={p} value={p}>{p === "META" ? "Meta (FB/IG)" : p}</option>)}
+                      </select>
+                      <label className="ar-budget">$<input type="number" min={1} max={500} value={boostBudget} onChange={(e) => setBoostBudget(e.target.value)} />/day</label>
+                      <button type="button" className="ar-vpost" disabled={busy || !boostPlat} onClick={() => boost(viewer.id)}>{busy ? "Launching…" : `Boost · ${boostFee} tokens`}</button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
