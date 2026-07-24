@@ -22,6 +22,7 @@ type Publishable = {
   productTitle: string;
   topic?: string;
   assetId?: string;
+  credit?: string; // trial watermark, if any
 };
 
 /** THE integration point — now live via the upload-post provider. Returns
@@ -74,7 +75,7 @@ async function publishContent(
   let anyOk = false;
   let lastErr: string | undefined;
   for (const p of platforms) {
-    const title = buildPostTitle(captions[p], goUrl, fbText);
+    const title = buildPostTitle(captions[p], goUrl, fbText, item.credit);
     const res = await publishPost(profileKey, { title, mediaUrl, isVideo, platforms: [p] });
     if (res.ok) {
       anyOk = true;
@@ -106,10 +107,11 @@ export async function postDueSlots(): Promise<void> {
     const shopIds = [...new Set(active.map((q) => q.shopId))];
     const shops = await db.shop.findMany({
       where: { id: { in: shopIds } },
-      select: { id: true, domain: true, socialProfileKey: true, socialsJson: true },
+      select: { id: true, domain: true, socialProfileKey: true, socialsJson: true, activePlan: { select: { periodStart: true } } },
     });
     const { linkedFromCache } = await import("./social-provider.server");
-    const byShop = new Map(shops.map((s) => [s.id, { domain: s.domain, profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson) }]));
+    const { trialCredit } = await import("./social-caption.server");
+    const byShop = new Map(shops.map((s) => [s.id, { domain: s.domain, profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson), credit: trialCredit(s.activePlan) }]));
 
     let due = 0;
     let posted = 0;
@@ -145,7 +147,7 @@ export async function postDueSlots(): Promise<void> {
         if (targets.length === 0) continue;
         const res = await publishContent(targets, link.profileKey, {
           shopId: q.shopId, questlineId: q.id, slotIdx: s.idx,
-          type: s.type, productTitle: s.productTitle, topic: s.topic, assetId: s.assetId,
+          type: s.type, productTitle: s.productTitle, topic: s.topic, assetId: s.assetId, credit: link.credit,
         });
         if (res.ok) {
           s.status = "POSTED";

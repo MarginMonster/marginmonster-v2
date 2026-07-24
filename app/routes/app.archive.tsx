@@ -206,13 +206,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // the AI writer: a per-platform tuned caption, cached on the asset.
     const custom = ((form.get("caption") as string) || "").trim();
     let titleFor: (p: string) => string;
+    const { getOrMakeCaptions, buildPostTitle, fallbackCaption, trialCredit } = await import("../lib/social-caption.server");
+    const credit = trialCredit(shop.activePlan);
     if (custom) {
-      titleFor = () => custom.slice(0, 900);
+      titleFor = () => (credit ? `${custom.slice(0, 860)}\n\n${credit}` : custom.slice(0, 900));
     } else {
-      const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("../lib/social-caption.server");
       const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
       const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
-      titleFor = (p) => buildPostTitle(captions[p], "", fbText);
+      titleFor = (p) => buildPostTitle(captions[p], "", fbText, credit);
     }
     const urls: Record<string, string> = {};
     let anyOk = false;

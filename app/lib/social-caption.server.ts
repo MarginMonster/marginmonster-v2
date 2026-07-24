@@ -195,12 +195,24 @@ export async function getOrMakeCaptions(
 export function buildPostTitle(
   caption: PlatformCaption | undefined,
   goUrl: string,
-  fallbackText: string
+  fallbackText: string,
+  credit?: string
 ): string {
   const text = caption?.text?.trim() || fallbackText;
   const tags = (caption?.hashtags || []).map((t) => `#${t}`).join(" ");
   const parts = [text];
   if (goUrl) parts.push(`🛒 ${goUrl}`);
   if (tags) parts.push(tags);
+  if (credit) parts.push(credit);
   return parts.join("\n\n");
+}
+
+// Free-trial output carries a subtle credit (the viral watermark); paying
+// customers never get branded. Trial ≈ the first 7 days after activation.
+export const TRIAL_CREDIT = "✨ Made with EasyMode";
+export function trialCredit(plan: { periodStart?: Date | string | null } | null | undefined): string | undefined {
+  if (!plan?.periodStart) return undefined;
+  const start = new Date(plan.periodStart).getTime();
+  if (!Number.isFinite(start)) return undefined;
+  return Date.now() - start < 7.5 * 86_400_000 ? TRIAL_CREDIT : undefined;
 }
