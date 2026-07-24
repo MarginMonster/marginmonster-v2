@@ -3117,7 +3117,7 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .smp-cta.go:hover::after { animation-duration:9s; }
 @keyframes mm-medallion-cw { to { transform:rotate(360deg); } }
 @keyframes mm-medallion-ccw { to { transform:rotate(-360deg); } }
-@media (prefers-reduced-motion: reduce) { .smp-tok::after, .smp-cta.go::after { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .smp-tok::after, .smp-cta.go::after, .eh-status::after, .eh-btn.primary::after, .er-tot::after { animation:none; } }
 
 /* connect-account nudge (link variant of the add-on row) */
 .addon.connect { text-decoration:none; border-color:#CBB67A; background:linear-gradient(180deg,#FEFCF4,#FBF6E6); }
