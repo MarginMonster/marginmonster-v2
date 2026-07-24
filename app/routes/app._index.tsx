@@ -1,14 +1,14 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit, useNavigation, useActionData, Link } from "@remix-run/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { generateBrandProfile } from "../lib/brand-voice.server";
 import { unlockAchievement } from "../lib/xp.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
-import { socialProviderEnabled } from "../lib/social-provider.server";
+import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 
 type BrandResults = {
   tone: string; tagline: string; positioning: string; imageStyle: string;
@@ -50,19 +50,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pendingAssets = shop?.assets.filter((a) => a.status === "PENDING").length ?? 0;
   const brandJob = shop?.jobs[0] || null;
 
-  // Reviews engine: ask for an App Store review exactly once, right after the
-  // first real WIN — something the merchant published live (a blog on their
-  // store or a post to socials both land as PUBLISHED). Peak-delight moment.
-  let askReview = false;
-  if (shop && !shop.reviewAskedAt) {
-    const wins = await db.asset.count({ where: { shopId: shop.id, status: "PUBLISHED" } });
-    askReview = wins > 0;
-  }
+  // Activation "Launch Sequence" + reviews trigger both key off real progress.
+  const publishedCount = shop ? await db.asset.count({ where: { shopId: shop.id, status: "PUBLISHED" } }) : 0;
+  const contentCount = shop ? await db.asset.count({ where: { shopId: shop.id } }) : 0;
+  const socialLinked = linkedFromCache(shop?.socialsJson).length > 0;
+  const launch = {
+    brand: !!shop?.brandProfile,
+    plan: !!shop?.activePlan,
+    content: contentCount > 0,
+    social: socialLinked,
+    published: publishedCount > 0,
+  };
+  // Ask for an App Store review exactly once, at the first real WIN (something
+  // published live). Peak-delight moment.
+  const askReview = !!shop && !shop.reviewAskedAt && publishedCount > 0;
 
   return json({
     shop,
     pendingAssets,
     askReview,
+    launch,
     brand: parseBrand(shop?.brandProfile ?? null),
     brandJobError: brandJob?.lastError ?? null,
     paidAds: paidAdsEnabled(),
@@ -137,7 +144,7 @@ function friendlyError(msg: string): string {
 }
 
 export default function Dashboard() {
-  const { shop, pendingAssets, askReview, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
+  const { shop, pendingAssets, askReview, launch, brand, brandJobError, paidAds } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -159,6 +166,12 @@ export default function Dashboard() {
     const t = setTimeout(fire, 1500);
     return () => clearTimeout(t);
   }, [askReview, submit]);
+  // Launch Sequence — the activation tracker. Dismissible (per browser) and
+  // auto-hides once every step is done.
+  const [launchHidden, setLaunchHidden] = useState(false);
+  useEffect(() => { try { if (localStorage.getItem("mmLaunchDone") === "1") setLaunchHidden(true); } catch { /* ignore */ } }, []);
+  const dismissLaunch = () => { try { localStorage.setItem("mmLaunchDone", "1"); } catch { /* ignore */ } setLaunchHidden(true); };
+
   // A re-scan the user JUST triggered failed (live, actionable).
   const actionError = actionData && "error" in actionData ? actionData.error : null;
   // Onboarding also surfaces the last stored job error (there's no profile yet).
@@ -215,6 +228,45 @@ export default function Dashboard() {
 
         <h1>Your store, on <span className="eh-em">EasyMode</span>.</h1>
         <p className="eh-sub">It makes videos, images and posts from your products — then posts them to your socials on a schedule. You approve, it ships.</p>
+
+        {(() => {
+          const steps = [
+            { key: "brand", label: "Analyze your store", hint: "Learn your brand voice", done: launch.brand, action: !launch.brand ? buildProfile : undefined },
+            { key: "plan", label: "Pick your plan", hint: "Start your 7-day free trial", done: launch.plan, href: "/app/plans" },
+            { key: "content", label: "Make your first content", hint: "A blog, image or video", done: launch.content, href: "/app/studio" },
+            { key: "social", label: "Connect your socials", hint: "So EasyMode can auto-post", done: launch.social, href: "/app/connect" },
+            { key: "published", label: "Publish your first piece", hint: "Watch it go live", done: launch.published, href: "/app/archive" },
+          ];
+          const doneCount = steps.filter((s) => s.done).length;
+          const allDone = doneCount === steps.length;
+          if (allDone || launchHidden) return null;
+          const nextKey = steps.find((s) => !s.done)?.key;
+          return (
+            <div className="eh-launch">
+              <div className="ehl-top">
+                <div className="ehl-title">🚀 Launch Sequence <span>{doneCount}/{steps.length}</span></div>
+                <button type="button" className="ehl-x" onClick={dismissLaunch} aria-label="Dismiss">✕</button>
+              </div>
+              <div className="ehl-bar"><i style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
+              <div className="ehl-steps">
+                {steps.map((s) => {
+                  const isNext = s.key === nextKey;
+                  const inner = (
+                    <>
+                      <span className={`ehl-tick${s.done ? " on" : ""}`}>{s.done ? "✓" : ""}</span>
+                      <span className="ehl-lab"><b>{s.label}</b><em>{s.hint}</em></span>
+                      {isNext && <span className="ehl-go">Start ›</span>}
+                    </>
+                  );
+                  const cls = `ehl-step${s.done ? " done" : ""}${isNext ? " next" : ""}`;
+                  if (s.done) return <div className={cls} key={s.key}>{inner}</div>;
+                  if (s.action) return <button type="button" className={cls} key={s.key} onClick={s.action} disabled={building}>{inner}</button>;
+                  return <Link className={cls} key={s.key} to={s.href!}>{inner}</Link>;
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className={`eh-status${hasActiveCampaign ? "" : " idle"}`}>
           <div className="lab"><span className="dot" />{hasActiveCampaign ? "Autopilot running" : "Autopilot not running"}</div>
