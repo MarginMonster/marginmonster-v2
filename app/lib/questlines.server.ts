@@ -369,6 +369,57 @@ export async function addManualDrop(
   return { ok: true, cost };
 }
 
+/** Bring a scheduled drop's forge FORWARD — free (the tokens were pre-paid when
+ *  the plan/drop was created). Posting still happens on schedule; this just lets
+ *  the merchant see what's coming. Moves the pending job's runAt to now. */
+export async function generateSlotEarly(shopId: string, questlineId: string, slotIdx: number): Promise<{ ok: boolean; error?: string }> {
+  const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
+  if (!q) return { ok: false, error: "Campaign not found." };
+  const schedule = parseSchedule(q.scheduleJson);
+  const slot = schedule.slots.find((s) => s.idx === slotIdx);
+  if (!slot) return { ok: false, error: "Drop not found." };
+  if (slot.status !== "SCHEDULED") return { ok: false, error: "That drop is already being made." };
+  try {
+    const jobs = await db.job.findMany({ where: { shopId, status: "PENDING", payload: { contains: questlineId } } });
+    let moved = false;
+    for (const jb of jobs) {
+      try { const p = JSON.parse(jb.payload); if (p.questlineId === questlineId && p.slotIdx === slotIdx) { await db.job.update({ where: { id: jb.id }, data: { runAt: new Date() } }); moved = true; } } catch { /* skip */ }
+    }
+    if (!moved) return { ok: false, error: "No pending job for this drop yet — try again shortly." };
+    slot.status = "FORGING";
+    await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Couldn't start early." };
+  }
+}
+
+/** Retry a forged drop the merchant didn't like — spends tokens (the pre-paid
+ *  forge was already used). Re-enqueues a fresh forge now; posting stays on
+ *  schedule and picks up whatever's ready by then. */
+export async function retrySlot(shopId: string, questlineId: string, slotIdx: number): Promise<{ ok: boolean; error?: string; cost?: number }> {
+  const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
+  if (!q) return { ok: false, error: "Campaign not found." };
+  const schedule = parseSchedule(q.scheduleJson);
+  const slot = schedule.slots.find((s) => s.idx === slotIdx);
+  if (!slot) return { ok: false, error: "Drop not found." };
+  if (slot.type !== "video" && slot.type !== "image" && slot.type !== "blog") return { ok: false, error: "Nothing to regenerate." };
+  if (slot.status === "POSTED") return { ok: false, error: "That drop already posted." };
+  const cost = slot.type === "video" ? TOKEN_COST.video : slot.type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+  try { await spendTokens(shopId, cost); } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." }; }
+
+  slot.status = "FORGING";
+  slot.assetId = undefined;
+  await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
+  const objectives: { key: string; type: string }[] = JSON.parse(q.objectivesJson || "[]");
+  const obj = objectives.find((o) => o.type === slot.type);
+  const base = { productTitle: slot.productTitle, productImageUrl: slot.productImageUrl || undefined, customPrompt: slot.topic, productDescription: slot.topic, questlineId: q.id, objectiveKey: obj?.key, slotIdx, prePaid: true };
+  if (slot.type === "video") await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, new Date());
+  else if (slot.type === "image") await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, new Date());
+  else await enqueueJob(shopId, "GENERATE_BLOG_POST", base, new Date());
+  return { ok: true, cost };
+}
+
 /** Swap a bag item mid-quest: every FUTURE (not yet forged) drop starring the
  *  old item now stars the new one. Forged content keeps its original star.
  *  Pending generation jobs are re-pointed too. */

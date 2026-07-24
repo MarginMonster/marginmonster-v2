@@ -197,6 +197,9 @@ export default function Studio() {
   // when the product changes so detection leads.
   const [wearOverride, setWearOverride] = useState<boolean | null>(null);
   useEffect(() => { setWearOverride(null); }, [picked]);
+  // Post-generate popup → Archive Storage
+  const [showDone, setShowDone] = useState(false);
+  useEffect(() => { if (actionData && "queued" in actionData) setShowDone(true); }, [actionData]);
   const showWear = (tab === "video" || tab === "image") && !!avatarId && !!product;
   const wear = wearOverride === null ? !!product?.apparel : wearOverride;
 
@@ -254,12 +257,6 @@ export default function Studio() {
           </div>
         )}
         {error && <div style={{ marginBottom: 14 }}><Banner tone="warning" title="Couldn't generate"><p>{error}</p></Banner></div>}
-        {queued && (
-          <div className="cs-ok">
-            <b>Queued — your {queued} is being made.</b>
-            <Link to="/app/assets">Track it in the Content Queue ›</Link>
-          </div>
-        )}
 
         <div className="smp-cfg">
           {(tab === "video" || tab === "image") && (
@@ -331,6 +328,18 @@ export default function Studio() {
           </button>
           <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to generate."}</p>
         </div>
+
+        {showDone && queued && (
+          <div className="cs-scrim" onClick={() => setShowDone(false)}>
+            <div className="cs-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="cs-mi">✨</div>
+              <b className="cs-mh">Your {queued} is being made</b>
+              <p className="cs-mp">Find it — and everything else EasyMode makes — in your <b>Archive Storage</b>.</p>
+              <Link className="cs-mcta" to="/app/archive">Go to Archive Storage ›</Link>
+              <button type="button" className="cs-mclose" onClick={() => setShowDone(false)}>Make another</button>
+            </div>
+          </div>
+        )}
       </div>
     </Page>
   );
