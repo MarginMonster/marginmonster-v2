@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, useNavigation, useSubmit, Link } from "@remix-run/react";
-import { useState } from "react";
+import { useLoaderData, useActionData, useNavigation, useSubmit, useRevalidator, Link } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -33,14 +33,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const assets = await db.asset.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, take: 80 });
 
-  // Actively-generating jobs → buffering tiles at the top of the matching tab.
-  const jobs = await db.job.findMany({ where: { shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD"] }, status: { in: ["PENDING", "IN_PROGRESS"] } }, select: { type: true, status: true, runAt: true } });
+  // In-flight + failed generation jobs → buffering / retry tiles on their tab.
+  const jobRows = await db.job.findMany({ where: { shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD"] }, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] } }, orderBy: { createdAt: "desc" }, take: 40 });
   const nowMs = Date.now();
-  const isActive = (j: { status: string; runAt: Date | null }) => j.status === "IN_PROGRESS" || !j.runAt || j.runAt.getTime() <= nowMs;
-  const generating = {
-    video: jobs.filter((j) => j.type === "GENERATE_VIDEO_AD" && isActive(j)).length,
-    image: jobs.filter((j) => j.type === "GENERATE_IMAGE_AD" && isActive(j)).length,
-  };
+  const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45 };
+  const jobCards: { jobId: string; kind: "video" | "image"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number }[] = [];
+  for (const j of jobRows) {
+    let p: { productImageUrl?: string; productTitle?: string } = {};
+    try { p = JSON.parse(j.payload); } catch { /* ignore */ }
+    const due = !j.runAt || j.runAt.getTime() <= nowMs;
+    const failed = j.status === "FAILED";
+    const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
+    if (!failed && !generating) continue; // scheduled-future drip lives in the Scheduled tab
+    const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
+    const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
+    jobCards.push({ jobId: j.id, kind: j.type === "GENERATE_VIDEO_AD" ? "video" : "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec });
+  }
   const parse = (bodyJson: string) => { try { return JSON.parse(bodyJson); } catch { return {}; } };
   const byId = new Map(assets.map((a) => [a.id, a]));
   const toCard = (a: (typeof assets)[number]): Card => {
@@ -71,7 +79,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tokens: shop.activePlan ? tokensRemaining(shop.activePlan) : 0,
     library,
     scheduled,
-    generating,
+    jobCards,
     cost: TOKEN_COST,
   });
 };
@@ -93,6 +101,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const r = await retrySlot(shop.id, questlineId, slotIdx);
     return json(r.ok ? { retried: r.cost } : { error: r.error });
   }
+  if (intent === "retryJob") {
+    // Genuine generation failure (e.g. interrupted mid-render) → FREE retry.
+    const jobId = (form.get("jobId") as string) || "";
+    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD"] } } });
+    if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
+    await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date() } });
+    return json({ jobRetried: true });
+  }
   return json({ ok: true });
 };
 
@@ -107,18 +123,29 @@ const TYPE_LABEL: Record<string, string> = { video: "Video", image: "Image", blo
 const STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready to post", FAILED: "Needs retry" };
 
 export default function Archive() {
-  const { hasPlan, tokens, library, scheduled, generating, cost } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, library, scheduled, jobCards, cost } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
+  const revalidator = useRevalidator();
   const busy = nav.state !== "idle";
   const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
   const [tab, setTab] = useState<TabKey>("video");
   const [viewer, setViewer] = useState<(Card & { kind: TabKey }) | null>(null);
 
+  // Keep buffering tiles + ETAs live while anything is generating.
+  const anyGenerating = jobCards.some((j) => j.status === "generating");
+  useEffect(() => {
+    if (!anyGenerating) return;
+    const t = setInterval(() => { if (revalidator.state === "idle") revalidator.revalidate(); }, 9000);
+    return () => clearInterval(t);
+  }, [anyGenerating, revalidator]);
+
   const early = (qid: string, slotIdx: number) => submit({ intent: "generateEarly", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
   const retry = (qid: string, slotIdx: number) => submit({ intent: "retry", questlineId: qid, slotIdx: String(slotIdx) }, { method: "post" });
+  const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
   const costOf = (t: string) => (t === "video" ? cost.video : t === "image" ? cost.image : cost.blog);
+  const fmtEta = (s: number) => (s <= 12 ? "almost done" : s < 90 ? `~${s}s left` : `~${Math.round(s / 60)}m left`);
 
   const lib = tab === "video" ? library.video : tab === "image" ? library.image : tab === "blog" ? library.blog : [];
 
@@ -174,17 +201,26 @@ export default function Archive() {
           </>
         ) : (
           <>
-            {(tab === "video" || tab === "image") && generating[tab] > 0 && (
+            {(tab === "video" || tab === "image") && jobCards.some((j) => j.kind === tab) && (
               <div className="ar-grid ar-gen">
-                {Array.from({ length: generating[tab] }).map((_, i) => (
-                  <div className="ar-tile" key={`gen-${i}`}>
-                    <div className="ar-timg ar-buffer"><span className="ar-spin" /></div>
+                {jobCards.filter((j) => j.kind === tab).map((j) => j.status === "generating" ? (
+                  <div className="ar-tile" key={j.jobId}>
+                    <div className="ar-timg" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
+                      <span className="ar-bufwrap"><span className="ar-spin" /><span className="ar-eta">{fmtEta(j.etaSec)}</span></span>
+                    </div>
                     <span className="ar-tstatus s-forging">Creating…</span>
+                  </div>
+                ) : (
+                  <div className="ar-tile" key={j.jobId}>
+                    <div className="ar-timg ar-fail" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
+                      <span className="ar-failwrap"><span className="ar-failx">⚠</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button></span>
+                    </div>
+                    <span className="ar-tstatus s-failed">Lost in transit</span>
                   </div>
                 ))}
               </div>
             )}
-            {lib.length === 0 && (tab !== "video" && tab !== "image" || generating[tab] === 0) ? (
+            {lib.length === 0 && (tab !== "video" && tab !== "image" || !jobCards.some((j) => j.kind === tab)) ? (
               <div className="ar-empty"><b>No {TABS.find((t) => t.key === tab)?.label.toLowerCase()} yet</b><p>Make one in the Content Studio and it lands here.</p><Link className="dc-new" to="/app/studio">Open Content Studio</Link></div>
             ) : (
               <div className={tab === "blog" ? "ar-blogs" : "ar-grid"}>
