@@ -8,7 +8,7 @@ import { db } from "../db.server";
 import { parseSchedule } from "../lib/questlines";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemaining } from "../lib/tokens.server";
-import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop } from "../lib/questlines.server";
+import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop, addManualDrop } from "../lib/questlines.server";
 
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
 const QUOTES = [
@@ -58,7 +58,7 @@ type DropInfo = { qid: string; name: string; slotIdx: number; type: "video" | "i
 type ActiveCampaign = { id: string; name: string; createdDate: string; durationDays: number };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
     include: { activePlan: true, questlines: { orderBy: { createdAt: "desc" }, take: 20 } },
@@ -67,6 +67,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const linked = shop ? linkedFromCache(shop.socialsJson).filter((p) => p in SHORT) : [];
   const platforms = linked.length ? linked : ["tiktok", "instagram", "facebook"];
   const platShorts = platforms.map((p) => SHORT[p]);
+
+  // Store products power the one-off (no-plan) drop scheduler.
+  let products: { title: string; image: string | null; url: string | null }[] = [];
+  try {
+    const res = await admin.graphql(`{ products(first: 12, sortKey: UPDATED_AT, reverse: true) { edges { node { title handle onlineStoreUrl featuredImage { url } } } } }`);
+    const j = (await res.json()) as { data?: { products?: { edges?: { node: { title: string; handle?: string; onlineStoreUrl?: string; featuredImage?: { url?: string } } }[] } } };
+    products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
+  } catch { /* fall through */ }
 
   const url = new URL(request.url);
   const now = new Date();
@@ -114,9 +122,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if (!next || s.date < next.date || (s.date === next.date && s.time < next.time)) next = { date: s.date, time: s.time };
       }
     }
-    if (q.status !== "PAUSED") {
+    if (q.status !== "PAUSED" && q.template !== "MANUAL") {
       activeCampaigns.push({ id: q.id, name: q.name, createdDate: q.createdAt.toISOString().slice(0, 10), durationDays: q.durationDays || 30 });
     }
+    if (q.template === "MANUAL") continue; // one-off container: shows on calendar, not in the campaign list
     const drops = slots
       .filter((s) => s.type === "video" || s.type === "image" || s.type === "blog")
       .slice()
@@ -148,6 +157,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     prevYm, nextYm,
     openDay,
     quote: QUOTES[now.getUTCDate() % QUOTES.length],
+    products,
     dropMap,
     dayDrops,
     activeCampaigns,
@@ -188,6 +198,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const res = await addDrop(shop.id, (form.get("questlineId") as string) || "", parseInt((form.get("day") as string) || "0", 10), ((form.get("dropType") as string) || "video") as "video" | "image" | "blog", { instant: form.get("instant") === "1", productTitle: ((form.get("dropProduct") as string) || "").trim() || undefined, direction: ((form.get("dropTopic") as string) || "").trim() || undefined, time: ((form.get("dropTime") as string) || "").trim() || undefined });
     return json(res.ok ? { dropAdded: res.cost, instant: form.get("instant") === "1" } : { error: res.error });
   }
+  if (intent === "manualDrop") {
+    let product: { title: string; image: string | null; url: string | null } | undefined;
+    try { product = JSON.parse((form.get("product") as string) || "null") || undefined; } catch { /* ignore */ }
+    const res = await addManualDrop(shop.id, {
+      date: (form.get("date") as string) || "",
+      time: (form.get("time") as string) || "",
+      type: ((form.get("dropType") as string) || "video") as "video" | "image" | "blog",
+      direction: ((form.get("dropTopic") as string) || "").trim() || undefined,
+      product,
+    });
+    return json(res.ok ? { dropAdded: res.cost, manual: true } : { error: res.error });
+  }
   if (intent === "pauseToggle") {
     const id = (form.get("questlineId") as string) || "";
     const q = await db.questline.findFirst({ where: { id, shopId: shop.id } });
@@ -221,7 +243,7 @@ function typeLines(day: { video: number; image: number; blog: number }): string[
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function Campaigns() {
-  const { hasPlan, tokens, lastDropDate, platforms, weeks, monthLabel, year, month0, todayDay, todayStr, prevYm, nextYm, openDay, quote, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
+  const { hasPlan, tokens, lastDropDate, platforms, products, weeks, monthLabel, year, month0, todayDay, todayStr, prevYm, nextYm, openDay, quote, dropMap, dayDrops, activeCampaigns, total, campaigns } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigate = useNavigate();
@@ -230,9 +252,10 @@ export default function Campaigns() {
   const [open, setOpen] = useState<number | null>(openDay); // selected day-of-month
   const [openCamp, setOpenCamp] = useState<string | null>(null); // expanded campaign
   const [schedType, setSchedType] = useState<"video" | "image" | "blog">("video");
-  const [schedCid, setSchedCid] = useState<string>(activeCampaigns[0]?.id ?? "");
+  const [schedCid, setSchedCid] = useState<string>(activeCampaigns[0]?.id ?? "__manual__");
   const [schedTopic, setSchedTopic] = useState("");
   const [schedTime, setSchedTime] = useState("12:00");
+  const [schedProduct, setSchedProduct] = useState(0);
 
   // Close the sheet after a successful mutation.
   useEffect(() => {
@@ -249,7 +272,17 @@ export default function Campaigns() {
   const isPast = openDate != null && !!todayStr && openDate < todayStr;
   const openEnd = openDate != null && openDate === lastDropDate;
   const openNoPlan = openDate != null && !!lastDropDate && openDate > lastDropDate && drops.length === 0;
-  const fmtDay = (ds: string) => { const [, m, d] = ds.split("-").map(Number); return `${MON[m - 1]} ${d}`; };
+  // A campaign can only take a drop within its window; on gap days force one-off.
+  const canAttach = !isPast && !openNoPlan && activeCampaigns.length > 0;
+  const isManual = schedCid === "__manual__" || !canAttach;
+
+  // Pick a sensible default scheduler mode whenever a different day opens.
+  useEffect(() => {
+    if (open == null) return;
+    if (!canAttach) setSchedCid("__manual__");
+    else setSchedCid((prev) => (prev && prev !== "__manual__" && activeCampaigns.some((c) => c.id === prev) ? prev : activeCampaigns[0].id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, canAttach]);
 
   // Jump to a specific drop's day (may live in another month → navigate there).
   const goToDrop = (dateStr: string) => {
@@ -262,10 +295,16 @@ export default function Campaigns() {
     submit({ intent: "reschedule", questlineId: qid, slotIdx: String(slotIdx), date, time }, { method: "post" });
 
   const scheduleDrop = () => {
-    if (open == null || !schedCid) return;
+    if (open == null) return;
+    const target = `${year}-${pad(month0 + 1)}-${pad(open)}`;
+    if (isManual) {
+      const prod = products[schedProduct] || products[0];
+      if (!prod) return;
+      submit({ intent: "manualDrop", date: target, time: schedTime, dropType: schedType, dropTopic: schedTopic.trim(), product: JSON.stringify(prod) }, { method: "post" });
+      return;
+    }
     const camp = activeCampaigns.find((c) => c.id === schedCid);
     if (!camp) return;
-    const target = `${year}-${pad(month0 + 1)}-${pad(open)}`;
     const dayDiff = Math.round((Date.parse(`${target}T00:00:00Z`) - Date.parse(`${camp.createdDate}T00:00:00Z`)) / 86400000);
     const campaignDay = dayDiff + 1;
     submit({ intent: "addDrop", questlineId: schedCid, day: String(campaignDay), dropType: schedType, dropTopic: schedTopic.trim(), dropTime: schedTime }, { method: "post" });
@@ -421,23 +460,18 @@ export default function Campaigns() {
               </div>
             )}
 
-            {openNoPlan && (
-              <div className="dc-shnoplan">
-                <div className="np-hd">No plan covers this day</div>
-                <p className="np-sub">{lastDropDate ? `Your current plan's last drop is ${fmtDay(lastDropDate)}.` : ""} Start a Social Media Plan to keep posting past then — {hasPlan ? `you have ${tokens.toLocaleString()} tokens ready to spend` : "pick a plan to begin"}.</p>
-                <Link className="np-cta" to="/app/campaigns/new">Browse Social Media Plans ›</Link>
-              </div>
-            )}
-
-            {!openNoPlan && !isPast && activeCampaigns.length > 0 && (
+            {!isPast && (
               <div className="dc-shadd">
                 <div className="dc-shsub">{drops.length ? "Add another drop this day" : "Schedule a drop"}</div>
-                <div className="dc-fld">
-                  <label>Campaign</label>
-                  <select value={schedCid} onChange={(e) => setSchedCid(e.target.value)}>
-                    {activeCampaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
+                {canAttach && (
+                  <div className="dc-fld">
+                    <label>Add to</label>
+                    <select value={schedCid} onChange={(e) => setSchedCid(e.target.value)}>
+                      {activeCampaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <option value="__manual__">One-off — no plan, spend tokens</option>
+                    </select>
+                  </div>
+                )}
                 <div className="dc-fld">
                   <label>Content</label>
                   <div className="dc-seg">
@@ -451,14 +485,31 @@ export default function Campaigns() {
                   <input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} />
                   {drops.length > 0 && <span className="dc-taken">Already this day: {drops.map((d) => fmtTime(d.time)).join(", ")}</span>}
                 </div>
+                {isManual && (
+                  products.length > 0 ? (
+                    <div className="dc-fld">
+                      <label>Product to feature</label>
+                      <select value={schedProduct} onChange={(e) => setSchedProduct(parseInt(e.target.value, 10))}>
+                        {products.map((p, i) => <option key={i} value={i}>{p.title}</option>)}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="dc-fld"><span className="dc-taken">Add a product to your store to schedule a one-off drop.</span></div>
+                  )
+                )}
                 <div className="dc-fld">
                   <label>Direction <span className="opt">optional</span></label>
                   <input type="text" value={schedTopic} maxLength={160} placeholder="e.g. Unboxing reveal, summer sale…" onChange={(e) => setSchedTopic(e.target.value)} />
                 </div>
-                <button type="button" className="dc-shcta" disabled={busy || !schedCid} onClick={scheduleDrop}>
+                <button type="button" className="dc-shcta" disabled={busy || (isManual && products.length === 0)} onClick={scheduleDrop}>
                   {busy ? "Scheduling…" : `Schedule ${TYPE_LABEL[schedType]} — ${TYPE_COST[schedType]} tokens`}
                 </button>
+                {isManual && <p className="dc-oneoff">One-off drop · spends {TYPE_COST[schedType]} tokens now, no plan needed{hasPlan ? ` · ${tokens.toLocaleString()} in wallet` : ""}.</p>}
               </div>
+            )}
+
+            {openNoPlan && (
+              <p className="dc-planlink">Posting a lot? <Link to="/app/campaigns/new">Start a Social Media Plan ›</Link> for a hands-off month.</p>
             )}
 
             {isPast && drops.length === 0 && <p className="dc-shpast">This day has already passed.</p>}

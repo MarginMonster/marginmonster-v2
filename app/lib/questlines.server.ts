@@ -296,6 +296,79 @@ export async function addDrop(
   return { ok: true, cost };
 }
 
+/** Schedule a single one-off drop with NO plan — spends tokens directly and
+ *  runs through the same forge + auto-post pipeline. All one-offs for a shop
+ *  accumulate in a hidden "One-off drops" container questline (template
+ *  MANUAL) so they show on the calendar and post on schedule. */
+export async function addManualDrop(
+  shopId: string,
+  params: { date: string; time: string; type: "video" | "image" | "blog"; direction?: string; product?: { title: string; image: string | null; url?: string | null }; platforms?: string[] }
+): Promise<{ ok: boolean; error?: string; cost?: number }> {
+  const { date, time, type } = params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return { ok: false, error: "Bad date or time." };
+  if (!["video", "image", "blog"].includes(type)) return { ok: false, error: "Unknown content type." };
+  const post = new Date(`${date}T${time}:00`);
+  if (isNaN(post.getTime())) return { ok: false, error: "Bad date or time." };
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  if (post.getTime() < todayStart.getTime()) return { ok: false, error: "Pick a day that hasn't passed." };
+  if (!params.product?.title?.trim()) return { ok: false, error: "Pick a product to feature." };
+
+  const shop = await db.shop.findUnique({ where: { id: shopId }, include: { activePlan: true } });
+  if (!shop) return { ok: false, error: "Shop not found." };
+
+  const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+  try {
+    await spendTokens(shopId, cost);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
+  }
+
+  let q = await db.questline.findFirst({ where: { shopId, template: "MANUAL", status: "ACTIVE" } });
+  if (!q) {
+    q = await db.questline.create({
+      data: {
+        shopId, template: "MANUAL", name: "One-off drops", status: "ACTIVE",
+        avatarId: shop.brandAvatarId, avatarVariant: shop.brandAvatarVariant ?? 0,
+        reviewMode: "REVIEW_FIRST", productTitle: "", productImageUrl: null,
+        objectivesJson: "[]", scheduleJson: JSON.stringify({ slots: [], weeksAwarded: [] }),
+        durationDays: 3650, tokenCost: 0, xpReward: 0, progress: 0,
+      },
+    });
+  }
+
+  const schedule = parseSchedule(q.scheduleJson);
+  const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(q.objectivesJson || "[]");
+  const idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
+  const typeCount = schedule.slots.filter((s) => s.type === type).length;
+  const day = Math.max(1, Math.round((new Date(`${date}T00:00:00`).getTime() - q.createdAt.getTime()) / 86400000) + 1);
+  const direction = (params.direction || "").trim().slice(0, 160) || undefined;
+  const slot: QuestSlot = {
+    idx, day, date, time, type, spot: spotName(type, typeCount),
+    productTitle: params.product.title, productImageUrl: params.product.image || null, productUrl: params.product.url || null,
+    status: "SCHEDULED", topic: direction,
+  };
+  schedule.slots.push(slot);
+  if (params.platforms?.length) schedule.platforms = params.platforms;
+
+  let obj = objectives.find((o) => o.type === type);
+  if (obj) obj.target += 1;
+  else { obj = { key: `${type}-m${idx}`, label: type === "video" ? "UGC videos" : type === "image" ? "Image ads" : "SEO blog posts", type, target: 1, done: 0 }; objectives.push(obj); }
+
+  await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule), objectivesJson: JSON.stringify(objectives) } });
+
+  const base = {
+    productTitle: params.product.title, productImageUrl: params.product.image || undefined,
+    customPrompt: direction, productDescription: direction,
+    questlineId: q.id, objectiveKey: obj.key, slotIdx: idx, prePaid: true,
+  };
+  const runAt = slotRunAt(slot);
+  if (type === "video") await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, runAt);
+  else if (type === "image") await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, runAt);
+  else await enqueueJob(shopId, "GENERATE_BLOG_POST", base, runAt);
+
+  return { ok: true, cost };
+}
+
 /** Swap a bag item mid-quest: every FUTURE (not yet forged) drop starring the
  *  old item now stars the new one. Forged content keeps its original star.
  *  Pending generation jobs are re-pointed too. */

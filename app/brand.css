@@ -2970,6 +2970,9 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .dc-shnoplan .np-hd { font-size:16.5px; font-weight:800; color:#14160F; }
 .dc-shnoplan .np-sub { font-size:13px; color:#52564A; line-height:1.5; margin:8px 6px 16px; }
 .dc-shnoplan .np-cta { display:inline-block; text-decoration:none; font-weight:800; font-size:14.5px; color:#2A1F05; background:linear-gradient(180deg,#E7C879,#C99A2E); padding:13px 20px; border-radius:12px; box-shadow:0 6px 16px rgba(176,133,38,.3); }
+.dc-oneoff { font-size:11.5px; color:#8C8F82; text-align:center; margin:9px 2px 0; line-height:1.45; }
+.dc-planlink { font-size:12.5px; color:#52564A; text-align:center; margin:14px 4px 2px; }
+.dc-planlink a { color:#0A6B3E; font-weight:800; text-decoration:none; }
 .dc-dy.today .dc-dn { color:#FBE7A8; }
 .dc-dy.today { box-shadow:inset 0 0 0 1.5px rgba(125,224,172,.7); }
 .dc-plus { display:block; text-align:center; margin-top:8px; font-size:15px; font-weight:700; color:rgba(231,200,121,.35); }
