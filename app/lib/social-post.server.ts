@@ -54,15 +54,36 @@ async function publishContent(
   // the "which post made money" loop starts at this line.
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const goUrl = base ? `${base}/go/${item.questlineId}/${item.slotIdx}` : "";
-  const caption = `${item.productTitle}${item.topic ? ` — ${item.topic}` : ""}`.trim() || "New from our shop";
-  const title = goUrl ? `${caption}\n🛒 ${goUrl}` : caption;
-  const res = await publishPost(profileKey, {
-    title,
-    mediaUrl,
-    isVideo: item.type === "video",
+
+  // AI caption + per-platform hashtags (cached on the asset after the first
+  // spend). Falls back to the plain caption if generation fails — a post
+  // never blocks on the writer.
+  const isVideo = item.type === "video";
+  const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("./social-caption.server");
+  const captions = await getOrMakeCaptions(item.assetId, item.shopId, {
+    productTitle: item.productTitle,
+    topic: item.topic,
+    isVideo,
     platforms,
   });
-  return res.ok ? { ok: true, urls: res.urls } : { ok: false, pending: res.error };
+  const fbText = fallbackCaption({ productTitle: item.productTitle, topic: item.topic, isVideo, platforms }).text;
+
+  // Each platform gets its own tailored caption + tag set, so we post
+  // per-platform rather than one blanket call.
+  const urls: Record<string, string> = {};
+  let anyOk = false;
+  let lastErr: string | undefined;
+  for (const p of platforms) {
+    const title = buildPostTitle(captions[p], goUrl, fbText);
+    const res = await publishPost(profileKey, { title, mediaUrl, isVideo, platforms: [p] });
+    if (res.ok) {
+      anyOk = true;
+      if (res.urls) Object.assign(urls, res.urls);
+    } else {
+      lastErr = res.error;
+    }
+  }
+  return anyOk ? { ok: true, urls } : { ok: false, pending: lastErr };
 }
 
 let lastScan = 0;

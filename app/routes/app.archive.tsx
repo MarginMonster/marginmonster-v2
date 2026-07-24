@@ -154,8 +154,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (platforms.length === 0) return json({ error: "Connect a social account first, then post." });
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const mediaUrl = /^https?:\/\//.test(media) ? media : base ? `${base}${media}` : media;
-    const res = await publishPost(profileKey, { title, mediaUrl, isVideo: asset.type === "VIDEO_AD", platforms });
-    if (!res.ok) return json({ error: `Posting failed (${res.error || "unknown"}) — check your connected accounts.` });
+    const isVideo = asset.type === "VIDEO_AD";
+
+    // AI caption + per-platform hashtags (cached on the asset), same writer the
+    // auto-poster uses. Each platform gets its own tuned caption, so we post
+    // per-platform and report success if any landed.
+    const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("../lib/social-caption.server");
+    const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
+    const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
+    const urls: Record<string, string> = {};
+    let anyOk = false;
+    let lastErr: string | undefined;
+    for (const p of platforms) {
+      const postTitle = buildPostTitle(captions[p], "", fbText);
+      const r = await publishPost(profileKey, { title: postTitle, mediaUrl, isVideo, platforms: [p] });
+      if (r.ok) { anyOk = true; if (r.urls) Object.assign(urls, r.urls); }
+      else lastErr = r.error;
+    }
+    if (!anyOk) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your connected accounts.` });
     await db.asset.update({ where: { id }, data: { status: "PUBLISHED" } });
     return json({ posted: platforms.join(", ") });
   }
