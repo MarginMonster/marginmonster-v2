@@ -52,24 +52,9 @@ const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; 
 // Wearable products should be modeled (worn) by the presenter, not held.
 const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
 
-// One-tap art direction for image stills. Each prompt PINS the backdrop,
-// lighting and palette explicitly so the output reliably matches the chip —
-// vague vibes drift dark/moody; named colors and light levels don't.
-// mode drives the accuracy ladder: "backdrop" = the REAL product photo gets
-// cut out and composited onto a generated scene (pixel-perfect product);
-// "scene" = generative placement with identity model + vision QA.
-const STYLES: { label: string; prompt: string; mode: "backdrop" | "scene" }[] = [
-  { label: "☀️ Bright & Airy", mode: "backdrop", prompt: "backdrop: bright white-to-soft-pastel seamless; lighting: abundant soft daylight, high-key and luminous; mood: fresh, clean, optimistic; crisp gentle shadows, airy minimal styling" },
-  { label: "🎬 Clean Studio", mode: "backdrop", prompt: "backdrop: light seamless studio sweep in white or warm gray; lighting: big soft diffused key light with a subtle rim light, bright and even; mood: minimalist premium, precise soft shadows" },
-  { label: "🏠 Lifestyle", mode: "scene", prompt: "backdrop: cozy lived-in home scene with the product in real everyday use; lighting: soft natural window light, warm and bright; mood: candid and inviting, shallow depth of field" },
-  { label: "🌤 Golden Hour", mode: "scene", prompt: "backdrop: sun-drenched outdoor scene; lighting: warm low golden-hour backlight with a soft lens flare, glowing and bright; mood: breezy, natural, aspirational, gentle long shadows" },
-  { label: "🌿 Organic", mode: "backdrop", prompt: "backdrop: natural textures — linen, light wood, stone, fresh greenery; lighting: soft bright daylight; mood: earthy, calm, wholesome; muted natural palette of creams, sages and warm neutrals" },
-  { label: "⚡ Bold Pop", mode: "backdrop", prompt: "backdrop: one single vivid saturated color that complements the product (e.g. sunny yellow, coral, electric blue) — flat and graphic; lighting: bright punchy studio light; mood: playful confident color-block energy" },
-  { label: "🌊 Splash & Fresh", mode: "scene", prompt: "backdrop: cool aqua tones with dynamic water splash or mist droplets frozen mid-air around the product; lighting: bright crisp studio light; mood: refreshing, energetic, ultra-clean" },
-  { label: "🤳 UGC Candid", mode: "scene", prompt: "authentic user-generated phone-photo look: real everyday setting, natural window light, slightly imperfect hand-held framing; bright and true-to-life, unpolished and relatable" },
-  { label: "💎 Luxury", mode: "backdrop", prompt: "backdrop: polished marble and brushed metal with generous negative space; lighting: controlled soft spotlighting with elegant deliberate shadows; mood: ultra-luxury editorial, rich and refined (a deliberately darker, dramatic look)" },
-  { label: "🖤 Noir", mode: "backdrop", prompt: "backdrop: deep dark charcoal; lighting: a single hard cinematic spotlight, film-noir chiaroscuro with inky shadows; mood: moody, dramatic, high-contrast premium (a deliberately DARK look)" },
-];
+// Image art direction lives in the Ad Templates (statue previews) + one free
+// tweak/describe box — the old parallel style-chip system was redundant and
+// confusing next to them, so it's gone.
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
 // One-tap blog angles — the picker that standardizes what kind of article you get.
@@ -413,12 +398,11 @@ export default function Studio() {
       if (tab === "image") {
         if (direction.trim()) fields.scene = direction.trim();
         if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
-        // Template picked → deterministic preview-matched delivery. Otherwise
-        // accuracy-ladder mode: chip carries its own; custom text = scene
-        // (generative); no direction = backdrop (photo-true composite).
-        if (templateKey && !avatarId) fields.templateKey = templateKey;
-        const chip = STYLES.find((s) => s.prompt === direction.trim());
-        fields.styleMode = chip ? chip.mode : direction.trim() ? "scene" : "backdrop";
+        // Template picked → preview-matched delivery (tweak text re-stages the
+        // same scene). Otherwise: text = generative scene, blank = photo-true
+        // bright composite.
+        if (templateKey && !avatarId && !service) fields.templateKey = templateKey;
+        fields.styleMode = direction.trim() ? "scene" : "backdrop";
       }
     }
     if (service) fields.service = "1";
@@ -593,33 +577,31 @@ export default function Studio() {
             </>
           ) : (
             <>
-              {tab === "image" && (
+              {tab === "image" && !service && !avatarId && (
                 <>
                   <div className="cfg-lbl cs-lblrow"><span>Ad template — what you see is what you get</span>{templateKey && <button type="button" className="cs-viewall" onClick={() => setTemplateKey(null)}>Clear</button>}</div>
                   <div className="cfg-cast cs-ctypes">
                     {AD_TEMPLATES.map((t) => (
-                      <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setDirection(""); }}>
+                      <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
                         <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{t.emoji} {t.name}</span>
                         <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
                       </button>
                     ))}
                   </div>
-                  <p className="cfg-note cs-ctnote">The statue marks where <b>your product</b> goes — same scene, same light, same layout. Ad text is written fresh for your product every time.</p>
+                  <p className="cfg-note cs-ctnote">The statue marks where <b>your product</b> goes — same scene, same light, same layout. Ad text is written fresh for your product every time. No template = EasyMode stages a bright clean ad.</p>
                 </>
               )}
-              <div className="cfg-lbl">{tab === "blog" ? "Pick an angle" : templateKey ? "Or freestyle instead" : "Direction"} <span className="cs-opt">optional</span></div>
-              {tab === "image" && (
-                <div className="cs-styles">
-                  {STYLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => { setDirection(direction === s.prompt ? "" : s.prompt); setTemplateKey(null); }}>{s.label}</button>)}
-                </div>
-              )}
               {tab === "blog" && (
-                <div className="cs-styles">
-                  {BLOG_ANGLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>)}
-                </div>
+                <>
+                  <div className="cfg-lbl">Pick an angle <span className="cs-opt">optional</span></div>
+                  <div className="cs-styles">
+                    {BLOG_ANGLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>)}
+                  </div>
+                </>
               )}
-              <input className="cs-input" type="text" value={direction} maxLength={300} placeholder={tab === "image" ? "Tap a style above, or describe your own…" : "Tap an angle above, or describe your own topic…"} onChange={(e) => setDirection(e.target.value)} />
+              {tab === "image" && <div className="cfg-lbl">{templateKey ? "Tweaks" : "Describe it"} <span className="cs-opt">optional</span></div>}
+              <input className="cs-input" type="text" value={direction} maxLength={300} placeholder={tab === "image" ? (templateKey ? "Any edits — e.g. make the wall sage green, add pine branches…" : "Describe the scene you want — or leave blank for bright & clean…") : "Tap an angle above, or describe your own topic…"} onChange={(e) => setDirection(e.target.value)} />
             </>
           )}
 

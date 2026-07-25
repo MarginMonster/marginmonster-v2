@@ -349,7 +349,7 @@ export function ensureAdTemplate(key: string): void {
       let platePath = adTemplateFile("plate", key);
       if (!platePath) {
         const plateUrl = await repRun("black-forest-labs/flux-dev", {
-          prompt: t.plate, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+          prompt: `${t.plate}. Iconic award-winning print-advertisement photography quality.`, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
         });
         const res = await fetch(plateUrl);
         if (!res.ok) return;
@@ -581,16 +581,18 @@ export async function generateImageAd(
         const t = AD_TEMPLATE_BY_KEY[templateKey];
         const platePath = t ? adTemplateFile("plate", t.key) : null;
         if (t && !platePath) ensureAdTemplate(t.key); // build for next time; fall through this run
-        if (t && platePath && t.kind === "exact") {
+        // Merchant tweak text on an exact template → re-stage the same scene
+        // with the edits applied (a composite can't repaint the wall).
+        if (t && platePath && t.kind === "exact" && !stylePrompt) {
           const cutout = await removeBackground(productImageUrl!);
           if (cutout) {
             const fn = await compositeProductStill(platePath, cutout);
             if (fn) { usedPrompt = t.plate; localFileName = fn; genMeta.method = `template:${t.key}`; }
           }
-        } else if (t && platePath && t.kind === "staged") {
+        } else if (t && platePath) {
           const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
           const plateUrl = base ? `${base}/ad-templates/plate-${t.key}.jpg` : null;
-          usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}. The product stays identical to its photo: same shape, colors, logos and details, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
+          usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}.${stylePrompt ? ` Apply this one change the merchant asked for: ${stylePrompt.slice(0, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
           const stagedOnce = async (): Promise<string> => {
             const inputs = plateUrl ? [plateUrl, productImageUrl] : [productImageUrl];
             try { return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: inputs, output_format: "jpg" }); }

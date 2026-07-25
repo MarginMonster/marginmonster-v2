@@ -22,9 +22,16 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     });
   }
 
-  // Build it (and its siblings) in the background; placeholder until ready.
+  // Build it (and its siblings) in the background. Best available stand-in
+  // while it cooks: the real plate (scene without the statue), then a generic.
   ensureAdTemplate(key);
   ensureAllAdTemplates().catch(() => { /* best-effort */ });
+  const plate = adTemplateFile("plate", key);
+  if (plate) {
+    return new Response(new Uint8Array(fs.readFileSync(plate)), {
+      headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" },
+    });
+  }
   const fb = path.join(process.cwd(), "public", "content-types", "ph.png");
   if (!fs.existsSync(fb)) return new Response("Not ready", { status: 404 });
   return new Response(new Uint8Array(fs.readFileSync(fb)), {
