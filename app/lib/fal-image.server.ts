@@ -69,12 +69,12 @@ export async function submitCompose(
       ? `The exact person from the first image WEARING the ${productTitle || "item"} from the second image — ` +
         `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
         `${integrity} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
-        `Waist-up vertical portrait, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
+        `Waist-up vertical portrait with a little clear headroom above the head, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
       : `The person from the first image holding the ${productTitle || "product"} from the second image, ` +
         `product facing the camera and clearly visible — small items held up at chest height in one hand with a natural relaxed grip; ` +
         `large items held upright with both hands or stood beside them at full size. ` +
         `${integrity} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-        `Candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture.`;
+        `Candid smartphone selfie UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },

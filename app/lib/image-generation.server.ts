@@ -14,27 +14,31 @@ import { anthropicText } from "./anthropic.server";
  * the video captions use). Everything here is best-effort: any failure falls
  * back to the clean image, never blocking generation. */
 
-/** ≤5-word headline + ≤3-word CTA, written to sell the product/offer. */
-async function adCopy(productTitle: string, tone: string | undefined, direction: string | undefined, serviceMode: boolean): Promise<{ headline: string; cta: string } | null> {
+/** Poster-grade ad copy: a STATEMENT headline (the kind award ads open with),
+ *  an optional small support line, and a short CTA. */
+async function adCopy(productTitle: string, tone: string | undefined, direction: string | undefined, serviceMode: boolean): Promise<{ headline: string; sub: string; cta: string } | null> {
   try {
     const prompt = [
-      `Write ad-creative text to overlay on a ${serviceMode ? "service/offer" : "product"} image ad.`,
+      `Write poster-style ad copy to overlay on a ${serviceMode ? "service/offer" : "product"} image ad — think award-winning print ads: a bold STATEMENT headline that stops the scroll, not a generic tagline.`,
       `${serviceMode ? "Offer" : "Product"}: "${productTitle}".`,
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
-      `Return ONLY JSON: {"headline":"...","cta":"..."}.`,
-      `headline: MAX 5 words, punchy, benefit-first, no end punctuation. cta: MAX 3 words (e.g. "Shop now", "Get yours", "Start free").`,
+      `Return ONLY JSON: {"headline":"...","sub":"...","cta":"..."}.`,
+      `headline: 3 to 7 words, a confident, witty or provocative STATEMENT (a period at the end is allowed and often stronger).`,
+      `sub: MAX 8 words, one small supporting line that lands the benefit — or "" if the headline says it all.`,
+      `cta: MAX 3 words (e.g. "Shop now", "Get yours", "Start free").`,
       `No quotes, emoji, or hashtags inside the values.`,
     ].filter(Boolean).join("\n");
-    const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 120 });
+    const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 160 });
     const m = raw && raw.match(/\{[\s\S]*\}/);
     if (!m) return null;
-    const j = JSON.parse(m[0]) as { headline?: string; cta?: string };
+    const j = JSON.parse(m[0]) as { headline?: string; sub?: string; cta?: string };
     const clean = (s: string | undefined, n: number) => (s || "").replace(/["'“”]/g, "").trim().split(/\s+/).slice(0, n).join(" ");
-    const headline = clean(j.headline, 6);
+    const headline = clean(j.headline, 8);
+    const sub = clean(j.sub, 9);
     const cta = clean(j.cta, 3);
     if (!headline) return null;
-    return { headline, cta };
+    return { headline, sub, cta };
   } catch { return null; }
 }
 
@@ -56,7 +60,7 @@ function ffmpegBin(): string | null {
   }
   return (ffmpegPath as unknown as string) || null;
 }
-async function overlayAdText(dir: string, srcName: string, headline: string, cta: string): Promise<string | null> {
+async function overlayAdText(dir: string, srcName: string, headline: string, cta: string, sub = ""): Promise<string | null> {
   const bin = ffmpegBin();
   if (!bin) return null;
   const src = path.join(dir, srcName);
@@ -67,19 +71,39 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
   if (!fs.existsSync(fontFile)) return null;
   const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
   const hl = dt(headline).toUpperCase();
+  const sb = dt(sub).toUpperCase();
   const ct = dt(cta).toUpperCase();
   if (!hl) return null;
-  // headline auto-shrinks to fit width via ffmpeg's text_w-aware fontsize isn't
-  // available, so we pick a size that fits ~18 chars and rely on short copy.
-  const hlSize = hl.length > 22 ? 46 : hl.length > 15 ? 58 : 70;
+  // POSTER layout (the print-ad formula): a BIG statement headline across the
+  // TOP, small support line under it, tiny CTA at the bottom. Headline splits
+  // into two balanced lines when long so it stays huge instead of shrinking.
+  const words = hl.split(" ");
+  let line1 = hl, line2 = "";
+  if (hl.length > 16 && words.length > 2) {
+    let best = 1, bestDiff = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length;
+      const diff = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 18) * 4;
+      if (diff < bestDiff) { bestDiff = diff; best = i; }
+    }
+    line1 = words.slice(0, best).join(" ");
+    line2 = words.slice(best).join(" ");
+  }
+  const longest = Math.max(line1.length, line2.length);
+  const hlSize = longest > 18 ? 56 : longest > 12 ? 68 : 80;
+  const line2Y = 78 + Math.round(hlSize * 1.16);
+  const subY = (line2 ? line2Y : 78) + Math.round(hlSize * 1.16);
   const filters = [
-    // stacked translucent black boxes fake a bottom fade — brand-neutral scrim
-    // for legibility on ANY merchant's imagery (never EasyMode colors here)
-    `drawbox=x=0:y=ih-330:w=iw:h=330:color=black@0.16:t=fill`,
-    `drawbox=x=0:y=ih-250:w=iw:h=250:color=black@0.22:t=fill`,
-    `drawbox=x=0:y=ih-165:w=iw:h=165:color=black@0.28:t=fill`,
-    `drawtext=fontfile='${font}':text='${hl}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.4:x=(w-text_w)/2:y=h-200`,
-    ct ? `drawtext=fontfile='${font}':text='${ct}  >':fontsize=30:fontcolor=white@0.92:borderw=1:bordercolor=black@0.3:x=(w-text_w)/2:y=h-105` : "",
+    // top fade for headline legibility + a whisper of bottom fade for the CTA
+    // — brand-neutral black, never EasyMode colors on merchant creative
+    `drawbox=x=0:y=0:w=iw:h=300:color=black@0.16:t=fill`,
+    `drawbox=x=0:y=0:w=iw:h=210:color=black@0.2:t=fill`,
+    `drawbox=x=0:y=0:w=iw:h=120:color=black@0.24:t=fill`,
+    `drawbox=x=0:y=ih-110:w=iw:h=110:color=black@0.25:t=fill`,
+    `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.45:x=(w-text_w)/2:y=78`,
+    line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.45:x=(w-text_w)/2:y=${line2Y}` : "",
+    sb ? `drawtext=fontfile='${font}':text='${sb}':fontsize=26:fontcolor=white@0.88:borderw=1:bordercolor=black@0.35:x=(w-text_w)/2:y=${subY}` : "",
+    ct ? `drawtext=fontfile='${font}':text='${ct}  >':fontsize=28:fontcolor=white@0.94:borderw=1:bordercolor=black@0.35:x=(w-text_w)/2:y=h-72` : "",
   ].filter(Boolean).join(",");
   const args = ["-y", "-i", src, "-vf", filters, "-frames:v", "1", "-q:v", "3", out];
   const ok = await new Promise<boolean>((resolve) => {
@@ -225,7 +249,7 @@ export async function generateImageAd(
                   const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
                   const copy = await adCopy(productTitle, voiceTone, stylePrompt, false);
                   if (copy) {
-                    const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta);
+                    const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
                     if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
                   }
                 } catch (e) { console.error("[image-ad] presenter overlay skipped:", e instanceof Error ? e.message : e); }
@@ -270,21 +294,21 @@ export async function generateImageAd(
   let usedPrompt = "";
   let createRes: Response;
   if (serviceMode) {
-    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, warm natural lighting. ${visual.imageStyle || "clean modern commercial photography"}. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
+    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, warm natural lighting. ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify({ input: { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
     });
   } else if (hasProductImg) {
-    usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising photograph. ${stylePrompt ? `${stylePrompt}. ` : ""}${direction}. ${visual.imageStyle || "clean professional product photography"}. Keep the product identical in shape, color, materials, logos and every detail. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
+    usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${stylePrompt ? `${stylePrompt}. ` : ""}${direction}. ${visual.imageStyle || "clean professional product photography"}. Bold minimal print-ad composition: the product commanding the lower two-thirds of the frame, generous clean negative space across the top for a headline, simple confident backdrop. Keep the product identical in shape, color, materials, logos and every detail, at its true real-world scale. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify({ input: { prompt: usedPrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" } }),
     });
   } else {
-    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Bold minimal print-ad composition: the product commanding the lower two-thirds of the frame, generous clean negative space across the top for a headline, simple confident backdrop. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
       method: "POST",
       headers: jsonHeaders,
@@ -342,7 +366,7 @@ export async function generateImageAd(
           const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
           const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode);
           if (copy) {
-            const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta);
+            const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
             if (adName) {
               localUrl = `/renders/${adName}`;
               try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ }

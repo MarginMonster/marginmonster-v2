@@ -41,7 +41,7 @@ const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; 
   { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/content-types/cartoon/brick.png?v=2", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
   { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/content-types/cartoon/pixar.png?v=2", blurb: "Big-studio 3D character film — glossy and cinematic" },
   { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/content-types/cartoon/retroanime.png?v=2", blurb: "90s VHS anime — sunset palettes and speed lines" },
-  { key: "papercut", name: "Paper Cutout", emoji: "📄", tint: "#0F9152", cover: "/content-types/cartoon/papercut.png?v=2", blurb: "Construction-paper cutouts with handmade jitter" },
+  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/content-types/cartoon/vintagetoon.png?v=2", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
   { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/content-types/cartoon/puppet.png?v=2", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
   { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/content-types/cartoon/clay.png?v=2", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
