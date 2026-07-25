@@ -284,7 +284,7 @@ export default function Studio() {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const error = actionData && "error" in actionData ? actionData.error : null;
-  const queued = actionData && "queued" in actionData ? actionData.queued : null;
+  const queued = actionData && "queued" in actionData ? (actionData as { queued: string }).queued : null;
 
   // Deep-link support: the dashboard "Next move" card links here with ?tab= and
   // ?product=, so the right format and product are pre-selected on arrival.
@@ -315,7 +315,7 @@ export default function Studio() {
   const [doWhat, setDoWhat] = useState("");
   const [where, setWhere] = useState("");
   // Import-by-URL (works with or without a Shopify catalog).
-  const [extraProducts, setExtraProducts] = useState<{ title: string; image: string | null; url: string | null }[]>([]);
+  const [extraProducts, setExtraProducts] = useState<{ title: string; image: string | null; url: string | null; apparel?: boolean }[]>([]);
   const [urlInput, setUrlInput] = useState("");
   const [showImport, setShowImport] = useState(false);
   const allProducts = [...extraProducts, ...products];

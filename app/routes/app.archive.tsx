@@ -326,7 +326,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (errs1.length || !target) return json({ error: errs1[0]?.message || "Shopify refused the upload slot." });
       const fd = new FormData();
       for (const p of target.parameters) fd.append(p.name, p.value);
-      fd.append("file", new Blob([buf], { type: mime }), filename);
+      fd.append("file", new Blob([new Uint8Array(buf)], { type: mime }), filename);
       const up = await fetch(target.url, { method: "POST", body: fd });
       if (!up.ok && up.status !== 201) return json({ error: `Upload failed (${up.status}).` });
       const media = await admin.graphql(

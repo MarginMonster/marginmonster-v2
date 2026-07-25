@@ -41,7 +41,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
           // If we can't write locally (disk full), still serve from memory.
           console.error("[renders] rehydrate write failed:", e instanceof Error ? e.message : e);
           const mime = obj.contentType;
-          return new Response(obj.buf, {
+          return new Response(new Uint8Array(obj.buf), {
             headers: { "Content-Type": mime, "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=31536000, immutable", "Content-Length": String(obj.buf.length) },
           });
         }
@@ -78,7 +78,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
         const len = end - start + 1;
         const buf = Buffer.allocUnsafe(len);
         fs.readSync(fd, buf, 0, len, start);
-        return new Response(buf, {
+        return new Response(new Uint8Array(buf), {
           status: 206,
           headers: {
             ...baseHeaders,
@@ -93,7 +93,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
 
     // No range → whole file as a buffer (these clips are a few MB).
     const buf = fs.readFileSync(filePath);
-    return new Response(buf, { headers: { ...baseHeaders, "Content-Length": String(size) } });
+    return new Response(new Uint8Array(buf), { headers: { ...baseHeaders, "Content-Length": String(size) } });
   } catch (e) {
     console.error("[renders] serve failed:", e);
     return new Response("Server error", { status: 500 });
