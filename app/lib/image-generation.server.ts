@@ -306,10 +306,13 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
  * and result match pixel-for-pixel except bottle→product. */
 
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
-// v6: plates must render fresh at the CURRENT version — earlier builds reused
-// old dark plates through the version fallback, so every preview looked like
-// the same murky spotlight scene instead of its own distinct ad style.
-const AD_TEMPLATE_VERSION = 6;
+// v7: statue re-forged with nano-banana + a vision spelling check — flux-dev
+// kept garbling the "EASYMODE" label into alphabet soup.
+const AD_TEMPLATE_VERSION = 7;
+// Plates version separately: they only rebuild when their PROMPTS change.
+// The v6 plates rendered fresh and bright, so the v7 statue swap reuses the
+// exact scenes merchants already saw.
+const PLATE_VERSION = 6;
 const templateInFlight = new Set<string>();
 
 export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): string | null {
@@ -318,17 +321,24 @@ export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): 
     const p = path.join(AD_TEMPLATE_DIR, `statue-v${AD_TEMPLATE_VERSION}.png`);
     return fs.existsSync(p) ? p : null;
   }
-  // Current version first, then older real builds — a version bump upgrades
-  // in place, it never regresses the picker to placeholders while rebuilding.
+  if (kind === "plate") {
+    // Exact current plate version only — previews and deliveries must build
+    // on the SAME scene, and stale plates are how the dark-preview bug happened.
+    const p = path.join(AD_TEMPLATE_DIR, `plate-v${PLATE_VERSION}-${key}.jpg`);
+    return fs.existsSync(p) ? p : null;
+  }
+  // Previews: current version first, then older real builds — a version bump
+  // upgrades in place, it never regresses the picker while rebuilding.
   for (let v = AD_TEMPLATE_VERSION; v >= 1; v--) {
-    const p = path.join(AD_TEMPLATE_DIR, `${kind}-v${v}-${key}.jpg`);
+    const p = path.join(AD_TEMPLATE_DIR, `preview-v${v}-${key}.jpg`);
     if (fs.existsSync(p)) return p;
   }
   return null;
 }
 
 function currentTemplateFile(kind: "preview" | "plate", key: string): string {
-  return path.join(AD_TEMPLATE_DIR, `${kind}-v${AD_TEMPLATE_VERSION}-${key}.jpg`);
+  const v = kind === "plate" ? PLATE_VERSION : AD_TEMPLATE_VERSION;
+  return path.join(AD_TEMPLATE_DIR, `${kind}-v${v}-${key}.jpg`);
 }
 
 async function ensureStatue(): Promise<string | null> {
@@ -336,11 +346,35 @@ async function ensureStatue(): Promise<string | null> {
   if (existing) return existing;
   // The stand-in product: a sleek EASYMODE-branded drink bottle in brand
   // colors — a metaphorical product that marks exactly where the merchant's
-  // real product will go.
-  const raw = await repRun("black-forest-labs/flux-dev", {
-    prompt: 'Professional product photograph of a sleek modern beverage bottle for a brand called "EASYMODE": glossy clean WHITE bottle with a bright kelly-GREEN cap, a crisp white label with the word "EASYMODE" printed in bold black uppercase letters, minimal premium design, only white green and black in the design, bottle standing upright, centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, commercial beverage photography. Label text spelled exactly "EASYMODE". No other objects, no hands, no characters.',
-    num_inference_steps: 30, guidance: 3.5, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
-  });
+  // real product will go. nano-banana first: it renders label text faithfully,
+  // where flux-dev garbled "EASYMODE" into alphabet soup.
+  const prompt = 'Professional product photograph of a sleek modern beverage bottle for a brand called "EASYMODE": glossy clean WHITE bottle with a bright kelly-GREEN cap, a crisp white label with the word "EASYMODE" printed in bold black uppercase letters, minimal premium design, only white green and black in the design, bottle standing upright, centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, commercial beverage photography. The label text must be spelled exactly "EASYMODE" — E-A-S-Y-M-O-D-E, one word. No other objects, no hands, no characters.';
+  let raw: string;
+  try {
+    raw = await repRun("google/nano-banana", { prompt, output_format: "jpg" });
+  } catch {
+    raw = await repRun("black-forest-labs/flux-dev", {
+      prompt, num_inference_steps: 30, guidance: 3.5, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+    });
+  }
+  // Spelling QA — a misspelled stand-in poisons every preview. One kontext
+  // text-fix retry; QA itself is best-effort (no key → ship what we have).
+  try {
+    const { anthropicVision } = await import("./anthropic.server");
+    const verdict = await anthropicVision(
+      'Does the text on this bottle\'s label read exactly "EASYMODE" (one word, spelled E-A-S-Y-M-O-D-E, right-side up)? Reply with only YES or NO.',
+      [raw]
+    );
+    if (!/\bYES\b/i.test(verdict)) {
+      console.log("[ad-templates] statue label misspelled — applying kontext text fix");
+      raw = await repRun("black-forest-labs/flux-kontext-pro", {
+        prompt: 'Replace the text on the bottle\'s label so it reads exactly "EASYMODE" in bold black uppercase letters, clean and legible. Keep everything else about the bottle and image identical.',
+        input_image: raw, aspect_ratio: "1:1", output_format: "jpg",
+      });
+    }
+  } catch (e) {
+    console.error("[ad-templates] statue spelling QA skipped:", e instanceof Error ? e.message.slice(0, 120) : e);
+  }
   const cutout = await removeBackground(raw);
   if (!cutout) return null;
   const res = await fetch(cutout);
@@ -364,20 +398,16 @@ export function ensureAdTemplate(key: string): void {
       const statue = await ensureStatue();
       if (!statue) return;
       fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
-      // Current-version plate ONLY — the serving fallback keeps old previews
-      // visible while we rebuild, but the BUILD must never inherit a stale
-      // plate or the new preview just re-dresses the old scene.
-      let platePath: string | null = currentTemplateFile("plate", key);
-      if (!fs.existsSync(platePath)) {
-        platePath = null;
-      }
+      // adTemplateFile("plate") is exact-current-version — the build never
+      // inherits a stale plate, or the new preview just re-dresses the old scene.
+      let platePath = adTemplateFile("plate", key);
       if (!platePath) {
         const plateUrl = await repRun("black-forest-labs/flux-dev", {
           prompt: `${t.plate}. Iconic award-winning print-advertisement photography quality.`, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
         });
         const res = await fetch(plateUrl);
         if (!res.ok) return;
-        platePath = path.join(AD_TEMPLATE_DIR, `plate-v${AD_TEMPLATE_VERSION}-${key}.jpg`);
+        platePath = currentTemplateFile("plate", key);
         fs.writeFileSync(platePath, Buffer.from(await res.arrayBuffer()));
       }
       // Preview = statue on the plate + placeholder copy (real ads write
