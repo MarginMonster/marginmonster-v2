@@ -18,7 +18,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   const real = adTemplateFile(kind, key);
   if (real) {
     return new Response(new Uint8Array(fs.readFileSync(real)), {
-      headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
+      headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
     });
   }
 

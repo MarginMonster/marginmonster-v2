@@ -3863,7 +3863,9 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .cs-cartimg { background-position:center; background-size:cover; }
 /* BIG picker tiles — renders deserve to be seen. Used by the ad-template,
    cartoon-style and singer-style rows. */
-.cs-ctypes.bigtiles .cs-ctype { width:216px; }
-.cs-ctypes.bigtiles .cs-ctype .cs-ctimg { height:134px; border-radius:16px; }
+.cs-ctypes.bigtiles { flex-wrap:wrap; overflow-x:visible; }
+.cs-ctypes.bigtiles .cs-ctype { width:284px; }
+.cs-ctypes.bigtiles .cs-ctype .cs-ctimg { height:176px; border-radius:18px; }
+.cs-ctypes.bigtiles .cs-ctype .ca-nm { font-size:14.5px; }
 .cs-ctype.sel .cs-ctimg { box-shadow:inset 0 0 0 2px #0F9152, 0 6px 16px rgba(12,122,70,.2); }
 .cs-ctype.sel .ca-nm { color:#0A6B3E; }

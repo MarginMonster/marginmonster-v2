@@ -29,7 +29,7 @@ type CType = "avatar" | "highlight" | "cartoon" | "jingle";
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
   { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png?v=2", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png?v=2", sub: "Cinematic motion, no presenter", live: true },
-  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg", sub: "Your presenter & product, redrawn viral-style", live: true },
+  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=2", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/content-types/ew.png?v=2", sub: "Your avatar SINGS your product's theme song", live: true },
 ];
 
@@ -39,14 +39,14 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
 // flux generations of one cast member redrawn per style (the server builds
 // them on first visit; illustrated fallbacks serve until then).
 const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
-  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/style-tiles/dreamanime.jpg", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
-  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/style-tiles/toyfigure.jpg", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/style-tiles/brick.jpg", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
-  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/style-tiles/pixar.jpg", blurb: "Big-studio 3D character film — glossy and cinematic" },
-  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/style-tiles/retroanime.jpg", blurb: "90s VHS anime — sunset palettes and speed lines" },
-  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/style-tiles/vintagetoon.jpg", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
-  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/style-tiles/puppet.jpg", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
-  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/style-tiles/clay.jpg", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/style-tiles/dreamanime.jpg?v=2", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
+  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/style-tiles/toyfigure.jpg?v=2", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
+  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/style-tiles/brick.jpg?v=2", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
+  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/style-tiles/pixar.jpg?v=2", blurb: "Big-studio 3D character film — glossy and cinematic" },
+  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/style-tiles/retroanime.jpg?v=2", blurb: "90s VHS anime — sunset palettes and speed lines" },
+  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/style-tiles/vintagetoon.jpg?v=2", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
+  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/style-tiles/puppet.jpg?v=2", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
+  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/style-tiles/clay.jpg?v=2", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -583,7 +583,7 @@ export default function Studio() {
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {AD_TEMPLATES.map((t) => (
                       <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=3)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{t.emoji} {t.name}</span>
                         <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
                       </button>

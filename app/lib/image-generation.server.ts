@@ -306,9 +306,9 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
  * preview and result match pixel-for-pixel except statue→product. */
 
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
-// v2: EasyMode Statue redesigned — glossy white + EasyMode-green vinyl toy
-// with thick black outlines (v1's bronze monster read as an off-brand gremlin)
-const AD_TEMPLATE_VERSION = 2;
+// v3: statue prompt tightened — pure white + green vinyl toy, hard bans on
+// the bronze/fur/teeth drift that made v1-v2 read as gremlins
+const AD_TEMPLATE_VERSION = 3;
 const templateInFlight = new Set<string>();
 
 export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): string | null {
@@ -336,8 +336,8 @@ async function ensureStatue(): Promise<string | null> {
   // THE EasyMode Statue: a designer vinyl toy — white glossy plastic, EasyMode
   // green accents, bold black outlines like a 2D character made physical.
   const raw = await repRun("black-forest-labs/flux-dev", {
-    prompt: "Product photograph of a small collectible designer vinyl toy figurine: a friendly rounded mascot character made of glossy WHITE plastic with vibrant fresh-green accents (green belly patch, green feet), outlined with THICK BOLD BLACK lines like a 2D cartoon character turned into a physical toy, two big friendly round eyes, a simple cheerful smile, smooth minimal shapes, standing on a small round white base, centered on a pure white seamless background, crisp bright studio lighting, high detail",
-    num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+    prompt: "Minimalist designer vinyl art toy product photo: a cute simple rounded blob mascot figurine made of smooth GLOSSY PURE WHITE plastic, with a bright kelly-green belly patch and green rounded feet as the ONLY other color, thick bold black outline edges like a flat 2D cartoon sticker turned into a 3D toy, two simple black dot eyes and a small black smile, extremely clean and minimal like a premium collectible art toy, standing on a small round white base, centered on a pure white seamless studio background, bright soft even lighting. Colors: ONLY white, green and black line work. No brown, no bronze, no metal, no fur, no texture, no teeth, no claws, no monster features.",
+    num_inference_steps: 30, guidance: 3.5, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
   });
   const cutout = await removeBackground(raw);
   if (!cutout) return null;
