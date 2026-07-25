@@ -42,10 +42,11 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
 const dt = (s: string) => s.replace(/\\/g, "").replace(/[':%]/g, "").replace(/[^\w \-!?.&]/g, "").trim();
 
 /**
- * Composite a headline + CTA onto a square still with ffmpeg — a deep-green
- * banknote band across the bottom, white headline, gold CTA. Writes a new file
- * and returns its name, or null if anything goes wrong (caller keeps the clean
- * image). Assumes ~1024px square output from the generators.
+ * Composite a headline + CTA onto a square still with ffmpeg — a NEUTRAL
+ * bottom fade-to-dark scrim with white type, the universal ad-creative look.
+ * These images belong to the MERCHANT's brand, so no EasyMode colors ever
+ * appear on them. Writes a new file and returns its name, or null if anything
+ * goes wrong (caller keeps the clean image). Assumes ~1024px square output.
  */
 function ffmpegBin(): string | null {
   // System ffmpeg first — the ffmpeg-static Linux build ships WITHOUT drawtext,
@@ -72,11 +73,13 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
   // available, so we pick a size that fits ~18 chars and rely on short copy.
   const hlSize = hl.length > 22 ? 46 : hl.length > 15 ? 58 : 70;
   const filters = [
-    // deep-green translucent band across the bottom for legibility + brand
-    `drawbox=x=0:y=ih-280:w=iw:h=280:color=0x0A3421@0.62:t=fill`,
-    `drawbox=x=0:y=ih-284:w=iw:h=4:color=0xE7C879@0.75:t=fill`,
-    `drawtext=fontfile='${font}':text='${hl}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.35:x=(w-text_w)/2:y=h-205`,
-    ct ? `drawtext=fontfile='${font}':text='${ct} >':fontsize=32:fontcolor=0xE7C879:x=(w-text_w)/2:y=h-110` : "",
+    // stacked translucent black boxes fake a bottom fade — brand-neutral scrim
+    // for legibility on ANY merchant's imagery (never EasyMode colors here)
+    `drawbox=x=0:y=ih-330:w=iw:h=330:color=black@0.16:t=fill`,
+    `drawbox=x=0:y=ih-250:w=iw:h=250:color=black@0.22:t=fill`,
+    `drawbox=x=0:y=ih-165:w=iw:h=165:color=black@0.28:t=fill`,
+    `drawtext=fontfile='${font}':text='${hl}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.4:x=(w-text_w)/2:y=h-200`,
+    ct ? `drawtext=fontfile='${font}':text='${ct}  >':fontsize=30:fontcolor=white@0.92:borderw=1:bordercolor=black@0.3:x=(w-text_w)/2:y=h-105` : "",
   ].filter(Boolean).join(",");
   const args = ["-y", "-i", src, "-vf", filters, "-frames:v", "1", "-q:v", "3", out];
   const ok = await new Promise<boolean>((resolve) => {

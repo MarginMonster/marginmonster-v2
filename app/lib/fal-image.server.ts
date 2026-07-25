@@ -54,8 +54,9 @@ export async function submitCompose(
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
   // Product-integrity guard — the #1 compose failure is the product getting
-  // warped/restyled. Lock it to the reference image.
-  const integrity = `Keep the ${productTitle || "product"} identical to the second image — same exact shape, colors, materials, logos and text; do not distort, warp, restyle, crop oddly or add any text.`;
+  // warped/restyled, and the #2 is it getting MINIATURIZED (a snowboard
+  // shrunk into a hand-held tube). Lock identity AND true real-world scale.
+  const integrity = `Keep the ${productTitle || "product"} identical to the second image — same exact shape, colors, materials, logos and text; do not distort, warp, restyle, crop oddly or add any text. CRITICAL: keep the product at its TRUE real-world size relative to the person — never shrink, miniaturize or turn it into a smaller object. A large item (snowboard, ski, surfboard, chair, rug…) is held upright with both hands or stood on the ground beside the presenter, even if it extends past the frame.`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
   const s = (scene || "").trim().slice(0, 220);
@@ -69,8 +70,9 @@ export async function submitCompose(
         `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
         `${integrity} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
         `Waist-up vertical portrait, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
-      : `The person from the first image holding the ${productTitle || "product"} from the second image ` +
-        `up at chest height in one hand, product facing the camera and clearly visible, natural relaxed grip. ` +
+      : `The person from the first image holding the ${productTitle || "product"} from the second image, ` +
+        `product facing the camera and clearly visible — small items held up at chest height in one hand with a natural relaxed grip; ` +
+        `large items held upright with both hands or stood beside them at full size. ` +
         `${integrity} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Candid smartphone selfie UGC style, waist-up vertical portrait, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {

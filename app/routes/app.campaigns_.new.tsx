@@ -64,7 +64,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products = (j.data?.products?.edges || []).map((e) => ({ title: e.node.title, image: e.node.featuredImage?.url || null, url: e.node.onlineStoreUrl || (e.node.handle ? `https://${session.shop}/products/${e.node.handle}` : null) }));
   } catch { /* fall through */ }
 
-  const cast = AVATARS.slice(0, 10).map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
+  // FULL Studio cast — the campaign picker carries every presenter, same as
+  // the Content Studio (it's a horizontal scroller, so the row scales).
+  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
 
   return json({
     hasPlan: !!plan?.active,
@@ -112,23 +114,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   if (bag.length === 0) return json({ error: "Add at least one product to your store — plans make content about your products." });
 
-  const created: string[] = [];
-  for (const platform of platforms) {
-    const r = await acceptQuestline({
-      shopId: shop.id,
-      templateKey: def.key,
-      avatarId: avatarId ?? shop.brandAvatarId,
-      avatarVariant: avatarId && avatarId === shop.brandAvatarId ? (shop.brandAvatarVariant ?? 0) : 0,
-      reviewMode: "REVIEW_FIRST",
-      bag,
-      platforms: [platform],
-    });
-    if (!r.ok) {
-      const partial = created.length ? ` (${created.length} plan${created.length > 1 ? "s" : ""} already started — those tokens were charged)` : "";
-      return json({ error: `${r.error}${partial}` });
-    }
-    created.push(r.id);
-  }
+  // ONE plan, ONE charge, posted to every selected account. Cross-posting the
+  // same drops costs us nothing extra, so it costs the merchant nothing extra
+  // — the questline's schedule.platforms carries the full target list and
+  // postDueSlots fans each drop out to all of them.
+  const r = await acceptQuestline({
+    shopId: shop.id,
+    templateKey: def.key,
+    avatarId: avatarId ?? shop.brandAvatarId,
+    avatarVariant: avatarId && avatarId === shop.brandAvatarId ? (shop.brandAvatarVariant ?? 0) : 0,
+    reviewMode: "REVIEW_FIRST",
+    bag,
+    platforms,
+  });
+  if (!r.ok) return json({ error: r.error });
   return redirect("/app/campaigns");
 };
 
@@ -154,9 +153,11 @@ export default function NewPlan() {
   const unlinked = (["tiktok", "instagram", "facebook"] as const).filter((p) => !linked.includes(p));
   const [addOns, setAddOns] = useState<string[]>([]); // extra accounts beyond primary
 
+  // One plan price no matter how many accounts it posts to — cross-posting
+  // the same drops is free (it doesn't generate anything new).
   const per = arch?.cost ?? 0;
   const accounts = 1 + addOns.length;
-  const total = per * accounts;
+  const total = per;
   const shortfall = Math.max(0, total - tokens); // can't cover from the wallet right now
   const overAllowance = total > allowance; // bigger than the monthly refill → upgrade territory
   const upgradeTier = tiers.find((t) => t.monthlyTokens >= total && t.monthlyTokens > allowance) || null;
@@ -258,7 +259,7 @@ export default function NewPlan() {
                       <button type="button" key={p} className={`addon${on ? " on" : ""}`} onClick={() => toggleAddOn(p)}>
                         <span className="pl-lg"><PLogo p={p} /></span>
                         <span className="ao-nm">{PLAT_LABEL[p]}</span>
-                        <span className="ao-plus">{on ? "✓ Added" : `＋ ${per.toLocaleString()} tokens`}</span>
+                        <span className="ao-plus">{on ? "✓ Added — included" : "＋ Add — included"}</span>
                       </button>
                     );
                   })}
@@ -266,18 +267,18 @@ export default function NewPlan() {
                     <Link key={p} className="addon connect" to="/app/connect">
                       <span className="pl-lg"><PLogo p={p} /></span>
                       <span className="ao-nm">{PLAT_LABEL[p]}</span>
-                      <span className="ao-plus">＋ Connect · +{per.toLocaleString()} tokens</span>
+                      <span className="ao-plus">＋ Connect · included</span>
                     </Link>
                   ))}
                 </div>
               )}
 
-              <div className="smp-promise">Once activated, EasyMode creates and auto-posts all <b>{(arch?.drops ?? 0) * accounts} drops</b> across the next 30 days — no work from you.</div>
+              <div className="smp-promise">Once activated, EasyMode creates all <b>{arch?.drops ?? 0} drops</b> across the next 30 days and auto-posts every one{accounts > 1 ? <> to <b>all {accounts} accounts</b></> : null} — no work from you.</div>
 
               <div className="smp-tok">
-                <div className="tt">Total{accounts > 1 ? ` · ${accounts} accounts` : ""}</div>
+                <div className="tt">Total{accounts > 1 ? ` · posts to ${accounts} accounts` : ""}</div>
                 <div className="tb"><b>{total.toLocaleString()}</b><span>tokens / month</span></div>
-                {accounts > 1 && <div className="tk-sub">{per.toLocaleString()} × {accounts} — each account gets its own platform-native plan</div>}
+                {accounts > 1 && <div className="tk-sub">One plan price — cross-posting to every connected account is included, free</div>}
               </div>
 
               {needNudge && (
