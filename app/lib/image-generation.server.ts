@@ -46,11 +46,12 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
 const dt = (s: string) => s.replace(/\\/g, "").replace(/[':%]/g, "").replace(/[^\w \-!?.&]/g, "").trim();
 
 /**
- * Composite a headline + CTA onto a square still with ffmpeg — a NEUTRAL
- * bottom fade-to-dark scrim with white type, the universal ad-creative look.
- * These images belong to the MERCHANT's brand, so no EasyMode colors ever
- * appear on them. Writes a new file and returns its name, or null if anything
- * goes wrong (caller keeps the clean image). Assumes ~1024px square output.
+ * Composite the ad copy onto a square still with ffmpeg — ADAPTIVE poster
+ * typography, the way real print ads set type: dark ink on light images,
+ * white on dark, a legibility fade only when the region is genuinely mid-
+ * contrast, and the CTA set as a solid button chip. Brand-neutral always —
+ * no EasyMode colors on merchant creative. Returns the new file name, or
+ * null on any failure (caller keeps the clean image). ~1024px square input.
  */
 function ffmpegBin(): string | null {
   // System ffmpeg first — the ffmpeg-static Linux build ships WITHOUT drawtext,
@@ -60,6 +61,25 @@ function ffmpegBin(): string | null {
   }
   return (ffmpegPath as unknown as string) || null;
 }
+
+/** Average luma (0-255) of a horizontal band of the image, so text color can
+ *  adapt to what it sits on. band: fraction offsets of height (0=top). */
+async function bandLuma(bin: string, src: string, yFrac: number, hFrac: number): Promise<number | null> {
+  return await new Promise((resolve) => {
+    try {
+      const vf = `crop=iw:ih*${hFrac}:0:ih*${yFrac},scale=64:64,signalstats,metadata=print:file=-`;
+      const p = spawn(bin, ["-i", src, "-vf", vf, "-frames:v", "1", "-f", "null", "-"], { stdio: ["ignore", "pipe", "ignore"] });
+      let outBuf = "";
+      p.stdout.on("data", (c: Buffer) => { outBuf += c.toString(); });
+      p.on("error", () => resolve(null));
+      p.on("close", () => {
+        const m = outBuf.match(/signalstats\.YAVG=([\d.]+)/);
+        resolve(m ? parseFloat(m[1]) : null);
+      });
+    } catch { resolve(null); }
+  });
+}
+
 async function overlayAdText(dir: string, srcName: string, headline: string, cta: string, sub = ""): Promise<string | null> {
   const bin = ffmpegBin();
   if (!bin) return null;
@@ -74,9 +94,28 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
   const sb = dt(sub).toUpperCase();
   const ct = dt(cta).toUpperCase();
   if (!hl) return null;
-  // POSTER layout (the print-ad formula): a BIG statement headline across the
-  // TOP, small support line under it, tiny CTA at the bottom. Headline splits
-  // into two balanced lines when long so it stays huge instead of shrinking.
+
+  // What's under the type? Sample the headline band and the CTA band.
+  const topLuma = (await bandLuma(bin, src, 0, 0.3)) ?? 100; // mid default = safe white+fade
+  const botLuma = (await bandLuma(bin, src, 0.86, 0.14)) ?? 100;
+
+  // Ink rules (the print-ad way): bright region → near-black ink, clean, no
+  // fade. Dark region → white ink, no fade. Mid region → white ink over a
+  // gentle localized fade so it never floats illegibly.
+  const inkFor = (luma: number) => (luma > 150 ? "dark" : luma < 90 ? "light" : "mid");
+  const topInk = inkFor(topLuma);
+  const botInk = inkFor(botLuma);
+  const hlColor = topInk === "dark" ? "0x1A1A1A" : "white";
+  const hlShadow = topInk === "dark"
+    ? `shadowcolor=white@0.25:shadowx=0:shadowy=2`
+    : `shadowcolor=black@0.35:shadowx=0:shadowy=3`;
+  const subColor = topInk === "dark" ? "0x3D3D3D@0.9" : "white@0.9";
+  // CTA is a solid button chip (drawtext's own box) — always readable.
+  const ctaBox = botInk === "dark" ? "black@0.88" : "white@0.94";
+  const ctaColor = botInk === "dark" ? "white" : "0x141414";
+
+  // POSTER layout: BIG statement headline across the top (auto-balanced onto
+  // two lines so it stays huge), small support line, button CTA at the bottom.
   const words = hl.split(" ");
   let line1 = hl, line2 = "";
   if (hl.length > 16 && words.length > 2) {
@@ -90,20 +129,18 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
     line2 = words.slice(best).join(" ");
   }
   const longest = Math.max(line1.length, line2.length);
-  const hlSize = longest > 18 ? 56 : longest > 12 ? 68 : 80;
-  const line2Y = 78 + Math.round(hlSize * 1.16);
-  const subY = (line2 ? line2Y : 78) + Math.round(hlSize * 1.16);
+  const hlSize = longest > 18 ? 58 : longest > 12 ? 72 : 84;
+  const topY = 84;
+  const line2Y = topY + Math.round(hlSize * 1.14);
+  const subY = (line2 ? line2Y : topY) + Math.round(hlSize * 1.2);
+
   const filters = [
-    // top fade for headline legibility + a whisper of bottom fade for the CTA
-    // — brand-neutral black, never EasyMode colors on merchant creative
-    `drawbox=x=0:y=0:w=iw:h=300:color=black@0.16:t=fill`,
-    `drawbox=x=0:y=0:w=iw:h=210:color=black@0.2:t=fill`,
-    `drawbox=x=0:y=0:w=iw:h=120:color=black@0.24:t=fill`,
-    `drawbox=x=0:y=ih-110:w=iw:h=110:color=black@0.25:t=fill`,
-    `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.45:x=(w-text_w)/2:y=78`,
-    line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.45:x=(w-text_w)/2:y=${line2Y}` : "",
-    sb ? `drawtext=fontfile='${font}':text='${sb}':fontsize=26:fontcolor=white@0.88:borderw=1:bordercolor=black@0.35:x=(w-text_w)/2:y=${subY}` : "",
-    ct ? `drawtext=fontfile='${font}':text='${ct}  >':fontsize=28:fontcolor=white@0.94:borderw=1:bordercolor=black@0.35:x=(w-text_w)/2:y=h-72` : "",
+    // legibility fade ONLY when the band is genuinely mid-contrast
+    topInk === "mid" ? `drawbox=x=0:y=0:w=iw:h=280:color=black@0.18:t=fill,drawbox=x=0:y=0:w=iw:h=170:color=black@0.2:t=fill` : "",
+    `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${topY}`,
+    line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${line2Y}` : "",
+    sb ? `drawtext=fontfile='${font}':text='${sb}':fontsize=27:fontcolor=${subColor}:x=(w-text_w)/2:y=${subY}` : "",
+    ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=27:fontcolor=${ctaColor}:box=1:boxcolor=${ctaBox}:boxborderw=16:x=(w-text_w)/2:y=h-82` : "",
   ].filter(Boolean).join(",");
   const args = ["-y", "-i", src, "-vf", filters, "-frames:v", "1", "-q:v", "3", out];
   const ok = await new Promise<boolean>((resolve) => {
