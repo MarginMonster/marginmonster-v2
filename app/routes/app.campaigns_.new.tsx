@@ -6,7 +6,7 @@ import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { linkedFromCache } from "../lib/social-provider.server";
-import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive, spendTokens, refundTokens } from "../lib/tokens.server";
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
 import { AVATARS, avatarImg } from "../lib/avatars";
@@ -25,6 +25,10 @@ const ARCH_META: Record<string, { badge: string; freq: string; motivation: strin
   SOCIAL_EMPIRE: { badge: "Max firepower", freq: "several drops every day", motivation: "The whole machine, unleashed. 130 drops a month across every platform, every single day — 30 videos, 70 image posts, 30 articles. Some brands post. Yours is simply always there.", value: "≈ a $5,000/mo growth agency" },
 };
 const ARCH_ORDER = ["SOCIAL_FOUND", "SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMPIRE"];
+
+// Cross-posting an extra connected account re-posts the SAME drops — no new
+// generation — so it's a small flat monthly fee, never a second plan price.
+const CROSS_POST_FEE = 20;
 
 function tierFor(cost: number): string {
   const t = PLAN_TIERS.find((p) => p.monthlyTokens >= cost);
@@ -114,10 +118,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   if (bag.length === 0) return json({ error: "Add at least one product to your store — plans make content about your products." });
 
-  // ONE plan, ONE charge, posted to every selected account. Cross-posting the
-  // same drops costs us nothing extra, so it costs the merchant nothing extra
-  // — the questline's schedule.platforms carries the full target list and
+  // ONE plan generates the content; extra accounts just re-post it, so each
+  // costs a small flat 20 tokens/mo — not a duplicate full-price plan. The
+  // questline's schedule.platforms carries the full target list and
   // postDueSlots fans each drop out to all of them.
+  const crossFee = Math.max(0, platforms.length - 1) * CROSS_POST_FEE;
+  if (crossFee > 0) {
+    try { await spendTokens(shop.id, crossFee); }
+    catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for cross-posting." }); }
+  }
   const r = await acceptQuestline({
     shopId: shop.id,
     templateKey: def.key,
@@ -127,7 +136,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     bag,
     platforms,
   });
-  if (!r.ok) return json({ error: r.error });
+  if (!r.ok) {
+    if (crossFee > 0) { try { await refundTokens(shop.id, crossFee); } catch { /* non-fatal */ } }
+    return json({ error: r.error });
+  }
   return redirect("/app/campaigns");
 };
 
@@ -153,11 +165,11 @@ export default function NewPlan() {
   const unlinked = (["tiktok", "instagram", "facebook"] as const).filter((p) => !linked.includes(p));
   const [addOns, setAddOns] = useState<string[]>([]); // extra accounts beyond primary
 
-  // One plan price no matter how many accounts it posts to — cross-posting
-  // the same drops is free (it doesn't generate anything new).
+  // One plan price + a small flat fee per extra account — cross-posting the
+  // same drops doesn't generate anything new, so it never costs a second plan.
   const per = arch?.cost ?? 0;
   const accounts = 1 + addOns.length;
-  const total = per;
+  const total = per + addOns.length * CROSS_POST_FEE;
   const shortfall = Math.max(0, total - tokens); // can't cover from the wallet right now
   const overAllowance = total > allowance; // bigger than the monthly refill → upgrade territory
   const upgradeTier = tiers.find((t) => t.monthlyTokens >= total && t.monthlyTokens > allowance) || null;
@@ -259,7 +271,7 @@ export default function NewPlan() {
                       <button type="button" key={p} className={`addon${on ? " on" : ""}`} onClick={() => toggleAddOn(p)}>
                         <span className="pl-lg"><PLogo p={p} /></span>
                         <span className="ao-nm">{PLAT_LABEL[p]}</span>
-                        <span className="ao-plus">{on ? "✓ Added — included" : "＋ Add — included"}</span>
+                        <span className="ao-plus">{on ? `✓ Added · +${CROSS_POST_FEE} tokens` : `＋ ${CROSS_POST_FEE} tokens / mo`}</span>
                       </button>
                     );
                   })}
@@ -267,7 +279,7 @@ export default function NewPlan() {
                     <Link key={p} className="addon connect" to="/app/connect">
                       <span className="pl-lg"><PLogo p={p} /></span>
                       <span className="ao-nm">{PLAT_LABEL[p]}</span>
-                      <span className="ao-plus">＋ Connect · included</span>
+                      <span className="ao-plus">＋ Connect · +{CROSS_POST_FEE} tokens</span>
                     </Link>
                   ))}
                 </div>
@@ -278,7 +290,7 @@ export default function NewPlan() {
               <div className="smp-tok">
                 <div className="tt">Total{accounts > 1 ? ` · posts to ${accounts} accounts` : ""}</div>
                 <div className="tb"><b>{total.toLocaleString()}</b><span>tokens / month</span></div>
-                {accounts > 1 && <div className="tk-sub">One plan price — cross-posting to every connected account is included, free</div>}
+                {accounts > 1 && <div className="tk-sub">{per.toLocaleString()} plan + {CROSS_POST_FEE} × {addOns.length} cross-posting — extra accounts re-post the same drops, they don't regenerate</div>}
               </div>
 
               {needNudge && (
