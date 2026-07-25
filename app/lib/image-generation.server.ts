@@ -306,9 +306,9 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
  * preview and result match pixel-for-pixel except statue→product. */
 
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
-// v3: statue prompt tightened — pure white + green vinyl toy, hard bans on
-// the bronze/fur/teeth drift that made v1-v2 read as gremlins
-const AD_TEMPLATE_VERSION = 3;
+// v5: the stand-in is a metaphorical PRODUCT — a sleek EASYMODE-branded
+// drink bottle in brand colors. Reads instantly as "your product goes here".
+const AD_TEMPLATE_VERSION = 5;
 const templateInFlight = new Set<string>();
 
 export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): string | null {
@@ -333,10 +333,11 @@ function currentTemplateFile(kind: "preview" | "plate", key: string): string {
 async function ensureStatue(): Promise<string | null> {
   const existing = adTemplateFile("statue");
   if (existing) return existing;
-  // THE EasyMode Statue: a designer vinyl toy — white glossy plastic, EasyMode
-  // green accents, bold black outlines like a 2D character made physical.
+  // The stand-in product: a sleek EASYMODE-branded drink bottle in brand
+  // colors — a metaphorical product that marks exactly where the merchant's
+  // real product will go.
   const raw = await repRun("black-forest-labs/flux-dev", {
-    prompt: "Minimalist designer vinyl art toy product photo: a cute simple rounded blob mascot figurine made of smooth GLOSSY PURE WHITE plastic, with a bright kelly-green belly patch and green rounded feet as the ONLY other color, thick bold black outline edges like a flat 2D cartoon sticker turned into a 3D toy, two simple black dot eyes and a small black smile, extremely clean and minimal like a premium collectible art toy, standing on a small round white base, centered on a pure white seamless studio background, bright soft even lighting. Colors: ONLY white, green and black line work. No brown, no bronze, no metal, no fur, no texture, no teeth, no claws, no monster features.",
+    prompt: 'Professional product photograph of a sleek modern beverage bottle for a brand called "EASYMODE": glossy clean WHITE bottle with a bright kelly-GREEN cap, a crisp white label with the word "EASYMODE" printed in bold black uppercase letters, minimal premium design, only white green and black in the design, bottle standing upright, centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, commercial beverage photography. Label text spelled exactly "EASYMODE". No other objects, no hands, no characters.',
     num_inference_steps: 30, guidance: 3.5, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
   });
   const cutout = await removeBackground(raw);

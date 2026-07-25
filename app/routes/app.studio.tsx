@@ -316,17 +316,23 @@ export default function Studio() {
   // star the presenter redrawn in the picked style). Other types DON'T null
   // the shared selection — the Image tab and a later return keep the
   // merchant's explicit pick; generate() omits the presenter where unused.
+  // Image tab has its own first step: product-only ad, or presenter holding
+  // it. The presenter picker only appears after choosing "presenter" — no
+  // avatar clutter on arrival.
+  const [imageMode, setImageMode] = useState<null | "product" | "presenter">(null);
   useEffect(() => {
-    if (contentType === "avatar" || contentType === "cartoon" || contentType === "jingle") setAvatarId((a) => a ?? defaultAvatar);
-  }, [contentType, defaultAvatar]);
+    if (contentType === "avatar" || contentType === "cartoon" || contentType === "jingle" || (tab === "image" && imageMode === "presenter")) setAvatarId((a) => a ?? defaultAvatar);
+  }, [contentType, defaultAvatar, tab, imageMode]);
   // The config below the type step appears once a type (and, for cartoon, a
-  // style) is chosen.
+  // style — and for images, a mode) is chosen.
   const cfgReady =
-    tab !== "video" ||
-    contentType === "avatar" ||
-    contentType === "highlight" ||
-    contentType === "jingle" ||
-    (contentType === "cartoon" && !!cartoonStyle);
+    tab === "blog" ||
+    (tab === "image" && imageMode !== null) ||
+    (tab === "video" && (
+      contentType === "avatar" ||
+      contentType === "highlight" ||
+      contentType === "jingle" ||
+      (contentType === "cartoon" && !!cartoonStyle)));
   const [direction, setDirection] = useState(""); // image style / blog topic
   const [templateKey, setTemplateKey] = useState<string | null>(null); // image ad template (statue previews)
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
@@ -360,8 +366,8 @@ export default function Studio() {
   const [serviceOverride, setServiceOverride] = useState<boolean | null>(null);
   useEffect(() => { setServiceOverride(null); }, [picked]);
   const service = serviceOverride === null ? (!!product && !product.image) : serviceOverride;
-  const showService = (tab === "video" || tab === "image") && !!product;
-  const showWear = ((tab === "video" && contentType === "avatar") || tab === "image") && !!avatarId && !!product && !service;
+  const showService = (tab === "video" || (tab === "image" && imageMode === "product")) && !!product;
+  const showWear = ((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter")) && !!avatarId && !!product && !service;
   const wear = wearOverride === null ? !!product?.apparel : wearOverride;
 
   // Rotate the presenter's 4 wardrobe variants across generations so repeated
@@ -397,11 +403,12 @@ export default function Studio() {
       fields.direction = direction.trim();
       if (tab === "image") {
         if (direction.trim()) fields.scene = direction.trim();
-        if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
-        // Template picked → preview-matched delivery (tweak text re-stages the
-        // same scene). Otherwise: text = generative scene, blank = photo-true
-        // bright composite.
-        if (templateKey && !avatarId && !service) fields.templateKey = templateKey;
+        // Presenter rides along ONLY in presenter mode; templates only in
+        // product mode. Template picked → preview-matched delivery (tweak
+        // text re-stages the same scene). Otherwise: text = generative scene,
+        // blank = photo-true bright composite.
+        if (imageMode === "presenter" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
+        if (imageMode === "product" && templateKey && !service) fields.templateKey = templateKey;
         fields.styleMode = direction.trim() ? "scene" : "backdrop";
       }
     }
@@ -498,12 +505,38 @@ export default function Studio() {
               )}
             </>
           )}
-          {tab === "image" && (
-            <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
+          {/* IMAGE STEP 1 — what kind of image ad? Presenter picker stays
+              hidden until the presenter path is explicitly chosen. */}
+          {tab === "image" && !imageMode && (
+            <>
+              <div className="cfg-lbl cs-lblrow"><span>What kind of image ad?</span></div>
+              <div className="cfg-cast cs-ctypes bigtiles">
+                <button type="button" className="cast cs-ctype" onClick={() => setImageMode("product")}>
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=5)" }} />
+                  <span className="ca-nm">🖼 Product ad</span>
+                  <span className="ca-sub">Your product as the hero — pick a template scene</span>
+                </button>
+                <button type="button" className="cast cs-ctype" onClick={() => setImageMode("presenter")}>
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/content-types/av.png?v=2)" }} />
+                  <span className="ca-nm">🤳 Presenter holding it</span>
+                  <span className="ca-sub">A real-looking presenter holds your product</span>
+                </button>
+              </div>
+            </>
           )}
-          {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
-          {(((tab === "video" && contentType === "avatar") || tab === "image")) && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
-          {(((tab === "video" && contentType === "avatar") || tab === "image")) && avatarId && avatarId !== brandFaceId && (
+          {tab === "image" && imageMode && (
+            <>
+              <button type="button" className="cs-back" onClick={() => setImageMode(null)}>‹ Image type</button>
+              {imageMode === "presenter" && (
+                <>
+                  <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={false} brandFaceId={brandFaceId} />
+                  {avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
+                </>
+              )}
+            </>
+          )}
+          {(((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter"))) && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
+          {(((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter"))) && avatarId && avatarId !== brandFaceId && (
             <button type="button" className="cs-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>★ Make {cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face</button>
           )}
 
@@ -577,13 +610,13 @@ export default function Studio() {
             </>
           ) : (
             <>
-              {tab === "image" && !service && !avatarId && (
+              {tab === "image" && imageMode === "product" && !service && (
                 <>
                   <div className="cfg-lbl cs-lblrow"><span>Ad template — what you see is what you get</span>{templateKey && <button type="button" className="cs-viewall" onClick={() => setTemplateKey(null)}>Clear</button>}</div>
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {AD_TEMPLATES.map((t) => (
                       <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=3)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=5)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{t.emoji} {t.name}</span>
                         <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
                       </button>
@@ -607,7 +640,7 @@ export default function Studio() {
 
           <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{meta.cost}</b><span>tokens</span></div></div>
 
-          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && contentType === "avatar" && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle)} onClick={generate}>
+          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && contentType === "avatar" && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (tab === "image" && imageMode === "presenter" && !avatarId)} onClick={generate}>
             {busy ? "Sending to the studio…" : `${meta.verb} ${meta.noun} — ${costLabel}`}
           </button>
           <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to generate."}</p>
