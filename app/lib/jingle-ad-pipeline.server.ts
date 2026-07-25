@@ -92,10 +92,13 @@ const BARK_VERSION = "b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b7
 /** Sing the lyrics. Engine chain: minimax music-1.5 (text-to-music with
  *  vocals, no reference audio needed) → music-01 → bark's ♪-wrapped sing-song
  *  read of the hook (lo-fi, but fits the retro-commercial brief). Every step
- *  is schema-drift tolerant; total failure throws and the queue refunds. */
-async function singJingle(lyrics: string): Promise<{ url: string; engine: string }> {
+ *  is schema-drift tolerant; total failure throws and the queue refunds.
+ *  The vocal GENDER matches the cast singer — a male presenter lipsyncing a
+ *  female vocal (or vice versa) breaks the illusion instantly. */
+async function singJingle(lyrics: string, singerGender?: "f" | "m"): Promise<{ url: string; engine: string }> {
   const errors: string[] = [];
-  const style = "upbeat catchy retro TV-commercial jingle, early 2000s advertising energy, bright cheerful vocals, short and punchy";
+  const vocalist = singerGender === "m" ? "a clear energetic MALE vocalist (male voice)" : singerGender === "f" ? "a clear energetic FEMALE vocalist (female voice)" : "bright cheerful vocals";
+  const style = `upbeat catchy retro TV-commercial jingle, early 2000s advertising energy, sung by ${vocalist}, short and punchy`;
   const attempts: { model: string; input: Record<string, unknown>; engine: string }[] = [
     { model: "minimax/music-1.5", input: { lyrics, prompt: style }, engine: "minimax-music-1.5" },
     { model: "minimax/music-1.5", input: { lyrics }, engine: "minimax-music-1.5" },
@@ -114,7 +117,7 @@ async function singJingle(lyrics: string): Promise<{ url: string; engine: string
     const hook = lyrics.split("\n").filter(Boolean).slice(0, 3).join(". ");
     const id = await repCreateVersion(BARK_VERSION, {
       prompt: `♪ ${hook} ♪`,
-      history_prompt: "announcer",
+      history_prompt: singerGender === "f" ? "en_speaker_9" : "announcer",
       text_temp: 0.7,
     });
     const raw = (await repPoll(id, 6 * 60_000, "jingle-bark")) as unknown;
@@ -165,20 +168,21 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     await ckpt({ ckLyrics: lyrics });
   }
 
-  // 2) SONG — a resumed job keeps the TRUE engine of the checkpointed song.
+  // 2) SONG — the vocal gender matches the cast singer, so the lipsync
+  // reads true. A resumed job keeps the TRUE engine of the checkpointed song.
+  const singer = params.avatarId ? AVATAR_BY_ID[params.avatarId] : undefined;
   let songUrl = resume.songUrl || "";
   let engine = (songUrl && resume.engine) || "minimax-music-1.5";
   if (!songUrl) {
-    const sung = await singJingle(lyrics);
+    const sung = await singJingle(lyrics, singer?.gender);
     songUrl = sung.url;
     engine = sung.engine;
     await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
   }
 
-  // 3) VISUAL — a cast singer LIPSYNCS the anthem on camera (photoreal, or
+  // 3) VISUAL — the cast singer LIPSYNCS the anthem on camera (photoreal, or
   // redrawn in a cartoon style first). No singer → hero-motion product clip
   // with the song over it, as before. Singing failure falls back gracefully.
-  const singer = params.avatarId ? AVATAR_BY_ID[params.avatarId] : undefined;
   let talkingUrl = resume.talkingUrl || "";
   let singEngine = (talkingUrl && resume.singEngine) || "";
   if (singer && !talkingUrl) {
