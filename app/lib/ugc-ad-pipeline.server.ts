@@ -260,20 +260,36 @@ function captionSafe(s: string): string {
 function buildCaptionFilters(script: string, duration: number, fontFile: string): string[] {
   const words = captionSafe(script).split(" ").filter(Boolean);
   if (!words.length) return [];
-  // 3-word chunks: fits 720px at this size, and short bursts read more "UGC"
+  // Chunk by CHARACTER budget, not word count — fixed 3-word chunks overflowed
+  // the 720px frame whenever the words ran long ("MULTI-MANAGED SNOWBOARD…").
+  // Max 3 words per burst keeps the punchy UGC rhythm; the char cap keeps it
+  // on screen; the per-chunk font scale below catches whatever's left.
   const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += 3) chunks.push(words.slice(i, i + 3).join(" "));
-  const capped = chunks.slice(0, 16);
+  let cur = "";
+  for (const w of words) {
+    const joined = cur ? `${cur} ${w}` : w;
+    if (cur && (joined.length > 16 || cur.split(" ").length >= 3)) {
+      chunks.push(cur);
+      cur = w;
+    } else {
+      cur = joined;
+    }
+  }
+  if (cur) chunks.push(cur);
+  const capped = chunks.slice(0, 20);
   const per = duration / capped.length;
   // fontfile path needs forward slashes + escaped colon for the filter parser
   const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
   return capped.map((text, i) => {
     const t0 = (i * per).toFixed(2);
     const t1 = ((i + 1) * per).toFixed(2);
+    // Poppins-Bold caps run ~0.62×fontsize wide; keep every line inside ~94%
+    // of the 720px frame so no caption ever bleeds off the edge.
+    const size = Math.max(30, Math.min(50, Math.floor((720 * 0.94) / (text.length * 0.62))));
     // gte*lt (not between) — between is inclusive on both ends, which
     // double-draws two captions on the shared boundary frame
     return (
-      `drawtext=fontfile='${font}':text='${text}':fontsize=50:fontcolor=white:` +
+      `drawtext=fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
       `borderw=7:bordercolor=black:x=(w-text_w)/2:y=h-330:enable='gte(t,${t0})*lt(t,${t1})'`
     );
   });

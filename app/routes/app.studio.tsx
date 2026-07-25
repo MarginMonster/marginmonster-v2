@@ -30,7 +30,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png?v=2", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png?v=2", sub: "Cinematic motion, no presenter", live: true },
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=2", sub: "Your presenter & product, redrawn viral-style", live: true },
-  { key: "jingle", name: "Anthem", icon: "🎵", cover: "/content-types/ew.png?v=2", sub: "Your avatar SINGS your product's theme song", live: true },
+  { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=2", sub: "Your avatar SINGS your product's theme song", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
@@ -518,7 +518,7 @@ export default function Studio() {
               <div className="cfg-lbl cs-lblrow"><span>What kind of image ad?</span></div>
               <div className="cfg-cast cs-ctypes bigtiles">
                 <button type="button" className="cast cs-ctype" onClick={() => setImageMode("product")}>
-                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=5)" }} />
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=6)" }} />
                   <span className="ca-nm">🖼 Product ad</span>
                   <span className="ca-sub">Your product as the hero — pick a template scene</span>
                 </button>
@@ -622,7 +622,7 @@ export default function Studio() {
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {AD_TEMPLATES.map((t) => (
                       <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=5)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=6)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{t.emoji} {t.name}</span>
                         <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
                       </button>

@@ -298,17 +298,18 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
   return "backdrop";
 }
 
-/* ── Ad Templates: plates + statue previews, self-built on this server ─────
- * Each template renders ONCE as an empty plate. The EasyMode Statue (a small
- * bronze monster statuette — our product stand-in) is composited onto the
- * plate with placeholder copy → that's the preview merchants browse. Exact
- * delivery composites the merchant's product cutout onto the SAME plate, so
- * preview and result match pixel-for-pixel except statue→product. */
+/* ── Ad Templates: plates + stand-in previews, self-built on this server ───
+ * Each template renders ONCE as an empty plate. The EASYMODE stand-in bottle
+ * (white bottle, green cap, EASYMODE label) is composited onto the plate with
+ * placeholder copy → that's the preview merchants browse. Exact delivery
+ * composites the merchant's product cutout onto the SAME plate, so preview
+ * and result match pixel-for-pixel except bottle→product. */
 
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
-// v5: the stand-in is a metaphorical PRODUCT — a sleek EASYMODE-branded
-// drink bottle in brand colors. Reads instantly as "your product goes here".
-const AD_TEMPLATE_VERSION = 5;
+// v6: plates must render fresh at the CURRENT version — earlier builds reused
+// old dark plates through the version fallback, so every preview looked like
+// the same murky spotlight scene instead of its own distinct ad style.
+const AD_TEMPLATE_VERSION = 6;
 const templateInFlight = new Set<string>();
 
 export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): string | null {
@@ -363,7 +364,13 @@ export function ensureAdTemplate(key: string): void {
       const statue = await ensureStatue();
       if (!statue) return;
       fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
-      let platePath = adTemplateFile("plate", key);
+      // Current-version plate ONLY — the serving fallback keeps old previews
+      // visible while we rebuild, but the BUILD must never inherit a stale
+      // plate or the new preview just re-dresses the old scene.
+      let platePath: string | null = currentTemplateFile("plate", key);
+      if (!fs.existsSync(platePath)) {
+        platePath = null;
+      }
       if (!platePath) {
         const plateUrl = await repRun("black-forest-labs/flux-dev", {
           prompt: `${t.plate}. Iconic award-winning print-advertisement photography quality.`, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,

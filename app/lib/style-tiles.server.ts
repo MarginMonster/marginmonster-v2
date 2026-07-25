@@ -22,6 +22,13 @@ const PICKER_KEYS: CartoonStyleKey[] = [
   "dreamanime", "toyfigure", "brick", "pixar", "retroanime", "vintagetoon", "puppet", "clay",
 ];
 
+// Special non-style tiles rendered with the same machinery. The Anthem cover
+// is the default character SINGING — a real photoreal render, not iconography.
+const SPECIAL_PROMPTS: Record<string, string> = {
+  anthemcover:
+    "Edit this photo: the exact same person now singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, colorful warm stage lighting with soft bokeh lights behind them, photorealistic, natural skin texture, wide landscape composition centered on them from the waist up, no text, no watermark.",
+};
+
 const inFlight = new Set<string>();
 
 export function portraitFile(character: string): string | null {
@@ -45,8 +52,8 @@ function currentTileExists(character: string, key: string): boolean {
   return fs.existsSync(path.join(TILE_DIR, `${character}-v${TILE_VERSION}-${key}.jpg`));
 }
 
-export function isPickerKey(key: string): key is CartoonStyleKey {
-  return (PICKER_KEYS as string[]).includes(key);
+export function isPickerKey(key: string): boolean {
+  return (PICKER_KEYS as string[]).includes(key) || key in SPECIAL_PROMPTS;
 }
 
 /** Fire-and-forget: render one character×style tile if missing. Never throws —
@@ -63,14 +70,14 @@ export function ensureStyleTile(character: string, key: string): void {
   (async () => {
     try {
       const { repCreate, repPoll, download } = await import("./ugc-ad-pipeline.server");
-      const recipe = CARTOON_RECIPES[key];
-      const prompt =
+      const recipe = CARTOON_RECIPES[key as CartoonStyleKey];
+      const prompt = SPECIAL_PROMPTS[key] || (
         `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, ` +
         `same friendly likeness, stylized for the art style. They are smiling and holding up ` +
         `a small simple orange bottle with a blue cap (a generic product, no readable text). ` +
         `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
         `no extra or missing fingers. Wide landscape composition, the character centered from ` +
-        `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`;
+        `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`);
       const id = await repCreate("black-forest-labs/flux-kontext-pro", {
         prompt,
         input_image: `${base}/avatars/${character}_0.jpg`,
@@ -95,4 +102,6 @@ export function ensureStyleTile(character: string, key: string): void {
 /** Kick all missing tiles for a character (route + boot call this). */
 export function ensureAllStyleTiles(character: string = DEFAULT_TILE_CHARACTER): void {
   for (const k of PICKER_KEYS) ensureStyleTile(character, k);
+  // Special tiles (the Anthem cover) only need the default character.
+  if (character === DEFAULT_TILE_CHARACTER) for (const k of Object.keys(SPECIAL_PROMPTS)) ensureStyleTile(character, k);
 }
