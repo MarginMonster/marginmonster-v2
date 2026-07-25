@@ -234,10 +234,16 @@ async function compositeProductStill(backdropUrl: string, cutoutUrl: string): Pr
   const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
   const out = path.join(dir, fileName);
   try {
-    for (const [url, file] of [[backdropUrl, tmpBg], [cutoutUrl, tmpCut]] as const) {
-      const res = await fetch(url);
-      if (!res.ok) return null;
-      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    // Sources can be remote URLs or absolute local paths (template plates and
+    // the statue live on the durable disk).
+    for (const [src2, file] of [[backdropUrl, tmpBg], [cutoutUrl, tmpCut]] as const) {
+      if (src2.startsWith("/") && fs.existsSync(src2)) {
+        fs.copyFileSync(src2, file);
+      } else {
+        const res = await fetch(src2);
+        if (!res.ok) return null;
+        fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+      }
     }
     const filters =
       "[0:v]scale=1024:1024:force_original_aspect_ratio=increase,crop=1024:1024[bg];" +
@@ -290,6 +296,87 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
   if (!stylePrompt) return "backdrop";
   if (/lived-in|golden-hour|user-generated|splash|mist|person|people|holding|wearing|in use|outdoor/i.test(stylePrompt)) return "scene";
   return "backdrop";
+}
+
+/* ── Ad Templates: plates + statue previews, self-built on this server ─────
+ * Each template renders ONCE as an empty plate. The EasyMode Statue (a small
+ * bronze monster statuette — our product stand-in) is composited onto the
+ * plate with placeholder copy → that's the preview merchants browse. Exact
+ * delivery composites the merchant's product cutout onto the SAME plate, so
+ * preview and result match pixel-for-pixel except statue→product. */
+
+const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
+const AD_TEMPLATE_VERSION = 1;
+const templateInFlight = new Set<string>();
+
+export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): string | null {
+  const name = kind === "statue" ? "statue.png" : `${kind}-v${AD_TEMPLATE_VERSION}-${key}.jpg`;
+  if (key && !/^[a-z]+$/.test(key)) return null;
+  const p = path.join(AD_TEMPLATE_DIR, name);
+  return fs.existsSync(p) ? p : null;
+}
+
+async function ensureStatue(): Promise<string | null> {
+  const existing = adTemplateFile("statue");
+  if (existing) return existing;
+  const raw = await repRun("black-forest-labs/flux-dev", {
+    prompt: "Product photograph of a small polished bronze statuette of a friendly round cartoon monster mascot with a big cheerful grin, standing proudly on a small round bronze base, centered on a pure white seamless background, crisp studio lighting, high detail",
+    num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+  });
+  const cutout = await removeBackground(raw);
+  if (!cutout) return null;
+  const res = await fetch(cutout);
+  if (!res.ok) return null;
+  fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
+  const out = path.join(AD_TEMPLATE_DIR, "statue.png");
+  fs.writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+  console.log("[ad-templates] statue forged");
+  return out;
+}
+
+export function ensureAdTemplate(key: string): void {
+  if (adTemplateFile("preview", key) || templateInFlight.has(key)) return;
+  if (!process.env.REPLICATE_API_TOKEN) return;
+  templateInFlight.add(key);
+  (async () => {
+    try {
+      const { AD_TEMPLATE_BY_KEY } = await import("./ad-templates");
+      const t = AD_TEMPLATE_BY_KEY[key];
+      if (!t) return;
+      const statue = await ensureStatue();
+      if (!statue) return;
+      fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
+      let platePath = adTemplateFile("plate", key);
+      if (!platePath) {
+        const plateUrl = await repRun("black-forest-labs/flux-dev", {
+          prompt: t.plate, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+        });
+        const res = await fetch(plateUrl);
+        if (!res.ok) return;
+        platePath = path.join(AD_TEMPLATE_DIR, `plate-v${AD_TEMPLATE_VERSION}-${key}.jpg`);
+        fs.writeFileSync(platePath, Buffer.from(await res.arrayBuffer()));
+      }
+      // Preview = statue on the plate + placeholder copy (real ads write
+      // fresh copy per product — the preview says so).
+      const compositeName = await compositeProductStill(platePath, statue);
+      if (!compositeName) return;
+      const rendersDir = path.join(process.cwd(), "data", "renders");
+      const withText = await overlayAdText(rendersDir, compositeName, "Your headline here", "Shop now", "ad text adapts to your product");
+      const finalSrc = path.join(rendersDir, withText || compositeName);
+      fs.copyFileSync(finalSrc, path.join(AD_TEMPLATE_DIR, `preview-v${AD_TEMPLATE_VERSION}-${key}.jpg`));
+      try { fs.rmSync(path.join(rendersDir, compositeName), { force: true }); if (withText) fs.rmSync(finalSrc, { force: true }); } catch { /* tidy */ }
+      console.log(`[ad-templates] built ${key}`);
+    } catch (e) {
+      console.error(`[ad-templates] ${key} build failed:`, e instanceof Error ? e.message.slice(0, 160) : e);
+    } finally {
+      templateInFlight.delete(key);
+    }
+  })();
+}
+
+export async function ensureAllAdTemplates(): Promise<void> {
+  const { AD_TEMPLATES } = await import("./ad-templates");
+  for (const t of AD_TEMPLATES) ensureAdTemplate(t.key);
 }
 
 const BRIGHT_DEFAULT = "Bright, light-filled scene: a fresh clean backdrop in a soft light color that complements the product, generous even daylight-quality lighting, airy and inviting — NOT dark, NOT moody, NOT a black background";
@@ -389,7 +476,8 @@ export async function generateImageAd(
   wear?: boolean,
   scene?: string,
   serviceMode?: boolean,
-  styleMode?: "backdrop" | "scene"
+  styleMode?: "backdrop" | "scene",
+  templateKey?: string
 ): Promise<string> {
   // PRESENTER STILL — an avatar holding the product (Content Studio presenter
   // path). Uses the same two-image compose engine as UGC video frames. Needs a
@@ -483,9 +571,55 @@ export async function generateImageAd(
     const mode: "backdrop" | "scene" = styleMode === "scene" || styleMode === "backdrop" ? styleMode : inferStyleMode(stylePrompt);
     const styleDesc = stylePrompt || BRIGHT_DEFAULT;
 
+    // RUNG 0 — AD TEMPLATE: the merchant picked a statue-preview template, so
+    // deliver EXACTLY what the preview showed. Exact templates composite the
+    // real product cutout onto the same plate the preview used; staged
+    // templates re-stage the scene with the identity model + QA.
+    if (templateKey) {
+      try {
+        const { AD_TEMPLATE_BY_KEY } = await import("./ad-templates");
+        const t = AD_TEMPLATE_BY_KEY[templateKey];
+        const platePath = t ? adTemplateFile("plate", t.key) : null;
+        if (t && !platePath) ensureAdTemplate(t.key); // build for next time; fall through this run
+        if (t && platePath && t.kind === "exact") {
+          const cutout = await removeBackground(productImageUrl!);
+          if (cutout) {
+            const fn = await compositeProductStill(platePath, cutout);
+            if (fn) { usedPrompt = t.plate; localFileName = fn; genMeta.method = `template:${t.key}`; }
+          }
+        } else if (t && platePath && t.kind === "staged") {
+          const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+          const plateUrl = base ? `${base}/ad-templates/plate-${t.key}.jpg` : null;
+          usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}. The product stays identical to its photo: same shape, colors, logos and details, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
+          const stagedOnce = async (): Promise<string> => {
+            const inputs = plateUrl ? [plateUrl, productImageUrl] : [productImageUrl];
+            try { return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: inputs, output_format: "jpg" }); }
+            catch { return await repRun("black-forest-labs/flux-kontext-pro", { prompt: `${t.plate}. ${usedPrompt}`, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" }); }
+          };
+          imageUrl = await stagedOnce();
+          let qa = await qaFidelity(productImageUrl!, imageUrl, true);
+          if (!qa.pass) {
+            console.log(`[image-ad] template QA rejected (${qa.reason}) — retrying`);
+            imageUrl = await stagedOnce();
+            qa = await qaFidelity(productImageUrl!, imageUrl, true);
+          }
+          genMeta.method = `template-staged:${t.key}`;
+          genMeta.qa = qa;
+          if (!qa.pass) {
+            // deterministic last resort: exact composite on the plate
+            const cutout = await removeBackground(productImageUrl!);
+            const fn = cutout ? await compositeProductStill(platePath, cutout) : null;
+            if (fn) { usedPrompt = t.plate; localFileName = fn; imageUrl = null; genMeta.method = `template-fallback:${t.key}`; }
+          }
+        }
+      } catch (e) {
+        console.error("[image-ad] template rung failed, falling to ladder:", e instanceof Error ? e.message.slice(0, 160) : e);
+      }
+    }
+
     // RUNG 1 — PHOTO-TRUE: the real photo composited onto a generated empty
     // backdrop. The product cannot be wrong because it is never redrawn.
-    if (mode === "backdrop") {
+    if (!localFileName && !imageUrl && mode === "backdrop") {
       try {
         const cutout = await removeBackground(productImageUrl!);
         if (cutout) {
@@ -505,7 +639,7 @@ export async function generateImageAd(
     }
 
     // RUNG 2 — SCENE: identity-strongest editor + vision QA with one retry.
-    if (!localFileName) {
+    if (!localFileName && !imageUrl) {
       usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail, at its TRUE real-world scale — never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
       const genOnce = async (): Promise<string> => {
         try {

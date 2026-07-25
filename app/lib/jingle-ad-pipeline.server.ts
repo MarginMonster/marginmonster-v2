@@ -20,14 +20,19 @@ import {
   assemble,
   checkpointJob,
   download,
+  downloadBuffer,
   ffprobeDuration,
   repCreate,
   repPoll,
+  resolvePortraitFile,
   runFfmpeg,
 } from "./ugc-ad-pipeline.server";
+import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 
-const MAX_AD_SECONDS = 30; // jingles can run long — ads shouldn't
+const MAX_AD_SECONDS = 30; // anthems can run long — ads shouldn't
+const SING_SECONDS = 18; // lipsync engine bills per second — keep the sung cut tight
 
 interface JingleAdParams {
   shopId: string;
@@ -35,6 +40,9 @@ interface JingleAdParams {
   productTitle: string;
   productDescription?: string;
   productImageUrl?: string;
+  avatarId?: string; // the SINGER — lipsyncs the anthem on camera
+  avatarVariant?: number;
+  cartoonStyle?: string; // singer redrawn in a cartoon style first (optional)
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean;
   origin?: string;
@@ -43,6 +51,10 @@ interface JingleAdParams {
     lyrics?: string;
     songUrl?: string;
     engine?: string; // which music engine actually sang the checkpointed song
+    styledUrl?: string; // cartoon-styled singer frame
+    omniPredictionId?: string; // re-attach to a live lipsync run — never re-buy it
+    talkingUrl?: string;
+    singEngine?: string;
     keyframeUrl?: string;
     klingPredictionId?: string; // re-attach to a live animate run — never re-buy it
     animUrl?: string;
@@ -163,9 +175,68 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
   }
 
-  // 3) VISUAL — hero-motion product clip the song plays over.
+  // 3) VISUAL — a cast singer LIPSYNCS the anthem on camera (photoreal, or
+  // redrawn in a cartoon style first). No singer → hero-motion product clip
+  // with the song over it, as before. Singing failure falls back gracefully.
+  const singer = params.avatarId ? AVATAR_BY_ID[params.avatarId] : undefined;
+  let talkingUrl = resume.talkingUrl || "";
+  let singEngine = (talkingUrl && resume.singEngine) || "";
+  if (singer && !talkingUrl) {
+    let tmpSing: string | null = null;
+    try {
+      const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
+      const portraitFile = resolvePortraitFile(singer.id, variant);
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      const portraitPublicUrl = base ? `${base}/avatars/${path.basename(portraitFile)}` : "";
+
+      // Cartoon singer: stylize the portrait mid-note before lipsyncing it.
+      let frameUrl = resume.styledUrl || "";
+      const recipe = params.cartoonStyle ? CARTOON_RECIPES[params.cartoonStyle as CartoonStyleKey] : undefined;
+      if (!frameUrl && recipe && portraitPublicUrl) {
+        const id = await repCreate("black-forest-labs/flux-kontext-pro", {
+          prompt: `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. Head-and-shoulders framing, vertical 9:16 composition, no text, no watermark.`,
+          input_image: portraitPublicUrl,
+          aspect_ratio: "9:16",
+          output_format: "jpg",
+        });
+        frameUrl = await repPoll(id, 5 * 60_000, "anthem-style");
+        await ckpt({ ckStyledUrl: frameUrl });
+      }
+      const frameDataUri = frameUrl
+        ? "data:image/jpeg;base64," + (await downloadBuffer(frameUrl)).toString("base64")
+        : "data:image/jpeg;base64," + fs.readFileSync(portraitFile).toString("base64");
+
+      // Lipsync audio = the first SING_SECONDS of the song, faded out.
+      tmpSing = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-"));
+      const rawSong = path.join(tmpSing, "song-raw.audio");
+      await download(songUrl, rawSong);
+      const singPath = path.join(tmpSing, "sing.mp3");
+      const cut = Math.min(ffprobeDuration(rawSong), SING_SECONDS);
+      const trim = await runFfmpeg(["-y", "-i", rawSong, "-t", String(cut), "-af", `afade=t=out:st=${Math.max(0, cut - 1.2).toFixed(2)}:d=1.2`, "-c:a", "libmp3lame", "-b:a", "160k", singPath]);
+      const audioFile = trim.status === 0 && fs.existsSync(singPath) ? singPath : rawSong;
+      const audioDataUri = "data:audio/mpeg;base64," + fs.readFileSync(audioFile).toString("base64");
+
+      if (resume.omniPredictionId) {
+        try { talkingUrl = await repPoll(resume.omniPredictionId, 12 * 60_000, "anthem-omni(resumed)"); } catch { /* fresh run below */ }
+      }
+      if (!talkingUrl) {
+        const omniId = await repCreate("bytedance/omni-human", { image: frameDataUri, audio: audioDataUri });
+        await ckpt({ ckOmniId: omniId });
+        talkingUrl = await repPoll(omniId, 12 * 60_000, "anthem-omni");
+      }
+      singEngine = "omni-human";
+      await ckpt({ ckTalkingUrl: talkingUrl, ckSingEngine: singEngine });
+    } catch (e) {
+      console.error("[anthem] singing performance failed — product visual instead:", e instanceof Error ? e.message.slice(0, 180) : e);
+      talkingUrl = "";
+      singEngine = "";
+    } finally {
+      if (tmpSing) { try { fs.rmSync(tmpSing, { recursive: true, force: true }); } catch { /* tidy */ } }
+    }
+  }
+
   let keyframeUrl = resume.keyframeUrl || "";
-  if (!keyframeUrl) {
+  if (!talkingUrl && !keyframeUrl) {
     if (!params.serviceMode && params.productImageUrl) {
       keyframeUrl = params.productImageUrl; // the real photo IS the keyframe
     } else {
@@ -191,13 +262,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   // to kling — no multi-MB base64 body, no size floor to trip on small legit
   // images. Restarts mid-poll re-attach to the SAME paid prediction.
   let animUrl = resume.animUrl || "";
-  if (!animUrl && resume.klingPredictionId) {
+  if (!talkingUrl && !animUrl && resume.klingPredictionId) {
     try {
       animUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "jingle-animate(resumed)");
       await ckpt({ ckAnimUrl: animUrl });
     } catch { /* old prediction died — fall through to a fresh one */ }
   }
-  if (!animUrl) {
+  if (!talkingUrl && !animUrl) {
     const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
       start_image: keyframeUrl,
       prompt: `Upbeat retro TV-commercial hero shot: the product stays the clear star, slow confident camera push-in, gentle sparkle and shine sweeps, bright cheerful energy, vertical video.`,
@@ -215,24 +286,37 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "jingle-"));
   try {
     const animPath = path.join(tmp, "anim.mp4");
-    await download(animUrl, animPath);
+    await download(talkingUrl || animUrl, animPath);
     const rawSongPath = path.join(tmp, "song-raw.audio");
     await download(songUrl, rawSongPath);
 
+    // Singing performances carry the trimmed song baked in (SING_SECONDS);
+    // product visuals run the fuller cut. The external songPath mirrors the
+    // same trim so assemble's truncation-recovery lines up.
+    const cap = talkingUrl ? SING_SECONDS : MAX_AD_SECONDS;
     let songPath = rawSongPath;
     const songDur = ffprobeDuration(rawSongPath);
-    if (songDur > MAX_AD_SECONDS) {
+    if (songDur > cap) {
       const trimmed = path.join(tmp, "song.mp3");
-      const fadeStart = MAX_AD_SECONDS - 1.5;
+      const fade = talkingUrl ? 1.2 : 1.5;
       const run = await runFfmpeg([
         "-y", "-i", rawSongPath,
-        "-t", String(MAX_AD_SECONDS),
-        "-af", `afade=t=out:st=${fadeStart}:d=1.5`,
+        "-t", String(cap),
+        "-af", `afade=t=out:st=${(cap - fade).toFixed(2)}:d=${fade}`,
         "-c:a", "libmp3lame", "-b:a", "192k",
         trimmed,
       ]);
       if (run.status === 0 && fs.existsSync(trimmed)) songPath = trimmed;
-      else console.error(`[jingle] trim failed — shipping full-length song (${Math.round(songDur)}s): ${(run.stderr || "").slice(-200)}`);
+      else console.error(`[anthem] trim failed — shipping full-length song (${Math.round(songDur)}s): ${(run.stderr || "").slice(-200)}`);
+    }
+
+    // Product b-roll cut-in keeps the product on screen while the singer sings.
+    let productImagePath: string | null = null;
+    if (talkingUrl && params.productImageUrl) {
+      try {
+        productImagePath = path.join(tmp, "product.img");
+        await download(params.productImageUrl, productImagePath);
+      } catch { productImagePath = null; }
     }
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
@@ -243,10 +327,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     await assemble({
       talkingPath: animPath,
       audioPath: songPath,
-      productImagePath: null,
+      productImagePath,
       script: lyrics.replace(/\n/g, " "), // karaoke-style caption feed
       outPath,
-      lipSynced: false, // silent clip looped under the song
+      lipSynced: !!talkingUrl, // omni bakes the sung audio in; kling loops under the song
     });
 
     try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
@@ -256,10 +340,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         shopId: params.shopId,
         type: "VIDEO_AD",
         status: "PENDING",
-        title: `Earworm jingle — ${params.productTitle}`,
+        title: `Anthem — ${params.productTitle}`,
         bodyJson: JSON.stringify({
           style: "JINGLE",
           engine,
+          singEngine: singEngine || null,
+          singerId: singer?.id || null,
+          cartoonStyle: params.cartoonStyle || null,
           videoUrl: `/renders/${fileName}`,
           lyrics,
           prompt: lyrics,
@@ -268,6 +355,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         metaJson: JSON.stringify({
           style: "JINGLE",
           productTitle: params.productTitle,
+          avatarId: singer?.id || null,
+          avatarVariant: singer ? (params.avatarVariant ?? 0) : null,
+          cartoonStyle: params.cartoonStyle || null,
           direction: params.direction || null,
           origin: params.origin || null,
         }),

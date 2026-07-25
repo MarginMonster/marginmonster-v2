@@ -10,6 +10,7 @@ import { spendTokens } from "../lib/tokens.server";
 import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
+import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 
 type Tab = "video" | "image" | "blog";
 const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string; noun: string }[] = [
@@ -29,7 +30,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png?v=2", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png?v=2", sub: "Cinematic motion, no presenter", live: true },
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg", sub: "Your presenter & product, redrawn viral-style", live: true },
-  { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png?v=2", sub: "A sung ad that sticks — 2000s commercial energy", live: true },
+  { key: "jingle", name: "Anthem", icon: "🎵", cover: "/content-types/ew.png?v=2", sub: "Your avatar SINGS your product's theme song", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
@@ -198,9 +199,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // presenter).
     const contentType = ((form.get("contentType") as string) || "").trim();
     const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
-    const avatarId = contentType === "jingle" ? undefined : ((form.get("avatarId") as string) || "").trim() || undefined;
+    const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
-    const style = avatarId && contentType !== "cartoon" ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
+    const style = avatarId && contentType !== "cartoon" && contentType !== "jingle" ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
     // One currency: video spends tokens like every other action (no separate
     // free-video quota). Campaigns and the Studio now bill identically.
     try { await spendTokens(shop.id, TOKEN_COST.video); }
@@ -215,10 +216,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (avatarId && !productImageUrl && !service) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
     const rawMode = (form.get("styleMode") as string) || "";
     const styleMode = rawMode === "scene" || rawMode === "backdrop" ? rawMode : undefined;
+    const rawTemplate = ((form.get("templateKey") as string) || "").trim();
+    const templateKey = AD_TEMPLATE_BY_KEY[rawTemplate] ? rawTemplate : undefined;
     try { await spendTokens(shop.id, TOKEN_COST.image); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
     // Services skip the presenter-hold and product photo → outcome scene.
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, styleMode, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, styleMode, templateKey, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
@@ -329,7 +332,7 @@ export default function Studio() {
   // the shared selection — the Image tab and a later return keep the
   // merchant's explicit pick; generate() omits the presenter where unused.
   useEffect(() => {
-    if (contentType === "avatar" || contentType === "cartoon") setAvatarId((a) => a ?? defaultAvatar);
+    if (contentType === "avatar" || contentType === "cartoon" || contentType === "jingle") setAvatarId((a) => a ?? defaultAvatar);
   }, [contentType, defaultAvatar]);
   // The config below the type step appears once a type (and, for cartoon, a
   // style) is chosen.
@@ -340,6 +343,7 @@ export default function Studio() {
     contentType === "jingle" ||
     (contentType === "cartoon" && !!cartoonStyle);
   const [direction, setDirection] = useState(""); // image style / blog topic
+  const [templateKey, setTemplateKey] = useState<string | null>(null); // image ad template (statue previews)
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
   const [saySomething, setSaySomething] = useState("");
@@ -400,17 +404,19 @@ export default function Studio() {
       const sceneParts = [doWhat.trim(), where.trim()].filter(Boolean);
       if (sceneParts.length) fields.scene = sceneParts.join(". ");
       fields.direction = dir;
-      // Presenter rides along for Avatar AI and Cartoon Avatar (the character
-      // IS the presenter, redrawn) — highlight/jingle never carry one, even
-      // if a pick lingers in shared state.
-      if ((contentType === "avatar" || contentType === "cartoon") && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear && contentType === "avatar") fields.wear = "1"; }
+      // Presenter rides along for Avatar AI, Cartoon Avatar and Anthem (the
+      // character presents or SINGS) — highlight never carries one, even if a
+      // pick lingers in shared state.
+      if ((contentType === "avatar" || contentType === "cartoon" || contentType === "jingle") && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear && contentType === "avatar") fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
       if (tab === "image") {
         if (direction.trim()) fields.scene = direction.trim();
         if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
-        // Accuracy-ladder mode: chip carries its own; custom text = scene
+        // Template picked → deterministic preview-matched delivery. Otherwise
+        // accuracy-ladder mode: chip carries its own; custom text = scene
         // (generative); no direction = backdrop (photo-true composite).
+        if (templateKey && !avatarId) fields.templateKey = templateKey;
         const chip = STYLES.find((s) => s.prompt === direction.trim());
         fields.styleMode = chip ? chip.mode : direction.trim() ? "scene" : "backdrop";
       }
@@ -418,7 +424,7 @@ export default function Studio() {
     if (service) fields.service = "1";
     if (tab === "video" && contentType) {
       fields.contentType = contentType;
-      if (contentType === "cartoon" && cartoonStyle) fields.cartoonStyle = cartoonStyle;
+      if ((contentType === "cartoon" || contentType === "jingle") && cartoonStyle) fields.cartoonStyle = cartoonStyle;
     }
     submit(fields, { method: "post" });
   };
@@ -491,7 +497,20 @@ export default function Studio() {
                 </>
               )}
               {contentType === "jingle" && (
-                <p className="cfg-note cs-ctnote">🎵 <b>Earworm</b> — we write a catchy jingle about your product, an AI voice <i>sings</i> it, and it plays over a hero shot of your product. Early-2000s commercial energy, fully yours.</p>
+                <>
+                  <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product's theme song and your presenter <i>sings it on camera</i>, lipsynced. Pick a singer below — photoreal, or redrawn in a cartoon style. No singer = the song plays over a cinematic product shot.</p>
+                  <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">optional — none = photoreal</span></div>
+                  <div className="cfg-cast cs-ctypes">
+                    {CARTOON_STYLES.map((cs) => (
+                      <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cartoonStyle === cs.key ? null : cs.key)}>
+                        <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${cs.cover})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-nm">{cs.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
+                  {!avatarId && <p className="cfg-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
+                </>
               )}
             </>
           )}
@@ -558,7 +577,7 @@ export default function Studio() {
               ) : (
                 <div className="cs-3w">
                   <div className="cs-wfield">
-                    <span className="cs-w">{contentType === "jingle" ? "What should the jingle sing about?" : contentType === "cartoon" ? "What should the narrator say?" : "What do they say?"}</span>
+                    <span className="cs-w">{contentType === "jingle" ? "What should the anthem sing about?" : contentType === "cartoon" ? "What should the narrator say?" : "What do they say?"}</span>
                     <textarea className="cs-input cs-ta" value={saySomething} maxLength={400} placeholder={contentType === "jingle" ? "Lines or claims to work into the lyrics…" : "The hook + a couple talking points, in your voice…"} onChange={(e) => setSaySomething(e.target.value)} />
                   </div>
                   <div className="cs-wfield">
@@ -574,10 +593,25 @@ export default function Studio() {
             </>
           ) : (
             <>
-              <div className="cfg-lbl">{tab === "blog" ? "Pick an angle" : "Direction"} <span className="cs-opt">optional</span></div>
+              {tab === "image" && (
+                <>
+                  <div className="cfg-lbl cs-lblrow"><span>Ad template — what you see is what you get</span>{templateKey && <button type="button" className="cs-viewall" onClick={() => setTemplateKey(null)}>Clear</button>}</div>
+                  <div className="cfg-cast cs-ctypes">
+                    {AD_TEMPLATES.map((t) => (
+                      <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setDirection(""); }}>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-nm">{t.emoji} {t.name}</span>
+                        <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="cfg-note cs-ctnote">The statue marks where <b>your product</b> goes — same scene, same light, same layout. Ad text is written fresh for your product every time.</p>
+                </>
+              )}
+              <div className="cfg-lbl">{tab === "blog" ? "Pick an angle" : templateKey ? "Or freestyle instead" : "Direction"} <span className="cs-opt">optional</span></div>
               {tab === "image" && (
                 <div className="cs-styles">
-                  {STYLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>)}
+                  {STYLES.map((s, i) => <button type="button" key={i} className={`cs-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => { setDirection(direction === s.prompt ? "" : s.prompt); setTemplateKey(null); }}>{s.label}</button>)}
                 </div>
               )}
               {tab === "blog" && (

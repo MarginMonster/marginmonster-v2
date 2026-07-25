@@ -216,7 +216,8 @@ async function runJob(
         payload.wear === true,
         payload.scene as string | undefined,
         payload.serviceMode === true,
-        payload.styleMode === "scene" || payload.styleMode === "backdrop" ? payload.styleMode : undefined
+        payload.styleMode === "scene" || payload.styleMode === "backdrop" ? payload.styleMode : undefined,
+        typeof payload.templateKey === "string" ? payload.templateKey : undefined
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements
@@ -271,7 +272,8 @@ async function runJob(
           },
         });
       } else if (payload.contentType === "jingle") {
-        // EARWORM → sung jingle over a hero-motion product clip.
+        // ANTHEM → sung theme song, lipsynced by the cast singer (photoreal
+        // or cartoon-styled), or played over a hero product clip.
         const { generateJingleAd } = await import("./jingle-ad-pipeline.server");
         forgedAssetId = await generateJingleAd({
           shopId,
@@ -279,6 +281,9 @@ async function runJob(
           productTitle: payload.productTitle as string,
           productDescription: payload.productDescription as string | undefined,
           productImageUrl: payload.productImageUrl as string | undefined,
+          avatarId: payload.avatarId as string | undefined,
+          avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
+          cartoonStyle: payload.cartoonStyle as string | undefined,
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
           origin,
@@ -287,6 +292,10 @@ async function runJob(
             lyrics: payload.ckLyrics as string | undefined,
             songUrl: payload.ckSongUrl as string | undefined,
             engine: payload.ckEngine as string | undefined,
+            styledUrl: payload.ckStyledUrl as string | undefined,
+            omniPredictionId: payload.ckOmniId as string | undefined,
+            talkingUrl: payload.ckTalkingUrl as string | undefined,
+            singEngine: payload.ckSingEngine as string | undefined,
             keyframeUrl: payload.ckKeyframeUrl as string | undefined,
             klingPredictionId: payload.ckKlingId as string | undefined,
             animUrl: payload.ckAnimUrl as string | undefined,

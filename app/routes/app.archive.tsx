@@ -215,9 +215,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Cartoon/jingle remixes stay cartoon/jingle — the content type (and the
       // picked animation style) rides along from the original's metaJson.
       const contentType = meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined;
-      // Cartoon remixes keep their presenter (the character IS the avatar);
-      // jingles never carry one.
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId: contentType === "jingle" ? undefined : avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, initiator: "remix" });
+      // Cartoon and Anthem remixes keep their presenter (the character
+      // presents or sings).
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, initiator: "remix" });
     } else if (type === "image") {
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant: nextVariant, wear: false, prePaid: true });
     } else {

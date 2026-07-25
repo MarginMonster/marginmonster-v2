@@ -53,10 +53,14 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   // Kick one immediately so freshly-installed shops don't wait.
   tick();
   // Self-build the cartoon style-picker tiles (real flux renders of the first
-  // character) at boot — nobody has to visit anything to trigger them.
+  // character) and the Ad Template plates + statue previews at boot — nobody
+  // has to visit anything to trigger them.
   import("./lib/style-tiles.server")
     .then((m) => m.ensureAllStyleTiles())
     .catch((e) => console.error("[worker] style tiles boot kick:", e));
+  import("./lib/image-generation.server")
+    .then((m) => m.ensureAllAdTemplates())
+    .catch((e) => console.error("[worker] ad templates boot kick:", e));
 }
 
 export {};
