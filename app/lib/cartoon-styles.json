@@ -25,8 +25,8 @@
   },
   "brick": {
     "name": "Block Build",
-    "look": "built entirely from simple glossy plastic toy blocks: chunky smooth cube and rectangular construction, boxy squared-off character proportions with flat faces, bright saturated primary colors, crisp macro toy-photography focus, playful block-built voxel diorama world, an original generic toy-block aesthetic",
-    "motion": "playful stop-motion block animation, snappy stepped movement, blocks stacking and snapping into place",
+    "look": "rebuilt as a chunky VOXEL character in a cube-world diorama, like a retro sandbox video game brought to life: head and body assembled from large square cubes with completely flat smooth matte faces, simple pixel-style painted facial features on a flat CUBE-shaped head, squared-off right-angle proportions, bright saturated colors, crisp macro photography of a handmade cube world — an original generic voxel aesthetic. Absolutely NO cylindrical studs, NO round-headed minifigures, NO interlocking-brick construction, NO toy-brand look",
+    "motion": "playful stop-motion voxel animation, snappy stepped movement, cubes assembling and snapping into place",
     "voice": "English_PlayfulGirl"
   },
   "vintagetoon": {

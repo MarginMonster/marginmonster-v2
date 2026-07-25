@@ -306,7 +306,10 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
  * composites the merchant's product cutout onto the SAME plate, so preview
  * and result match pixel-for-pixel except bottle→product. */
 
-const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
+// Under data/renders: the only persistent-disk path on Render (render.yaml
+// mountPath) — plates/previews/statue must survive deploys or the picker
+// flaps back to fallbacks after every push.
+const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "renders", "ad-templates");
 // v7: statue re-forged with nano-banana + a vision spelling check — flux-dev
 // kept garbling the "EASYMODE" label into alphabet soup.
 const AD_TEMPLATE_VERSION = 7;

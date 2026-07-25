@@ -33,8 +33,8 @@ export const loader = async (_args: LoaderFunctionArgs) => {
       FAL_KEY: !!process.env.FAL_KEY,
       SHOPIFY_APP_URL: !!process.env.SHOPIFY_APP_URL,
     },
-    styleTiles: listDir(path.join(cwd, "data", "style-tiles")),
-    adTemplates: listDir(path.join(cwd, "data", "ad-templates")),
+    styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
+    adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
     activity: artLogEntries(),
   };
   return new Response(JSON.stringify(body, null, 2), {

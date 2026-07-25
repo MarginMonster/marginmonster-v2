@@ -17,12 +17,15 @@ import { artLog } from "./art-log.server";
 // Default character (boot pre-render + the Cartoon Avatar cover).
 export const DEFAULT_TILE_CHARACTER = "ingrid";
 
-const TILE_DIR = path.join(process.cwd(), "data", "style-tiles");
+// Lives under data/renders because that's the ONLY path with a persistent
+// disk on Render (render.yaml mountPath) — anywhere else gets wiped on every
+// deploy, which made tiles flap between rendered and portrait-fallback.
+const TILE_DIR = path.join(process.cwd(), "data", "renders", "style-tiles");
 const TILE_VERSION = 2; // v2: five-finger hand guard in the prompt
 // Per-key bumps: raise ONE style's version when its recipe changes materially,
 // so only that style re-renders instead of every tile for every character.
 const TILE_KEY_VERSIONS: Record<string, number> = {
-  brick: 3, // v3: de-branded block look (generic cubes, no studded-brick trade dress)
+  brick: 4, // v4: full voxel/cube look — v3 still drew studded minifigures
 };
 const tileVersion = (key: string) => TILE_KEY_VERSIONS[key] ?? TILE_VERSION;
 const PICKER_KEYS: CartoonStyleKey[] = [
