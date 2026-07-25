@@ -28,7 +28,7 @@ type CType = "avatar" | "highlight" | "cartoon" | "jingle";
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
   { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png?v=2", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png?v=2", sub: "Cinematic motion, no presenter", live: true },
-  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/content-types/ct.png?v=2", sub: "Your presenter & product, redrawn viral-style", live: true },
+  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/content-types/ct.png?v=3", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png?v=2", sub: "A sung ad that sticks — 2000s commercial energy", live: true },
 ];
 
@@ -36,14 +36,14 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
 // descriptively (no IP names). Keys must match CARTOON_RECIPES in
 // cartoon-ad-pipeline.server.ts.
 const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
-  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/content-types/cartoon/dreamanime.png?v=2", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
-  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/content-types/cartoon/toyfigure.png?v=2", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/content-types/cartoon/brick.png?v=2", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
-  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/content-types/cartoon/pixar.png?v=2", blurb: "Big-studio 3D character film — glossy and cinematic" },
-  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/content-types/cartoon/retroanime.png?v=2", blurb: "90s VHS anime — sunset palettes and speed lines" },
-  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/content-types/cartoon/vintagetoon.png?v=2", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
-  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/content-types/cartoon/puppet.png?v=2", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
-  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/content-types/cartoon/clay.png?v=2", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/content-types/cartoon/dreamanime.png?v=3", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
+  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/content-types/cartoon/toyfigure.png?v=3", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
+  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/content-types/cartoon/brick.png?v=3", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
+  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/content-types/cartoon/pixar.png?v=3", blurb: "Big-studio 3D character film — glossy and cinematic" },
+  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/content-types/cartoon/retroanime.png?v=3", blurb: "90s VHS anime — sunset palettes and speed lines" },
+  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/content-types/cartoon/vintagetoon.png?v=3", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
+  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/content-types/cartoon/puppet.png?v=3", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
+  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/content-types/cartoon/clay.png?v=3", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
