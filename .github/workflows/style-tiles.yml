@@ -1,0 +1,43 @@
+name: Render style previews
+
+# Renders the cartoon style previews with the REAL production model
+# (flux-kontext-pro on Replicate) and commits them to the style-previews
+# branch for review — so art can be approved in chat before it ships.
+#
+# Requires the repo Actions secret: REPLICATE_API_TOKEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      character:
+        description: "Cast member (public/avatars/<name>_0.jpg)"
+        default: "ingrid"
+        required: true
+      styles:
+        description: "Comma-separated style keys, or 'all'"
+        default: "all"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Render previews
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: node scripts/generate-style-tiles.mjs "${{ inputs.character }}" "${{ inputs.styles }}"
+      - name: Commit to style-previews branch
+        run: |
+          git config user.name "style-preview-bot"
+          git config user.email "noreply@easymodeapp.com"
+          git checkout -B style-previews
+          git add style-previews/
+          git commit -m "style previews: ${{ inputs.character }} (${{ inputs.styles }})" || echo "nothing new"
+          git push -f origin style-previews

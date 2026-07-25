@@ -52,6 +52,11 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   setInterval(tick, POLL_MS);
   // Kick one immediately so freshly-installed shops don't wait.
   tick();
+  // Self-build the cartoon style-picker tiles (real flux renders of the first
+  // character) at boot — nobody has to visit anything to trigger them.
+  import("./lib/style-tiles.server")
+    .then((m) => m.ensureAllStyleTiles())
+    .catch((e) => console.error("[worker] style tiles boot kick:", e));
 }
 
 export {};

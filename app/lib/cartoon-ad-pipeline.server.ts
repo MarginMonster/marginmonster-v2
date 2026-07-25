@@ -35,6 +35,9 @@ import type { BrandProfile } from "@prisma/client";
 export type CartoonStyleKey =
   | "dreamanime" | "retroanime" | "pixar" | "toyfigure"
   | "brick" | "vintagetoon" | "papercut" | "puppet" | "clay";
+// NOTE: cartoon-styles.json is the shareable single source of these recipes
+// (scripts/generate-style-tiles.mjs reads it on GitHub Actions to render
+// previews). Keep this literal and the JSON in sync when tuning styles.
 export const CARTOON_RECIPES: Record<
   CartoonStyleKey,
   { name: string; look: string; motion: string; voice: string }

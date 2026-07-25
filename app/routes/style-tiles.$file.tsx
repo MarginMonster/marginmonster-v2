@@ -25,8 +25,9 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
       });
     }
     const fb = path.join(process.cwd(), "public", "content-types", "ct.png");
+    // no-store: the instant the real render exists, the next refresh shows it
     return new Response(new Uint8Array(fs.readFileSync(fb)), {
-      headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=120" },
+      headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
     });
   }
 
@@ -42,8 +43,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   ensureStyleTile(key);
   const fb = path.join(process.cwd(), "public", "content-types", "cartoon", `${key}.png`);
   if (!fs.existsSync(fb)) return new Response("Not found", { status: 404 });
-  // short cache: browsers re-check soon and pick up the real tile when ready
+  // no-store: the instant the real render exists, the next refresh shows it
   return new Response(new Uint8Array(fs.readFileSync(fb)), {
-    headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=120" },
+    headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
   });
 };

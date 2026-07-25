@@ -1,0 +1,56 @@
+{
+  "dreamanime": {
+    "name": "Dream Anime",
+    "look": "hand-painted Japanese animation film still: soft watercolor-washed skies and greenery, painterly cumulus clouds, warm golden sunlight, gentle expressive characters with soft rounded features and big warm eyes, delicate clean linework, lush background detail, wholesome nostalgic wonder, cinematic film composition",
+    "motion": "a gentle breeze moves hair and grass, petals drift through warm light, soft parallax clouds, slow serene camera pan, quiet magical atmosphere",
+    "voice": "English_SereneWoman"
+  },
+  "retroanime": {
+    "name": "Retro Anime",
+    "look": "1990s retro cel anime OVA still: crisp confident lineart, dramatic cel shading with hard-edged shadow shapes, saturated sunset palette, subtle VHS grain and soft glow, stylish confident character poses, nostalgic 90s anime production feel",
+    "motion": "dramatic 90s anime energy, speed lines sweeping through, flickering retro glow, confident slow zoom",
+    "voice": "English_ConfidentWoman"
+  },
+  "pixar": {
+    "name": "3D Toon",
+    "look": "premium 3D animated feature-film render: appealing rounded character design with big expressive glossy eyes and soft subsurface-scattered skin, cinematic global illumination, shallow depth of field, rich material detail, big-studio animated-movie quality",
+    "motion": "smooth cinematic 3D camera drift, soft depth of field, gentle bouncy character-film motion, warm expressive face animation",
+    "voice": "English_Trustworth_Man"
+  },
+  "toyfigure": {
+    "name": "Boxed Figure",
+    "look": "collectible action-figure presentation: rendered as a glossy molded toy inside retail blister packaging on a printed cardboard backer card, tiny themed accessories in molded compartments, price-sticker-era toy-aisle nostalgia, crisp studio toy-photography lighting",
+    "motion": "retro toy-commercial energy, slow hero showcase feel, studio light sweeps, sparkle glints on the packaging",
+    "voice": "English_magnetic_voiced_man"
+  },
+  "brick": {
+    "name": "Brick Build",
+    "look": "built entirely from glossy interlocking plastic toy bricks: chunky studded construction, minifigure-scale proportions, bright saturated primary colors, crisp macro toy-photography focus, playful brick-built diorama world",
+    "motion": "playful stop-motion brick animation, snappy stepped movement, pieces clicking into place",
+    "voice": "English_PlayfulGirl"
+  },
+  "vintagetoon": {
+    "name": "Vintage Toon",
+    "look": "playful vintage 2D animation illustration: hand-inked outlines, warm storybook color palette, subtle paper texture and print grain, exaggerated joyful poses and rosy-cheeked expressions, charming mid-century cartoon town energy, richly detailed hand-drawn scene",
+    "motion": "bouncy vintage cartoon motion, cheerful exaggerated gestures, gentle film-grain flicker, playful mid-century animation energy",
+    "voice": "English_Comedian"
+  },
+  "papercut": {
+    "name": "Paper Cutout",
+    "look": "construction-paper cutout cartoon style, flat layered paper shapes with visible cut edges, handmade collage charm, simple bold colors",
+    "motion": "paper layers shifting in gentle parallax, subtle handmade stop-motion jitter, cozy charm",
+    "voice": "English_Comedian"
+  },
+  "puppet": {
+    "name": "Felt Puppet",
+    "look": "handmade felt puppet style, fuzzy fabric texture with stitched seams, friendly googly eyes, cozy puppet-workshop stage set",
+    "motion": "puppet-show bounce, fuzzy character wobble, handheld puppet-stage feel, warm playful energy",
+    "voice": "English_FriendlyPerson"
+  },
+  "clay": {
+    "name": "Claymation",
+    "look": "handcrafted claymation stop-motion still: visibly hand-molded plasticine with subtle fingerprints and tool marks, miniature practical set with tiny handmade props, warm studio key light, charming slightly imperfect handmade shapes, cozy stop-motion film quality",
+    "motion": "stop-motion claymation movement, subtle frame-step charm, squishy clay bounce",
+    "voice": "English_Kind-heartedGirl"
+  }
+}
