@@ -13,9 +13,11 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   const m = file.match(/^([a-z]+)\.jpg$/);
   const key = m?.[1] || "";
 
-  // The Cartoon Avatar cover — real 2×2 collage when built, fallback ct.png.
+  // The Cartoon Avatar cover — the FIRST CHARACTER leads in Pixar-style
+  // (the 3D-toon render of Amara); fallback ct.png until it's generated.
+  // Requesting the cover also kicks off every missing style tile.
   if (key === "cover") {
-    const real = styleTilePath("cover");
+    const real = styleTilePath("pixar");
     ensureAllStyleTiles();
     if (real) {
       return new Response(new Uint8Array(fs.readFileSync(real)), {

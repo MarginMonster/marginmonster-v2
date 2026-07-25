@@ -70,35 +70,12 @@ export function ensureStyleTile(key: string): void {
       if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${key}.jpg`));
       else fs.rmSync(tmp, { force: true });
       console.log(`[style-tiles] generated real tile for ${key}`);
-      // All four collage styles real? Refresh the Cartoon Avatar cover too.
-      buildCover().catch(() => { /* best-effort */ });
     } catch (e) {
       console.error(`[style-tiles] ${key} generation failed (fallback art keeps serving):`, e instanceof Error ? e.message : e);
     } finally {
       inFlight.delete(key);
     }
   })();
-}
-
-/** 2×2 collage of four real tiles → the Cartoon Avatar content-type cover. */
-async function buildCover(): Promise<void> {
-  const parts = ["dreamanime", "toyfigure", "pixar", "clay"].map((k) => path.join(TILE_DIR, `${k}.jpg`));
-  if (!parts.every((p) => fs.existsSync(p))) return;
-  const out = path.join(TILE_DIR, "cover.jpg");
-  if (fs.existsSync(out)) return;
-  const { runFfmpeg } = await import("./ugc-ad-pipeline.server");
-  const r = await runFfmpeg([
-    "-y",
-    "-i", parts[0], "-i", parts[1], "-i", parts[2], "-i", parts[3],
-    "-filter_complex",
-    "[0:v]scale=400:232:force_original_aspect_ratio=increase,crop=400:232[a];" +
-    "[1:v]scale=400:232:force_original_aspect_ratio=increase,crop=400:232[b];" +
-    "[2:v]scale=400:232:force_original_aspect_ratio=increase,crop=400:232[c];" +
-    "[3:v]scale=400:232:force_original_aspect_ratio=increase,crop=400:232[d];" +
-    "[a][b]hstack[top];[c][d]hstack[bot];[top][bot]vstack",
-    "-frames:v", "1", "-q:v", "3", out,
-  ]);
-  if (r.status === 0) console.log("[style-tiles] cover collage built from real tiles");
 }
 
 /** Kick all missing tiles (called opportunistically from the route). */
