@@ -30,6 +30,17 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png", sub: "A sung ad that sticks — 2000s commercial energy", live: false },
 ];
 
+// Cartoon sub-styles — picking Cartoon opens this animation-style step. All
+// "coming soon" until the cartoon pipeline ships; the flow is ready now.
+const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string }[] = [
+  { key: "flat2d", name: "Classic 2D", emoji: "✏️", tint: "#FF8A3D" },
+  { key: "anime", name: "Anime", emoji: "🌸", tint: "#E5397D" },
+  { key: "pixar", name: "3D Character", emoji: "🧸", tint: "#34C3E7" },
+  { key: "comic", name: "Comic Book", emoji: "💥", tint: "#F4B400" },
+  { key: "papercut", name: "Paper Cut-out", emoji: "📄", tint: "#0F9152" },
+  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526" },
+];
+
 // Wearable products should be modeled (worn) by the presenter, not held.
 const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
 
@@ -290,6 +301,7 @@ export default function Studio() {
   // Content-type step (video only). null = show the type carousel; picking a
   // type shifts the same screen to that type's picker.
   const [contentType, setContentType] = useState<CType | null>(null);
+  const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   useEffect(() => {
     if (contentType === "highlight") setAvatarId(null);
     else if (contentType === "avatar") setAvatarId((a) => a ?? defaultAvatar);
@@ -414,11 +426,29 @@ export default function Studio() {
               <button type="button" className="cs-back" onClick={() => setContentType(null)}>‹ Content type</button>
               {contentType === "avatar" && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={false} brandFaceId={brandFaceId} />}
               {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
-              {(contentType === "cartoon" || contentType === "jingle") && (
+              {contentType === "cartoon" && (
+                <>
+                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon style</span><span className="cs-opt">coming soon</span></div>
+                  <div className="cfg-cast cs-ctypes">
+                    {CARTOON_STYLES.map((cs) => (
+                      <button type="button" key={cs.key} className={`cast cs-ctype soon${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
+                        <span className="ca-img cs-ctimg cs-cartimg" style={{ background: `linear-gradient(150deg, ${cs.tint}, ${cs.tint}bb)` }}>{cs.emoji}<span className="ca-soon">SOON</span></span>
+                        <span className="ca-nm">{cs.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="cs-soonpanel" style={{ marginTop: 12 }}>
+                    <b>Cartoon ads are on the way</b>
+                    <p>Turn your product into an animated ad in the style you pick — same easy flow, a whole new look.</p>
+                    <span className="cs-soontag">Pick Avatar AI or Product Highlight for now.</span>
+                  </div>
+                </>
+              )}
+              {contentType === "jingle" && (
                 <div className="cs-soonpanel">
-                  <span className="cs-soonbig">{CONTENT_TYPES.find((c) => c.key === contentType)?.icon}</span>
-                  <b>{CONTENT_TYPES.find((c) => c.key === contentType)?.name} is coming soon</b>
-                  <p>{contentType === "jingle" ? "AI-sung ads with that early-2000s commercial hook — your avatar or cartoon literally sings your offer." : "Illustrated, animated ad style — same easy flow, a whole new look."}</p>
+                  <span className="cs-soonbig">🎵</span>
+                  <b>Earworm is coming soon</b>
+                  <p>AI-sung ads with that early-2000s commercial hook — your avatar or cartoon literally sings your offer.</p>
                   <span className="cs-soontag">In the works — pick Avatar AI or Product Highlight for now.</span>
                 </div>
               )}
