@@ -14,9 +14,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 
-// The one face every style transforms — matches the Avatar AI cover so the
-// whole studio tells a single story. Portrait must exist in public/avatars.
-const FIRST_CHARACTER = "amara";
+// The one face every style transforms. Portrait must exist in public/avatars.
+// Cached tiles are keyed by this name — changing the character automatically
+// renders a fresh set instead of serving the previous face's tiles.
+const FIRST_CHARACTER = "ingrid";
 
 const TILE_DIR = path.join(process.cwd(), "data", "style-tiles");
 const PICKER_KEYS: CartoonStyleKey[] = [
@@ -27,7 +28,7 @@ const inFlight = new Set<string>();
 
 export function styleTilePath(key: string): string | null {
   if (!/^[a-z]+$/.test(key)) return null;
-  const p = path.join(TILE_DIR, `${key}.jpg`);
+  const p = path.join(TILE_DIR, `${FIRST_CHARACTER}-${key}.jpg`);
   return fs.existsSync(p) ? p : null;
 }
 
@@ -67,7 +68,7 @@ export function ensureStyleTile(key: string): void {
       fs.mkdirSync(TILE_DIR, { recursive: true });
       const tmp = path.join(TILE_DIR, `.${key}.part`);
       await download(url, tmp);
-      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${key}.jpg`));
+      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${FIRST_CHARACTER}-${key}.jpg`));
       else fs.rmSync(tmp, { force: true });
       console.log(`[style-tiles] generated real tile for ${key}`);
     } catch (e) {
