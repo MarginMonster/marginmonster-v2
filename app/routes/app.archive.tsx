@@ -9,7 +9,7 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { parseSchedule } from "../lib/questlines";
 import { generateSlotEarly, retrySlot } from "../lib/questlines.server";
-import { tokensRemaining, spendTokens } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive, spendTokens } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -99,7 +99,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     hasPlan: !!shop.activePlan,
-    tokens: shop.activePlan ? tokensRemaining(shop.activePlan) : 0,
+    tokens: tokensRemainingLive(shop.activePlan),
     library,
     scheduled,
     jobCards,

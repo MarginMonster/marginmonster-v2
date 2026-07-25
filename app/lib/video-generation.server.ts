@@ -26,6 +26,7 @@ interface GenerateVideoParams {
   productDescription?: string;
   productImageUrl?: string;
   style: VideoStyle;
+  serviceMode?: boolean; // intangible offer — sell the outcome, not a product on screen
   script?: string; // for AI_AVATAR; auto-written if omitted
   customPrompt?: string; // merchant direction, appended to the base prompt
   avatarId?: string; // cast member (avatars.ts) — portrait seeds the first frame
@@ -60,7 +61,9 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, enthusiastically presenting ${productTitle} to the camera. ${voice.tone} tone. Authentic hand-held creator feel, natural gestures, vertical.`
       : style === "AI_AVATAR"
         ? `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, vertical.`
-        : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`;
+        : params.serviceMode
+          ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${productTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.`
+          : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`;
   const direction = params.customPrompt?.trim();
   const context = productDescription?.trim()
     ? ` Product context: ${productDescription.trim().slice(0, 200)}.`

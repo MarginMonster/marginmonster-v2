@@ -240,6 +240,7 @@ async function runJob(
           productDescription: payload.productDescription as string | undefined,
           productImageUrl: payload.productImageUrl as string | undefined,
           style: "PRODUCT_HIGHLIGHT",
+          serviceMode: payload.serviceMode === true,
           customPrompt: payload.customPrompt as string | undefined,
         });
       }

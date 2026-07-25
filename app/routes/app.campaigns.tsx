@@ -7,7 +7,7 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { parseSchedule } from "../lib/questlines";
 import { linkedFromCache } from "../lib/social-provider.server";
-import { tokensRemaining } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop, addManualDrop } from "../lib/questlines.server";
 
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
@@ -148,7 +148,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     hasPlan: !!shop?.activePlan,
-    tokens: shop?.activePlan ? tokensRemaining(shop.activePlan) : 0,
+    tokens: tokensRemainingLive(shop?.activePlan),
     lastDropDate,
     platforms: platShorts,
     weeks: monthGrid(year, month0),

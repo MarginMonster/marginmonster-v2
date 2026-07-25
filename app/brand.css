@@ -1,11 +1,9 @@
-/* EasyMode — CLASSIC ARCADE theme: "one arcade, many cabinets."
-   Vintage golden-age arcade energy (Donkey Kong marquees, Pac-Man dots,
-   Asteroids void, monster-collector partners) — lively, vibrant, upbeat,
-   encouraging — while working WITH Polaris (it themes its own cards + text,
-   adapting to the merchant's light/dark admin). Each tool is its own "game
-   cabinet"; a consistent CRT-and-marquee chrome wraps them all. See DESIGN.md. */
+/* EasyMode — "GStyle": money-engraved green + gold on parchment. A premium,
+   banknote-inspired system (guilloché medallions, gold crosshatch, deep-green
+   bands) that works WITH Polaris in the merchant's light/dark admin. Earlier
+   arcade/island themes are retired; retired CSS below is unmounted. */
 
-@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap");
 
 :root {
   --mm-space: #0A0821;
@@ -167,9 +165,9 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
 .mm-chip:hover { border-color: var(--mm-cyan); background: rgba(52,231,228,0.10); }
 .mm-section-label { font-family: var(--font-pixel); font-size: 9px; letter-spacing: 0.2em; color: #9A95C4; margin: 4px 0 14px; display: block; }
 
-.mm-score { background: var(--mm-space-2); border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
-.mm-score .lbl { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.14em; color: #9A95C4; }
-.mm-score .val { font-family: var(--font-heading); font-size: 30px; font-weight: 800; color: var(--mm-gold); }
+.mm-score { background: linear-gradient(160deg,#0E5233,#0A3421 58%,#062417); border: 1px solid rgba(231,200,121,.3); border-radius: 16px; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 12px 30px rgba(8,42,26,.28), inset 0 0 0 1px rgba(231,200,121,.14); }
+.mm-score .lbl { font-family: -apple-system, "Segoe UI", sans-serif !important; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #E7C879 !important; }
+.mm-score .val { font-family: "Poppins", sans-serif; font-size: 30px; font-weight: 800; color: #F4EAC8; }
 
 /* ===== Adaptive custom cards — follow Polaris tokens so they match the admin theme ===== */
 .mm-plan-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: stretch; }
@@ -487,21 +485,20 @@ body:has(.mm-hero) .mm-asteroids { display: block; }
   display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0a17;
 }
 
-/* FORGED! stamp on the results header */
+/* FORGED! stamp on the results header (GStyle — parchment page) */
 .mm-forged-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
-/* these sit directly on the dark ember bg (no card) → force light text */
-.mm-forged-head h1, .mm-forged-head h2, .mm-forged-head h3 { color: #ECEAFB !important; }
-.mm-forge-note { color: #C6C1E6; font-size: 13px; line-height: 1.45; margin: 0; }
+.mm-forged-head h1, .mm-forged-head h2, .mm-forged-head h3 { color: #14201A !important; }
+.mm-forge-note { color: #52564A; font-size: 13px; line-height: 1.45; margin: 0; }
 .mm-ghost-btn {
-  cursor: pointer; background: rgba(255,255,255,0.06); color: #ECEAFB;
-  border: 1px solid rgba(255,255,255,0.18); border-radius: 10px;
-  font-size: 13px; font-weight: 600; padding: 9px 15px; transition: border-color .15s ease, background .15s ease;
+  cursor: pointer; background: #fff; color: #0A6B3E;
+  border: 1.5px solid #DBD6C6; border-radius: 10px;
+  font-size: 13px; font-weight: 700; padding: 9px 15px; transition: border-color .15s ease, background .15s ease;
 }
-.mm-ghost-btn:hover { border-color: rgba(52,231,228,0.55); background: rgba(52,231,228,0.08); }
+.mm-ghost-btn:hover { border-color: #0F9152; background: rgba(12,122,70,.05); }
 .mm-forged-stamp {
-  font-family: var(--font-pixel); font-size: 13px; letter-spacing: .06em; color: #0B0A17;
-  background: linear-gradient(180deg, #7bf3f1, #1fb6b3); padding: 8px 14px; border-radius: 8px;
-  transform: rotate(-4deg); box-shadow: 0 4px 14px rgba(52,231,228,0.4);
+  font-family: "Poppins", -apple-system, sans-serif; font-weight: 800; font-size: 12.5px; letter-spacing: .08em; color: #241A02;
+  background: linear-gradient(180deg, #F3D889, #D9AE4A); padding: 8px 14px; border-radius: 8px;
+  transform: rotate(-4deg); box-shadow: 0 4px 12px rgba(176,133,38,.4), inset 0 0 0 1px rgba(255,255,255,.35);
   animation: mm-stamp-in .45s cubic-bezier(.2, 1.4, .4, 1);
 }
 @keyframes mm-stamp-in { 0% { transform: rotate(-4deg) scale(0); opacity: 0; } 70% { transform: rotate(-4deg) scale(1.12); } 100% { transform: rotate(-4deg) scale(1); opacity: 1; } }

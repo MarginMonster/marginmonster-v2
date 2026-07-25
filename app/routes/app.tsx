@@ -9,7 +9,7 @@ import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import brandStyles from "../brand.css?raw";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
-import { refreshPeriod, tokensRemaining } from "../lib/tokens.server";
+import { refreshPeriod, tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
 import { PARTNER_BY_PLAN } from "../components/Partner";
 import { getCompanion } from "../lib/companion.server";
@@ -94,7 +94,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let plan = shop?.activePlan ?? null;
     if (plan) {
       plan = await refreshPeriod(plan);
-      const remaining = tokensRemaining(plan);
+      const remaining = tokensRemainingLive(plan);
       const partner = PARTNER_BY_PLAN[plan.type as PlanKey];
       const tokensMax = Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra);
       hud = {

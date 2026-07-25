@@ -6,7 +6,7 @@ import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { linkedFromCache } from "../lib/social-provider.server";
-import { tokensRemaining } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
 import { AVATARS, avatarImg } from "../lib/avatars";
@@ -72,7 +72,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     allowance,
     packs: TOKEN_PACKS,
     tiers: PLAN_TIERS.map((t) => ({ name: t.name, monthlyTokens: t.monthlyTokens, price: t.price })),
-    tokens: tokensRemaining(plan ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }),
+    tokens: tokensRemainingLive(plan),
     linked,
     products,
     cast,

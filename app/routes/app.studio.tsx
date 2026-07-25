@@ -7,7 +7,7 @@ import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens } from "../lib/tokens.server";
-import { tokensRemaining } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 
@@ -95,7 +95,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     hasPlan: !!plan?.active,
     hasBrand: !!shop?.brandProfile,
-    tokens: tokensRemaining(plan ?? { tokensIncluded: 0, tokensUsed: 0, tokensExtra: 0 }),
+    tokens: tokensRemainingLive(plan),
     products,
     cast,
     brandFaceId,
@@ -167,7 +167,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (!shop.brandProfile) return json({ error: "Analyze your store first (on the dashboard) so content matches your brand." });
-  if (!shop.activePlan?.active) return json({ error: "Pick a package first — content runs on tokens." });
+  if (!shop.activePlan?.active) return json({ error: "Pick a plan first — content runs on tokens." });
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();
   const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
@@ -397,7 +397,7 @@ export default function Studio() {
 
         {(!hasBrand || !hasPlan) && (
           <div style={{ marginBottom: 14 }}>
-            <Banner tone="warning" title={!hasBrand ? "Analyze your store first" : "Choose a package first"}>
+            <Banner tone="warning" title={!hasBrand ? "Analyze your store first" : "Choose a plan first"}>
               <p>{!hasBrand ? "Run the brand analyzer on the dashboard so content matches your voice." : "Content runs on tokens — pick a plan to start generating."}</p>
             </Banner>
           </div>

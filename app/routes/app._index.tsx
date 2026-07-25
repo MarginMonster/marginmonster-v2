@@ -11,7 +11,7 @@ import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { TOKEN_COST } from "../lib/plan-config";
-import { tokensRemaining } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 
 type BrandResults = {
   tone: string; tagline: string; positioning: string; imageStyle: string;
@@ -94,7 +94,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (shop?.brandProfile && shop.activePlan?.active) {
     try {
       const plan = shop.activePlan;
-      const balance = tokensRemaining(plan);
+      const balance = tokensRemainingLive(plan);
       const featuresVideo = plan.videoQuota > 0; // plan positions video (Pro/Scale)
       const featuresImage = plan.imageQuota > 0; // Growth and up
 

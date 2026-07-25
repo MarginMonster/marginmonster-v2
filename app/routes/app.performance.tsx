@@ -297,7 +297,7 @@ function PaidROI({ summary }: { summary: Awaited<ReturnType<typeof getPerformanc
     <Page title="Performance & ROI" backAction={{ content: "Home", url: "/app" }} subtitle="Every dollar in, every dollar out — ad spend, revenue, ROI, traffic, and conversions.">
       <Layout>
         <Layout.Section>
-          <div className="mm-score"><span className="lbl">HI-SCORE · ROI</span><span className="val">{`${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`}</span></div>
+          <div className="mm-score"><span className="lbl">Return on ad spend</span><span className="val">{`${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`}</span></div>
         </Layout.Section>
         <Layout.Section>
           <InlineStack gap="400" wrap>

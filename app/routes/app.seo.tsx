@@ -4,7 +4,7 @@ import { Link, useLoaderData } from "@remix-run/react";
 import { Page } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
-import { tokensRemaining } from "../lib/tokens.server";
+import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 
 /* SEO HUB — one front door for everything search: product listings, blog
@@ -31,7 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     blogs,
     blogsLive,
     pages,
-    tokens: shop.activePlan ? tokensRemaining(shop.activePlan) : 0,
+    tokens: tokensRemainingLive(shop.activePlan),
   });
 };
 

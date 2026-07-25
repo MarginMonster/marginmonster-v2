@@ -23,6 +23,22 @@ export function tokensRemaining(plan: Pick<Plan, "tokensIncluded" | "tokensUsed"
   return Math.max(0, plan.tokensIncluded - plan.tokensUsed) + plan.tokensExtra;
 }
 
+/**
+ * Display-safe balance for read-side loaders. If the billing period has already
+ * elapsed but no spend has rolled it over yet, this returns the balance the
+ * merchant WILL have (full monthly allowance), so pages never flash "0 tokens"
+ * for the gap between period-end and the next spend. Pure — never writes.
+ */
+export function tokensRemainingLive(
+  plan: Pick<Plan, "type" | "tokensIncluded" | "tokensUsed" | "tokensExtra" | "periodStart"> | null | undefined
+): number {
+  if (!plan) return 0;
+  const elapsed = Date.now() - new Date(plan.periodStart).getTime() >= PERIOD_MS;
+  const included = elapsed ? (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) : plan.tokensIncluded;
+  const used = elapsed ? 0 : plan.tokensUsed;
+  return Math.max(0, included - used) + plan.tokensExtra;
+}
+
 /** Roll the monthly allowance over if the billing period has elapsed. Returns
  *  the (possibly refreshed) plan. */
 export async function refreshPeriod(plan: Plan): Promise<Plan> {
