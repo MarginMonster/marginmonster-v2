@@ -17,6 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 const FEATURES = [
   { icon: "🎬", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
+  { icon: "🎨", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, brick build, claymation — or sung as an earworm jingle." },
   { icon: "✍️", title: "SEO blogs on autopilot", body: "Buyer-intent articles written and published to your store, pulling in free Google traffic month after month." },
   { icon: "📣", title: "Auto-posted for you", body: "Every drop goes out to TikTok, Instagram & Facebook on a schedule — captions and hashtags written to travel." },
   { icon: "🪄", title: "One-tap autopilot", body: "Pick a goal. EasyMode builds a full month of content, launches it, and scales what works." },
@@ -168,7 +169,7 @@ html,body{margin:0;padding:0}
 .lz-stats b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:26px;color:var(--green);line-height:1;}
 .lz-stats span{font-size:11px;color:var(--ink2)}
 .lz-div{width:1px;height:30px;background:var(--line)}
-.lz-feats{max-width:1000px;margin:56px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+.lz-feats{max-width:1000px;margin:56px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;}
 .lz-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px 20px;box-shadow:0 2px 8px rgba(20,32,26,.05);
   transition:transform .12s,border-color .12s,box-shadow .12s;}
 .lz-card:hover{transform:translateY(-4px);border-color:var(--green2);box-shadow:0 16px 40px rgba(12,122,70,.14)}

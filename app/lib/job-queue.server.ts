@@ -10,10 +10,41 @@ import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
 import { refundTokens } from "./tokens.server";
+import { TOKEN_COST } from "./plan-config";
 import { launchCampaign } from "./campaign-launch.server";
 import { runDecisioningPass } from "./decisioning-engine.server";
 
 const MAX_ATTEMPTS = 3;
+
+// Pre-paid generations (tokens spent at enqueue — Studio pieces AND questline
+// drops, which are charged per-piece on accept) get their tokens BACK if the
+// job burns through every retry — a server-side failure is never the
+// merchant's bill. Retrying a refunded piece re-charges (Studio retry button
+// and questline retrySlot both), so it's always one spend per piece.
+export const REFUND_BY_TYPE: Record<string, number> = {
+  GENERATE_VIDEO_AD: TOKEN_COST.video,
+  GENERATE_IMAGE_AD: TOKEN_COST.image,
+  GENERATE_BLOG_POST: TOKEN_COST.blog,
+};
+
+/** Refund a terminally-failed pre-paid job EXACTLY ONCE. The payload is
+ *  rewritten first (prePaid→false, refunded→true) so a second terminal
+ *  failure — or the archive's free retry failing again — can never mint
+ *  tokens, and so the archive knows a re-run must be re-charged. */
+async function refundPrepaidOnce(job: { id: string; shopId: string; type: string; payload: string }): Promise<void> {
+  try {
+    // Re-fetch: the claimed copy is stale — pipelines checkpoint ck* keys into
+    // the payload mid-run, and rewriting from the stale copy would erase them.
+    const fresh = await db.job.findUnique({ where: { id: job.id }, select: { payload: true } });
+    const p = JSON.parse((fresh ?? job).payload) as Record<string, unknown>;
+    if (!p.prePaid || !REFUND_BY_TYPE[job.type]) return;
+    p.prePaid = false;
+    p.refunded = true;
+    await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(p) } });
+    await refundTokens(job.shopId, REFUND_BY_TYPE[job.type]);
+    console.log(`[worker] refunded ${REFUND_BY_TYPE[job.type]} tokens for failed ${job.type} (${job.id})`);
+  } catch { /* refund is best-effort, never fatal */ }
+}
 
 /** Advance the questline that spawned this job, if any. Lazy import avoids a
  *  circular dependency (questlines.server → job-queue for enqueueJob). */
@@ -37,13 +68,22 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     where: { status: "IN_PROGRESS", updatedAt: { lt: cutoff } },
   });
   for (const j of stuck) {
+    const dead = j.attempts >= MAX_ATTEMPTS;
     await db.job.update({
       where: { id: j.id },
-      data:
-        j.attempts >= MAX_ATTEMPTS
-          ? { status: "FAILED", lastError: "Interrupted by a server restart — hit ROLL CAMERA to try again." }
-          : { status: "PENDING" },
+      data: dead
+        ? { status: "FAILED", lastError: "Interrupted by a server restart — hit ROLL CAMERA to try again." }
+        : { status: "PENDING" },
     });
+    // Terminal death via orphan-reclaim refunds exactly like a terminal
+    // failure inside processNextJob — the merchant never pays for a
+    // restart-killed render (companion forges included).
+    if (dead) {
+      await refundPrepaidOnce(j);
+      if (j.type === "FORGE_COMPANION") {
+        try { await refundTokens(j.shopId, 1); } catch { /* non-fatal */ }
+      }
+    }
   }
   if (stuck.length) console.log(`[worker] reclaimed ${stuck.length} orphaned job(s)`);
 }
@@ -110,6 +150,7 @@ export async function processNextJob(): Promise<boolean> {
       if (job.type === "FORGE_COMPANION") {
         try { await refundTokens(job.shopId, 1); } catch { /* non-fatal */ }
       }
+      await refundPrepaidOnce(job);
     }
   }
 
@@ -201,7 +242,53 @@ async function runJob(
         origin = `🎬 BY ${(payload.initiator as string).toUpperCase()}`;
       }
       let forgedAssetId: string | undefined;
-      if (payload.avatarId) {
+      if (payload.contentType === "cartoon") {
+        // CARTOON → illustrated keyframe (style-locked) animated by kling,
+        // with a style-cast narrator. Lazy import keeps the pipeline cold
+        // until the first cartoon job.
+        const { generateCartoonAd } = await import("./cartoon-ad-pipeline.server");
+        forgedAssetId = await generateCartoonAd({
+          shopId,
+          brandProfile: shop.brandProfile,
+          productTitle: payload.productTitle as string,
+          productDescription: payload.productDescription as string | undefined,
+          productImageUrl: payload.productImageUrl as string | undefined,
+          styleKey: (payload.cartoonStyle as string) || "dreamanime",
+          direction: payload.customPrompt as string | undefined,
+          serviceMode: payload.serviceMode === true,
+          origin,
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            script: payload.ckScript as string | undefined,
+            keyframeUrl: payload.ckKeyframeUrl as string | undefined,
+            klingPredictionId: payload.ckKlingId as string | undefined,
+            animUrl: payload.ckAnimUrl as string | undefined,
+            audioUrl: payload.ckAudioUrl as string | undefined,
+          },
+        });
+      } else if (payload.contentType === "jingle") {
+        // EARWORM → sung jingle over a hero-motion product clip.
+        const { generateJingleAd } = await import("./jingle-ad-pipeline.server");
+        forgedAssetId = await generateJingleAd({
+          shopId,
+          brandProfile: shop.brandProfile,
+          productTitle: payload.productTitle as string,
+          productDescription: payload.productDescription as string | undefined,
+          productImageUrl: payload.productImageUrl as string | undefined,
+          direction: payload.customPrompt as string | undefined,
+          serviceMode: payload.serviceMode === true,
+          origin,
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            lyrics: payload.ckLyrics as string | undefined,
+            songUrl: payload.ckSongUrl as string | undefined,
+            engine: payload.ckEngine as string | undefined,
+            keyframeUrl: payload.ckKeyframeUrl as string | undefined,
+            klingPredictionId: payload.ckKlingId as string | undefined,
+            animUrl: payload.ckAnimUrl as string | undefined,
+          },
+        });
+      } else if (payload.avatarId) {
         // Presenter cast → full UGC ad pipeline (script → voice → talking
         // performance → captioned assembly). Zeely-class output.
         forgedAssetId = await generateUgcAd({

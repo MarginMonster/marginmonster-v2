@@ -54,9 +54,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const nowMs = Date.now();
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_BLOG_POST: 40 };
   const KIND: Record<string, "video" | "image" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_BLOG_POST: "blog" };
-  const jobCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number }[] = [];
+  const RETRY_COST: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
+  const jobCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; retryCost: number }[] = [];
   for (const j of jobRows) {
-    let p: { productImageUrl?: string; productTitle?: string } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
     const failed = j.status === "FAILED";
@@ -64,7 +65,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (!failed && !generating) continue; // scheduled-future drip lives in the Scheduled tab
     const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
     const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
-    jobCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec });
+    // Refunded terminal failures already gave the tokens back — retrying one
+    // is a fresh purchase, and the button says so.
+    jobCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, retryCost: failed && p.refunded ? (RETRY_COST[j.type] || 0) : 0 });
   }
   const parse = (bodyJson: string) => { try { return JSON.parse(bodyJson); } catch { return {}; } };
   const byId = new Map(assets.map((a) => [a.id, a]));
@@ -130,11 +133,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json(r.ok ? { retried: r.cost } : { error: r.error });
   }
   if (intent === "retryJob") {
-    // Genuine generation failure (e.g. interrupted mid-render) → FREE retry.
+    // Genuine generation failure (e.g. interrupted mid-render) → FREE retry…
+    // unless the terminal failure already refunded the tokens. Then a retry is
+    // a fresh purchase: re-charge and restore prePaid so the economics stay
+    // exactly one-spend-one-piece (never a mint loop, never a free ride).
     const jobId = (form.get("jobId") as string) || "";
     const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
     if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
-    await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date() } });
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(job.payload); } catch { /* ignore */ }
+    let newPayload: string | undefined;
+    if (payload.refunded) {
+      const cost = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
+      try { await spendTokens(shop.id, cost); }
+      catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
+      newPayload = JSON.stringify({ ...payload, prePaid: true, refunded: false });
+    }
+    await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date(), ...(newPayload ? { payload: newPayload } : {}) } });
     return json({ jobRetried: true });
   }
   if (intent === "dismissJob") {
@@ -171,7 +186,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const id = (form.get("assetId") as string) || "";
     const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } } });
     if (!asset) return json({ error: "That piece is gone — refresh and try again." });
-    let meta: { productTitle?: string; avatarId?: string; avatarVariant?: number; direction?: string; style?: string } = {};
+    let meta: { productTitle?: string; avatarId?: string; avatarVariant?: number; direction?: string; style?: string; cartoonStyle?: string } = {};
     try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* ignore */ }
     const productTitle = (meta.productTitle || asset.title || "").trim();
     if (!productTitle) return json({ error: "Couldn't tell which product this was — remake it from the Studio." });
@@ -197,7 +212,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
     if (type === "video") {
       const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: false, prePaid: true, initiator: "remix" });
+      // Cartoon/jingle remixes stay cartoon/jingle — the content type (and the
+      // picked animation style) rides along from the original's metaJson.
+      const contentType = meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined;
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId: contentType ? undefined : avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, initiator: "remix" });
     } else if (type === "image") {
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant: nextVariant, wear: false, prePaid: true });
     } else {
@@ -533,14 +551,14 @@ export default function Archive() {
                       <b>{j.productTitle ? `Article on ${j.productTitle}` : "Your article"}</b>
                       <span className="ar-status s-failed">Didn't come through</span>
                       <div className="ar-failrow">
-                        <button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button>
+                        <button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>{j.retryCost ? `Retry — ${j.retryCost} tokens` : "Retry — free"}</button>
                         <button type="button" className="ar-tiletrash inline" title="Clear it out" disabled={busy} onClick={() => dismissJob(j.jobId)}>🗑</button>
                       </div>
                     </div>
                   ) : (
                     <div className="ar-tile ar-failtile" key={j.jobId}>
                       <div className="ar-timg ar-fail" style={j.productImage ? { backgroundImage: `url(${j.productImage})` } : undefined}>
-                        <span className="ar-failwrap"><span className="ar-failx">↻</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>Retry — free</button></span>
+                        <span className="ar-failwrap"><span className="ar-failx">↻</span><button type="button" className="ar-retry" disabled={busy} onClick={() => retryJob(j.jobId)}>{j.retryCost ? `Retry — ${j.retryCost} tokens` : "Retry — free"}</button></span>
                       </div>
                       <span className="ar-tstatus s-failed">Didn't come through</span>
                       <button type="button" className="ar-tiletrash" title="Clear it out" disabled={busy} onClick={() => dismissJob(j.jobId)}>🗑</button>

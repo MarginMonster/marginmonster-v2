@@ -19,26 +19,29 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
 ];
 
 // Content-type step — the merchant picks a GENERATION STYLE before anything
-// else, then the screen shifts in place to that style's picker. Only avatar +
-// highlight are live pipelines today; the rest are teased "coming soon" so the
-// flow is ready the moment each model lands.
+// else, then the screen shifts in place to that style's picker. All four are
+// live pipelines: avatar (UGC), highlight (cinematic), cartoon (illustrated
+// keyframe + kling), jingle (sung ad).
 type CType = "avatar" | "highlight" | "cartoon" | "jingle";
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
   { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png", sub: "Cinematic motion, no presenter", live: true },
-  { key: "cartoon", name: "Cartoon", icon: "🎨", cover: "/content-types/ct.png", sub: "Animated, illustrated ad", live: false },
-  { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png", sub: "A sung ad that sticks — 2000s commercial energy", live: false },
+  { key: "cartoon", name: "Cartoon", icon: "🎨", cover: "/content-types/ct.png", sub: "Your product, redrawn & animated", live: true },
+  { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png", sub: "A sung ad that sticks — 2000s commercial energy", live: true },
 ];
 
-// Cartoon sub-styles — picking Cartoon opens this animation-style step. All
-// "coming soon" until the cartoon pipeline ships; the flow is ready now.
-const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string }[] = [
-  { key: "flat2d", name: "Classic 2D", emoji: "✏️", tint: "#FF8A3D" },
-  { key: "anime", name: "Anime", emoji: "🌸", tint: "#E5397D" },
-  { key: "pixar", name: "3D Character", emoji: "🧸", tint: "#34C3E7" },
-  { key: "comic", name: "Comic Book", emoji: "💥", tint: "#F4B400" },
-  { key: "papercut", name: "Paper Cut-out", emoji: "📄", tint: "#0F9152" },
-  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526" },
+// Cartoon sub-styles — the VIRAL formats people already share, named
+// descriptively (no IP names). Keys must match CARTOON_RECIPES in
+// cartoon-ad-pipeline.server.ts.
+const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
+  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/content-types/cartoon/dreamanime.png", blurb: "The soft painterly style the whole internet shares" },
+  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/content-types/cartoon/toyfigure.png", blurb: "Your product as a collectible figure in the pack — the viral format" },
+  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/content-types/cartoon/brick.png", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
+  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/content-types/cartoon/pixar.png", blurb: "Glossy big-studio 3D, soft cinematic light" },
+  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/content-types/cartoon/retroanime.png", blurb: "90s VHS anime — sunset palettes and speed lines" },
+  { key: "papercut", name: "Paper Cutout", emoji: "📄", tint: "#0F9152", cover: "/content-types/cartoon/papercut.png", blurb: "Construction-paper cutouts with handmade jitter" },
+  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/content-types/cartoon/puppet.png", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
+  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/content-types/cartoon/clay.png", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -49,8 +52,8 @@ const STYLES: { label: string; prompt: string }[] = [
   { label: "🎬 Clean Studio", prompt: "clean high-end studio product photography on a seamless gradient backdrop, soft diffused key light with a gentle rim light, minimalist premium composition" },
   { label: "🏠 Lifestyle", prompt: "warm lifestyle scene with the product in real everyday use, cozy lived-in home setting, soft natural window light, candid moment, shallow depth of field" },
   { label: "💎 Luxury", prompt: "ultra-luxury minimal editorial aesthetic, polished marble and brushed-metal surfaces, dramatic soft shadows, generous negative space, magazine elegance" },
-  { label: "🌈 Neon Pop", prompt: "bold neon pop-art style, electric magenta-and-cyan gradient background, glowing neon rim light, high-saturation vibrant color, playful energy" },
-  { label: "🏝️ Island", prompt: "sun-drenched tropical island scene, warm golden-hour beach light, soft palm-frond shadows, turquoise water bokeh, breezy vacation energy" },
+  { label: "⚡ Bold Pop", prompt: "bold high-energy pop-art style, rich saturated color blocking, dramatic colored rim light, confident graphic composition, playful premium energy" },
+  { label: "🌤 Golden Hour", prompt: "sun-drenched golden-hour scene, warm low backlight with a soft lens flare, gentle long shadows, breezy natural outdoor energy" },
   { label: "🤳 UGC Candid", prompt: "authentic user-generated phone-photo look, slightly imperfect framing, natural window light, hand-held real-person candid energy, unpolished" },
   { label: "🖤 Noir", prompt: "cinematic film-noir lighting, deep inky shadows, a single hard spotlight, moody high-contrast chiaroscuro, dramatic and premium" },
 ];
@@ -178,7 +181,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!productTitle) return json({ error: "Pick a product to feature." });
 
   if (intent === "genVideo") {
-    const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
+    // Content type routes the pipeline: avatar → UGC, highlight → showcase,
+    // cartoon → illustrated+kling, jingle → sung ad. Cartoon/jingle never
+    // carry a presenter.
+    const contentType = ((form.get("contentType") as string) || "").trim();
+    const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
+    const noPresenter = contentType === "cartoon" || contentType === "jingle";
+    const avatarId = noPresenter ? undefined : ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
     // One currency: video spends tokens like every other action (no separate
@@ -186,7 +195,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try { await spendTokens(shop.id, TOKEN_COST.video); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -302,12 +311,21 @@ export default function Studio() {
   // type shifts the same screen to that type's picker.
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
+  // Entering Avatar AI defaults a presenter. Other content types DON'T null
+  // the shared selection — the Image tab and a later return to Avatar AI keep
+  // the merchant's explicit pick; generate() simply omits the presenter for
+  // non-avatar video types.
   useEffect(() => {
-    if (contentType === "highlight") setAvatarId(null);
-    else if (contentType === "avatar") setAvatarId((a) => a ?? defaultAvatar);
+    if (contentType === "avatar") setAvatarId((a) => a ?? defaultAvatar);
   }, [contentType, defaultAvatar]);
-  // The config below the type step only appears once a LIVE type is chosen.
-  const cfgReady = tab !== "video" || contentType === "avatar" || contentType === "highlight";
+  // The config below the type step appears once a type (and, for cartoon, a
+  // style) is chosen.
+  const cfgReady =
+    tab !== "video" ||
+    contentType === "avatar" ||
+    contentType === "highlight" ||
+    contentType === "jingle" ||
+    (contentType === "cartoon" && !!cartoonStyle);
   const [direction, setDirection] = useState(""); // image style / blog topic
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
@@ -341,7 +359,7 @@ export default function Studio() {
   useEffect(() => { setServiceOverride(null); }, [picked]);
   const service = serviceOverride === null ? (!!product && !product.image) : serviceOverride;
   const showService = (tab === "video" || tab === "image") && !!product;
-  const showWear = (tab === "video" || tab === "image") && !!avatarId && !!product && !service;
+  const showWear = ((tab === "video" && contentType === "avatar") || tab === "image") && !!avatarId && !!product && !service;
   const wear = wearOverride === null ? !!product?.apparel : wearOverride;
 
   // Rotate the presenter's 4 wardrobe variants across generations so repeated
@@ -369,13 +387,18 @@ export default function Studio() {
       const sceneParts = [doWhat.trim(), where.trim()].filter(Boolean);
       if (sceneParts.length) fields.scene = sceneParts.join(". ");
       fields.direction = dir;
-      if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
+      // Presenter rides along ONLY for Avatar AI — highlight/cartoon/jingle
+      // never carry one, even if a pick lingers in shared state.
+      if (contentType === "avatar" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
       if (tab === "image") { if (direction.trim()) fields.scene = direction.trim(); if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; } }
     }
     if (service) fields.service = "1";
-    if (tab === "video" && contentType) fields.contentType = contentType;
+    if (tab === "video" && contentType) {
+      fields.contentType = contentType;
+      if (contentType === "cartoon" && cartoonStyle) fields.cartoonStyle = cartoonStyle;
+    }
     submit(fields, { method: "post" });
   };
 
@@ -428,29 +451,24 @@ export default function Studio() {
               {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
               {contentType === "cartoon" && (
                 <>
-                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon style</span><span className="cs-opt">coming soon</span></div>
+                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon style</span></div>
                   <div className="cfg-cast cs-ctypes">
                     {CARTOON_STYLES.map((cs) => (
-                      <button type="button" key={cs.key} className={`cast cs-ctype soon${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
-                        <span className="ca-img cs-ctimg cs-cartimg" style={{ background: `linear-gradient(150deg, ${cs.tint}, ${cs.tint}bb)` }}>{cs.emoji}<span className="ca-soon">SOON</span></span>
+                      <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
+                        <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${cs.cover})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{cs.name}</span>
                       </button>
                     ))}
                   </div>
-                  <div className="cs-soonpanel" style={{ marginTop: 12 }}>
-                    <b>Cartoon ads are on the way</b>
-                    <p>Turn your product into an animated ad in the style you pick — same easy flow, a whole new look.</p>
-                    <span className="cs-soontag">Pick Avatar AI or Product Highlight for now.</span>
-                  </div>
+                  {cartoonStyle ? (
+                    <p className="cfg-note cs-ctnote">🎨 <b>{CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name}</b> — {CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb}. Your product gets redrawn in this style, then animated with a narrator.</p>
+                  ) : (
+                    <p className="cfg-note cs-ctnote">Pick the animation style — your product stays recognizable, the whole world around it changes.</p>
+                  )}
                 </>
               )}
               {contentType === "jingle" && (
-                <div className="cs-soonpanel">
-                  <span className="cs-soonbig">🎵</span>
-                  <b>Earworm is coming soon</b>
-                  <p>AI-sung ads with that early-2000s commercial hook — your avatar or cartoon literally sings your offer.</p>
-                  <span className="cs-soontag">In the works — pick Avatar AI or Product Highlight for now.</span>
-                </div>
+                <p className="cfg-note cs-ctnote">🎵 <b>Earworm</b> — we write a catchy jingle about your product, an AI voice <i>sings</i> it, and it plays over a hero shot of your product. Early-2000s commercial energy, fully yours.</p>
               )}
             </>
           )}
@@ -492,7 +510,7 @@ export default function Studio() {
                 <button type="button" className={!service ? "sel" : ""} onClick={() => setServiceOverride(false)}>📦 Physical product</button>
                 <button type="button" className={service ? "sel" : ""} onClick={() => setServiceOverride(true)}>✨ Service / offer</button>
               </div>
-              {service && <p className="cs-svchint">The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital & local services.</p>}
+              {service && <p className="cs-svchint">{tab === "video" && (contentType === "cartoon" || contentType === "jingle" || contentType === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
             </>
           )}
 
@@ -517,15 +535,15 @@ export default function Studio() {
               ) : (
                 <div className="cs-3w">
                   <div className="cs-wfield">
-                    <span className="cs-w">What do they say?</span>
-                    <textarea className="cs-input cs-ta" value={saySomething} maxLength={400} placeholder="The hook + a couple talking points, in your voice…" onChange={(e) => setSaySomething(e.target.value)} />
+                    <span className="cs-w">{contentType === "jingle" ? "What should the jingle sing about?" : contentType === "cartoon" ? "What should the narrator say?" : "What do they say?"}</span>
+                    <textarea className="cs-input cs-ta" value={saySomething} maxLength={400} placeholder={contentType === "jingle" ? "Lines or claims to work into the lyrics…" : "The hook + a couple talking points, in your voice…"} onChange={(e) => setSaySomething(e.target.value)} />
                   </div>
                   <div className="cs-wfield">
-                    <span className="cs-w">What do they do?</span>
-                    <input className="cs-input" type="text" value={doWhat} maxLength={160} placeholder="unbox it, hold it up, demo a feature…" onChange={(e) => setDoWhat(e.target.value)} />
+                    <span className="cs-w">{contentType === "cartoon" || contentType === "jingle" ? "What happens in the scene?" : "What do they do?"}</span>
+                    <input className="cs-input" type="text" value={doWhat} maxLength={160} placeholder={contentType === "cartoon" || contentType === "jingle" ? "the product saves the day, sparkles, celebration…" : "unbox it, hold it up, demo a feature…"} onChange={(e) => setDoWhat(e.target.value)} />
                   </div>
                   <div className="cs-wfield">
-                    <span className="cs-w">Where are they?</span>
+                    <span className="cs-w">{contentType === "cartoon" || contentType === "jingle" ? "Where does it happen?" : "Where are they?"}</span>
                     <input className="cs-input" type="text" value={where} maxLength={140} placeholder="a cozy cabin, a city rooftop, a snowy slope…" onChange={(e) => setWhere(e.target.value)} />
                   </div>
                 </div>
@@ -550,7 +568,7 @@ export default function Studio() {
 
           <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{meta.cost}</b><span>tokens</span></div></div>
 
-          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && contentType === "avatar" && !avatarId)} onClick={generate}>
+          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && contentType === "avatar" && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle)} onClick={generate}>
             {busy ? "Sending to the studio…" : `${meta.verb} ${meta.noun} — ${costLabel}`}
           </button>
           <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to generate."}</p>

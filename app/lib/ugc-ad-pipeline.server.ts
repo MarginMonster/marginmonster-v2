@@ -28,8 +28,9 @@ import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
- *  circular import with job-queue.server). Never fatal. */
-async function checkpointJob(jobId: string, patch: Record<string, unknown>): Promise<void> {
+ *  circular import with job-queue.server). Never fatal. Shared by the cartoon
+ *  and jingle pipelines too. */
+export async function checkpointJob(jobId: string, patch: Record<string, unknown>): Promise<void> {
   try {
     const job = await db.job.findUnique({ where: { id: jobId } });
     if (!job) return;
@@ -82,7 +83,7 @@ function repToken(): string {
   return t;
 }
 
-async function repCreate(model: string, input: Record<string, unknown>): Promise<string> {
+export async function repCreate(model: string, input: Record<string, unknown>): Promise<string> {
   for (let a = 0; a < 12; a++) {
     const res = await fetch(`${REP}/models/${model}/predictions`, {
       method: "POST",
@@ -101,7 +102,7 @@ async function repCreate(model: string, input: Record<string, unknown>): Promise
   throw new Error(`[ugc] ${model}: rate-limited too long`);
 }
 
-async function repPoll(id: string, maxMs: number, stage: string): Promise<string> {
+export async function repPoll(id: string, maxMs: number, stage: string): Promise<string> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
     await new Promise((r) => setTimeout(r, 4000));
@@ -122,13 +123,13 @@ async function repPoll(id: string, maxMs: number, stage: string): Promise<string
 /* STREAM to disk — never buffer whole videos in memory. Render starter has a
  * 512MB ceiling; arrayBuffer()-ing a big clip mid-render was OOM-killing the
  * instance (crash → worker retry → crash loop). */
-async function download(url: string, file: string): Promise<void> {
+export async function download(url: string, file: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`[ugc] download ${res.status} for ${file}`);
   await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(file));
 }
 
-async function downloadBuffer(url: string): Promise<Buffer> {
+export async function downloadBuffer(url: string): Promise<Buffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`[ugc] download ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
@@ -241,7 +242,7 @@ function ffprobeBin(): string {
   return (ffprobeStatic as unknown as { path: string }).path;
 }
 
-function ffprobeDuration(file: string): number {
+export function ffprobeDuration(file: string): number {
   const out = spawnSync(ffprobeBin(), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
     encoding: "utf8",
   });
@@ -282,7 +283,7 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
  *  process for the entire encode, so Render's 5s health checks timed out
  *  mid-render and the platform killed the instance ("app crashed" with no
  *  deploy). 1080p encodes are long enough to guarantee it. */
-function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
+export function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     const p = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
@@ -295,7 +296,7 @@ function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> 
   });
 }
 
-async function assemble(opts: {
+export async function assemble(opts: {
   talkingPath: string;
   audioPath: string;
   productImagePath: string | null;
