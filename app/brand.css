@@ -1722,11 +1722,17 @@ body:has(.mm-ember-bg) .mm-asteroids { display: none !important; }
   width: 22px; height: 20px; line-height: 1; font-size: 11px; padding: 0;
 }
 .mm-hud-toggle:hover { background: rgba(255, 255, 255, 0.14); }
-.mm-hud.min { padding: 6px 10px 6px 6px; align-items: center; }
-.mm-hud.min .mm-hud-top { margin: 0; align-items: center; gap: 8px; }
-.mm-hud.min .mm-hud-avatar { width: 34px; height: 34px; }
-.mm-hud-spacer.slim { height: 58px; }
-@media (max-width: 640px) { .mm-hud-spacer.slim { height: 50px; } }
+/* Collapsed HUD: shrinks width-wise to a lone menu icon, not a slim bar */
+.mm-hud.min { width: auto; padding: 5px; align-items: center; }
+.mm-hud-menubtn {
+  display: grid; place-items: center; width: 34px; height: 34px;
+  padding: 0; margin: 0; border: 0; background: none; cursor: pointer;
+  border-radius: 9px; transition: transform .15s ease, filter .15s ease;
+}
+.mm-hud-menubtn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.mm-hud-menubtn .mm-hud-head { height: 30px; width: 30px; }
+.mm-hud-spacer.slim { height: 50px; }
+@media (max-width: 640px) { .mm-hud-spacer.slim { height: 46px; } }
 
 /* benefit meters — a difficulty bar that reads as PAYOUT: posting pace +
    what the questline is rich in */
@@ -2188,10 +2194,10 @@ body[data-page="campaigns"] .qh-dia-chip.on {
    center them — otherwise a light headroom band shows at the top of the video. */
 .mm-cast-frame > video.mm-cast-video { object-position: center; }
 
-/* HUD was covering page headers — more runway */
+/* HUD was covering page headers — more runway (collapsed = icon-only, slim) */
 .mm-hud-spacer { height: 152px; }
-.mm-hud-spacer.slim { height: 118px; }
-@media (max-width: 560px) { .mm-hud-spacer { height: 128px; } }
+.mm-hud-spacer.slim { height: 50px; }
+@media (max-width: 560px) { .mm-hud-spacer { height: 128px; } .mm-hud-spacer.slim { height: 46px; } }
 
 /* the captain's log writes in ink, not neon green */
 body[data-page="campaigns"] .qh-feed .ok { color: #3B2E1A !important; }

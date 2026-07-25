@@ -198,14 +198,16 @@ export default function App() {
       {/* Player HUD — sticky top-right, like an arcade name/health bar */}
       <div className={`mm-hud${hudMin ? " min" : ""}`} aria-label="Player status">
         {hudMin ? (
-          <div className="mm-hud-body">
-            <div className="mm-hud-top">
-              <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
-              <span className="mm-hud-lvl" title={`Level ${hud.level} · ${hud.xpNeed - hud.xpInto} XP to level ${hud.level + 1}`}>LVL {hud.level}</span>
-              <span className="mm-hud-stat" title="Token balance"><span className="mm-coin" aria-hidden="true" /> {hud.tokens.toLocaleString()}</span>
-              <button type="button" className="mm-hud-toggle" onClick={toggleHud} title="Expand HUD" aria-label="Expand HUD">▾</button>
-            </div>
-          </div>
+          /* Collapsed = a single menu icon — the whole pill shrinks to it */
+          <button
+            type="button"
+            className="mm-hud-menubtn"
+            onClick={toggleHud}
+            title={`LVL ${hud.level} · ${hud.tokens.toLocaleString()} tokens — tap to expand`}
+            aria-label="Expand player HUD"
+          >
+            <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
+          </button>
         ) : (
           <div className="mm-hud-body">
             <div className="mm-hud-top">
