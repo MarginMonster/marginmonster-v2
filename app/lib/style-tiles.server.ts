@@ -29,8 +29,20 @@ const inFlight = new Set<string>();
 
 export function styleTilePath(key: string): string | null {
   if (!/^[a-z]+$/.test(key)) return null;
-  const p = path.join(TILE_DIR, `${FIRST_CHARACTER}-v${TILE_VERSION}-${key}.jpg`);
-  return fs.existsSync(p) ? p : null;
+  // Current version first, then ANY older real render — a version bump must
+  // never regress the UI to placeholder art while the new set rebuilds.
+  const candidates = [
+    path.join(TILE_DIR, `${FIRST_CHARACTER}-v${TILE_VERSION}-${key}.jpg`),
+    path.join(TILE_DIR, `${FIRST_CHARACTER}-${key}.jpg`), // pre-versioning names
+  ];
+  for (let v = TILE_VERSION - 1; v >= 2; v--) candidates.splice(1, 0, path.join(TILE_DIR, `${FIRST_CHARACTER}-v${v}-${key}.jpg`));
+  for (const p of candidates) if (fs.existsSync(p)) return p;
+  return null;
+}
+
+/** True only when the CURRENT version exists — generation targets this. */
+function currentTileExists(key: string): boolean {
+  return fs.existsSync(path.join(TILE_DIR, `${FIRST_CHARACTER}-v${TILE_VERSION}-${key}.jpg`));
 }
 
 export function isPickerKey(key: string): key is CartoonStyleKey {
@@ -41,7 +53,7 @@ export function isPickerKey(key: string): key is CartoonStyleKey {
  *  not already cooking. Never throws — the fallback art keeps serving. */
 export function ensureStyleTile(key: string): void {
   if (!isPickerKey(key)) return;
-  if (styleTilePath(key) || inFlight.has(key)) return;
+  if (currentTileExists(key) || inFlight.has(key)) return;
   if (!process.env.REPLICATE_API_TOKEN) return;
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   if (!base) return;

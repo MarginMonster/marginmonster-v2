@@ -17,10 +17,18 @@ const POLL_MS = 8000;
 // video pipelines legitimately run 10-15 min; anything past this is a corpse
 const STUCK_MS = 25 * 60_000;
 
+let lastTileKick = 0;
 async function tick() {
   try {
     // Free any jobs whose process died mid-run (deploys, restarts).
     await reclaimOrphanJobs(STUCK_MS);
+    // Self-heal the style tiles + ad templates: cheap no-op when everything
+    // exists; re-kicks anything a deploy restart interrupted mid-render.
+    if (Date.now() - lastTileKick > 10 * 60_000) {
+      lastTileKick = Date.now();
+      import("./lib/style-tiles.server").then((m) => m.ensureAllStyleTiles()).catch(() => { /* non-fatal */ });
+      import("./lib/image-generation.server").then((m) => m.ensureAllAdTemplates()).catch(() => { /* non-fatal */ });
+    }
     // Publish READY slots whose post time arrived (self-throttled to ~5 min).
     await postDueSlots();
     // Pull organic follower/engagement analytics into the cache (self-throttled to ~1h).
