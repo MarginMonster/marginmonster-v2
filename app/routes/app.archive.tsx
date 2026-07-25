@@ -271,10 +271,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // the AI writer: a per-platform tuned caption, cached on the asset.
     const custom = ((form.get("caption") as string) || "").trim();
     let titleFor: (p: string) => string;
-    const { getOrMakeCaptions, buildPostTitle, fallbackCaption, trialCredit } = await import("../lib/social-caption.server");
+    const { getOrMakeCaptions, buildPostTitle, fallbackCaption, trialCredit, AI_DISCLOSURE_TAG } = await import("../lib/social-caption.server");
     const credit = trialCredit(shop.activePlan);
     if (custom) {
-      titleFor = () => (credit ? `${custom.slice(0, 860)}\n\n${credit}` : custom.slice(0, 900));
+      // Merchant words win, but the AI-disclosure tag is mandatory on every
+      // post — append it unless their caption already carries it.
+      const base = custom.slice(0, 860);
+      const withTag = new RegExp(`#${AI_DISCLOSURE_TAG}\\b`, "i").test(base) ? base : `${base}\n\n#${AI_DISCLOSURE_TAG}`;
+      titleFor = () => (credit ? `${withTag}\n\n${credit}` : withTag);
     } else {
       const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
       const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;

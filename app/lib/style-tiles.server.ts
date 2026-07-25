@@ -18,6 +18,12 @@ export const DEFAULT_TILE_CHARACTER = "ingrid";
 
 const TILE_DIR = path.join(process.cwd(), "data", "style-tiles");
 const TILE_VERSION = 2; // v2: five-finger hand guard in the prompt
+// Per-key bumps: raise ONE style's version when its recipe changes materially,
+// so only that style re-renders instead of every tile for every character.
+const TILE_KEY_VERSIONS: Record<string, number> = {
+  brick: 3, // v3: de-branded block look (generic cubes, no studded-brick trade dress)
+};
+const tileVersion = (key: string) => TILE_KEY_VERSIONS[key] ?? TILE_VERSION;
 const PICKER_KEYS: CartoonStyleKey[] = [
   "dreamanime", "toyfigure", "brick", "pixar", "retroanime", "vintagetoon", "puppet", "clay",
 ];
@@ -27,6 +33,8 @@ const PICKER_KEYS: CartoonStyleKey[] = [
 const SPECIAL_PROMPTS: Record<string, string> = {
   anthemcover:
     "Edit this photo: the exact same person now singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, colorful warm stage lighting with soft bokeh lights behind them, photorealistic, natural skin texture, wide landscape composition centered on them from the waist up, no text, no watermark.",
+  avatarcover:
+    "Edit this photo: the exact same person now enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up a small simple orange bottle with a blue cap (a generic product, no readable text), the hand holding the bottle anatomically correct with five fingers and a natural grip, bright airy daylight room softly blurred behind them, photorealistic, natural skin texture, wide landscape composition centered on them from the chest up, no text, no watermark.",
 };
 
 const inFlight = new Set<string>();
@@ -41,15 +49,15 @@ export function styleTilePath(character: string, key: string): string | null {
   if (!/^[a-z]+$/.test(character) || !/^[a-z]+$/.test(key)) return null;
   // Current version first, then ANY older real render — version bumps must
   // never regress the UI to placeholders while the new set rebuilds.
-  const candidates = [path.join(TILE_DIR, `${character}-v${TILE_VERSION}-${key}.jpg`)];
-  for (let v = TILE_VERSION - 1; v >= 2; v--) candidates.push(path.join(TILE_DIR, `${character}-v${v}-${key}.jpg`));
+  const candidates = [path.join(TILE_DIR, `${character}-v${tileVersion(key)}-${key}.jpg`)];
+  for (let v = tileVersion(key) - 1; v >= 2; v--) candidates.push(path.join(TILE_DIR, `${character}-v${v}-${key}.jpg`));
   candidates.push(path.join(TILE_DIR, `${character}-${key}.jpg`)); // pre-versioning names
   for (const p of candidates) if (fs.existsSync(p)) return p;
   return null;
 }
 
 function currentTileExists(character: string, key: string): boolean {
-  return fs.existsSync(path.join(TILE_DIR, `${character}-v${TILE_VERSION}-${key}.jpg`));
+  return fs.existsSync(path.join(TILE_DIR, `${character}-v${tileVersion(key)}-${key}.jpg`));
 }
 
 export function isPickerKey(key: string): boolean {
@@ -88,7 +96,7 @@ export function ensureStyleTile(character: string, key: string): void {
       fs.mkdirSync(TILE_DIR, { recursive: true });
       const tmp = path.join(TILE_DIR, `.${character}-${key}.part`);
       await download(url, tmp);
-      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${character}-v${TILE_VERSION}-${key}.jpg`));
+      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${character}-v${tileVersion(key)}-${key}.jpg`));
       else fs.rmSync(tmp, { force: true });
       console.log(`[style-tiles] generated ${character} × ${key}`);
     } catch (e) {

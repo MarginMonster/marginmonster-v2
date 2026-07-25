@@ -27,7 +27,7 @@ type CType = "avatar" | "highlight" | "cartoon" | "jingle";
 // Covers carry ?v= so replacing the art actually reaches browsers that
 // cached the old file under the same name.
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
-  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png?v=2", sub: "A real-looking presenter talks it up", live: true },
+  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/style-tiles/avatarcover.jpg?v=2", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png?v=2", sub: "Cinematic motion, no presenter", live: true },
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=2", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=2", sub: "Your avatar SINGS your product's theme song", live: true },
@@ -41,7 +41,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
 const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
   { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/style-tiles/dreamanime.jpg?v=2", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
   { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/style-tiles/toyfigure.jpg?v=2", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/style-tiles/brick.jpg?v=2", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
+  { key: "brick", name: "Block Build", emoji: "🟥", tint: "#D93A2B", cover: "/style-tiles/brick.jpg?v=3", blurb: "Everything rebuilt from chunky toy blocks, stop-motion style" },
   { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/style-tiles/pixar.jpg?v=2", blurb: "Big-studio 3D character film — glossy and cinematic" },
   { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/style-tiles/retroanime.jpg?v=2", blurb: "90s VHS anime — sunset palettes and speed lines" },
   { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/style-tiles/vintagetoon.jpg?v=2", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
@@ -424,7 +424,8 @@ export default function Studio() {
   // style. Server renders each character's set on demand (portrait fallback
   // while it cooks).
   const styleChar = avatarId ?? defaultAvatar ?? "ingrid";
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=2`;
+  // ?v must move when a style's tile version bumps, or browsers pin the old art
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 3 : 2}`;
 
   const costLabel = `${meta.cost} tokens`;
 
@@ -523,7 +524,7 @@ export default function Studio() {
                   <span className="ca-sub">Your product as the hero — pick a template scene</span>
                 </button>
                 <button type="button" className="cast cs-ctype" onClick={() => setImageMode("presenter")}>
-                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/content-types/av.png?v=2)" }} />
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=2)" }} />
                   <span className="ca-nm">🤳 Presenter holding it</span>
                   <span className="ca-sub">A real-looking presenter holds your product</span>
                 </button>

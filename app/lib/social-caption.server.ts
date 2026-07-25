@@ -190,8 +190,13 @@ export async function getOrMakeCaptions(
   return merged;
 }
 
+// FTC / AI-disclosure: EVERY post EasyMode publishes carries this branded tag,
+// regardless of which path wrote the caption. Non-negotiable, not plan-gated.
+export const AI_DISCLOSURE_TAG = "EasyModeAi";
+
 /** Assemble the final post string for one platform: caption + shop link +
- *  hashtag block. Falls back to the plain caption if no captions were made. */
+ *  hashtag block. Falls back to the plain caption if no captions were made.
+ *  The #EasyModeAi disclosure tag is always present exactly once. */
 export function buildPostTitle(
   caption: PlatformCaption | undefined,
   goUrl: string,
@@ -199,10 +204,12 @@ export function buildPostTitle(
   credit?: string
 ): string {
   const text = caption?.text?.trim() || fallbackText;
-  const tags = (caption?.hashtags || []).map((t) => `#${t}`).join(" ");
+  const tagList = (caption?.hashtags || []).filter((t) => t.toLowerCase() !== AI_DISCLOSURE_TAG.toLowerCase());
+  tagList.push(AI_DISCLOSURE_TAG);
+  const tags = tagList.map((t) => `#${t}`).join(" ");
   const parts = [text];
   if (goUrl) parts.push(`🛒 ${goUrl}`);
-  if (tags) parts.push(tags);
+  parts.push(tags);
   if (credit) parts.push(credit);
   return parts.join("\n\n");
 }

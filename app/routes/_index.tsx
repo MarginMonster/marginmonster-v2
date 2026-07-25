@@ -17,7 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 const FEATURES = [
   { icon: "🎬", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
-  { icon: "🎨", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, brick build, claymation — or an Anthem your avatar sings on camera." },
+  { icon: "🎨", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, block build, claymation — or an Anthem your avatar sings on camera." },
   { icon: "✍️", title: "SEO blogs on autopilot", body: "Buyer-intent articles written and published to your store, pulling in free Google traffic month after month." },
   { icon: "📣", title: "Auto-posted for you", body: "Every drop goes out to TikTok, Instagram & Facebook on a schedule — captions and hashtags written to travel." },
   { icon: "🪄", title: "One-tap autopilot", body: "Pick a goal. EasyMode builds a full month of content, launches it, and scales what works." },

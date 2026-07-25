@@ -24,9 +24,9 @@
     "voice": "English_magnetic_voiced_man"
   },
   "brick": {
-    "name": "Brick Build",
-    "look": "built entirely from glossy interlocking plastic toy bricks: chunky studded construction, minifigure-scale proportions, bright saturated primary colors, crisp macro toy-photography focus, playful brick-built diorama world",
-    "motion": "playful stop-motion brick animation, snappy stepped movement, pieces clicking into place",
+    "name": "Block Build",
+    "look": "built entirely from simple glossy plastic toy blocks: chunky smooth cube and rectangular construction, boxy squared-off character proportions with flat faces, bright saturated primary colors, crisp macro toy-photography focus, playful block-built voxel diorama world, an original generic toy-block aesthetic",
+    "motion": "playful stop-motion block animation, snappy stepped movement, blocks stacking and snapping into place",
     "voice": "English_PlayfulGirl"
   },
   "vintagetoon": {
