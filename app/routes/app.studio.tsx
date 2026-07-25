@@ -18,6 +18,18 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
   { key: "blog", label: "Blog", icon: "✍️", cost: TOKEN_COST.blog, verb: "Write", noun: "article" },
 ];
 
+// Content-type step — the merchant picks a GENERATION STYLE before anything
+// else, then the screen shifts in place to that style's picker. Only avatar +
+// highlight are live pipelines today; the rest are teased "coming soon" so the
+// flow is ready the moment each model lands.
+type CType = "avatar" | "highlight" | "cartoon" | "jingle";
+const CONTENT_TYPES: { key: CType; name: string; icon: string; sub: string; live: boolean }[] = [
+  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", sub: "A real-looking presenter talks it up", live: true },
+  { key: "highlight", name: "Product Highlight", icon: "🎬", sub: "Cinematic motion, no presenter", live: true },
+  { key: "cartoon", name: "Cartoon", icon: "🎨", sub: "Animated, illustrated ad", live: false },
+  { key: "jingle", name: "Earworm", icon: "🎵", sub: "A sung ad that sticks — 2000s commercial energy", live: false },
+];
+
 // Wearable products should be modeled (worn) by the presenter, not held.
 const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
 
@@ -275,6 +287,15 @@ export default function Studio() {
     return i >= 0 ? i : 0;
   });
   const [avatarId, setAvatarId] = useState<string | null>(defaultAvatar);
+  // Content-type step (video only). null = show the type carousel; picking a
+  // type shifts the same screen to that type's picker.
+  const [contentType, setContentType] = useState<CType | null>(null);
+  useEffect(() => {
+    if (contentType === "highlight") setAvatarId(null);
+    else if (contentType === "avatar") setAvatarId((a) => a ?? defaultAvatar);
+  }, [contentType, defaultAvatar]);
+  // The config below the type step only appears once a LIVE type is chosen.
+  const cfgReady = tab !== "video" || contentType === "avatar" || contentType === "highlight";
   const [direction, setDirection] = useState(""); // image style / blog topic
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
@@ -342,6 +363,7 @@ export default function Studio() {
       if (tab === "image") { if (direction.trim()) fields.scene = direction.trim(); if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; } }
     }
     if (service) fields.service = "1";
+    if (tab === "video" && contentType) fields.contentType = contentType;
     submit(fields, { method: "post" });
   };
 
@@ -371,15 +393,47 @@ export default function Studio() {
         {error && <div style={{ marginBottom: 14 }}><Banner tone="warning" title="Couldn't generate"><p>{error}</p></Banner></div>}
 
         <div className="smp-cfg">
-          {(tab === "video" || tab === "image") && (
+          {/* STEP 1 — pick your content type (video). Shifts in place to the
+              type's picker; a back button returns here. */}
+          {tab === "video" && !contentType && (
+            <>
+              <div className="cfg-lbl cs-lblrow"><span>Pick your content type</span></div>
+              <div className="cfg-cast cs-ctypes">
+                {CONTENT_TYPES.map((ct) => (
+                  <button type="button" key={ct.key} className={`cast cs-ctype${ct.live ? "" : " soon"}`} onClick={() => setContentType(ct.key)}>
+                    <span className="ca-img cs-ctimg">{ct.icon}{!ct.live && <span className="ca-soon">SOON</span>}</span>
+                    <span className="ca-nm">{ct.name}</span>
+                    <span className="ca-sub">{ct.sub}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {tab === "video" && contentType && (
+            <>
+              <button type="button" className="cs-back" onClick={() => setContentType(null)}>‹ Content type</button>
+              {contentType === "avatar" && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={false} brandFaceId={brandFaceId} />}
+              {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
+              {(contentType === "cartoon" || contentType === "jingle") && (
+                <div className="cs-soonpanel">
+                  <span className="cs-soonbig">{CONTENT_TYPES.find((c) => c.key === contentType)?.icon}</span>
+                  <b>{CONTENT_TYPES.find((c) => c.key === contentType)?.name} is coming soon</b>
+                  <p>{contentType === "jingle" ? "AI-sung ads with that early-2000s commercial hook — your avatar or cartoon literally sings your offer." : "Illustrated, animated ad style — same easy flow, a whole new look."}</p>
+                  <span className="cs-soontag">In the works — pick Avatar AI or Product Highlight for now.</span>
+                </div>
+              )}
+            </>
+          )}
+          {tab === "image" && (
             <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
           )}
           {tab === "image" && avatarId && <p className="cfg-note">The presenter will hold your product in the shot — pick a product with a photo below.</p>}
-          {(tab === "video" || tab === "image") && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
-          {(tab === "video" || tab === "image") && avatarId && avatarId !== brandFaceId && (
+          {(((tab === "video" && contentType === "avatar") || tab === "image")) && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
+          {(((tab === "video" && contentType === "avatar") || tab === "image")) && avatarId && avatarId !== brandFaceId && (
             <button type="button" className="cs-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>★ Make {cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face</button>
           )}
 
+          {cfgReady && (<>
           <div className="cfg-lbl cs-lblrow"><span>{tab === "blog" ? "Product to write about" : "Product to feature"}</span><button type="button" className="cs-viewall" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button></div>
           {showImport && (
             <div className="cs-import">
@@ -466,10 +520,11 @@ export default function Studio() {
 
           <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{meta.cost}</b><span>tokens</span></div></div>
 
-          <button type="button" className="smp-cta go" disabled={busy || !product} onClick={generate}>
+          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && contentType === "avatar" && !avatarId)} onClick={generate}>
             {busy ? "Sending to the studio…" : `${meta.verb} ${meta.noun} — ${costLabel}`}
           </button>
           <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to generate."}</p>
+          </>)}
         </div>
 
         {showDone && queued && (
