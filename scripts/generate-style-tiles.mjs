@@ -32,8 +32,9 @@ async function render(key) {
     `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, ` +
     `same friendly likeness, stylized for the art style. They are smiling and holding up ` +
     `a small simple orange bottle with a blue cap (a generic product, no readable text). ` +
-    `Wide landscape composition, the character centered from the waist up, beautiful ` +
-    `style-true background scene, rich detail, no text, no watermark.`;
+    `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
+    `no extra or missing fingers. Wide landscape composition, the character centered from ` +
+    `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`;
   const create = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
     method: "POST",
     headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },

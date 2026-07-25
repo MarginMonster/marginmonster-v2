@@ -15,9 +15,10 @@ import path from "node:path";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 
 // The one face every style transforms. Portrait must exist in public/avatars.
-// Cached tiles are keyed by this name — changing the character automatically
-// renders a fresh set instead of serving the previous face's tiles.
+// Cached tiles are keyed by name + version — changing either automatically
+// renders a fresh set instead of serving stale art.
 const FIRST_CHARACTER = "ingrid";
+const TILE_VERSION = 2; // v2: five-finger hand guard in the prompt
 
 const TILE_DIR = path.join(process.cwd(), "data", "style-tiles");
 const PICKER_KEYS: CartoonStyleKey[] = [
@@ -28,7 +29,7 @@ const inFlight = new Set<string>();
 
 export function styleTilePath(key: string): string | null {
   if (!/^[a-z]+$/.test(key)) return null;
-  const p = path.join(TILE_DIR, `${FIRST_CHARACTER}-${key}.jpg`);
+  const p = path.join(TILE_DIR, `${FIRST_CHARACTER}-v${TILE_VERSION}-${key}.jpg`);
   return fs.existsSync(p) ? p : null;
 }
 
@@ -56,8 +57,9 @@ export function ensureStyleTile(key: string): void {
         `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, ` +
         `same friendly likeness, stylized for the art style. They are smiling and holding up ` +
         `a small simple orange bottle with a blue cap (a generic product, no readable text). ` +
-        `Wide landscape composition, the character centered from the waist up, beautiful ` +
-        `style-true background scene, rich detail, no text, no watermark.`;
+        `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
+        `no extra or missing fingers. Wide landscape composition, the character centered from ` +
+        `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`;
       const id = await repCreate("black-forest-labs/flux-kontext-pro", {
         prompt,
         input_image: `${base}/avatars/${FIRST_CHARACTER}_0.jpg`,
@@ -68,7 +70,7 @@ export function ensureStyleTile(key: string): void {
       fs.mkdirSync(TILE_DIR, { recursive: true });
       const tmp = path.join(TILE_DIR, `.${key}.part`);
       await download(url, tmp);
-      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${FIRST_CHARACTER}-${key}.jpg`));
+      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${FIRST_CHARACTER}-v${TILE_VERSION}-${key}.jpg`));
       else fs.rmSync(tmp, { force: true });
       console.log(`[style-tiles] generated real tile for ${key}`);
     } catch (e) {

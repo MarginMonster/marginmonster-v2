@@ -208,6 +208,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
         `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
         `${params.serviceMode ? "" : `Keep the ${params.productTitle} they are presenting clearly recognizable — same shape, colors, logos and TRUE real-world size, never miniaturized. `}` +
+        `Hands are anatomically correct — five fingers per hand, natural relaxed grip, no extra or missing fingers. ` +
         `Delightful advertising scene, simple complementary background.${sceneBits} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
       const id = await repCreate("black-forest-labs/flux-kontext-pro", {
