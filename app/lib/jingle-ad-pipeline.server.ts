@@ -31,8 +31,26 @@ import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 
-const MAX_AD_SECONDS = 30; // anthems can run long — ads shouldn't
-const SING_SECONDS = 18; // lipsync engine bills per second — keep the sung cut tight
+// EVERY Anthem lands at the same ad length, singer or not — and the cut ends
+// on a between-line gap in the vocal (found via silencedetect), never mid-word.
+const ANTHEM_SECONDS = 18; // target length; also keeps per-second lipsync billing tight
+const ANTHEM_MIN_CUT = 12; // earliest acceptable line-gap cut
+
+/** Where to cut the song: the LAST vocal gap inside the 12–18s window, so the
+ *  anthem ends right after a sung line instead of chopping one in half. Falls
+ *  back to the hard target when no gap is detectable. Deterministic — the
+ *  lipsync trim and the assembly trim compute the same point independently. */
+async function smartSongCut(file: string): Promise<number> {
+  const dur = ffprobeDuration(file);
+  if (dur <= ANTHEM_SECONDS) return dur;
+  try {
+    const { stderr } = await runFfmpeg(["-i", file, "-af", "silencedetect=noise=-28dB:d=0.22", "-f", "null", "-"]);
+    const starts = [...stderr.matchAll(/silence_start:\s*([\d.]+)/g)].map((m) => parseFloat(m[1]));
+    const inWindow = starts.filter((s) => s >= ANTHEM_MIN_CUT && s <= ANTHEM_SECONDS);
+    if (inWindow.length) return Math.min(dur, inWindow[inWindow.length - 1] + 0.15);
+  } catch { /* fall through to the hard target */ }
+  return ANTHEM_SECONDS;
+}
 
 interface JingleAdParams {
   shopId: string;
@@ -210,12 +228,12 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         ? "data:image/jpeg;base64," + (await downloadBuffer(frameUrl)).toString("base64")
         : "data:image/jpeg;base64," + fs.readFileSync(portraitFile).toString("base64");
 
-      // Lipsync audio = the first SING_SECONDS of the song, faded out.
+      // Lipsync audio = the song up to the smart line-gap cut, faded out.
       tmpSing = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-"));
       const rawSong = path.join(tmpSing, "song-raw.audio");
       await download(songUrl, rawSong);
       const singPath = path.join(tmpSing, "sing.mp3");
-      const cut = Math.min(ffprobeDuration(rawSong), SING_SECONDS);
+      const cut = await smartSongCut(rawSong);
       const trim = await runFfmpeg(["-y", "-i", rawSong, "-t", String(cut), "-af", `afade=t=out:st=${Math.max(0, cut - 1.2).toFixed(2)}:d=1.2`, "-c:a", "libmp3lame", "-b:a", "160k", singPath]);
       const audioFile = trim.status === 0 && fs.existsSync(singPath) ? singPath : rawSong;
       const audioDataUri = "data:audio/mpeg;base64," + fs.readFileSync(audioFile).toString("base64");
@@ -294,15 +312,15 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     const rawSongPath = path.join(tmp, "song-raw.audio");
     await download(songUrl, rawSongPath);
 
-    // Singing performances carry the trimmed song baked in (SING_SECONDS);
-    // product visuals run the fuller cut. The external songPath mirrors the
-    // same trim so assemble's truncation-recovery lines up.
-    const cap = talkingUrl ? SING_SECONDS : MAX_AD_SECONDS;
+    // Same standardized cut for BOTH paths (singer or product visual) — the
+    // smart cut is deterministic, so this reproduces the exact trim the
+    // lipsync audio used and assemble's truncation-recovery lines up.
     let songPath = rawSongPath;
     const songDur = ffprobeDuration(rawSongPath);
+    const cap = await smartSongCut(rawSongPath);
     if (songDur > cap) {
       const trimmed = path.join(tmp, "song.mp3");
-      const fade = talkingUrl ? 1.2 : 1.5;
+      const fade = 1.2;
       const run = await runFfmpeg([
         "-y", "-i", rawSongPath,
         "-t", String(cap),
@@ -313,6 +331,14 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       if (run.status === 0 && fs.existsSync(trimmed)) songPath = trimmed;
       else console.error(`[anthem] trim failed — shipping full-length song (${Math.round(songDur)}s): ${(run.stderr || "").slice(-200)}`);
     }
+
+    // Captions cover only the lyric lines that actually made the cut — whole
+    // lines, proportional to how much of the song survived — so the burned
+    // captions end on a complete line and track what's audibly sung.
+    const allLines = lyrics.split("\n").map((l) => l.trim()).filter(Boolean);
+    const sungShare = songDur > 0 ? Math.min(1, cap / songDur) : 1;
+    const sungLines = allLines.slice(0, Math.max(1, Math.round(allLines.length * sungShare)));
+    const captionFeed = sungLines.join(" ");
 
     // Product b-roll cut-in keeps the product on screen while the singer sings.
     let productImagePath: string | null = null;
@@ -332,7 +358,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       talkingPath: animPath,
       audioPath: songPath,
       productImagePath,
-      script: lyrics.replace(/\n/g, " "), // karaoke-style caption feed
+      script: captionFeed, // karaoke-style captions — only the sung lines
       outPath,
       lipSynced: !!talkingUrl, // omni bakes the sung audio in; kling loops under the song
     });
