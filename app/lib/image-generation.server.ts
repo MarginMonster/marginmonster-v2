@@ -6,6 +6,7 @@ import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { anthropicText, anthropicVision } from "./anthropic.server";
+import { artLog } from "./art-log.server";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -366,6 +367,7 @@ async function ensureStatue(): Promise<string | null> {
       [raw]
     );
     if (!/\bYES\b/i.test(verdict)) {
+      artLog("ad-templates", "statue: label misspelled on first render — applying kontext text fix");
       console.log("[ad-templates] statue label misspelled — applying kontext text fix");
       raw = await repRun("black-forest-labs/flux-kontext-pro", {
         prompt: 'Replace the text on the bottle\'s label so it reads exactly "EASYMODE" in bold black uppercase letters, clean and legible. Keep everything else about the bottle and image identical.',
@@ -382,13 +384,14 @@ async function ensureStatue(): Promise<string | null> {
   fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
   const out = path.join(AD_TEMPLATE_DIR, `statue-v${AD_TEMPLATE_VERSION}.png`);
   fs.writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+  artLog("ad-templates", `statue v${AD_TEMPLATE_VERSION} forged OK`);
   console.log("[ad-templates] statue forged (v" + AD_TEMPLATE_VERSION + ")");
   return out;
 }
 
 export function ensureAdTemplate(key: string): void {
   if (fs.existsSync(currentTemplateFile("preview", key)) || templateInFlight.has(key)) return;
-  if (!process.env.REPLICATE_API_TOKEN) return;
+  if (!process.env.REPLICATE_API_TOKEN) { artLog("ad-templates", `${key}: skipped — REPLICATE_API_TOKEN not set`); return; }
   templateInFlight.add(key);
   (async () => {
     try {
@@ -419,9 +422,12 @@ export function ensureAdTemplate(key: string): void {
       const finalSrc = path.join(rendersDir, withText || compositeName);
       fs.copyFileSync(finalSrc, path.join(AD_TEMPLATE_DIR, `preview-v${AD_TEMPLATE_VERSION}-${key}.jpg`));
       try { fs.rmSync(path.join(rendersDir, compositeName), { force: true }); if (withText) fs.rmSync(finalSrc, { force: true }); } catch { /* tidy */ }
+      artLog("ad-templates", `${key}: preview v${AD_TEMPLATE_VERSION} built OK`);
       console.log(`[ad-templates] built ${key}`);
     } catch (e) {
-      console.error(`[ad-templates] ${key} build failed:`, e instanceof Error ? e.message.slice(0, 160) : e);
+      const msg = e instanceof Error ? e.message.slice(0, 300) : String(e);
+      artLog("ad-templates", `${key}: FAILED — ${msg}`);
+      console.error(`[ad-templates] ${key} build failed:`, msg.slice(0, 160));
     } finally {
       templateInFlight.delete(key);
     }

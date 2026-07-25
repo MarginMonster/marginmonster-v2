@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
+import { artLog } from "./art-log.server";
 
 // Default character (boot pre-render + the Cartoon Avatar cover).
 export const DEFAULT_TILE_CHARACTER = "ingrid";
@@ -70,9 +71,9 @@ export function ensureStyleTile(character: string, key: string): void {
   if (!isPickerKey(key)) return;
   const flightKey = `${character}:${key}`;
   if (!portraitFile(character) || currentTileExists(character, key) || inFlight.has(flightKey)) return;
-  if (!process.env.REPLICATE_API_TOKEN) return;
+  if (!process.env.REPLICATE_API_TOKEN) { artLog("style-tiles", `${flightKey}: skipped — REPLICATE_API_TOKEN not set`); return; }
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  if (!base) return;
+  if (!base) { artLog("style-tiles", `${flightKey}: skipped — SHOPIFY_APP_URL not set`); return; }
 
   inFlight.add(flightKey);
   (async () => {
@@ -96,11 +97,18 @@ export function ensureStyleTile(character: string, key: string): void {
       fs.mkdirSync(TILE_DIR, { recursive: true });
       const tmp = path.join(TILE_DIR, `.${character}-${key}.part`);
       await download(url, tmp);
-      if (fs.statSync(tmp).size > 10_000) fs.renameSync(tmp, path.join(TILE_DIR, `${character}-v${tileVersion(key)}-${key}.jpg`));
-      else fs.rmSync(tmp, { force: true });
+      if (fs.statSync(tmp).size > 10_000) {
+        fs.renameSync(tmp, path.join(TILE_DIR, `${character}-v${tileVersion(key)}-${key}.jpg`));
+        artLog("style-tiles", `${flightKey}: rendered OK`);
+      } else {
+        fs.rmSync(tmp, { force: true });
+        artLog("style-tiles", `${flightKey}: output too small — discarded`);
+      }
       console.log(`[style-tiles] generated ${character} × ${key}`);
     } catch (e) {
-      console.error(`[style-tiles] ${character}×${key} failed (portrait keeps serving):`, e instanceof Error ? e.message : e);
+      const msg = e instanceof Error ? e.message : String(e);
+      artLog("style-tiles", `${flightKey}: FAILED — ${msg}`);
+      console.error(`[style-tiles] ${character}×${key} failed (portrait keeps serving):`, msg);
     } finally {
       inFlight.delete(flightKey);
     }
