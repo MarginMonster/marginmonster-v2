@@ -23,25 +23,27 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
 // live pipelines: avatar (UGC), highlight (cinematic), cartoon (illustrated
 // keyframe + kling), jingle (sung ad).
 type CType = "avatar" | "highlight" | "cartoon" | "jingle";
+// Covers carry ?v= so replacing the art actually reaches browsers that
+// cached the old file under the same name.
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
-  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png", sub: "A real-looking presenter talks it up", live: true },
-  { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png", sub: "Cinematic motion, no presenter", live: true },
-  { key: "cartoon", name: "Cartoon", icon: "🎨", cover: "/content-types/ct.png", sub: "Your product, redrawn & animated", live: true },
-  { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png", sub: "A sung ad that sticks — 2000s commercial energy", live: true },
+  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png?v=2", sub: "A real-looking presenter talks it up", live: true },
+  { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png?v=2", sub: "Cinematic motion, no presenter", live: true },
+  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/content-types/ct.png?v=2", sub: "Your presenter & product, redrawn viral-style", live: true },
+  { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png?v=2", sub: "A sung ad that sticks — 2000s commercial energy", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
 // descriptively (no IP names). Keys must match CARTOON_RECIPES in
 // cartoon-ad-pipeline.server.ts.
 const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
-  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/content-types/cartoon/dreamanime.png", blurb: "The soft painterly style the whole internet shares" },
-  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/content-types/cartoon/toyfigure.png", blurb: "Your product as a collectible figure in the pack — the viral format" },
-  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/content-types/cartoon/brick.png", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
-  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/content-types/cartoon/pixar.png", blurb: "Glossy big-studio 3D, soft cinematic light" },
-  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/content-types/cartoon/retroanime.png", blurb: "90s VHS anime — sunset palettes and speed lines" },
-  { key: "papercut", name: "Paper Cutout", emoji: "📄", tint: "#0F9152", cover: "/content-types/cartoon/papercut.png", blurb: "Construction-paper cutouts with handmade jitter" },
-  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/content-types/cartoon/puppet.png", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
-  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/content-types/cartoon/clay.png", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/content-types/cartoon/dreamanime.png?v=2", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
+  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/content-types/cartoon/toyfigure.png?v=2", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
+  { key: "brick", name: "Brick Build", emoji: "🧱", tint: "#D93A2B", cover: "/content-types/cartoon/brick.png?v=2", blurb: "Everything rebuilt from toy bricks, stop-motion style" },
+  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/content-types/cartoon/pixar.png?v=2", blurb: "Big-studio 3D character film — glossy and cinematic" },
+  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/content-types/cartoon/retroanime.png?v=2", blurb: "90s VHS anime — sunset palettes and speed lines" },
+  { key: "papercut", name: "Paper Cutout", emoji: "📄", tint: "#0F9152", cover: "/content-types/cartoon/papercut.png?v=2", blurb: "Construction-paper cutouts with handmade jitter" },
+  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/content-types/cartoon/puppet.png?v=2", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
+  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/content-types/cartoon/clay.png?v=2", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -182,14 +184,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "genVideo") {
     // Content type routes the pipeline: avatar → UGC, highlight → showcase,
-    // cartoon → illustrated+kling, jingle → sung ad. Cartoon/jingle never
-    // carry a presenter.
+    // cartoon → presenter+product redrawn in style, jingle → sung ad (no
+    // presenter).
     const contentType = ((form.get("contentType") as string) || "").trim();
     const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
-    const noPresenter = contentType === "cartoon" || contentType === "jingle";
-    const avatarId = noPresenter ? undefined : ((form.get("avatarId") as string) || "").trim() || undefined;
+    const avatarId = contentType === "jingle" ? undefined : ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
-    const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
+    const style = avatarId && contentType !== "cartoon" ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
     // One currency: video spends tokens like every other action (no separate
     // free-video quota). Campaigns and the Studio now bill identically.
     try { await spendTokens(shop.id, TOKEN_COST.video); }
@@ -311,12 +312,12 @@ export default function Studio() {
   // type shifts the same screen to that type's picker.
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
-  // Entering Avatar AI defaults a presenter. Other content types DON'T null
-  // the shared selection — the Image tab and a later return to Avatar AI keep
-  // the merchant's explicit pick; generate() simply omits the presenter for
-  // non-avatar video types.
+  // Entering Avatar AI or Cartoon Avatar defaults a presenter (cartoon ads
+  // star the presenter redrawn in the picked style). Other types DON'T null
+  // the shared selection — the Image tab and a later return keep the
+  // merchant's explicit pick; generate() omits the presenter where unused.
   useEffect(() => {
-    if (contentType === "avatar") setAvatarId((a) => a ?? defaultAvatar);
+    if (contentType === "avatar" || contentType === "cartoon") setAvatarId((a) => a ?? defaultAvatar);
   }, [contentType, defaultAvatar]);
   // The config below the type step appears once a type (and, for cartoon, a
   // style) is chosen.
@@ -387,9 +388,10 @@ export default function Studio() {
       const sceneParts = [doWhat.trim(), where.trim()].filter(Boolean);
       if (sceneParts.length) fields.scene = sceneParts.join(". ");
       fields.direction = dir;
-      // Presenter rides along ONLY for Avatar AI — highlight/cartoon/jingle
-      // never carry one, even if a pick lingers in shared state.
-      if (contentType === "avatar" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
+      // Presenter rides along for Avatar AI and Cartoon Avatar (the character
+      // IS the presenter, redrawn) — highlight/jingle never carry one, even
+      // if a pick lingers in shared state.
+      if ((contentType === "avatar" || contentType === "cartoon") && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear && contentType === "avatar") fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
       if (tab === "image") { if (direction.trim()) fields.scene = direction.trim(); if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; } }
@@ -451,7 +453,7 @@ export default function Studio() {
               {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
               {contentType === "cartoon" && (
                 <>
-                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon style</span></div>
+                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon avatar style</span></div>
                   <div className="cfg-cast cs-ctypes">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
@@ -461,10 +463,12 @@ export default function Studio() {
                     ))}
                   </div>
                   {cartoonStyle ? (
-                    <p className="cfg-note cs-ctnote">🎨 <b>{CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name}</b> — {CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb}. Your product gets redrawn in this style, then animated with a narrator.</p>
+                    <p className="cfg-note cs-ctnote">🎨 <b>{CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name}</b> — {CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb}. Your presenter and product get redrawn in this style, then animated with a narrator.</p>
                   ) : (
-                    <p className="cfg-note cs-ctnote">Pick the animation style — your product stays recognizable, the whole world around it changes.</p>
+                    <p className="cfg-note cs-ctnote">Pick the style — your presenter becomes the character, your product stays recognizable.</p>
                   )}
+                  {cartoonStyle && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />}
+                  {cartoonStyle && !avatarId && <p className="cfg-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
                 </>
               )}
               {contentType === "jingle" && (

@@ -95,13 +95,16 @@ interface CartoonAdParams {
   productTitle: string;
   productDescription?: string;
   productImageUrl?: string;
-  styleKey: string; // one of CARTOON_RECIPES; unknown keys fall back to flat2d
+  styleKey: string; // one of CARTOON_RECIPES; unknown keys fall back to dreamanime
+  avatarId?: string; // presenter — the CHARACTER the style redraws ("turn yourself into X")
+  avatarVariant?: number;
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean; // intangible offer — draw the OUTCOME, not an object
   origin?: string; // provenance label for the finished card
   jobId?: string; // enables stage checkpointing
   resume?: {
     script?: string;
+    composedUrl?: string; // photoreal presenter-holding-product frame
     keyframeUrl?: string;
     klingPredictionId?: string; // re-attach to a live animate run — never re-buy it
     animUrl?: string;
@@ -149,12 +152,62 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     await ckpt({ ckScript: script });
   }
 
-  // 2) KEYFRAME — the product redrawn in the picked style. With a real photo we
-  // use kontext (edit) so the product stays RECOGNIZABLE — that's the whole ad.
+  // 2) KEYFRAME — "turn yourself into X": with a presenter cast, we first
+  // compose the PHOTOREAL presenter-holding-product frame (same engine as UGC
+  // ads), then kontext redraws the whole scene in the picked style — the
+  // character keeps the presenter's likeness, the product stays recognizable.
+  // No presenter → product-hero redraw as before. Every step falls back
+  // gracefully (compose failure → portrait-only; no portrait → product path).
   let keyframeUrl = resume.keyframeUrl || "";
   if (!keyframeUrl) {
     const sceneBits = params.direction ? ` Scene direction: ${params.direction.slice(0, 200)}.` : "";
-    if (!params.serviceMode && params.productImageUrl) {
+
+    // 2a) source photo to stylize: composed presenter+product frame, else the
+    // presenter portrait (service mode / no product photo), else no presenter.
+    let sourcePhotoUrl = "";
+    let withCharacter = false;
+    if (params.avatarId) {
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      let portraitUrl = "";
+      try {
+        const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
+        const path = await import("node:path");
+        const file = resolvePortraitFile(params.avatarId, params.avatarVariant ?? 0);
+        if (base) portraitUrl = `${base}/avatars/${path.basename(file)}`;
+      } catch { /* unknown presenter on this deploy → product-hero path */ }
+      if (portraitUrl) {
+        sourcePhotoUrl = portraitUrl;
+        withCharacter = true;
+        let composedUrl = resume.composedUrl || "";
+        if (!composedUrl && !params.serviceMode && params.productImageUrl) {
+          try {
+            const { composeHoldingFrames } = await import("./fal-image.server");
+            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction);
+            composedUrl = frames[0] || "";
+            if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
+          } catch (e) {
+            console.error(`[cartoon] compose failed (stylizing plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+          }
+        }
+        if (composedUrl) sourcePhotoUrl = composedUrl;
+      }
+    }
+
+    if (sourcePhotoUrl && withCharacter) {
+      const prompt =
+        `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
+        `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
+        `${params.serviceMode ? "" : `Keep the ${params.productTitle} they are presenting clearly recognizable — same shape, colors, logos and TRUE real-world size, never miniaturized. `}` +
+        `Delightful advertising scene, simple complementary background.${sceneBits} ` +
+        `Vertical 9:16 composition, no watermark, no caption text.`;
+      const id = await repCreate("black-forest-labs/flux-kontext-pro", {
+        prompt,
+        input_image: sourcePhotoUrl,
+        aspect_ratio: "9:16",
+        output_format: "jpg",
+      });
+      keyframeUrl = await repPoll(id, 5 * 60_000, "cartoon-keyframe");
+    } else if (!params.serviceMode && params.productImageUrl) {
       const prompt =
         `Redraw this exact product as a ${recipe.look}. Keep the product's shape, colors, ` +
         `proportions, logos and text clearly recognizable — same product, new art style. ` +
@@ -199,7 +252,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   if (!animUrl) {
     const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
       start_image: keyframeUrl,
-      prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, the product stays the clear hero, vertical video.`,
+      prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible" : "the product stays the clear hero"}, vertical video.`,
       negative_prompt: "photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
       duration: 10,
       cfg_scale: 0.5,
@@ -279,6 +332,8 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           style: "CARTOON",
           cartoonStyle: params.styleKey,
           productTitle: params.productTitle,
+          avatarId: params.avatarId || null,
+          avatarVariant: params.avatarId ? (params.avatarVariant ?? 0) : null,
           direction: params.direction || null,
           origin: params.origin || null,
         }),
