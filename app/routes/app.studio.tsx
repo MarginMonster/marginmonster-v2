@@ -150,6 +150,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
   const direction = ((form.get("direction") as string) || "").trim() || undefined;
   const wear = form.get("wear") === "1";
+  const service = form.get("service") === "1"; // intangible offering — sell the outcome
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
   if (!productTitle) return json({ error: "Pick a product to feature." });
 
@@ -161,22 +162,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // free-video quota). Campaigns and the Studio now bill identically.
     try { await spendTokens(shop.id, TOKEN_COST.video); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId, wearProduct: !!avatarId && wear, scene, prePaid: true });
+    // Services: the presenter explains the offer to camera — nothing to hold.
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
-    if (avatarId && !productImageUrl) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
+    if (avatarId && !productImageUrl && !service) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
     try { await spendTokens(shop.id, TOKEN_COST.image); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant, wear: !!avatarId && wear, scene, prePaid: true });
+    // Services skip the presenter-hold and product photo → outcome scene.
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
     try { await spendTokens(shop.id, TOKEN_COST.blog); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for an article." }); }
-    await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, serviceMode: service, prePaid: true });
     return json({ ok: true, queued: "blog" });
   }
   return json({ ok: true });
@@ -298,7 +301,14 @@ export default function Studio() {
   // Post-generate popup → Archive Storage
   const [showDone, setShowDone] = useState(false);
   useEffect(() => { if (actionData && "queued" in actionData) setShowDone(true); }, [actionData]);
-  const showWear = (tab === "video" || tab === "image") && !!avatarId && !!product;
+  // Service mode — an intangible offer (coaching, SaaS, a subscription…). No
+  // product to hold, so the presenter explains and sells the outcome. Defaults
+  // on when the picked product has no photo (a strong service signal).
+  const [serviceOverride, setServiceOverride] = useState<boolean | null>(null);
+  useEffect(() => { setServiceOverride(null); }, [picked]);
+  const service = serviceOverride === null ? (!!product && !product.image) : serviceOverride;
+  const showService = (tab === "video" || tab === "image") && !!product;
+  const showWear = (tab === "video" || tab === "image") && !!avatarId && !!product && !service;
   const wear = wearOverride === null ? !!product?.apparel : wearOverride;
 
   // Rotate the presenter's 4 wardrobe variants across generations so repeated
@@ -331,6 +341,7 @@ export default function Studio() {
       fields.direction = direction.trim();
       if (tab === "image") { if (direction.trim()) fields.scene = direction.trim(); if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; } }
     }
+    if (service) fields.service = "1";
     submit(fields, { method: "post" });
   };
 
@@ -389,6 +400,17 @@ export default function Studio() {
             <p className="cfg-note">Pick a product from your store, or <b>Add by URL</b> above.</p>
           )}
           {product && <p className="cfg-note">Featuring <b>{product.title}</b></p>}
+
+          {showService && (
+            <>
+              <div className="cfg-lbl cs-lblrow"><span>What are you promoting?</span>{!product?.image && <span className="cs-opt">no photo → service</span>}</div>
+              <div className="dc-seg cs-svc">
+                <button type="button" className={!service ? "sel" : ""} onClick={() => setServiceOverride(false)}>📦 Physical product</button>
+                <button type="button" className={service ? "sel" : ""} onClick={() => setServiceOverride(true)}>✨ Service / offer</button>
+              </div>
+              {service && <p className="cs-svchint">The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital & local services.</p>}
+            </>
+          )}
 
           {showWear && (
             <>

@@ -67,6 +67,32 @@ export default function Index() {
           ))}
         </section>
 
+        <section className="lz-compare">
+          <span className="lz-eyebrow">Coming from another tool?</span>
+          <h2>Still figuring out <span className="lz-vsname">Zeely or Arcads</span>?</h2>
+          <p className="lz-compare-sub">If you&apos;ve tried the others, here&apos;s why merchants switch to EasyMode.</p>
+          <div className="lz-vs">
+            <div className="lz-vs-col them">
+              <div className="lz-vs-h">The usual way</div>
+              <ul>
+                <li>A different app for videos, blogs, images and posting</li>
+                <li>You still schedule and post every piece by hand</li>
+                <li>Per‑video pricing that punishes you for growing</li>
+                <li>Generic AI that doesn&apos;t know your catalog</li>
+              </ul>
+            </div>
+            <div className="lz-vs-col us">
+              <div className="lz-vs-h">EasyMode</div>
+              <ul>
+                <li>Videos, blogs, images &amp; landing pages in one app</li>
+                <li>Auto‑posts to TikTok, Instagram &amp; Facebook on a schedule</li>
+                <li>One simple token wallet — spend it on anything</li>
+                <li>Every piece built from your real Shopify products</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section className="lz-band">
           <div className="lz-band-in">
             <h2>Made for founders who don&apos;t have a marketing team.</h2>
@@ -150,6 +176,26 @@ html,body{margin:0;padding:0}
   background:rgba(12,122,70,.09);box-shadow:inset 0 0 0 1px rgba(12,122,70,.2);}
 .lz-card h3{font-family:Poppins,sans-serif;font-weight:700;font-size:16px;margin:0 0 7px;letter-spacing:-.01em;color:var(--ink);}
 .lz-card p{font-size:13.5px;line-height:1.55;color:var(--ink2);margin:0;}
+.lz-compare{max-width:920px;margin:72px auto 0;padding:0 26px;text-align:center;}
+.lz-vsname{color:var(--green2,#12A85E);}
+.lz-compare h2{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:10px 0 8px;color:var(--ink);text-wrap:balance;}
+.lz-compare-sub{font-size:15.5px;color:var(--ink2);margin:0 auto 30px;max-width:52ch;line-height:1.55;}
+.lz-vs{display:grid;grid-template-columns:1fr 1fr;gap:16px;text-align:left;}
+.lz-vs-col{border-radius:18px;padding:24px 22px;}
+.lz-vs-col.them{background:var(--card);border:1px solid var(--line);box-shadow:0 2px 8px rgba(20,32,26,.05);}
+.lz-vs-col.us{position:relative;overflow:hidden;isolation:isolate;color:#EAF4EE;
+  background:repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),linear-gradient(160deg,#0E5233,#0A3421 58%,#062417);
+  border:1px solid rgba(231,200,121,.34);box-shadow:0 18px 44px rgba(8,42,26,.32);}
+.lz-vs-h{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px;}
+.lz-vs-col.them .lz-vs-h{color:var(--ink2);}
+.lz-vs-col.us .lz-vs-h{color:var(--gold-hi,#E7C879);}
+.lz-vs-col ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px;}
+.lz-vs-col li{position:relative;padding-left:26px;font-size:14px;line-height:1.45;}
+.lz-vs-col.them li{color:var(--ink2);}
+.lz-vs-col.them li::before{content:"–";position:absolute;left:6px;color:#B0A98E;font-weight:800;}
+.lz-vs-col.us li{color:#EAF4EE;}
+.lz-vs-col.us li::before{content:"✓";position:absolute;left:2px;color:#7FE0AC;font-weight:900;}
+@media(max-width:600px){.lz-vs{grid-template-columns:1fr}}
 .lz-band{max-width:1000px;margin:64px auto 0;padding:0 26px;}
 .lz-band-in{position:relative;isolation:isolate;overflow:hidden;text-align:center;border-radius:24px;padding:52px 32px;color:#EAF4EE;
   background:

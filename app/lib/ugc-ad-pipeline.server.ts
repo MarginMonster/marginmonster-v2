@@ -60,6 +60,7 @@ interface UgcAdParams {
   composedFrameUrl?: string;
   holdProduct?: boolean;
   wearProduct?: boolean; // apparel → presenter models (wears) the item instead of holding it
+  serviceMode?: boolean; // intangible offering — no product to hold; presenter EXPLAINS and sells the outcome
   scene?: string; // merchant's setting/action → shapes the composed opening frame
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
@@ -404,12 +405,15 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
 
-  // 1) SCRIPT — hook-first, ~13s spoken
+  // 1) SCRIPT — hook-first, ~13s spoken. Services sell the OUTCOME, not an
+  // object the presenter holds up.
   const scriptPrompt = [
     `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).`,
     `Presenter: ${avatar.name}, ${avatar.desc}.`,
-    `Product: "${params.productTitle}".`,
-    params.productDescription ? `Product details: ${params.productDescription.slice(0, 300)}` : "",
+    params.serviceMode
+      ? `This is a SERVICE / offer (not a physical product): "${params.productTitle}". The presenter is a spokesperson talking to camera — they do NOT hold a product. Sell the RESULT the customer gets, the pain it removes, and why it's worth it.`
+      : `Product: "${params.productTitle}".`,
+    params.productDescription ? `${params.serviceMode ? "What it does / the outcome" : "Product details"}: ${params.productDescription.slice(0, 300)}` : "",
     voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
     params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
     ``,
@@ -506,7 +510,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   let animSourceDataUri = portraitDataUri; // what omni/kling get inline
   {
     let composedUrl = params.composedFrameUrl || resume.composedUrl || "";
-    if (!composedUrl && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
+    if (!composedUrl && !params.serviceMode && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
       try {
         const { composeHoldingFrames } = await import("./fal-image.server");
         const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene);

@@ -173,7 +173,8 @@ async function runJob(
         payload.avatarId as string | undefined,
         payload.avatarVariant as number | undefined,
         payload.wear === true,
-        payload.scene as string | undefined
+        payload.scene as string | undefined,
+        payload.serviceMode === true
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements
@@ -218,6 +219,7 @@ async function runJob(
           composedFrameUrl: payload.composedFrameUrl as string | undefined,
           holdProduct: payload.holdProduct === true,
           wearProduct: payload.wearProduct === true,
+          serviceMode: payload.serviceMode === true,
           scene: payload.scene as string | undefined,
           resume: {
             script: payload.ckScript as string | undefined,

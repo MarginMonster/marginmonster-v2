@@ -97,12 +97,14 @@ export async function generateImageAd(
   avatarId?: string,
   avatarVariant?: number,
   wear?: boolean,
-  scene?: string
+  scene?: string,
+  serviceMode?: boolean
 ): Promise<string> {
   // PRESENTER STILL — an avatar holding the product (Content Studio presenter
   // path). Uses the same two-image compose engine as UGC video frames. Needs a
   // real product photo; falls through to the product still if unavailable.
-  if (avatarId && productImageUrl && /^https?:\/\//.test(productImageUrl)) {
+  // Services have nothing to hold → skip straight to the outcome scene.
+  if (!serviceMode && avatarId && productImageUrl && /^https?:\/\//.test(productImageUrl)) {
     try {
       const { submitCompose, pollCompose, falImageEnabled } = await import("./fal-image.server");
       if (falImageEnabled()) {
@@ -157,14 +159,21 @@ export async function generateImageAd(
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
 
   const jsonHeaders = { Authorization: `Bearer ${replicateToken}`, "Content-Type": "application/json" };
-  const hasProductImg = !!productImageUrl && /^https?:\/\//.test(productImageUrl);
+  const hasProductImg = !serviceMode && !!productImageUrl && /^https?:\/\//.test(productImageUrl);
 
-  // WHEN WE HAVE THE REAL PRODUCT PHOTO → flux-KONTEXT rebuilds a premium scene
-  // AROUND the actual product (keeps its exact shape/color/logo). Without it,
-  // fall back to flux-DEV text2img from the title (schnell at 4 steps mangled
-  // faces into "monsters" — dev at 30 steps is the quality tier).
+  // SERVICE / offer → there's no product to photograph, so we sell the OUTCOME:
+  // an aspirational lifestyle scene of someone enjoying the result. Text-heavy
+  // "offer cards" render as garbled glyphs in diffusion models, so we stay
+  // photoreal and let the caption carry the words.
   let createRes: Response;
-  if (hasProductImg) {
+  if (serviceMode) {
+    const svc = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, warm natural lighting. ${visual.imageStyle || "clean modern commercial photography"}. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
+    createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ input: { prompt: svc, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
+    });
+  } else if (hasProductImg) {
     const scenePrompt = `Place this exact product, unchanged, as the hero of a premium advertising photograph. ${stylePrompt ? `${stylePrompt}. ` : ""}${direction}. ${visual.imageStyle || "clean professional product photography"}. Keep the product identical in shape, color, materials, logos and every detail. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
       method: "POST",

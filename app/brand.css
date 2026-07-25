@@ -3830,3 +3830,7 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .bvedit input:focus, .bvedit textarea:focus { outline:none; border-color:#0F9152; box-shadow:0 0 0 3px rgba(12,122,70,.12); }
 .bvsave { align-self:flex-start; border:0; border-radius:11px; padding:11px 22px; font-family:inherit; font-size:14px; font-weight:800; color:#fff; cursor:pointer; background:repeating-linear-gradient(57deg,rgba(255,220,120,.10) 0 1px,transparent 1px 8px),linear-gradient(165deg,#12A85E,#0B6B3E); box-shadow:0 8px 20px rgba(12,122,70,.28); }
 .bvsave:disabled { opacity:.55; }
+
+/* Service-mode toggle hint (Content Studio) */
+.cs-svchint { margin:8px 2px 0; font-size:12.5px; line-height:1.5; color:#52564A; }
+.cs-svchint b { color:#0A6B3E; font-weight:800; }
