@@ -3424,7 +3424,10 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-btn.free:hover::after, .ar-vpost:hover::after { animation-duration:9s; }
 .ar-btn.free::before, .ar-vpost::before { content:""; position:absolute; inset:5px; border:1px solid rgba(255,210,74,.4); border-radius:8px; pointer-events:none; z-index:0; }
 .ar-vmeta b { font-size:14px; font-weight:800; color:#14160F; display:block; }
-.ar-vinfo { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.ar-vinfo { display:flex; flex-direction:column; align-items:stretch; gap:8px; }
+.ar-vtitle { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ar-vtitle b { font-size:14.5px; line-height:1.35; }
+.ar-vchips { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .ar-vok { font-size:12px; font-weight:800; color:#0A6B3E; }
 .ar-verr { font-size:11.5px; font-weight:700; color:#9A3120; text-align:right; }
 .ar-vacts { display:flex; gap:8px; }
@@ -3503,7 +3506,7 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .ar-vcd { font-size:11px; font-weight:700; color:#8A6A16; background:rgba(231,200,121,.18); border-radius:8px; padding:5px 9px; }
 .ar-vcd.warn { color:#9A3120; background:rgba(154,49,32,.1); }
 .ar-vcd b { font-weight:800; }
-.ar-aitag { font-size:10.5px; font-weight:700; color:#8A8D7E; letter-spacing:.02em; }
+.ar-aitag { font-size:11px; font-weight:700; color:#6E7264; background:#F1EEE2; border-radius:8px; padding:5px 9px; letter-spacing:.02em; }
 /* Blog generation feedback — a real "creating…" card that resolves */
 .ar-genblogs { margin-bottom:10px; }
 .ar-blogbuf { display:flex; align-items:center; gap:12px; background:linear-gradient(160deg,#0E5233,#0A3421); border-color:rgba(231,200,121,.28); }
@@ -3858,5 +3861,9 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 
 /* Cartoon-style sub-picker tiles */
 .cs-cartimg { background-position:center; background-size:cover; }
+/* BIG picker tiles — renders deserve to be seen. Used by the ad-template,
+   cartoon-style and singer-style rows. */
+.cs-ctypes.bigtiles .cs-ctype { width:216px; }
+.cs-ctypes.bigtiles .cs-ctype .cs-ctimg { height:134px; border-radius:16px; }
 .cs-ctype.sel .cs-ctimg { box-shadow:inset 0 0 0 2px #0F9152, 0 6px 16px rgba(12,122,70,.2); }
 .cs-ctype.sel .ca-nm { color:#0A6B3E; }

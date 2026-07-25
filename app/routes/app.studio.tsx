@@ -444,7 +444,7 @@ export default function Studio() {
           {tab === "video" && !contentType && (
             <>
               <div className="cfg-lbl cs-lblrow"><span>Pick your content type</span></div>
-              <div className="cfg-cast cs-ctypes">
+              <div className="cfg-cast cs-ctypes bigtiles">
                 {CONTENT_TYPES.map((ct) => (
                   <button type="button" key={ct.key} className={`cast cs-ctype${ct.live ? "" : " soon"}`} onClick={() => setContentType(ct.key)}>
                     <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(${ct.cover})` }}>{!ct.live && <span className="ca-soon">SOON</span>}</span>
@@ -463,7 +463,7 @@ export default function Studio() {
               {contentType === "cartoon" && (
                 <>
                   <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon avatar style</span></div>
-                  <div className="cfg-cast cs-ctypes">
+                  <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
                         <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${cs.cover})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
@@ -484,7 +484,7 @@ export default function Studio() {
                 <>
                   <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product's theme song and your presenter <i>sings it on camera</i>, lipsynced. Pick a singer below — photoreal, or redrawn in a cartoon style. No singer = the song plays over a cinematic product shot.</p>
                   <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">optional — none = photoreal</span></div>
-                  <div className="cfg-cast cs-ctypes">
+                  <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cartoonStyle === cs.key ? null : cs.key)}>
                         <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${cs.cover})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
@@ -580,7 +580,7 @@ export default function Studio() {
               {tab === "image" && !service && !avatarId && (
                 <>
                   <div className="cfg-lbl cs-lblrow"><span>Ad template — what you see is what you get</span>{templateKey && <button type="button" className="cs-viewall" onClick={() => setTemplateKey(null)}>Clear</button>}</div>
-                  <div className="cfg-cast cs-ctypes">
+                  <div className="cfg-cast cs-ctypes bigtiles">
                     {AD_TEMPLATES.map((t) => (
                       <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
                         <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>

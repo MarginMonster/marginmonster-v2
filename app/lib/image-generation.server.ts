@@ -306,21 +306,37 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
  * preview and result match pixel-for-pixel except statue→product. */
 
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "ad-templates");
-const AD_TEMPLATE_VERSION = 1;
+// v2: EasyMode Statue redesigned — glossy white + EasyMode-green vinyl toy
+// with thick black outlines (v1's bronze monster read as an off-brand gremlin)
+const AD_TEMPLATE_VERSION = 2;
 const templateInFlight = new Set<string>();
 
 export function adTemplateFile(kind: "preview" | "plate" | "statue", key = ""): string | null {
-  const name = kind === "statue" ? "statue.png" : `${kind}-v${AD_TEMPLATE_VERSION}-${key}.jpg`;
   if (key && !/^[a-z]+$/.test(key)) return null;
-  const p = path.join(AD_TEMPLATE_DIR, name);
-  return fs.existsSync(p) ? p : null;
+  if (kind === "statue") {
+    const p = path.join(AD_TEMPLATE_DIR, `statue-v${AD_TEMPLATE_VERSION}.png`);
+    return fs.existsSync(p) ? p : null;
+  }
+  // Current version first, then older real builds — a version bump upgrades
+  // in place, it never regresses the picker to placeholders while rebuilding.
+  for (let v = AD_TEMPLATE_VERSION; v >= 1; v--) {
+    const p = path.join(AD_TEMPLATE_DIR, `${kind}-v${v}-${key}.jpg`);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function currentTemplateFile(kind: "preview" | "plate", key: string): string {
+  return path.join(AD_TEMPLATE_DIR, `${kind}-v${AD_TEMPLATE_VERSION}-${key}.jpg`);
 }
 
 async function ensureStatue(): Promise<string | null> {
   const existing = adTemplateFile("statue");
   if (existing) return existing;
+  // THE EasyMode Statue: a designer vinyl toy — white glossy plastic, EasyMode
+  // green accents, bold black outlines like a 2D character made physical.
   const raw = await repRun("black-forest-labs/flux-dev", {
-    prompt: "Product photograph of a small polished bronze statuette of a friendly round cartoon monster mascot with a big cheerful grin, standing proudly on a small round bronze base, centered on a pure white seamless background, crisp studio lighting, high detail",
+    prompt: "Product photograph of a small collectible designer vinyl toy figurine: a friendly rounded mascot character made of glossy WHITE plastic with vibrant fresh-green accents (green belly patch, green feet), outlined with THICK BOLD BLACK lines like a 2D cartoon character turned into a physical toy, two big friendly round eyes, a simple cheerful smile, smooth minimal shapes, standing on a small round white base, centered on a pure white seamless background, crisp bright studio lighting, high detail",
     num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
   });
   const cutout = await removeBackground(raw);
@@ -328,14 +344,14 @@ async function ensureStatue(): Promise<string | null> {
   const res = await fetch(cutout);
   if (!res.ok) return null;
   fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
-  const out = path.join(AD_TEMPLATE_DIR, "statue.png");
+  const out = path.join(AD_TEMPLATE_DIR, `statue-v${AD_TEMPLATE_VERSION}.png`);
   fs.writeFileSync(out, Buffer.from(await res.arrayBuffer()));
-  console.log("[ad-templates] statue forged");
+  console.log("[ad-templates] statue forged (v" + AD_TEMPLATE_VERSION + ")");
   return out;
 }
 
 export function ensureAdTemplate(key: string): void {
-  if (adTemplateFile("preview", key) || templateInFlight.has(key)) return;
+  if (fs.existsSync(currentTemplateFile("preview", key)) || templateInFlight.has(key)) return;
   if (!process.env.REPLICATE_API_TOKEN) return;
   templateInFlight.add(key);
   (async () => {
