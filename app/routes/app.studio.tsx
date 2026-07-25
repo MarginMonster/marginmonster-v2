@@ -23,11 +23,11 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
 // highlight are live pipelines today; the rest are teased "coming soon" so the
 // flow is ready the moment each model lands.
 type CType = "avatar" | "highlight" | "cartoon" | "jingle";
-const CONTENT_TYPES: { key: CType; name: string; icon: string; sub: string; live: boolean }[] = [
-  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", sub: "A real-looking presenter talks it up", live: true },
-  { key: "highlight", name: "Product Highlight", icon: "🎬", sub: "Cinematic motion, no presenter", live: true },
-  { key: "cartoon", name: "Cartoon", icon: "🎨", sub: "Animated, illustrated ad", live: false },
-  { key: "jingle", name: "Earworm", icon: "🎵", sub: "A sung ad that sticks — 2000s commercial energy", live: false },
+const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
+  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/content-types/av.png", sub: "A real-looking presenter talks it up", live: true },
+  { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/content-types/ph.png", sub: "Cinematic motion, no presenter", live: true },
+  { key: "cartoon", name: "Cartoon", icon: "🎨", cover: "/content-types/ct.png", sub: "Animated, illustrated ad", live: false },
+  { key: "jingle", name: "Earworm", icon: "🎵", cover: "/content-types/ew.png", sub: "A sung ad that sticks — 2000s commercial energy", live: false },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -401,7 +401,7 @@ export default function Studio() {
               <div className="cfg-cast cs-ctypes">
                 {CONTENT_TYPES.map((ct) => (
                   <button type="button" key={ct.key} className={`cast cs-ctype${ct.live ? "" : " soon"}`} onClick={() => setContentType(ct.key)}>
-                    <span className="ca-img cs-ctimg">{ct.icon}{!ct.live && <span className="ca-soon">SOON</span>}</span>
+                    <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(${ct.cover})` }}>{!ct.live && <span className="ca-soon">SOON</span>}</span>
                     <span className="ca-nm">{ct.name}</span>
                     <span className="ca-sub">{ct.sub}</span>
                   </button>
