@@ -1,8 +1,94 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import ffmpegPath from "ffmpeg-static";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
+import { anthropicText } from "./anthropic.server";
+
+/* ── On-image ad copy ──────────────────────────────────────────────────────
+ * A high-quality still isn't a finished ad — real creatives carry a headline
+ * and a call to action. Diffusion models garble text, so we generate the words
+ * with Claude and composite them onto the image with ffmpeg (same font/engine
+ * the video captions use). Everything here is best-effort: any failure falls
+ * back to the clean image, never blocking generation. */
+
+/** ≤5-word headline + ≤3-word CTA, written to sell the product/offer. */
+async function adCopy(productTitle: string, tone: string | undefined, direction: string | undefined, serviceMode: boolean): Promise<{ headline: string; cta: string } | null> {
+  try {
+    const prompt = [
+      `Write ad-creative text to overlay on a ${serviceMode ? "service/offer" : "product"} image ad.`,
+      `${serviceMode ? "Offer" : "Product"}: "${productTitle}".`,
+      tone ? `Brand tone: ${tone}.` : "",
+      direction ? `Angle: ${direction.slice(0, 160)}.` : "",
+      `Return ONLY JSON: {"headline":"...","cta":"..."}.`,
+      `headline: MAX 5 words, punchy, benefit-first, no end punctuation. cta: MAX 3 words (e.g. "Shop now", "Get yours", "Start free").`,
+      `No quotes, emoji, or hashtags inside the values.`,
+    ].filter(Boolean).join("\n");
+    const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 120 });
+    const m = raw && raw.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const j = JSON.parse(m[0]) as { headline?: string; cta?: string };
+    const clean = (s: string | undefined, n: number) => (s || "").replace(/["'“”]/g, "").trim().split(/\s+/).slice(0, n).join(" ");
+    const headline = clean(j.headline, 6);
+    const cta = clean(j.cta, 3);
+    if (!headline) return null;
+    return { headline, cta };
+  } catch { return null; }
+}
+
+// drawtext is picky: escape the characters that break its filter parser.
+const dt = (s: string) => s.replace(/\\/g, "").replace(/[':%]/g, "").replace(/[^\w \-!?.&]/g, "").trim();
+
+/**
+ * Composite a headline + CTA onto a square still with ffmpeg — a deep-green
+ * banknote band across the bottom, white headline, gold CTA. Writes a new file
+ * and returns its name, or null if anything goes wrong (caller keeps the clean
+ * image). Assumes ~1024px square output from the generators.
+ */
+function ffmpegBin(): string | null {
+  // System ffmpeg first — the ffmpeg-static Linux build ships WITHOUT drawtext,
+  // which is exactly what we need here (same reason the video pipeline does this).
+  for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", path.join(process.cwd(), "bin", "ffmpeg")]) {
+    if (fs.existsSync(p)) return p;
+  }
+  return (ffmpegPath as unknown as string) || null;
+}
+async function overlayAdText(dir: string, srcName: string, headline: string, cta: string): Promise<string | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const src = path.join(dir, srcName);
+  if (!fs.existsSync(src)) return null;
+  const outName = srcName.replace(/\.jpg$/, "") + "-ad.jpg";
+  const out = path.join(dir, outName);
+  const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  if (!fs.existsSync(fontFile)) return null;
+  const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+  const hl = dt(headline).toUpperCase();
+  const ct = dt(cta).toUpperCase();
+  if (!hl) return null;
+  // headline auto-shrinks to fit width via ffmpeg's text_w-aware fontsize isn't
+  // available, so we pick a size that fits ~18 chars and rely on short copy.
+  const hlSize = hl.length > 22 ? 46 : hl.length > 15 ? 58 : 70;
+  const filters = [
+    // deep-green translucent band across the bottom for legibility + brand
+    `drawbox=x=0:y=ih-280:w=iw:h=280:color=0x0A3421@0.62:t=fill`,
+    `drawbox=x=0:y=ih-284:w=iw:h=4:color=0xE7C879@0.75:t=fill`,
+    `drawtext=fontfile='${font}':text='${hl}':fontsize=${hlSize}:fontcolor=white:borderw=2:bordercolor=black@0.35:x=(w-text_w)/2:y=h-205`,
+    ct ? `drawtext=fontfile='${font}':text='${ct} >':fontsize=32:fontcolor=0xE7C879:x=(w-text_w)/2:y=h-110` : "",
+  ].filter(Boolean).join(",");
+  const args = ["-y", "-i", src, "-vf", filters, "-frames:v", "1", "-q:v", "3", out];
+  const ok = await new Promise<boolean>((resolve) => {
+    try {
+      const p = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
+      p.on("error", () => resolve(false));
+      p.on("close", (code) => resolve(code === 0));
+    } catch { resolve(false); }
+  });
+  if (ok && fs.existsSync(out) && fs.statSync(out).size > 5000) return outName;
+  return null;
+}
 
 /** SELF-HEALING BACKFILL — image ads forged before durable storage carry
  *  replicate.delivery URLs that expired (~1h), leaving blank cards. Re-forge
@@ -131,6 +217,15 @@ export async function generateImageAd(
                 fs.writeFileSync(path.join(dir, fileName), buf);
                 try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
                 localUrl = `/renders/${fileName}`;
+                // Overlay headline + CTA (best-effort) so the presenter still is a real ad.
+                try {
+                  const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+                  const copy = await adCopy(productTitle, voiceTone, stylePrompt, false);
+                  if (copy) {
+                    const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta);
+                    if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
+                  }
+                } catch (e) { console.error("[image-ad] presenter overlay skipped:", e instanceof Error ? e.message : e); }
               }
             }
           } catch (e) { console.error("[image-ad] presenter still persist failed:", e); }
@@ -232,6 +327,20 @@ export async function generateImageAd(
         fs.writeFileSync(path.join(dir, fileName), buf);
         try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
         localUrl = `/renders/${fileName}`;
+
+        // Make it an actual AD: overlay a headline + CTA. Best-effort — if the
+        // copy or the ffmpeg composite fails, we keep the clean still.
+        try {
+          const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+          const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode);
+          if (copy) {
+            const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta);
+            if (adName) {
+              localUrl = `/renders/${adName}`;
+              try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ }
+            }
+          }
+        } catch (e) { console.error("[image-ad] text overlay skipped:", e instanceof Error ? e.message : e); }
       }
     }
   } catch (e) {
