@@ -51,15 +51,20 @@ const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; 
 // Wearable products should be modeled (worn) by the presenter, not held.
 const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
 
-// One-tap art direction for image stills (ported from Image Studio).
+// One-tap art direction for image stills. Each prompt PINS the backdrop,
+// lighting and palette explicitly so the output reliably matches the chip —
+// vague vibes drift dark/moody; named colors and light levels don't.
 const STYLES: { label: string; prompt: string }[] = [
-  { label: "🎬 Clean Studio", prompt: "clean high-end studio product photography on a seamless gradient backdrop, soft diffused key light with a gentle rim light, minimalist premium composition" },
-  { label: "🏠 Lifestyle", prompt: "warm lifestyle scene with the product in real everyday use, cozy lived-in home setting, soft natural window light, candid moment, shallow depth of field" },
-  { label: "💎 Luxury", prompt: "ultra-luxury minimal editorial aesthetic, polished marble and brushed-metal surfaces, dramatic soft shadows, generous negative space, magazine elegance" },
-  { label: "⚡ Bold Pop", prompt: "bold high-energy pop-art style, rich saturated color blocking, dramatic colored rim light, confident graphic composition, playful premium energy" },
-  { label: "🌤 Golden Hour", prompt: "sun-drenched golden-hour scene, warm low backlight with a soft lens flare, gentle long shadows, breezy natural outdoor energy" },
-  { label: "🤳 UGC Candid", prompt: "authentic user-generated phone-photo look, slightly imperfect framing, natural window light, hand-held real-person candid energy, unpolished" },
-  { label: "🖤 Noir", prompt: "cinematic film-noir lighting, deep inky shadows, a single hard spotlight, moody high-contrast chiaroscuro, dramatic and premium" },
+  { label: "☀️ Bright & Airy", prompt: "backdrop: bright white-to-soft-pastel seamless; lighting: abundant soft daylight, high-key and luminous; mood: fresh, clean, optimistic; crisp gentle shadows, airy minimal styling" },
+  { label: "🎬 Clean Studio", prompt: "backdrop: light seamless studio sweep in white or warm gray; lighting: big soft diffused key light with a subtle rim light, bright and even; mood: minimalist premium, precise soft shadows" },
+  { label: "🏠 Lifestyle", prompt: "backdrop: cozy lived-in home scene with the product in real everyday use; lighting: soft natural window light, warm and bright; mood: candid and inviting, shallow depth of field" },
+  { label: "🌤 Golden Hour", prompt: "backdrop: sun-drenched outdoor scene; lighting: warm low golden-hour backlight with a soft lens flare, glowing and bright; mood: breezy, natural, aspirational, gentle long shadows" },
+  { label: "🌿 Organic", prompt: "backdrop: natural textures — linen, light wood, stone, fresh greenery; lighting: soft bright daylight; mood: earthy, calm, wholesome; muted natural palette of creams, sages and warm neutrals" },
+  { label: "⚡ Bold Pop", prompt: "backdrop: one single vivid saturated color that complements the product (e.g. sunny yellow, coral, electric blue) — flat and graphic; lighting: bright punchy studio light; mood: playful confident color-block energy" },
+  { label: "🌊 Splash & Fresh", prompt: "backdrop: cool aqua tones with dynamic water splash or mist droplets frozen mid-air around the product; lighting: bright crisp studio light; mood: refreshing, energetic, ultra-clean" },
+  { label: "🤳 UGC Candid", prompt: "authentic user-generated phone-photo look: real everyday setting, natural window light, slightly imperfect hand-held framing; bright and true-to-life, unpolished and relatable" },
+  { label: "💎 Luxury", prompt: "backdrop: polished marble and brushed metal with generous negative space; lighting: controlled soft spotlighting with elegant deliberate shadows; mood: ultra-luxury editorial, rich and refined (a deliberately darker, dramatic look)" },
+  { label: "🖤 Noir", prompt: "backdrop: deep dark charcoal; lighting: a single hard cinematic spotlight, film-noir chiaroscuro with inky shadows; mood: moody, dramatic, high-contrast premium (a deliberately DARK look)" },
 ];
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
