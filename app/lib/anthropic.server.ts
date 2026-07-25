@@ -69,3 +69,37 @@ export async function anthropicText(
   const block = json.content?.find((c) => c.type === "text");
   return block?.text || "";
 }
+
+/** Vision call — same raw-fetch client, with image URLs attached. Used by the
+ *  image-ad QA gate to score product fidelity before a still ships. */
+export async function anthropicVision(
+  prompt: string,
+  imageUrls: string[],
+  opts: AnthropicOptions = {}
+): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) throw new Error("ANTHROPIC_API_KEY not set");
+  const model = opts.model || "claude-haiku-4-5-20251001";
+  const content: unknown[] = imageUrls.map((url) => ({
+    type: "image",
+    source: { type: "url", url },
+  }));
+  content.push({ type: "text", text: prompt });
+  const res = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: opts.maxTokens || 500,
+      messages: [{ role: "user", content }],
+    }),
+  });
+  const bodyText = await res.text();
+  if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${bodyText.slice(0, 300)}`);
+  const json = JSON.parse(bodyText) as { content?: Array<{ type: string; text?: string }> };
+  return json.content?.find((c) => c.type === "text")?.text || "";
+}

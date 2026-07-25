@@ -215,7 +215,8 @@ async function runJob(
         payload.avatarVariant as number | undefined,
         payload.wear === true,
         payload.scene as string | undefined,
-        payload.serviceMode === true
+        payload.serviceMode === true,
+        payload.styleMode === "scene" || payload.styleMode === "backdrop" ? payload.styleMode : undefined
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements

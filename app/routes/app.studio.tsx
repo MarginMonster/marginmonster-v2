@@ -54,17 +54,20 @@ const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jack
 // One-tap art direction for image stills. Each prompt PINS the backdrop,
 // lighting and palette explicitly so the output reliably matches the chip —
 // vague vibes drift dark/moody; named colors and light levels don't.
-const STYLES: { label: string; prompt: string }[] = [
-  { label: "☀️ Bright & Airy", prompt: "backdrop: bright white-to-soft-pastel seamless; lighting: abundant soft daylight, high-key and luminous; mood: fresh, clean, optimistic; crisp gentle shadows, airy minimal styling" },
-  { label: "🎬 Clean Studio", prompt: "backdrop: light seamless studio sweep in white or warm gray; lighting: big soft diffused key light with a subtle rim light, bright and even; mood: minimalist premium, precise soft shadows" },
-  { label: "🏠 Lifestyle", prompt: "backdrop: cozy lived-in home scene with the product in real everyday use; lighting: soft natural window light, warm and bright; mood: candid and inviting, shallow depth of field" },
-  { label: "🌤 Golden Hour", prompt: "backdrop: sun-drenched outdoor scene; lighting: warm low golden-hour backlight with a soft lens flare, glowing and bright; mood: breezy, natural, aspirational, gentle long shadows" },
-  { label: "🌿 Organic", prompt: "backdrop: natural textures — linen, light wood, stone, fresh greenery; lighting: soft bright daylight; mood: earthy, calm, wholesome; muted natural palette of creams, sages and warm neutrals" },
-  { label: "⚡ Bold Pop", prompt: "backdrop: one single vivid saturated color that complements the product (e.g. sunny yellow, coral, electric blue) — flat and graphic; lighting: bright punchy studio light; mood: playful confident color-block energy" },
-  { label: "🌊 Splash & Fresh", prompt: "backdrop: cool aqua tones with dynamic water splash or mist droplets frozen mid-air around the product; lighting: bright crisp studio light; mood: refreshing, energetic, ultra-clean" },
-  { label: "🤳 UGC Candid", prompt: "authentic user-generated phone-photo look: real everyday setting, natural window light, slightly imperfect hand-held framing; bright and true-to-life, unpolished and relatable" },
-  { label: "💎 Luxury", prompt: "backdrop: polished marble and brushed metal with generous negative space; lighting: controlled soft spotlighting with elegant deliberate shadows; mood: ultra-luxury editorial, rich and refined (a deliberately darker, dramatic look)" },
-  { label: "🖤 Noir", prompt: "backdrop: deep dark charcoal; lighting: a single hard cinematic spotlight, film-noir chiaroscuro with inky shadows; mood: moody, dramatic, high-contrast premium (a deliberately DARK look)" },
+// mode drives the accuracy ladder: "backdrop" = the REAL product photo gets
+// cut out and composited onto a generated scene (pixel-perfect product);
+// "scene" = generative placement with identity model + vision QA.
+const STYLES: { label: string; prompt: string; mode: "backdrop" | "scene" }[] = [
+  { label: "☀️ Bright & Airy", mode: "backdrop", prompt: "backdrop: bright white-to-soft-pastel seamless; lighting: abundant soft daylight, high-key and luminous; mood: fresh, clean, optimistic; crisp gentle shadows, airy minimal styling" },
+  { label: "🎬 Clean Studio", mode: "backdrop", prompt: "backdrop: light seamless studio sweep in white or warm gray; lighting: big soft diffused key light with a subtle rim light, bright and even; mood: minimalist premium, precise soft shadows" },
+  { label: "🏠 Lifestyle", mode: "scene", prompt: "backdrop: cozy lived-in home scene with the product in real everyday use; lighting: soft natural window light, warm and bright; mood: candid and inviting, shallow depth of field" },
+  { label: "🌤 Golden Hour", mode: "scene", prompt: "backdrop: sun-drenched outdoor scene; lighting: warm low golden-hour backlight with a soft lens flare, glowing and bright; mood: breezy, natural, aspirational, gentle long shadows" },
+  { label: "🌿 Organic", mode: "backdrop", prompt: "backdrop: natural textures — linen, light wood, stone, fresh greenery; lighting: soft bright daylight; mood: earthy, calm, wholesome; muted natural palette of creams, sages and warm neutrals" },
+  { label: "⚡ Bold Pop", mode: "backdrop", prompt: "backdrop: one single vivid saturated color that complements the product (e.g. sunny yellow, coral, electric blue) — flat and graphic; lighting: bright punchy studio light; mood: playful confident color-block energy" },
+  { label: "🌊 Splash & Fresh", mode: "scene", prompt: "backdrop: cool aqua tones with dynamic water splash or mist droplets frozen mid-air around the product; lighting: bright crisp studio light; mood: refreshing, energetic, ultra-clean" },
+  { label: "🤳 UGC Candid", mode: "scene", prompt: "authentic user-generated phone-photo look: real everyday setting, natural window light, slightly imperfect hand-held framing; bright and true-to-life, unpolished and relatable" },
+  { label: "💎 Luxury", mode: "backdrop", prompt: "backdrop: polished marble and brushed metal with generous negative space; lighting: controlled soft spotlighting with elegant deliberate shadows; mood: ultra-luxury editorial, rich and refined (a deliberately darker, dramatic look)" },
+  { label: "🖤 Noir", mode: "backdrop", prompt: "backdrop: deep dark charcoal; lighting: a single hard cinematic spotlight, film-noir chiaroscuro with inky shadows; mood: moody, dramatic, high-contrast premium (a deliberately DARK look)" },
 ];
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
@@ -210,10 +213,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     if (avatarId && !productImageUrl && !service) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
+    const rawMode = (form.get("styleMode") as string) || "";
+    const styleMode = rawMode === "scene" || rawMode === "backdrop" ? rawMode : undefined;
     try { await spendTokens(shop.id, TOKEN_COST.image); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
     // Services skip the presenter-hold and product photo → outcome scene.
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, styleMode, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
@@ -401,7 +406,14 @@ export default function Studio() {
       if ((contentType === "avatar" || contentType === "cartoon") && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear && contentType === "avatar") fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
-      if (tab === "image") { if (direction.trim()) fields.scene = direction.trim(); if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; } }
+      if (tab === "image") {
+        if (direction.trim()) fields.scene = direction.trim();
+        if (avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
+        // Accuracy-ladder mode: chip carries its own; custom text = scene
+        // (generative); no direction = backdrop (photo-true composite).
+        const chip = STYLES.find((s) => s.prompt === direction.trim());
+        fields.styleMode = chip ? chip.mode : direction.trim() ? "scene" : "backdrop";
+      }
     }
     if (service) fields.service = "1";
     if (tab === "video" && contentType) {

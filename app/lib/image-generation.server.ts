@@ -5,7 +5,7 @@ import ffmpegPath from "ffmpeg-static";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
-import { anthropicText } from "./anthropic.server";
+import { anthropicText, anthropicVision } from "./anthropic.server";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -117,6 +117,146 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
   return null;
 }
 
+/* ── Accuracy ladder for product stills ────────────────────────────────────
+ * "Close enough" isn't sellable. Two modes:
+ *   PHOTO-TRUE (default / backdrop styles): the REAL product photo is cut out
+ *     and composited onto a generated empty backdrop — the product is pixel-
+ *     identical by construction. Zero hallucination possible.
+ *   SCENE (integrated styles / custom directions): identity-strongest editor
+ *     (nano-banana, kontext fallback) + a Claude-vision QA gate that rejects
+ *     warped products, wrong scale, deformed hands, or off-brief lighting —
+ *     one automatic retry before shipping. */
+
+function repHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, "Content-Type": "application/json" };
+}
+
+/** Create + poll a Replicate official-model prediction; returns the first output URL. */
+async function repRun(model: string, input: Record<string, unknown>, maxMs = 120_000): Promise<string> {
+  const create = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+    method: "POST", headers: repHeaders(), body: JSON.stringify({ input }),
+  });
+  if (!create.ok) throw new Error(`${model} create ${create.status}: ${(await create.text()).slice(0, 160)}`);
+  const { id } = (await create.json()) as { id: string };
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const poll = await fetch(`https://api.replicate.com/v1/predictions/${id}`, { headers: repHeaders() });
+    const j = (await poll.json()) as { status: string; output?: string | string[]; error?: string };
+    if (j.status === "succeeded" && j.output) return Array.isArray(j.output) ? j.output[0] : j.output;
+    if (j.status === "failed" || j.status === "canceled") throw new Error(`${model}: ${j.error || j.status}`);
+  }
+  throw new Error(`${model}: timed out`);
+}
+
+/** Cut the product out of its photo (transparent PNG). Bria on Replicate,
+ *  then fal birefnet, then null (caller falls back to scene mode). */
+async function removeBackground(imageUrl: string): Promise<string | null> {
+  try {
+    return await repRun("bria/remove-background", { image: imageUrl }, 60_000);
+  } catch (e) {
+    console.log("[image-ad] bria rembg failed:", e instanceof Error ? e.message.slice(0, 120) : e);
+  }
+  if (process.env.FAL_KEY) {
+    try {
+      const submit = await fetch("https://queue.fal.run/fal-ai/birefnet/v2", {
+        method: "POST",
+        headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ image_url: imageUrl }),
+      });
+      if (!submit.ok) throw new Error(`submit ${submit.status}`);
+      const q = (await submit.json()) as { status_url?: string; response_url?: string };
+      if (!q.status_url?.startsWith("https://queue.fal.run/") || !q.response_url?.startsWith("https://queue.fal.run/")) throw new Error("no queue urls");
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+        if (!s.ok) continue;
+        const sj = (await s.json()) as { status?: string };
+        if (sj.status === "COMPLETED") break;
+        if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(sj.status);
+      }
+      const res = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      const rj = (await res.json()) as { image?: { url?: string } };
+      if (rj.image?.url) return rj.image.url;
+    } catch (e) {
+      console.log("[image-ad] fal rembg failed:", e instanceof Error ? e.message.slice(0, 120) : e);
+    }
+  }
+  return null;
+}
+
+/** Composite the exact product cutout onto the generated backdrop with a soft
+ *  drop shadow. Writes straight into data/renders; returns the file name. */
+async function compositeProductStill(backdropUrl: string, cutoutUrl: string): Promise<string | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const tmpBg = path.join(dir, `.bg-${Date.now()}.jpg`);
+  const tmpCut = path.join(dir, `.cut-${Date.now()}.png`);
+  const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const out = path.join(dir, fileName);
+  try {
+    for (const [url, file] of [[backdropUrl, tmpBg], [cutoutUrl, tmpCut]] as const) {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    }
+    const filters =
+      "[0:v]scale=1024:1024:force_original_aspect_ratio=increase,crop=1024:1024[bg];" +
+      "[1:v]scale=660:600:force_original_aspect_ratio=decrease[cut];" +
+      "[cut]split[c1][c2];" +
+      "[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=14,colorchannelmixer=aa=0.38[sh];" +
+      "[bg][sh]overlay=x=(W-w)/2+10:y=H-h-46+22[b1];" +
+      "[b1][c1]overlay=x=(W-w)/2:y=H-h-46[outv]";
+    const args = ["-y", "-i", tmpBg, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out];
+    const ok = await new Promise<boolean>((resolve) => {
+      try {
+        const p = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
+        p.on("error", () => resolve(false));
+        p.on("close", (code) => resolve(code === 0));
+      } catch { resolve(false); }
+    });
+    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return fileName;
+    return null;
+  } finally {
+    try { fs.rmSync(tmpBg, { force: true }); fs.rmSync(tmpCut, { force: true }); } catch { /* best-effort */ }
+  }
+}
+
+/** Vision QA: does the generated ad actually show THIS product, undamaged,
+ *  on-brief? Never blocks on its own failure — QA that errors passes. */
+async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolean): Promise<{ pass: boolean; reason: string }> {
+  try {
+    const raw = await anthropicVision(
+      [
+        `Image 1 is the REAL product photo. Image 2 is an AI-generated ad made from it.`,
+        `Return ONLY JSON: {"pass": true|false, "reason": "short"}.`,
+        `FAIL if ANY of these: the product's shape, colors, logos, text or details are changed/warped; the product became a different object; the product is at a wrong real-world scale (e.g. large item shrunk to hand-size); the product appears duplicated; any person shown has deformed hands or face;${wantBright ? " the image is dark/moody or on a black background (the brief is bright);" : ""} heavy visual artifacts.`,
+        `Otherwise PASS. Judge fidelity and defects only — not taste.`,
+      ].join("\n"),
+      [productUrl, genUrl],
+      { maxTokens: 200 }
+    );
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return { pass: true, reason: "qa-unparseable" };
+    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
+    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 200) };
+  } catch (e) {
+    return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}` };
+  }
+}
+
+/** Which mode fits a style when the caller didn't say: integrated scenes need
+ *  generative placement; display/backdrop looks get the photo-true composite. */
+function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
+  if (!stylePrompt) return "backdrop";
+  if (/lived-in|golden-hour|user-generated|splash|mist|person|people|holding|wearing|in use|outdoor/i.test(stylePrompt)) return "scene";
+  return "backdrop";
+}
+
+const BRIGHT_DEFAULT = "Bright, light-filled scene: a fresh clean backdrop in a soft light color that complements the product, generous even daylight-quality lighting, airy and inviting — NOT dark, NOT moody, NOT a black background";
+
 /** SELF-HEALING BACKFILL — image ads forged before durable storage carry
  *  replicate.delivery URLs that expired (~1h), leaving blank cards. Re-forge
  *  a few per worker tick from their stored prompts (~$0.003 each) and point
@@ -211,7 +351,8 @@ export async function generateImageAd(
   avatarVariant?: number,
   wear?: boolean,
   scene?: string,
-  serviceMode?: boolean
+  serviceMode?: boolean,
+  styleMode?: "backdrop" | "scene"
 ): Promise<string> {
   // PRESENTER STILL — an avatar holding the product (Content Studio presenter
   // path). Uses the same two-image compose engine as UGC video frames. Needs a
@@ -292,93 +433,121 @@ export async function generateImageAd(
   // creation, which threw ReferenceError in the Node worker and failed every
   // non-presenter image ad.)
   let usedPrompt = "";
-  let createRes: Response;
+  let imageUrl: string | null = null; // remote result (downloaded + persisted below)
+  let localFileName: string | null = null; // photo-true composite, already on disk
+  const genMeta: Record<string, unknown> = {};
+
   if (serviceMode) {
     usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
-    createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ input: { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
-    });
+    imageUrl = await repRun("black-forest-labs/flux-dev", { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+    genMeta.method = "lifestyle";
   } else if (hasProductImg) {
-    // Merchant-picked style leads when present; otherwise the default is
-    // BRIGHT — dark/moody looks only happen when a merchant chooses them.
-    usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${stylePrompt ? `${stylePrompt}. ` : "Bright, light-filled scene: a fresh clean backdrop in a soft light color that complements the product, generous even daylight-quality lighting, airy and inviting — NOT dark, NOT moody, NOT a black background. "}${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail, at its true real-world scale. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
-    createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ input: { prompt: usedPrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" } }),
-    });
+    const wantBright = !stylePrompt || !/deliberately dark|noir|dark charcoal/i.test(stylePrompt);
+    const mode: "backdrop" | "scene" = styleMode === "scene" || styleMode === "backdrop" ? styleMode : inferStyleMode(stylePrompt);
+    const styleDesc = stylePrompt || BRIGHT_DEFAULT;
+
+    // RUNG 1 — PHOTO-TRUE: the real photo composited onto a generated empty
+    // backdrop. The product cannot be wrong because it is never redrawn.
+    if (mode === "backdrop") {
+      try {
+        const cutout = await removeBackground(productImageUrl!);
+        if (cutout) {
+          const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area (clean surface, tabletop or seamless floor) across the lower third where a product will be placed, and clean uncluttered space across the top for a headline. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, magazine-quality, soft believable ground shadow area, no text, no watermark.`;
+          const bgUrl = await repRun("black-forest-labs/flux-dev", { prompt: bgPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+          const fn = await compositeProductStill(bgUrl, cutout);
+          if (fn) {
+            usedPrompt = bgPrompt;
+            localFileName = fn;
+            imageUrl = bgUrl; // stored as sourceUrl for the backfill healer
+            genMeta.method = "photo-true";
+          }
+        }
+      } catch (e) {
+        console.error("[image-ad] photo-true rung failed, falling to scene gen:", e instanceof Error ? e.message.slice(0, 160) : e);
+      }
+    }
+
+    // RUNG 2 — SCENE: identity-strongest editor + vision QA with one retry.
+    if (!localFileName) {
+      usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail, at its TRUE real-world scale — never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
+      const genOnce = async (): Promise<string> => {
+        try {
+          return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl], output_format: "jpg" });
+        } catch (e) {
+          console.log("[image-ad] nano-banana unavailable, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
+          return await repRun("black-forest-labs/flux-kontext-pro", { prompt: usedPrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" });
+        }
+      };
+      imageUrl = await genOnce();
+      genMeta.method = "scene";
+      let qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
+      if (!qa.pass) {
+        console.log(`[image-ad] QA rejected first take (${qa.reason}) — retrying`);
+        imageUrl = await genOnce();
+        qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
+        genMeta.qaRetried = true;
+      }
+      genMeta.qa = qa;
+      // Still failing? Last rung: photo-true composite so the merchant gets a
+      // product-accurate ad instead of a warped one.
+      if (!qa.pass && mode === "scene") {
+        try {
+          const cutout = await removeBackground(productImageUrl!);
+          if (cutout) {
+            const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area across the lower third, clean space at the top for a headline. Photorealistic, magazine-quality, no text, no watermark.`;
+            const bgUrl = await repRun("black-forest-labs/flux-dev", { prompt: bgPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+            const fn = await compositeProductStill(bgUrl, cutout);
+            if (fn) { usedPrompt = bgPrompt; localFileName = fn; imageUrl = bgUrl; genMeta.method = "photo-true-fallback"; }
+          }
+        } catch { /* ship the best scene take — merchant reviews before posting */ }
+      }
+    }
   } else {
-    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : "Bright, light-filled scene: a fresh clean backdrop in a soft light color, generous even daylight-quality lighting, airy and inviting — NOT dark, NOT moody, NOT a black background. "}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
-    createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ input: { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
-    });
+    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+    imageUrl = await repRun("black-forest-labs/flux-dev", { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+    genMeta.method = "text2img";
   }
 
-  if (!createRes.ok) {
-    throw new Error(`Replicate create failed: ${createRes.status}`);
-  }
-
-  const prediction = await createRes.json() as { id: string };
-
-  // Poll until done (max 60s)
-  let imageUrl: string | null = null;
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const pollRes = await fetch(
-      `https://api.replicate.com/v1/predictions/${prediction.id}`,
-      { headers: { Authorization: `Bearer ${replicateToken}` } }
-    );
-    const pollData = await pollRes.json() as { status: string; output?: string[] | null; error?: string };
-    if (pollData.status === "succeeded" && pollData.output) {
-      imageUrl = Array.isArray(pollData.output)
-        ? pollData.output[0]
-        : pollData.output;
-      break;
-    }
-    if (pollData.status === "failed") {
-      throw new Error(`Replicate generation failed: ${pollData.error}`);
-    }
-  }
-
-  if (!imageUrl) throw new Error("Replicate timed out");
+  if (!imageUrl && !localFileName) throw new Error("Image generation produced no output");
 
   // Replicate delivery URLs EXPIRE (~1h) — ads were going blank in the queue
   // and auto-posting would fetch a dead link days later. Persist the bytes to
-  // the durable renders disk and serve our own URL, like videos.
-  let localUrl = imageUrl;
-  try {
-    const res = await fetch(imageUrl);
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > 5_000) {
-        const dir = path.join(process.cwd(), "data", "renders");
-        fs.mkdirSync(dir, { recursive: true });
-        const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-        fs.writeFileSync(path.join(dir, fileName), buf);
-        try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
-        localUrl = `/renders/${fileName}`;
-
-        // Make it an actual AD: overlay a headline + CTA. Best-effort — if the
-        // copy or the ffmpeg composite fails, we keep the clean still.
-        try {
-          const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-          const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode);
-          if (copy) {
-            const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
-            if (adName) {
-              localUrl = `/renders/${adName}`;
-              try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ }
-            }
-          }
-        } catch (e) { console.error("[image-ad] text overlay skipped:", e instanceof Error ? e.message : e); }
+  // the durable renders disk and serve our own URL, like videos. Photo-true
+  // composites are already on disk.
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  let fileName: string | null = localFileName;
+  let localUrl = imageUrl || "";
+  if (!fileName && imageUrl) {
+    try {
+      const res = await fetch(imageUrl);
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 5_000) {
+          fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+          fs.writeFileSync(path.join(dir, fileName), buf);
+        }
       }
+    } catch (e) {
+      console.error("[image-ad] persist failed, keeping remote url:", e);
     }
-  } catch (e) {
-    console.error("[image-ad] persist failed, keeping remote url:", e);
+  }
+  if (fileName) {
+    try { await mirrorRender(fileName, fs.readFileSync(path.join(dir, fileName))); } catch { /* non-fatal */ }
+    localUrl = `/renders/${fileName}`;
+    // Make it an actual AD: overlay a headline + CTA. Best-effort — if the
+    // copy or the ffmpeg composite fails, we keep the clean still.
+    try {
+      const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+      const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode);
+      if (copy) {
+        const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
+        if (adName) {
+          localUrl = `/renders/${adName}`;
+          try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ }
+        }
+      }
+    } catch (e) { console.error("[image-ad] text overlay skipped:", e instanceof Error ? e.message : e); }
   }
 
   const asset = await db.asset.create({
@@ -387,7 +556,7 @@ export async function generateImageAd(
       type: "IMAGE_AD",
       status: "PENDING",
       title: `Ad image for ${productTitle}`,
-      bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt: usedPrompt }),
+      bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt: usedPrompt, ...genMeta }),
       metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle }),
     },
   });
