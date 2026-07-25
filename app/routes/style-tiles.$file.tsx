@@ -1,49 +1,46 @@
-/* Serves the cartoon style-picker covers. Real flux-generated tiles (one cast
- * member redrawn through each style) once they exist on the durable disk;
- * until then, the FIRST CHARACTER's real portrait stands in — never
- * illustration placeholders — while generation kicks off in the background.
- * Public, read-only, key-allowlisted. */
+/* Serves the cartoon/singer style-picker covers — per-character real renders:
+ *   /style-tiles/{character}-{style}.jpg  → that cast member in that style
+ *   /style-tiles/{style}.jpg              → default character (legacy URLs)
+ *   /style-tiles/cover.jpg                → the Cartoon Avatar section cover
+ * Missing tiles kick off generation and serve the character's real portrait
+ * meanwhile — placeholder art never appears. Public, read-only, allowlisted. */
 
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
-import path from "node:path";
-import { ensureAllStyleTiles, ensureStyleTile, isPickerKey, styleTilePath } from "../lib/style-tiles.server";
+import { DEFAULT_TILE_CHARACTER, ensureAllStyleTiles, ensureStyleTile, isPickerKey, portraitFile, styleTilePath } from "../lib/style-tiles.server";
 
-function portraitFallback(): Response {
-  const fb = path.join(process.cwd(), "public", "avatars", "ingrid_0.jpg");
-  if (!fs.existsSync(fb)) return new Response("Not ready", { status: 404 });
-  // no-store: the instant the real render exists, the next refresh shows it
-  return new Response(new Uint8Array(fs.readFileSync(fb)), {
-    headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" },
+function serveFile(p: string, cache: string): Response {
+  return new Response(new Uint8Array(fs.readFileSync(p)), {
+    headers: { "Content-Type": "image/jpeg", "Cache-Control": cache },
   });
 }
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const file = params.file || "";
-  const m = file.match(/^([a-z]+)\.jpg$/);
-  const key = m?.[1] || "";
+  const m = file.match(/^(?:([a-z]+)-)?([a-z]+)\.jpg$/);
+  let character = m?.[1] || DEFAULT_TILE_CHARACTER;
+  const key = m?.[2] || "";
 
-  // The Cartoon Avatar cover — the first character leads in Pixar-style.
-  // Requesting the cover also kicks off every missing style tile.
-  if (key === "cover") {
-    const real = styleTilePath("pixar");
+  // The Cartoon Avatar cover — the default character in Pixar style; also
+  // kicks the default set.
+  if (!m?.[1] && key === "cover") {
     ensureAllStyleTiles();
-    if (real) {
-      return new Response(new Uint8Array(fs.readFileSync(real)), {
-        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
-      });
-    }
-    return portraitFallback();
+    const real = styleTilePath(DEFAULT_TILE_CHARACTER, "pixar");
+    if (real) return serveFile(real, "public, max-age=600");
+    const fb = portraitFile(DEFAULT_TILE_CHARACTER);
+    return fb ? serveFile(fb, "no-store") : new Response("Not ready", { status: 404 });
   }
 
   if (!isPickerKey(key)) return new Response("Not found", { status: 404 });
+  if (!portraitFile(character)) character = DEFAULT_TILE_CHARACTER;
 
-  const real = styleTilePath(key);
-  if (real) {
-    return new Response(new Uint8Array(fs.readFileSync(real)), {
-      headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
-    });
-  }
-  ensureStyleTile(key);
-  return portraitFallback();
+  const real = styleTilePath(character, key);
+  if (real) return serveFile(real, "public, max-age=600");
+
+  // Requesting one tile warms the character's whole set — a merchant looking
+  // at the picker wants all 8 anyway.
+  ensureStyleTile(character, key);
+  ensureAllStyleTiles(character);
+  const fb = portraitFile(character);
+  return fb ? serveFile(fb, "no-store") : new Response("Not ready", { status: 404 });
 };

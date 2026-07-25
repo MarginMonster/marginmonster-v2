@@ -420,6 +420,12 @@ export default function Studio() {
     submit(fields, { method: "post" });
   };
 
+  // Style tiles follow the SELECTED presenter — pick Omar, see Omar in every
+  // style. Server renders each character's set on demand (portrait fallback
+  // while it cooks).
+  const styleChar = avatarId ?? defaultAvatar ?? "ingrid";
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=2`;
+
   const costLabel = `${meta.cost} tokens`;
 
   return (
@@ -473,7 +479,7 @@ export default function Studio() {
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
-                        <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${cs.cover})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{cs.name}</span>
                       </button>
                     ))}
@@ -494,7 +500,7 @@ export default function Studio() {
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cartoonStyle === cs.key ? null : cs.key)}>
-                        <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${cs.cover})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{cs.name}</span>
                       </button>
                     ))}
