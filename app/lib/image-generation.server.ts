@@ -260,27 +260,32 @@ export async function generateImageAd(
   // an aspirational lifestyle scene of someone enjoying the result. Text-heavy
   // "offer cards" render as garbled glyphs in diffusion models, so we stay
   // photoreal and let the caption carry the words.
+  // The prompt actually used, captured across branches so it can be stored on
+  // the asset. (A prior version referenced a block-scoped `prompt` at asset
+  // creation, which threw ReferenceError in the Node worker and failed every
+  // non-presenter image ad.)
+  let usedPrompt = "";
   let createRes: Response;
   if (serviceMode) {
-    const svc = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, warm natural lighting. ${visual.imageStyle || "clean modern commercial photography"}. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
+    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, warm natural lighting. ${visual.imageStyle || "clean modern commercial photography"}. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ input: { prompt: svc, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
+      body: JSON.stringify({ input: { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
     });
   } else if (hasProductImg) {
-    const scenePrompt = `Place this exact product, unchanged, as the hero of a premium advertising photograph. ${stylePrompt ? `${stylePrompt}. ` : ""}${direction}. ${visual.imageStyle || "clean professional product photography"}. Keep the product identical in shape, color, materials, logos and every detail. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
+    usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising photograph. ${stylePrompt ? `${stylePrompt}. ` : ""}${direction}. ${visual.imageStyle || "clean professional product photography"}. Keep the product identical in shape, color, materials, logos and every detail. Photorealistic, magazine-quality commercial photography, sharp focus, natural realistic proportions, no added text or watermark.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ input: { prompt: scenePrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" } }),
+      body: JSON.stringify({ input: { prompt: usedPrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" } }),
     });
   } else {
-    const prompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium advertising photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, ultra high resolution, sharp focus, professional studio lighting, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
     createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-dev/predictions", {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ input: { prompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
+      body: JSON.stringify({ input: { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 } }),
     });
   }
 
@@ -353,7 +358,7 @@ export async function generateImageAd(
       type: "IMAGE_AD",
       status: "PENDING",
       title: `Ad image for ${productTitle}`,
-      bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt }),
+      bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt: usedPrompt }),
       metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle }),
     },
   });
