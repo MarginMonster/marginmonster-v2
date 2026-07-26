@@ -166,6 +166,10 @@ model BrandProfile {
 
 enum PlanType {
   STARTER
+  STUDIO
+  ANTHEM
+  // Legacy ladder values — live rows may still carry these; gating maps them
+  // to the new tiers (see LEGACY_TIER_MAP in app/lib/plan-config.ts).
   GROWTH
   PRO
   SCALE
@@ -209,6 +213,10 @@ model Plan {
   tokensIncluded    Int        @default(0) // monthly allowance from the tier
   tokensUsed        Int        @default(0) // spent this billing period
   tokensExtra       Int        @default(0) // purchased top-up (does not reset)
+
+  // Free-trial window (first subscription only). While now < trialEndsAt the
+  // wallet is hard-capped at TRIAL_TOKEN_CAP and anthem/cartoon stay locked.
+  trialEndsAt       DateTime?
 
   // Purchased overage credits
   blogCredits       Int        @default(0)

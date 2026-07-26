@@ -6,7 +6,7 @@ import { Page } from "@shopify/polaris";
 import { authenticate, billingIsTest, TOKEN_PACK_PLANS, TOKENS_BY_PACK } from "../shopify.server";
 import { recordBillingFailure } from "../lib/billing-debug.server";
 import { db } from "../db.server";
-import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, planCapacityLine, TOKEN_COST_LEGEND, type PlanKey } from "../lib/plan-config";
+import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, planCapacityLine, resolveTierKey, TOKEN_COST_LEGEND, type PlanKey } from "../lib/plan-config";
 import { unlockAchievement } from "../lib/xp.server";
 import { REFERRAL_REWARD_TOKENS } from "../lib/referral.server";
 import { COMPANIONS, COMPANION_BY_ID } from "../lib/companions";
@@ -74,6 +74,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
             adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
             periodStart: new Date(), tokensIncluded: tier.monthlyTokens, tokensUsed: 0,
+            // First-ever subscription = the Shopify 7-day trial window. The cap
+            // + capability rules key off this; upgrades keep the original date.
+            trialEndsAt: new Date(Date.now() + 7 * 86_400_000),
           },
           update: {
             type: activate, reviewMode, active: true,
@@ -169,7 +172,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   return json({
-    currentPlan: shop?.activePlan?.type || null,
+    // Legacy plan types (GROWTH/PRO/SCALE) mark their mapped ladder card current.
+    currentPlan: shop?.activePlan?.active ? resolveTierKey(shop.activePlan.type) : null,
     currentReview: shop?.activePlan?.reviewMode || "REVIEW_FIRST",
     companionId: shop?.companionId || null,
     companionName: shop?.companionName || null,
@@ -432,7 +436,7 @@ export default function Plans() {
                 >
                   {isCurrent ? "✓ Your plan" : loading ? "Starting…" : "Start free"}
                 </button>
-                {!isCurrent && <div className="pl-trial">7-day free trial · then ${annual ? `${annualPrice(tier).toLocaleString()}/yr` : `${tier.price}/mo`}</div>}
+                {!isCurrent && <div className="pl-trial">7-day free trial (400 tokens to play with) · then ${annual ? `${annualPrice(tier).toLocaleString()}/yr` : `${tier.price}/mo`}</div>}
               </div>
             );
           })}
@@ -446,7 +450,7 @@ export default function Plans() {
               <div className="pl-legend-item" key={l.action}><b>{l.cost}</b><span>{l.label}</span></div>
             ))}
           </div>
-          <div className="pl-legend-note">Every video, blog, image and listing spends from the same monthly token balance — no separate quotas to track. Run out mid-month? Top up below.</div>
+          <div className="pl-legend-note">Your plan unlocks WHICH generators you can use; tokens meter HOW MUCH you make. Everything your tier includes spends from one monthly balance — run out mid-month? Top up below. (Tokens never unlock a generator your plan doesn&apos;t include.)</div>
         </section>
 
         {/* Token top-ups — one-time purchases, credited on confirmed payment */}

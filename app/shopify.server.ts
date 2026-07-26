@@ -17,7 +17,12 @@ import "./worker.server"; // starts the in-process job worker on server boot
 // so they can experience real value before paying a cent.
 const TRIAL_DAYS = 7;
 export const BILLING_PLANS = {
+  // Current 3-tier ladder (must match app/lib/plan-config.ts)
   STARTER: { amount: 19, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  STUDIO: { amount: 59, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  ANTHEM: { amount: 99, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  // Legacy ladder — kept registered so existing subscriptions keep verifying;
+  // never offered in the UI. Gating maps them via LEGACY_TIER_MAP.
   GROWTH: { amount: 39, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
   PRO: { amount: 79, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
   SCALE: { amount: 149, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
@@ -27,6 +32,9 @@ export const BILLING_PLANS = {
 // 7-day trial. Keys mirror the tier keys with an _ANNUAL suffix.
 export const BILLING_PLANS_ANNUAL = {
   STARTER_ANNUAL: { amount: 190, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  STUDIO_ANNUAL: { amount: 590, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  ANTHEM_ANNUAL: { amount: 990, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  // Legacy annual keys — same deal as above.
   GROWTH_ANNUAL: { amount: 390, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
   PRO_ANNUAL: { amount: 790, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
   SCALE_ANNUAL: { amount: 1490, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },

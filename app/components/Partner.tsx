@@ -6,7 +6,9 @@
  * shadow, an energy aura, gentle sway, and sparkle twinkles.
  * Files: public/fighters/mons/{img}.png, {img}_b.png (blink), {img}_c.png (cheer). */
 
-export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
+// Includes both the current ladder (STARTER/STUDIO/ANTHEM) and legacy keys
+// still living on old plan rows — every plan type resolves to a companion.
+export type PlanKey = "STARTER" | "STUDIO" | "ANTHEM" | "GROWTH" | "PRO" | "SCALE";
 
 export const ART_V = "8"; // bump to bust cache when renders change
 
@@ -15,6 +17,9 @@ export const PARTNER_BY_PLAN: Record<
   { tier: 1 | 2 | 3 | 4; accent: string; name: string; klass: string; img: string }
 > = {
   STARTER: { tier: 1, accent: "#3ED598", name: "SPROUT", klass: "Rookie", img: "sprout" },
+  STUDIO: { tier: 3, accent: "#E2503C", name: "STRONG", klass: "Champion", img: "strong" },
+  ANTHEM: { tier: 4, accent: "#B77BFF", name: "REX", klass: "Legend", img: "rex" },
+  // Legacy tiers keep the companions their subscribers already have.
   GROWTH: { tier: 2, accent: "#F0B429", name: "OG", klass: "Runner", img: "og" },
   PRO: { tier: 3, accent: "#E2503C", name: "STRONG", klass: "Champion", img: "strong" },
   SCALE: { tier: 4, accent: "#B77BFF", name: "REX", klass: "Legend", img: "rex" },

@@ -1,6 +1,6 @@
 import type { Plan } from "@prisma/client";
 import { db } from "../db.server";
-import { TOKEN_COST, TOKEN_ACTION_LABEL, PLAN_BY_KEY, type TokenAction, type PlanKey } from "./plan-config";
+import { TOKEN_COST, TOKEN_ACTION_LABEL, PLAN_BY_KEY, TRIAL_TOKEN_CAP, resolveTierKey, type TokenAction } from "./plan-config";
 import { onTokensSpent } from "./xp.server";
 
 const PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
@@ -30,20 +30,31 @@ export function tokensRemaining(plan: Pick<Plan, "tokensIncluded" | "tokensUsed"
  * for the gap between period-end and the next spend. Pure — never writes.
  */
 export function tokensRemainingLive(
-  plan: Pick<Plan, "type" | "tokensIncluded" | "tokensUsed" | "tokensExtra" | "periodStart"> | null | undefined
+  plan: (Pick<Plan, "type" | "tokensIncluded" | "tokensUsed" | "tokensExtra" | "periodStart"> & { trialEndsAt?: Date | string | null }) | null | undefined
 ): number {
   if (!plan) return 0;
   const elapsed = Date.now() - new Date(plan.periodStart).getTime() >= PERIOD_MS;
-  const included = elapsed ? (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) : plan.tokensIncluded;
+  const tier = resolveTierKey(plan.type);
+  const included = elapsed ? (tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded) : plan.tokensIncluded;
   const used = elapsed ? 0 : plan.tokensUsed;
-  return Math.max(0, included - used) + plan.tokensExtra;
+  const normal = Math.max(0, included - used) + plan.tokensExtra;
+  // During the free trial the wallet is hard-capped: show the capped number so
+  // the HUD never promises tokens the spend path will refuse.
+  if (planTrialing(plan)) return Math.min(normal, Math.max(0, TRIAL_TOKEN_CAP - plan.tokensUsed));
+  return normal;
+}
+
+/** True while the plan's free-trial window is still open. */
+export function planTrialing(plan: { trialEndsAt?: Date | string | null } | null | undefined): boolean {
+  return !!plan?.trialEndsAt && new Date(plan.trialEndsAt).getTime() > Date.now();
 }
 
 /** Roll the monthly allowance over if the billing period has elapsed. Returns
  *  the (possibly refreshed) plan. */
 export async function refreshPeriod(plan: Plan): Promise<Plan> {
   if (Date.now() - new Date(plan.periodStart).getTime() < PERIOD_MS) return plan;
-  const monthly = PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded;
+  const tier = resolveTierKey(plan.type);
+  const monthly = tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded;
   return db.plan.update({
     where: { id: plan.id },
     data: {
@@ -56,6 +67,21 @@ export async function refreshPeriod(plan: Plan): Promise<Plan> {
   });
 }
 
+/** Hard trial ceiling: during the free trial, total spend can't pass
+ *  TRIAL_TOKEN_CAP — and purchased top-ups are held (not spendable) until the
+ *  trial converts, so a cancelled trial can never burn real COGS at scale. */
+function assertTrialCap(plan: Plan, amount: number): void {
+  if (!planTrialing(plan)) return;
+  const spendable = Math.max(0, TRIAL_TOKEN_CAP - plan.tokensUsed);
+  if (spendable < amount) {
+    const e = new Error(
+      `Free trials include ${TRIAL_TOKEN_CAP} tokens and you have ${spendable} left. Your full monthly allowance${plan.tokensExtra > 0 ? " (and your purchased tokens)" : ""} unlocks the moment the trial converts.`
+    );
+    e.name = "InsufficientTokensError";
+    throw e;
+  }
+}
+
 /** Spend tokens for an action. Throws InsufficientTokensError if the wallet
  *  can't cover it. Deducts from the monthly allowance first, then top-up. */
 export async function chargeTokens(shopId: string, action: TokenAction): Promise<{ remaining: number; charged: number }> {
@@ -64,6 +90,7 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
   if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
   if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
   plan = await refreshPeriod(plan);
+  assertTrialCap(plan, cost);
 
   const remaining = tokensRemaining(plan);
   if (remaining < cost) throw new InsufficientTokensError(cost, remaining, action);
@@ -91,6 +118,7 @@ export async function spendTokens(shopId: string, amount: number): Promise<{ rem
   if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
   if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
   plan = await refreshPeriod(plan);
+  assertTrialCap(plan, amount);
 
   const remaining = tokensRemaining(plan);
   if (remaining < amount) {

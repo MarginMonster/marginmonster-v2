@@ -233,6 +233,13 @@ async function runJob(
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }
+      // Belt-and-braces tier gate: the route already checked, but a downgrade
+      // between enqueue and run must not slip a locked generator through. A
+      // throw here terminal-fails the job → refundPrepaidOnce returns tokens.
+      {
+        const { assertCapability, videoCapabilityFor } = await import("./capabilities.server");
+        assertCapability(shop.activePlan, videoCapabilityFor((payload.contentType as string) || undefined));
+      }
       // Provenance label for the finished take's card in the Studio.
       let origin: string | undefined;
       if (payload.questlineId) {

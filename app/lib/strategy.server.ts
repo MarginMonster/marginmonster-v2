@@ -16,6 +16,8 @@ const PLAN_FOCUS: Record<string, string> = {
   GROWTH: "SEO plus paid social creative to drive first purchases",
   PRO: "video-led paid acquisition with automated optimization",
   SCALE: "full-funnel content + paid scaling across channels",
+  STUDIO: "video-led paid acquisition with automated optimization",
+  ANTHEM: "full-funnel content + paid scaling across channels",
 };
 
 export async function generateMarketingPlan(

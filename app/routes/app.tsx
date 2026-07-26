@@ -10,8 +10,9 @@ import brandStyles from "../brand.css?raw";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { refreshPeriod, tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
-import { PLAN_BY_KEY, TOKEN_COST, type PlanKey } from "../lib/plan-config";
-import { PARTNER_BY_PLAN } from "../components/Partner";
+import { PLAN_BY_KEY, TOKEN_COST, resolveTierKey, type PlanKey } from "../lib/plan-config";
+import { planTrialing } from "../lib/tokens.server";
+import { PARTNER_BY_PLAN, type PlanKey as PartnerKey } from "../components/Partner";
 import { getCompanion } from "../lib/companion.server";
 import { totalXpForLevel } from "../lib/achievements";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
@@ -19,10 +20,12 @@ import { socialProviderEnabled } from "../lib/social-provider.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
-// Display name per plan tier. The avatar itself is the matching partner monster
-// (see PARTNER_BY_PLAN), so the HUD stays in sync with the Plans select screen.
-const PLAN_AVATAR: Record<PlanKey, { label: string }> = {
+// Display name per plan tier (current + legacy). The avatar itself is the
+// matching partner monster (see PARTNER_BY_PLAN).
+const PLAN_AVATAR: Record<string, { label: string }> = {
   STARTER: { label: "Starter" },
+  STUDIO: { label: "Studio" },
+  ANTHEM: { label: "Anthem" },
   GROWTH: { label: "Growth" },
   PRO: { label: "Pro" },
   SCALE: { label: "Scale" },
@@ -95,13 +98,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (plan) {
       plan = await refreshPeriod(plan);
       const remaining = tokensRemainingLive(plan);
-      const partner = PARTNER_BY_PLAN[plan.type as PlanKey];
-      const tokensMax = Math.max(1, (PLAN_BY_KEY[plan.type as PlanKey]?.monthlyTokens ?? plan.tokensIncluded) + plan.tokensExtra);
+      const partner = PARTNER_BY_PLAN[plan.type as PartnerKey];
+      const tierKey = resolveTierKey(plan.type);
+      const tokensMax = Math.max(1, (tierKey ? PLAN_BY_KEY[tierKey].monthlyTokens : plan.tokensIncluded) + plan.tokensExtra);
+      const trialing = planTrialing(plan);
       hud = {
         ...hud,
-        planKey: plan.type as PlanKey,
+        planKey: tierKey,
         // badge reflects the ACTUAL active plan — an inactive/cancelled plan reads "No Plan"
-        planLabel: plan.active ? (PLAN_AVATAR[plan.type as PlanKey]?.label ?? plan.type) : "No Plan",
+        planLabel: plan.active ? `${PLAN_AVATAR[plan.type]?.label ?? plan.type}${trialing ? " · Trial" : ""}` : "No Plan",
         img: partner?.img ?? null,
         accent: partner?.accent ?? "#34E7E4",
         tokens: remaining,

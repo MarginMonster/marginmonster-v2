@@ -10,7 +10,7 @@ import { tokensRemaining, tokensRemainingLive, spendTokens, refundTokens } from 
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
 import { AVATARS, avatarImg } from "../lib/avatars";
-import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, type PlanKey } from "../lib/plan-config";
+import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, resolveTierKey } from "../lib/plan-config";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
@@ -58,7 +58,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   const plan = shop ? await db.plan.findUnique({ where: { shopId: shop.id } }) : null;
   const linked = shop ? linkedFromCache(shop.socialsJson).filter((p) => p in PLAT_LABEL) : [];
-  const tier = plan?.active ? PLAN_BY_KEY[plan.type as PlanKey] : null;
+  const tierKey = plan?.active ? resolveTierKey(plan.type) : null;
+  const tier = tierKey ? PLAN_BY_KEY[tierKey] : null;
   const allowance = tier?.monthlyTokens ?? 0;
 
   let products: { title: string; image: string | null; url: string | null }[] = [];

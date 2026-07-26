@@ -1,9 +1,24 @@
-// Single source of truth for pricing, quotas, and credits.
-// A good/better/best/pro ladder modeled on successful AI marketing apps
-// (Zeely, faceless.ai): cheap entry, a highlighted "most popular" middle,
-// and a high anchor. Video is the only real cost so it is always metered.
+// Single source of truth for pricing, quotas, capabilities, and credits.
+//
+// THE TWO-CURRENCY RULE (do not break):
+//   TIER  controls WHICH generators are unlocked (capabilities below).
+//   TOKENS control HOW MUCH the merchant can generate.
+//   Tokens must NEVER unlock a generator the tier doesn't include — a Starter
+//   store with 10,000 purchased tokens still cannot generate video. Enforced
+//   server-side in lib/capabilities.server.ts at every generation entry point.
+//
+// The ladder is strictly cumulative — each tier contains everything below it.
 
-export type PlanKey = "STARTER" | "GROWTH" | "PRO" | "SCALE";
+export type PlanKey = "STARTER" | "STUDIO" | "ANTHEM";
+
+// Pre-2026 ladder keys that may still exist on live Plan rows. They keep
+// working forever: gating resolves them to the closest new tier.
+export type LegacyPlanKey = "GROWTH" | "PRO" | "SCALE";
+export const LEGACY_TIER_MAP: Record<LegacyPlanKey, PlanKey> = {
+  GROWTH: "STARTER", // had images/blogs, no video
+  PRO: "STUDIO", //     had video
+  SCALE: "ANTHEM", //   had everything
+};
 
 export interface PlanTier {
   key: PlanKey;
@@ -12,9 +27,9 @@ export interface PlanTier {
   tagline: string;
   highlight?: boolean; // renders the "Most popular" ribbon
   monthlyTokens: number; // included token allowance per billing period
-  blogQuota: number;
+  blogQuota: number; // legacy positioning fields — seeded onto the Plan row
   videoQuota: number;
-  imageQuota: number; // image ads / month
+  imageQuota: number;
   campaignAutopilot: boolean;
   features: string[];
 }
@@ -24,69 +39,52 @@ export const PLAN_TIERS: PlanTier[] = [
     key: "STARTER",
     name: "Starter",
     price: 19,
-    tagline: "Get found on Google. SEO blog posts that pull in free traffic — written and published for you.",
-    monthlyTokens: 200,
+    tagline: "Scroll-stopping image ads, SEO blogs, and auto-posting — your store never goes quiet.",
+    monthlyTokens: 300,
     blogQuota: 15,
     videoQuota: 0,
-    imageQuota: 0,
+    imageQuota: 60,
     campaignAutopilot: false,
     features: [
-      "Get found on Google with SEO blog posts",
-      "Targets what your buyers search → ranks on Google",
-      "Auto-published to your store on your schedule",
-      "Review-first or set-and-forget",
+      "AI image ads built on famous ad formats",
+      "SEO blog posts, written & published for you",
+      "Captions + hashtags, auto-posted to TikTok, IG & Facebook",
+      "AI product listings & ad copy",
     ],
   },
   {
-    key: "GROWTH",
-    name: "Growth",
-    price: 39,
-    tagline: "Content + ads. Everything in Starter, plus scroll-stopping image ads and copy for Meta & TikTok.",
-    monthlyTokens: 550,
+    key: "STUDIO",
+    name: "Studio",
+    price: 59,
+    tagline: "Add video that sells. AI presenters and cinematic product videos, on top of everything in Starter.",
+    highlight: true,
+    monthlyTokens: 900,
     blogQuota: 30,
-    videoQuota: 0,
-    imageQuota: 30,
-    campaignAutopilot: false,
+    videoQuota: 6,
+    imageQuota: 60,
+    campaignAutopilot: true,
     features: [
       "Everything in Starter",
-      "Scroll-stopping AI image ads + Meta/TikTok ad copy",
-      "All content built from your real products",
-      "Review-first or set-and-forget",
+      "Avatar AI — a real-looking presenter talks up your product",
+      "Product Highlight — cinematic motion, no presenter",
+      "Campaign Autopilot — a month of content, launched for you",
     ],
   },
   {
-    key: "PRO",
-    name: "Pro",
-    price: 79,
-    tagline: "Add video that sells. Product videos + we launch and optimize your ads automatically.",
-    highlight: true,
-    monthlyTokens: 1500,
-    blogQuota: 30,
-    videoQuota: 8,
-    imageQuota: 40,
-    campaignAutopilot: true,
-    features: [
-      "Everything in Growth",
-      "AI product videos (avatar or highlight)",
-      "Campaign Autopilot — auto-launch, kill losers, scale winners",
-      "Vertical-formatted for TikTok, Reels & Shorts",
-    ],
-  },
-  {
-    key: "SCALE",
-    name: "Scale",
-    price: 149,
-    tagline: "Full firepower for stores going all-in on growth.",
-    monthlyTokens: 3000,
+    key: "ANTHEM",
+    name: "Anthem",
+    price: 99,
+    tagline: "The full show: your avatar SINGS your product's theme song, plus every viral cartoon style.",
+    monthlyTokens: 1600,
     blogQuota: 60,
-    videoQuota: 20,
-    imageQuota: 80,
+    videoQuota: 10,
+    imageQuota: 100,
     campaignAutopilot: true,
     features: [
-      "Everything in Pro",
-      "Our largest monthly token balance — best value per token",
-      "Campaign Autopilot across Meta & TikTok",
-      "Priority generation",
+      "Everything in Studio",
+      "Anthem — your avatar sings a custom product theme song",
+      "All 8 Cartoon Avatar styles (anime, 3D toon, voxel & more)",
+      "Our largest token allowance — best value per generation",
     ],
   },
 ];
@@ -105,10 +103,65 @@ export const ANNUAL_TO_TIER: Record<string, PlanKey> = Object.fromEntries(
 );
 export const isAnnualKey = (k: string): boolean => k.endsWith(ANNUAL_SUFFIX);
 
+/** Resolve ANY plan-type string (new tier, legacy tier, or annual variant of
+ *  either) to the current 3-tier ladder. Null = unknown type. */
+export function resolveTierKey(type: string | null | undefined): PlanKey | null {
+  if (!type) return null;
+  const base = type.endsWith(ANNUAL_SUFFIX) ? type.slice(0, -ANNUAL_SUFFIX.length) : type;
+  if (PLAN_BY_KEY[base as PlanKey]) return base as PlanKey;
+  return LEGACY_TIER_MAP[base as LegacyPlanKey] || null;
+}
+
+/** Ladder height (1-3) for min-tier comparisons; legacy keys rank where their
+ *  capabilities land. Unknown types rank 0 (below everything). */
+export function planRank(type: string | null | undefined): number {
+  const tier = resolveTierKey(type);
+  return tier === "ANTHEM" ? 3 : tier === "STUDIO" ? 2 : tier === "STARTER" ? 1 : 0;
+}
+/** Legacy min-tier strings in questline defs rank against the OLD ladder. */
+export function minTierRank(minTier: string): number {
+  return minTier === "SCALE" || minTier === "ANTHEM" ? 3 : minTier === "PRO" || minTier === "STUDIO" ? 2 : 1;
+}
+
+// ---- Capabilities: what each tier UNLOCKS (cumulative) ----
+export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem";
+
+export const TIER_CAPABILITIES: Record<PlanKey, readonly Capability[]> = {
+  STARTER: ["image", "blog", "autopost"],
+  STUDIO: ["image", "blog", "autopost", "video"],
+  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
+};
+
+/** The cheapest tier that includes a capability (upgrade-prompt target). */
+export const CAPABILITY_TIER: Record<Capability, PlanKey> = {
+  image: "STARTER",
+  blog: "STARTER",
+  autopost: "STARTER",
+  video: "STUDIO",
+  cartoon: "ANTHEM",
+  anthem: "ANTHEM",
+};
+
+export const CAPABILITY_LABEL: Record<Capability, string> = {
+  image: "Image ads",
+  blog: "Blog posts",
+  autopost: "Auto-posting",
+  video: "Product videos",
+  cartoon: "Cartoon Avatar styles",
+  anthem: "Anthem singing videos",
+};
+
+// ---- Trial ----
+// Shopify's trialDays delays the first charge; these are OUR guardrails.
+// Trials run at Studio-level capabilities (merchants must SEE video) but under
+// a hard token ceiling, and the top-shelf generators (anthem, cartoon) unlock
+// on first payment. Enforced server-side in tokens.server / capabilities.server.
+export const TRIAL_TOKEN_CAP = 400;
+
 // ---- Unified token wallet ----
-// Every AI action spends tokens from one shared balance. Each plan includes a
-// monthly allowance (monthlyTokens); top up for anything over budget. Video is
-// the real cost driver, so it's the most expensive action (margin protector).
+// Every unlocked AI action spends tokens from one shared balance. Each plan
+// includes a monthly allowance (monthlyTokens); top up for anything over
+// budget. Video is the real cost driver, so it's the most expensive action.
 export const TOKEN_COST = {
   description: 3, // AI product listing (The Listing Forge)
   adCopy: 3, // Meta/TikTok ad copy
@@ -116,10 +169,10 @@ export const TOKEN_COST = {
   strategy: 6, // marketing plan
   blog: 10, // SEO blog post
   landing: 10, // landing page
-  // AI product video — real COGS ~$2-3 (omni-human/HeyGen lip-sync + TTS +
-  // image). Priced so an all-video month stays margin-positive on every tier:
-  // Pro 1500/150 = 10 videos ≈ $30 on $79 (62%), Scale 3000/150 = 20 ≈ $60 on
-  // $149 (60%). This one number is the margin lever — raise it if COGS climbs.
+  // AI product video — real COGS ~$2-3.5 (lip-sync + TTS + image, anthems the
+  // priciest). Priced so an all-video month stays margin-positive per tier:
+  // Studio 900/150 = 6 ≈ $18 COGS on $59 (~65%); Anthem 1600/150 ≈ 10 ≈ $35
+  // COGS on $99 (~55% after Shopify's cut). The margin lever — raise if COGS climbs.
   video: 150,
 } as const;
 export type TokenAction = keyof typeof TOKEN_COST;
@@ -134,8 +187,9 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   video: "Product video",
 };
 
-// Top-up packs — one currency, use on anything. Priced ~$0.10-0.12/token so
-// even a topped-up video ($4) stays margin-positive.
+// Top-up packs — one currency, spend on anything YOUR TIER UNLOCKS. Priced
+// ~$0.10-0.12/token so even the priciest generation path (anthem video ≈
+// $3.50 COGS vs 150 tokens ≈ $15) holds well over 30% gross margin.
 export const TOKEN_PACKS = [
   { tokens: 250, price: 25, label: "250 tokens" },
   { tokens: 750, price: 60, label: "750 tokens", best: false },
@@ -147,10 +201,9 @@ export const TOKEN_PACKS = [
 // of hand-writing counts that drift. Each tier showcases the actions that fit
 // its positioning; counts are the wallet ÷ that action's cost (rounded).
 const PLAN_SHOWCASE: Record<PlanKey, TokenAction[]> = {
-  STARTER: ["blog"],
-  GROWTH: ["image", "blog"],
-  PRO: ["video", "blog", "image"],
-  SCALE: ["video", "blog", "image"],
+  STARTER: ["image", "blog"],
+  STUDIO: ["video", "image", "blog"],
+  ANTHEM: ["video", "image", "blog"],
 };
 const CAPACITY_NOUN: Partial<Record<TokenAction, string>> = {
   video: "product videos",
@@ -165,7 +218,7 @@ export function planCapacity(tier: PlanTier): { action: TokenAction; count: numb
     noun: CAPACITY_NOUN[action] || action,
   }));
 }
-/** e.g. "≈ 10 product videos, 150 blog posts, or 300 image ads" — always true,
+/** e.g. "≈ 6 product videos, 180 image ads, or 90 blog posts" — always true,
  *  because it's computed from the same wallet the app actually spends. */
 export function planCapacityLine(tier: PlanTier): string {
   const parts = planCapacity(tier).map((c) => `${c.count.toLocaleString()} ${c.noun}`);

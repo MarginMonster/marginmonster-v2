@@ -303,7 +303,8 @@ export const DESTINATION_BY_KEY: Record<string, string> = Object.fromEntries(
 export const SCALE_DISCOUNT = 0.15;
 export function questlineCostFor(q: QuestlineDef, planType?: string | null): number {
   const base = questlineTokenCost(q);
-  if (planType === "SCALE" && q.minTier === "SCALE") {
+  // Top-tier members (Anthem today, Scale legacy) get the premium-line discount.
+  if ((planType === "SCALE" || planType === "ANTHEM") && q.minTier === "SCALE") {
     return Math.max(5, Math.round((base * (1 - SCALE_DISCOUNT)) / 5) * 5);
   }
   return base;

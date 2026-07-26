@@ -3873,5 +3873,39 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .cs-ctypes.bigtiles .cs-ctype { width:284px; }
 .cs-ctypes.bigtiles .cs-ctype .cs-ctimg { height:176px; border-radius:18px; }
 .cs-ctypes.bigtiles .cs-ctype .ca-nm { font-size:14.5px; }
+
+/* Locked content types — the PRIMARY upgrade path: aspirational, not an error.
+   Art stays visible (dimmed), a tier badge sits on the thumb, tap → upsell. */
+.cs-ctype.cs-lockd .cs-ctimg { filter: saturate(.35) brightness(.72); }
+.cs-ctype.cs-lockd:hover .cs-ctimg { filter: saturate(.6) brightness(.85); }
+.cs-lockbadge {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; letter-spacing: .04em;
+  color: #fff; background: rgba(10, 14, 12, .78);
+  border: 1px solid rgba(255,255,255,.35); backdrop-filter: blur(3px);
+}
+.cs-ctype .cs-ctimg { position: relative; }
+.cs-upsell { margin-top: 14px; display: flex; justify-content: center; }
+.cs-upsell-card {
+  max-width: 460px; width: 100%; padding: 16px 18px; border-radius: 16px;
+  background: linear-gradient(180deg, #FDFCF7, #F4F1E6);
+  border: 1px solid #E4DFCF; box-shadow: 0 10px 28px rgba(20,32,26,.14);
+  text-align: center;
+}
+.cs-upsell-ttl { font-weight: 800; font-size: 15px; color: #14201A; }
+.cs-upsell-sub { margin-top: 6px; font-size: 12.5px; color: #4A554E; line-height: 1.45; }
+.cs-upsell-row { margin-top: 12px; display: flex; gap: 10px; justify-content: center; }
+.cs-upsell-go {
+  padding: 9px 22px; border-radius: 12px; text-decoration: none;
+  font-weight: 800; font-size: 13px; color: #fff;
+  background: linear-gradient(165deg, #12A85E, #0B6B3E);
+  box-shadow: 0 3px 10px rgba(12,122,70,.3);
+}
+.cs-upsell-go:hover { filter: brightness(1.07); }
+.cs-upsell-x {
+  padding: 9px 16px; border-radius: 12px; border: 1px solid #E4DFCF;
+  background: #fff; color: #4A554E; font-weight: 700; font-size: 13px; cursor: pointer;
+}
 .cs-ctype.sel .cs-ctimg { box-shadow:inset 0 0 0 2px #0F9152, 0 6px 16px rgba(12,122,70,.2); }
 .cs-ctype.sel .ca-nm { color:#0A6B3E; }

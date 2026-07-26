@@ -142,6 +142,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
     let payload: Record<string, unknown> = {};
     try { payload = JSON.parse(job.payload); } catch { /* ignore */ }
+    // Tier gate: a downgraded shop can't re-run a generator it no longer has.
+    if (job.type === "GENERATE_VIDEO_AD") {
+      const { assertCapability, videoCapabilityFor } = await import("../lib/capabilities.server");
+      try { assertCapability(shop.activePlan, videoCapabilityFor((payload.contentType as string) || undefined)); }
+      catch (e) { return json({ error: (e as Error).message }); }
+    }
     let newPayload: string | undefined;
     if (payload.refunded) {
       const cost = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
@@ -208,6 +214,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     const type = asset.type === "VIDEO_AD" ? "video" : asset.type === "IMAGE_AD" ? "image" : "blog";
     const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+    // Tier gate BEFORE the spend: old assets stay viewable/postable forever,
+    // but remixing (new generation) needs the capability on the current tier.
+    {
+      const { assertCapability, videoCapabilityFor } = await import("../lib/capabilities.server");
+      const cap = type === "video"
+        ? videoCapabilityFor(meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined)
+        : type === "image" ? ("image" as const) : ("blog" as const);
+      try { assertCapability(shop.activePlan, cap); }
+      catch (e) { return json({ error: (e as Error).message }); }
+    }
     try { await spendTokens(shop.id, cost); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
     if (type === "video") {

@@ -93,10 +93,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
   const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 
+  // Capabilities drive the locked-card UI. The action re-checks server-side —
+  // these are for painting locks, not for security.
+  const { capabilitiesFor } = await import("../lib/capabilities.server");
+  const caps = [...capabilitiesFor(plan)];
+
   return json({
     hasPlan: !!plan?.active,
     hasBrand: !!shop?.brandProfile,
     tokens: tokensRemainingLive(plan),
+    caps,
     products,
     cast,
     brandFaceId,
@@ -178,11 +184,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
   if (!productTitle) return json({ error: "Pick a product to feature." });
 
+  // TWO-CURRENCY RULE: the tier decides WHICH generators are unlocked, tokens
+  // only meter volume. This is the server-side gate — UI locks are cosmetics.
+  const { assertCapability, videoCapabilityFor } = await import("../lib/capabilities.server");
+
   if (intent === "genVideo") {
     // Content type routes the pipeline: avatar → UGC, highlight → showcase,
     // cartoon → presenter+product redrawn in style, jingle → sung ad (no
     // presenter).
     const contentType = ((form.get("contentType") as string) || "").trim();
+    try { assertCapability(shop.activePlan, videoCapabilityFor(contentType)); }
+    catch (e) { return json({ error: (e as Error).message }); }
     const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
@@ -196,6 +208,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
+    try { assertCapability(shop.activePlan, "image"); }
+    catch (e) { return json({ error: (e as Error).message }); }
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     if (avatarId && !productImageUrl && !service) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
@@ -210,6 +224,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
+    try { assertCapability(shop.activePlan, "blog"); }
+    catch (e) { return json({ error: (e as Error).message }); }
     try { await spendTokens(shop.id, TOKEN_COST.blog); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for an article." }); }
     await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, serviceMode: service, prePaid: true });
@@ -288,7 +304,19 @@ function PresenterPicker({ cast, value, onChange, allowNone, brandFaceId }: { ca
 }
 
 export default function Studio() {
-  const { hasPlan, hasBrand, tokens, products, cast, brandFaceId, defaultAvatar } = useLoaderData<typeof loader>();
+  const { hasPlan, hasBrand, tokens, caps, products, cast, brandFaceId, defaultAvatar } = useLoaderData<typeof loader>();
+  // Which capability each content type needs + where its lock upsells to.
+  const CT_CAP: Record<string, { cap: string; tier: string; price: number }> = {
+    avatar: { cap: "video", tier: "Studio", price: 59 },
+    highlight: { cap: "video", tier: "Studio", price: 59 },
+    cartoon: { cap: "cartoon", tier: "Anthem", price: 99 },
+    jingle: { cap: "anthem", tier: "Anthem", price: 99 },
+  };
+  const lockFor = (key: string) => {
+    const need = CT_CAP[key];
+    return need && !(caps as string[]).includes(need.cap) ? need : null;
+  };
+  const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -459,14 +487,37 @@ export default function Studio() {
             <>
               <div className="cfg-lbl cs-lblrow"><span>Pick your content type</span></div>
               <div className="cfg-cast cs-ctypes bigtiles">
-                {CONTENT_TYPES.map((ct) => (
-                  <button type="button" key={ct.key} className={`cast cs-ctype${ct.live ? "" : " soon"}`} onClick={() => setContentType(ct.key)}>
-                    <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(${ct.cover})` }}>{!ct.live && <span className="ca-soon">SOON</span>}</span>
-                    <span className="ca-nm">{ct.name}</span>
-                    <span className="ca-sub">{ct.sub}</span>
-                  </button>
-                ))}
+                {CONTENT_TYPES.map((ct) => {
+                  const lock = lockFor(ct.key);
+                  return (
+                    <button
+                      type="button"
+                      key={ct.key}
+                      className={`cast cs-ctype${ct.live ? "" : " soon"}${lock ? " cs-lockd" : ""}`}
+                      onClick={() => (lock ? setUpsell({ name: ct.name, tier: lock.tier, price: lock.price }) : setContentType(ct.key))}
+                    >
+                      <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(${ct.cover})` }}>
+                        {!ct.live && <span className="ca-soon">SOON</span>}
+                        {lock && <span className="cs-lockbadge">🔒 {lock.tier}</span>}
+                      </span>
+                      <span className="ca-nm">{ct.name}</span>
+                      <span className="ca-sub">{lock ? `Unlock with ${lock.tier}` : ct.sub}</span>
+                    </button>
+                  );
+                })}
               </div>
+              {upsell && (
+                <div className="cs-upsell">
+                  <div className="cs-upsell-card">
+                    <div className="cs-upsell-ttl">🔒 {upsell.name} is a {upsell.tier} feature</div>
+                    <div className="cs-upsell-sub">Upgrade to {upsell.tier} (${upsell.price}/mo) to unlock it — everything you already have comes along.</div>
+                    <div className="cs-upsell-row">
+                      <Link to="/app/plans" className="cs-upsell-go">See plans</Link>
+                      <button type="button" className="cs-upsell-x" onClick={() => setUpsell(null)}>Not now</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
           {tab === "video" && contentType && (
