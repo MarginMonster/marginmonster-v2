@@ -19,10 +19,10 @@ const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig
  * next 30 days. Motivation + value anchor sell the deal; the mix + cost come
  * from SOCIAL_PLAN_DEFS so token math is the single source of truth. */
 const ARCH_META: Record<string, { badge: string; freq: string; motivation: string; value: string }> = {
-  SOCIAL_FOUND: { badge: "SEO", freq: "~5 articles a week", motivation: "Every article targets what your buyers actually Google, then keeps ranking and pulling free traffic for months. The cheapest customers you'll ever get — and it's nearly all margin for you.", value: "≈ $2,000+ of agency SEO content" },
+  SOCIAL_FOUND: { badge: "SEO", freq: "a drop most days", motivation: "14 articles targeting what your buyers actually Google — each keeps ranking and pulling free traffic for months — plus 20 image posts so the feed never sleeps. The cheapest customers you'll ever get.", value: "≈ $2,000+ of agency SEO content" },
   SOCIAL_STEADY: { badge: "Balanced", freq: "a drop most days", motivation: "Show up nearly every day across video, image and article. Brands this consistent get seen up to 4× more — it's the drumbeat that turns scrollers into repeat buyers.", value: "≈ a $1,500/mo content retainer" },
-  SOCIAL_VIRAL: { badge: "Video-heavy", freq: "a video nearly every day", motivation: "16 presenter-led videos a month, plus a wall of image posts. Short-form video is the single highest-reach format on every platform — you only need one to hit.", value: "≈ $2,000+ in UGC video alone" },
-  SOCIAL_EMPIRE: { badge: "Max firepower", freq: "several drops every day", motivation: "The whole machine, unleashed. 130 drops a month across every platform, every single day — 30 videos, 70 image posts, 30 articles. Some brands post. Yours is simply always there.", value: "≈ a $5,000/mo growth agency" },
+  SOCIAL_VIRAL: { badge: "Video-heavy", freq: "video twice a week + daily drops", motivation: "8 presenter-led videos a month plus a wall of image posts — and on the Anthem plan, two arrive as SHOWSTOPPERS: a viral-style cartoon drop and your product's own sung Anthem. You only need one to hit.", value: "≈ $1,200+ in UGC video alone" },
+  SOCIAL_EMPIRE: { badge: "Max firepower", freq: "several drops every day", motivation: "The whole machine, unleashed. 72 drops a month across every platform, every single day — 12 videos with the showstoppers included, 40 image posts, 20 articles. Some brands post. Yours is simply always there.", value: "≈ a $4,000/mo growth agency" },
 };
 const ARCH_ORDER = ["SOCIAL_FOUND", "SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMPIRE"];
 
@@ -35,7 +35,7 @@ function tierFor(cost: number): string {
   return t ? t.name : PLAN_TIERS[PLAN_TIERS.length - 1].name;
 }
 
-function archetypes(allowance: number, planName: string | null) {
+function archetypes(allowance: number, planName: string | null, hasVideoCap: boolean) {
   return ARCH_ORDER.map((key) => {
     const def = SOCIAL_PLAN_DEFS.find((d) => d.key === key)!;
     const mix = { video: 0, image: 0, blog: 0 };
@@ -43,12 +43,17 @@ function archetypes(allowance: number, planName: string | null) {
     const cost = questlineTokenCost(def);
     const drops = mix.video + mix.image + mix.blog;
     const tier = tierFor(cost);
-    const fits = allowance > 0 && allowance >= cost;
-    const fitLabel = fits
-      ? `✓ ${cost.toLocaleString()} of your ${allowance.toLocaleString()} monthly tokens`
-      : allowance > 0
-        ? `Costs ${cost.toLocaleString()} tokens — upgrade to ${tier}`
-        : `${cost.toLocaleString()} tokens — fits ${tier}`;
+    // Two gates, surfaced honestly: the CAPABILITY (videos need Studio) and
+    // the BUDGET (does it fit the monthly allowance).
+    const videoLocked = mix.video > 0 && !hasVideoCap;
+    const fits = !videoLocked && allowance > 0 && allowance >= cost;
+    const fitLabel = videoLocked
+      ? `🔒 Includes video — unlocks on the Studio plan`
+      : fits
+        ? `✓ ${cost.toLocaleString()} of your ${allowance.toLocaleString()} monthly tokens`
+        : allowance > 0
+          ? `Costs ${cost.toLocaleString()} tokens — top up or upgrade to ${tier}`
+          : `${cost.toLocaleString()} tokens — fits ${tier}`;
     return { key, name: def.name, icon: def.icon, ...ARCH_META[key], mix, cost, drops, tier, fits, fitLabel, planName };
   });
 }
@@ -61,6 +66,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const tierKey = plan?.active ? resolveTierKey(plan.type) : null;
   const tier = tierKey ? PLAN_BY_KEY[tierKey] : null;
   const allowance = tier?.monthlyTokens ?? 0;
+  const { capabilitiesFor } = await import("../lib/capabilities.server");
+  const hasVideoCap = capabilitiesFor(plan).has("video");
 
   let products: { title: string; image: string | null; url: string | null }[] = [];
   try {
@@ -84,7 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products,
     cast,
     defaultAvatar: shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : cast[0]?.id ?? null,
-    archetypes: archetypes(allowance, tier?.name ?? null),
+    archetypes: archetypes(allowance, tier?.name ?? null, hasVideoCap),
   });
 };
 

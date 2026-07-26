@@ -101,7 +101,16 @@ export async function acceptQuestline(params: {
   if (!shop?.activePlan) return { ok: false, error: "Choose a plan first to run questlines." };
   if (!shop.activePlan.active) return { ok: false, error: "Your subscription is paused — resubscribe on the Packages page to launch campaigns." };
 
-  const cost = questlineCostFor(def, shop.activePlan.type); // Scale price break applies here
+  // TIER GATE — before any money moves. A campaign containing videos needs
+  // the video capability; without this, Starter shops would be charged and
+  // then watch every video slot fail-and-refund at the worker.
+  const { capabilitiesFor } = await import("./capabilities.server");
+  const caps = capabilitiesFor(shop.activePlan);
+  if (def.objectives.some((o) => o.type === "video" && o.target > 0) && !caps.has("video")) {
+    return { ok: false, error: "This plan includes videos, which unlock on the Studio plan ($59/mo). Run Get Found on Starter, or upgrade to launch this one." };
+  }
+
+  const cost = questlineCostFor(def, shop.activePlan.type); // top-tier price break applies here
   try {
     await spendTokens(params.shopId, cost); // the whole month, reserved upfront
   } catch (e) {
@@ -134,6 +143,15 @@ export async function acceptQuestline(params: {
     },
   });
 
+  // SHOWSTOPPER DROPS — the campaign wow factor on the Anthem tier: with
+  // enough videos in the month, the middle one becomes a Cartoon Avatar drop
+  // and the FINAL one the product's sung Anthem (the month ends on the
+  // banger). Same token price per video; only the generator changes — and
+  // only when the tier actually unlocks it.
+  const videoIdxs = slots.filter((s) => s.type === "video").map((s) => s.idx);
+  const anthemIdx = caps.has("anthem") && videoIdxs.length >= 3 ? videoIdxs[videoIdxs.length - 1] : -1;
+  const cartoonIdx = caps.has("cartoon") && videoIdxs.length >= 4 ? videoIdxs[Math.floor(videoIdxs.length / 2)] : -1;
+
   // One PRE-PAID job per slot, scheduled to forge ~24h before its post time —
   // except the FIRST video, which forges IMMEDIATELY so the merchant sees a
   // finished take within minutes of signing (the demo moment).
@@ -151,10 +169,13 @@ export async function acceptQuestline(params: {
     let runAt = slotRunAt(slot);
     if (slot.type === "video" && !firstVideoBoosted) { firstVideoBoosted = true; runAt = new Date(); }
     if (slot.type === "video") {
+      const contentType = slot.idx === anthemIdx ? "jingle" : slot.idx === cartoonIdx ? "cartoon" : undefined;
       // holdProduct: campaign drips auto-compose the presenter holding the
       // product (hands-off in-hand demos; falls back to plain portrait)
       await enqueueJob(params.shopId, "GENERATE_VIDEO_AD", {
-        ...base, avatarId: params.avatarId || undefined, avatarVariant: params.avatarVariant, holdProduct: true,
+        ...base, avatarId: params.avatarId || undefined, avatarVariant: params.avatarVariant,
+        contentType, cartoonStyle: contentType === "cartoon" ? "pixar" : undefined,
+        holdProduct: !contentType,
       }, runAt);
     } else if (slot.type === "image") {
       await enqueueJob(params.shopId, "GENERATE_IMAGE_AD", base, runAt);

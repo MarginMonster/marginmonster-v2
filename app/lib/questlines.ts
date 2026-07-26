@@ -77,27 +77,31 @@ export const TIERS: { key: TierKey; worlds: number; minTier: "GROWTH" | "PRO" | 
   { key: "GOLD", worlds: 4, minTier: "SCALE", bagSize: 10, blurb: "Full assault" },
 ];
 
-/* Content mixes per campaign x tier (v=video, i=image, b=blog). */
+/* Content mixes per campaign x tier (v=video, i=image, b=blog).
+ * SIZED TO THE 3-TIER LADDER at TODAY'S token costs (video 150 / blog 10 /
+ * image 5): BRONZE fits inside Studio's 900 with room to spare, SILVER sits
+ * just under 900, GOLD just under Anthem's 1,600 — so the flagship month of
+ * each shelf is "basically included" in its plan, never a forced top-up. */
 const MIX: Record<string, Record<"BRONZE" | "SILVER" | "GOLD", { v: number; i: number; b: number; xp: number; cadence: string }>> = {
   GET_SEEN: {
-    BRONZE: { v: 2, i: 2, b: 0, xp: 400, cadence: "~1 drop a week · evening video slots" },
-    SILVER: { v: 6, i: 2, b: 0, xp: 1200, cadence: "~2 drops a week · Tue/Thu/Sat evenings" },
-    GOLD: { v: 12, i: 4, b: 0, xp: 2400, cadence: "~4 drops a week · your face everywhere" },
+    BRONZE: { v: 2, i: 4, b: 0, xp: 400, cadence: "~1–2 drops a week · evening video slots" }, // 330 tok
+    SILVER: { v: 5, i: 6, b: 0, xp: 1100, cadence: "~3 drops a week · Tue/Thu/Sat evenings" }, // 780 tok
+    GOLD: { v: 9, i: 8, b: 0, xp: 2200, cadence: "~4 drops a week · your face everywhere" }, // 1,390 tok
   },
   LAUNCH_IT: {
-    BRONZE: { v: 3, i: 3, b: 0, xp: 500, cadence: "~1–2 drops a week · heavier at the start" },
-    SILVER: { v: 8, i: 3, b: 0, xp: 1800, cadence: "~3 drops a week · weeks 1–2 hit hardest" },
-    GOLD: { v: 14, i: 6, b: 0, xp: 3000, cadence: "~5 drops a week · a launch nobody misses" },
+    BRONZE: { v: 2, i: 6, b: 0, xp: 450, cadence: "~2 drops a week · heavier at the start" }, // 330 tok
+    SILVER: { v: 5, i: 8, b: 0, xp: 1300, cadence: "~3 drops a week · weeks 1–2 hit hardest" }, // 790 tok
+    GOLD: { v: 9, i: 10, b: 0, xp: 2400, cadence: "~4–5 drops a week · a launch nobody misses" }, // 1,400 tok
   },
   STAY_STEADY: {
-    BRONZE: { v: 2, i: 4, b: 0, xp: 450, cadence: "~1–2 drops a week · steady and calm" },
-    SILVER: { v: 6, i: 4, b: 1, xp: 1300, cadence: "~2–3 drops a week · the reliable drumbeat" },
-    GOLD: { v: 10, i: 6, b: 2, xp: 2200, cadence: "~4 drops a week · always-on, everywhere" },
+    BRONZE: { v: 1, i: 6, b: 2, xp: 350, cadence: "~2 drops a week · steady and calm" }, // 200 tok
+    SILVER: { v: 4, i: 8, b: 4, xp: 1000, cadence: "~3–4 drops a week · the reliable drumbeat" }, // 680 tok
+    GOLD: { v: 8, i: 10, b: 5, xp: 2000, cadence: "~5 drops a week · always-on, everywhere" }, // 1,300 tok
   },
   OWN_THE_SEARCH: {
-    BRONZE: { v: 1, i: 4, b: 2, xp: 350, cadence: "~1–2 drops a week · blogs Monday mornings" },
-    SILVER: { v: 3, i: 6, b: 4, xp: 900, cadence: "~2–3 drops a week · compounding steadily" },
-    GOLD: { v: 6, i: 8, b: 6, xp: 1600, cadence: "~4 drops a week · own the results page" },
+    BRONZE: { v: 1, i: 6, b: 4, xp: 350, cadence: "~2–3 drops a week · blogs Monday mornings" }, // 220 tok
+    SILVER: { v: 2, i: 10, b: 8, xp: 800, cadence: "~4–5 drops a week · compounding steadily" }, // 430 tok
+    GOLD: { v: 4, i: 14, b: 10, xp: 1500, cadence: "~6 drops a week · own the results page" }, // 770 tok
   },
 };
 
@@ -132,11 +136,13 @@ export const DIAMOND_CAMPAIGNS: CampaignDef[] = [
   },
 ];
 
+/* Diamond = the beyond-the-allowance flex shelf: Anthem-plan + one top-up
+ * pack covers any of them. Every line still posts every day of the month. */
 const DIAMOND_MIX: Record<string, { v: number; i: number; b: number; xp: number; cadence: string }> = {
-  DAILY_FEED: { v: 14, i: 14, b: 2, xp: 4200, cadence: "1 drop every day · posted at peak times" },
-  VIDEO_STORM: { v: 22, i: 8, b: 0, xp: 5500, cadence: "video daily · reels & TikTok prime slots" },
-  AD_BLITZ: { v: 6, i: 26, b: 0, xp: 3400, cadence: "a fresh ad every day · relentless variety" },
-  OMNIPRESENCE: { v: 22, i: 16, b: 6, xp: 6500, cadence: "double-drop days · everywhere at once" },
+  DAILY_FEED: { v: 8, i: 16, b: 6, xp: 3600, cadence: "1 drop every day · posted at peak times" }, // 30 drops · 1,340 tok
+  VIDEO_STORM: { v: 12, i: 18, b: 0, xp: 4800, cadence: "video every 2–3 days · reels & TikTok prime slots" }, // 30 drops · 1,890 tok
+  AD_BLITZ: { v: 4, i: 26, b: 0, xp: 3000, cadence: "a fresh ad every day · relentless variety" }, // 30 drops · 730 tok
+  OMNIPRESENCE: { v: 12, i: 22, b: 8, xp: 5600, cadence: "double-drop days · everywhere at once" }, // 42 drops · 1,990 tok
 };
 
 export const DIAMOND_DEST: Record<string, string> = {
@@ -227,8 +233,8 @@ export const DIAMOND_LINES: QuestlineDef[] = DIAMOND_CAMPAIGNS.map((c) => {
 });
 
 /* Social Media Plans — cadence-based, platform-native. Each is activated per
- * account (see acceptQuestline `platforms`); token cost = objectives × TOKEN_COST
- * (video 60 + image 5), so Light 140 / Standard 280 / Heavy 540 per account. */
+ * account (see acceptQuestline `platforms`); token cost = objectives ×
+ * TOKEN_COST, always computed live so displayed prices can never go stale. */
 export const SOCIAL_PLAN_DEFS: QuestlineDef[] = [
   { key: "SOCIAL_LIGHT", campaign: "SOCIAL", tier: "BRONZE", name: "Social Plan · Light", icon: "📱",
     tagline: "A steady drip that keeps you in the feed.", lore: "",
@@ -245,29 +251,29 @@ export const SOCIAL_PLAN_DEFS: QuestlineDef[] = [
 
   /* ---- Plan archetypes (the Social Media Plans picker) ----
    * A full month of content that auto-creates + auto-posts across 30 days.
-   * Sized to sit just under a subscription tier's monthly token allowance, so
-   * "your plan basically includes one full content plan." Blogs (~$0.02) and
-   * images (~$0.04) are near-pure margin, so plans are packed with them;
-   * only video (60 tok, the real cost) is metered hard.
-   *   Get Found  16b·6i          =  190 tok  → fits Starter/Growth  · 22 drops
-   *   Steady      6v·18i·8b       =  530 tok  → fits Growth         · 32 drops
-   *   Go Viral   16v·24i·8b       = 1160 tok  → fits Pro            · 48 drops
-   *   Empire     30v·70i·30b      = 2450 tok  → fits Scale          · 130 drops */
+   * Sized AT TODAY'S TOKEN COSTS (video 150 / blog 10 / image 5) to sit just
+   * under a subscription tier's monthly allowance, so "your plan basically
+   * includes one full content plan" is literally true. Blogs and images are
+   * near-pure margin; only video (the real COGS) is metered hard.
+   *   Get Found   14b·20i      =   240 tok → fits Starter (300)  · 34 drops
+   *   Steady       4v·20i·10b  =   800 tok → fits Studio (900)   · 34 drops
+   *   Go Viral     8v·24i·6b   = 1,380 tok → fits Anthem (1,600) · 38 drops
+   *   Empire      12v·40i·20b  = 2,200 tok → Anthem + one 750 pack · 72 drops */
   { key: "SOCIAL_FOUND", campaign: "SOCIAL", tier: "BRONZE", name: "Get Found", icon: "🔎",
-    tagline: "SEO articles that rank on Google and pull in free traffic for months — your cheapest customers, on autopilot.", lore: "",
-    objectives: [{ type: "blog", label: "SEO articles", target: 16 }, { type: "image", label: "Image posts", target: 6 }],
-    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 300, bagSize: 8, cadence: "~5 blogs / week", worldWindow: [0, 1], destination: "" },
+    tagline: "SEO articles that rank on Google plus a steady feed of image posts — free traffic and a live feed, fully on autopilot.", lore: "",
+    objectives: [{ type: "blog", label: "SEO articles", target: 14 }, { type: "image", label: "Image posts", target: 20 }],
+    platforms: [], recurring: true, minTier: "GROWTH", xpReward: 300, bagSize: 8, cadence: "a drop most days", worldWindow: [0, 1], destination: "" },
   { key: "SOCIAL_STEADY", campaign: "SOCIAL", tier: "SILVER", name: "Steady Presence", icon: "🌿",
     tagline: "A post nearly every day — video, image and article — so your feed never goes quiet and buyers never forget you.", lore: "",
-    objectives: [{ type: "video", label: "Videos", target: 6 }, { type: "image", label: "Image posts", target: 18 }, { type: "blog", label: "SEO articles", target: 8 }],
+    objectives: [{ type: "video", label: "Videos", target: 4 }, { type: "image", label: "Image posts", target: 20 }, { type: "blog", label: "SEO articles", target: 10 }],
     platforms: [], recurring: true, minTier: "GROWTH", xpReward: 550, bagSize: 10, cadence: "a drop most days", worldWindow: [0, 1], destination: "" },
   { key: "SOCIAL_VIRAL", campaign: "SOCIAL", tier: "GOLD", name: "Go Viral", icon: "🔥",
-    tagline: "16 scroll-stopping videos a month plus a wall of image posts. Short-form video is the single highest-reach format anywhere — swing for the fences.", lore: "",
-    objectives: [{ type: "video", label: "Videos", target: 16 }, { type: "image", label: "Image posts", target: 24 }, { type: "blog", label: "SEO articles", target: 8 }],
-    platforms: [], recurring: true, minTier: "PRO", xpReward: 1200, bagSize: 12, cadence: "a video nearly every day", worldWindow: [0, 1], destination: "" },
+    tagline: "8 scroll-stopping videos a month plus a wall of image posts — and on the Anthem plan, two arrive as showstoppers: a cartoon avatar drop and your product's own sung Anthem.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 8 }, { type: "image", label: "Image posts", target: 24 }, { type: "blog", label: "SEO articles", target: 6 }],
+    platforms: [], recurring: true, minTier: "PRO", xpReward: 1200, bagSize: 12, cadence: "video twice a week, a drop most days", worldWindow: [0, 1], destination: "" },
   { key: "SOCIAL_EMPIRE", campaign: "SOCIAL", tier: "DIAMOND", name: "Empire", icon: "👑",
-    tagline: "Total domination — 130 drops a month across every platform, every day. 30 videos, 70 image posts, 30 articles, all created and posted for you.", lore: "",
-    objectives: [{ type: "video", label: "Videos", target: 30 }, { type: "image", label: "Image posts", target: 70 }, { type: "blog", label: "SEO articles", target: 30 }],
+    tagline: "Total domination — 72 drops a month across every platform, every day: 12 videos (showstoppers included), 40 image posts, 20 articles, all created and posted for you.", lore: "",
+    objectives: [{ type: "video", label: "Videos", target: 12 }, { type: "image", label: "Image posts", target: 40 }, { type: "blog", label: "SEO articles", target: 20 }],
     platforms: [], recurring: true, minTier: "SCALE", xpReward: 3000, bagSize: 16, cadence: "several drops every day", worldWindow: [0, 1], destination: "" },
 ];
 
