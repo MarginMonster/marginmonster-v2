@@ -35,7 +35,10 @@ export default function Index() {
             <img src="/easymode-head.png" width="34" height="27" alt="" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
             <span>Easy<b>Mode</b></span>
           </div>
-          <a className="lz-navcta" href={listingUrl}>Install</a>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <a className="lz-navlink" href="/web/login">Log in</a>
+            <a className="lz-navcta" href="/web/signup">Start free</a>
+          </div>
         </header>
 
         <main className="lz-hero">
@@ -46,8 +49,8 @@ export default function Index() {
             them to your socials on a schedule. You approve, it ships. All from inside Shopify.
           </p>
           <div className="lz-ctas">
-            <a className="lz-cta" href={listingUrl}><span className="lz-arr-w">Start free — 7-day trial<span className="lz-arr">→</span></span></a>
-            <span className="lz-note">No card for the trial · cancel anytime</span>
+            <a className="lz-cta" href="/web/signup"><span className="lz-arr-w">Start free — 7-day trial<span className="lz-arr">→</span></span></a>
+            <span className="lz-note">Works with any store · cancel anytime · <a className="lz-alt" href={listingUrl}>or install the Shopify app</a></span>
           </div>
 
           <div className="lz-stats">
@@ -106,7 +109,7 @@ export default function Index() {
                 <div className="lz-price-tok">🪙 {t.monthlyTokens.toLocaleString()} tokens / month</div>
                 <div className="lz-price-cap">{planCapacityLine(t)}</div>
                 <ul>{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
-                <a className="lz-price-cta" href={listingUrl}>Start free →</a>
+                <a className="lz-price-cta" href="/web/signup">Start free →</a>
               </div>
             ))}
           </div>
@@ -166,7 +169,7 @@ export default function Index() {
           <div className="lz-band-in">
             <h2>Made for founders who don&apos;t have a marketing team.</h2>
             <p>Set it up in a couple of minutes. Wake up to finished content, posted and working.</p>
-            <a className="lz-cta gold" href={listingUrl}><span className="lz-arr-w">Get EasyMode<span className="lz-arr">→</span></span></a>
+            <a className="lz-cta gold" href="/web/signup"><span className="lz-arr-w">Get EasyMode<span className="lz-arr">→</span></span></a>
           </div>
         </section>
 
@@ -200,6 +203,9 @@ html,body{margin:0;padding:0}
 .lz-brand.small{font-size:15px;opacity:.9}
 .lz-navcta{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;text-decoration:none;padding:10px 18px;border-radius:11px;
   background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 5px 14px rgba(12,122,70,.28);transition:filter .12s;}
+.lz-navlink{font-weight:700;font-size:13px;color:var(--ink2);text-decoration:none;}
+.lz-navlink:hover{color:var(--ink)}
+.lz-alt{color:var(--green);font-weight:600;}
 .lz-navcta:hover{filter:brightness(1.05)}
 .lz-hero{max-width:820px;margin:0 auto;padding:52px 26px 30px;text-align:center;}
 .lz-eyebrow{font-size:12px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--green);display:block;margin-bottom:22px;}

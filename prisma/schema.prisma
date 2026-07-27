@@ -25,6 +25,34 @@ model Session {
   emailVerified Boolean?  @default(false)
 }
 
+// The hub identity for non-Shopify front doors (website now, mobile later).
+// A web signup creates an Account + a companion WEB Shop row (synthetic
+// domain), so every shop-keyed system — wallet, jobs, pipelines, archive —
+// works unchanged. See docs/account-model.md.
+model Account {
+  id               String       @id @default(cuid())
+  email            String       @unique
+  passwordHash     String?
+  name             String?
+  stripeCustomerId String?
+  stripeSubId      String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  connections      Connection[]
+}
+
+model Connection {
+  id         String  @id @default(cuid())
+  accountId  String
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind       String // "web" | "shopify" | "ios" | "android"
+  externalId String // web: the Shop.id · shopify: the myshopify domain
+  createdAt  DateTime @default(now())
+
+  @@unique([kind, externalId])
+  @@index([accountId])
+}
+
 model Shop {
   id          String   @id @default(cuid())
   domain      String   @unique
