@@ -598,6 +598,22 @@ export default function Archive() {
           <div className="cs-scrim" onClick={() => setViewer(null)}>
             <div className={`ar-viewer${viewer.kind === "blog" ? " blogview" : ""}`} onClick={(e) => e.stopPropagation()}>
               <button type="button" className="cs-vx" onClick={() => setViewer(null)}>✕</button>
+              {(() => {
+                // Cycle the current tab's pieces without leaving the player.
+                const vIdx = lib.findIndex((c) => c.id === viewer.id);
+                if (vIdx < 0 || lib.length < 2) return null;
+                const go = (d: number) => {
+                  const n = lib[(vIdx + d + lib.length) % lib.length];
+                  if (n) setViewer({ ...n, kind: viewer.kind });
+                };
+                return (
+                  <>
+                    <button type="button" className="ar-vnav prev" aria-label="Previous" onClick={() => go(-1)}>‹</button>
+                    <button type="button" className="ar-vnav next" aria-label="Next" onClick={() => go(1)}>›</button>
+                    <span className="ar-vcount">{vIdx + 1} / {lib.length}</span>
+                  </>
+                );
+              })()}
               {viewer.kind === "blog" ? (
                 <>
                   {viewer.html

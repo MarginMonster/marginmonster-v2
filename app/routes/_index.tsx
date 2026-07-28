@@ -42,6 +42,7 @@ export default function Index() {
         </header>
 
         <main className="lz-hero">
+          <span className="lz-rose lz-rose-hero" aria-hidden="true" />
           <span className="lz-eyebrow">Marketing on easy mode</span>
           <h1>Your whole store&apos;s marketing, <span className="lz-grad">running itself.</span></h1>
           <p className="lz-sub">
@@ -154,6 +155,7 @@ export default function Index() {
               </ul>
             </div>
             <div className="lz-vs-col us">
+              <span className="lz-rose lz-rose-vs" aria-hidden="true" />
               <div className="lz-vs-h">EasyMode</div>
               <ul>
                 <li>Videos, blogs, images &amp; landing pages in one app</li>
@@ -167,6 +169,7 @@ export default function Index() {
 
         <section className="lz-band">
           <div className="lz-band-in">
+            <span className="lz-rose lz-rose-band" aria-hidden="true" />
             <h2>Made for founders who don&apos;t have a marketing team.</h2>
             <p>Set it up in a couple of minutes. Wake up to finished content, posted and working.</p>
             <a className="lz-cta gold" href="/web/signup"><span className="lz-arr-w">Get EasyMode<span className="lz-arr">→</span></span></a>
@@ -301,6 +304,29 @@ html,body{margin:0;padding:0}
 .lz-vs-col.us li{color:#EAF4EE;}
 .lz-vs-col.us li::before{content:"✓";position:absolute;left:2px;color:#7FE0AC;font-weight:900;}
 @media(max-width:600px){.lz-vs{grid-template-columns:1fr}}
+/* GStyle rosettes — the app's spinning engine-turned gold spirographs,
+   CSS-only so the public page stays light. Same family as the CTA medallion. */
+.lz-rose{position:absolute;border-radius:50%;pointer-events:none;z-index:0;
+  background:
+    repeating-conic-gradient(from 0deg,rgba(231,200,121,.5) 0 1deg,transparent 1deg 5.6deg),
+    repeating-conic-gradient(from 2deg,rgba(231,200,121,.3) 0 .6deg,transparent .6deg 9deg),
+    repeating-radial-gradient(circle,rgba(231,200,121,.42) 0 1px,transparent 1px 9px);
+  -webkit-mask:radial-gradient(circle,transparent 24%,#000 25% 60%,transparent 62%);
+  mask:radial-gradient(circle,transparent 24%,#000 25% 60%,transparent 62%);
+  animation:lz-medallion 44s linear infinite;}
+.lz-hero{position:relative;}
+.lz-rose-hero{right:-150px;top:-70px;width:430px;height:430px;opacity:.32;z-index:-1;
+  background:
+    repeating-conic-gradient(from 0deg,rgba(176,133,38,.4) 0 1deg,transparent 1deg 5.6deg),
+    repeating-conic-gradient(from 2deg,rgba(12,122,70,.25) 0 .6deg,transparent .6deg 9deg),
+    repeating-radial-gradient(circle,rgba(176,133,38,.32) 0 1px,transparent 1px 9px);}
+.lz-rose-band{right:-100px;top:50%;width:400px;height:400px;margin-top:-200px;opacity:.5;}
+.lz-rose-vs{right:-80px;bottom:-90px;width:280px;height:280px;opacity:.42;}
+.lz-band-in>*{position:relative;z-index:1;}
+.lz-band-in .lz-rose{z-index:0;}
+.lz-vs-col.us>*{position:relative;z-index:1;}
+.lz-vs-col.us .lz-rose{z-index:0;}
+@media (prefers-reduced-motion:reduce){.lz-rose{animation:none}}
 .lz-band{max-width:1000px;margin:64px auto 0;padding:0 26px;}
 .lz-band-in{position:relative;isolation:isolate;overflow:hidden;text-align:center;border-radius:24px;padding:52px 32px;color:#EAF4EE;
   background:

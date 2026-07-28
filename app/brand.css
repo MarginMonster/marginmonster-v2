@@ -3372,7 +3372,7 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .cs-samp.on { background:#0F9152; color:#fff; }
 .cs-castgrid .cs-samp { top:-4px; left:-4px; }
 /* designed-voice lip-sync overlay */
-.cs-vscrim { position:fixed; inset:0; background:rgba(6,14,9,.62); backdrop-filter:blur(2px); z-index:90; display:grid; place-items:center; padding:20px; }
+.cs-vscrim { position:fixed; inset:0; background:rgba(6,14,9,.62); backdrop-filter:blur(2px); z-index:10500; display:grid; place-items:center; padding:20px; }
 .cs-vbox { position:relative; display:inline-block; max-width:88vw; line-height:0; }
 .cs-video { display:block; height:min(76vh,600px); width:auto; max-width:88vw; border-radius:18px; background:#000; object-fit:contain; box-shadow:0 20px 60px rgba(0,0,0,.5); }
 .cs-vx { position:absolute; top:-14px; right:-14px; width:34px; height:34px; border-radius:50%; border:0; background:#fff; font-size:15px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.35); }
@@ -3526,7 +3526,22 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .cs-wear button .cs-wq { display:block; font-size:9.5px; font-weight:600; margin-top:2px; opacity:.85; }
 
 /* Content Studio → Archive redirect popup */
-.cs-scrim { position:fixed; inset:0; background:rgba(6,14,9,.55); backdrop-filter:blur(2px); z-index:95; display:grid; place-items:center; padding:22px; animation:dcfade .18s ease; }
+/* z above the fixed HUD (9999) — the player owns the screen while open */
+.cs-scrim { position:fixed; inset:0; background:rgba(6,14,9,.55); backdrop-filter:blur(2px); z-index:10500; display:grid; place-items:center; padding:22px; animation:dcfade .18s ease; }
+/* Viewer prev/next — cycle the tab's pieces without leaving the player */
+.ar-vnav {
+  position:absolute; top:50%; transform:translateY(-50%); z-index:3;
+  width:42px; height:42px; border-radius:50%; border:0; cursor:pointer;
+  background:rgba(255,255,255,.92); color:#14201A; font-size:20px; font-weight:800;
+  box-shadow:0 4px 14px rgba(0,0,0,.35); display:grid; place-items:center;
+}
+.ar-vnav:hover { background:#fff; }
+.ar-vnav.prev { left:-16px; }
+.ar-vnav.next { right:-16px; }
+.ar-vcount { position:absolute; top:-12px; left:50%; transform:translateX(-50%); z-index:3;
+  padding:3px 12px; border-radius:999px; background:rgba(255,255,255,.92); color:#14201A;
+  font-size:11px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.3); }
+@media (max-width:640px){ .ar-vnav.prev{left:4px} .ar-vnav.next{right:4px} }
 .cs-modal { width:min(360px,90vw); background:#FBFAF4; border-radius:22px; padding:26px 22px 20px; text-align:center; box-shadow:0 24px 70px rgba(6,20,12,.4); animation:dcslide .24s cubic-bezier(.2,.8,.2,1); }
 .cs-mi { font-size:34px; }
 .cs-mh { display:block; font-size:19px; font-weight:800; color:#14160F; margin:8px 0 6px; }

@@ -205,13 +205,20 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       }
     }
 
+    // The BRAND goes on the box: styles that draw packaging (boxed figure,
+    // toy shelf) kept inventing gibberish wordmarks ("TPLIGES"). Any packaging
+    // must carry the real product title, spelled exactly — or no text at all.
+    const exactText =
+      ` If any packaging, box art or label appears in the scene, it displays ONLY the title "${params.productTitle}" ` +
+      `in clean bold lettering spelled EXACTLY like that — never invented words, never gibberish text; any other surface stays text-free.`;
+
     if (sourcePhotoUrl && withCharacter) {
       const prompt =
         `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
         `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
         `${params.serviceMode ? "" : `Keep the ${params.productTitle} they are presenting clearly recognizable — same shape, colors, logos and TRUE real-world size, never miniaturized. `}` +
         `Hands are anatomically correct — five fingers per hand, natural relaxed grip, no extra or missing fingers. ` +
-        `Delightful advertising scene, simple complementary background.${sceneBits} ` +
+        `Delightful advertising scene, simple complementary background.${sceneBits}${exactText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
       const id = await repCreate("black-forest-labs/flux-kontext-pro", {
         prompt,
@@ -224,7 +231,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       const prompt =
         `Redraw this exact product as a ${recipe.look}. Keep the product's shape, colors, ` +
         `proportions, logos and text clearly recognizable — same product, new art style. ` +
-        `Place it as the hero of a delightful advertising scene with a simple complementary background.${sceneBits} ` +
+        `Place it as the hero of a delightful advertising scene with a simple complementary background.${sceneBits}${exactText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
       const id = await repCreate("black-forest-labs/flux-kontext-pro", {
         prompt,
@@ -237,7 +244,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       const subject = params.serviceMode
         ? `a joyful scene showing the happy OUTCOME of "${params.productTitle}" (a service) — a delighted character enjoying the result`
         : `"${params.productTitle}" as the hero of a delightful advertising scene`;
-      const prompt = `${recipe.look}. ${subject}.${sceneBits} Vertical 9:16 composition, advertising quality, no watermark, no caption text.`;
+      const prompt = `${recipe.look}. ${subject}.${sceneBits}${exactText} Vertical 9:16 composition, advertising quality, no watermark, no caption text.`;
       const id = await repCreate("black-forest-labs/flux-dev", {
         prompt,
         num_inference_steps: 30,

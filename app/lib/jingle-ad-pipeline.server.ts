@@ -218,7 +218,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       const recipe = params.cartoonStyle ? CARTOON_RECIPES[params.cartoonStyle as CartoonStyleKey] : undefined;
       if (!frameUrl && recipe && portraitPublicUrl) {
         const id = await repCreate("black-forest-labs/flux-kontext-pro", {
-          prompt: `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. Head-and-shoulders framing, vertical 9:16 composition, no text, no watermark.`,
+          prompt: `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. If any packaging or box art appears it displays ONLY the text "${params.productTitle}" spelled exactly — never invented words or gibberish. Head-and-shoulders framing, vertical 9:16 composition, no caption text, no watermark.`,
           input_image: portraitPublicUrl,
           aspect_ratio: "9:16",
           output_format: "jpg",
