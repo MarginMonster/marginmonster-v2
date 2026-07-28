@@ -44,8 +44,7 @@ export default function WebSignup() {
         </div>
       </Form>
       <p className="wb-note" style={{ marginTop: 16 }}>
-        Already have one? <Link to="/web/login">Log in</Link> · Have a Shopify store? You can also{" "}
-        <a href="/">install the Shopify app</a>.
+        Already have one? <Link to="/web/login">Log in</Link>
       </p>
     </div>
   );

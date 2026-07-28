@@ -17,6 +17,7 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
 import {
+  animateCreate,
   assemble,
   checkpointJob,
   download,
@@ -61,6 +62,7 @@ interface JingleAdParams {
   avatarId?: string; // the SINGER — lipsyncs the anthem on camera
   avatarVariant?: number;
   cartoonStyle?: string; // singer redrawn in a cartoon style first (optional)
+  videoEngine?: string; // engine-picker key for the product-visual path
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean;
   origin?: string;
@@ -291,15 +293,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     } catch { /* old prediction died — fall through to a fresh one */ }
   }
   if (!talkingUrl && !animUrl) {
-    const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
-      start_image: keyframeUrl,
+    const { id: animId } = await animateCreate(params.videoEngine, {
+      startImage: keyframeUrl,
       prompt: `Upbeat retro TV-commercial hero shot: the product stays the clear star, slow confident camera push-in, gentle sparkle and shine sweeps, bright cheerful energy, vertical video.`,
-      negative_prompt: "morphing, distortion, extra objects, people appearing, text, watermark, blur, style change",
-      duration: 10,
-      cfg_scale: 0.5,
+      negativePrompt: "morphing, distortion, extra objects, people appearing, text, watermark, blur, style change",
     });
-    await ckpt({ ckKlingId: klingId });
-    animUrl = await repPoll(klingId, 12 * 60_000, "jingle-animate");
+    await ckpt({ ckKlingId: animId });
+    animUrl = await repPoll(animId, 12 * 60_000, "jingle-animate");
     await ckpt({ ckAnimUrl: animUrl });
   }
 

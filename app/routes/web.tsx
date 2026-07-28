@@ -35,6 +35,7 @@ export default function WebLayout() {
               <Link className={tab("/web")} to="/web">Dashboard</Link>
               <Link className={tab("/web/studio")} to="/web/studio">Studio</Link>
               <Link className={tab("/web/archive")} to="/web/archive">Archive</Link>
+              <Link className={tab("/web/connect")} to="/web/connect">Auto-posting</Link>
             </nav>
           )}
           {authed ? (

@@ -13,7 +13,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // No shop param → the public marketing page (also serves as the health check).
-  return json({ listingUrl: process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com" });
+  return json({ ok: true });
 };
 
 const FEATURES = [
@@ -25,7 +25,7 @@ const FEATURES = [
 ];
 
 export default function Index() {
-  const { listingUrl } = useLoaderData<typeof loader>();
+  useLoaderData<typeof loader>();
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
@@ -45,12 +45,12 @@ export default function Index() {
           <span className="lz-eyebrow">Marketing on easy mode</span>
           <h1>Your whole store&apos;s marketing, <span className="lz-grad">running itself.</span></h1>
           <p className="lz-sub">
-            EasyMode turns your products into videos, image ads and SEO blogs — then posts
-            them to your socials on a schedule. You approve, it ships. All from inside Shopify.
+            EasyMode turns your products into videos, image ads and SEO articles — then posts
+            them to your socials on a schedule. You approve, it ships. Works with any store.
           </p>
           <div className="lz-ctas">
             <a className="lz-cta" href="/web/signup"><span className="lz-arr-w">Start free — 7-day trial<span className="lz-arr">→</span></span></a>
-            <span className="lz-note">Works with any store · cancel anytime · <a className="lz-alt" href={listingUrl}>or install the Shopify app</a></span>
+            <span className="lz-note">Any store, any platform · cancel anytime</span>
           </div>
 
           <div className="lz-stats">
@@ -159,7 +159,7 @@ export default function Index() {
                 <li>Videos, blogs, images &amp; landing pages in one app</li>
                 <li>Auto‑posts to TikTok, Instagram &amp; Facebook on a schedule</li>
                 <li>One simple token wallet — spend it on anything</li>
-                <li>Every piece built from your real Shopify products</li>
+                <li>Every piece built from your real products</li>
               </ul>
             </div>
           </div>
@@ -178,7 +178,7 @@ export default function Index() {
             <img src="/easymode-head.png" width="26" height="20" alt="" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
             <span>Easy<b>Mode</b><i>.io</i></span>
           </div>
-          <span className="lz-copy">AI marketing autopilot for Shopify.</span>
+          <span className="lz-copy">AI marketing autopilot for your store.</span>
         </footer>
       </div>
     </>

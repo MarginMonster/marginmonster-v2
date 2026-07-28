@@ -11,6 +11,7 @@ import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
+import { VIDEO_ENGINES, engineSurcharge } from "../lib/video-engines";
 
 type Tab = "video" | "image" | "blog";
 const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string; noun: string }[] = [
@@ -199,12 +200,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     const style = avatarId && contentType !== "cartoon" && contentType !== "jingle" ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
+    // Engine picker: premium engines carry a token surcharge (margin cover).
+    const { normalizeEngineKey, engineSurcharge } = await import("../lib/video-engines");
+    const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
+    const commercial = form.get("commercial") === "1";
+    const charged = TOKEN_COST.video + engineSurcharge(videoEngine);
     // One currency: video spends tokens like every other action (no separate
     // free-video quota). Campaigns and the Studio now bill identically.
-    try { await spendTokens(shop.id, TOKEN_COST.video); }
+    try { await spendTokens(shop.id, charged); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine, commercial, chargedTokens: charged, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -340,6 +346,9 @@ export default function Studio() {
   // type shifts the same screen to that type's picker.
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
+  // Engine picker (Arcads-style) + big-budget Commercial look toggle.
+  const [videoEngine, setVideoEngine] = useState("auto");
+  const [commercial, setCommercial] = useState(false);
   // Entering Avatar AI or Cartoon Avatar defaults a presenter (cartoon ads
   // star the presenter redrawn in the picked style). Other types DON'T null
   // the shared selection — the Image tab and a later return keep the
@@ -444,6 +453,15 @@ export default function Studio() {
     if (tab === "video" && contentType) {
       fields.contentType = contentType;
       if ((contentType === "cartoon" || contentType === "jingle") && cartoonStyle) fields.cartoonStyle = cartoonStyle;
+      if (videoEngine !== "auto") fields.videoEngine = videoEngine;
+      if (commercial && (contentType === "avatar" || contentType === "highlight")) {
+        fields.commercial = "1";
+        // Commercial look rides the existing scene/direction plumbing for the
+        // presenter path (composed frame + motion prompt both honor it).
+        const commercialScene = "a seamless bold single-color studio backdrop that complements the product's colors, big-budget commercial styling, crisp professional studio lighting";
+        fields.scene = fields.scene ? `${fields.scene}. ${commercialScene}` : commercialScene;
+        fields.direction = fields.direction ? `${fields.direction}. Big-budget studio commercial energy.` : "Big-budget studio commercial energy: polished, confident, premium.";
+      }
     }
     submit(fields, { method: "post" });
   };
@@ -455,7 +473,8 @@ export default function Studio() {
   // ?v must move when a style's tile version bumps, or browsers pin the old art
   const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 4 : 2}`;
 
-  const costLabel = `${meta.cost} tokens`;
+  const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
+  const costLabel = `${meta.cost + engineFee} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`;
 
   return (
     <Page>
@@ -545,6 +564,21 @@ export default function Studio() {
                   {cartoonStyle && !avatarId && <p className="cfg-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
                 </>
               )}
+              {(contentType === "avatar" || contentType === "highlight") && (
+                <label className="cs-commercial">
+                  <input type="checkbox" checked={commercial} onChange={(e) => setCommercial(e.target.checked)} />
+                  <span><b>🎬 Commercial look</b> — big-budget studio spot: seamless color-block set matched to your product, styled &amp; hero-lit</span>
+                </label>
+              )}
+              <div className="cfg-lbl cs-lblrow"><span>Video engine</span><span className="cs-opt">premium engines add tokens</span></div>
+              <div className="cs-engines">
+                {VIDEO_ENGINES.map((e) => (
+                  <button type="button" key={e.key} className={`cs-engine${videoEngine === e.key ? " sel" : ""}`} onClick={() => setVideoEngine(e.key)} title={e.blurb}>
+                    <b>{e.name}</b>
+                    <span>{e.surcharge > 0 ? `+${e.surcharge} tokens` : "included"}</span>
+                  </button>
+                ))}
+              </div>
               {contentType === "jingle" && (
                 <>
                   <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product's theme song and your presenter <i>sings it on camera</i>, lipsynced. Pick a singer below — photoreal, or redrawn in a cartoon style. No singer = the song plays over a cinematic product shot.</p>

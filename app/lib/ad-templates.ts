@@ -67,6 +67,12 @@ export const AD_TEMPLATES: AdTemplate[] = [
     plate: "UGC advertising backdrop: a person's hand raised toward the camera against a bright softly-blurred city street in daylight, the hand OPEN and empty where a product will be placed, candid phone-photo energy, bright true-to-life colors, no product, no text, photorealistic",
     placement: "held naturally in the hand, facing the camera, at its true real-world size with a five-fingered natural grip",
   },
+  {
+    key: "commercial", name: "Commercial", emoji: "🎬", kind: "staged",
+    blurb: "Big-budget studio spot — color-matched set, styled model, hero lighting",
+    plate: "Big-budget commercial studio backdrop: a seamless single-color cyc wall and floor in one bold saturated hue, crisp professional three-point studio lighting, subtle floor reflection, completely empty stage, premium big-brand advertising photography, no objects, no people, no text, photorealistic",
+    placement: "held or used by a stylish model whose outfit and accessories color-match the backdrop and the product's palette, big-budget commercial energy, the product at its true real-world size and clearly the hero, five-fingered natural grip",
+  },
 ];
 
 export const AD_TEMPLATE_BY_KEY: Record<string, AdTemplate> = Object.fromEntries(

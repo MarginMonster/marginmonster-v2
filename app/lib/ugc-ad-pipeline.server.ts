@@ -102,6 +102,46 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
   throw new Error(`[ugc] ${model}: rate-limited too long`);
 }
 
+/* ---- Multi-engine image-to-video (the Arcads-style engine picker) ----
+ * One adapter, per-model input mapping, and a HARD RULE: a premium engine
+ * that rejects for any reason (schema drift, capacity, region) falls back to
+ * the default engine instead of failing a paid generation. */
+const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v1.6-standard";
+
+function animateModelFor(engineKey: string | undefined): string {
+  switch (engineKey) {
+    case "veo": return "google/veo-3-fast";
+    case "seedance": return "bytedance/seedance-1-pro";
+    case "hailuo": return "minimax/hailuo-02";
+    case "kling":
+    default: return DEFAULT_ANIMATE_MODEL;
+  }
+}
+
+function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string }): Record<string, unknown> {
+  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage };
+  if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
+  if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
+  return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: opts.negativePrompt || "morphing, distortion, extra objects, text, watermark, blur", duration: 10, cfg_scale: 0.5 };
+}
+
+/** Start an image-to-video prediction on the chosen engine; falls back to the
+ *  default engine if the premium one rejects. Returns the prediction id and
+ *  which model ACTUALLY ran (for honest asset metadata). */
+export async function animateCreate(
+  engineKey: string | undefined,
+  opts: { startImage: string; prompt: string; negativePrompt?: string }
+): Promise<{ id: string; model: string }> {
+  const model = animateModelFor(engineKey);
+  try {
+    return { id: await repCreate(model, animateInputFor(model, opts)), model };
+  } catch (e) {
+    if (model === DEFAULT_ANIMATE_MODEL) throw e;
+    console.error(`[animate] ${model} rejected — falling back to default:`, e instanceof Error ? e.message.slice(0, 160) : e);
+    return { id: await repCreate(DEFAULT_ANIMATE_MODEL, animateInputFor(DEFAULT_ANIMATE_MODEL, opts)), model: DEFAULT_ANIMATE_MODEL };
+  }
+}
+
 export async function repPoll(id: string, maxMs: number, stage: string): Promise<string> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {

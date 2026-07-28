@@ -9,6 +9,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST, CAPABILITY_TIER, PLAN_BY_KEY } from "../lib/plan-config";
+import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { AVATARS } from "../lib/avatars";
 import { CARTOON_RECIPES } from "../lib/cartoon-ad-pipeline.server";
@@ -44,13 +45,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const contentType = ((form.get("contentType") as string) || "").trim() || undefined;
       const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
       const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
+      const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
       assertCapability(shop.activePlan, videoCapabilityFor(contentType));
-      await spendTokens(shop.id, TOKEN_COST.video);
+      const charged = TOKEN_COST.video + engineSurcharge(videoEngine);
+      await spendTokens(shop.id, charged);
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
         productTitle, productImageUrl, customPrompt: direction, productDescription: direction,
         style: avatarId && contentType !== "cartoon" && contentType !== "jingle" ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
         contentType, cartoonStyle: contentType === "cartoon" ? (cartoonStyle || "pixar") : undefined,
-        avatarId, avatarVariant: 0, holdProduct: !!avatarId && !contentType, prePaid: true, initiator: "web",
+        avatarId, avatarVariant: 0, holdProduct: !!avatarId && !contentType,
+        videoEngine, chargedTokens: charged, prePaid: true, initiator: "web",
       });
       return json({ ok: "Video queued — it lands in your Archive in a few minutes." });
     }
@@ -114,6 +118,12 @@ export default function WebStudio() {
         <label className="wb-lbl">Cartoon style (cartoon videos only)</label>
         <select className="wb-sel" name="cartoonStyle" defaultValue="pixar">
           {d.cartoonStyles.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
+        </select>
+        <label className="wb-lbl">Video engine</label>
+        <select className="wb-sel" name="videoEngine" defaultValue="auto">
+          {VIDEO_ENGINES.map((e) => (
+            <option key={e.key} value={e.key}>{e.name}{e.surcharge ? ` (+${e.surcharge} tokens)` : ""} — {e.blurb}</option>
+          ))}
         </select>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>

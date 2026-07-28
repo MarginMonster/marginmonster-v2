@@ -41,8 +41,10 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     p.prePaid = false;
     p.refunded = true;
     await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(p) } });
-    await refundTokens(job.shopId, REFUND_BY_TYPE[job.type]);
-    console.log(`[worker] refunded ${REFUND_BY_TYPE[job.type]} tokens for failed ${job.type} (${job.id})`);
+    // Refund what was ACTUALLY charged (engine surcharges ride in chargedTokens).
+    const amount = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
+    await refundTokens(job.shopId, amount);
+    console.log(`[worker] refunded ${amount} tokens for failed ${job.type} (${job.id})`);
   } catch { /* refund is best-effort, never fatal */ }
 }
 
@@ -267,6 +269,7 @@ async function runJob(
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
+          videoEngine: payload.videoEngine as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
@@ -293,6 +296,7 @@ async function runJob(
           cartoonStyle: payload.cartoonStyle as string | undefined,
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
+          videoEngine: payload.videoEngine as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
@@ -349,6 +353,8 @@ async function runJob(
           style: "PRODUCT_HIGHLIGHT",
           serviceMode: payload.serviceMode === true,
           customPrompt: payload.customPrompt as string | undefined,
+          videoEngine: payload.videoEngine as string | undefined,
+          commercial: payload.commercial === true,
         });
       }
       // Accounting. Questline videos were pre-paid on accept (tokens) and don't

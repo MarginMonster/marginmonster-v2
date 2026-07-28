@@ -32,6 +32,12 @@ export const loader = async (_args: LoaderFunctionArgs) => {
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
       FAL_KEY: !!process.env.FAL_KEY,
       SHOPIFY_APP_URL: !!process.env.SHOPIFY_APP_URL,
+      // Web front-door readiness (booleans only — never values)
+      STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
+      STRIPE_WEBHOOK_SECRET: !!process.env.STRIPE_WEBHOOK_SECRET,
+      SESSION_SECRET: !!process.env.SESSION_SECRET,
+      UPLOADPOST_API_KEY: !!process.env.UPLOADPOST_API_KEY,
+      RESEND_API_KEY: !!process.env.RESEND_API_KEY,
     },
     styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
     adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),

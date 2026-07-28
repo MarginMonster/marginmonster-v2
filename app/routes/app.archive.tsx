@@ -150,7 +150,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     let newPayload: string | undefined;
     if (payload.refunded) {
-      const cost = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
+      // Re-charge what the original run charged (engine surcharges included).
+      const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
+      const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
       try { await spendTokens(shop.id, cost); }
       catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
       newPayload = JSON.stringify({ ...payload, prePaid: true, refunded: false });

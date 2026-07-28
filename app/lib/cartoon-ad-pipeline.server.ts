@@ -21,6 +21,7 @@ import { mirrorRender } from "./object-storage.server";
 import {
   assemble,
   checkpointJob,
+  animateCreate,
   download,
   downloadBuffer,
   repCreate,
@@ -110,6 +111,7 @@ interface CartoonAdParams {
   avatarVariant?: number;
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean; // intangible offer — draw the OUTCOME, not an object
+  videoEngine?: string; // engine-picker key (video-engines.ts); undefined = default
   origin?: string; // provenance label for the finished card
   jobId?: string; // enables stage checkpointing
   resume?: {
@@ -261,15 +263,13 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     } catch { /* old prediction died — fall through to a fresh one */ }
   }
   if (!animUrl) {
-    const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
-      start_image: keyframeUrl,
+    const { id: animId } = await animateCreate(params.videoEngine, {
+      startImage: keyframeUrl,
       prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible" : "the product stays the clear hero"}, vertical video.`,
-      negative_prompt: "photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
-      duration: 10,
-      cfg_scale: 0.5,
+      negativePrompt: "photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
     });
-    await ckpt({ ckKlingId: klingId });
-    animUrl = await repPoll(klingId, 12 * 60_000, "cartoon-animate");
+    await ckpt({ ckKlingId: animId });
+    animUrl = await repPoll(animId, 12 * 60_000, "cartoon-animate");
     await ckpt({ ckAnimUrl: animUrl });
   }
 
