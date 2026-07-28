@@ -310,9 +310,9 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
 // mountPath) — plates/previews/statue must survive deploys or the picker
 // flaps back to fallbacks after every push.
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "renders", "ad-templates");
-// v7: statue re-forged with nano-banana + a vision spelling check — flux-dev
-// kept garbling the "EASYMODE" label into alphabet soup.
-const AD_TEMPLATE_VERSION = 7;
+// v8: the stand-in goes Prime-silhouette GStyle — tall slim sports-hydration
+// bottle, bold VERTICAL "EASYMODE" wordmark, emerald green + gold.
+const AD_TEMPLATE_VERSION = 8;
 // Plates version separately: they only rebuild when their PROMPTS change.
 // The v6 plates rendered fresh and bright, so the v7 statue swap reuses the
 // exact scenes merchants already saw.
@@ -352,7 +352,7 @@ async function ensureStatue(): Promise<string | null> {
   // colors — a metaphorical product that marks exactly where the merchant's
   // real product will go. nano-banana first: it renders label text faithfully,
   // where flux-dev garbled "EASYMODE" into alphabet soup.
-  const prompt = 'Professional product photograph of a sleek modern beverage bottle for a brand called "EASYMODE": glossy clean WHITE bottle with a bright kelly-GREEN cap, a crisp white label with the word "EASYMODE" printed in bold black uppercase letters, minimal premium design, only white green and black in the design, bottle standing upright, centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, commercial beverage photography. The label text must be spelled exactly "EASYMODE" — E-A-S-Y-M-O-D-E, one word. No other objects, no hands, no characters.';
+  const prompt = 'Professional studio product photograph of a sleek premium sports hydration drink bottle: tall slim cylindrical body with smooth rounded shoulders and a wide flat matte screw cap — the silhouette of a modern viral sports drink bottle. Glossy deep EMERALD GREEN bottle with the brand wordmark "EASYMODE" printed in bold clean metallic GOLD uppercase letters running VERTICALLY down the full height of the bottle, matte black cap. The wordmark must be spelled exactly "EASYMODE" — E-A-S-Y-M-O-D-E, one word, perfectly legible. Bottle standing upright, centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, high-end commercial beverage photography. No other objects, no hands, no people, no extra text.';
   let raw: string;
   try {
     raw = await repRun("google/nano-banana", { prompt, output_format: "jpg" });

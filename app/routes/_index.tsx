@@ -83,7 +83,7 @@ export default function Index() {
               { src: "/style-tiles/avatarcover.jpg?v=2", label: "Avatar AI", sub: "A presenter sells it to camera" },
               { src: "/style-tiles/cover.jpg?v=2", label: "Cartoon Avatar", sub: "8 viral styles, your presenter" },
               { src: "/style-tiles/anthemcover.jpg?v=2", label: "Anthem", sub: "Your avatar sings the ad" },
-              { src: "/ad-templates/preview-colorblock.jpg?v=7", label: "Image ads", sub: "Famous formats, your product" },
+              { src: "/ad-templates/preview-colorblock.jpg?v=8", label: "Image ads", sub: "Famous formats, your product" },
             ].map((s) => (
               <figure className="lz-show-card" key={s.label}>
                 <span className="lz-show-img" style={{ backgroundImage: `url(${s.src})` }} />

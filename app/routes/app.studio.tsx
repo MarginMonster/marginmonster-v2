@@ -604,7 +604,7 @@ export default function Studio() {
               <div className="cfg-lbl cs-lblrow"><span>What kind of image ad?</span></div>
               <div className="cfg-cast cs-ctypes bigtiles">
                 <button type="button" className="cast cs-ctype" onClick={() => setImageMode("product")}>
-                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=7)" }} />
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=8)" }} />
                   <span className="ca-nm">🖼 Product ad</span>
                   <span className="ca-sub">Your product as the hero — pick a template scene</span>
                 </button>
@@ -708,7 +708,7 @@ export default function Studio() {
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {AD_TEMPLATES.map((t) => (
                       <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=7)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=8)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{t.emoji} {t.name}</span>
                         <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
                       </button>
