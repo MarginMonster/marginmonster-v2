@@ -1,6 +1,8 @@
 import { json, redirect, type LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { PLAN_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
+import { LANDING_I18N, LANG_LABELS, detectLang, type LangKey } from "../lib/landing-i18n";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -16,16 +18,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({ ok: true });
 };
 
-const FEATURES = [
-  { icon: "🎬", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
-  { icon: "🎨", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, block build, claymation — or an Anthem your avatar sings on camera." },
-  { icon: "✍️", title: "SEO blogs on autopilot", body: "Buyer-intent articles written and published to your store, pulling in free Google traffic month after month." },
-  { icon: "📣", title: "Auto-posted for you", body: "Every drop goes out to TikTok, Instagram & Facebook on a schedule — captions and hashtags written to travel." },
-  { icon: "🪄", title: "One-tap autopilot", body: "Pick a goal. EasyMode builds a full month of content, launches it, and scales what works." },
-];
-
 export default function Index() {
   useLoaderData<typeof loader>();
+  // Language toggle — persisted per browser, auto-detected on first visit.
+  const [lang, setLang] = useState<LangKey>("en");
+  useEffect(() => { setLang(detectLang()); }, []);
+  useEffect(() => { try { document.documentElement.lang = lang; } catch { /* SSR */ } }, [lang]);
+  const pick = (l: LangKey) => { setLang(l); try { localStorage.setItem("emLang", l); } catch { /* private mode */ } };
+  const t = LANDING_I18N[lang] || LANDING_I18N.en;
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
@@ -36,35 +37,40 @@ export default function Index() {
             <span>Easy<b>Mode</b></span>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <a className="lz-navlink" href="/web/login">Log in</a>
-            <a className="lz-navcta" href="/web/signup">Start free</a>
+            <label className="lz-lang">
+              🌐
+              <select value={lang} onChange={(e) => pick(e.target.value as LangKey)} aria-label="Language">
+                {(Object.keys(LANG_LABELS) as LangKey[]).map((l) => (
+                  <option key={l} value={l}>{LANG_LABELS[l]}</option>
+                ))}
+              </select>
+            </label>
+            <a className="lz-navlink" href="/web/login">{t.nav.login}</a>
+            <a className="lz-navcta" href="/web/signup">{t.nav.start}</a>
           </div>
         </header>
 
         <main className="lz-hero">
           <span className="lz-rose lz-rose-hero" aria-hidden="true" />
-          <span className="lz-eyebrow">Marketing on easy mode</span>
-          <h1>Your whole store&apos;s marketing, <span className="lz-grad">running itself.</span></h1>
-          <p className="lz-sub">
-            EasyMode turns your products into videos, image ads and SEO articles — then posts
-            them to your socials on a schedule. You approve, it ships. Works with any store.
-          </p>
+          <span className="lz-eyebrow">{t.hero.eyebrow}</span>
+          <h1>{t.hero.h1a}<span className="lz-grad">{t.hero.h1b}</span></h1>
+          <p className="lz-sub">{t.hero.sub}</p>
           <div className="lz-ctas">
-            <a className="lz-cta" href="/web/signup"><span className="lz-arr-w">Start free — 7-day trial<span className="lz-arr">→</span></span></a>
-            <span className="lz-note">Any store, any platform · cancel anytime</span>
+            <a className="lz-cta" href="/web/signup"><span className="lz-arr-w">{t.hero.cta}<span className="lz-arr">→</span></span></a>
+            <span className="lz-note">{t.hero.note}</span>
           </div>
 
           <div className="lz-stats">
-            <div><b>4</b><span>content types</span></div>
+            <div><b>4</b><span>{t.stats.types}</span></div>
             <div className="lz-div" />
-            <div><b>3</b><span>social channels</span></div>
+            <div><b>3</b><span>{t.stats.channels}</span></div>
             <div className="lz-div" />
-            <div><b>$19</b><span>to start</span></div>
+            <div><b>$19</b><span>{t.stats.start}</span></div>
           </div>
         </main>
 
         <section className="lz-feats">
-          {FEATURES.map((f) => (
+          {t.features.map((f) => (
             <div className="lz-card" key={f.title}>
               <div className="lz-ic">{f.icon}</div>
               <h3>{f.title}</h3>
@@ -76,19 +82,19 @@ export default function Index() {
         {/* Real output — these are the SAME live renders the app serves its
             pickers from (they self-forge on this server; no mock art). */}
         <section className="lz-show">
-          <span className="lz-eyebrow">Straight from the studio</span>
-          <h2>This is actual EasyMode output.</h2>
-          <p className="lz-show-sub">Not mockups — these covers are generated by the same pipelines that will build your ads.</p>
+          <span className="lz-eyebrow">{t.show.eyebrow}</span>
+          <h2>{t.show.h2}</h2>
+          <p className="lz-show-sub">{t.show.sub}</p>
           <div className="lz-show-grid">
             {[
-              { src: "/style-tiles/avatarcover.jpg?v=2", label: "Avatar AI", sub: "A presenter sells it to camera" },
-              { src: "/style-tiles/cover.jpg?v=2", label: "Cartoon Avatar", sub: "8 viral styles, your presenter" },
-              { src: "/style-tiles/anthemcover.jpg?v=2", label: "Anthem", sub: "Your avatar sings the ad" },
-              { src: "/ad-templates/preview-colorblock.jpg?v=8", label: "Image ads", sub: "Famous formats, your product" },
-            ].map((s) => (
-              <figure className="lz-show-card" key={s.label}>
-                <span className="lz-show-img" style={{ backgroundImage: `url(${s.src})` }} />
-                <figcaption><b>{s.label}</b><span>{s.sub}</span></figcaption>
+              "/style-tiles/avatarcover.jpg?v=2",
+              "/style-tiles/cover.jpg?v=2",
+              "/style-tiles/anthemcover.jpg?v=2",
+              "/ad-templates/preview-colorblock.jpg?v=8",
+            ].map((src, i) => (
+              <figure className="lz-show-card" key={src}>
+                <span className="lz-show-img" style={{ backgroundImage: `url(${src})` }} />
+                <figcaption><b>{t.show.cards[i]?.label}</b><span>{t.show.cards[i]?.sub}</span></figcaption>
               </figure>
             ))}
           </div>
@@ -97,72 +103,52 @@ export default function Index() {
         {/* Pricing — rendered from the SAME plan-config the app bills from,
             so the public page can never drift from the real ladder. */}
         <section className="lz-price" id="pricing">
-          <span className="lz-eyebrow">Pricing</span>
-          <h2>Three plans. Each unlocks more firepower.</h2>
-          <p className="lz-show-sub">Your plan unlocks the generators; monthly tokens meter how much you make. Top up any time.</p>
+          <span className="lz-eyebrow">{t.price.eyebrow}</span>
+          <h2>{t.price.h2}</h2>
+          <p className="lz-show-sub">{t.price.sub}</p>
           <div className="lz-price-grid">
-            {PLAN_TIERS.map((t) => (
-              <div className={`lz-price-card${t.highlight ? " feat" : ""}`} key={t.key}>
-                {t.highlight && <span className="lz-price-ribbon">Most popular</span>}
-                <div className="lz-price-name">{t.name}</div>
-                <div className="lz-price-amt">${t.price}<small>/mo</small></div>
-                <div className="lz-price-alt">or ${annualPrice(t).toLocaleString()}/yr — 2 months free</div>
-                <div className="lz-price-tok">🪙 {t.monthlyTokens.toLocaleString()} tokens / month</div>
-                <div className="lz-price-cap">{planCapacityLine(t)}</div>
-                <ul>{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
-                <a className="lz-price-cta" href="/web/signup">Start free →</a>
+            {PLAN_TIERS.map((tier) => (
+              <div className={`lz-price-card${tier.highlight ? " feat" : ""}`} key={tier.key}>
+                {tier.highlight && <span className="lz-price-ribbon">{t.price.ribbon}</span>}
+                <div className="lz-price-name">{tier.name}</div>
+                <div className="lz-price-amt">${tier.price}<small>{t.price.perMo}</small></div>
+                <div className="lz-price-alt">{t.price.yearAlt.replace("{Y}", annualPrice(tier).toLocaleString())}</div>
+                <div className="lz-price-tok">{t.price.tokensMo.replace("{N}", tier.monthlyTokens.toLocaleString())}</div>
+                {lang === "en" && <div className="lz-price-cap">{planCapacityLine(tier)}</div>}
+                <ul>{(t.price.tiers[tier.key] || tier.features).map((f) => <li key={f}>{f}</li>)}</ul>
+                <a className="lz-price-cta" href="/web/signup">{t.price.cta}</a>
               </div>
             ))}
           </div>
-          <div className="lz-price-note">Every plan starts with a 7-day free trial. Cancel anytime — everything you generated stays yours.</div>
+          <div className="lz-price-note">{t.price.note}</div>
         </section>
 
         <section className="lz-faq">
-          <span className="lz-eyebrow">Questions</span>
-          <h2>The stuff people ask.</h2>
+          <span className="lz-eyebrow">{t.faq.eyebrow}</span>
+          <h2>{t.faq.h2}</h2>
           <div className="lz-faq-list">
-            <details>
-              <summary>How do tokens work?</summary>
-              <p>Your plan unlocks WHICH generators you can use (Starter: images &amp; blogs; Studio: + video; Anthem: everything). Tokens meter HOW MUCH you generate — every plan refills monthly, and you can top up any time. Tokens never unlock a generator your plan doesn&apos;t include.</p>
-            </details>
-            <details>
-              <summary>What does the free trial include?</summary>
-              <p>7 days at Studio level — you&apos;ll make real videos — with a 400-token play budget. Anthem &amp; cartoon generators unlock on your first payment. Cancel before day 7 and you pay nothing.</p>
-            </details>
-            <details>
-              <summary>What happens if I downgrade?</summary>
-              <p>Everything you already generated stays in your archive, postable forever. Only NEW generation is gated by your current plan.</p>
-            </details>
-            <details>
-              <summary>Is the content labeled as AI?</summary>
-              <p>Yes — every post EasyMode publishes carries the #EasyModeAi tag, keeping your store on the right side of AI-disclosure norms and FTC guidance.</p>
-            </details>
+            {t.faq.items.map((f) => (
+              <details key={f.q}>
+                <summary>{f.q}</summary>
+                <p>{f.a}</p>
+              </details>
+            ))}
           </div>
         </section>
 
         <section className="lz-compare">
-          <span className="lz-eyebrow">Coming from another tool?</span>
-          <h2>Still figuring out <span className="lz-vsname">Zeely or Arcads</span>?</h2>
-          <p className="lz-compare-sub">If you&apos;ve tried the others, here&apos;s why merchants switch to EasyMode.</p>
+          <span className="lz-eyebrow">{t.compare.eyebrow}</span>
+          <h2>{t.compare.h2a}<span className="lz-vsname">{t.compare.h2b}</span></h2>
+          <p className="lz-compare-sub">{t.compare.sub}</p>
           <div className="lz-vs">
             <div className="lz-vs-col them">
-              <div className="lz-vs-h">The usual way</div>
-              <ul>
-                <li>A different app for videos, blogs, images and posting</li>
-                <li>You still schedule and post every piece by hand</li>
-                <li>Per‑video pricing that punishes you for growing</li>
-                <li>Generic AI that doesn&apos;t know your catalog</li>
-              </ul>
+              <div className="lz-vs-h">{t.compare.themH}</div>
+              <ul>{t.compare.them.map((l) => <li key={l}>{l}</li>)}</ul>
             </div>
             <div className="lz-vs-col us">
               <span className="lz-rose lz-rose-vs" aria-hidden="true" />
-              <div className="lz-vs-h">EasyMode</div>
-              <ul>
-                <li>Videos, blogs, images &amp; landing pages in one app</li>
-                <li>Auto‑posts to TikTok, Instagram &amp; Facebook on a schedule</li>
-                <li>One simple token wallet — spend it on anything</li>
-                <li>Every piece built from your real products</li>
-              </ul>
+              <div className="lz-vs-h">{t.compare.usH}</div>
+              <ul>{t.compare.us.map((l) => <li key={l}>{l}</li>)}</ul>
             </div>
           </div>
         </section>
@@ -170,9 +156,9 @@ export default function Index() {
         <section className="lz-band">
           <div className="lz-band-in">
             <span className="lz-rose lz-rose-band" aria-hidden="true" />
-            <h2>Made for founders who don&apos;t have a marketing team.</h2>
-            <p>Set it up in a couple of minutes. Wake up to finished content, posted and working.</p>
-            <a className="lz-cta gold" href="/web/signup"><span className="lz-arr-w">Get EasyMode<span className="lz-arr">→</span></span></a>
+            <h2>{t.band.h2}</h2>
+            <p>{t.band.p}</p>
+            <a className="lz-cta gold" href="/web/signup"><span className="lz-arr-w">{t.band.cta}<span className="lz-arr">→</span></span></a>
           </div>
         </section>
 
@@ -181,7 +167,7 @@ export default function Index() {
             <img src="/easymode-head.png" width="26" height="20" alt="" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
             <span>Easy<b>Mode</b><i>.io</i></span>
           </div>
-          <span className="lz-copy">AI marketing autopilot for your store.</span>
+          <span className="lz-copy">{t.footer.copy}</span>
         </footer>
       </div>
     </>
@@ -208,6 +194,9 @@ html,body{margin:0;padding:0}
   background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 5px 14px rgba(12,122,70,.28);transition:filter .12s;}
 .lz-navlink{font-weight:700;font-size:13px;color:var(--ink2);text-decoration:none;}
 .lz-navlink:hover{color:var(--ink)}
+.lz-lang{display:inline-flex;align-items:center;gap:5px;font-size:14px;}
+.lz-lang select{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;
+  padding:6px 8px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}
 .lz-alt{color:var(--green);font-weight:600;}
 .lz-navcta:hover{filter:brightness(1.05)}
 .lz-hero{max-width:820px;margin:0 auto;padding:52px 26px 30px;text-align:center;}
