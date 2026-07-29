@@ -32,7 +32,7 @@ const PLAN_AVATAR: Record<string, { label: string }> = {
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
 
   // Player name = the Shopify staff member who signed in (online token),
   // falling back to the store handle.
@@ -116,6 +116,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         videos: Math.floor(remaining / TOKEN_COST.video),
         ads: Math.floor(remaining / TOKEN_COST.image),
       };
+    }
+    // Content language: auto-detect ONCE from the store's primary locale so a
+    // Chinese store generates Chinese ads by default (web accounts set theirs
+    // at signup). Never overwrites a value that's already set.
+    if (shop && !shop.contentLang) {
+      try {
+        const r = await admin.graphql(`{ shopLocales { locale primary } }`);
+        const j = (await r.json()) as { data?: { shopLocales?: { locale?: string; primary?: boolean }[] } };
+        const primary = (j.data?.shopLocales || []).find((l) => l.primary)?.locale;
+        const { normalizeContentLang } = await import("../lib/content-lang");
+        await db.shop.update({ where: { id: shop.id }, data: { contentLang: normalizeContentLang(primary) } });
+      } catch {
+        await db.shop.update({ where: { id: shop.id }, data: { contentLang: "en" } }).catch(() => { /* non-fatal */ });
+      }
     }
     // The companion outranks the plan mascot everywhere it's been chosen.
     if (shop) {

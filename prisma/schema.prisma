@@ -73,6 +73,10 @@ model Shop {
   // pre-cast on every Video Studio visit for cross-campaign consistency
   brandAvatarId      String?
   brandAvatarVariant Int     @default(0)
+  // Language the AI generates in (scripts, captions, lyrics, articles).
+  // null = not chosen yet: web signups seed it from the landing language,
+  // Shopify shops auto-detect once from the store's primary locale.
+  contentLang        String?
   // Companion — the merchant's chosen chibi partner (companions.ts id, or
   // "custom" with the forged art stored inline as base64 PNGs; disk on Render
   // is ephemeral so custom art lives in the DB until the R2/S3 track)

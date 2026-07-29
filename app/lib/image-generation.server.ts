@@ -7,6 +7,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
+import { langDirective } from "./content-lang";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -17,10 +18,10 @@ import { artLog } from "./art-log.server";
 
 /** Poster-grade ad copy: a STATEMENT headline (the kind award ads open with),
  *  an optional small support line, and a short CTA. */
-async function adCopy(productTitle: string, tone: string | undefined, direction: string | undefined, serviceMode: boolean): Promise<{ headline: string; sub: string; cta: string } | null> {
+async function adCopy(productTitle: string, tone: string | undefined, direction: string | undefined, serviceMode: boolean, contentLang?: string | null): Promise<{ headline: string; sub: string; cta: string } | null> {
   try {
     const prompt = [
-      `Write poster-style ad copy to overlay on a ${serviceMode ? "service/offer" : "product"} image ad — think award-winning print ads: a bold STATEMENT headline that stops the scroll, not a generic tagline.`,
+      `Write poster-style ad copy to overlay on a ${serviceMode ? "service/offer" : "product"} image ad — think award-winning print ads: a bold STATEMENT headline that stops the scroll, not a generic tagline.${langDirective(contentLang)}`,
       `${serviceMode ? "Offer" : "Product"}: "${productTitle}".`,
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
@@ -44,7 +45,8 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
 }
 
 // drawtext is picky: escape the characters that break its filter parser.
-const dt = (s: string) => s.replace(/\\/g, "").replace(/[':%]/g, "").replace(/[^\w \-!?.&]/g, "").trim();
+// Unicode-aware so accents and CJK survive (the old \w filter erased them).
+const dt = (s: string) => s.replace(/\\/g, "").replace(/[':%]/g, "").replace(/[^\p{L}\p{N} \-!?.&]/gu, "").trim();
 
 /**
  * Composite the ad copy onto a square still with ffmpeg — ADAPTIVE poster
@@ -88,7 +90,13 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
   if (!fs.existsSync(src)) return null;
   const outName = srcName.replace(/\.jpg$/, "") + "-ad.jpg";
   const out = path.join(dir, outName);
-  const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  // CJK copy needs the Noto font (fetched once to persistent disk); if it
+  // can't be had, skip the overlay rather than burn tofu boxes.
+  let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  try {
+    const { resolveTextFont } = await import("./ugc-ad-pipeline.server");
+    fontFile = await resolveTextFont(`${headline} ${sub} ${cta}`);
+  } catch { return null; }
   if (!fs.existsSync(fontFile)) return null;
   const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
   const hl = dt(headline).toUpperCase();
@@ -542,6 +550,8 @@ export async function generateImageAd(
   styleMode?: "backdrop" | "scene",
   templateKey?: string
 ): Promise<string> {
+  // Generate copy in the shop's content language (web toggle / store locale).
+  const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
   // PRESENTER STILL — an avatar holding the product (Content Studio presenter
   // path). Uses the same two-image compose engine as UGC video frames. Needs a
   // real product photo; falls through to the product still if unavailable.
@@ -576,7 +586,7 @@ export async function generateImageAd(
                 // Overlay headline + CTA (best-effort) so the presenter still is a real ad.
                 try {
                   const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-                  const copy = await adCopy(productTitle, voiceTone, stylePrompt, false);
+                  const copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
                   if (copy) {
                     const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
                     if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
@@ -775,7 +785,7 @@ export async function generateImageAd(
     // copy or the ffmpeg composite fails, we keep the clean still.
     try {
       const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-      const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode);
+      const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode, contentLang);
       if (copy) {
         const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
         if (adName) {

@@ -28,6 +28,7 @@ import {
   repPoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
+import { langDirective } from "./content-lang";
 
 /* Per-style recipe: how the keyframe is drawn, how it moves, and who narrates.
  * These are the VIRAL formats — the looks people already share — named
@@ -130,12 +131,13 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   const resume = params.resume || {};
   const ckpt = (patch: Record<string, unknown>) =>
     params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
 
   // 1) SCRIPT — cartoon ads earn their keep with playful, jingle-adjacent VO.
   let script = resume.script || "";
   if (!script) {
     const scriptPrompt = [
-      `You write voice-over scripts for short animated (cartoon) video ads.`,
+      `You write voice-over scripts for short animated (cartoon) video ads.${langDirective(contentLang)}`,
       params.serviceMode
         ? `This is a SERVICE / offer (not a physical product): "${params.productTitle}". Sell the RESULT the customer gets.`
         : `Product: "${params.productTitle}".`,

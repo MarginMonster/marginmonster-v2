@@ -103,6 +103,8 @@ export async function generateCaptionSet(
 
   try {
     const voice = await loadVoice(shopId);
+    const { langDirective } = await import("./content-lang");
+    const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
     const voiceLines = [
       voice.tone ? `Brand tone: ${voice.tone}` : "",
       voice.vocabulary?.length ? `Words the brand uses: ${voice.vocabulary.join(", ")}` : "",
@@ -117,7 +119,7 @@ export async function generateCaptionSet(
       return `- facebook: friendly, a touch more descriptive, clear value. only ${TAG_CAP.facebook} hashtags.`;
     }).join("\n");
 
-    const prompt = `You write high-performing social captions for an e-commerce brand. Write scroll-stopping captions that boost reach WITHOUT looking AI-generated or spammy.
+    const prompt = `You write high-performing social captions for an e-commerce brand. Write scroll-stopping captions that boost reach WITHOUT looking AI-generated or spammy.${langDirective(contentLang)}${contentLang && contentLang !== "en" ? " Hashtags may mix that language with high-reach English tags." : ""}
 
 Product: ${input.productTitle}${input.productType ? ` (${input.productType})` : ""}
 Format: ${medium}${input.topic ? `\nAngle/theme: ${input.topic}` : ""}

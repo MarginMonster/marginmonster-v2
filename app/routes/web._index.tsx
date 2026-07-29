@@ -12,10 +12,13 @@ import { createPackCheckout, createPlanCheckout, stripeEnabled } from "../lib/st
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
   const tierKey = shop.activePlan?.active ? resolveTierKey(shop.activePlan.type) : null;
+  const { CONTENT_LANGS, normalizeContentLang } = await import("../lib/content-lang");
   return json({
     name: account.name || account.email,
     hasBrand: !!shop.brandProfile,
     brand: shop.brandProfile ? (JSON.parse(shop.brandProfile.voiceJson || "{}") as { tone?: string; tagline?: string }) : null,
+    contentLang: normalizeContentLang(shop.contentLang),
+    langs: CONTENT_LANGS,
     tier: tierKey,
     tierName: tierKey ? PLAN_BY_KEY[tierKey].name : null,
     trialing: planTrialing(shop.activePlan),
@@ -46,6 +49,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       create: { shopId: shop.id, voiceJson, visualJson: "{}", productJson: "{}" },
       update: { voiceJson },
     });
+    // Content language rides the brand form — it's part of the brand's voice.
+    const { normalizeContentLang } = await import("../lib/content-lang");
+    const lang = (form.get("contentLang") as string) || "";
+    if (lang) await db.shop.update({ where: { id: shop.id }, data: { contentLang: normalizeContentLang(lang) } });
     return json({ ok: "Brand voice saved — the studio is open." });
   }
 
@@ -114,6 +121,10 @@ export default function WebDashboard() {
           <input className="wb-in" name="tone" placeholder="warm, playful, a little cheeky" defaultValue={d.brand?.tone || ""} />
           <label className="wb-lbl">Tagline (optional)</label>
           <input className="wb-in" name="tagline" placeholder="Slow mornings, served hot." defaultValue={d.brand?.tagline || ""} />
+          <label className="wb-lbl">Content language — everything generates in this language</label>
+          <select className="wb-sel" name="contentLang" defaultValue={d.contentLang}>
+            {Object.entries(d.langs).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
           <div style={{ marginTop: 14 }}>
             <button className="wb-btn ghost" disabled={busy}>{d.hasBrand ? "Update brand voice" : "Save brand voice"}</button>
           </div>

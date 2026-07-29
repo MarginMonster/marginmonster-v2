@@ -31,6 +31,7 @@ import {
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
+import { langDirective } from "./content-lang";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
 // on a between-line gap in the vocal (found via silencedetect), never mid-word.
@@ -157,9 +158,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   // 1) LYRICS — short and sticky. ≤45 words so the whole lyric fits the
   // caption budget and the song stays ad-length.
   let lyrics = resume.lyrics || "";
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
   if (!lyrics) {
     const lyricsPrompt = [
-      `You write short advertising JINGLES — early-2000s TV-commercial energy, the kind that gets stuck in your head.`,
+      `You write short advertising JINGLES — early-2000s TV-commercial energy, the kind that gets stuck in your head.${langDirective(contentLang)}`,
       params.serviceMode
         ? `The offer (a service, not a physical product): "${params.productTitle}". Sing the RESULT the customer gets.`
         : `The product: "${params.productTitle}".`,

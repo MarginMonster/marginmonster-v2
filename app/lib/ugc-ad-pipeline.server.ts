@@ -24,6 +24,7 @@ import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
 import { animateAvatar, falEnabled, falTts } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import { hasCJK, langDirective } from "./content-lang";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 
@@ -292,9 +293,29 @@ export function ffprobeDuration(file: string): number {
 }
 
 /** Caption-safe text: bold UGC style is ALL CAPS; strip anything that fights
- *  drawtext's escaping rules. */
+ *  drawtext's escaping rules. Unicode-aware so Spanish accents, German
+ *  umlauts and Chinese characters survive (the old A-Z filter erased them). */
 function captionSafe(s: string): string {
-  return s.toUpperCase().replace(/[^A-Z0-9 .!?$-]/g, "").replace(/\s+/g, " ").trim();
+  return s.toUpperCase().replace(/[^\p{L}\p{N} .,!?$'-]/gu, "").replace(/'/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** Font for burned-in text. Poppins covers Latin; CJK needs Noto, which we
+ *  fetch ONCE to the persistent disk (too heavy to ship in the repo). Throws
+ *  if CJK text can't get a CJK font — callers then skip captions rather than
+ *  burning tofu boxes. */
+export async function resolveTextFont(text: string): Promise<string> {
+  const poppins = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  if (!hasCJK(text)) return poppins;
+  const dir = path.join(process.cwd(), "data", "renders", "fonts");
+  const f = path.join(dir, "NotoSansSC-Bold.otf");
+  if (fs.existsSync(f) && fs.statSync(f).size > 1_000_000) return f;
+  fs.mkdirSync(dir, { recursive: true });
+  const url = "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Bold.otf";
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`[fonts] Noto CJK download failed (${r.status})`);
+  fs.writeFileSync(f, Buffer.from(await r.arrayBuffer()));
+  console.log("[fonts] Noto Sans SC fetched to persistent disk");
+  return f;
 }
 
 function buildCaptionFilters(script: string, duration: number, fontFile: string): string[] {
@@ -304,18 +325,27 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
   // the 720px frame whenever the words ran long ("MULTI-MANAGED SNOWBOARD…").
   // Max 3 words per burst keeps the punchy UGC rhythm; the char cap keeps it
   // on screen; the per-chunk font scale below catches whatever's left.
+  // CJK text has no spaces and square glyphs — chunk by characters instead of
+  // words, with a tighter budget (each glyph is ~1.05×fontsize wide).
+  const cjk = hasCJK(script);
+  const budget = cjk ? 9 : 16;
   const chunks: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const joined = cur ? `${cur} ${w}` : w;
-    if (cur && (joined.length > 16 || cur.split(" ").length >= 3)) {
-      chunks.push(cur);
-      cur = w;
-    } else {
-      cur = joined;
+  if (cjk && words.length <= 2) {
+    const flat = words.join("");
+    for (let i = 0; i < flat.length; i += budget) chunks.push(flat.slice(i, i + budget));
+  } else {
+    let cur = "";
+    for (const w of words) {
+      const joined = cur ? `${cur} ${w}` : w;
+      if (cur && (joined.length > budget || cur.split(" ").length >= 3)) {
+        chunks.push(cur);
+        cur = w;
+      } else {
+        cur = joined;
+      }
     }
+    if (cur) chunks.push(cur);
   }
-  if (cur) chunks.push(cur);
   const capped = chunks.slice(0, 20);
   const per = duration / capped.length;
   // fontfile path needs forward slashes + escaped colon for the filter parser
@@ -323,9 +353,10 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
   return capped.map((text, i) => {
     const t0 = (i * per).toFixed(2);
     const t1 = ((i + 1) * per).toFixed(2);
-    // Poppins-Bold caps run ~0.62×fontsize wide; keep every line inside ~94%
-    // of the 720px frame so no caption ever bleeds off the edge.
-    const size = Math.max(30, Math.min(50, Math.floor((720 * 0.94) / (text.length * 0.62))));
+    // Latin caps run ~0.62×fontsize wide, CJK ~1.05×; keep every line inside
+    // ~94% of the 720px frame so no caption ever bleeds off the edge.
+    const glyph = hasCJK(text) ? 1.05 : 0.62;
+    const size = Math.max(30, Math.min(50, Math.floor((720 * 0.94) / (text.length * glyph))));
     // gte*lt (not between) — between is inclusive on both ends, which
     // double-draws two captions on the shared boundary frame
     return (
@@ -364,7 +395,12 @@ export async function assemble(opts: {
    *  TTS narration over it. */
   lipSynced: boolean;
 }): Promise<void> {
-  const fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  // CJK scripts need the Noto font (fetched once); if it can't be had, ship
+  // the video without burned captions instead of burning tofu boxes.
+  let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  let script = opts.script;
+  try { fontFile = await resolveTextFont(script); }
+  catch (e) { if (hasCJK(script)) { console.error("[assemble] no CJK font — skipping captions:", e instanceof Error ? e.message : e); script = ""; } }
   // The performance defines the ad when it's lip-synced (never trim/loop the
   // synced clip); the narration defines it only for the silent fallback.
   const talkingDur = ffprobeDuration(opts.talkingPath);
@@ -405,7 +441,7 @@ export async function assemble(opts: {
     vLabel = "[v1]";
   }
 
-  const captions = buildCaptionFilters(opts.script, duration, fontFile);
+  const captions = buildCaptionFilters(script, duration, fontFile);
   if (captions.length) {
     filters.push(`${vLabel}${captions.join(",")}[vf]`);
     vLabel = "[vf]";
@@ -461,11 +497,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     : "";
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
+  // Generate in the shop's content language (web toggle / store locale).
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
 
   // 1) SCRIPT — hook-first, ~13s spoken. Services sell the OUTCOME, not an
   // object the presenter holds up.
   const scriptPrompt = [
-    `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).`,
+    `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).${langDirective(contentLang)}`,
     `Presenter: ${avatar.name}, ${avatar.desc}.`,
     params.serviceMode
       ? `This is a SERVICE / offer (not a physical product): "${params.productTitle}". The presenter is a spokesperson talking to camera — they do NOT hold a product. Sell the RESULT the customer gets, the pain it removes, and why it's worth it.`

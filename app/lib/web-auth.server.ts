@@ -38,15 +38,17 @@ export type WebIdentity = {
   shop: Shop & { activePlan: Plan | null; brandProfile: BrandProfile | null };
 };
 
-/** Create the account + its companion WEB shop. Throws on duplicate email. */
-export async function createWebAccount(email: string, password: string, name?: string): Promise<Account> {
+/** Create the account + its companion WEB shop. Throws on duplicate email.
+ *  contentLang seeds the AI generation language from the landing toggle. */
+export async function createWebAccount(email: string, password: string, name?: string, contentLang?: string): Promise<Account> {
   const existing = await db.account.findUnique({ where: { email } });
   if (existing) throw new Error("An account with that email already exists — log in instead.");
   const account = await db.account.create({
     data: { email, passwordHash: hashPassword(password), name: name || null },
   });
+  const { normalizeContentLang } = await import("./content-lang");
   const shop = await db.shop.create({
-    data: { domain: `web-${account.id}.easymode.app`, accessToken: "" },
+    data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: normalizeContentLang(contentLang) },
   });
   await db.connection.create({ data: { accountId: account.id, kind: "web", externalId: shop.id } });
   return account;
