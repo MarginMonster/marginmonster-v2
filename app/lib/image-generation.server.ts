@@ -403,19 +403,22 @@ async function ensureStatue(): Promise<string | null> {
 /* ── Bottle variant previews — PROD renders these itself and serves them at
  * /ad-templates/bottle-{variant}.jpg so candidates can be reviewed by link
  * (no GitHub secret required). Approved variant becomes the statue prompt. */
+// v2: "wide flat screw cap" read as a MEDICINE/supplement jar. It's a DRINK:
+// clear plastic, colored liquid inside, black sport spout cap, condensation.
+const BOTTLE_VERSION = 2;
 const BOTTLE_BASE =
-  'Professional studio product photograph of a sleek premium sports hydration drink bottle: tall slim cylindrical body with smooth rounded shoulders and a wide flat matte screw cap — the silhouette of a modern viral sports drink bottle. The brand wordmark "EASYMODE" printed in bold clean uppercase sans-serif letters running VERTICALLY down the full height of the bottle, spelled exactly E-A-S-Y-M-O-D-E, perfectly legible. Centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, high-end commercial beverage photography. No other objects, no hands, no people, no extra text.';
+  'Professional studio product photograph of a premium sports hydration DRINK, exactly the style of a viral sports drink bottle: a tall sleek CLEAR plastic beverage bottle FILLED with vividly colored liquid, topped with a black sport spout cap (flip-top drinking cap), fine condensation droplets on the plastic, and a full-wrap label with the wordmark "EASYMODE" printed in huge bold uppercase letters running VERTICALLY down the height of the bottle, spelled exactly E-A-S-Y-M-O-D-E, perfectly legible. It is unmistakably a refreshing DRINK — NOT a pill bottle, NOT a supplement jar, no pharmacy or medicine styling. Centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, high-end commercial beverage photography. No other objects, no hands, no people, no extra text.';
 export const BOTTLE_VARIANTS: Record<string, string> = {
-  emerald: "The bottle is glossy deep EMERALD GREEN with the wordmark in metallic GOLD letters and a matte black cap.",
-  kelly: "The bottle is vibrant glossy KELLY GREEN with the wordmark in crisp WHITE letters and a clean white cap.",
-  cream: "The bottle is elegant matte CREAM / off-white with the wordmark in bold EMERALD GREEN letters and a metallic gold cap.",
-  duotone: "The bottle transitions from deep EMERALD GREEN at the top into warm brushed GOLD at the base, with the wordmark in CREAM letters and an emerald cap.",
+  emerald: "The liquid inside is deep EMERALD GREEN and the wordmark is metallic GOLD.",
+  kelly: "The liquid inside is bright electric KELLY GREEN and the wordmark is crisp bold WHITE.",
+  cream: "The liquid inside is a creamy vanilla WHITE and the wordmark is bold EMERALD GREEN, with a thin gold ring accent on the cap.",
+  duotone: "The liquid inside transitions from deep EMERALD GREEN at the top to a warm GOLDEN amber at the base, and the wordmark is bold CREAM.",
 };
 const bottleInFlight = new Set<string>();
 
 export function bottlePreviewFile(variant: string): string | null {
   if (!BOTTLE_VARIANTS[variant]) return null;
-  const p = path.join(AD_TEMPLATE_DIR, `bottle-${variant}-v1.jpg`);
+  const p = path.join(AD_TEMPLATE_DIR, `bottle-${variant}-v${BOTTLE_VERSION}.jpg`);
   return fs.existsSync(p) ? p : null;
 }
 
@@ -429,7 +432,7 @@ export function ensureBottlePreview(variant: string): void {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`fetch ${res.status}`);
       fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
-      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `bottle-${variant}-v1.jpg`), Buffer.from(await res.arrayBuffer()));
+      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `bottle-${variant}-v${BOTTLE_VERSION}.jpg`), Buffer.from(await res.arrayBuffer()));
       artLog("ad-templates", `bottle-${variant}: candidate rendered OK`);
     } catch (e) {
       artLog("ad-templates", `bottle-${variant}: FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
@@ -487,7 +490,7 @@ export function ensureAdTemplate(key: string): void {
 /* ── Product Highlight cover — a CINEMATIC hero shot of the EASYMODE bottle
  * (the merchant-facing "this is what cinematic product video looks like"
  * tile). Self-forges once; nano-banana keeps the label spelled right. */
-const PH_COVER_VERSION = 1;
+const PH_COVER_VERSION = 2; // v2: drink bottle (sport cap, liquid), not a jar
 let phCoverInFlight = false;
 
 export function phCoverFile(): string | null {
@@ -502,7 +505,7 @@ export function ensurePhCover(): void {
     try {
       const url = await repRun("google/nano-banana", {
         prompt:
-          'Cinematic hero product shot for a premium TV commercial: a sleek sports hydration drink bottle — tall slim glossy deep EMERALD GREEN body, wide flat matte black cap, the wordmark "EASYMODE" in bold metallic GOLD uppercase letters running VERTICALLY down the bottle, spelled exactly E-A-S-Y-M-O-D-E. The bottle stands on a wet glossy black stone pedestal, dramatic golden rim light carving its silhouette, fine water droplets glistening on the glass, a soft swirl of cool mist at the base, deep emerald-black studio background with a faint warm glow, ultra sharp focus on the bottle, luxurious big-budget advertising photography, wide landscape composition. No people, no hands, no other text.',
+          'Cinematic hero product shot for a premium TV commercial: a tall sleek CLEAR plastic sports hydration drink bottle FILLED with deep EMERALD GREEN liquid, black sport spout cap, condensation droplets on the plastic, the wordmark "EASYMODE" in bold metallic GOLD uppercase letters running VERTICALLY down the label, spelled exactly E-A-S-Y-M-O-D-E. Unmistakably a refreshing DRINK — not a pill bottle, no medicine styling. The bottle stands on a wet glossy black stone pedestal, dramatic golden rim light carving its silhouette, a soft swirl of cool mist at the base, deep emerald-black studio background with a faint warm glow, ultra sharp focus, luxurious big-budget advertising photography, wide landscape composition. No people, no hands, no other text.',
         output_format: "jpg",
       });
       const res = await fetch(url);
