@@ -447,35 +447,40 @@ export function ensureBottlePreview(variant: string): void {
  * Copy per product from Claude, layout rendered by nano-banana AROUND the
  * real product photo, vision-QA'd for spelling + product fidelity. */
 
-function formatLayoutPrompt(key: string, c: Record<string, string>): string {
-  const base = "Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, with NO other words, gibberish or invented text anywhere. The product from the provided image must stay perfectly identical — same shape, colors, label and logos, never redrawn or warped.";
+function formatLayoutPrompt(key: string, c: Record<string, string>, hero?: string): string {
+  // Real merchant ads pass the product photo as image_input; self-forged
+  // previews describe an EasyMode-branded hero product in text instead.
+  const productClause = hero
+    ? `The hero product is ${hero}. Any wordmark or label on it must read exactly "EASYMODE" — spelled E-A-S-Y-M-O-D-E in clean capital letters — and contain no other readable words.`
+    : "The product from the provided image must stay perfectly identical — same shape, colors, label and logos, never redrawn or warped.";
+  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, with NO other words, gibberish or invented text anywhere. ${productClause}`;
   switch (key) {
     case "callout":
       return `${base} Layout: the product large in the center on a soft solid-color studio background that complements its palette. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
     case "review":
-      return `${base} Layout: a large white rounded testimonial card on a soft complementary pastel background. Inside the card: a row of five gold stars, then the quote "${c.quote}" in bold dark serif-ish text, then smaller grey text: "— ${c.name}, Verified Buyer". The product from the image stands at the bottom-right, slightly overlapping the card with a natural soft shadow.`;
+      return `${base} Layout: a large white rounded testimonial card on a soft complementary pastel background. Inside the card: a row of five gold stars, then the quote "${c.quote}" in bold dark serif-ish text, then smaller grey text: "— ${c.name}, Verified Buyer". The product stands at the bottom-right, slightly overlapping the card with a natural soft shadow.`;
     case "chat":
-      return `${base} Layout: a smartphone text-message conversation, iMessage style, on a soft neutral background. Four chat bubbles top to bottom: grey left bubble "${c.m1}", blue right bubble "${c.m2}", grey left bubble "${c.m3}", blue right bubble "${c.m4}". Between the second and third bubble, the product photo from the image appears as a shared picture message with rounded corners. Clean readable phone UI, realistic spacing.`;
+      return `${base} Layout: a smartphone text-message conversation, iMessage style, on a soft neutral background. Four chat bubbles top to bottom: grey left bubble "${c.m1}", blue right bubble "${c.m2}", grey left bubble "${c.m3}", blue right bubble "${c.m4}". Between the second and third bubble, the product appears as a shared picture message with rounded corners. Clean readable phone UI, realistic spacing.`;
     case "versus":
-      return `${base} Layout: bold headline at the top: "${c.headline}". Below it a clean two-column comparison: left column header "US" with the product from the image beneath it and three rows each with a green checkmark and exactly: "${c.r1}", "${c.r2}", "${c.r3}". Right column header "THEM", slightly greyed out, three rows each with a red X and exactly: "${c.t1}", "${c.t2}", "${c.t3}".`;
+      return `${base} Layout: bold headline at the top: "${c.headline}". Below it a clean two-column comparison: left column header "US" with the product beneath it and three rows each with a green checkmark and exactly: "${c.r1}", "${c.r2}", "${c.r3}". Right column header "THEM", slightly greyed out, three rows each with a red X and exactly: "${c.t1}", "${c.t2}", "${c.t3}".`;
     case "beforeafter":
-      return `${base} Layout: a split-screen ad. Left half: slightly desaturated, labeled "BEFORE" in a small chip, caption "${c.before}" — a dull scene missing the product. Right half: bright and vivid, labeled "AFTER" in a small chip, caption "${c.after}" — the product from the image as the hero of a fresh energetic scene. Bold headline across the top spanning both halves: "${c.headline}".`;
+      return `${base} Layout: a split-screen ad. Left half: slightly desaturated, labeled "BEFORE" in a small chip, caption "${c.before}" — a dull scene missing the product. Right half: bright and vivid, labeled "AFTER" in a small chip, caption "${c.after}" — the product as the hero of a fresh energetic scene. Bold headline across the top spanning both halves: "${c.headline}".`;
     case "offer":
-      return `${base} Layout: the product from the image hero-centered on a bold vibrant background that complements its colors, dramatic studio lighting. A large eye-catching starburst badge in the upper right reading exactly: "${c.offer}". Bold headline at the top left: "${c.headline}". A rounded button at the bottom center: "${c.cta}". High-energy sale aesthetic without looking cheap.`;
+      return `${base} Layout: the product hero-centered on a bold vibrant background that complements its colors, dramatic studio lighting. A large eye-catching starburst badge in the upper right reading exactly: "${c.offer}". Bold headline at the top left: "${c.headline}". A rounded button at the bottom center: "${c.cta}". High-energy sale aesthetic without looking cheap.`;
     case "ugcframe":
-      return `${base} Layout: an authentic-feeling customer phone photo of the product from the image on a real table in natural light (slightly imperfect framing, believable home setting). Overlaid at the bottom, a social-video caption bar in bold white text with black outline reading exactly: "${c.caption}". On the right edge, small white heart, comment and share icons stacked vertically. It should look native to a social feed, not like an ad.`;
+      return `${base} Layout: an authentic-feeling customer phone photo of the product on a real table in natural light (slightly imperfect framing, believable home setting). Overlaid at the bottom, a social-video caption bar in bold white text with black outline reading exactly: "${c.caption}". On the right edge, small white heart, comment and share icons stacked vertically. It should look native to a social feed, not like an ad.`;
     case "stat":
-      return `${base} Layout: the value "${c.stat}" rendered HUGE — filling most of the upper half in ultra-bold type on a soft complementary background — with "${c.statlabel}" in smaller text directly beneath it. The product from the image stands in the lower right, hero-lit. Small confident headline at the bottom left: "${c.headline}". A rounded button bottom center: "${c.cta}".`;
+      return `${base} Layout: the value "${c.stat}" rendered HUGE — filling most of the upper half in ultra-bold type on a soft complementary background — with "${c.statlabel}" in smaller text directly beneath it. The product stands in the lower right, hero-lit. Small confident headline at the bottom left: "${c.headline}". A rounded button bottom center: "${c.cta}".`;
     case "magazine":
-      return `${base} Layout: a glossy premium magazine cover. Masthead across the top in elegant bold letters: "${c.masthead}". The product from the image is the cover star, large and centered with dramatic studio lighting. Two cover lines in editorial type: left side "${c.cover1}", right side "${c.cover2}". A tiny barcode in the bottom corner. Chic fashion-magazine energy.`;
+      return `${base} Layout: a glossy premium magazine cover. Masthead across the top in elegant bold letters: "${c.masthead}". The product is the cover star, large and centered with dramatic studio lighting. Two cover lines in editorial type: left side "${c.cover1}", right side "${c.cover2}". A tiny barcode in the bottom corner. Chic fashion-magazine energy.`;
     case "macro":
-      return `${base} Layout: three vertical panels side by side, each an EXTREME close-up crop of a different part of the product from the image (its texture, its cap or edge, its label detail) — luxurious macro photography with shallow depth of field. Each panel has a small bold label chip at its base reading exactly: "${c.d1}", "${c.d2}", "${c.d3}".`;
+      return `${base} Layout: three vertical panels side by side, each an EXTREME close-up crop of a different part of the product (its texture, its cap or edge, its label detail) — luxurious macro photography with shallow depth of field. Each panel has a small bold label chip at its base reading exactly: "${c.d1}", "${c.d2}", "${c.d3}".`;
     case "unbox":
-      return `${base} Layout: a clean top-down flat-lay on a soft solid background: the product from the image centered, styled like an unboxing spread. Three thin annotation lines point at it and its details, each ending in a small label chip reading exactly: "${c.i1}", "${c.i2}", "${c.i3}". Bold headline across the top: "${c.headline}".`;
+      return `${base} Layout: a clean top-down flat-lay on a soft solid background: the product centered, styled like an unboxing spread. Three thin annotation lines point at it and its details, each ending in a small label chip reading exactly: "${c.i1}", "${c.i2}", "${c.i3}". Bold headline across the top: "${c.headline}".`;
     case "founder":
-      return `${base} Layout: a warm cream paper note card filling most of the frame, with handwriting-style dark ink text reading exactly: "${c.note}" and beneath it a signature-style line: "— ${c.founder}". The product from the image rests at the bottom right corner of the card with a soft natural shadow. Honest, personal, letter-from-the-maker energy.`;
+      return `${base} Layout: a warm cream paper note card filling most of the frame, with handwriting-style dark ink text reading exactly: "${c.note}" and beneath it a signature-style line: "— ${c.founder}". The product rests at the bottom right corner of the card with a soft natural shadow. Honest, personal, letter-from-the-maker energy.`;
     case "poll":
-      return `${base} Layout: a playful side-by-side choice card. Question in bold at the top: "${c.question}". Two framed options below: LEFT a deliberately dull, generic grey alternative labeled "${c.left}" with an empty circle; RIGHT the product from the image, bright and hero-lit, labeled "${c.right}" with a big green check in its circle. The right side clearly wins.`;
+      return `${base} Layout: a playful side-by-side choice card. Question in bold at the top: "${c.question}". Two framed options below: LEFT a deliberately dull, generic grey alternative labeled "${c.left}" with an empty circle; RIGHT the product, bright and hero-lit, labeled "${c.right}" with a big green check in its circle. The right side clearly wins.`;
     default:
       return base;
   }
@@ -534,36 +539,47 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
   } catch { return { pass: true, reason: "qa-error" }; }
 }
 
-/* Self-forged format previews — the picker shows each format built around the
- * EASYMODE bottle with canned copy, so the eight tiles look genuinely
- * DIFFERENT (they are different compositions, not filters). */
-const FORMAT_PREVIEW_VERSION = 1;
+/* Self-forged format previews — each tile stars a DIFFERENT EasyMode-branded
+ * hero product (skincare, sneakers, coffee, headphones…) from the category
+ * that most uses that format, so the picker reads "every product type", not
+ * "we make drink ads". v2 = per-format hero products (v1 was all-bottle). */
+const FORMAT_PREVIEW_VERSION = 2;
 const formatPreviewInFlight = new Set<string>();
 
 export function formatPreviewFile(key: string): string | null {
-  const p = path.join(AD_TEMPLATE_DIR, `format-${key}-v${FORMAT_PREVIEW_VERSION}.jpg`);
-  return fs.existsSync(p) ? p : null;
+  // Serve with version fallback: an old preview stands in while the current
+  // version forges. ensureFormatPreview checks the exact current version.
+  for (let v = FORMAT_PREVIEW_VERSION; v >= 1; v--) {
+    const p = path.join(AD_TEMPLATE_DIR, `format-${key}-v${v}.jpg`);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
 export function ensureFormatPreview(key: string): void {
-  if (formatPreviewFile(key) || formatPreviewInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
+  const current = path.join(AD_TEMPLATE_DIR, `format-${key}-v${FORMAT_PREVIEW_VERSION}.jpg`);
+  if (fs.existsSync(current) || formatPreviewInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
   formatPreviewInFlight.add(key);
   (async () => {
     try {
       const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
       const f = AD_FORMAT_BY_KEY[key];
       if (!f || key === "poster") return; // poster preview = the classic colorblock tile
-      const statue = await ensureStatue();
-      if (!statue) return;
-      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-      if (!base) return;
-      const prompt = formatLayoutPrompt(key, f.preview);
-      const url = await repRun("google/nano-banana", { prompt, image_input: [`${base}/ad-templates/statue.png`], output_format: "jpg" });
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      const prompt = formatLayoutPrompt(key, f.preview, f.hero);
+      const expected = Object.values(f.preview);
+      let buf: Buffer | null = null;
+      for (let attempt = 0; attempt < 2 && !buf; attempt++) {
+        const url = await repRun("google/nano-banana", { prompt, output_format: "jpg" });
+        const qa = await qaFormat(url, null, expected);
+        if (!qa.pass && attempt === 0) { artLog("ad-formats", `${key}: preview QA retry — ${qa.reason}`); continue; }
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`fetch ${res.status}`);
+        buf = Buffer.from(await res.arrayBuffer());
+      }
+      if (!buf) throw new Error("no render");
       fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
-      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `format-${key}-v${FORMAT_PREVIEW_VERSION}.jpg`), Buffer.from(await res.arrayBuffer()));
-      artLog("ad-formats", `${key}: preview forged OK`);
+      fs.writeFileSync(current, buf);
+      artLog("ad-formats", `${key}: preview v${FORMAT_PREVIEW_VERSION} forged OK`);
     } catch (e) {
       artLog("ad-formats", `${key}: preview FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     } finally {

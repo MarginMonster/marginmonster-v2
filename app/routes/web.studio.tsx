@@ -274,7 +274,7 @@ export default function WebStudio() {
                   {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 6)).map((f) => (
                     <button type="button" key={f.key} className={`ws-tile small${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
                       onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
-                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=1)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
+                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
                       <b>{f.emoji} {f.name}</b>
                     </button>
                   ))}

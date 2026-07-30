@@ -715,7 +715,7 @@ export default function Studio() {
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 6)).map((f) => (
                       <button type="button" key={f.key} className={`cast cs-ctype${formatKey === f.key ? " sel" : ""}`} onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
-                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=1)` }}>{formatKey === f.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{f.emoji} {f.name}</span>
                         <span className="ca-sub">{f.blurb}</span>
                       </button>
