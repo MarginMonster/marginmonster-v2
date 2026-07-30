@@ -22,7 +22,7 @@ import ffprobeStatic from "ffprobe-static";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
-import { animateAvatar, falEnabled, falTts } from "./fal-video.server";
+import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { hasCJK, langDirective } from "./content-lang";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
@@ -342,6 +342,19 @@ function ffprobeBin(): string {
   return (ffprobeStatic as unknown as { path: string }).path;
 }
 
+/** Does this file carry an audio stream? Guard rail for the assemble step:
+ *  mapping "N:a" on a SILENT clip makes ffmpeg fail hard, and the only way that
+ *  happens is a mislabelled engine on a resumed job (a kling clip resumed as
+ *  omni-human). Cheap probe beats burning a paid render on every retry. */
+function hasAudioStream(file: string): boolean {
+  const out = spawnSync(
+    ffprobeBin(),
+    ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", file],
+    { encoding: "utf8" }
+  );
+  return !!(out.stdout || "").trim();
+}
+
 export function ffprobeDuration(file: string): number {
   const out = spawnSync(ffprobeBin(), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
     encoding: "utf8",
@@ -425,10 +438,6 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
   });
 }
 
-/** ffmpeg runs ASYNC (spawn, not spawnSync) — spawnSync froze the whole Node
- *  process for the entire encode, so Render's 5s health checks timed out
- *  mid-render and the platform killed the instance ("app crashed" with no
- *  deploy). 1080p encodes are long enough to guarantee it. */
 /** Hard ceiling for one encode. A wedged ffmpeg (bad input stream, stalled
  *  filter graph) never emits "close", so the promise never settles: the job
  *  sits IN_PROGRESS and the SERIAL drain loop stops draining for every merchant
@@ -436,6 +445,10 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
  *  normal failure path instead. 10 min is far beyond any 15s 720x1280 encode. */
 const FFMPEG_TIMEOUT_MS = 10 * 60_000;
 
+/** ffmpeg runs ASYNC (spawn, not spawnSync) — spawnSync froze the whole Node
+ *  process for the entire encode, so Render's 5s health checks timed out
+ *  mid-render and the platform killed the instance ("app crashed" with no
+ *  deploy). 1080p encodes are long enough to guarantee it. */
 export function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     const p = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
@@ -479,6 +492,16 @@ export async function assemble(opts: {
   let script = opts.script;
   try { fontFile = await resolveTextFont(script); }
   catch (e) { if (hasCJK(script)) { console.error("[assemble] no CJK font — skipping captions:", e instanceof Error ? e.message : e); script = ""; } }
+  // TRUST BUT VERIFY the caller's lipSynced flag: mapping the clip's own audio
+  // when the clip has none makes ffmpeg fail hard and IDENTICALLY on every
+  // retry (the paid-render-that-can-never-assemble bug — a silent kling clip
+  // resumed under the wrong engine label). One cheap probe converts that into a
+  // normal narrated fallback.
+  let lipSynced = opts.lipSynced;
+  if (lipSynced && !hasAudioStream(opts.talkingPath)) {
+    console.error("[ugc:assemble] clip is SILENT but was labelled lip-synced — muxing the narration instead");
+    lipSynced = false;
+  }
   // The performance defines the ad when it's lip-synced (never trim/loop the
   // synced clip); the narration defines it only for the silent fallback.
   const talkingDur = ffprobeDuration(opts.talkingPath);
@@ -488,8 +511,8 @@ export async function assemble(opts: {
   // last frame to the full narration length, and play the complete TTS audio —
   // a hair of lip drift at the tail beats a mid-word cut. Un-truncated clips are
   // untouched (identical to before).
-  const truncated = opts.lipSynced && audioDur > talkingDur + 0.4;
-  const useBakedAudio = opts.lipSynced && !truncated;
+  const truncated = lipSynced && audioDur > talkingDur + 0.4;
+  const useBakedAudio = lipSynced && !truncated;
   const duration = useBakedAudio ? talkingDur : audioDur;
 
   /** One encode pass. captionText === "" builds ZERO drawtext filters — that's
@@ -497,7 +520,7 @@ export async function assemble(opts: {
    *  rather than once up front. */
   const encode = async (captionText: string) => {
     const args: string[] = ["-y"];
-    if (!opts.lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
+    if (!lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
     args.push("-i", opts.talkingPath);
     if (!useBakedAudio) args.push("-i", opts.audioPath); // external narration for fallback + truncated recovery
     const audioInputIndex = useBakedAudio ? 0 : 1; // omni/heygen: video's own audio; else: the mp3
@@ -515,7 +538,7 @@ export async function assemble(opts: {
       args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
       // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
       // reads as an intentional UGC cut, not a glitch)
-      const cutLen = opts.lipSynced ? 1.6 : 2.2;
+      const cutLen = lipSynced ? 1.6 : 2.2;
       const bs = Math.max(1.2, duration * 0.5).toFixed(2);
       const be = Math.min(duration - 0.8, duration * 0.5 + cutLen).toFixed(2);
       filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
@@ -668,11 +691,15 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       });
       return await repPoll(ttsId, 3 * 60_000, "tts");
     } catch (e) {
-      // input-schema drift or hd outage must never kill a take — bare turbo read
+      // input-schema drift or hd outage must never kill a take — bare turbo read.
+      // Use the SCORED STOCK voice, not delivery.voice: the commonest hd failure
+      // is an unknown/unavailable voice_id, and re-sending the same id to turbo
+      // reproduced it exactly (same failure, twice the latency, take still dead).
       console.log("[ugc:tts] hd+delivery failed, falling back to turbo:", (e as Error).message);
+      const stock = pickVoice(avatar);
       const ttsId = await repCreate("minimax/speech-02-turbo", {
         text: script,
-        voice_id: delivery.voice,
+        voice_id: stock,
       });
       return await repPoll(ttsId, 3 * 60_000, "tts");
     }
@@ -724,33 +751,80 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     }
   }
 
-  let talkingUrl = resume.talkingUrl || "";
-  // resumed jobs must keep the TRUE engine of the checkpointed render —
-  // without this, a deploy-interrupted heygen take got relabeled omni-human
-  let engine = (talkingUrl && resume.engine) || "omni-human";
-  if (!talkingUrl) {
-    // PRIMARY: fal.ai HeyGen Avatar 4 (photorealistic) when FAL_KEY is set.
-    // HOSTED urls only (portrait from our /avatars, TTS from Replicate's CDN) —
-    // fal forwards to HeyGen, whose servers fetch by URL; data URIs bounce.
-    // Any failure falls through to the omni-human → kling chain, and the exact
-    // fal error is checkpointed so diag can show why.
-    if (falEnabled() && animSourceUrl && audioHostedUrl) {
-      try {
-        talkingUrl = await animateAvatar(animSourceUrl, audioHostedUrl);
-        engine = "heygen-fal";
-      } catch (e) {
-        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 180);
-        console.error(`[ugc] fal heygen failed, falling back: ${msg}`);
-        await ckpt({ ckFalError: msg });
-      }
-    }
-    if (!talkingUrl && resume.omniPredictionId) {
+  /** Produce the talking performance. Split into a closure so it can be run a
+   *  SECOND time with every checkpoint ignored (`useCheckpoints: false`) — see
+   *  the download recovery below: provider URLs expire in ~1h, and a job queued
+   *  behind a backlog would otherwise 403 on the same dead checkpointed URL on
+   *  every remaining attempt until it refunded.
+   *
+   *  ORDER MATTERS AND IS ABOUT MONEY: everything already submitted (and
+   *  therefore already billed) is re-attached FIRST, before a single new render
+   *  is bought. The old order ran the fal/HeyGen render before the omni
+   *  re-attach, so a job killed mid-omni-poll paid ~$1.50 for a whole HeyGen
+   *  take and abandoned the live omni one it had already paid for. */
+  const acquireTalking = async (useCheckpoints: boolean): Promise<{ url: string; engine: string }> => {
+    let talkingUrl = useCheckpoints ? resume.talkingUrl || "" : "";
+    // resumed jobs must keep the TRUE engine of the checkpointed render —
+    // without this, a deploy-interrupted heygen take got relabeled omni-human
+    let engine = (talkingUrl && resume.engine) || "omni-human";
+    if (talkingUrl) return { url: talkingUrl, engine };
+
+    // RE-ATTACH #1 — a live omni prediction is already paid for.
+    if (useCheckpoints && resume.omniPredictionId) {
+      engine = "omni-human";
       try {
         talkingUrl = await repPoll(resume.omniPredictionId, 12 * 60_000, "omni-human(resumed)");
       } catch { /* old prediction died — fall through to a fresh one */ }
     }
+    // RE-ATTACH #2 — a live KLING prediction, under its own key. Sharing
+    // ckOmniId made resume label a SILENT clip "omni-human", which set
+    // lipSynced:true and pointed assemble at an audio stream that doesn't
+    // exist: ffmpeg then failed identically on every retry until refund.
+    if (!talkingUrl && useCheckpoints && resume.klingPredictionId) {
+      engine = "kling-voiceover";
+      try {
+        talkingUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "kling-fallback(resumed)");
+      } catch { engine = "omni-human"; /* dead → fresh chain below */ }
+    }
+    // RE-ATTACH #3 — a submitted fal/HeyGen render (~$1.50) survives a restart.
+    if (!talkingUrl && useCheckpoints && resume.falRequestId) {
+      engine = "heygen-fal";
+      try {
+        talkingUrl = await pollAvatar(falQueueHandleFor(resume.falRequestId));
+      } catch (e) {
+        engine = "omni-human";
+        console.error(`[ugc] fal re-attach failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+      }
+    }
+
+    // PRIMARY: fal.ai HeyGen Avatar 4 (photorealistic) when FAL_KEY is set.
+    // HOSTED urls only (portrait from our /avatars, TTS from Replicate's CDN) —
+    // fal forwards to HeyGen, whose servers fetch by URL; data URIs bounce.
+    // Any failure falls through to the omni-human → kling chain, and the exact
+    // fal error is checkpointed so diag can show why — and so THIS attempt is
+    // skipped next time round: a job that already burned 10 minutes proving fal
+    // can't render it must not re-buy that proof on every retry.
+    if (!talkingUrl && falEnabled() && !resume.falError && animSourceUrl && audioHostedUrl) {
+      try {
+        // checkpoint the queue id the instant it exists — BEFORE the 10-min
+        // poll — so a restart re-attaches above instead of paying twice
+        const h = await submitAvatar(animSourceUrl, audioHostedUrl);
+        await ckpt({ ckFalRequestId: h.requestId, ckEngine: "heygen-fal" });
+        talkingUrl = await pollAvatar(h);
+        engine = "heygen-fal";
+      } catch (e) {
+        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 180);
+        console.error(`[ugc] fal heygen failed, falling back: ${msg}`);
+        await ckpt({ ckFalError: msg, ckFalRequestId: "" });
+      }
+    }
     for (let attempt = 0; attempt < 2 && !talkingUrl; attempt++) {
       try {
+        // the engine is checkpointed at the moment it's CHOSEN, not after the
+        // poll — a process that dies mid-poll must resume knowing what kind of
+        // clip (lip-synced or silent) it is re-attaching to
+        await ckpt({ ckEngine: "omni-human" });
+        engine = "omni-human";
         const omniId = await repCreate("bytedance/omni-human", { image: animSourceDataUri, audio: audioDataUri });
         await ckpt({ ckOmniId: omniId });
         talkingUrl = await repPoll(omniId, 12 * 60_000, "omni-human");
@@ -770,6 +844,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     if (!talkingUrl) {
       console.log("[ugc] falling back to kling voiceover style");
       engine = "kling-voiceover";
+      await ckpt({ ckEngine: engine }); // written BEFORE the create — see above
       const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
         start_image: animSourceDataUri,
         prompt: `${avatar.desc}, talking directly to the camera with natural hand gestures and subtle head movement, enthusiastic friendly energy, static camera, plain studio background, vertical video`,
@@ -777,17 +852,41 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         duration: 10,
         cfg_scale: 0.5,
       });
-      await ckpt({ ckOmniId: klingId });
+      await ckpt({ ckKlingId: klingId }); // DISTINCT from ckOmniId — silent clip
       talkingUrl = await repPoll(klingId, 12 * 60_000, "kling-fallback");
     }
     await ckpt({ ckTalkingUrl: talkingUrl, ckEngine: engine });
-  }
+    return { url: talkingUrl, engine };
+  };
+
+  // 3) TALKING PERFORMANCE
+  const acquired = await acquireTalking(true);
+  let talkingUrl = acquired.url;
+  let engine = acquired.engine;
+  const fromCheckpointedUrl = !!resume.talkingUrl && talkingUrl === resume.talkingUrl;
 
   // 4) ASSEMBLY
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-"));
   try {
     const talkingPath = path.join(tmp, "talking.mp4");
-    await download(talkingUrl, talkingPath);
+    try {
+      await download(talkingUrl, talkingPath);
+    } catch (e) {
+      // A checkpointed talking URL is a PROVIDER url and expires (~1h). Once it
+      // dies, every remaining attempt used to fail on the same dead link and the
+      // job refunded without ever shipping. Clear the checkpoint and render a
+      // fresh performance instead — the merchant gets a video.
+      if (!fromCheckpointedUrl) throw e;
+      console.error(`[ugc] checkpointed talking url is dead (${(e instanceof Error ? e.message : String(e)).slice(0, 120)}) — re-rendering`);
+      // The whole checkpoint generation is stale, not just the URL: re-polling
+      // those predictions would hand back the same expired links. Clear them so
+      // a later attempt doesn't re-attach to a corpse.
+      await ckpt({ ckTalkingUrl: "", ckOmniId: "", ckKlingId: "", ckFalRequestId: "" });
+      const fresh = await acquireTalking(false);
+      talkingUrl = fresh.url;
+      engine = fresh.engine;
+      await download(talkingUrl, talkingPath);
+    }
     const audioPath = path.join(tmp, "voice.mp3");
     fs.writeFileSync(audioPath, audioBuf);
 

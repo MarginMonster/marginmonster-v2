@@ -3,6 +3,8 @@
 // SSR build (its internal fetch shim throws a generic "Connection error"),
 // so we call the HTTP API directly. This also surfaces real status codes.
 
+import { fetchRetry } from "./http-retry.server";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
 export interface AnthropicOptions {
@@ -33,21 +35,29 @@ export async function anthropicText(
   const model = opts.model || "claude-haiku-4-5-20251001";
   const maxTokens = opts.maxTokens || 1024;
 
+  // Retried: this is the FIRST step of every paid pipeline (the script), and a
+  // single 429/529/5xx here terminal-failed a pre-paid job before a cent of
+  // provider spend had bought anything. fetchRetry honours retry-after and
+  // returns the final response, so the error formatting below is unchanged.
   let res: Response;
   try {
-    res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
+    res = await fetchRetry(
+      ANTHROPIC_URL,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: prompt }],
+        }),
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+      { label: "anthropic", attempts: 5, totalCapMs: 90_000 }
+    );
   } catch (e) {
     throw new Error(
       `Network error reaching Anthropic: ${e instanceof Error ? e.message : String(e)}`

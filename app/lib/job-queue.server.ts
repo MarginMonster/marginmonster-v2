@@ -69,14 +69,21 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
   const stuck = await db.job.findMany({
     where: { status: "IN_PROGRESS", updatedAt: { lt: cutoff } },
   });
+  let reclaimed = 0;
   for (const j of stuck) {
     const dead = j.attempts >= MAX_ATTEMPTS;
-    await db.job.update({
-      where: { id: j.id },
+    // CONDITIONAL write: the row is only ours if it's STILL IN_PROGRESS. The
+    // scan above is a snapshot — a render that finished a second later would
+    // otherwise be flipped to FAILED *and refunded* while its asset shipped
+    // (free video), or flipped back to PENDING and re-rendered on our dime.
+    const claimed = await db.job.updateMany({
+      where: { id: j.id, status: "IN_PROGRESS" },
       data: dead
         ? { status: "FAILED", lastError: "Interrupted by a server restart — hit ROLL CAMERA to try again." }
         : { status: "PENDING" },
     });
+    if (claimed.count !== 1) continue; // it completed (or another instance took it) — hands off
+    reclaimed++;
     // Terminal death via orphan-reclaim refunds exactly like a terminal
     // failure inside processNextJob — the merchant never pays for a
     // restart-killed render (companion forges included).
@@ -87,7 +94,7 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
       }
     }
   }
-  if (stuck.length) console.log(`[worker] reclaimed ${stuck.length} orphaned job(s)`);
+  if (reclaimed) console.log(`[worker] reclaimed ${reclaimed} orphaned job(s)`);
 }
 
 export async function enqueueJob(
@@ -109,34 +116,57 @@ export async function enqueueJob(
 
 
 export async function processNextJob(): Promise<boolean> {
-  // Claim one DUE pending job atomically (scheduled jobs sleep until runAt)
-  const jobs = await db.job.findMany({
+  // Candidates only — the read is NOT the claim. Two overlapping worker ticks
+  // (or two instances mid-deploy) both selected the same PENDING row here and
+  // both ran it: the same paid video rendered TWICE and created two assets.
+  const candidates = await db.job.findMany({
     where: {
       status: "PENDING",
       attempts: { lt: MAX_ATTEMPTS },
       OR: [{ runAt: null }, { runAt: { lte: new Date() } }],
     },
     orderBy: { createdAt: "asc" },
-    take: 1,
+    take: 5,
   });
+  if (!candidates.length) return false;
 
-  const job = jobs[0];
-  if (!job) return false;
-
-  await db.job.update({
-    where: { id: job.id },
-    data: { status: "IN_PROGRESS", attempts: { increment: 1 } },
-  });
+  // Claim by CONDITIONAL update: only the caller whose updateMany reports
+  // count === 1 flipped PENDING → IN_PROGRESS, so exactly one worker owns the
+  // job. Losers move on to the next candidate.
+  let job: (typeof candidates)[number] | undefined;
+  for (const candidate of candidates) {
+    const claim = await db.job.updateMany({
+      where: { id: candidate.id, status: "PENDING" },
+      data: { status: "IN_PROGRESS", attempts: { increment: 1 } },
+    });
+    if (claim.count === 1) {
+      job = candidate;
+      break;
+    }
+  }
+  if (!job) return false; // everything visible was taken by someone else
 
   try {
     const payload = JSON.parse(job.payload);
     payload.__jobId = job.id; // lets long pipelines checkpoint their progress
     await runJob(job.type, job.shopId, payload);
 
-    await db.job.update({
-      where: { id: job.id },
+    // Terminal write, guarded: while we were rendering, orphan-reclaim may have
+    // decided this row was a corpse (it can only do that past the 25-min
+    // ceiling) and already refunded it. Don't silently un-refund a job it
+    // marked FAILED — but DO force a row it bounced back to PENDING to
+    // COMPLETED, otherwise the finished, fully-paid render gets bought again.
+    const done = await db.job.updateMany({
+      where: { id: job.id, status: "IN_PROGRESS" },
       data: { status: "COMPLETED", processedAt: new Date() },
     });
+    if (done.count !== 1) {
+      const now = await db.job.findUnique({ where: { id: job.id }, select: { status: true } });
+      console.warn(`[worker] job ${job.id} finished but was reclaimed (now ${now?.status}) — not re-running it`);
+      if (now?.status === "PENDING") {
+        await db.job.update({ where: { id: job.id }, data: { status: "COMPLETED", processedAt: new Date() } });
+      }
+    }
   } catch (e: unknown) {
     const lastError = e instanceof Error ? e.message : String(e);
     const nextStatus = job.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
@@ -338,13 +368,18 @@ async function runJob(
             audioUrl: payload.ckAudioUrl as string | undefined,
             composedUrl: payload.ckComposedUrl as string | undefined,
             omniPredictionId: payload.ckOmniId as string | undefined,
+            // kling keeps its OWN key: a silent clip resumed as "omni-human"
+            // makes assembly map an audio stream that isn't there
+            klingPredictionId: payload.ckKlingId as string | undefined,
+            falRequestId: payload.ckFalRequestId as string | undefined,
+            falError: payload.ckFalError as string | undefined,
             talkingUrl: payload.ckTalkingUrl as string | undefined,
             engine: payload.ckEngine as string | undefined,
           },
         });
       } else {
         // PRODUCT ONLY → showcase reel (minimax i2v seeded with product image)
-        await generateVideoAd({
+        forgedAssetId = await generateVideoAd({
           shopId,
           brandProfile: shop.brandProfile,
           plan: shop.activePlan,
@@ -356,6 +391,10 @@ async function runJob(
           customPrompt: payload.customPrompt as string | undefined,
           videoEngine: payload.videoEngine as string | undefined,
           commercial: payload.commercial === true,
+          // jobId + resume: without these the prediction id is never
+          // checkpointed, so each of the 3 attempts bought a BRAND-NEW video
+          jobId: payload.__jobId as string | undefined,
+          resume: { predictionId: payload.ckVideoPredId as string | undefined },
         });
       }
       // Accounting. Questline videos were pre-paid on accept (tokens) and don't

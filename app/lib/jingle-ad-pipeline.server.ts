@@ -29,7 +29,14 @@ import {
   runFfmpeg,
 } from "./ugc-ad-pipeline.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
-import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
+import {
+  CARTOON_RECIPES,
+  checkpointUrlAlive,
+  gateStylizedFrame,
+  jobCheckpoints,
+  resumablePrediction,
+  type CartoonStyleKey,
+} from "./cartoon-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 
@@ -43,7 +50,16 @@ const ANTHEM_MIN_CUT = 12; // earliest acceptable line-gap cut
  *  back to the hard target when no gap is detectable. Deterministic — the
  *  lipsync trim and the assembly trim compute the same point independently. */
 async function smartSongCut(file: string): Promise<number> {
-  const dur = ffprobeDuration(file);
+  // ffprobe THROWS on a file it can't read. Uncaught, that escaped assembly and
+  // terminal-failed an ad whose song and animation were already paid for — the
+  // hard target is a perfectly good cut, so degrade instead of dying.
+  let dur: number;
+  try {
+    dur = ffprobeDuration(file);
+  } catch (e) {
+    console.error("[anthem] couldn't probe the song — cutting at the target length:", e instanceof Error ? e.message.slice(0, 140) : e);
+    return ANTHEM_SECONDS;
+  }
   if (dur <= ANTHEM_SECONDS) return dur;
   try {
     const { stderr } = await runFfmpeg(["-i", file, "-af", "silencedetect=noise=-28dB:d=0.22", "-f", "null", "-"]);
@@ -116,8 +132,26 @@ const BARK_VERSION = "b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b7
  *  is schema-drift tolerant; total failure throws and the queue refunds.
  *  The vocal GENDER matches the cast singer — a male presenter lipsyncing a
  *  female vocal (or vice versa) breaks the illusion instantly. */
-async function singJingle(lyrics: string, singerGender?: "f" | "m"): Promise<{ url: string; engine: string }> {
+async function singJingle(
+  lyrics: string,
+  singerGender?: "f" | "m",
+  // The song is the priciest un-idempotent stage in this pipeline and it is
+  // BILLED at create: a restart mid-poll must re-attach to the prediction that
+  // is already running, never buy a second one.
+  resume?: { priorId?: string; priorEngine?: string; save?: (id: string, engine: string) => Promise<void> }
+): Promise<{ url: string; engine: string }> {
   const errors: string[] = [];
+  if (resume?.priorId) {
+    try {
+      const raw = (await repPoll(resume.priorId, 6 * 60_000, "jingle-music(resumed)")) as unknown;
+      const url = audioUrlOf(raw, "music");
+      // An hours-old prediction hands back an already-expired delivery url.
+      if (await checkpointUrlAlive(url)) return { url, engine: resume.priorEngine || "minimax-music-1.5" };
+      errors.push("resumed song url expired");
+    } catch (e) {
+      errors.push(`resume: ${(e as Error).message.slice(0, 120)}`);
+    }
+  }
   const vocalist = singerGender === "m" ? "a clear energetic MALE vocalist (male voice)" : singerGender === "f" ? "a clear energetic FEMALE vocalist (female voice)" : "bright cheerful vocals";
   const style = `upbeat catchy retro TV-commercial jingle, early 2000s advertising energy, sung by ${vocalist}, short and punchy`;
   const attempts: { model: string; input: Record<string, unknown>; engine: string }[] = [
@@ -128,6 +162,7 @@ async function singJingle(lyrics: string, singerGender?: "f" | "m"): Promise<{ u
   for (const a of attempts) {
     try {
       const id = await repCreate(a.model, a.input);
+      await resume?.save?.(id, a.engine); // billed from here — checkpoint before polling
       const raw = (await repPoll(id, 6 * 60_000, "jingle-music")) as unknown;
       return { url: audioUrlOf(raw, "music"), engine: a.engine };
     } catch (e) {
@@ -141,6 +176,7 @@ async function singJingle(lyrics: string, singerGender?: "f" | "m"): Promise<{ u
       history_prompt: singerGender === "f" ? "en_speaker_9" : "announcer",
       text_temp: 0.7,
     });
+    await resume?.save?.(id, "bark");
     const raw = (await repPoll(id, 6 * 60_000, "jingle-bark")) as unknown;
     return { url: audioUrlOf(raw, "bark"), engine: "bark" };
   } catch (e) {
@@ -154,6 +190,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   const resume = params.resume || {};
   const ckpt = (patch: Record<string, unknown>) =>
     params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
+  // Paid-prediction ids the queue doesn't map into `resume` (music, styled
+  // singer frame, gate repairs, keyframe) — read straight off the job payload
+  // so a restart re-attaches to a running prediction instead of re-buying it.
+  const ck = await jobCheckpoints(params.jobId);
 
   // 1) LYRICS — short and sticky. ≤45 words so the whole lyric fits the
   // caption budget and the song stays ad-length.
@@ -195,8 +235,22 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   const singer = params.avatarId ? AVATAR_BY_ID[params.avatarId] : undefined;
   let songUrl = resume.songUrl || "";
   let engine = (songUrl && resume.engine) || "minimax-music-1.5";
+  // The checkpoint outlives the URL: provider delivery links die after ~1h, and
+  // the queue retries immediately, so an expired song would fail all three
+  // attempts identically (assembly's download throws on the same dead link).
+  if (songUrl && !(await checkpointUrlAlive(songUrl))) {
+    console.log("[anthem] checkpointed song URL has expired — re-singing");
+    songUrl = "";
+    // The prediction that produced it hands back the SAME dead link — drop it.
+    delete ck.ckMusicId;
+    await ckpt({ ckSongUrl: "", ckMusicId: "" });
+  }
   if (!songUrl) {
-    const sung = await singJingle(lyrics, singer?.gender);
+    const sung = await singJingle(lyrics, singer?.gender, {
+      priorId: ck.ckMusicId,
+      priorEngine: ck.ckMusicEngine,
+      save: (id, eng) => ckpt({ ckMusicId: id, ckMusicEngine: eng }),
+    });
     songUrl = sung.url;
     engine = sung.engine;
     await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
@@ -207,6 +261,15 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   // with the song over it, as before. Singing failure falls back gracefully.
   let talkingUrl = resume.talkingUrl || "";
   let singEngine = (talkingUrl && resume.singEngine) || "";
+  // Same poison-pill as the song: a checkpointed lipsync URL expires in ~1h and
+  // assembly's download would then fail on every retry. Re-perform instead.
+  if (talkingUrl && !(await checkpointUrlAlive(talkingUrl))) {
+    console.log("[anthem] checkpointed lipsync URL has expired — re-performing");
+    talkingUrl = "";
+    singEngine = "";
+    delete ck.ckOmniId;
+    await ckpt({ ckTalkingUrl: "", ckOmniId: "" });
+  }
   if (singer && !talkingUrl) {
     let tmpSing: string | null = null;
     try {
@@ -217,18 +280,46 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
 
       // Cartoon singer: stylize the portrait mid-note before lipsyncing it.
       let frameUrl = resume.styledUrl || "";
+      if (frameUrl && !(await checkpointUrlAlive(frameUrl))) {
+        console.log("[anthem] checkpointed styled singer frame has expired — restyling");
+        frameUrl = "";
+        delete ck.ckStyleId;
+        await ckpt({ ckStyledUrl: "", ckStyleId: "" });
+      }
       const recipe = params.cartoonStyle ? CARTOON_RECIPES[params.cartoonStyle as CartoonStyleKey] : undefined;
       if (!frameUrl && recipe && portraitPublicUrl) {
-        const id = await repCreate("black-forest-labs/flux-kontext-pro", {
-          prompt: `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. If any packaging or box art appears it displays ONLY the text "${params.productTitle}" spelled exactly — never invented words or gibberish. Head-and-shoulders framing, vertical 9:16 composition, no caption text, no watermark.`,
-          input_image: portraitPublicUrl,
-          aspect_ratio: "9:16",
-          output_format: "jpg",
-        });
-        frameUrl = await repPoll(id, 5 * 60_000, "anthem-style");
+        // The raw frame is checkpointed BEFORE the gate: an interrupted gate
+        // must never throw away a paid kontext render.
+        let raw = ck.ckRawStyledUrl || "";
+        const resumedRaw = !!raw && (await checkpointUrlAlive(raw));
+        if (!resumedRaw) {
+          raw = await resumablePrediction({
+            priorId: ck.ckStyleId,
+            create: () => repCreate("black-forest-labs/flux-kontext-pro", {
+              prompt: `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. If any packaging or box art appears it displays ONLY the text "${params.productTitle}" spelled exactly — never invented words or gibberish. Head-and-shoulders framing, vertical 9:16 composition, no caption text, no watermark.`,
+              input_image: portraitPublicUrl,
+              aspect_ratio: "9:16",
+              output_format: "jpg",
+            }),
+            save: (id) => ckpt({ ckStyleId: id }),
+            maxMs: 5 * 60_000,
+            stage: "anthem-style",
+          });
+          delete ck.ckGateFixId;
+          delete ck.ckGateStripId;
+          await ckpt({ ckRawStyledUrl: raw, ckStyledUrl: "", ckGateFixId: "", ckGateStripId: "" });
+        }
         // Same no-gibberish gate as cartoon keyframes — check, repair, strip.
-        const { gateStylizedFrame } = await import("./cartoon-ad-pipeline.server");
-        frameUrl = await gateStylizedFrame(frameUrl, params.productTitle, params.productImageUrl, "anthem");
+        // NO product reference: this is a head-and-shoulders SINGER portrait
+        // with no product in it, so a product photo made the gate fail on
+        // "product unrecognizable" and on lettering not reading the title —
+        // burning two nano-banana edits and two vision calls, then lipsyncing
+        // a needlessly repaired frame, on essentially every styled anthem.
+        frameUrl = await gateStylizedFrame(raw, params.productTitle, undefined, "anthem", {
+          fixId: resumedRaw ? ck.ckGateFixId : undefined,
+          stripId: resumedRaw ? ck.ckGateStripId : undefined,
+          save: ckpt,
+        });
         await ckpt({ ckStyledUrl: frameUrl });
       }
       const frameDataUri = frameUrl
@@ -245,8 +336,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       const audioFile = trim.status === 0 && fs.existsSync(singPath) ? singPath : rawSong;
       const audioDataUri = "data:audio/mpeg;base64," + fs.readFileSync(audioFile).toString("base64");
 
-      if (resume.omniPredictionId) {
-        try { talkingUrl = await repPoll(resume.omniPredictionId, 12 * 60_000, "anthem-omni(resumed)"); } catch { /* fresh run below */ }
+      if (resume.omniPredictionId && ck.ckOmniId) {
+        try {
+          const resumed = await repPoll(resume.omniPredictionId, 12 * 60_000, "anthem-omni(resumed)");
+          // An hours-old prediction hands back an already-dead delivery url —
+          // re-buying the lipsync beats shipping a video that won't download.
+          talkingUrl = (await checkpointUrlAlive(resumed)) ? resumed : "";
+        } catch { /* fresh run below */ }
       }
       if (!talkingUrl) {
         const omniId = await repCreate("bytedance/omni-human", { image: frameDataUri, audio: audioDataUri });
@@ -265,6 +361,14 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   }
 
   let keyframeUrl = resume.keyframeUrl || "";
+  // Only matters when we're about to animate: a checkpointed flux frame dies
+  // in ~1h, and kling would be handed the same dead image on every retry.
+  if (!talkingUrl && keyframeUrl && !(await checkpointUrlAlive(keyframeUrl))) {
+    console.log("[anthem] checkpointed keyframe URL has expired — repainting");
+    keyframeUrl = "";
+    delete ck.ckJingleKeyId;
+    await ckpt({ ckKeyframeUrl: "", ckJingleKeyId: "" });
+  }
   if (!talkingUrl && !keyframeUrl) {
     if (!params.serviceMode && params.productImageUrl) {
       keyframeUrl = params.productImageUrl; // the real photo IS the keyframe
@@ -274,15 +378,20 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         `${params.serviceMode ? " (a service — show the happy outcome, delighted people)" : ""}, ` +
         `sunny saturated colors, clean advertising composition, nostalgic early-2000s optimism, ` +
         `vertical 9:16, no text, no watermark.`;
-      const id = await repCreate("black-forest-labs/flux-dev", {
-        prompt,
-        num_inference_steps: 30,
-        guidance: 3,
-        aspect_ratio: "9:16",
-        output_format: "jpg",
-        output_quality: 92,
+      keyframeUrl = await resumablePrediction({
+        priorId: ck.ckJingleKeyId,
+        create: () => repCreate("black-forest-labs/flux-dev", {
+          prompt,
+          num_inference_steps: 30,
+          guidance: 3,
+          aspect_ratio: "9:16",
+          output_format: "jpg",
+          output_quality: 92,
+        }),
+        save: (id) => ckpt({ ckJingleKeyId: id }),
+        maxMs: 5 * 60_000,
+        stage: "jingle-keyframe",
       });
-      keyframeUrl = await repPoll(id, 5 * 60_000, "jingle-keyframe");
     }
     await ckpt({ ckKeyframeUrl: keyframeUrl });
   }
@@ -296,6 +405,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       animUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "jingle-animate(resumed)");
       await ckpt({ ckAnimUrl: animUrl });
     } catch { /* old prediction died — fall through to a fresh one */ }
+  }
+  // One probe covers both resume paths — checkpointed url and re-attached
+  // prediction hand back the same expiring link, and assembly downloads it.
+  if (!talkingUrl && animUrl && !(await checkpointUrlAlive(animUrl))) {
+    console.log("[anthem] checkpointed animation URL has expired — re-animating");
+    animUrl = "";
+    await ckpt({ ckAnimUrl: "", ckKlingId: "" });
   }
   if (!talkingUrl && !animUrl) {
     const { id: animId } = await animateCreate(params.videoEngine, {
@@ -317,11 +433,33 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     const rawSongPath = path.join(tmp, "song-raw.audio");
     await download(songUrl, rawSongPath);
 
+    // A truncated/empty song file makes a SILENT ad — and the jingle is the ad.
+    // Re-sing once (the cartoon pipeline applies the same floor to its TTS).
+    const songBytes = fs.existsSync(rawSongPath) ? fs.statSync(rawSongPath).size : 0;
+    if (songBytes < 20_000) {
+      console.error(`[anthem] song file implausibly small (${songBytes}B) — re-singing`);
+      const resung = await singJingle(lyrics, singer?.gender, {
+        save: (id, eng) => ckpt({ ckMusicId: id, ckMusicEngine: eng }),
+      });
+      songUrl = resung.url;
+      engine = resung.engine;
+      await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
+      await download(songUrl, rawSongPath);
+    }
+
     // Same standardized cut for BOTH paths (singer or product visual) — the
     // smart cut is deterministic, so this reproduces the exact trim the
     // lipsync audio used and assemble's truncation-recovery lines up.
     let songPath = rawSongPath;
-    const songDur = ffprobeDuration(rawSongPath);
+    // ffprobe throws on an unreadable file; uncaught it terminal-failed an ad
+    // whose song, lipsync and animation were all already bought. 0 = "unknown",
+    // which the trim and caption-share maths below already handle.
+    let songDur = 0;
+    try {
+      songDur = ffprobeDuration(rawSongPath);
+    } catch (e) {
+      console.error("[anthem] couldn't probe the song — shipping it untrimmed:", e instanceof Error ? e.message.slice(0, 140) : e);
+    }
     const cap = await smartSongCut(rawSongPath);
     if (songDur > cap) {
       const trimmed = path.join(tmp, "song.mp3");

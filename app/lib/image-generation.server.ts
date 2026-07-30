@@ -8,7 +8,7 @@ import { mirrorRender } from "./object-storage.server";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { merchantBusy } from "./art-throttle.server";
-import { langDirective } from "./content-lang";
+import { hasCJK, langDirective } from "./content-lang";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -66,22 +66,50 @@ function ffmpegBin(): string | null {
   return (ffmpegPath as unknown as string) || null;
 }
 
+/** Run a short ffmpeg still job with a HARD kill timeout. A wedged ffmpeg (bad
+ *  input, stalled filter) never fires 'close', so the promise stayed pending
+ *  FOREVER — and the worker is serial, so one wedged still stalled every other
+ *  merchant's job behind it. SIGKILL, then resolve as a failure. */
+const FFMPEG_STILL_TIMEOUT_MS = 90_000;
+function runFfmpegStill(
+  bin: string,
+  args: string[],
+  opts: { captureStdout?: boolean; timeoutMs?: number } = {}
+): Promise<{ ok: boolean; stdout: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    let out = "";
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve({ ok, stdout: out });
+    };
+    try {
+      const p = spawn(bin, args, { stdio: ["ignore", opts.captureStdout ? "pipe" : "ignore", "ignore"] });
+      timer = setTimeout(() => {
+        console.error(`[image-ad] ffmpeg wedged past ${Math.round((opts.timeoutMs ?? FFMPEG_STILL_TIMEOUT_MS) / 1000)}s — killing it`);
+        try { p.kill("SIGKILL"); } catch { /* already gone */ }
+        finish(false);
+      }, opts.timeoutMs ?? FFMPEG_STILL_TIMEOUT_MS);
+      p.stdout?.on("data", (c: Buffer) => { out += c.toString(); });
+      p.on("error", () => finish(false));
+      p.on("close", (code) => finish(code === 0));
+    } catch { finish(false); }
+  });
+}
+
 /** Average luma (0-255) of a horizontal band of the image, so text color can
  *  adapt to what it sits on. band: fraction offsets of height (0=top). */
 async function bandLuma(bin: string, src: string, yFrac: number, hFrac: number): Promise<number | null> {
-  return await new Promise((resolve) => {
-    try {
-      const vf = `crop=iw:ih*${hFrac}:0:ih*${yFrac},scale=64:64,signalstats,metadata=print:file=-`;
-      const p = spawn(bin, ["-i", src, "-vf", vf, "-frames:v", "1", "-f", "null", "-"], { stdio: ["ignore", "pipe", "ignore"] });
-      let outBuf = "";
-      p.stdout.on("data", (c: Buffer) => { outBuf += c.toString(); });
-      p.on("error", () => resolve(null));
-      p.on("close", () => {
-        const m = outBuf.match(/signalstats\.YAVG=([\d.]+)/);
-        resolve(m ? parseFloat(m[1]) : null);
-      });
-    } catch { resolve(null); }
+  const vf = `crop=iw:ih*${hFrac}:0:ih*${yFrac},scale=64:64,signalstats,metadata=print:file=-`;
+  const { stdout } = await runFfmpegStill(bin, ["-i", src, "-vf", vf, "-frames:v", "1", "-f", "null", "-"], {
+    captureStdout: true,
+    timeoutMs: 30_000, // a 64x64 probe; anything slower is wedged
   });
+  const m = stdout.match(/signalstats\.YAVG=([\d.]+)/);
+  return m ? parseFloat(m[1]) : null;
 }
 
 async function overlayAdText(dir: string, srcName: string, headline: string, cta: string, sub = ""): Promise<string | null> {
@@ -138,8 +166,16 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
     line1 = words.slice(0, best).join(" ");
     line2 = words.slice(best).join(" ");
   }
-  const longest = Math.max(line1.length, line2.length);
-  const hlSize = longest > 18 ? 58 : longest > 12 ? 72 : 84;
+  // The size ladder below was tuned for Latin caps (~0.62×fontsize per glyph).
+  // CJK glyphs run ~1.05× — the SAME character count is ~1.7× wider, so
+  // Chinese headlines bled off the canvas. Measure in Latin-equivalent width
+  // (buildCaptionFilters does the same), then hard-clamp to the 1024px frame
+  // so no headline can overflow whatever the script.
+  const glyph = hasCJK(hl) ? 1.05 : 0.62;
+  const longestChars = Math.max(line1.length, line2.length, 1);
+  const longest = longestChars * (glyph / 0.62);
+  const ladder = longest > 18 ? 58 : longest > 12 ? 72 : 84;
+  const hlSize = Math.min(ladder, Math.floor((1024 * 0.92) / (longestChars * glyph)));
   const topY = 84;
   const line2Y = topY + Math.round(hlSize * 1.14);
   const subY = (line2 ? line2Y : topY) + Math.round(hlSize * 1.2);
@@ -153,13 +189,7 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
     ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=27:fontcolor=${ctaColor}:box=1:boxcolor=${ctaBox}:boxborderw=16:x=(w-text_w)/2:y=h-82` : "",
   ].filter(Boolean).join(",");
   const args = ["-y", "-i", src, "-vf", filters, "-frames:v", "1", "-q:v", "3", out];
-  const ok = await new Promise<boolean>((resolve) => {
-    try {
-      const p = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
-      p.on("error", () => resolve(false));
-      p.on("close", (code) => resolve(code === 0));
-    } catch { resolve(false); }
-  });
+  const { ok } = await runFfmpegStill(bin, args);
   if (ok && fs.existsSync(out) && fs.statSync(out).size > 5000) return outName;
   return null;
 }
@@ -185,6 +215,11 @@ async function repRun(model: string, input: Record<string, unknown>, maxMs = 120
   // burst of merchant work) saturated the model — the single biggest cause of
   // "my image failed over and over". Mirror the video pipeline: honour
   // retry_after / Retry-After with backoff before giving up.
+  // …but the worker is SERIAL: sleeping here holds up EVERY other merchant's
+  // job. Cap the cumulative wait — past the budget we throw, the job requeues,
+  // and the rate limit gets its cool-down without blocking the queue.
+  const RATE_LIMIT_BUDGET_MS = 90_000;
+  let waitedMs = 0;
   let create: Response | null = null;
   for (let attempt = 0; attempt < 8; attempt++) {
     create = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
@@ -194,8 +229,14 @@ async function repRun(model: string, input: Record<string, unknown>, maxMs = 120
     const body = (await create.clone().json().catch(() => ({}))) as { retry_after?: number };
     const headerWait = Number(create.headers.get("retry-after") || 0);
     const waitSec = body.retry_after || headerWait || Math.min(30, 2 ** attempt);
+    const waitMs = Math.min(60, waitSec) * 1000;
+    if (waitedMs + waitMs > RATE_LIMIT_BUDGET_MS) {
+      console.log(`[replicate] ${model} still rate-limited after ${Math.round(waitedMs / 1000)}s — requeueing rather than holding the serial worker`);
+      break;
+    }
+    waitedMs += waitMs;
     console.log(`[replicate] ${model} rate-limited (429) — waiting ${waitSec}s (attempt ${attempt + 1}/8)`);
-    await new Promise((r) => setTimeout(r, Math.min(60, waitSec) * 1000));
+    await new Promise((r) => setTimeout(r, waitMs));
   }
   if (!create || !create.ok) throw new Error(`${model} create ${create?.status}: ${(await (create?.text() ?? Promise.resolve(""))).slice(0, 160)}`);
   const { id } = (await create.json()) as { id: string };
@@ -208,6 +249,20 @@ async function repRun(model: string, input: Record<string, unknown>, maxMs = 120
     if (j.status === "failed" || j.status === "canceled") throw new Error(`${model}: ${j.error || j.status}`);
   }
   throw new Error(`${model}: timed out`);
+}
+
+/** flux-dev poster still with ONE retry. Every ladder's LAST rung used to be a
+ *  bare call: a provider 5xx or repRun's 120s timeout escaped generateImageAd
+ *  and terminal-failed an ad the merchant had already paid for. A retry costs
+ *  ~$0.003 and converts the common transient blip into a delivered ad. */
+async function fluxDevStill(prompt: string, stage: string): Promise<string> {
+  const input = { prompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 };
+  try {
+    return await repRun("black-forest-labs/flux-dev", input);
+  } catch (e) {
+    console.log(`[image-ad] ${stage} flux-dev failed (${e instanceof Error ? e.message.slice(0, 120) : e}) — one retry`);
+    return await repRun("black-forest-labs/flux-dev", input);
+  }
 }
 
 /** Cut the product out of its photo (transparent PNG). Bria on Replicate,
@@ -253,9 +308,13 @@ async function compositeProductStill(backdropUrl: string, cutoutUrl: string): Pr
   if (!bin) return null;
   const dir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(dir, { recursive: true });
-  const tmpBg = path.join(dir, `.bg-${Date.now()}.jpg`);
-  const tmpCut = path.join(dir, `.cut-${Date.now()}.png`);
-  const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  // Date.now() alone COLLIDES: two composites started in the same millisecond
+  // (template self-heal beside a merchant job) overwrote each other's temp
+  // files and the finally-block deleted the other's sources mid-encode.
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tmpBg = path.join(dir, `.bg-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.cut-${stamp}.png`);
+  const fileName = `img-${stamp}.jpg`;
   const out = path.join(dir, fileName);
   try {
     // Sources can be remote URLs or absolute local paths (template plates and
@@ -277,13 +336,7 @@ async function compositeProductStill(backdropUrl: string, cutoutUrl: string): Pr
       "[bg][sh]overlay=x=(W-w)/2+10:y=H-h-46+22[b1];" +
       "[b1][c1]overlay=x=(W-w)/2:y=H-h-46[outv]";
     const args = ["-y", "-i", tmpBg, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out];
-    const ok = await new Promise<boolean>((resolve) => {
-      try {
-        const p = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
-        p.on("error", () => resolve(false));
-        p.on("close", (code) => resolve(code === 0));
-      } catch { resolve(false); }
-    });
+    const { ok } = await runFfmpegStill(bin, args);
     if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return fileName;
     return null;
   } finally {
@@ -821,20 +874,46 @@ const BRIGHT_DEFAULT = "Bright, light-filled scene: a fresh clean backdrop in a 
 let lastBackfillScan = 0;
 const BACKFILL_EVERY_MS = 10 * 60 * 1000; // worker ticks every ~8s — heal gently
 
+/** Hosts whose delivery URLs expire — replicate AND fal (fal-hosted presenter
+ *  stills were invisible to the healer, so they could never be flagged). */
+const EXPIRING_HOSTS = ["replicate.delivery", "fal.media", "queue.fal.run", "v3.fal.media"];
+const isExpiringUrl = (u?: string) => !!u && EXPIRING_HOSTS.some((h) => u.includes(h));
+
 export async function backfillDeadImages(): Promise<void> {
   if (Date.now() - lastBackfillScan < BACKFILL_EVERY_MS) return;
   lastBackfillScan = Date.now();
   const candidates = await db.asset.findMany({
-    where: { type: "IMAGE_AD", bodyJson: { contains: "replicate.delivery" } },
+    where: {
+      type: "IMAGE_AD",
+      OR: EXPIRING_HOSTS.map((h) => ({ bodyJson: { contains: h } })),
+      // Already triaged as un-healable — skip, or the same 3 rows fill every
+      // tick forever and nothing else ever gets healed.
+      NOT: { bodyJson: { contains: '"needsRegen":true' } },
+    },
     orderBy: { createdAt: "desc" },
     take: 3, // gentle per tick — burst-limits stay happy
   });
   for (const a of candidates) {
     try {
-      const body = JSON.parse(a.bodyJson) as { imageUrl?: string; prompt?: string; sourceUrl?: string };
-      if (!body.imageUrl?.includes("replicate.delivery")) {
+      const body = JSON.parse(a.bodyJson) as { imageUrl?: string; prompt?: string; sourceUrl?: string; method?: string };
+      if (!isExpiringUrl(body.imageUrl)) {
         // contains() matched sourceUrl only — already healed; strip the marker
         await db.asset.update({ where: { id: a.id }, data: { bodyJson: JSON.stringify({ ...body, sourceUrl: undefined }) } });
+        continue;
+      }
+      // Re-forging from the stored prompt only reproduces PROMPT-ONLY ads.
+      // A scene ad's prompt is "Place this exact product, unchanged…", a format
+      // ad's is a layout brief, a presenter still's is "presenter holding X" —
+      // running any of those through flux-schnell with NO product image
+      // silently replaced the merchant's ad with a generic, product-less
+      // picture. Flag those for regeneration instead of corrupting them.
+      const method = body.method || "";
+      if (method !== "text2img" && method !== "lifestyle") {
+        await db.asset.update({
+          where: { id: a.id },
+          data: { bodyJson: JSON.stringify({ ...body, needsRegen: true, healSkipped: method || "unknown" }) },
+        });
+        console.log(`[image-backfill] asset ${a.id} (${method || "unknown"}) can't be re-forged from its prompt — flagged for regeneration`);
         continue;
       }
       const prompt = body.prompt || "clean product photography, professional advertising quality, 1:1, vibrant colors";

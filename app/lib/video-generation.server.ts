@@ -7,7 +7,7 @@
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
-import { animateCreate } from "./ugc-ad-pipeline.server";
+import { animateCreate, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll } from "./ugc-ad-pipeline.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
 
@@ -34,7 +34,19 @@ interface GenerateVideoParams {
   avatarVariant?: number; // wardrobe variant 0-3 (see OUTFITS)
   videoEngine?: string; // engine-picker key (video-engines.ts); undefined = default
   commercial?: boolean; // big-budget studio-commercial look (color-block cyc, hero lighting)
+  jobId?: string; // enables prediction checkpointing (see resume)
+  resume?: {
+    /** A prediction that a previous attempt already CREATED — and therefore
+     *  already paid for. Without this, a restart (or any retry) mid-poll bought
+     *  a brand-new video every time: three attempts, three bills, one asset. */
+    predictionId?: string;
+  };
 }
+
+// minimax/video-01 routinely runs past 5 minutes; the old ~5-min ceiling threw
+// "timed out" on predictions that went on to succeed — a paid render thrown
+// away, and the retry paid for another one.
+const VIDEO_POLL_MS = 12 * 60_000;
 
 export async function generateVideoAd(params: GenerateVideoParams): Promise<string> {
   const {
@@ -47,11 +59,15 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     style,
   } = params;
 
-  const visual = JSON.parse(brandProfile.visualJson);
-  const voice = JSON.parse(brandProfile.voiceJson);
+  // `|| "{}"`: a half-built brand profile (null/empty column) must not throw a
+  // SyntaxError here — that terminal-fails a pre-paid job before a single
+  // provider call, on every retry.
+  const visual = JSON.parse(brandProfile.visualJson || "{}");
+  const voice = JSON.parse(brandProfile.voiceJson || "{}");
 
-  const replicateToken = process.env.REPLICATE_API_TOKEN;
-  if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
+  // fail fast with a clear message before building any prompt (repCreate/
+  // repPoll read the token themselves)
+  if (!process.env.REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN not set");
 
   // Build the base prompt per style; the chosen cast member's descriptor keeps
   // the presenter's identity, and merchant direction is APPENDED (not a
@@ -87,49 +103,55 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     seedImage = productImageUrl;
   }
 
-  // Engine-picker path: a chosen engine (with a seed frame) runs through the
-  // multi-engine adapter, which falls back to the default engine on rejection.
-  let prediction: { id: string };
-  if (params.videoEngine && seedImage) {
-    const { id } = await animateCreate(params.videoEngine, { startImage: seedImage, prompt });
-    prediction = { id };
-  } else {
-    const input: Record<string, unknown> = { prompt, prompt_optimizer: true };
-    if (seedImage) input.first_frame_image = seedImage;
-    // Create the prediction via the model endpoint (no version hash needed).
-    const createRes = await fetch(
-      `https://api.replicate.com/v1/models/${VIDEO_MODEL}/predictions`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${replicateToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ input }),
-      }
-    );
-    if (!createRes.ok) {
-      const errText = await createRes.text();
-      throw new Error(`Replicate video create failed (${createRes.status}): ${errText.slice(0, 200)}`);
+  // Create + poll go through the shared Replicate helpers (repCreate/repPoll):
+  // the hand-rolled versions here threw on ANY non-2xx — including a 429 — and
+  // polled with no res.ok check at all, so one bad poll response killed a paid,
+  // still-running prediction.
+  const ckpt = (patch: Record<string, unknown>) =>
+    params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
+
+  let videoUrl: string | null = null;
+
+  // RE-ATTACH first: a prediction a previous attempt created is already billed.
+  if (params.resume?.predictionId) {
+    try {
+      videoUrl = await repPoll(params.resume.predictionId, VIDEO_POLL_MS, "video(resumed)");
+    } catch (e) {
+      console.error("[video] resumed prediction unusable — starting a fresh one:", e instanceof Error ? e.message.slice(0, 200) : e);
     }
-    prediction = (await createRes.json()) as { id: string };
   }
 
-  // Video gen can take a couple minutes — poll up to ~5 min.
-  let videoUrl: string | null = null;
-  for (let i = 0; i < 100; i++) {
-    await new Promise((r) => setTimeout(r, 3000));
-    const poll = await fetch(
-      `https://api.replicate.com/v1/predictions/${prediction.id}`,
-      { headers: { Authorization: `Bearer ${replicateToken}` } }
-    );
-    const data = (await poll.json()) as { status: string; output?: string | string[]; error?: string };
-    if (data.status === "succeeded" && data.output) {
-      videoUrl = Array.isArray(data.output) ? data.output[0] : data.output;
-      break;
+  if (!videoUrl) {
+    // Engine-picker path: a chosen engine (with a seed frame) runs through the
+    // multi-engine adapter, which falls back to the default engine on rejection.
+    let predictionId: string;
+    let ranModel: string;
+    if (params.videoEngine && seedImage) {
+      const created = await animateCreate(params.videoEngine, { startImage: seedImage, prompt });
+      predictionId = created.id;
+      ranModel = created.model;
+    } else {
+      const input: Record<string, unknown> = { prompt, prompt_optimizer: true };
+      if (seedImage) input.first_frame_image = seedImage;
+      predictionId = await repCreate(VIDEO_MODEL, input);
+      ranModel = VIDEO_MODEL;
     }
-    if (data.status === "failed" || data.status === "canceled") {
-      throw new Error(`Replicate video ${data.status}: ${data.error || "unknown"}`);
+    // Checkpoint BEFORE polling — the render is live and billing from here, so
+    // a restart must re-attach to it rather than buy another one.
+    await ckpt({ ckVideoPredId: predictionId });
+
+    try {
+      videoUrl = await repPoll(predictionId, VIDEO_POLL_MS, "video");
+    } catch (e) {
+      // animateCreate only falls back when the premium engine rejects at CREATE
+      // time; a premium engine that accepts and then fails at inference used to
+      // surface here and kill the job. Give it the same one-shot fallback to the
+      // default engine that a create-time rejection gets.
+      if (!seedImage || ranModel === DEFAULT_ANIMATE_MODEL) throw e;
+      console.error(`[video] ${ranModel} failed at inference — retrying on ${DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
+      const retry = await animateCreate(undefined, { startImage: seedImage, prompt });
+      await ckpt({ ckVideoPredId: retry.id });
+      videoUrl = await repPoll(retry.id, VIDEO_POLL_MS, "video(default-engine)");
     }
   }
   if (!videoUrl) throw new Error("Replicate video timed out");

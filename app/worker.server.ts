@@ -16,9 +16,21 @@ declare global {
 const POLL_MS = 8000;
 // video pipelines legitimately run 10-15 min; anything past this is a corpse
 const STUCK_MS = 25 * 60_000;
+// Boot reclaim grace. Renders overlap deploys: the new instance boots while the
+// OLD process is still paying for a live render, so reclaiming with 0 flipped a
+// genuinely-running job back to PENDING and rendered it a second time. Anything
+// still IN_PROGRESS this long after its last touch is from the dead process.
+const BOOT_GRACE_MS = 2 * 60_000;
 
 let lastTileKick = 0;
+// setInterval fires every 8s but a tick awaits FULL renders, so ticks used to
+// stack: several overlapping drains all racing for the same PENDING rows. The
+// conditional claim in processNextJob stops the double-render; this stops the
+// pile-up that caused it.
+let ticking = false;
 async function tick() {
+  if (ticking) return;
+  ticking = true;
   try {
     // Free any jobs whose process died mid-run (deploys, restarts).
     await reclaimOrphanJobs(STUCK_MS);
@@ -54,16 +66,19 @@ async function tick() {
     }
   } catch (e) {
     console.error("[worker] tick error:", e);
+  } finally {
+    ticking = false;
   }
 }
 
 if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   global.__mm_worker_started__ = true;
   console.log("[worker] in-process job worker started");
-  // Boot reclaim: this is a single-instance app, so nothing can genuinely be
-  // IN_PROGRESS when we start — anything marked that way was orphaned by the
-  // previous process (this is exactly the "stuck rendering forever" bug).
-  reclaimOrphanJobs(0).catch((e) => console.error("[worker] boot reclaim:", e));
+  // Boot reclaim: anything left IN_PROGRESS was orphaned by the previous
+  // process (this is exactly the "stuck rendering forever" bug) — but a deploy
+  // OVERLAPS, so a job the outgoing process is still rendering (and paying for)
+  // must not be grabbed. The grace window only frees rows nobody has touched.
+  reclaimOrphanJobs(BOOT_GRACE_MS).catch((e) => console.error("[worker] boot reclaim:", e));
   setInterval(tick, POLL_MS);
   // Kick one immediately so freshly-installed shops don't wait.
   tick();

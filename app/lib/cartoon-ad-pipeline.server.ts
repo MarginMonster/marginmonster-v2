@@ -30,6 +30,79 @@ import {
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 
+/* ---- Resume plumbing: never re-BUY what a restart interrupted ------------
+ * Two failure modes here cost merchants real money:
+ *   1. Provider delivery URLs (replicate.delivery, fal) die after ~an hour,
+ *      but a job checkpoint lives for the whole job — and the queue retries
+ *      IMMEDIATELY, so all three attempts feed the SAME dead URL to the next
+ *      stage and fail identically. A checkpoint becomes a poison pill.
+ *   2. A prediction is BILLED the moment it's created. A deploy restart
+ *      mid-poll must re-attach to it (the ckKlingId/ckOmniId pattern), never
+ *      buy a second one.
+ * The queue maps only a hand-picked subset of checkpoints into `resume`, so
+ * the paid-prediction ids below are read straight off the job payload.
+ * Exported — the jingle pipeline runs on the same plumbing. */
+
+/** Is a resumed URL still fetchable? HEAD, then a ranged GET for hosts that
+ *  refuse HEAD. A false negative only costs a regeneration; a false positive
+ *  ships a dead link, so anything unclear counts as dead. */
+export async function checkpointUrlAlive(url: string, timeoutMs = 8_000): Promise<boolean> {
+  if (!url || typeof url !== "string") return false;
+  if (!/^https?:\/\//i.test(url)) return true; // local /renders path or data uri — never expires
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    let res = await fetch(url, { method: "HEAD", signal: ac.signal });
+    if (res.status === 403 || res.status === 405 || res.status === 501) {
+      res = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" }, signal: ac.signal });
+    }
+    return res.ok || res.status === 206;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Every ck* string on the job payload — including the paid-prediction ids the
+ *  queue doesn't map into `resume`. */
+export async function jobCheckpoints(jobId?: string): Promise<Record<string, string>> {
+  if (!jobId) return {};
+  try {
+    const job = await db.job.findUnique({ where: { id: jobId }, select: { payload: true } });
+    const p = JSON.parse(job?.payload || "{}") as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(p)) if (k.startsWith("ck") && typeof v === "string" && v) out[k] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Re-attach to a checkpointed prediction (already paid for) if there is one,
+ *  otherwise create → checkpoint the id → poll. The re-attached output URL is
+ *  probed as well: an hours-old prediction hands back an expired link. */
+export async function resumablePrediction(o: {
+  priorId?: string;
+  create: () => Promise<string>;
+  save: (id: string) => Promise<void>;
+  maxMs: number;
+  stage: string;
+}): Promise<string> {
+  if (o.priorId) {
+    try {
+      const url = await repPoll(o.priorId, o.maxMs, `${o.stage}(resumed)`);
+      if (await checkpointUrlAlive(url)) return url;
+      console.log(`[${o.stage}] re-attached prediction's output URL already expired — rendering a fresh one`);
+    } catch (e) {
+      console.log(`[${o.stage}] checkpointed prediction unusable — rendering a fresh one:`, e instanceof Error ? e.message.slice(0, 140) : e);
+    }
+  }
+  const id = await o.create();
+  await o.save(id); // billed from here on — a restart must find this id
+  return repPoll(id, o.maxMs, o.stage);
+}
+
 /* ---- Stylized-text quality gate -----------------------------------------
  * Merchants ship these frames: garbled lettering is a hard product-quality
  * failure, and prompt-only guards still slip. Every stylized frame passes a
@@ -68,13 +141,22 @@ export async function qaStylizedText(
 export async function repairStylizedText(
   frameUrl: string,
   productTitle: string,
-  mode: "fix" | "strip"
+  mode: "fix" | "strip",
+  // Each repair is a PAID nano-banana edit — resume plumbing so a restart
+  // mid-poll re-attaches instead of buying it again. Only safe to pass when
+  // the input frame is the same one the checkpointed edit ran on.
+  resume?: { priorId?: string; save?: (id: string) => Promise<void> }
 ): Promise<string> {
   const prompt = mode === "fix"
     ? `Edit this image: correct ALL lettering so that any packaging, label or box text reads exactly "${productTitle}" in clean bold letters, perfectly spelled, and remove every other piece of lettering. Change NOTHING else — same art style, same character, same product shape and colors, same composition.`
     : `Edit this image: remove ALL lettering and text from every surface — packaging, labels, box art, signs — leaving those surfaces clean in the same art style. Change NOTHING else — same character, same product shape and colors, same composition.`;
-  const id = await repCreate("google/nano-banana", { prompt, image_input: [frameUrl], output_format: "jpg" });
-  return repPoll(id, 5 * 60_000, `stylized-text-${mode}`);
+  return resumablePrediction({
+    priorId: resume?.priorId,
+    create: () => repCreate("google/nano-banana", { prompt, image_input: [frameUrl], output_format: "jpg" }),
+    save: async (id) => { await resume?.save?.(id); },
+    maxMs: 5 * 60_000,
+    stage: `stylized-text-${mode}`,
+  });
 }
 
 /** Run the full gate: check → repair lettering → re-check → strip as last
@@ -83,17 +165,34 @@ export async function gateStylizedFrame(
   frameUrl: string,
   productTitle: string,
   productImageUrl?: string | null,
-  tag = "cartoon"
+  tag = "cartoon",
+  // Checkpointed repair ids (see repairStylizedText) — pass them ONLY when
+  // frameUrl is the same raw frame the checkpointed repairs were run on.
+  resume?: { fixId?: string; stripId?: string; save?: (patch: Record<string, unknown>) => Promise<void> }
 ): Promise<string> {
   try {
     let qa = await qaStylizedText(frameUrl, productTitle, productImageUrl);
     if (qa.pass) return frameUrl;
     console.log(`[${tag}] stylized frame failed text QA (${qa.reason}) — repairing lettering`);
-    const fixed = await repairStylizedText(frameUrl, productTitle, "fix");
+    const fixed = await repairStylizedText(frameUrl, productTitle, "fix", {
+      priorId: resume?.fixId,
+      save: async (id) => { await resume?.save?.({ ckGateFixId: id }); },
+    });
     qa = await qaStylizedText(fixed, productTitle, productImageUrl);
     if (qa.pass) return fixed;
     console.log(`[${tag}] repair still failing QA (${qa.reason}) — stripping lettering`);
-    return await repairStylizedText(frameUrl, productTitle, "strip");
+    const stripped = await repairStylizedText(frameUrl, productTitle, "strip", {
+      priorId: resume?.stripId,
+      save: async (id) => { await resume?.save?.({ ckGateStripId: id }); },
+    });
+    // Re-QA the LAST RESORT too — it used to ship unchecked. A stripped frame
+    // that still fails means the gibberish is baked into the art itself, not
+    // just the labels, and the merchant is about to ship it: say so loudly.
+    const strippedQa = await qaStylizedText(stripped, productTitle, productImageUrl);
+    if (!strippedQa.pass) {
+      console.error(`[${tag}] WARNING: stripped frame STILL fails text QA (${strippedQa.reason}) — shipping it anyway (cleanest frame available)`);
+    }
+    return stripped;
   } catch (e) {
     console.error(`[${tag}] text gate error (using original frame):`, e instanceof Error ? e.message.slice(0, 160) : e);
     return frameUrl;
@@ -202,6 +301,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   const resume = params.resume || {};
   const ckpt = (patch: Record<string, unknown>) =>
     params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
+  // Paid-prediction ids the queue doesn't map into `resume` (keyframe, gate
+  // repairs, TTS) — read straight off the job payload so a restart re-attaches.
+  const ck = await jobCheckpoints(params.jobId);
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
 
   // 1) SCRIPT — cartoon ads earn their keep with playful, jingle-adjacent VO.
@@ -243,8 +345,34 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // character keeps the presenter's likeness, the product stays recognizable.
   // No presenter → product-hero redraw as before. Every step falls back
   // gracefully (compose failure → portrait-only; no portrait → product path).
-  let keyframeUrl = resume.keyframeUrl || "";
-  if (!keyframeUrl) {
+  // Forging is a closure because the keyframe may have to be redrawn LATER:
+  // a checkpointed keyframe URL expires (~1h) while the checkpoint survives,
+  // and kling would then be fed a dead image on every retry.
+  let priorKeyframeId: string | undefined = ck.ckKeyframeId; // paid render to re-attach to, once
+  let priorRawKeyframe = ck.ckRawKeyframeUrl || ""; // paid frame, pre-QA-gate
+  const forgeKeyframe = async (): Promise<string> => {
+    // A keyframe checkpointed BEFORE the QA gate is a PAID render: reuse it
+    // (while it's still alive) so an interrupted gate never re-buys the frame.
+    let raw = priorRawKeyframe;
+    const resumedRaw = !!raw && (await checkpointUrlAlive(raw));
+    if (!resumedRaw) raw = "";
+    priorRawKeyframe = "";
+    if (!raw) raw = await renderKeyframe();
+    // Repair ids only apply to the frame they were run on — pass them solely
+    // when this IS that frame, or the gate would re-attach to an edit of a
+    // different keyframe.
+    const gated = await gateStylizedFrame(
+      raw,
+      params.productTitle,
+      params.serviceMode ? undefined : params.productImageUrl,
+      "cartoon",
+      { fixId: resumedRaw ? ck.ckGateFixId : undefined, stripId: resumedRaw ? ck.ckGateStripId : undefined, save: ckpt }
+    );
+    await ckpt({ ckKeyframeUrl: gated });
+    return gated;
+  };
+
+  const renderKeyframe = async (): Promise<string> => {
     const sceneBits = params.direction ? ` Scene direction: ${params.direction.slice(0, 200)}.` : "";
 
     // 2a) source photo to stylize: composed presenter+product frame, else the
@@ -285,6 +413,20 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       ` If any packaging, box art or label appears in the scene, it displays ONLY the title "${params.productTitle}" ` +
       `in clean bold lettering spelled EXACTLY like that — never invented words, never gibberish text; any other surface stays text-free.`;
 
+    // Every branch checkpoints its prediction id BEFORE polling (the render is
+    // billed at create) and the finished RAW url before the QA gate runs.
+    const prior = priorKeyframeId;
+    priorKeyframeId = undefined; // one re-attach only — a redraw is a new render
+    const run = (input: Record<string, unknown>, model: string) =>
+      resumablePrediction({
+        priorId: prior,
+        create: () => repCreate(model, input),
+        save: (id) => ckpt({ ckKeyframeId: id }),
+        maxMs: 5 * 60_000,
+        stage: "cartoon-keyframe",
+      });
+
+    let url: string;
     if (sourcePhotoUrl && withCharacter) {
       const prompt =
         `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
@@ -293,50 +435,51 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         `Hands are anatomically correct — five fingers per hand, natural relaxed grip, no extra or missing fingers. ` +
         `Delightful advertising scene, simple complementary background.${sceneBits}${exactText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
-      const id = await repCreate("black-forest-labs/flux-kontext-pro", {
+      url = await run({
         prompt,
         input_image: sourcePhotoUrl,
         aspect_ratio: "9:16",
         output_format: "jpg",
-      });
-      keyframeUrl = await repPoll(id, 5 * 60_000, "cartoon-keyframe");
+      }, "black-forest-labs/flux-kontext-pro");
     } else if (!params.serviceMode && params.productImageUrl) {
       const prompt =
         `Redraw this exact product as a ${recipe.look}. Keep the product's shape, colors, ` +
         `proportions, logos and text clearly recognizable — same product, new art style. ` +
         `Place it as the hero of a delightful advertising scene with a simple complementary background.${sceneBits}${exactText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
-      const id = await repCreate("black-forest-labs/flux-kontext-pro", {
+      url = await run({
         prompt,
         input_image: params.productImageUrl,
         aspect_ratio: "9:16",
         output_format: "jpg",
-      });
-      keyframeUrl = await repPoll(id, 5 * 60_000, "cartoon-keyframe");
+      }, "black-forest-labs/flux-kontext-pro");
     } else {
       const subject = params.serviceMode
         ? `a joyful scene showing the happy OUTCOME of "${params.productTitle}" (a service) — a delighted character enjoying the result`
         : `"${params.productTitle}" as the hero of a delightful advertising scene`;
       const prompt = `${recipe.look}. ${subject}.${sceneBits}${exactText} Vertical 9:16 composition, advertising quality, no watermark, no caption text.`;
-      const id = await repCreate("black-forest-labs/flux-dev", {
+      url = await run({
         prompt,
         num_inference_steps: 30,
         guidance: 3,
         aspect_ratio: "9:16",
         output_format: "jpg",
         output_quality: 92,
-      });
-      keyframeUrl = await repPoll(id, 5 * 60_000, "cartoon-keyframe");
+      }, "black-forest-labs/flux-dev");
     }
-    // QUALITY GATE — merchants ship this frame. Vision-check the lettering,
-    // repair it to the exact product title, or strip it; gibberish never ships.
-    keyframeUrl = await gateStylizedFrame(
-      keyframeUrl,
-      params.productTitle,
-      params.serviceMode ? undefined : params.productImageUrl
-    );
-    await ckpt({ ckKeyframeUrl: keyframeUrl });
-  }
+    // The paid frame survives an interrupted QA gate. Repair ids from an older
+    // frame are dropped with it — they'd re-attach to an edit of a dead image.
+    delete ck.ckGateFixId;
+    delete ck.ckGateStripId;
+    await ckpt({ ckRawKeyframeUrl: url, ckKeyframeUrl: "", ckGateFixId: "", ckGateStripId: "" });
+    return url;
+  };
+
+  // QUALITY GATE runs inside forgeKeyframe — merchants ship this frame, so the
+  // lettering is vision-checked, repaired to the exact product title, or
+  // stripped; gibberish never ships.
+  let keyframeUrl = resume.keyframeUrl || "";
+  if (!keyframeUrl) keyframeUrl = await forgeKeyframe();
 
   // 3) ANIMATE — kling brings the keyframe to life. The keyframe is a hosted
   // replicate.delivery URL (same provider), so it's passed directly — no
@@ -349,7 +492,21 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       await ckpt({ ckAnimUrl: animUrl });
     } catch { /* old prediction died — fall through to a fresh one */ }
   }
+  // One probe covers BOTH resume paths: a checkpointed url and a re-attached
+  // prediction hand back the same delivery link, which dies after ~1h. Left
+  // unchecked it poisons every retry (assembly's download fails identically).
+  if (animUrl && !(await checkpointUrlAlive(animUrl))) {
+    console.log("[cartoon] checkpointed animation URL has expired — re-animating");
+    animUrl = "";
+    await ckpt({ ckAnimUrl: "", ckKlingId: "" });
+  }
   if (!animUrl) {
+    // The keyframe may itself be a resumed (now-dead) url — kling would fetch
+    // it and fail on every attempt. Redraw before spending on the animation.
+    if (keyframeUrl === resume.keyframeUrl && !(await checkpointUrlAlive(keyframeUrl))) {
+      console.log("[cartoon] checkpointed keyframe URL has expired — redrawing before animating");
+      keyframeUrl = await forgeKeyframe();
+    }
     const { id: animId } = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
       prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible" : "the product stays the clear hero"}, vertical video.`,
@@ -367,18 +524,28 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   }
   if (!audioBuf || audioBuf.length < 10_000) {
     let audioUrl: string;
+    // Cheap, but still billed at create — a restart mid-poll re-attaches.
     try {
-      const ttsId = await repCreate("minimax/speech-02-hd", {
-        text: script,
-        voice_id: recipe.voice,
-        emotion: "happy",
-        english_normalization: true,
-        language_boost: "English",
+      audioUrl = await resumablePrediction({
+        priorId: ck.ckTtsId,
+        create: () => repCreate("minimax/speech-02-hd", {
+          text: script,
+          voice_id: recipe.voice,
+          emotion: "happy",
+          english_normalization: true,
+          language_boost: "English",
+        }),
+        save: (id) => ckpt({ ckTtsId: id }),
+        maxMs: 3 * 60_000,
+        stage: "cartoon-tts",
       });
-      audioUrl = await repPoll(ttsId, 3 * 60_000, "cartoon-tts");
     } catch {
-      const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: recipe.voice });
-      audioUrl = await repPoll(ttsId, 3 * 60_000, "cartoon-tts");
+      audioUrl = await resumablePrediction({
+        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: recipe.voice }),
+        save: (id) => ckpt({ ckTtsId: id }),
+        maxMs: 3 * 60_000,
+        stage: "cartoon-tts",
+      });
     }
     await ckpt({ ckAudioUrl: audioUrl });
     audioBuf = await downloadBuffer(audioUrl);
