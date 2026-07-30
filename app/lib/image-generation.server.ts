@@ -885,6 +885,13 @@ const BACKFILL_EVERY_MS = 10 * 60 * 1000; // worker ticks every ~8s — heal gen
 const EXPIRING_HOSTS = ["replicate.delivery", "fal.media", "queue.fal.run", "v3.fal.media"];
 const isExpiringUrl = (u?: string) => !!u && EXPIRING_HOSTS.some((h) => u.includes(h));
 
+/** Assets forged before genMeta carry no `method`, and they're the exact
+ *  population this healer exists for. Their prompt is unambiguous though: the
+ *  product-image ladders all read "Place this exact product…" / "presenter
+ *  holding…", while a text-to-image poster describes itself. */
+const looksText2img = (p?: string) =>
+  !!p && /advertising poster photograph of /i.test(p) && !/place this exact product|presenter holding/i.test(p);
+
 export async function backfillDeadImages(): Promise<void> {
   if (Date.now() - lastBackfillScan < BACKFILL_EVERY_MS) return;
   lastBackfillScan = Date.now();
@@ -913,7 +920,7 @@ export async function backfillDeadImages(): Promise<void> {
       // running any of those through flux-schnell with NO product image
       // silently replaced the merchant's ad with a generic, product-less
       // picture. Flag those for regeneration instead of corrupting them.
-      const method = body.method || "";
+      const method = body.method || (looksText2img(body.prompt) ? "text2img" : "");
       if (method !== "text2img" && method !== "lifestyle") {
         await db.asset.update({
           where: { id: a.id },
