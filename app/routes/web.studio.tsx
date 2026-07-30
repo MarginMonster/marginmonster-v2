@@ -248,7 +248,7 @@ export default function WebStudio() {
             <div className="ws-lbl">What kind of image ad?</div>
             <div className="ws-tiles two">
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
-                <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=8)" }} />
+                <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=9)" }} />
                 <b>Product ad</b><span className="ws-tile-sub">Your product in a famous ad format</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
@@ -268,7 +268,7 @@ export default function WebStudio() {
                   {d.templates.map((t) => (
                     <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
                       onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=8)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
+                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=9)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
                       <b>{t.emoji} {t.name}</b>
                     </button>
                   ))}

@@ -318,9 +318,10 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
 // mountPath) — plates/previews/statue must survive deploys or the picker
 // flaps back to fallbacks after every push.
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "renders", "ad-templates");
-// v8: the stand-in goes Prime-silhouette GStyle — tall slim sports-hydration
-// bottle, bold VERTICAL "EASYMODE" wordmark, emerald green + gold.
-const AD_TEMPLATE_VERSION = 8;
+// v9: the APPROVED stand-in — the emerald drink (clear bottle, emerald
+// liquid, gold vertical EASYMODE wordmark, black sport cap), the same look
+// as the beloved cinematic Product Highlight cover.
+const AD_TEMPLATE_VERSION = 9;
 // Plates version separately: they only rebuild when their PROMPTS change.
 // The v6 plates rendered fresh and bright, so the v7 statue swap reuses the
 // exact scenes merchants already saw.
@@ -356,11 +357,10 @@ function currentTemplateFile(kind: "preview" | "plate", key: string): string {
 async function ensureStatue(): Promise<string | null> {
   const existing = adTemplateFile("statue");
   if (existing) return existing;
-  // The stand-in product: a sleek EASYMODE-branded drink bottle in brand
-  // colors — a metaphorical product that marks exactly where the merchant's
-  // real product will go. nano-banana first: it renders label text faithfully,
-  // where flux-dev garbled "EASYMODE" into alphabet soup.
-  const prompt = 'Professional studio product photograph of a sleek premium sports hydration drink bottle: tall slim cylindrical body with smooth rounded shoulders and a wide flat matte screw cap — the silhouette of a modern viral sports drink bottle. Glossy deep EMERALD GREEN bottle with the brand wordmark "EASYMODE" printed in bold clean metallic GOLD uppercase letters running VERTICALLY down the full height of the bottle, matte black cap. The wordmark must be spelled exactly "EASYMODE" — E-A-S-Y-M-O-D-E, one word, perfectly legible. Bottle standing upright, centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, high-end commercial beverage photography. No other objects, no hands, no people, no extra text.';
+  // The stand-in product: the APPROVED emerald EASYMODE drink — same prompt
+  // family as the bottle candidates, emerald variant (the one that became
+  // the cinematic Product Highlight cover). nano-banana keeps the label true.
+  const prompt = `${BOTTLE_BASE} ${BOTTLE_VARIANTS.emerald}`;
   let raw: string;
   try {
     raw = await repRun("google/nano-banana", { prompt, output_format: "jpg" });

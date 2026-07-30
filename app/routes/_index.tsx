@@ -90,7 +90,7 @@ export default function Index() {
               "/style-tiles/avatarcover.jpg?v=2",
               "/style-tiles/cover.jpg?v=2",
               "/style-tiles/anthemcover.jpg?v=2",
-              "/ad-templates/preview-colorblock.jpg?v=8",
+              "/ad-templates/preview-colorblock.jpg?v=9",
             ].map((src, i) => (
               <figure className="lz-show-card" key={src}>
                 <span className="lz-show-img" style={{ backgroundImage: `url(${src})` }} />
