@@ -21,24 +21,29 @@ export const DEFAULT_TILE_CHARACTER = "ingrid";
 // disk on Render (render.yaml mountPath) — anywhere else gets wiped on every
 // deploy, which made tiles flap between rendered and portrait-fallback.
 const TILE_DIR = path.join(process.cwd(), "data", "renders", "style-tiles");
-const TILE_VERSION = 2; // v2: five-finger hand guard in the prompt
+const TILE_VERSION = 3; // v3: the held product is the emerald EASYMODE bottle
 // Per-key bumps: raise ONE style's version when its recipe changes materially,
 // so only that style re-renders instead of every tile for every character.
 const TILE_KEY_VERSIONS: Record<string, number> = {
-  brick: 4, // v4: full voxel/cube look — v3 still drew studded minifigures
+  brick: 5, // v5: voxel look + emerald bottle (v4 was voxel + orange bottle)
+  avatarcover: 3, // v3: holds the real EASYMODE bottle (nano-banana composite)
+  anthemcover: 3, // v3: mic + the real EASYMODE bottle (nano-banana composite)
 };
 const tileVersion = (key: string) => TILE_KEY_VERSIONS[key] ?? TILE_VERSION;
 const PICKER_KEYS: CartoonStyleKey[] = [
   "dreamanime", "toyfigure", "brick", "pixar", "retroanime", "vintagetoon", "puppet", "clay",
 ];
 
-// Special non-style tiles rendered with the same machinery. The Anthem cover
-// is the default character SINGING — a real photoreal render, not iconography.
+// Special non-style tiles: the Avatar AI / Anthem covers. These composite the
+// character with the REAL approved EASYMODE bottle render (the statue cutout,
+// passed as a second input image) via nano-banana, so the covers carry the
+// same super-brand product as the Product Highlight tile — exact label, exact
+// bottle, never a generic prop.
 const SPECIAL_PROMPTS: Record<string, string> = {
   anthemcover:
-    "Edit this photo: the exact same person now singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, colorful warm stage lighting with soft bokeh lights behind them, photorealistic, natural skin texture, wide landscape composition centered on them from the waist up, no text, no watermark.",
+    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, the other hand holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped), both hands anatomically correct with five fingers. Colorful warm stage lighting with soft bokeh lights behind them, natural skin texture, centered on them from the waist up, no other text, no watermark.",
   avatarcover:
-    "Edit this photo: the exact same person now enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up a small simple orange bottle with a blue cap (a generic product, no readable text), the hand holding the bottle anatomically correct with five fingers and a natural grip, bright airy daylight room softly blurred behind them, photorealistic, natural skin texture, wide landscape composition centered on them from the chest up, no text, no watermark.",
+    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped), the hand holding the bottle anatomically correct with five fingers and a natural grip. Bright airy daylight room softly blurred behind them, natural skin texture, centered on them from the chest up, no other text, no watermark.",
 };
 
 const inFlight = new Set<string>();
@@ -83,19 +88,33 @@ export function ensureStyleTile(character: string, key: string): void {
     try {
       const { repCreate, repPoll, download } = await import("./ugc-ad-pipeline.server");
       const recipe = CARTOON_RECIPES[key as CartoonStyleKey];
-      const prompt = SPECIAL_PROMPTS[key] || (
-        `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, ` +
-        `same friendly likeness, stylized for the art style. They are smiling and holding up ` +
-        `a small simple orange bottle with a blue cap (a generic product, no readable text). ` +
-        `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
-        `no extra or missing fingers. Wide landscape composition, the character centered from ` +
-        `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`);
-      const id = await repCreate("black-forest-labs/flux-kontext-pro", {
-        prompt,
-        input_image: `${base}/avatars/${character}_0.jpg`,
-        aspect_ratio: "16:9",
-        output_format: "jpg",
-      });
+      let id: string;
+      if (SPECIAL_PROMPTS[key]) {
+        // Covers composite the real EASYMODE bottle (statue cutout) with the
+        // character — nano-banana takes both images and keeps the label exact.
+        id = await repCreate("google/nano-banana", {
+          prompt: SPECIAL_PROMPTS[key],
+          image_input: [`${base}/avatars/${character}_0.jpg`, `${base}/ad-templates/statue.png`],
+          output_format: "jpg",
+        });
+      } else {
+        // Cartoon tiles redraw the bottle in-style: emerald EasyMode colors,
+        // deliberately no readable label (tiny stylized text turns to gibberish).
+        const prompt =
+          `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, ` +
+          `same friendly likeness, stylized for the art style. They are smiling and holding up ` +
+          `a sleek tall emerald green sports drink bottle with a black cap (plain label, ` +
+          `no readable text). ` +
+          `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
+          `no extra or missing fingers. Wide landscape composition, the character centered from ` +
+          `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`;
+        id = await repCreate("black-forest-labs/flux-kontext-pro", {
+          prompt,
+          input_image: `${base}/avatars/${character}_0.jpg`,
+          aspect_ratio: "16:9",
+          output_format: "jpg",
+        });
+      }
       const url = await repPoll(id, 5 * 60_000, `style-tile:${character}:${key}`);
       fs.mkdirSync(TILE_DIR, { recursive: true });
       const tmp = path.join(TILE_DIR, `.${character}-${key}.part`);

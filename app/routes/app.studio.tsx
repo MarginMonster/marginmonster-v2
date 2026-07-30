@@ -29,10 +29,10 @@ type CType = "avatar" | "highlight" | "cartoon" | "jingle";
 // Covers carry ?v= so replacing the art actually reaches browsers that
 // cached the old file under the same name.
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
-  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/style-tiles/avatarcover.jpg?v=2", sub: "A real-looking presenter talks it up", live: true },
+  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/style-tiles/avatarcover.jpg?v=3", sub: "A real-looking presenter talks it up", live: true },
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", live: true },
-  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=2", sub: "Your presenter & product, redrawn viral-style", live: true },
-  { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=2", sub: "Your avatar SINGS your product's theme song", live: true },
+  { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=3", sub: "Your presenter & product, redrawn viral-style", live: true },
+  { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=3", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
@@ -588,7 +588,7 @@ export default function Studio() {
               </div>
               {contentType === "jingle" && (
                 <>
-                  <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product's theme song and your presenter <i>sings it on camera</i>, lipsynced. Pick a singer below — photoreal, or redrawn in a cartoon style. No singer = the song plays over a cinematic product shot.</p>
+                  <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick a singer below — photoreal, or redrawn in a cartoon style. No singer = the song plays over a cinematic product shot.</p>
                   <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">optional — none = photoreal</span></div>
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
@@ -616,7 +616,7 @@ export default function Studio() {
                   <span className="ca-sub">Your product as the hero — pick a template scene</span>
                 </button>
                 <button type="button" className="cast cs-ctype" onClick={() => setImageMode("presenter")}>
-                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=2)" }} />
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=3)" }} />
                   <span className="ca-nm">🤳 Presenter holding it</span>
                   <span className="ca-sub">A real-looking presenter holds your product</span>
                 </button>

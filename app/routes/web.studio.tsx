@@ -19,10 +19,10 @@ import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
-  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=2", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 59 },
+  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=3", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 59 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 59 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=2", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Anthem", price: 99 },
-  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=2", sub: "Your avatar SINGS your product's theme song", cap: "anthem", tier: "Anthem", price: 99 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=3", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Anthem", price: 99 },
+  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=3", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Anthem", price: 99 },
 ] as const;
 
 const CARTOON_STYLES = [
@@ -258,7 +258,7 @@ export default function WebStudio() {
                 <b>Product ad</b><span className="ws-tile-sub">Your product in a famous ad format</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
-                <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=2)" }} />
+                <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=3)" }} />
                 <b>With presenter</b><span className="ws-tile-sub">A presenter holds it, poster copy on top</span>
               </button>
             </div>
