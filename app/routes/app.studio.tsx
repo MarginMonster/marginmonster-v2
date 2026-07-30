@@ -206,6 +206,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
     const commercial = form.get("commercial") === "1";
     const charged = TOKEN_COST.video + engineSurcharge(videoEngine);
+    // Without a photo the engines invent a product from the title — generic AI
+    // art the merchant paid for. Services legitimately have nothing to shoot.
+    if (!productImageUrl && !service) return json({ error: "Pick a product that has a photo — without one we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
     // One currency: video spends tokens like every other action (no separate
     // free-video quota). Campaigns and the Studio now bill identically.
     try { await spendTokens(shop.id, charged); }
@@ -220,6 +223,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
     const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
     if (avatarId && !productImageUrl && !service) return json({ error: "Pick a product with a photo — the presenter needs something to hold." });
+    // Without a photo the engines invent a product from the title, so the
+    // merchant pays for generic AI art. Services are the one real exception.
+    if (!productImageUrl && !service) return json({ error: "Pick a product that has a photo — without one we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
     const rawMode = (form.get("styleMode") as string) || "";
     const styleMode = rawMode === "scene" || rawMode === "backdrop" ? rawMode : undefined;
     const rawTemplate = ((form.get("templateKey") as string) || "").trim();

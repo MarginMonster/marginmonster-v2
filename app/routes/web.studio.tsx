@@ -205,6 +205,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!reach.ok) return json({ error: `That product photo can't be opened by our renderers (${reach.why}). Try uploading the file directly, or use a public image link.` });
   }
 
+  // HARD REQUIREMENT: no product photo = the engines invent a product from
+  // the title and the merchant pays for generic AI art. Services are the one
+  // legitimate exception (there is nothing to photograph).
+  if ((intent === "video" || intent === "image") && !service && !productImageUrl) {
+    return json({ error: "Add a product photo — upload one or paste an image URL. Without it we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
+  }
+
   try {
     if (intent === "video") {
       const contentType = ((form.get("contentType") as string) || "").trim() || undefined;
@@ -356,6 +363,7 @@ export default function WebStudio() {
   const [tab, setTab] = useState<Tab>(initTab || "video");
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   const [imageUrl, setImageUrl] = useState("");
+  const [hasFile, setHasFile] = useState(false);
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
@@ -459,7 +467,12 @@ export default function WebStudio() {
   const doImport = () => { if (urlInput.trim()) submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" }); };
 
   const err = actionData && "error" in actionData ? (actionData.error as string) : null;
-  const ctaDisabled = busy || !productTitle.trim() || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle);
+  // A product ad with no product photo is just AI art from the title — the
+  // pipeline happily renders it and the merchant pays for slop. Require a
+  // photo (upload OR url) for anything that should SHOW the product; services
+  // legitimately have nothing to photograph.
+  const needsPhoto = tab !== "blog" && !service && !hasFile && !imageUrl.trim();
+  const ctaDisabled = busy || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle);
 
   return (
     <div>
@@ -669,8 +682,14 @@ export default function WebStudio() {
             {tab !== "blog" && (
               <>
                 <div className="ws-lbl">Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></div>
-                <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }} />
+                <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
+                  onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
                 <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="…or https://yourstore.com/cdn/product.jpg" style={{ marginTop: 8 }} />
+                {needsPhoto && (
+                  <p className="ws-note" style={{ color: "#8A5A12" }}>
+                    Add a photo so the ad features <b>your</b> product — without one we&apos;d be inventing a product from the name. Promoting a service? Switch to <b>Service / offer</b> below.
+                  </p>
+                )}
               </>
             )}
 
