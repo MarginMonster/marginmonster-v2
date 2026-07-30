@@ -21,13 +21,13 @@ export const DEFAULT_TILE_CHARACTER = "ingrid";
 // disk on Render (render.yaml mountPath) — anywhere else gets wiped on every
 // deploy, which made tiles flap between rendered and portrait-fallback.
 const TILE_DIR = path.join(process.cwd(), "data", "renders", "style-tiles");
-const TILE_VERSION = 4; // v4: EASYMODE-labeled bottle composited from the real render, spell-checked
+const TILE_VERSION = 5; // v5: bottle sourced from the v10 statue (the Product Highlight bottle)
 // Per-key bumps: raise ONE style's version when its recipe changes materially,
 // so only that style re-renders instead of every tile for every character.
 const TILE_KEY_VERSIONS: Record<string, number> = {
-  brick: 6, // v6: voxel look + labeled EASYMODE bottle
-  avatarcover: 3, // v3: holds the real EASYMODE bottle (nano-banana composite)
-  anthemcover: 3, // v3: mic + the real EASYMODE bottle (nano-banana composite)
+  brick: 7, // v7: voxel look + the Product Highlight bottle
+  avatarcover: 4, // v4: holds the v10 statue bottle (extracted from phcover)
+  anthemcover: 4, // v4: mic + the v10 statue bottle (extracted from phcover)
 };
 const tileVersion = (key: string) => TILE_KEY_VERSIONS[key] ?? TILE_VERSION;
 const PICKER_KEYS: CartoonStyleKey[] = [
@@ -41,9 +41,9 @@ const PICKER_KEYS: CartoonStyleKey[] = [
 // bottle, never a generic prop.
 const SPECIAL_PROMPTS: Record<string, string> = {
   anthemcover:
-    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, the other hand holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped), both hands anatomically correct with five fingers. Colorful warm stage lighting with soft bokeh lights behind them, natural skin texture, centered on them from the waist up, no other text, no watermark.",
+    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, the other hand holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), both hands anatomically correct with five fingers. Colorful warm stage lighting with soft bokeh lights behind them, natural skin texture, centered on them from the waist up, no other text, no watermark.",
   avatarcover:
-    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped), the hand holding the bottle anatomically correct with five fingers and a natural grip. Bright airy daylight room softly blurred behind them, natural skin texture, centered on them from the chest up, no other text, no watermark.",
+    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), the hand holding the bottle anatomically correct with five fingers and a natural grip. Bright airy daylight room softly blurred behind them, natural skin texture, centered on them from the chest up, no other text, no watermark.",
 };
 
 const inFlight = new Set<string>();
@@ -98,7 +98,7 @@ export function ensureStyleTile(character: string, key: string): void {
         `Image 1 is a person; image 2 is a product bottle. Redraw BOTH as a ${recipe.look}: ` +
         `the person becomes a charming character with the same hairstyle and a friendly stylized ` +
         `likeness, smiling and holding up the bottle from image 2 rendered in the same art style — ` +
-        `same shape, same emerald green drink and black cap, and its label reads exactly "EASYMODE" ` +
+        `same shape, same emerald green drink and black cap, and its label reads exactly "EASYMODE", facing the camera and right-side-up, ` +
         `in clean bold capital letters, perfectly spelled, with no other readable text anywhere. ` +
         `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
         `no extra or missing fingers. Wide landscape composition, the character centered from ` +
@@ -114,7 +114,9 @@ export function ensureStyleTile(character: string, key: string): void {
           output_format: "jpg",
         });
         url = await repPoll(id, 5 * 60_000, `style-tile:${character}:${key}`);
-        const qa = await qaStylizedText(url, "EASYMODE");
+        // QA compares against the real statue render: exact wordmark AND a
+        // bottle that's recognizably the Product Highlight bottle.
+        const qa = await qaStylizedText(url, "EASYMODE", statueUrl);
         passed = qa.pass;
         if (!passed) artLog("style-tiles", `${flightKey}: attempt ${attempt + 1} failed label QA — ${qa.reason}`);
       }

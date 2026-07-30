@@ -318,10 +318,10 @@ function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
 // mountPath) — plates/previews/statue must survive deploys or the picker
 // flaps back to fallbacks after every push.
 const AD_TEMPLATE_DIR = path.join(process.cwd(), "data", "renders", "ad-templates");
-// v9: the APPROVED stand-in — the emerald drink (clear bottle, emerald
-// liquid, gold vertical EASYMODE wordmark, black sport cap), the same look
-// as the beloved cinematic Product Highlight cover.
-const AD_TEMPLATE_VERSION = 9;
+/// v10: the statue is EXTRACTED from the approved cinematic Product Highlight
+// render (phcover) — one bottle everywhere, no parallel bottle designs. v9
+// rendered its own bottle from a text prompt and drifted from the approved look.
+const AD_TEMPLATE_VERSION = 10;
 // Plates version separately: they only rebuild when their PROMPTS change.
 // The v6 plates rendered fresh and bright, so the v7 statue swap reuses the
 // exact scenes merchants already saw.
@@ -357,17 +357,28 @@ function currentTemplateFile(kind: "preview" | "plate", key: string): string {
 async function ensureStatue(): Promise<string | null> {
   const existing = adTemplateFile("statue");
   if (existing) return existing;
-  // The stand-in product: the APPROVED emerald EASYMODE drink — same prompt
-  // family as the bottle candidates, emerald variant (the one that became
-  // the cinematic Product Highlight cover). nano-banana keeps the label true.
-  const prompt = `${BOTTLE_BASE} ${BOTTLE_VARIANTS.emerald}`;
+  // ONE bottle everywhere: extract the exact bottle from the approved
+  // cinematic Product Highlight render. Only if that render doesn't exist yet
+  // does the old text-prompt path run (same look family, then replaced on the
+  // next self-heal once phcover lands).
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   let raw: string;
-  try {
-    raw = await repRun("google/nano-banana", { prompt, output_format: "jpg" });
-  } catch {
-    raw = await repRun("black-forest-labs/flux-dev", {
-      prompt, num_inference_steps: 30, guidance: 3.5, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+  if (phCoverFile() && base) {
+    raw = await repRun("google/nano-banana", {
+      prompt:
+        'Extract the exact bottle from this image as a clean studio product shot: the SAME tall sleek bottle, same emerald drink, same black sport cap, and the same wordmark reading exactly "EASYMODE" — clearly legible, right-side-up, label facing the camera. The bottle stands perfectly upright and centered on a pure white seamless background, soft even studio lighting, the full bottle in frame, photorealistic, nothing else in the frame.',
+      image_input: [`${base}/ad-templates/phcover.jpg`],
+      output_format: "jpg",
     });
+  } else {
+    const prompt = `${BOTTLE_BASE} ${BOTTLE_VARIANTS.emerald}`;
+    try {
+      raw = await repRun("google/nano-banana", { prompt, output_format: "jpg" });
+    } catch {
+      raw = await repRun("black-forest-labs/flux-dev", {
+        prompt, num_inference_steps: 30, guidance: 3.5, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92,
+      });
+    }
   }
   // Spelling QA — a misspelled stand-in poisons every preview. One kontext
   // text-fix retry; QA itself is best-effort (no key → ship what we have).

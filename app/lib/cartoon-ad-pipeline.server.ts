@@ -50,7 +50,7 @@ export async function qaStylizedText(
         productImageUrl
           ? `Image 1 is a real product photo; image 2 is a stylized cartoon ad frame featuring that product.`
           : `This is a stylized cartoon ad frame.`,
-        `Check every piece of visible lettering (labels, packaging, box art, signs): each must be real, correctly-spelled language — and wherever it names the product it must read exactly "${productTitle}". Stylized fonts are fine; invented words, garbled or half-formed letters are a FAIL.`,
+        `Check every piece of visible lettering (labels, packaging, box art, signs): each must be real, correctly-spelled, right-side-up readable language — and wherever it names the product it must read exactly "${productTitle}". Stylized fonts are fine; invented words, garbled or half-formed letters, mirrored or upside-down text are a FAIL.`,
         productImageUrl ? `Also FAIL if the product's shape or colors are unrecognizable compared to image 1.` : "",
         `Reply ONLY JSON: {"pass": true|false, "reason": "short reason"}.`,
       ].filter(Boolean).join(" "),

@@ -19,10 +19,10 @@ import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
-  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=3", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 59 },
+  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 59 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 59 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=3", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 59 },
-  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=3", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 59 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 59 },
+  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 59 },
 ] as const;
 
 const CARTOON_STYLES = [
@@ -133,7 +133,7 @@ export default function WebStudio() {
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
 
   const styleChar = avatarId ?? d.cast[0]?.id ?? "ingrid";
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 6 : 4}`;
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 7 : 5}`;
 
   const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
   const cost = tab === "video" ? d.costs.video + engineFee : tab === "image" ? d.costs.image : d.costs.blog;
@@ -258,7 +258,7 @@ export default function WebStudio() {
                 <b>Product ad</b><span className="ws-tile-sub">Your product in a famous ad format</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
-                <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=3)" }} />
+                <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
                 <b>With presenter</b><span className="ws-tile-sub">A presenter holds it, poster copy on top</span>
               </button>
             </div>
@@ -291,7 +291,7 @@ export default function WebStudio() {
                     {d.templates.map((t) => (
                       <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
                         onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setFormatKey(null); }}>
-                        <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=9)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
+                        <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=10)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
                         <b>{t.emoji} {t.name}</b>
                       </button>
                     ))}

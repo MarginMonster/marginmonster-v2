@@ -87,10 +87,10 @@ export default function Index() {
           <p className="lz-show-sub">{t.show.sub}</p>
           <div className="lz-show-grid">
             {[
-              "/style-tiles/avatarcover.jpg?v=3",
-              "/style-tiles/cover.jpg?v=3",
-              "/style-tiles/anthemcover.jpg?v=3",
-              "/ad-templates/preview-colorblock.jpg?v=9",
+              "/style-tiles/avatarcover.jpg?v=4",
+              "/style-tiles/cover.jpg?v=4",
+              "/style-tiles/anthemcover.jpg?v=4",
+              "/ad-templates/preview-colorblock.jpg?v=10",
             ].map((src, i) => (
               <figure className="lz-show-card" key={src}>
                 <span className="lz-show-img" style={{ backgroundImage: `url(${src})` }} />
