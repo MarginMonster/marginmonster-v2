@@ -3,9 +3,11 @@
  * point (studio action, archive retry/remix, worker) calls assertCapability
  * before spending a token — the UI lock badges are cosmetics, this is the law.
  *
- * Trial: runs at Studio-level capabilities (merchants must SEE video) with
- * anthem + cartoon locked until the first payment, on every tier. Pairs with
- * the TRIAL_TOKEN_CAP in tokens.server.ts. */
+ * Trial: the FULL plan experience — every generator the tier (or Studio,
+ * whichever is broader) includes, so merchants taste everything before the
+ * first charge. The TRIAL_TOKEN_CAP in tokens.server.ts is the guardrail:
+ * capability locks during trial just read as broken ("I'm on Studio but
+ * Studio features are locked"). */
 
 import type { Plan } from "@prisma/client";
 import {
@@ -46,10 +48,7 @@ export function capabilitiesFor(plan: PlanLike | null | undefined): Set<Capabili
   if (!plan || !plan.active) return new Set();
   const tier = resolveTierKey(plan.type) || "STARTER";
   if (isTrialing(plan)) {
-    const caps = new Set<Capability>([...TIER_CAPABILITIES.STUDIO, ...TIER_CAPABILITIES[tier]]);
-    caps.delete("anthem");
-    caps.delete("cartoon");
-    return caps;
+    return new Set<Capability>([...TIER_CAPABILITIES.STUDIO, ...TIER_CAPABILITIES[tier]]);
   }
   return new Set(TIER_CAPABILITIES[tier]);
 }

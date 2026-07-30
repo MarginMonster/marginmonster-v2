@@ -132,7 +132,7 @@ export default function WebDashboard() {
       </div>
 
       {/* Plans */}
-      <div className="wb-price-name" style={{ marginBottom: 10 }}>2 · Your plan</div>
+      <div id="plans" className="wb-price-name" style={{ marginBottom: 10, scrollMarginTop: 80 }}>2 · Your plan</div>
       {!d.billingOn && <div className="wb-err">Billing is coming online — plans can&apos;t be purchased on the web quite yet.</div>}
       <div className="wb-grid" style={{ marginBottom: 22 }}>
         {d.tiers.map((t) => (

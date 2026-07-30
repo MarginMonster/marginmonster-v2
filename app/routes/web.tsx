@@ -40,7 +40,7 @@ export default function WebLayout() {
           )}
           {authed ? (
             <div className="wb-me">
-              {planLabel && <span className="wb-plan">{planLabel}</span>}
+              {planLabel && <Link to="/web#plans" className="wb-plan" title="Manage your plan">{planLabel}</Link>}
               <span className="wb-tok">🪙 {tokens.toLocaleString()}</span>
               <Link to="/web/logout" className="wb-out">Log out</Link>
             </div>
@@ -70,7 +70,7 @@ const CSS = `
 .wb-tab{padding:8px 16px;border-radius:11px;text-decoration:none;font-weight:700;font-size:13.5px;color:var(--ink2);}
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-me{display:flex;align-items:center;gap:12px;}
-.wb-plan{font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;color:#fff;background:linear-gradient(165deg,#12A85E,#0B6B3E);}
+.wb-plan{font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;color:#fff;background:linear-gradient(165deg,#12A85E,#0B6B3E);text-decoration:none;}
 .wb-tok{font-weight:700;font-size:13px;color:var(--gold-deep);}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;}
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
