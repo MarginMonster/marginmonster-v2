@@ -103,7 +103,14 @@ const CSS = `
 .wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
 @keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
-.wb-spin{width:36px;height:36px;border-radius:50%;border:3.5px solid rgba(255,255,255,.22);border-top-color:#12A85E;animation:wbRot .85s linear infinite;display:block;}
+/* GStyle buffer: the spinning gold engine-turned rosette, not a generic ring. */
+.wb-spin{width:52px;height:52px;border-radius:50%;display:block;animation:wbRot 3.2s linear infinite;
+  background:
+    repeating-conic-gradient(from 0deg,rgba(231,200,121,.95) 0 10deg,rgba(231,200,121,.12) 10deg 24deg),
+    repeating-radial-gradient(circle,rgba(231,200,121,.55) 0 1.5px,transparent 1.5px 7px);
+  -webkit-mask:radial-gradient(circle,transparent 22%,#000 24% 74%,transparent 78%);
+  mask:radial-gradient(circle,transparent 22%,#000 24% 74%,transparent 78%);
+  filter:drop-shadow(0 0 8px rgba(231,200,121,.35));}
 @keyframes wbRot{to{transform:rotate(360deg)}}
 .wb-eta{color:#fff;font-weight:800;font-size:12.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.6);}
 .wb-failbadge{position:relative;z-index:1;font-size:30px;color:#E9897B;font-weight:800;}

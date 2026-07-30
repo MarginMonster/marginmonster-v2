@@ -8,6 +8,9 @@ import { useEffect } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { linkedFromCache, publishPost, socialProviderEnabled } from "../lib/social-provider.server";
+import { spendTokens } from "../lib/tokens.server";
+import { TOKEN_COST } from "../lib/plan-config";
+import { useState } from "react";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
@@ -26,7 +29,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const nowMs = Date.now();
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_BLOG_POST: 40 };
   const KIND: Record<string, "video" | "image" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_BLOG_POST: "blog" };
-  const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; refunded: boolean }[] = [];
+  const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
+  const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
     let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
@@ -36,7 +40,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (!failed && !generating) continue; // future-scheduled drip isn't "cooking"
     const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
     const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
-    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, refunded: !!p.refunded });
+    const pl = p as { chargedTokens?: number };
+    const retryCost = failed && p.refunded ? (typeof pl.chargedTokens === "number" && pl.chargedTokens > 0 ? pl.chargedTokens : RETRY_FLAT[j.type] || 0) : 0;
+    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, refunded: !!p.refunded, retryCost });
   }
   const linked = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
   return json({
@@ -62,7 +68,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
-  if (form.get("intent") !== "post") return json({});
+  const intent = form.get("intent") as string;
+
+  if (intent === "retryJob") {
+    // Same economics as the embedded app: interrupted failure = free retry;
+    // refunded terminal failure = a fresh purchase (re-charge, restore prePaid).
+    const jobId = (form.get("jobId") as string) || "";
+    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, status: "FAILED", type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
+    if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(job.payload); } catch { /* ignore */ }
+    if (job.type === "GENERATE_VIDEO_AD") {
+      const { assertCapability, videoCapabilityFor } = await import("../lib/capabilities.server");
+      try { assertCapability(shop.activePlan, videoCapabilityFor((payload.contentType as string) || undefined)); }
+      catch (e) { return json({ error: (e as Error).message }); }
+    }
+    let newPayload: string | undefined;
+    if (payload.refunded) {
+      const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
+      const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
+      try { await spendTokens(shop.id, cost); }
+      catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
+      newPayload = JSON.stringify({ ...payload, prePaid: true, refunded: false });
+    }
+    await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date(), ...(newPayload ? { payload: newPayload } : {}) } });
+    return json({ ok: "Retrying — back in the oven. 🔥" });
+  }
+  if (intent === "dismissJob") {
+    const jobId = (form.get("jobId") as string) || "";
+    await db.job.deleteMany({ where: { id: jobId, shopId: shop.id, status: "FAILED", type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
+    return json({});
+  }
+
+  if (intent !== "post") return json({});
   if (!socialProviderEnabled()) return json({ error: "Social posting is coming online — check back shortly." });
   if (!shop.socialProfileKey) return json({ error: "Link your socials first on the Auto-posting page." });
   const platforms = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
@@ -101,8 +139,12 @@ function fmtEta(s: number): string {
   return s >= 60 ? `${Math.ceil(s / 60)} min` : `${s}s`;
 }
 
+type ATab = "video" | "image" | "blog";
+const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", BLOG_POST: "blog" };
+
 export default function WebArchive() {
   const { assets, cooking, cookingCards, canPost, linkedCount } = useLoaderData<typeof loader>();
+  const [tab, setTab] = useState<ATab>("video");
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -126,12 +168,22 @@ export default function WebArchive() {
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>Want one-tap posting? <Link to="/web/connect">Link your socials</Link>.</p>}
       {err && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
-      {assets.length === 0 && cooking === 0 && (
-        <div className="wb-card">Nothing here yet — make your first piece in the <Link to="/web/studio">Studio</Link>.</div>
+      <div className="ws-tabs" style={{ marginBottom: 16 }}>
+        {([["video", "🎬 Videos"], ["image", "🖼 Images"], ["blog", "✍️ Articles"]] as [ATab, string][]).map(([k, label]) => {
+          const n = assets.filter((a) => A_KIND[a.type] === k).length + cookingCards.filter((j) => j.kind === k).length;
+          return (
+            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>
+              {label}{n > 0 ? ` · ${n}` : ""}
+            </button>
+          );
+        })}
+      </div>
+      {assets.filter((a) => A_KIND[a.type] === tab).length === 0 && cookingCards.filter((j) => j.kind === tab).length === 0 && (
+        <div className="wb-card">No {tab === "blog" ? "articles" : `${tab}s`} yet — make one in the <Link to="/web/studio">Studio</Link>.</div>
       )}
-      {cookingCards.length > 0 && (
+      {cookingCards.filter((j) => j.kind === tab).length > 0 && (
         <div className="wb-assets" style={{ marginBottom: 16 }}>
-          {cookingCards.map((j) => (
+          {cookingCards.filter((j) => j.kind === tab).map((j) => (
             <div className="wb-asset" key={j.jobId}>
               <div
                 className="wb-cookimg"
@@ -145,14 +197,30 @@ export default function WebArchive() {
                 {j.status === "generating"
                   ? (j.kind === "blog" ? `Writing${j.productTitle ? ` about ${j.productTitle}` : " your article"}…` : `Creating your ${j.kind}${j.productTitle ? ` — ${j.productTitle}` : ""}…`)
                   : `This ${j.kind} didn't make it${j.refunded ? " — tokens refunded" : ""}.`}
-                <div className="s">{j.status === "generating" ? `Rendering · ~${fmtEta(j.etaSec)} left` : <>Failed · <Link to="/web/studio">try again in the Studio</Link></>}</div>
+                <div className="s">{j.status === "generating" ? `Rendering · ~${fmtEta(j.etaSec)} left` : "Failed — retry it right here"}</div>
+                {j.status === "failed" && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="retryJob" />
+                      <input type="hidden" name="jobId" value={j.jobId} />
+                      <button className="wb-btn" style={{ padding: "8px 16px", fontSize: 12.5 }} disabled={busy}>
+                        {j.retryCost > 0 ? `Retry · ${j.retryCost} tokens` : "Retry free"}
+                      </button>
+                    </Form>
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="dismissJob" />
+                      <input type="hidden" name="jobId" value={j.jobId} />
+                      <button className="wb-btn ghost" style={{ padding: "8px 14px", fontSize: 12.5 }} disabled={busy}>Dismiss</button>
+                    </Form>
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
       <div className="wb-assets">
-        {assets.map((a) => (
+        {assets.filter((a) => A_KIND[a.type] === tab).map((a) => (
           <div className="wb-asset" key={a.id}>
             {a.type === "VIDEO_AD" && a.media && <video src={a.media} controls playsInline preload="metadata" />}
             {a.type === "IMAGE_AD" && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
