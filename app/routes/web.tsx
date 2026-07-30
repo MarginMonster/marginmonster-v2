@@ -5,20 +5,26 @@ import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation } from "@remix-run/react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
-import { resolveTierKey, PLAN_BY_KEY } from "../lib/plan-config";
+import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
-  if (!id) return json({ authed: false, tokens: 0, planLabel: null as string | null });
-  const tier = id.shop.activePlan?.active ? resolveTierKey(id.shop.activePlan.type) : null;
+  if (!id) return json({ authed: false, tokens: 0, tokensMax: 0, planLabel: null as string | null });
+  const plan = id.shop.activePlan;
+  const tier = plan?.active ? resolveTierKey(plan.type) : null;
   const planLabel = tier
-    ? `${PLAN_BY_KEY[tier].name}${planTrialing(id.shop.activePlan) ? " · Trial" : ""}`
+    ? `${PLAN_BY_KEY[tier].name}${planTrialing(plan) ? " · Trial" : ""}`
     : null;
-  return json({ authed: true, tokens: tokensRemainingLive(id.shop.activePlan), planLabel });
+  // Wallet ceiling = the plan's monthly allowance + purchased top-ups (mirrors
+  // the embedded app's HUD math in app.tsx).
+  const tokensMax = plan?.active
+    ? Math.max(1, (tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded) + plan.tokensExtra)
+    : 0;
+  return json({ authed: true, tokens: tokensRemainingLive(plan), tokensMax, planLabel });
 };
 
 export default function WebLayout() {
-  const { authed, tokens, planLabel } = useLoaderData<typeof loader>();
+  const { authed, tokens, tokensMax, planLabel } = useLoaderData<typeof loader>();
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
   return (
@@ -41,7 +47,17 @@ export default function WebLayout() {
           {authed ? (
             <div className="wb-me">
               {planLabel && <Link to="/web#plans" className="wb-plan" title="Manage your plan">{planLabel}</Link>}
-              <span className="wb-tok">🪙 {tokens.toLocaleString()}</span>
+              <span
+                className="wb-tok"
+                title={`≈ ${Math.floor(tokens / TOKEN_COST.video)} videos · ${Math.floor(tokens / TOKEN_COST.image)} images`}
+              >
+                <span className="wb-tok-n">🪙 {tokens.toLocaleString()}</span>
+                {tokensMax > 0 && (
+                  <i className="wb-tokbar" aria-hidden="true">
+                    <b style={{ width: `${Math.max(0, Math.min(100, Math.round((tokens / tokensMax) * 100)))}%` }} />
+                  </i>
+                )}
+              </span>
               <Link to="/web/logout" className="wb-out">Log out</Link>
             </div>
           ) : (
@@ -71,7 +87,10 @@ const CSS = `
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-me{display:flex;align-items:center;gap:12px;}
 .wb-plan{font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;color:#fff;background:linear-gradient(165deg,#12A85E,#0B6B3E);text-decoration:none;}
-.wb-tok{font-weight:700;font-size:13px;color:var(--gold-deep);}
+.wb-tok{display:inline-flex;flex-direction:column;align-items:flex-start;gap:3px;font-weight:700;font-size:13px;color:var(--gold-deep);cursor:default;}
+.wb-tok-n{line-height:1;}
+.wb-tokbar{display:block;width:58px;height:4px;border-radius:99px;background:#EAE6D8;overflow:hidden;}
+.wb-tokbar b{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#B08526,#E7C879);transition:width .4s ease;}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;}
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;}

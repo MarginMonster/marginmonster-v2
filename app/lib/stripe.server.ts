@@ -206,6 +206,25 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
       tokensIncluded: tier.monthlyTokens, tokensUsed: 0, periodStart: new Date(),
     },
   });
+  // Post-activation hooks — same rituals the Shopify billing return-leg runs
+  // (app.plans loader). All shop-keyed, all idempotent, all non-fatal:
+  // INSERT_COIN unlocks once (unique key), referral credit is one-shot
+  // guarded, and the first-content kick claims onboardKickAt before firing.
+  try {
+    const { unlockAchievement } = await import("./xp.server");
+    await unlockAchievement(shopId, "INSERT_COIN");
+  } catch (e) { console.error("[stripe] achievement unlock failed (non-fatal):", e); }
+  try {
+    const { creditReferralOnConversion } = await import("./referral.server");
+    await creditReferralOnConversion(shopId);
+  } catch (e) { console.error("[stripe] referral credit failed (non-fatal):", e); }
+  try {
+    // Web shops have no Shopify catalog — pass a null graphql. kickstart
+    // no-ops safely (no product → no jobs, flag left unset) today and starts
+    // working the moment web accounts grow a product source.
+    const { kickstartFirstContent } = await import("./onboarding.server");
+    await kickstartFirstContent(shopId, async () => null);
+  } catch (e) { console.error("[stripe] first-content kick failed (non-fatal):", e); }
 }
 
 export async function deactivateStripePlan(accountId: string): Promise<void> {
