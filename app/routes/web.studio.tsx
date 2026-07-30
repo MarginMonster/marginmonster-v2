@@ -245,11 +245,18 @@ export default function WebStudio() {
             {(contentType === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={contentType !== "avatar"} />}
             {showCartoonGrid && (
               <>
-                <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"} <span className="ws-opt">{contentType === "jingle" ? "optional — none = photoreal" : "previews show your chosen presenter"}</span></div>
+                <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"} <span className="ws-opt">previews show your chosen {contentType === "jingle" ? "singer" : "presenter"}</span></div>
                 <div className="ws-tiles styles">
+                  {contentType === "jingle" && (
+                    <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}
+                      onClick={() => setCartoonStyle(null)}>
+                      <span className="ws-tile-img" style={{ backgroundImage: `url(${d.cast.find((c) => c.id === styleChar)?.img || ""})` }}>{cartoonStyle === null && <span className="ws-chk">✓</span>}</span>
+                      <b>📷 Photoreal</b>
+                    </button>
+                  )}
                   {CARTOON_STYLES.map((cs) => (
                     <button type="button" key={cs.key} className={`ws-tile small${cartoonStyle === cs.key ? " sel" : ""}`}
-                      onClick={() => setCartoonStyle(contentType === "jingle" && cartoonStyle === cs.key ? null : cs.key)}>
+                      onClick={() => setCartoonStyle(cs.key)}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
                       <b>{cs.name}</b>
                     </button>

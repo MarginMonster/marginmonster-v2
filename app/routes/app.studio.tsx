@@ -593,10 +593,14 @@ export default function Studio() {
                   <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.</p>
                   <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
                   {!avatarId && <p className="cfg-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
-                  <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">optional — none = photoreal · previews show your chosen singer</span></div>
+                  <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">previews show your chosen singer</span></div>
                   <div className="cfg-cast cs-ctypes bigtiles">
+                    <button type="button" className={`cast cs-ctype${cartoonStyle === null ? " sel" : ""}`} onClick={() => setCartoonStyle(null)}>
+                      <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(/avatars/${styleChar}_0.jpg)` }}>{cartoonStyle === null && <span className="ca-chk">✓</span>}</span>
+                      <span className="ca-nm">📷 Photoreal</span>
+                    </button>
                     {CARTOON_STYLES.map((cs) => (
-                      <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cartoonStyle === cs.key ? null : cs.key)}>
+                      <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
                         <span className="ca-img cs-ctimg cs-cartimg" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{cs.name}</span>
                       </button>
