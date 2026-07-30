@@ -7,6 +7,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
+import { merchantBusy } from "./art-throttle.server";
 import { langDirective } from "./content-lang";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
@@ -179,10 +180,24 @@ function repHeaders(): Record<string, string> {
 
 /** Create + poll a Replicate official-model prediction; returns the first output URL. */
 async function repRun(model: string, input: Record<string, unknown>, maxMs = 120_000): Promise<string> {
-  const create = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
-    method: "POST", headers: repHeaders(), body: JSON.stringify({ input }),
-  });
-  if (!create.ok) throw new Error(`${model} create ${create.status}: ${(await create.text()).slice(0, 160)}`);
+  // 429 = Replicate per-model rate limit, and it is TRANSIENT. Throwing on it
+  // terminal-failed merchant image ads whenever background art forging (or a
+  // burst of merchant work) saturated the model — the single biggest cause of
+  // "my image failed over and over". Mirror the video pipeline: honour
+  // retry_after / Retry-After with backoff before giving up.
+  let create: Response | null = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    create = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+      method: "POST", headers: repHeaders(), body: JSON.stringify({ input }),
+    });
+    if (create.status !== 429) break;
+    const body = (await create.clone().json().catch(() => ({}))) as { retry_after?: number };
+    const headerWait = Number(create.headers.get("retry-after") || 0);
+    const waitSec = body.retry_after || headerWait || Math.min(30, 2 ** attempt);
+    console.log(`[replicate] ${model} rate-limited (429) — waiting ${waitSec}s (attempt ${attempt + 1}/8)`);
+    await new Promise((r) => setTimeout(r, Math.min(60, waitSec) * 1000));
+  }
+  if (!create || !create.ok) throw new Error(`${model} create ${create?.status}: ${(await (create?.text() ?? Promise.resolve(""))).slice(0, 160)}`);
   const { id } = (await create.json()) as { id: string };
   const start = Date.now();
   while (Date.now() - start < maxMs) {
@@ -631,6 +646,12 @@ const FORMAT_PREVIEW_KEY_VERSIONS: Record<string, number> = { poster: 3 };
 const fpVersion = (key: string) => FORMAT_PREVIEW_KEY_VERSIONS[key] ?? FORMAT_PREVIEW_VERSION;
 const formatPreviewInFlight = new Set<string>();
 
+/** Exact current-version check (the serial walker needs "is this one done?",
+ *  not the version-fallback lookup the router uses). */
+function formatPreviewFileExact(key: string): boolean {
+  return fs.existsSync(path.join(AD_TEMPLATE_DIR, `format-${key}-v${fpVersion(key)}.jpg`));
+}
+
 export function formatPreviewFile(key: string): string | null {
   // Serve with version fallback: an old preview stands in while the current
   // version forges. ensureFormatPreview checks the exact current version.
@@ -684,7 +705,16 @@ export function ensureFormatPreview(key: string): void {
 
 export async function ensureAllFormatPreviews(): Promise<void> {
   const { AD_FORMATS } = await import("./ad-formats");
-  for (const f of AD_FORMATS) ensureFormatPreview(f.key);
+  // ONE preview per call. Firing all 48 at once saturated the per-model rate
+  // limit and 429'd paying merchants' image ads; cosmetic art also stands
+  // down entirely while merchant work is queued. The 10-min self-heal tick
+  // walks the list until it's complete.
+  if (await merchantBusy()) return;
+  for (const f of AD_FORMATS) {
+    if (formatPreviewFileExact(f.key)) continue;
+    ensureFormatPreview(f.key);
+    return;
+  }
 }
 
 export function statueFile(): string | null {
@@ -771,9 +801,15 @@ export function ensurePhCover(): void {
 }
 
 export async function ensureAllAdTemplates(): Promise<void> {
+  if (await merchantBusy()) return;
   ensurePhCover();
   const { AD_TEMPLATES } = await import("./ad-templates");
-  for (const t of AD_TEMPLATES) ensureAdTemplate(t.key);
+  // One template per tick — see ensureAllFormatPreviews for why.
+  for (const t of AD_TEMPLATES) {
+    if (fs.existsSync(currentTemplateFile("preview", t.key))) continue;
+    ensureAdTemplate(t.key);
+    return;
+  }
 }
 
 const BRIGHT_DEFAULT = "Bright, light-filled scene: a fresh clean backdrop in a soft light color that complements the product, generous even daylight-quality lighting, airy and inviting — NOT dark, NOT moody, NOT a black background";

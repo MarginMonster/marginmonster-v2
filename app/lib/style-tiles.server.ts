@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 import { artLog } from "./art-log.server";
+import { merchantBusy } from "./art-throttle.server";
 
 // Default character (boot pre-render + the Cartoon Avatar cover).
 export const DEFAULT_TILE_CHARACTER = "ingrid";
@@ -145,9 +146,19 @@ export function ensureStyleTile(character: string, key: string): void {
 
 /** Kick all missing tiles for a character (route + boot call this). */
 export function ensureAllStyleTiles(character: string = DEFAULT_TILE_CHARACTER): void {
-  for (const k of PICKER_KEYS) ensureStyleTile(character, k);
-  // Special tiles (the Anthem cover) only need the default character.
-  if (character === DEFAULT_TILE_CHARACTER) for (const k of Object.keys(SPECIAL_PROMPTS)) ensureStyleTile(character, k);
+  // ONE tile per call: eight concurrent renders per presenter saturated the
+  // per-model rate limit and 429'd merchant image ads. The self-heal tick
+  // walks the set until the character is complete.
+  void (async () => {
+    if (await merchantBusy()) return;
+    const keys: string[] = [...PICKER_KEYS];
+    if (character === DEFAULT_TILE_CHARACTER) keys.push(...Object.keys(SPECIAL_PROMPTS));
+    for (const k of keys) {
+      if (currentTileExists(character, k)) continue;
+      ensureStyleTile(character, k);
+      return;
+    }
+  })();
 }
 
 /** Pre-forge tiles for the WHOLE cast, one character per call — the picker
