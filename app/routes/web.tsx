@@ -126,6 +126,17 @@ const CSS = `
 .ws-tiles.fmt{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
 .ws-tile.fmt .ws-tile-img{background-position:center;}
 .ws-tile.fmt b,.ws-tile b{font-size:14px;}
+/* Expanded format library: contained, smooth-scrolling, staggered reveal —
+ * the page never becomes a mile-long scroll. */
+.ws-fmtbox{max-height:64vh;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;padding:4px 8px 46px 4px;
+  -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);}
+.ws-fmtbox::-webkit-scrollbar{width:9px}
+.ws-fmtbox::-webkit-scrollbar-thumb{background:#BFDCCB;border-radius:99px}
+.ws-fmtbox::-webkit-scrollbar-thumb:hover{background:#9CCBB1}
+.ws-fmtbox::-webkit-scrollbar-track{background:transparent}
+@keyframes wsFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.ws-fmtbox .ws-tile{animation:wsFadeUp .45s ease both}
+@media (prefers-reduced-motion: reduce){.ws-fmtbox .ws-tile{animation:none}}
 .ws-tile.lockd .ws-tile-img{filter:saturate(.35) brightness(.72);}
 .ws-tile.lockd:hover .ws-tile-img{filter:saturate(.6) brightness(.85);}
 .ws-lock{position:absolute;top:8px;right:8px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;

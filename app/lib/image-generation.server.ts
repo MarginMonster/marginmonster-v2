@@ -520,6 +520,48 @@ function formatLayoutPrompt(key: string, c: Record<string, string>, hero?: strin
       return `${base} Layout: the product hero-lit on a clean retail shelf with several empty spots beside it where others clearly sold. Bold headline at the top: "${c.headline}". A small urgent chip near the product: "${c.urgency}". A rounded button at the bottom center: "${c.cta}". Energetic but premium.`;
     case "ingredients":
       return `${base} Layout: the product centered with its raw natural ingredients artfully floating around it in an exploded view, each connected by a thin line to a small label chip reading exactly: "${c.g1}", "${c.g2}", "${c.g3}". Bold headline at the top: "${c.headline}". Soft studio light, premium clean look.`;
+    case "checklist":
+      return `${base} Layout: bold headline at the top: "${c.headline}". Below it four rows, each with a large green checked checkbox and casual lowercase text: "${c.k1}", "${c.k2}", "${c.k3}", "${c.k4}". The product hero-lit at the bottom right. Clean card design on a soft background.`;
+    case "warning":
+      return `${base} Layout: an advertorial-style card. A slim attention bar at the top, then the bold headline: "${c.headline}". Below, three numbered rows — 1, 2, 3 — reading exactly: "${c.f1}", "${c.f2}", "${c.f3}". The product stands to the right, hero-lit. Serious editorial tone that still looks premium.`;
+    case "routine":
+      return `${base} Layout: headline at the top: "${c.headline}". A vertical timeline with two nodes: a sun icon beside "${c.am}", then a moon icon beside "${c.pm}". The product(s) displayed beside the timeline with soft shadows. Calm spa-like palette.`;
+    case "testimonialwall":
+      return `${base} Layout: three stacked white rounded review cards, each with a row of five small gold stars, a short quote and a name: "${c.tq1}" — ${c.tn1}; "${c.tq2}" — ${c.tn2}; "${c.tq3}" — ${c.tn3}. The product stands at the right edge overlapping the cards with a soft shadow.`;
+    case "pov":
+      return `${base} Layout: a large bold caption at the top in social-video style white text with subtle dark outline: "${c.pov}". The product in a cozy authentic lifestyle scene filling the frame. Small sub-line near the bottom: "${c.sub}". Feels like a screenshot from a viral video.`;
+    case "splitpanel":
+      return `${base} Layout: a clean 50/50 vertical split. Left half: the product on a minimal studio background. Right half: the product in a warm real-life scene being used. Headline across the top spanning both halves: "${c.headline}". Sub-line: "${c.sub}". A small button bottom center: "${c.cta}". Catalog-cover polish.`;
+    case "seasonal":
+      return `${base} Layout: a festive but premium seasonal card — soft snow or seasonal texture in the background. A corner ribbon reading "${c.badge}". Headline in elegant bold type: "${c.headline}". The product centered, warmly lit. A rounded button at the bottom: "${c.cta}".`;
+    case "bundle":
+      return `${base} Layout: the full kit arranged neatly like a premium flat-lay, the main product centered. Headline at the top: "${c.headline}". Three check-marked rows listing exactly: "${c.b1}", "${c.b2}", "${c.b3}". A rounded button at the bottom: "${c.cta}".`;
+    case "minimal":
+      return `${base} Layout: extreme luxury minimalism — vast empty background in a single soft tone, the product small and perfectly centered with a delicate shadow. One word in elegant type above it: "${c.word}". A tiny sub-line beneath the product: "${c.sub}". Gallery-poster restraint.`;
+    case "neon":
+      return `${base} Layout: a dark moody scene, the product hero-lit with a soft colored glow that matches its accents, subtle neon light reflections on a dark surface. Bold glowing headline at the top: "${c.headline}". A small glowing-outline button at the bottom: "${c.cta}".`;
+    case "chalkboard":
+      return `${base} Layout: a charming cafe A-frame chalkboard sign, hand-chalked lettering reading exactly: "${c.line1}" and beneath it "${c.line2}", with small chalk flourishes. The product sits on a wooden stool beside the sign in warm morning light. Local-shop warmth.`;
+    case "speech":
+      return `${base} Layout: the product hero-centered with a clean comic-style white speech bubble coming from it reading exactly: "${c.bubble}". Bold headline beneath: "${c.headline}". Soft solid background that complements the product. Playful but premium.`;
+    case "statgrid":
+      return `${base} Layout: headline at the top: "${c.headline}". Two large stat blocks side by side: "${c.v1}" in huge bold type with "${c.l1}" beneath it, and "${c.v2}" in huge bold type with "${c.l2}" beneath it. The product across the bottom, hero-lit. Engineered, technical-premium look.`;
+    case "origin":
+      return `${base} Layout: a warm editorial card with a subtle vintage-map or craft-paper texture. Headline in elegant serif: "${c.headline}". A single line beneath: "${c.origin}". The product displayed on natural material (wood, linen or stone) in warm side light. Artisan provenance energy.`;
+    case "guarantee":
+      return `${base} Layout: the product hero-lit in the center. A bold circular badge beside it reading exactly: "${c.badge}". Headline at the top: "${c.headline}". Sub-line at the bottom: "${c.sub}". Confident, trustworthy design with a strong single accent color.`;
+    case "calendar":
+      return `${base} Layout: a clean monthly calendar grid with the first three weeks of days marked with bold green checkmarks. Headline at the top: "${c.headline}". Sub-line beneath: "${c.tagline}". The product rests at the bottom right corner over the calendar with a soft shadow.`;
+    case "weather":
+      return `${base} Layout: the product hero-shot against a dramatic weather backdrop (falling snow, mist or rain matched to the product's purpose), crisp and premium. Bold headline at the top: "${c.headline}". Sub-line: "${c.sub}". A rounded button at the bottom: "${c.cta}".`;
+    case "duo":
+      return `${base} Layout: two complementary products side by side, angled slightly toward each other like a pair, on a soft complementary background. Headline at the top: "${c.headline}". A small label chip under the left item: "${c.pair1}" and under the right item: "${c.pair2}". A plus sign floats between them.`;
+    case "receipt":
+      return `${base} Layout: a tall paper receipt filling one side, printed with the item line "${c.item}" and the price "${c.price}", plus a stamped note reading "${c.memo}". Bold headline beside it: "${c.headline}". The product stands next to the receipt, hero-lit. Charming price-anchoring energy.`;
+    case "tierlist":
+      return `${base} Layout: a ranking card: a large glowing "S" tier badge at the top left with the product sitting proudly on that row. Headline: "${c.headline}". Sub-line: "${c.tagline}". Game-culture aesthetic that still looks clean and premium.`;
+    case "swatch":
+      return `${base} Layout: the product line-up shown in four color variants side by side, each above a small round color swatch dot with its name in a small chip: "${c.sw1}", "${c.sw2}", "${c.sw3}", "${c.sw4}". Headline at the top: "${c.headline}". Collect-them-all retail energy.`;
     default:
       return base;
   }
@@ -540,7 +582,7 @@ async function formatCopy(
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
       `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
-      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a short offer like "20% OFF first order"; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere 2-sentence founder note ≤ 30 words with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 12-24 words, specific and funny, no hashtags; handle is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 4-8 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 4-8 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 8-16 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words.`,
+      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a short offer like "20% OFF first order"; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere 2-sentence founder note ≤ 30 words with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 12-24 words, specific and funny, no hashtags; handle is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 4-8 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 4-8 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 8-16 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words; k1-k4 are lowercase relatable "that's me" moments of 3-6 words; f1-f3 are punchy truthful product facts of 3-7 words; am starts "Morning:" and pm starts "Night:", each ≤ 6 words after the colon; tq1-tq3 are mini review quotes of 3-6 words with tn1-tn3 as first name + last initial; pov starts "POV:" and is 5-9 words; b1-b3 are included-item lines of 2-5 words; word is ONE powerful word ending in a period; line1/line2 are warm chalkboard lines of 3-6 words; bubble is the product playfully "speaking" in 2-6 words; v1/v2 are REAL product spec numbers with l1/l2 as their 2-4 word labels — never invented customer stats; origin is one truthful craft or materials line of 5-10 words (no fake place claims); tagline is a witty 4-8 word line; pair1/pair2 are short names for the two paired items; item is the product's short name, price a plausible price like "$29", memo a lowercase 3-5 word aside; sw1-sw4 are evocative one-or-two-word color names.`,
       `No emoji, no hashtags, no quotes inside values.`,
     ].filter(Boolean).join("\n");
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 300 });
@@ -583,12 +625,16 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
  * that most uses that format, so the picker reads "every product type", not
  * "we make drink ads". v2 = per-format hero products (v1 was all-bottle). */
 const FORMAT_PREVIEW_VERSION = 2;
+// Per-key bumps (mirrors the tile system): poster v3 composites the canonical
+// statue bottle instead of describing a drink in text — one bottle everywhere.
+const FORMAT_PREVIEW_KEY_VERSIONS: Record<string, number> = { poster: 3 };
+const fpVersion = (key: string) => FORMAT_PREVIEW_KEY_VERSIONS[key] ?? FORMAT_PREVIEW_VERSION;
 const formatPreviewInFlight = new Set<string>();
 
 export function formatPreviewFile(key: string): string | null {
   // Serve with version fallback: an old preview stands in while the current
   // version forges. ensureFormatPreview checks the exact current version.
-  for (let v = FORMAT_PREVIEW_VERSION; v >= 1; v--) {
+  for (let v = fpVersion(key); v >= 1; v--) {
     const p = path.join(AD_TEMPLATE_DIR, `format-${key}-v${v}.jpg`);
     if (fs.existsSync(p)) return p;
   }
@@ -596,7 +642,7 @@ export function formatPreviewFile(key: string): string | null {
 }
 
 export function ensureFormatPreview(key: string): void {
-  const current = path.join(AD_TEMPLATE_DIR, `format-${key}-v${FORMAT_PREVIEW_VERSION}.jpg`);
+  const current = path.join(AD_TEMPLATE_DIR, `format-${key}-v${fpVersion(key)}.jpg`);
   if (fs.existsSync(current) || formatPreviewInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
   formatPreviewInFlight.add(key);
   (async () => {
@@ -604,11 +650,20 @@ export function ensureFormatPreview(key: string): void {
       const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
       const f = AD_FORMAT_BY_KEY[key];
       if (!f) return;
-      const prompt = formatLayoutPrompt(key, f.preview, f.hero);
+      // heroRef "statue" → composite the ONE canonical bottle render; never a
+      // text-described bottle (text-rendered bottles drift from the brand).
+      const useStatue = f.heroRef === "statue";
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      if (useStatue && (!statueFile() || !base)) return; // wait for the statue; self-heal retries
+      const prompt = useStatue
+        ? formatLayoutPrompt(key, f.preview)
+        : formatLayoutPrompt(key, f.preview, f.hero);
       const expected = Object.values(f.preview);
       let buf: Buffer | null = null;
       for (let attempt = 0; attempt < 2 && !buf; attempt++) {
-        const url = await repRun("google/nano-banana", { prompt, output_format: "jpg" });
+        const input: Record<string, unknown> = { prompt, output_format: "jpg" };
+        if (useStatue) input.image_input = [`${base}/ad-templates/statue.png`];
+        const url = await repRun("google/nano-banana", input);
         const qa = await qaFormat(url, null, expected);
         if (!qa.pass && attempt === 0) { artLog("ad-formats", `${key}: preview QA retry — ${qa.reason}`); continue; }
         const res = await fetch(url);

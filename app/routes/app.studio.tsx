@@ -712,9 +712,11 @@ export default function Studio() {
               {tab === "image" && imageMode === "product" && !service && (
                 <>
                   <div className="cfg-lbl cs-lblrow"><span>Ad format — proven structures, not filters</span>{formatKey && <button type="button" className="cs-viewall" onClick={() => setFormatKey(null)}>Clear</button>}</div>
-                  <div className="cfg-cast cs-ctypes bigtiles fmtgrid">
-                    {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 8)).map((f) => (
-                      <button type="button" key={f.key} className={`cast cs-ctype${formatKey === f.key ? " sel" : ""}`} onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
+                  <div className={`cfg-cast cs-ctypes bigtiles fmtgrid${allFormats ? " cs-fmtbox" : ""}`}>
+                    {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 8)).map((f, i) => (
+                      <button type="button" key={f.key} className={`cast cs-ctype${formatKey === f.key ? " sel" : ""}`}
+                        style={allFormats ? { animationDelay: `${Math.min(i * 22, 550)}ms` } : undefined}
+                        onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                         <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{f.emoji} {f.name}</span>
                         <span className="ca-sub">{f.blurb}</span>

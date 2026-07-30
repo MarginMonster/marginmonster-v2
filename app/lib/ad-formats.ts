@@ -27,6 +27,9 @@ export interface AdFormat {
    * different product category per format, from the category that most
    * commonly uses this ad style. */
   hero: string;
+  /** "statue" = the preview must composite the canonical EASYMODE bottle
+   * render (never a text-described bottle — one bottle everywhere). */
+  heroRef?: "statue";
 }
 
 export const AD_FORMATS: AdFormat[] = [
@@ -83,7 +86,7 @@ export const AD_FORMATS: AdFormat[] = [
     key: "poster", name: "Statement Poster", emoji: "🗞",
     blurb: "The bold headline poster — award-ad energy (our classic)",
     fields: ["headline", "sub", "cta"],
-    hero: "a premium emerald sports hydration drink bottle with a black sport cap",
+    hero: "the EASYMODE bottle", heroRef: "statue",
     preview: { headline: "Hydration, upgraded.", sub: "Everything you want. Nothing you don't.", cta: "Shop now" },
   },
   {
@@ -218,6 +221,153 @@ export const AD_FORMATS: AdFormat[] = [
     fields: ["headline", "g1", "g2", "g3"],
     hero: "a natural deodorant stick with a soft sage label",
     preview: { headline: "Nothing to hide", g1: "Shea butter", g2: "Coconut oil", g3: "Zero aluminum" },
+  },
+  {
+    key: "checklist", name: "That's Me", emoji: "✅",
+    blurb: "A 'you need this if' checklist — self-recognition sells",
+    fields: ["headline", "k1", "k2", "k3", "k4"],
+    hero: "a pair of clear-lens blue-light glasses with tortoiseshell frames",
+    preview: { headline: "You need these if:", k1: "screens all day", k2: "headache by 3pm", k3: "eyes feel like sand", k4: "reading this squinting" },
+  },
+  {
+    key: "warning", name: "Before You Buy", emoji: "⚠️",
+    blurb: "Advertorial 'read this first' card — curiosity does the clicking",
+    fields: ["headline", "f1", "f2", "f3"],
+    hero: "a compact portable blender with a brushed steel base",
+    preview: { headline: "Read this before buying a blender", f1: "Most quit in months", f2: "This one is metal, not plastic", f3: "Crushes ice in seconds" },
+  },
+  {
+    key: "routine", name: "The Ritual", emoji: "🌙",
+    blurb: "Morning / night routine timeline — habit placement",
+    fields: ["headline", "am", "pm"],
+    hero: "a matching shampoo and conditioner duo in matte sage bottles",
+    preview: { headline: "The two-step ritual", am: "Morning: wash and protect", pm: "Night: repair while you sleep" },
+  },
+  {
+    key: "testimonialwall", name: "Review Wall", emoji: "🧱",
+    blurb: "Three stacked mini-reviews — proof in volume",
+    fields: ["tq1", "tn1", "tq2", "tn2", "tq3", "tn3"],
+    hero: "a neatly folded grey weighted blanket",
+    preview: { tq1: "Asleep in ten minutes", tn1: "Sam K.", tq2: "Stopped doomscrolling", tn2: "Priya R.", tq3: "Had to buy a second one", tn3: "Dev M." },
+  },
+  {
+    key: "pov", name: "POV", emoji: "👀",
+    blurb: "The 'POV:' hook — native meme grammar",
+    fields: ["pov", "sub"],
+    hero: "a champagne-colored silk pillowcase on a neatly made bed",
+    preview: { pov: "POV: you finally slept 8 hours", sub: "Silk your skin drinks." },
+  },
+  {
+    key: "splitpanel", name: "Editorial Split", emoji: "🪟",
+    blurb: "Product / lifestyle 50-50 — catalog-cover polish",
+    fields: ["headline", "sub", "cta"],
+    hero: "a stonewashed linen apron in warm terracotta",
+    preview: { headline: "Made to be worn out", sub: "Stonewashed linen, garden to kitchen", cta: "Shop now" },
+  },
+  {
+    key: "seasonal", name: "The Drop", emoji: "❄️",
+    blurb: "Seasonal limited-drop card — scarcity with charm",
+    fields: ["headline", "badge", "cta"],
+    hero: "a gift box of artisan hot chocolate bombs dusted with cocoa",
+    preview: { headline: "The winter drop is here", badge: "Limited batch", cta: "Get cozy" },
+  },
+  {
+    key: "bundle", name: "The Kit", emoji: "🧺",
+    blurb: "Everything-included bundle card — value stacking",
+    fields: ["headline", "b1", "b2", "b3", "cta"],
+    hero: "a wooden gift crate of six single-origin loose-leaf tea tins",
+    preview: { headline: "The complete ritual", b1: "6 single-origin teas", b2: "Brew basket included", b3: "Tasting guide", cta: "Get the set" },
+  },
+  {
+    key: "minimal", name: "One Word", emoji: "⚪",
+    blurb: "Luxury whitespace, one word — confidence as design",
+    fields: ["word", "sub"],
+    hero: "a pair of small 14k gold hoop earrings on a marble surface",
+    preview: { word: "Enough.", sub: "14k gold. Every day." },
+  },
+  {
+    key: "neon", name: "Night Mode", emoji: "🌃",
+    blurb: "Dark scene, glowing accents — built for gamer & night-out brands",
+    fields: ["headline", "cta"],
+    hero: "a sleek wireless gaming mouse with subtle teal glow accents",
+    preview: { headline: "Play like it's personal", cta: "Level up" },
+  },
+  {
+    key: "chalkboard", name: "Cafe Sign", emoji: "🪧",
+    blurb: "Hand-chalked A-frame sign — local-shop warmth",
+    fields: ["line1", "line2"],
+    hero: "a kraft paper bag of artisan buttermilk pancake mix",
+    preview: { line1: "Weekends are for pancakes", line2: "Stack responsibly" },
+  },
+  {
+    key: "speech", name: "It Speaks", emoji: "💭",
+    blurb: "The product gets a speech bubble — instant personality",
+    fields: ["bubble", "headline"],
+    hero: "a cheerful houseplant in a white self-watering pot",
+    preview: { bubble: "Water me… never", headline: "The pot with a memory" },
+  },
+  {
+    key: "statgrid", name: "Spec Sheet", emoji: "📐",
+    blurb: "Two big specs side by side — engineered-product energy",
+    fields: ["headline", "v1", "l1", "v2", "l2"],
+    hero: "a set of fabric resistance bands in graduated earth tones",
+    preview: { headline: "Numbers don't skip leg day", v1: "5", l1: "resistance levels", v2: "150 lb", l2: "max tension" },
+  },
+  {
+    key: "origin", name: "The Source", emoji: "🌍",
+    blurb: "Craft & origin story card — provenance sells premium",
+    fields: ["headline", "origin"],
+    hero: "an olive-wood cutting board with a live natural edge",
+    preview: { headline: "From one tree, one workshop", origin: "Carved, sanded and oiled by hand" },
+  },
+  {
+    key: "guarantee", name: "The Promise", emoji: "🛡️",
+    blurb: "A bold guarantee badge — risk reversal in one card",
+    fields: ["headline", "badge", "sub"],
+    hero: "a forged chef's knife with a walnut handle on dark slate",
+    preview: { headline: "Sharp for life", badge: "Free sharpening forever", sub: "If it dulls, we fix it." },
+  },
+  {
+    key: "calendar", name: "The Streak", emoji: "📆",
+    blurb: "A habit calendar of checkmarks — progress made visible",
+    fields: ["headline", "tagline"],
+    hero: "a linen-bound daily journal with a ribbon bookmark",
+    preview: { headline: "21 days, one habit", tagline: "The streak that actually sticks" },
+  },
+  {
+    key: "weather", name: "All Conditions", emoji: "🌨️",
+    blurb: "Built-for-the-elements card — performance framing",
+    fields: ["headline", "sub", "cta"],
+    hero: "a forest-green quilted puffer jacket",
+    preview: { headline: "Built for the cold snap", sub: "Warm without the bulk", cta: "Winter-proof me" },
+  },
+  {
+    key: "duo", name: "Better Together", emoji: "🤝",
+    blurb: "Two products, one pairing — cross-sell as a love story",
+    fields: ["headline", "pair1", "pair2"],
+    hero: "a ceramic pour-over coffee dripper set on a matching mug",
+    preview: { headline: "Better together", pair1: "The mug", pair2: "The dripper" },
+  },
+  {
+    key: "receipt", name: "Worth It", emoji: "🧾",
+    blurb: "A giant receipt that reads like a love letter — price anchoring",
+    fields: ["headline", "item", "price", "memo"],
+    hero: "a windproof storm umbrella with a curved wooden handle",
+    preview: { headline: "Best money I've spent", item: "Storm umbrella", price: "$29", memo: "survived three winters" },
+  },
+  {
+    key: "tierlist", name: "S-Tier", emoji: "🏆",
+    blurb: "Ranked S-tier card — internet-native flex",
+    fields: ["headline", "tagline"],
+    hero: "a low-profile mechanical keyboard with cream and sage keycaps",
+    preview: { headline: "Officially S-tier", tagline: "Ranked by people who type for a living" },
+  },
+  {
+    key: "swatch", name: "Pick a Shade", emoji: "🎨",
+    blurb: "The color lineup — collect-them-all energy",
+    fields: ["headline", "sw1", "sw2", "sw3", "sw4"],
+    hero: "four bottles of matte nail polish in muted earthy tones, lined up",
+    preview: { headline: "Pick your mood", sw1: "Cloud", sw2: "Clay", sw3: "Moss", sw4: "Midnight" },
   },
 ];
 

@@ -12,7 +12,11 @@ import type {
 } from "@remix-run/node";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
-export const links: LinksFunction = () => [];
+// Branded favicon — without it browsers show the cheap generic globe.
+export const links: LinksFunction = () => [
+  { rel: "icon", type: "image/png", href: "/easymode-head.png" },
+  { rel: "apple-touch-icon", href: "/easymode-head.png" },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();

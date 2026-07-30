@@ -57,10 +57,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const form = await request.formData();
   const intent = form.get("intent") as string;
   const productTitle = ((form.get("productTitle") as string) || "").trim();
-  const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
+  const urlField = ((form.get("productImageUrl") as string) || "").trim() || undefined;
   const direction = ((form.get("direction") as string) || "").trim() || undefined;
   if (!productTitle) return json({ error: "Give the product a name." });
-  if (productImageUrl && !/^https?:\/\//.test(productImageUrl)) return json({ error: "The product image must be a full https:// URL." });
+  if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: "The product image must be a full https:// URL." });
+
+  // Uploaded photo beats the URL field — not everyone has a hosted image.
+  // Stored on the persistent disk and served publicly at /uploads/* so the
+  // render engines can fetch it like any other product URL.
+  let productImageUrl = urlField;
+  const photo = form.get("productPhoto");
+  if (photo && typeof photo !== "string" && photo.size > 0) {
+    if (!/^image\//.test(photo.type)) return json({ error: "That file isn't an image — use a JPG, PNG or WebP." });
+    if (photo.size > 8 * 1024 * 1024) return json({ error: "Image too large — keep it under 8 MB." });
+    const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+    const ext = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
+    const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
+    fsMod.mkdirSync(dir, { recursive: true });
+    const name = `${shop.id.toLowerCase().replace(/[^a-z0-9]/g, "")}-${crypto.randomBytes(8).toString("hex")}.${ext}`;
+    fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await photo.arrayBuffer()));
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    if (base) productImageUrl = `${base}/uploads/${name}`;
+  }
 
   try {
     if (intent === "video") {
@@ -178,7 +196,7 @@ export default function WebStudio() {
         ))}
       </div>
 
-      <Form method="post" className="wb-card ws-card">
+      <Form method="post" encType="multipart/form-data" className="wb-card ws-card">
         {/* ---- VIDEO: pick your content type (big live-render tiles) ---- */}
         {tab === "video" && !contentType && (
           <>
@@ -270,9 +288,10 @@ export default function WebStudio() {
             {imageMode === "product" && (
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
-                <div className="ws-tiles fmt">
-                  {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 8)).map((f) => (
+                <div className={`ws-tiles fmt${allFormats ? " ws-fmtbox" : ""}`}>
+                  {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 8)).map((f, i) => (
                     <button type="button" key={f.key} className={`ws-tile fmt${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
+                      style={allFormats ? { animationDelay: `${Math.min(i * 22, 550)}ms` } : undefined}
                       onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
                       <b>{f.emoji} {f.name}</b>
@@ -316,8 +335,9 @@ export default function WebStudio() {
             <input className="wb-in" name="productTitle" required placeholder="Midnight Roast — whole bean coffee" />
             {tab !== "blog" && (
               <>
-                <div className="ws-lbl">Product photo URL <span className="ws-opt">powers videos & image ads</span></div>
-                <input className="wb-in" name="productImageUrl" placeholder="https://yourstore.com/cdn/product.jpg" />
+                <div className="ws-lbl">Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></div>
+                <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }} />
+                <input className="wb-in" name="productImageUrl" placeholder="…or https://yourstore.com/cdn/product.jpg" style={{ marginTop: 8 }} />
               </>
             )}
             <div className="ws-lbl">Direction <span className="ws-opt">optional</span></div>
