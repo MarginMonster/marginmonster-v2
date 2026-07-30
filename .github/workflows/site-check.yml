@@ -21,6 +21,8 @@ jobs:
           ads = [f["name"] for f in j.get("adTemplates", [])]
           print(f"STYLE TILES ({len(tiles)}):", ", ".join(tiles))
           print(f"AD TEMPLATES ({len(ads)}):", ", ".join(ads))
+          ups = j.get("uploads", [])
+          print(f"MERCHANT UPLOADS ({len(ups)}):", ", ".join(f"{u['name']}({u['kb']}kb)" for u in ups))
           g = j.get("generation", {})
           print("GENERATION last24h:", json.dumps(g.get("last24h", {})))
           print("RECENT FAILURES:")
