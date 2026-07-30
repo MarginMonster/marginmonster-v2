@@ -143,6 +143,12 @@ export async function acceptQuestline(params: {
     },
   });
 
+  // FORMAT VARIETY — campaign image drops rotate through the proven ad
+  // formats instead of defaulting to the same poster every time. Variety is
+  // what makes a month of content feel hand-made (and keeps feeds fresh).
+  const FORMAT_ROTATION = ["callout", "review", "chat", "versus", "offer", "ugcframe", "beforeafter", "stat"];
+  let imgFormatIdx = 0;
+
   // SHOWSTOPPER DROPS — the campaign wow factor on the Anthem tier: with
   // enough videos in the month, the middle one becomes a Cartoon Avatar drop
   // and the FINAL one the product's sung Anthem (the month ends on the
@@ -178,7 +184,9 @@ export async function acceptQuestline(params: {
         holdProduct: !contentType,
       }, runAt);
     } else if (slot.type === "image") {
-      await enqueueJob(params.shopId, "GENERATE_IMAGE_AD", base, runAt);
+      await enqueueJob(params.shopId, "GENERATE_IMAGE_AD", {
+        ...base, formatKey: FORMAT_ROTATION[imgFormatIdx++ % FORMAT_ROTATION.length],
+      }, runAt);
     } else if (slot.type === "blog") {
       await enqueueJob(params.shopId, "GENERATE_BLOG_POST", base, runAt);
     }
