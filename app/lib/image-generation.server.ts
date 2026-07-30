@@ -445,7 +445,42 @@ export function ensureAdTemplate(key: string): void {
   })();
 }
 
+/* ── Product Highlight cover — a CINEMATIC hero shot of the EASYMODE bottle
+ * (the merchant-facing "this is what cinematic product video looks like"
+ * tile). Self-forges once; nano-banana keeps the label spelled right. */
+const PH_COVER_VERSION = 1;
+let phCoverInFlight = false;
+
+export function phCoverFile(): string | null {
+  const p = path.join(AD_TEMPLATE_DIR, `phcover-v${PH_COVER_VERSION}.jpg`);
+  return fs.existsSync(p) ? p : null;
+}
+
+export function ensurePhCover(): void {
+  if (phCoverFile() || phCoverInFlight || !process.env.REPLICATE_API_TOKEN) return;
+  phCoverInFlight = true;
+  (async () => {
+    try {
+      const url = await repRun("google/nano-banana", {
+        prompt:
+          'Cinematic hero product shot for a premium TV commercial: a sleek sports hydration drink bottle — tall slim glossy deep EMERALD GREEN body, wide flat matte black cap, the wordmark "EASYMODE" in bold metallic GOLD uppercase letters running VERTICALLY down the bottle, spelled exactly E-A-S-Y-M-O-D-E. The bottle stands on a wet glossy black stone pedestal, dramatic golden rim light carving its silhouette, fine water droplets glistening on the glass, a soft swirl of cool mist at the base, deep emerald-black studio background with a faint warm glow, ultra sharp focus on the bottle, luxurious big-budget advertising photography, wide landscape composition. No people, no hands, no other text.',
+        output_format: "jpg",
+      });
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
+      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `phcover-v${PH_COVER_VERSION}.jpg`), Buffer.from(await res.arrayBuffer()));
+      artLog("ad-templates", "phcover: cinematic Product Highlight cover forged OK");
+    } catch (e) {
+      artLog("ad-templates", `phcover: FAILED — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+    } finally {
+      phCoverInFlight = false;
+    }
+  })();
+}
+
 export async function ensureAllAdTemplates(): Promise<void> {
+  ensurePhCover();
   const { AD_TEMPLATES } = await import("./ad-templates");
   for (const t of AD_TEMPLATES) ensureAdTemplate(t.key);
 }
