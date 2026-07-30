@@ -139,6 +139,8 @@ export const CARTOON_RECIPES: Record<
     voice: "English_magnetic_voiced_man",
   },
   brick: {
+    // legacy key — retired from the picker (read as cheap); kept so
+    // pre-existing assets still remix correctly
     name: "Block Build",
     look: "rebuilt as a chunky VOXEL character in a cube-world diorama, like a retro sandbox video game brought to life: head and body assembled from large square cubes with completely flat smooth matte faces, simple pixel-style painted facial features on a flat CUBE-shaped head, squared-off right-angle proportions, bright saturated colors, crisp macro photography of a handmade cube world — an original generic voxel aesthetic. Absolutely NO cylindrical studs, NO round-headed minifigures, NO interlocking-brick construction, NO toy-brand look",
     motion: "playful stop-motion voxel animation, snappy stepped movement, cubes assembling and snapping into place",
@@ -151,11 +153,10 @@ export const CARTOON_RECIPES: Record<
     voice: "English_Comedian",
   },
   papercut: {
-    // legacy key — kept so pre-existing assets still remix correctly
-    name: "Paper Cutout",
-    look: "construction-paper cutout cartoon style, flat layered paper shapes with visible cut edges, handmade collage charm, simple bold colors",
-    motion: "paper layers shifting in gentle parallax, subtle handmade stop-motion jitter, cozy charm",
-    voice: "English_Comedian",
+    name: "Paper Craft",
+    look: "exquisite handmade layered-paper diorama: characters and scenery cut from richly colored cardstock and stacked in deep layered relief, crisp cut edges with subtle real drop shadows between layers, delicate curled paper details (rolled paper hair, fringed paper grass), warm gallery lighting inside a shadow-box frame, premium paper-craft artistry photographed like a museum piece",
+    motion: "layered paper parallax as the camera drifts, gentle stop-motion flutter of paper edges, layers sliding with handmade charm",
+    voice: "English_FriendlyPerson",
   },
   puppet: {
     name: "Felt Puppet",

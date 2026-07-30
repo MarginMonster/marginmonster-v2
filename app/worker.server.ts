@@ -27,6 +27,11 @@ async function tick() {
     if (Date.now() - lastTileKick > 10 * 60_000) {
       lastTileKick = Date.now();
       import("./lib/style-tiles.server").then((m) => m.ensureAllStyleTiles()).catch(() => { /* non-fatal */ });
+      // Whole-cast tile pre-forge: one presenter per cycle until every
+      // presenter's style set exists (no more portrait stand-ins in pickers).
+      Promise.all([import("./lib/style-tiles.server"), import("./lib/avatars")])
+        .then(([m, a]) => m.ensureNextCharacterTiles(a.AVATARS.map((av) => av.id)))
+        .catch(() => { /* non-fatal */ });
       import("./lib/image-generation.server").then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); }).catch(() => { /* non-fatal */ });
       // Self-heal Stripe webhook provisioning (no-op once the secret exists).
       import("./lib/stripe.server").then((m) => m.ensureStripeWebhook()).catch(() => { /* non-fatal */ });

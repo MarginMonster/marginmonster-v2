@@ -43,7 +43,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
 const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
   { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/style-tiles/dreamanime.jpg?v=5", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
   { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/style-tiles/toyfigure.jpg?v=5", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "brick", name: "Block Build", emoji: "🟥", tint: "#D93A2B", cover: "/style-tiles/brick.jpg?v=7", blurb: "Everything rebuilt from chunky pixel cubes, stop-motion style" },
+  { key: "papercut", name: "Paper Craft", emoji: "✂️", tint: "#E58A4E", cover: "/style-tiles/papercut.jpg?v=5", blurb: "A handmade layered-paper diorama — the craft style feeds fall in love with" },
   { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/style-tiles/pixar.jpg?v=5", blurb: "Big-studio 3D character film — glossy and cinematic" },
   { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/style-tiles/retroanime.jpg?v=5", blurb: "90s VHS anime — sunset palettes and speed lines" },
   { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/style-tiles/vintagetoon.jpg?v=5", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
@@ -478,7 +478,7 @@ export default function Studio() {
   // while it cooks).
   const styleChar = avatarId ?? defaultAvatar ?? "ingrid";
   // ?v must move when a style's tile version bumps, or browsers pin the old art
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 7 : 5}`;
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=5`;
 
   const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
   const costLabel = `${meta.cost + engineFee} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`;
@@ -553,7 +553,11 @@ export default function Studio() {
               {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
               {contentType === "cartoon" && (
                 <>
-                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon avatar style</span></div>
+                  {/* Presenter FIRST — the style tiles render AS the chosen
+                    * presenter, so this order explains whose face is in them. */}
+                  <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
+                  {!avatarId && <p className="cfg-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
+                  <div className="cfg-lbl cs-lblrow"><span>Pick a cartoon avatar style</span><span className="cs-opt">previews show your chosen presenter</span></div>
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cs.key)}>
@@ -567,8 +571,6 @@ export default function Studio() {
                   ) : (
                     <p className="cfg-note cs-ctnote">Pick the style — your presenter becomes the character, your product stays recognizable.</p>
                   )}
-                  {cartoonStyle && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />}
-                  {cartoonStyle && !avatarId && <p className="cfg-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
                 </>
               )}
               {(contentType === "avatar" || contentType === "highlight") && (
@@ -588,8 +590,10 @@ export default function Studio() {
               </div>
               {contentType === "jingle" && (
                 <>
-                  <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick a singer below — photoreal, or redrawn in a cartoon style. No singer = the song plays over a cinematic product shot.</p>
-                  <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">optional — none = photoreal</span></div>
+                  <p className="cfg-note cs-ctnote">🎵 <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.</p>
+                  <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
+                  {!avatarId && <p className="cfg-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
+                  <div className="cfg-lbl cs-lblrow"><span>Singer style</span><span className="cs-opt">optional — none = photoreal · previews show your chosen singer</span></div>
                   <div className="cfg-cast cs-ctypes bigtiles">
                     {CARTOON_STYLES.map((cs) => (
                       <button type="button" key={cs.key} className={`cast cs-ctype${cartoonStyle === cs.key ? " sel" : ""}`} onClick={() => setCartoonStyle(cartoonStyle === cs.key ? null : cs.key)}>
@@ -598,8 +602,6 @@ export default function Studio() {
                       </button>
                     ))}
                   </div>
-                  <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={true} brandFaceId={brandFaceId} />
-                  {!avatarId && <p className="cfg-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
                 </>
               )}
             </>

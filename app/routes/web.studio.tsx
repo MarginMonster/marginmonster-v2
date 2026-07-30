@@ -28,7 +28,7 @@ const CONTENT_TYPES = [
 const CARTOON_STYLES = [
   { key: "dreamanime", name: "Dream Anime", tint: "#6FAF7C" },
   { key: "toyfigure", name: "Boxed Figure", tint: "#F4B400" },
-  { key: "brick", name: "Block Build", tint: "#D93A2B" },
+  { key: "papercut", name: "Paper Craft", tint: "#E58A4E" },
   { key: "pixar", name: "3D Toon", tint: "#34C3E7" },
   { key: "retroanime", name: "Retro Anime", tint: "#E5397D" },
   { key: "vintagetoon", name: "Vintage Toon", tint: "#E7A33C" },
@@ -151,7 +151,7 @@ export default function WebStudio() {
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
 
   const styleChar = avatarId ?? d.cast[0]?.id ?? "ingrid";
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 7 : 5}`;
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=5`;
 
   const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
   const cost = tab === "video" ? d.costs.video + engineFee : tab === "image" ? d.costs.image : d.costs.blog;
@@ -230,9 +230,12 @@ export default function WebStudio() {
           <>
             <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ Content type</button>
             <input type="hidden" name="contentType" value={contentType === "cartoon" || contentType === "jingle" ? contentType : ""} />
+            {/* Presenter FIRST — the style tiles below render as the chosen
+              * presenter, so picking them in this order explains the art. */}
+            {(contentType === "avatar" || showCartoonGrid) && <Presenters optional={contentType !== "avatar"} />}
             {showCartoonGrid && (
               <>
-                <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"}{contentType === "jingle" && <span className="ws-opt">optional — none = photoreal</span>}</div>
+                <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"} <span className="ws-opt">{contentType === "jingle" ? "optional — none = photoreal" : "previews show your chosen presenter"}</span></div>
                 <div className="ws-tiles styles">
                   {CARTOON_STYLES.map((cs) => (
                     <button type="button" key={cs.key} className={`ws-tile small${cartoonStyle === cs.key ? " sel" : ""}`}
@@ -245,7 +248,6 @@ export default function WebStudio() {
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
             )}
-            {(contentType === "avatar" || showCartoonGrid) && <Presenters optional={contentType !== "avatar"} />}
             {contentType === "highlight" && <p className="ws-note">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {(contentType === "avatar" || contentType === "highlight") && (

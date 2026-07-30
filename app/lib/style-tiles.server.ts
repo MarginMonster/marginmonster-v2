@@ -25,13 +25,14 @@ const TILE_VERSION = 5; // v5: bottle sourced from the v10 statue (the Product H
 // Per-key bumps: raise ONE style's version when its recipe changes materially,
 // so only that style re-renders instead of every tile for every character.
 const TILE_KEY_VERSIONS: Record<string, number> = {
-  brick: 7, // v7: voxel look + the Product Highlight bottle
   avatarcover: 4, // v4: holds the v10 statue bottle (extracted from phcover)
   anthemcover: 4, // v4: mic + the v10 statue bottle (extracted from phcover)
 };
 const tileVersion = (key: string) => TILE_KEY_VERSIONS[key] ?? TILE_VERSION;
+// "papercut" replaced "brick" (Block Build read as cheap); the brick recipe
+// stays in CARTOON_RECIPES so old assets still remix.
 const PICKER_KEYS: CartoonStyleKey[] = [
-  "dreamanime", "toyfigure", "brick", "pixar", "retroanime", "vintagetoon", "puppet", "clay",
+  "dreamanime", "toyfigure", "papercut", "pixar", "retroanime", "vintagetoon", "puppet", "clay",
 ];
 
 // Special non-style tiles: the Avatar AI / Anthem covers. These composite the
@@ -147,4 +148,20 @@ export function ensureAllStyleTiles(character: string = DEFAULT_TILE_CHARACTER):
   for (const k of PICKER_KEYS) ensureStyleTile(character, k);
   // Special tiles (the Anthem cover) only need the default character.
   if (character === DEFAULT_TILE_CHARACTER) for (const k of Object.keys(SPECIAL_PROMPTS)) ensureStyleTile(character, k);
+}
+
+/** Pre-forge tiles for the WHOLE cast, one character per call — the picker
+ * must never show a plain portrait where a style render belongs ("images
+ * failing to load"). One character at a time keeps each burst small enough
+ * to dodge upstream rate limits; the worker's self-heal calls this every
+ * cycle until every presenter's set exists. */
+export function ensureNextCharacterTiles(characters: string[]): void {
+  for (const c of characters) {
+    if (!portraitFile(c)) continue;
+    const missing = PICKER_KEYS.some((k) => !currentTileExists(c, k));
+    if (missing) {
+      ensureAllStyleTiles(c);
+      return; // one character per cycle
+    }
+  }
 }
