@@ -98,6 +98,16 @@ const CSS = `
 .wb-assets{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
 .wb-asset{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
 .wb-asset video,.wb-asset img{width:100%;height:220px;object-fit:cover;display:block;background:#0b0f0d;}
+/* Cooking tiles — live render placeholders with shimmer + ETA. */
+.wb-cookimg{position:relative;height:220px;background-color:#101612;background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden;}
+.wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
+@keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
+.wb-spin{width:36px;height:36px;border-radius:50%;border:3.5px solid rgba(255,255,255,.22);border-top-color:#12A85E;animation:wbRot .85s linear infinite;display:block;}
+@keyframes wbRot{to{transform:rotate(360deg)}}
+.wb-eta{color:#fff;font-weight:800;font-size:12.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.6);}
+.wb-failbadge{position:relative;z-index:1;font-size:30px;color:#E9897B;font-weight:800;}
+@media (prefers-reduced-motion: reduce){.wb-cookimg::after{animation:none}.wb-spin{animation-duration:2s}}
 .wb-asset .m{padding:10px 12px;font-size:13px;font-weight:600;}
 .wb-asset .s{font-size:11.5px;color:var(--ink2);font-weight:500;}
 .wb-auth{max-width:420px;margin:40px auto;}

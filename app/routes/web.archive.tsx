@@ -3,7 +3,8 @@
  * auto-posting for web accounts rides the connect flow (next track). */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator } from "@remix-run/react";
+import { useEffect } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { linkedFromCache, publishPost, socialProviderEnabled } from "../lib/social-provider.server";
@@ -16,15 +17,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     take: 60,
   });
   const jobs = await db.job.findMany({
-    where: { shopId: shop.id, status: { in: ["PENDING", "IN_PROGRESS"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } },
+    where: { shopId: shop.id, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } },
     orderBy: { createdAt: "desc" },
     take: 20,
   });
+  // Cooking tiles, same logic as the embedded Archive: live ETA per job type,
+  // product image as the tile art, failed jobs surfaced instead of vanishing.
+  const nowMs = Date.now();
+  const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_BLOG_POST: 40 };
+  const KIND: Record<string, "video" | "image" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_BLOG_POST: "blog" };
+  const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; refunded: boolean }[] = [];
+  for (const j of jobs) {
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean } = {};
+    try { p = JSON.parse(j.payload); } catch { /* ignore */ }
+    const due = !j.runAt || j.runAt.getTime() <= nowMs;
+    const failed = j.status === "FAILED";
+    const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
+    if (!failed && !generating) continue; // future-scheduled drip isn't "cooking"
+    const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
+    const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
+    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, refunded: !!p.refunded });
+  }
   const linked = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
   return json({
     canPost: socialProviderEnabled() && linked.length > 0,
     linkedCount: linked.length,
-    cooking: jobs.length,
+    cooking: cookingCards.filter((c) => c.status === "generating").length,
+    cookingCards,
     assets: assets.map((a) => {
       let body: { videoUrl?: string; imageUrl?: string; title?: string } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
@@ -78,11 +97,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ ok: `Posted to ${platforms.length} account${platforms.length > 1 ? "s" : ""} 🎉` });
 };
 
+function fmtEta(s: number): string {
+  return s >= 60 ? `${Math.ceil(s / 60)} min` : `${s}s`;
+}
+
 export default function WebArchive() {
-  const { assets, cooking, canPost, linkedCount } = useLoaderData<typeof loader>();
+  const { assets, cooking, cookingCards, canPost, linkedCount } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+  // Live tiles: while anything is cooking, refresh the data every 8s so the
+  // ETAs count down and finished pieces swap in without a manual reload.
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (cooking === 0) return;
+    const t = setInterval(() => { if (revalidator.state === "idle") revalidator.revalidate(); }, 8000);
+    return () => clearInterval(t);
+  }, [cooking, revalidator]);
   const err = actionData && "error" in actionData ? (actionData.error as string) : null;
   const ok = actionData && "ok" in actionData ? (actionData.ok as string) : null;
   return (
@@ -90,13 +121,35 @@ export default function WebArchive() {
       <h1 className="wb-h1">Archive</h1>
       <p className="wb-sub">
         Everything you&apos;ve made. Right-click any piece to save it{canPost ? `, or post it to your ${linkedCount} linked account${linkedCount > 1 ? "s" : ""} in one tap` : ""}.
-        {cooking > 0 && <> · <b>{cooking} piece{cooking > 1 ? "s" : ""} still cooking</b> — refresh in a minute.</>}
+        {cooking > 0 && <> · <b>{cooking} piece{cooking > 1 ? "s" : ""} cooking below</b> — this page updates itself.</>}
       </p>
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>Want one-tap posting? <Link to="/web/connect">Link your socials</Link>.</p>}
       {err && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
       {assets.length === 0 && cooking === 0 && (
         <div className="wb-card">Nothing here yet — make your first piece in the <Link to="/web/studio">Studio</Link>.</div>
+      )}
+      {cookingCards.length > 0 && (
+        <div className="wb-assets" style={{ marginBottom: 16 }}>
+          {cookingCards.map((j) => (
+            <div className="wb-asset" key={j.jobId}>
+              <div
+                className="wb-cookimg"
+                style={j.productImage ? { backgroundImage: `linear-gradient(rgba(10,14,12,.5),rgba(10,14,12,.55)), url(${j.productImage})` } : undefined}
+              >
+                {j.status === "generating"
+                  ? <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">~{fmtEta(j.etaSec)}</span></span>
+                  : <span className="wb-failbadge">✕</span>}
+              </div>
+              <div className="m">
+                {j.status === "generating"
+                  ? (j.kind === "blog" ? `Writing${j.productTitle ? ` about ${j.productTitle}` : " your article"}…` : `Creating your ${j.kind}${j.productTitle ? ` — ${j.productTitle}` : ""}…`)
+                  : `This ${j.kind} didn't make it${j.refunded ? " — tokens refunded" : ""}.`}
+                <div className="s">{j.status === "generating" ? `Rendering · ~${fmtEta(j.etaSec)} left` : <>Failed · <Link to="/web/studio">try again in the Studio</Link></>}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
       <div className="wb-assets">
         {assets.map((a) => (
