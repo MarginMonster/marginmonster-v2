@@ -739,7 +739,13 @@ export function ensureFormatPreview(key: string): void {
         if (useStatue) input.image_input = [`${base}/ad-templates/statue.png`];
         const url = await repRun("google/nano-banana", input);
         const qa = await qaFormat(url, null, expected);
-        if (!qa.pass && attempt === 0) { artLog("ad-formats", `${key}: preview QA retry — ${qa.reason}`); continue; }
+        // A SECOND failure used to be ignored and the gibberish written anyway,
+        // where it sits in the picker forever. Never write art that failed QA:
+        // leave the tile unbuilt and let the 10-min self-heal try again.
+        if (!qa.pass) {
+          artLog("ad-formats", `${key}: preview QA failed (${qa.reason})${attempt === 0 ? " — retrying" : " twice — leaving it for the next tick"}`);
+          continue;
+        }
         const res = await fetch(url);
         if (!res.ok) throw new Error(`fetch ${res.status}`);
         buf = Buffer.from(await res.arrayBuffer());
@@ -747,7 +753,7 @@ export function ensureFormatPreview(key: string): void {
       if (!buf) throw new Error("no render");
       fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
       fs.writeFileSync(current, buf);
-      artLog("ad-formats", `${key}: preview v${FORMAT_PREVIEW_VERSION} forged OK`);
+      artLog("ad-formats", `${key}: preview v${fpVersion(key)} forged OK`);
     } catch (e) {
       artLog("ad-formats", `${key}: preview FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     } finally {
@@ -1013,10 +1019,18 @@ export async function generateImageAd(
           if (p.done) { composed = p.urls?.[0]; break; }
         }
         if (composed) {
-          let localUrl = composed;
+          let localUrl = "";
           try {
-            const res = await fetch(composed);
-            if (res.ok) {
+            // fal delivery URLs expire in ~an hour and the healer can't re-forge
+            // a presenter still from its prompt — storing the raw fal URL means
+            // a card that goes permanently blank. Try a few times, then let the
+            // ladder deliver a product still instead of a dying link.
+            let res: Response | null = null;
+            for (let i = 0; i < 3 && !res?.ok; i++) {
+              if (i) await new Promise((r) => setTimeout(r, 1500));
+              res = await fetch(composed).catch(() => null);
+            }
+            if (res?.ok) {
               const buf = Buffer.from(await res.arrayBuffer());
               if (buf.length > 5_000) {
                 const dir = path.join(process.cwd(), "data", "renders");
@@ -1037,11 +1051,14 @@ export async function generateImageAd(
               }
             }
           } catch (e) { console.error("[image-ad] presenter still persist failed:", e); }
+          // No durable copy → don't mint a card that dies in an hour; the
+          // ladder below still delivers a real (product) ad for this job.
+          if (!localUrl) throw new Error("[image-ad] presenter still could not be persisted (fal url expires and can't be healed)");
           const asset = await db.asset.create({
             data: {
               shopId, type: "IMAGE_AD", status: "PENDING",
               title: `${productTitle} — held by presenter`,
-              bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter holding ${productTitle}`, avatarId }),
+              bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter holding ${productTitle}`, method: "presenter", avatarId }),
               metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle, avatarId }),
             },
           });
@@ -1079,7 +1096,8 @@ export async function generateImageAd(
 
   if (serviceMode) {
     usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
-    imageUrl = await repRun("black-forest-labs/flux-dev", { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+    // Only rung on this path — an unretried blip here terminal-failed a paid ad.
+    imageUrl = await fluxDevStill(usedPrompt, "service-outcome");
     genMeta.method = "lifestyle";
   } else if (hasProductImg) {
     const wantBright = !stylePrompt || !/deliberately dark|noir|dark charcoal/i.test(stylePrompt);
@@ -1163,7 +1181,14 @@ export async function generateImageAd(
             // deterministic last resort: exact composite on the plate
             const cutout = await removeBackground(productImageUrl!);
             const fn = cutout ? await compositeProductStill(platePath, cutout) : null;
-            if (fn) { usedPrompt = t.plate; localFileName = fn; imageUrl = null; genMeta.method = `template-fallback:${t.key}`; }
+            if (fn) {
+              usedPrompt = t.plate; localFileName = fn; imageUrl = null; genMeta.method = `template-fallback:${t.key}`;
+              // The staged take was DISCARDED — its failing verdict must not
+              // travel with the composite that shipped instead (which was never
+              // QA'd, and can't be wrong: the product is never redrawn).
+              genMeta.qa = { pass: true, reason: "photo-true composite (staged take rejected)" };
+              genMeta.rejectedQa = qa;
+            }
           }
         }
       } catch (e) {
@@ -1178,7 +1203,7 @@ export async function generateImageAd(
         const cutout = await removeBackground(productImageUrl!);
         if (cutout) {
           const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area (clean surface, tabletop or seamless floor) across the lower third where a product will be placed, and clean uncluttered space across the top for a headline. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, magazine-quality, soft believable ground shadow area, no text, no watermark.`;
-          const bgUrl = await repRun("black-forest-labs/flux-dev", { prompt: bgPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+          const bgUrl = await fluxDevStill(bgPrompt, "photo-true-backdrop");
           const fn = await compositeProductStill(bgUrl, cutout);
           if (fn) {
             usedPrompt = bgPrompt;
@@ -1229,7 +1254,8 @@ export async function generateImageAd(
     }
   } else {
     usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
-    imageUrl = await repRun("black-forest-labs/flux-dev", { prompt: usedPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
+    // Only rung on this path (no product photo) — retry rather than fail the job.
+    imageUrl = await fluxDevStill(usedPrompt, "text2img");
     genMeta.method = "text2img";
   }
 
