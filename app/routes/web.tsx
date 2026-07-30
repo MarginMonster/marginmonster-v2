@@ -111,21 +111,21 @@ const CSS = `
 .ws-lbl{display:flex;align-items:baseline;gap:8px;font-family:Poppins,sans-serif;font-weight:700;font-size:13px;color:var(--ink);margin:16px 0 8px;}
 .ws-lbl:first-child{margin-top:0}
 .ws-opt{font-family:Inter,sans-serif;font-weight:500;font-size:11px;color:var(--ink2);}
-.ws-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
-.ws-tiles.two{grid-template-columns:repeat(2,minmax(220px,320px));justify-content:center;}
-.ws-tiles.styles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
+.ws-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+.ws-tiles.two{grid-template-columns:repeat(2,minmax(220px,300px));justify-content:center;}
+.ws-tiles.styles{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));}
 .ws-tile{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:0 0 12px;
   cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;overflow:hidden;}
 .ws-tile:hover{transform:translateY(-3px);border-color:var(--green2);box-shadow:0 12px 30px rgba(12,122,70,.14);}
 .ws-tile.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E,0 8px 22px rgba(12,122,70,.16);}
 .ws-tile b{display:block;padding:10px 12px 0;font-family:Poppins,sans-serif;font-size:13.5px;color:var(--ink);}
 .ws-tile-sub{display:block;padding:3px 12px 0;font-size:11.5px;color:var(--ink2);line-height:1.4;}
-.ws-tile-img{position:relative;display:block;height:130px;background-size:cover;background-position:center 25%;}
-.ws-tile.small .ws-tile-img{height:96px;}
-/* Ad-format cards: the preview IS the pitch — show the full square, big. */
+/* Every picker card shares the tall square art treatment — the art IS the
+ * pitch, so no card gets a cropped little strip. */
+.ws-tile-img{position:relative;display:block;height:auto;aspect-ratio:1/1;background-size:cover;background-position:center 25%;}
 .ws-tiles.fmt{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
-.ws-tile.fmt .ws-tile-img{height:auto;aspect-ratio:1/1;background-position:center;}
-.ws-tile.fmt b{font-size:14px;}
+.ws-tile.fmt .ws-tile-img{background-position:center;}
+.ws-tile.fmt b,.ws-tile b{font-size:14px;}
 .ws-tile.lockd .ws-tile-img{filter:saturate(.35) brightness(.72);}
 .ws-tile.lockd:hover .ws-tile-img{filter:saturate(.6) brightness(.85);}
 .ws-lock{position:absolute;top:8px;right:8px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;

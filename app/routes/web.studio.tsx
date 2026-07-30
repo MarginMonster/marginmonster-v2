@@ -254,7 +254,7 @@ export default function WebStudio() {
             <div className="ws-lbl">What kind of image ad?</div>
             <div className="ws-tiles two">
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
-                <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-callout.jpg?v=2)" }} />
+                <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }} />
                 <b>Product ad</b><span className="ws-tile-sub">Your product in a famous ad format</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
