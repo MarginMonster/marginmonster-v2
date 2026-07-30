@@ -74,6 +74,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
+/** Can our render engines actually FETCH this product photo? Replicate and
+ *  fal download the URL server-side; a 403/404, a login wall or an HTML error
+ *  page comes back as "input was invalid" minutes later, after the merchant
+ *  has already been charged. Cheap pre-flight: must answer 2xx with an image
+ *  content-type (or at least real image bytes). Never blocks on our own
+ *  slowness — a timeout is treated as reachable rather than failing a
+ *  legitimate photo. */
+async function checkImageUrl(url: string): Promise<{ ok: boolean; why: string }> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 6000);
+  try {
+    let res = await fetch(url, { method: "HEAD", signal: ctl.signal, redirect: "follow" });
+    // Plenty of CDNs refuse HEAD — fall back to a tiny ranged GET.
+    if (res.status === 405 || res.status === 501 || res.status === 403) {
+      res = await fetch(url, { method: "GET", headers: { Range: "bytes=0-1023" }, signal: ctl.signal, redirect: "follow" });
+    }
+    if (!res.ok) return { ok: false, why: `the link returned ${res.status}` };
+    const type = (res.headers.get("content-type") || "").toLowerCase();
+    if (type && !type.startsWith("image/")) return { ok: false, why: "the link isn't an image" };
+    return { ok: true, why: "" };
+  } catch (e) {
+    // Abort = our probe was slow, not proof the URL is bad. Let it through;
+    // the pipeline degrades on its own if the fetch really fails.
+    if (e instanceof Error && e.name === "AbortError") return { ok: true, why: "" };
+    return { ok: false, why: "we couldn't reach it" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
@@ -162,7 +192,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const name = `${shop.id.toLowerCase().replace(/[^a-z0-9]/g, "")}-${crypto.randomBytes(8).toString("hex")}.${ext}`;
     fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await photo.arrayBuffer()));
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    if (base) productImageUrl = `${base}/uploads/${name}`;
+    if (!base) return json({ error: "Photo uploads aren't configured on this server yet — paste an image URL instead." });
+    productImageUrl = `${base}/uploads/${name}`;
+  }
+
+  // REACHABILITY GATE — the render engines fetch this URL themselves, and an
+  // unfetchable one made them reject the job three minutes later ("input was
+  // invalid"), after the tokens were already spent. Verify it BEFORE charging
+  // so the merchant gets an instant, fixable message instead of a refund loop.
+  if (productImageUrl) {
+    const reach = await checkImageUrl(productImageUrl);
+    if (!reach.ok) return json({ error: `That product photo can't be opened by our renderers (${reach.why}). Try uploading the file directly, or use a public image link.` });
   }
 
   try {

@@ -71,6 +71,15 @@ interface UgcAdParams {
     audioUrl?: string;
     composedUrl?: string;
     omniPredictionId?: string;
+    /** Kling gets its OWN key: a kling clip is SILENT, and re-attaching to one
+     *  under the omni key made resume label it "omni-human" → lipSynced:true →
+     *  assemble maps an audio stream that doesn't exist → ffmpeg hard-fails
+     *  identically on every retry until the job refunds. */
+    klingPredictionId?: string;
+    /** fal/HeyGen queue id — re-attach instead of re-paying ~$1.50. */
+    falRequestId?: string;
+    /** a fal render that already failed once: don't re-buy the 10-min attempt. */
+    falError?: string;
     talkingUrl?: string;
     engine?: string;
   };
@@ -84,7 +93,15 @@ function repToken(): string {
   return t;
 }
 
+/** How long a single create may spend SLEEPING on 429s before it gives up.
+ *  The worker drains jobs serially, so every second slept here is a second no
+ *  other merchant's job can run. Past this we fail the attempt and let the job
+ *  requeue (it keeps its checkpoints, so nothing already paid for is lost) —
+ *  that's strictly cheaper than blocking the queue for minutes. */
+const CREATE_RATE_LIMIT_BUDGET_MS = 90_000;
+
 export async function repCreate(model: string, input: Record<string, unknown>): Promise<string> {
+  let slept = 0;
   for (let a = 0; a < 12; a++) {
     const res = await fetch(`${REP}/models/${model}/predictions`, {
       method: "POST",
@@ -93,7 +110,12 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
     });
     if (res.status === 429) {
       const j = (await res.json().catch(() => ({}))) as { retry_after?: number };
-      await new Promise((r) => setTimeout(r, (j.retry_after || 12) * 1000 + 1500));
+      const header = Number(res.headers.get("retry-after"));
+      const hinted = (Number.isFinite(header) && header > 0 ? header : j.retry_after || 12) * 1000 + 1500;
+      const wait = Math.min(hinted, CREATE_RATE_LIMIT_BUDGET_MS - slept);
+      if (wait <= 0) break; // out of in-process patience → requeue instead
+      slept += wait;
+      await new Promise((r) => setTimeout(r, wait));
       continue;
     }
     if (!res.ok) throw new Error(`[ugc] ${model} create ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -107,7 +129,7 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
  * One adapter, per-model input mapping, and a HARD RULE: a premium engine
  * that rejects for any reason (schema drift, capacity, region) falls back to
  * the default engine instead of failing a paid generation. */
-const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v1.6-standard";
+export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v1.6-standard";
 
 function animateModelFor(engineKey: string | undefined): string {
   switch (engineKey) {
@@ -143,14 +165,51 @@ export async function animateCreate(
   }
 }
 
+/** A poll that can't read the prediction is NOT a failed prediction. The old
+ *  version called res.json() blind: a 5xx or an HTML error page threw straight
+ *  out of the loop and killed a PAID, still-running render, and a 429 left
+ *  j.status undefined so the loop burned its whole budget and then reported
+ *  "timed out" on a prediction that had actually succeeded. Only this many
+ *  CONSECUTIVE unreadable polls count as a real outage; one good poll resets it. */
+const POLL_MAX_CONSECUTIVE_FAILURES = 10;
+
 export async function repPoll(id: string, maxMs: number, stage: string): Promise<string> {
   const start = Date.now();
+  let consecutiveFailures = 0;
   while (Date.now() - start < maxMs) {
     await new Promise((r) => setTimeout(r, 4000));
-    const res = await fetch(`${REP}/predictions/${id}`, {
-      headers: { Authorization: `Bearer ${repToken()}` },
-    });
-    const j = (await res.json()) as { status: string; output?: string | string[]; error?: string };
+    // Never abandon a live prediction over a bad poll: transport errors, non-2xx
+    // responses and unparseable bodies all fall through to skip-and-continue.
+    let j: { status?: string; output?: string | string[]; error?: string } | null = null;
+    let extraWaitMs = 0;
+    try {
+      const res = await fetch(`${REP}/predictions/${id}`, {
+        headers: { Authorization: `Bearer ${repToken()}` },
+      });
+      if (res.ok) {
+        j = (await res.json()) as { status?: string; output?: string | string[]; error?: string };
+      } else {
+        // honour the rate-limit hint so we stop making the throttling worse
+        const header = Number(res.headers.get("retry-after"));
+        if (res.status === 429) extraWaitMs = (Number.isFinite(header) && header > 0 ? header : 10) * 1000;
+        await res.text().catch(() => ""); // drain so the socket is reusable
+      }
+    } catch {
+      /* network/parse failure — treated exactly like a non-2xx below */
+    }
+
+    if (!j || typeof j.status !== "string") {
+      consecutiveFailures++;
+      if (consecutiveFailures >= POLL_MAX_CONSECUTIVE_FAILURES) {
+        throw new Error(`[ugc:${stage}] prediction unreadable ${consecutiveFailures}x in a row (provider outage)`);
+      }
+      // short capped backoff on top of the 4s tick; the loop's own deadline
+      // still bounds the total wait
+      await new Promise((r) => setTimeout(r, Math.min(30_000, extraWaitMs || consecutiveFailures * 2000)));
+      continue;
+    }
+    consecutiveFailures = 0;
+
     if (j.status === "succeeded" && j.output) {
       return Array.isArray(j.output) ? j.output[0] : j.output;
     }
@@ -370,16 +429,35 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
  *  process for the entire encode, so Render's 5s health checks timed out
  *  mid-render and the platform killed the instance ("app crashed" with no
  *  deploy). 1080p encodes are long enough to guarantee it. */
+/** Hard ceiling for one encode. A wedged ffmpeg (bad input stream, stalled
+ *  filter graph) never emits "close", so the promise never settles: the job
+ *  sits IN_PROGRESS and the SERIAL drain loop stops draining for every merchant
+ *  until orphan-reclaim notices ~25 min later. SIGKILL and resolve down the
+ *  normal failure path instead. 10 min is far beyond any 15s 720x1280 encode. */
+const FFMPEG_TIMEOUT_MS = 10 * 60_000;
+
 export function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     const p = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { p.kill("SIGKILL"); } catch { /* already gone */ }
+    }, FFMPEG_TIMEOUT_MS);
     p.stderr.on("data", (c: Buffer) => {
       err += c.toString();
       if (err.length > 65536) err = err.slice(-32768); // keep the tail
     });
-    p.on("error", reject);
-    p.on("close", (code) => resolve({ status: code ?? -1, stderr: err }));
+    p.on("error", (e) => { clearTimeout(timer); reject(e); });
+    p.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        resolve({ status: -1, stderr: `${err}\n[ugc:assemble] ffmpeg killed after ${FFMPEG_TIMEOUT_MS / 60_000} min (wedged)` });
+        return;
+      }
+      resolve({ status: code ?? -1, stderr: err });
+    });
   });
 }
 
@@ -414,53 +492,72 @@ export async function assemble(opts: {
   const useBakedAudio = opts.lipSynced && !truncated;
   const duration = useBakedAudio ? talkingDur : audioDur;
 
-  const args: string[] = ["-y"];
-  if (!opts.lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
-  args.push("-i", opts.talkingPath);
-  if (!useBakedAudio) args.push("-i", opts.audioPath); // external narration for fallback + truncated recovery
-  const audioInputIndex = useBakedAudio ? 0 : 1; // omni/heygen: video's own audio; else: the mp3
+  /** One encode pass. captionText === "" builds ZERO drawtext filters — that's
+   *  the recovery pass below, and the reason the caption filters are built here
+   *  rather than once up front. */
+  const encode = async (captionText: string) => {
+    const args: string[] = ["-y"];
+    if (!opts.lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
+    args.push("-i", opts.talkingPath);
+    if (!useBakedAudio) args.push("-i", opts.audioPath); // external narration for fallback + truncated recovery
+    const audioInputIndex = useBakedAudio ? 0 : 1; // omni/heygen: video's own audio; else: the mp3
 
-  const filters: string[] = [];
-  let vLabel = "[v0]";
-  let base = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30`;
-  if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
-  filters.push(`${base}[v0]`);
+    const filters: string[] = [];
+    let vLabel = "[v0]";
+    let base = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30`;
+    if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
+    filters.push(`${base}[v0]`);
 
-  if (opts.productImagePath) {
-    // b-roll product image = the next input. Lip-synced has [0]=video only, so
-    // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
-    const brIdx = useBakedAudio ? 1 : 2;
-    args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
-    // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
-    // reads as an intentional UGC cut, not a glitch)
-    const cutLen = opts.lipSynced ? 1.6 : 2.2;
-    const bs = Math.max(1.2, duration * 0.5).toFixed(2);
-    const be = Math.min(duration - 0.8, duration * 0.5 + cutLen).toFixed(2);
-    filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
-    filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
-    vLabel = "[v1]";
+    if (opts.productImagePath) {
+      // b-roll product image = the next input. Lip-synced has [0]=video only, so
+      // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
+      const brIdx = useBakedAudio ? 1 : 2;
+      args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
+      // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
+      // reads as an intentional UGC cut, not a glitch)
+      const cutLen = opts.lipSynced ? 1.6 : 2.2;
+      const bs = Math.max(1.2, duration * 0.5).toFixed(2);
+      const be = Math.min(duration - 0.8, duration * 0.5 + cutLen).toFixed(2);
+      filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
+      filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
+      vLabel = "[v1]";
+    }
+
+    const captions = buildCaptionFilters(captionText, duration, fontFile);
+    if (captions.length) {
+      filters.push(`${vLabel}${captions.join(",")}[vf]`);
+      vLabel = "[vf]";
+    }
+
+    args.push(
+      "-filter_complex", filters.join(";"),
+      "-map", vLabel, "-map", `${audioInputIndex}:a`,
+      "-t", duration.toFixed(2),
+      // -threads 2: x264 memory scales with thread count, and containers report
+      // the HOST's cores (16+ on Render) — uncapped, the encode alone can blow
+      // the 512MB instance. 2 threads keeps a 15s 720x1280 encode well inside it.
+      "-threads", "2", "-filter_complex_threads", "2",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+      opts.outPath
+    );
+
+    return runFfmpeg(args);
+  };
+
+  let run = await encode(script);
+  // CAPTIONS ARE A NICE-TO-HAVE; THE VIDEO IS THE PRODUCT. By the time we get
+  // here the render is fully paid (kling/omni + TTS/song), and this free last
+  // step used to hard-fail the whole job on anything drawtext-shaped: an ffmpeg
+  // build without the drawtext filter (the npm static Linux binary ships
+  // without it — see ffmpegBin above), a missing font, or a caption string that
+  // trips the filter parser. Every retry then died the same way → merchant
+  // refunded, no video. Retry ONCE with no captions before giving up.
+  if ((run.status !== 0 || !fs.existsSync(opts.outPath)) && script) {
+    console.error(`[ugc:assemble] encode failed — retrying WITHOUT burned captions: ${(run.stderr || "").slice(-300)}`);
+    run = await encode("");
+    if (run.status === 0) console.log("[ugc:assemble] recovered — shipped without burned captions");
   }
-
-  const captions = buildCaptionFilters(script, duration, fontFile);
-  if (captions.length) {
-    filters.push(`${vLabel}${captions.join(",")}[vf]`);
-    vLabel = "[vf]";
-  }
-
-  args.push(
-    "-filter_complex", filters.join(";"),
-    "-map", vLabel, "-map", `${audioInputIndex}:a`,
-    "-t", duration.toFixed(2),
-    // -threads 2: x264 memory scales with thread count, and containers report
-    // the HOST's cores (16+ on Render) — uncapped, the encode alone can blow
-    // the 512MB instance. 2 threads keeps a 15s 720x1280 encode well inside it.
-    "-threads", "2", "-filter_complex_threads", "2",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
-    opts.outPath
-  );
-
-  const run = await runFfmpeg(args);
   if (run.status !== 0 || !fs.existsSync(opts.outPath)) {
     throw new Error(`[ugc:assemble] ffmpeg failed: ${(run.stderr || "").slice(-400)}`);
   }

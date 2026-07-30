@@ -64,12 +64,21 @@ export async function falTts(text: string, voiceId: string, speed = 1): Promise<
   throw new Error(`fal tts failed: ${lastErr}`);
 }
 
-/** Animate a portrait into a lip-synced talking video. Takes HOSTED urls —
- *  fal routes this model to HeyGen's servers, which fetch the inputs by URL
- *  (data URIs bounce; that was the first live failure). Uses the async queue
- *  API since video gen is slow; polls up to ~10 min. Returns the output video
- *  URL, or throws so the pipeline falls through to omni-human/kling. */
-export async function animateAvatar(imageUrl: string, audioUrl: string): Promise<string> {
+/** Handle on a submitted (i.e. ALREADY BILLABLE) fal queue job. Submit and poll
+ *  are separate so the caller can CHECKPOINT this before it starts waiting: a
+ *  restart during the ~10 min poll used to abandon a fully-paid ~$1.50 render
+ *  and pay for a brand-new one on the next attempt. */
+export interface FalQueueHandle {
+  requestId: string;
+  statusUrl: string;
+  responseUrl: string;
+}
+
+/** Submit a portrait + narration for lip-sync. Takes HOSTED urls — fal routes
+ *  this model to HeyGen's servers, which fetch the inputs by URL (data URIs
+ *  bounce; that was the first live failure). Returns the queue handle; the
+ *  render is running (and being billed) from this point on. */
+export async function submitAvatar(imageUrl: string, audioUrl: string): Promise<FalQueueHandle> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
 
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
@@ -88,29 +97,58 @@ export async function animateAvatar(imageUrl: string, audioUrl: string): Promise
   });
   if (!submit.ok) throw new Error(`fal submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
   const q = (await submit.json()) as { status_url?: string; response_url?: string; request_id?: string };
-  const statusUrl = q.status_url;
-  const responseUrl = q.response_url;
-  if (!statusUrl || !responseUrl) throw new Error("fal: no status/response url");
+  if (!q.status_url || !q.response_url) throw new Error("fal: no status/response url");
+  return { requestId: q.request_id || "", statusUrl: q.status_url, responseUrl: q.response_url };
+}
 
+/** fal's queue endpoints are addressable from the request id alone (the path
+ *  keys off owner/app, not the full model subpath), so a resume that only has
+ *  the checkpointed id can still re-attach. */
+export function falQueueHandleFor(requestId: string): FalQueueHandle {
+  const app = MODEL.split("/").slice(0, 2).join("/"); // "fal-ai/heygen"
+  return {
+    requestId,
+    statusUrl: `https://queue.fal.run/${app}/requests/${requestId}/status`,
+    responseUrl: `https://queue.fal.run/${app}/requests/${requestId}`,
+  };
+}
+
+/** Wait on an already-submitted render (~10 min ceiling) and return the output
+ *  video URL, or throw so the pipeline falls through to omni-human/kling. Safe
+ *  to call on a re-attach: fal keeps the result for a completed request. */
+export async function pollAvatar(h: FalQueueHandle): Promise<string> {
+  if (!falEnabled()) throw new Error("FAL_KEY not set");
   for (let i = 0; i < 120; i++) {
     await new Promise((r) => setTimeout(r, 5000));
-    const s = await fetch(statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+    const s = await fetch(h.statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
     if (!s.ok) continue;
     const sj = (await s.json()) as { status?: string };
     if (sj.status === "COMPLETED") break;
     if (sj.status === "FAILED" || sj.status === "ERROR") {
       // pull the real failure detail so it lands in the checkpoint/logs
-      const errBody = await fetch(responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } })
+      const errBody = await fetch(h.responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } })
         .then((r) => r.text()).catch(() => "");
       throw new Error(`fal ${sj.status}: ${errBody.slice(0, 200)}`);
     }
     if (i === 119) throw new Error("fal: poll timeout");
   }
 
-  const res = await fetch(responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+  const res = await fetch(h.responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
   if (!res.ok) throw new Error(`fal result ${res.status}`);
   const rj = (await res.json()) as { video?: { url?: string } };
   const url = rj.video?.url;
   if (!url) throw new Error("fal: no video url in result");
   return url;
+}
+
+/** Submit + poll in one call. `onSubmit` fires the moment the render is live so
+ *  callers can checkpoint the request id BEFORE the long wait. */
+export async function animateAvatar(
+  imageUrl: string,
+  audioUrl: string,
+  onSubmit?: (h: FalQueueHandle) => void | Promise<void>
+): Promise<string> {
+  const h = await submitAvatar(imageUrl, audioUrl);
+  if (onSubmit) await onSubmit(h);
+  return pollAvatar(h);
 }

@@ -80,6 +80,9 @@ export const loader = async (_args: LoaderFunctionArgs) => {
       UPLOADPOST_API_KEY: !!process.env.UPLOADPOST_API_KEY,
       RESEND_API_KEY: !!process.env.RESEND_API_KEY,
     },
+    // Merchant photo uploads — if these are missing or 0 KB, the studio's
+    // upload path is broken and every render fails on an unfetchable input.
+    uploads: listDir(path.join(cwd, "data", "renders", "uploads")).slice(-12),
     styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
     adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
     generation: await generationHealth(),
