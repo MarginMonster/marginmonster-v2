@@ -38,10 +38,9 @@ function scrub(s: string): string {
 async function generationHealth() {
   try {
     const { db } = await import("../db.server");
-    const types = ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"];
     const since = new Date(Date.now() - 24 * 3600_000);
     const jobs = await db.job.findMany({
-      where: { type: { in: types }, updatedAt: { gte: since } },
+      where: { type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] }, updatedAt: { gte: since } },
       orderBy: { updatedAt: "desc" },
       take: 60,
       select: { type: true, status: true, attempts: true, updatedAt: true, lastError: true },
