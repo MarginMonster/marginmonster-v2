@@ -611,7 +611,7 @@ export default function Studio() {
               <div className="cfg-lbl cs-lblrow"><span>What kind of image ad?</span></div>
               <div className="cfg-cast cs-ctypes bigtiles">
                 <button type="button" className="cast cs-ctype" onClick={() => setImageMode("product")}>
-                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/preview-colorblock.jpg?v=9)" }} />
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/ad-templates/format-callout.jpg?v=2)" }} />
                   <span className="ca-nm">🖼 Product ad</span>
                   <span className="ca-sub">Your product as the hero — pick a template scene</span>
                 </button>

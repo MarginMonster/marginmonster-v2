@@ -112,7 +112,7 @@ const CSS = `
 .ws-lbl:first-child{margin-top:0}
 .ws-opt{font-family:Inter,sans-serif;font-weight:500;font-size:11px;color:var(--ink2);}
 .ws-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
-.ws-tiles.two{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));}
+.ws-tiles.two{grid-template-columns:repeat(2,minmax(220px,320px));justify-content:center;}
 .ws-tiles.styles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
 .ws-tile{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:0 0 12px;
   cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;overflow:hidden;}
