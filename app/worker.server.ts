@@ -28,6 +28,8 @@ async function tick() {
       lastTileKick = Date.now();
       import("./lib/style-tiles.server").then((m) => m.ensureAllStyleTiles()).catch(() => { /* non-fatal */ });
       import("./lib/image-generation.server").then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); }).catch(() => { /* non-fatal */ });
+      // Self-heal Stripe webhook provisioning (no-op once the secret exists).
+      import("./lib/stripe.server").then((m) => m.ensureStripeWebhook()).catch(() => { /* non-fatal */ });
     }
     // Publish READY slots whose post time arrived (self-throttled to ~5 min).
     await postDueSlots();
@@ -69,6 +71,11 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   import("./lib/image-generation.server")
     .then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); })
     .catch((e) => console.error("[worker] ad templates boot kick:", e));
+  // Self-provision the Stripe webhook endpoint the moment STRIPE_SECRET_KEY
+  // lands in the environment — no dashboard clicks required.
+  import("./lib/stripe.server")
+    .then((m) => m.ensureStripeWebhook())
+    .catch((e) => console.error("[worker] stripe webhook boot kick:", e));
 }
 
 export {};

@@ -1,5 +1,5 @@
-/* Stripe webhook — the ONLY writer of web-billed plan state. Configure the
- * endpoint in the Stripe dashboard pointing at /api/stripe-webhook with
+/* Stripe webhook — the ONLY writer of web-billed plan state. The endpoint
+ * self-provisions via the Stripe API at boot (see ensureStripeWebhook) with
  * events: checkout.session.completed, customer.subscription.updated,
  * customer.subscription.deleted. Signature-verified; unsigned = 400. */
 
@@ -13,7 +13,7 @@ import {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const raw = await request.text();
-  if (!verifyStripeSignature(raw, request.headers.get("Stripe-Signature"))) {
+  if (!(await verifyStripeSignature(raw, request.headers.get("Stripe-Signature")))) {
     return new Response("Bad signature", { status: 400 });
   }
   let event: { type?: string; data?: { object?: Record<string, unknown> } } = {};

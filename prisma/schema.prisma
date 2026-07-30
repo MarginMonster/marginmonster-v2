@@ -53,6 +53,14 @@ model Connection {
   @@index([accountId])
 }
 
+// App-level key/value settings (e.g. the auto-provisioned Stripe webhook
+// signing secret — created via the Stripe API at boot, never in env).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model Shop {
   id          String   @id @default(cuid())
   domain      String   @unique

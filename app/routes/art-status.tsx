@@ -7,6 +7,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
 import { artLogEntries } from "../lib/art-log.server";
+import { stripeWebhookReady } from "../lib/stripe.server";
 
 function listDir(dir: string): { name: string; kb: number; mtime: string }[] {
   try {
@@ -34,7 +35,8 @@ export const loader = async (_args: LoaderFunctionArgs) => {
       SHOPIFY_APP_URL: !!process.env.SHOPIFY_APP_URL,
       // Web front-door readiness (booleans only — never values)
       STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
-      STRIPE_WEBHOOK_SECRET: !!process.env.STRIPE_WEBHOOK_SECRET,
+      // True when the self-provisioned (or env-set) webhook signing secret exists.
+      STRIPE_WEBHOOK: await stripeWebhookReady().catch(() => false),
       SESSION_SECRET: !!process.env.SESSION_SECRET,
       UPLOADPOST_API_KEY: !!process.env.UPLOADPOST_API_KEY,
       RESEND_API_KEY: !!process.env.RESEND_API_KEY,

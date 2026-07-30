@@ -3,11 +3,14 @@
  * of truth: plan-config.ts) and land on the SAME Plan wallet; only the payer
  * differs. Token packs are one-time payments credited to tokensExtra.
  *
- * Env: STRIPE_SECRET_KEY (sk_…), STRIPE_WEBHOOK_SECRET (whsec_…).
- * Both unset → billing UI shows "coming online" and nothing charges. */
+ * Env: STRIPE_SECRET_KEY (sk_…) is the only required var — the webhook
+ * endpoint self-provisions via the Stripe API at boot and its signing secret
+ * is stored in the Setting table (STRIPE_WEBHOOK_SECRET env, if set, wins).
+ * Key unset → billing UI shows "coming online" and nothing charges. */
 
 import crypto from "node:crypto";
 import { db } from "../db.server";
+import { artLog } from "./art-log.server";
 import { PLAN_BY_KEY, TOKEN_PACKS, annualPrice, type PlanKey } from "./plan-config";
 
 const API = "https://api.stripe.com/v1";
@@ -16,14 +19,14 @@ export function stripeEnabled(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
 }
 
-async function stripePost(path: string, form: Record<string, string>): Promise<Record<string, unknown>> {
+async function stripeReq(method: string, path: string, form?: Record<string, string>): Promise<Record<string, unknown>> {
   const res = await fetch(`${API}${path}`, {
-    method: "POST",
+    method,
     headers: {
       Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded",
+      ...(form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
     },
-    body: new URLSearchParams(form).toString(),
+    body: form ? new URLSearchParams(form).toString() : undefined,
   });
   const j = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
@@ -31,6 +34,69 @@ async function stripePost(path: string, form: Record<string, string>): Promise<R
     throw new Error(err);
   }
   return j;
+}
+
+const stripePost = (path: string, form: Record<string, string>) => stripeReq("POST", path, form);
+
+/* ---- Webhook self-provisioning ------------------------------------------ */
+
+const WEBHOOK_SECRET_SETTING = "stripe_webhook_secret";
+const WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.updated", "customer.subscription.deleted"];
+let cachedWebhookSecret: string | null | undefined;
+let webhookProvisionInFlight = false;
+
+function webhookUrl(): string {
+  const base = (process.env.STRIPE_WEBHOOK_URL_BASE || process.env.SHOPIFY_APP_URL || "https://easymodeapp.com").replace(/\/$/, "");
+  return `${base}/api/stripe-webhook`;
+}
+
+async function webhookSecret(): Promise<string | null> {
+  if (process.env.STRIPE_WEBHOOK_SECRET) return process.env.STRIPE_WEBHOOK_SECRET;
+  if (cachedWebhookSecret !== undefined) return cachedWebhookSecret;
+  const row = await db.setting.findUnique({ where: { key: WEBHOOK_SECRET_SETTING } }).catch(() => null);
+  cachedWebhookSecret = row?.value || null;
+  return cachedWebhookSecret;
+}
+
+/** True once webhook events can be verified (env secret or self-provisioned). */
+export async function stripeWebhookReady(): Promise<boolean> {
+  return stripeEnabled() && !!(await webhookSecret());
+}
+
+/** Create our webhook endpoint via the Stripe API if we don't have one yet.
+ * Stripe returns the signing secret only at creation time — it's stored in
+ * the DB (never logged). Endpoints at our URL whose secret we don't hold are
+ * deleted first so events aren't double-delivered. Fire-and-forget at boot. */
+export function ensureStripeWebhook(): void {
+  if (!stripeEnabled() || webhookProvisionInFlight) return;
+  webhookProvisionInFlight = true;
+  (async () => {
+    try {
+      if (await webhookSecret()) return; // already configured
+      const url = webhookUrl();
+      const existing = await stripeReq("GET", "/webhook_endpoints?limit=100");
+      const stale = ((existing.data as { id: string; url: string }[]) || []).filter((e) => e.url === url);
+      for (const e of stale) {
+        await stripeReq("DELETE", `/webhook_endpoints/${e.id}`).catch(() => { /* best-effort */ });
+      }
+      const form: Record<string, string> = { url, description: "EasyMode web billing (auto-provisioned)" };
+      WEBHOOK_EVENTS.forEach((ev, i) => { form[`enabled_events[${i}]`] = ev; });
+      const created = await stripeReq("POST", "/webhook_endpoints", form);
+      const secret = created.secret as string | undefined;
+      if (!secret) throw new Error("no signing secret in create response");
+      await db.setting.upsert({
+        where: { key: WEBHOOK_SECRET_SETTING },
+        create: { key: WEBHOOK_SECRET_SETTING, value: secret },
+        update: { value: secret },
+      });
+      cachedWebhookSecret = secret;
+      artLog("stripe", `webhook endpoint provisioned at ${url}${stale.length ? ` (replaced ${stale.length} stale)` : ""}`);
+    } catch (e) {
+      artLog("stripe", `webhook provisioning FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    } finally {
+      webhookProvisionInFlight = false;
+    }
+  })();
 }
 
 /** Subscription checkout for a tier (monthly or annual), 7-day trial. */
@@ -87,8 +153,8 @@ export async function createPackCheckout(opts: {
 }
 
 /** Verify the Stripe-Signature header (t=…,v1=…) against the raw body. */
-export function verifyStripeSignature(rawBody: string, sigHeader: string | null): boolean {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+export async function verifyStripeSignature(rawBody: string, sigHeader: string | null): Promise<boolean> {
+  const secret = await webhookSecret();
   if (!secret || !sigHeader) return false;
   const parts = Object.fromEntries(sigHeader.split(",").map((p) => p.split("=") as [string, string]));
   const t = parts.t;
