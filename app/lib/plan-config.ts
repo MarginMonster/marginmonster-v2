@@ -56,7 +56,7 @@ export const PLAN_TIERS: PlanTier[] = [
     key: "STUDIO",
     name: "Studio",
     price: 59,
-    tagline: "Add video that sells. AI presenters and cinematic product videos, on top of everything in Starter.",
+    tagline: "Every generator unlocked: AI presenters, cinematic videos, cartoon styles and your own Anthem.",
     highlight: true,
     monthlyTokens: 900,
     blogQuota: 30,
@@ -64,9 +64,9 @@ export const PLAN_TIERS: PlanTier[] = [
     imageQuota: 60,
     campaignAutopilot: true,
     features: [
-      "Everything in Starter",
-      "Avatar AI — a real-looking presenter talks up your product",
-      "Product Highlight — cinematic motion, no presenter",
+      "Everything in Starter — plus EVERY video generator",
+      "Avatar AI & Product Highlight — presenter or cinematic",
+      "Anthem + all 8 Cartoon Avatar styles included",
       "Campaign Autopilot — a month of content, launched for you",
     ],
   },
@@ -74,17 +74,17 @@ export const PLAN_TIERS: PlanTier[] = [
     key: "ANTHEM",
     name: "Anthem",
     price: 99,
-    tagline: "The full show: your avatar SINGS your product's theme song, plus every viral cartoon style.",
+    tagline: "Everything in Studio at nearly double the volume — built for stores that post every day.",
     monthlyTokens: 1600,
     blogQuota: 60,
     videoQuota: 10,
     imageQuota: 100,
     campaignAutopilot: true,
     features: [
-      "Everything in Studio",
-      "Anthem — your avatar sings a custom product theme song",
-      "All 8 Cartoon Avatar styles (anime, 3D toon, voxel & more)",
-      "Our largest token allowance — best value per generation",
+      "Every generator, nearly 2× the tokens (1,600/mo)",
+      "Best price per generation — built for daily posting",
+      "The biggest Campaign Autopilot mixes (Go Viral scale)",
+      "Campaign discount on token costs",
     ],
   },
 ];
@@ -126,9 +126,13 @@ export function minTierRank(minTier: string): number {
 // ---- Capabilities: what each tier UNLOCKS (cumulative) ----
 export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem";
 
+// Studio unlocks EVERY generator (video, cartoon, anthem included) — the
+// Anthem tier differentiates on VOLUME (1,600 tokens vs 900) and price-per-
+// token, not on locked features. Gating creativity behind the top tier read
+// as too strict; volume is the honest upsell.
 export const TIER_CAPABILITIES: Record<PlanKey, readonly Capability[]> = {
   STARTER: ["image", "blog", "autopost"],
-  STUDIO: ["image", "blog", "autopost", "video"],
+  STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
   ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
 };
 
@@ -138,8 +142,8 @@ export const CAPABILITY_TIER: Record<Capability, PlanKey> = {
   blog: "STARTER",
   autopost: "STARTER",
   video: "STUDIO",
-  cartoon: "ANTHEM",
-  anthem: "ANTHEM",
+  cartoon: "STUDIO",
+  anthem: "STUDIO",
 };
 
 export const CAPABILITY_LABEL: Record<Capability, string> = {

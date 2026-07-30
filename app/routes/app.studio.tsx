@@ -319,8 +319,8 @@ export default function Studio() {
   const CT_CAP: Record<string, { cap: string; tier: string; price: number }> = {
     avatar: { cap: "video", tier: "Studio", price: 59 },
     highlight: { cap: "video", tier: "Studio", price: 59 },
-    cartoon: { cap: "cartoon", tier: "Anthem", price: 99 },
-    jingle: { cap: "anthem", tier: "Anthem", price: 99 },
+    cartoon: { cap: "cartoon", tier: "Studio", price: 59 },
+    jingle: { cap: "anthem", tier: "Studio", price: 59 },
   };
   const lockFor = (key: string) => {
     const need = CT_CAP[key];

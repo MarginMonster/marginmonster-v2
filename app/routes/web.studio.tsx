@@ -21,8 +21,8 @@ import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video
 const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=3", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 59 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 59 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=3", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Anthem", price: 99 },
-  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=3", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Anthem", price: 99 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=3", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 59 },
+  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=3", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 59 },
 ] as const;
 
 const CARTOON_STYLES = [
