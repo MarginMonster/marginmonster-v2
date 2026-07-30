@@ -27,7 +27,7 @@ async function tick() {
     if (Date.now() - lastTileKick > 10 * 60_000) {
       lastTileKick = Date.now();
       import("./lib/style-tiles.server").then((m) => m.ensureAllStyleTiles()).catch(() => { /* non-fatal */ });
-      import("./lib/image-generation.server").then((m) => m.ensureAllAdTemplates()).catch(() => { /* non-fatal */ });
+      import("./lib/image-generation.server").then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); }).catch(() => { /* non-fatal */ });
     }
     // Publish READY slots whose post time arrived (self-throttled to ~5 min).
     await postDueSlots();
@@ -67,7 +67,7 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
     .then((m) => m.ensureAllStyleTiles())
     .catch((e) => console.error("[worker] style tiles boot kick:", e));
   import("./lib/image-generation.server")
-    .then((m) => m.ensureAllAdTemplates())
+    .then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); })
     .catch((e) => console.error("[worker] ad templates boot kick:", e));
 }
 

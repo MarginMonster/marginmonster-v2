@@ -6,10 +6,47 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
-import { adTemplateFile, BOTTLE_VARIANTS, bottlePreviewFile, ensureAdTemplate, ensureAllAdTemplates, ensureBottlePreview, ensurePhCover, phCoverFile } from "../lib/image-generation.server";
+import { adTemplateFile, BOTTLE_VARIANTS, bottlePreviewFile, ensureAdTemplate, ensureAllAdTemplates, ensureAllFormatPreviews, ensureBottlePreview, ensureFormatPreview, ensurePhCover, formatPreviewFile, phCoverFile, statueFile } from "../lib/image-generation.server";
 import { AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
+import { AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
+  // The stand-in bottle cutout — public so nano-banana can fetch it as an
+  // input image when forging format previews.
+  if (params.file === "statue.png") {
+    const s = statueFile();
+    if (!s) return new Response("Not ready", { status: 404 });
+    return new Response(new Uint8Array(fs.readFileSync(s)), {
+      headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=600" },
+    });
+  }
+
+  // AD FORMAT previews — each a genuinely different composition. Poster's
+  // preview is the classic colorblock tile; while a format forges, the
+  // colorblock preview stands in (no-store so the real one takes over).
+  const fm = (params.file || "").match(/^format-([a-z]+)\.jpg$/);
+  if (fm && AD_FORMAT_BY_KEY[fm[1]]) {
+    const key = fm[1];
+    const real = key === "poster" ? adTemplateFile("preview", "colorblock") : formatPreviewFile(key);
+    if (real) {
+      return new Response(new Uint8Array(fs.readFileSync(real)), {
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
+      });
+    }
+    ensureFormatPreview(key);
+    ensureAllFormatPreviews().catch(() => { /* best-effort */ });
+    const stand = adTemplateFile("preview", "colorblock");
+    if (stand) {
+      return new Response(new Uint8Array(fs.readFileSync(stand)), {
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" },
+      });
+    }
+    const fbPh = path.join(process.cwd(), "public", "content-types", "ph.png");
+    if (!fs.existsSync(fbPh)) return new Response("Not ready", { status: 404 });
+    return new Response(new Uint8Array(fs.readFileSync(fbPh)), {
+      headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+    });
+  }
   // Bottle candidate previews — reviewable by direct link while they forge.
   const bm = (params.file || "").match(/^bottle-([a-z]+)\.jpg$/);
   if (bm && BOTTLE_VARIANTS[bm[1]]) {

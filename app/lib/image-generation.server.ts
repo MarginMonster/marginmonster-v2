@@ -442,6 +442,133 @@ export function ensureBottlePreview(variant: string): void {
   })();
 }
 
+/* ── AD FORMATS: the statistically-proven static compositions (callouts,
+ * review card, text convo, us-vs-them, before/after, offer, feed-native).
+ * Copy per product from Claude, layout rendered by nano-banana AROUND the
+ * real product photo, vision-QA'd for spelling + product fidelity. */
+
+function formatLayoutPrompt(key: string, c: Record<string, string>): string {
+  const base = "Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, with NO other words, gibberish or invented text anywhere. The product from the provided image must stay perfectly identical — same shape, colors, label and logos, never redrawn or warped.";
+  switch (key) {
+    case "callout":
+      return `${base} Layout: the product large in the center on a soft solid-color studio background that complements its palette. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
+    case "review":
+      return `${base} Layout: a large white rounded testimonial card on a soft complementary pastel background. Inside the card: a row of five gold stars, then the quote "${c.quote}" in bold dark serif-ish text, then smaller grey text: "— ${c.name}, Verified Buyer". The product from the image stands at the bottom-right, slightly overlapping the card with a natural soft shadow.`;
+    case "chat":
+      return `${base} Layout: a smartphone text-message conversation, iMessage style, on a soft neutral background. Four chat bubbles top to bottom: grey left bubble "${c.m1}", blue right bubble "${c.m2}", grey left bubble "${c.m3}", blue right bubble "${c.m4}". Between the second and third bubble, the product photo from the image appears as a shared picture message with rounded corners. Clean readable phone UI, realistic spacing.`;
+    case "versus":
+      return `${base} Layout: bold headline at the top: "${c.headline}". Below it a clean two-column comparison: left column header "US" with the product from the image beneath it and three rows each with a green checkmark and exactly: "${c.r1}", "${c.r2}", "${c.r3}". Right column header "THEM", slightly greyed out, three rows each with a red X and exactly: "${c.t1}", "${c.t2}", "${c.t3}".`;
+    case "beforeafter":
+      return `${base} Layout: a split-screen ad. Left half: slightly desaturated, labeled "BEFORE" in a small chip, caption "${c.before}" — a dull scene missing the product. Right half: bright and vivid, labeled "AFTER" in a small chip, caption "${c.after}" — the product from the image as the hero of a fresh energetic scene. Bold headline across the top spanning both halves: "${c.headline}".`;
+    case "offer":
+      return `${base} Layout: the product from the image hero-centered on a bold vibrant background that complements its colors, dramatic studio lighting. A large eye-catching starburst badge in the upper right reading exactly: "${c.offer}". Bold headline at the top left: "${c.headline}". A rounded button at the bottom center: "${c.cta}". High-energy sale aesthetic without looking cheap.`;
+    case "ugcframe":
+      return `${base} Layout: an authentic-feeling customer phone photo of the product from the image on a real table in natural light (slightly imperfect framing, believable home setting). Overlaid at the bottom, a social-video caption bar in bold white text with black outline reading exactly: "${c.caption}". On the right edge, small white heart, comment and share icons stacked vertically. It should look native to a social feed, not like an ad.`;
+    default:
+      return base;
+  }
+}
+
+async function formatCopy(
+  formatKey: string,
+  fields: string[],
+  productTitle: string,
+  tone: string | undefined,
+  direction: string | undefined,
+  contentLang?: string | null
+): Promise<Record<string, string> | null> {
+  try {
+    const prompt = [
+      `You write short, punchy copy for a "${formatKey}" style e-commerce static ad.${langDirective(contentLang)}`,
+      `Product: "${productTitle}".`,
+      tone ? `Brand tone: ${tone}.` : "",
+      direction ? `Angle: ${direction.slice(0, 160)}.` : "",
+      `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
+      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a short offer like "20% OFF first order"; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words.`,
+      `No emoji, no hashtags, no quotes inside values.`,
+    ].filter(Boolean).join("\n");
+    const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 300 });
+    const m = raw && raw.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const j = JSON.parse(m[0]) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const f of fields) {
+      const v = typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "").trim() : "";
+      if (!v) return null;
+      out[f] = v;
+    }
+    return out;
+  } catch { return null; }
+}
+
+/** Vision QA for format ads: exact-ish text + unwarped product. */
+async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[]): Promise<{ pass: boolean; reason: string }> {
+  try {
+    const urls = productImageUrl ? [productImageUrl, imageUrl] : [imageUrl];
+    const raw = await anthropicVision(
+      [
+        productImageUrl
+          ? `Image 1 is the real product photo; image 2 is a generated ad. Check BOTH: (a) the product in the ad matches image 1 (same shape, colors, label — not warped or reinvented), and`
+          : `Check the generated ad:`,
+        `(b) every visible text string is correctly spelled real language with NO gibberish or invented words. The ad should contain roughly these strings: ${expected.slice(0, 6).map((s) => `"${s.slice(0, 40)}"`).join(", ")}.`,
+        `Reply ONLY JSON: {"pass": true|false, "reason": "short reason"}.`,
+      ].join(" "),
+      urls
+    );
+    const m = raw && raw.match(/\{[\s\S]*\}/);
+    if (!m) return { pass: true, reason: "qa-unavailable" };
+    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
+    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 160) };
+  } catch { return { pass: true, reason: "qa-error" }; }
+}
+
+/* Self-forged format previews — the picker shows each format built around the
+ * EASYMODE bottle with canned copy, so the eight tiles look genuinely
+ * DIFFERENT (they are different compositions, not filters). */
+const FORMAT_PREVIEW_VERSION = 1;
+const formatPreviewInFlight = new Set<string>();
+
+export function formatPreviewFile(key: string): string | null {
+  const p = path.join(AD_TEMPLATE_DIR, `format-${key}-v${FORMAT_PREVIEW_VERSION}.jpg`);
+  return fs.existsSync(p) ? p : null;
+}
+
+export function ensureFormatPreview(key: string): void {
+  if (formatPreviewFile(key) || formatPreviewInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
+  formatPreviewInFlight.add(key);
+  (async () => {
+    try {
+      const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
+      const f = AD_FORMAT_BY_KEY[key];
+      if (!f || key === "poster") return; // poster preview = the classic colorblock tile
+      const statue = await ensureStatue();
+      if (!statue) return;
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      if (!base) return;
+      const prompt = formatLayoutPrompt(key, f.preview);
+      const url = await repRun("google/nano-banana", { prompt, image_input: [`${base}/ad-templates/statue.png`], output_format: "jpg" });
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
+      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `format-${key}-v${FORMAT_PREVIEW_VERSION}.jpg`), Buffer.from(await res.arrayBuffer()));
+      artLog("ad-formats", `${key}: preview forged OK`);
+    } catch (e) {
+      artLog("ad-formats", `${key}: preview FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    } finally {
+      formatPreviewInFlight.delete(key);
+    }
+  })();
+}
+
+export async function ensureAllFormatPreviews(): Promise<void> {
+  const { AD_FORMATS } = await import("./ad-formats");
+  for (const f of AD_FORMATS) ensureFormatPreview(f.key);
+}
+
+export function statueFile(): string | null {
+  return adTemplateFile("statue");
+}
+
 export function ensureAdTemplate(key: string): void {
   if (fs.existsSync(currentTemplateFile("preview", key)) || templateInFlight.has(key)) return;
   if (!process.env.REPLICATE_API_TOKEN) { artLog("ad-templates", `${key}: skipped — REPLICATE_API_TOKEN not set`); return; }
@@ -625,7 +752,8 @@ export async function generateImageAd(
   scene?: string,
   serviceMode?: boolean,
   styleMode?: "backdrop" | "scene",
-  templateKey?: string
+  templateKey?: string,
+  formatKey?: string
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -721,11 +849,48 @@ export async function generateImageAd(
     const mode: "backdrop" | "scene" = styleMode === "scene" || styleMode === "backdrop" ? styleMode : inferStyleMode(stylePrompt);
     const styleDesc = stylePrompt || BRIGHT_DEFAULT;
 
+    // RUNG -1 — AD FORMAT: a genuinely different creative COMPOSITION
+    // (callouts / review card / text convo / versus / before-after / offer /
+    // feed-native). Claude writes exact copy, nano-banana builds the layout
+    // around the real product photo, vision QA rejects gibberish or a warped
+    // product with one retry. Any failure falls through the normal ladder.
+    if (formatKey && formatKey !== "poster") {
+      try {
+        const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
+        const f = AD_FORMAT_BY_KEY[formatKey];
+        if (f) {
+          const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+          const copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang);
+          if (copy) {
+            usedPrompt = formatLayoutPrompt(f.key, copy);
+            const renderOnce = () => repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl!], output_format: "jpg" });
+            imageUrl = await renderOnce();
+            let qa = await qaFormat(imageUrl, productImageUrl!, Object.values(copy));
+            if (!qa.pass) {
+              console.log(`[image-ad] format QA rejected (${qa.reason}) — retrying`);
+              imageUrl = await renderOnce();
+              qa = await qaFormat(imageUrl, productImageUrl!, Object.values(copy));
+            }
+            if (qa.pass) {
+              genMeta.method = `format:${f.key}`;
+              genMeta.formatCopy = copy;
+            } else {
+              imageUrl = null; // fall through to the ladder — never ship garbled text
+              console.log(`[image-ad] format ${f.key} failed QA twice — falling to ladder`);
+            }
+          }
+        }
+      } catch (e) {
+        imageUrl = null;
+        console.error("[image-ad] format rung failed, falling to ladder:", e instanceof Error ? e.message.slice(0, 160) : e);
+      }
+    }
+
     // RUNG 0 — AD TEMPLATE: the merchant picked a statue-preview template, so
     // deliver EXACTLY what the preview showed. Exact templates composite the
     // real product cutout onto the same plate the preview used; staged
     // templates re-stage the scene with the identity model + QA.
-    if (templateKey) {
+    if (!imageUrl && !localFileName && templateKey) {
       try {
         const { AD_TEMPLATE_BY_KEY } = await import("./ad-templates");
         const t = AD_TEMPLATE_BY_KEY[templateKey];
@@ -860,7 +1025,9 @@ export async function generateImageAd(
     localUrl = `/renders/${fileName}`;
     // Make it an actual AD: overlay a headline + CTA. Best-effort — if the
     // copy or the ffmpeg composite fails, we keep the clean still.
-    try {
+    // FORMAT ads already carry their own typography — never double-text them.
+    const isFormatAd = typeof genMeta.method === "string" && genMeta.method.startsWith("format:");
+    if (!isFormatAd) try {
       const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
       const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode, contentLang);
       if (copy) {

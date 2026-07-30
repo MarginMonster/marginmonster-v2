@@ -14,6 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { AVATARS, avatarImg } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
+import { AD_FORMATS, AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
@@ -85,11 +86,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
       const rawTemplate = ((form.get("templateKey") as string) || "").trim();
       const templateKey = AD_TEMPLATE_BY_KEY[rawTemplate] ? rawTemplate : undefined;
+      const rawFormat = ((form.get("formatKey") as string) || "").trim();
+      const formatKey = AD_FORMAT_BY_KEY[rawFormat] ? rawFormat : undefined;
       await spendTokens(shop.id, TOKEN_COST.image);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         productTitle, productImageUrl, stylePrompt: direction,
         styleMode: direction ? "scene" : "backdrop",
         templateKey: avatarId ? undefined : templateKey,
+        formatKey: avatarId ? undefined : formatKey,
         avatarId, avatarVariant: 0, prePaid: true,
       });
       return json({ ok: "Image ad queued — check the Archive shortly. 🖼" });
@@ -122,6 +126,7 @@ export default function WebStudio() {
   const [avatarId, setAvatarId] = useState<string | null>(d.cast[0]?.id ?? null);
   const [imageMode, setImageMode] = useState<"product" | "presenter" | null>(null);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
+  const [formatKey, setFormatKey] = useState<string | null>(null);
   const [videoEngine, setVideoEngine] = useState("auto");
   const [commercial, setCommercial] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
@@ -263,16 +268,29 @@ export default function WebStudio() {
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
             {imageMode === "product" && (
               <>
-                <div className="ws-lbl">Ad template <span className="ws-opt">optional — the preview is exactly what you get</span></div>
+                <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
                 <div className="ws-tiles styles">
-                  {d.templates.map((t) => (
-                    <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
-                      onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=9)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
-                      <b>{t.emoji} {t.name}</b>
+                  {AD_FORMATS.map((f) => (
+                    <button type="button" key={f.key} className={`ws-tile small${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
+                      onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
+                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=1)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
+                      <b>{f.emoji} {f.name}</b>
                     </button>
                   ))}
                 </div>
+                {formatKey && <input type="hidden" name="formatKey" value={formatKey} />}
+                <details>
+                  <summary className="ws-lbl" style={{ cursor: "pointer" }}>Backdrop scenes (classic){templateKey ? " · 1 selected" : ""}</summary>
+                  <div className="ws-tiles styles">
+                    {d.templates.map((t) => (
+                      <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
+                        onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setFormatKey(null); }}>
+                        <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=9)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
+                        <b>{t.emoji} {t.name}</b>
+                      </button>
+                    ))}
+                  </div>
+                </details>
                 {templateKey && <input type="hidden" name="templateKey" value={templateKey} />}
               </>
             )}

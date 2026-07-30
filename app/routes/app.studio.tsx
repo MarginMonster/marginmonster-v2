@@ -11,6 +11,7 @@ import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
+import { AD_FORMATS } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge } from "../lib/video-engines";
 
 type Tab = "video" | "image" | "blog";
@@ -223,10 +224,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const styleMode = rawMode === "scene" || rawMode === "backdrop" ? rawMode : undefined;
     const rawTemplate = ((form.get("templateKey") as string) || "").trim();
     const templateKey = AD_TEMPLATE_BY_KEY[rawTemplate] ? rawTemplate : undefined;
+    const { AD_FORMAT_BY_KEY } = await import("../lib/ad-formats");
+    const rawFormat = ((form.get("formatKey") as string) || "").trim();
+    const formatKey = AD_FORMAT_BY_KEY[rawFormat] ? rawFormat : undefined;
     try { await spendTokens(shop.id, TOKEN_COST.image); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
     // Services skip the presenter-hold and product photo → outcome scene.
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, styleMode, templateKey, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, styleMode, templateKey, formatKey, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
@@ -372,6 +376,7 @@ export default function Studio() {
       (contentType === "cartoon" && !!cartoonStyle)));
   const [direction, setDirection] = useState(""); // image style / blog topic
   const [templateKey, setTemplateKey] = useState<string | null>(null); // image ad template (statue previews)
+  const [formatKey, setFormatKey] = useState<string | null>(null); // image ad FORMAT (the proven compositions)
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
   const [saySomething, setSaySomething] = useState("");
@@ -446,6 +451,7 @@ export default function Studio() {
         // blank = photo-true bright composite.
         if (imageMode === "presenter" && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear) fields.wear = "1"; }
         if (imageMode === "product" && templateKey && !service) fields.templateKey = templateKey;
+        if (imageMode === "product" && formatKey && !service) fields.formatKey = formatKey;
         fields.styleMode = direction.trim() ? "scene" : "backdrop";
       }
     }
@@ -704,17 +710,29 @@ export default function Studio() {
             <>
               {tab === "image" && imageMode === "product" && !service && (
                 <>
-                  <div className="cfg-lbl cs-lblrow"><span>Ad template — what you see is what you get</span>{templateKey && <button type="button" className="cs-viewall" onClick={() => setTemplateKey(null)}>Clear</button>}</div>
+                  <div className="cfg-lbl cs-lblrow"><span>Ad format — proven structures, not filters</span>{formatKey && <button type="button" className="cs-viewall" onClick={() => setFormatKey(null)}>Clear</button>}</div>
                   <div className="cfg-cast cs-ctypes bigtiles">
-                    {AD_TEMPLATES.map((t) => (
-                      <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => setTemplateKey(templateKey === t.key ? null : t.key)}>
-                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=9)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
-                        <span className="ca-nm">{t.emoji} {t.name}</span>
-                        <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
+                    {AD_FORMATS.map((f) => (
+                      <button type="button" key={f.key} className={`cast cs-ctype${formatKey === f.key ? " sel" : ""}`} onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
+                        <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=1)` }}>{formatKey === f.key && <span className="ca-chk">✓</span>}</span>
+                        <span className="ca-nm">{f.emoji} {f.name}</span>
+                        <span className="ca-sub">{f.blurb}</span>
                       </button>
                     ))}
                   </div>
-                  <p className="cfg-note cs-ctnote">The statue marks where <b>your product</b> goes — same scene, same light, same layout. Ad text is written fresh for your product every time. No template = EasyMode stages a bright clean ad.</p>
+                  <p className="cfg-note cs-ctnote">Each format is a different creative <b>structure</b> — copy is written fresh for your product, the layout is built around your real photo, and a vision check rejects garbled text before you ever see it.</p>
+                  <details className="cs-scenes">
+                    <summary className="cfg-lbl cs-lblrow"><span>Backdrop scenes (classic){templateKey ? " · 1 selected" : ""}</span></summary>
+                    <div className="cfg-cast cs-ctypes bigtiles">
+                      {AD_TEMPLATES.map((t) => (
+                        <button type="button" key={t.key} className={`cast cs-ctype${templateKey === t.key ? " sel" : ""}`} onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setFormatKey(null); }}>
+                          <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=9)` }}>{templateKey === t.key && <span className="ca-chk">✓</span>}</span>
+                          <span className="ca-nm">{t.emoji} {t.name}</span>
+                          <span className="ca-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </details>
                 </>
               )}
               {tab === "blog" && (
