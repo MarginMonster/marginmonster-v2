@@ -400,6 +400,45 @@ async function ensureStatue(): Promise<string | null> {
   return out;
 }
 
+/* ── Bottle variant previews — PROD renders these itself and serves them at
+ * /ad-templates/bottle-{variant}.jpg so candidates can be reviewed by link
+ * (no GitHub secret required). Approved variant becomes the statue prompt. */
+const BOTTLE_BASE =
+  'Professional studio product photograph of a sleek premium sports hydration drink bottle: tall slim cylindrical body with smooth rounded shoulders and a wide flat matte screw cap — the silhouette of a modern viral sports drink bottle. The brand wordmark "EASYMODE" printed in bold clean uppercase sans-serif letters running VERTICALLY down the full height of the bottle, spelled exactly E-A-S-Y-M-O-D-E, perfectly legible. Centered on a pure white seamless studio background, bright soft even studio lighting, crisp sharp focus, high-end commercial beverage photography. No other objects, no hands, no people, no extra text.';
+export const BOTTLE_VARIANTS: Record<string, string> = {
+  emerald: "The bottle is glossy deep EMERALD GREEN with the wordmark in metallic GOLD letters and a matte black cap.",
+  kelly: "The bottle is vibrant glossy KELLY GREEN with the wordmark in crisp WHITE letters and a clean white cap.",
+  cream: "The bottle is elegant matte CREAM / off-white with the wordmark in bold EMERALD GREEN letters and a metallic gold cap.",
+  duotone: "The bottle transitions from deep EMERALD GREEN at the top into warm brushed GOLD at the base, with the wordmark in CREAM letters and an emerald cap.",
+};
+const bottleInFlight = new Set<string>();
+
+export function bottlePreviewFile(variant: string): string | null {
+  if (!BOTTLE_VARIANTS[variant]) return null;
+  const p = path.join(AD_TEMPLATE_DIR, `bottle-${variant}-v1.jpg`);
+  return fs.existsSync(p) ? p : null;
+}
+
+export function ensureBottlePreview(variant: string): void {
+  if (!BOTTLE_VARIANTS[variant] || bottlePreviewFile(variant) || bottleInFlight.has(variant)) return;
+  if (!process.env.REPLICATE_API_TOKEN) return;
+  bottleInFlight.add(variant);
+  (async () => {
+    try {
+      const url = await repRun("google/nano-banana", { prompt: `${BOTTLE_BASE} ${BOTTLE_VARIANTS[variant]}`, output_format: "jpg" });
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
+      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `bottle-${variant}-v1.jpg`), Buffer.from(await res.arrayBuffer()));
+      artLog("ad-templates", `bottle-${variant}: candidate rendered OK`);
+    } catch (e) {
+      artLog("ad-templates", `bottle-${variant}: FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    } finally {
+      bottleInFlight.delete(variant);
+    }
+  })();
+}
+
 export function ensureAdTemplate(key: string): void {
   if (fs.existsSync(currentTemplateFile("preview", key)) || templateInFlight.has(key)) return;
   if (!process.env.REPLICATE_API_TOKEN) { artLog("ad-templates", `${key}: skipped — REPLICATE_API_TOKEN not set`); return; }

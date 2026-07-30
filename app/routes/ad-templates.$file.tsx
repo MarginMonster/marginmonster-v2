@@ -6,10 +6,24 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
-import { adTemplateFile, ensureAdTemplate, ensureAllAdTemplates, ensurePhCover, phCoverFile } from "../lib/image-generation.server";
+import { adTemplateFile, BOTTLE_VARIANTS, bottlePreviewFile, ensureAdTemplate, ensureAllAdTemplates, ensureBottlePreview, ensurePhCover, phCoverFile } from "../lib/image-generation.server";
 import { AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
+  // Bottle candidate previews — reviewable by direct link while they forge.
+  const bm = (params.file || "").match(/^bottle-([a-z]+)\.jpg$/);
+  if (bm && BOTTLE_VARIANTS[bm[1]]) {
+    const real = bottlePreviewFile(bm[1]);
+    if (real) {
+      return new Response(new Uint8Array(fs.readFileSync(real)), {
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
+      });
+    }
+    ensureBottlePreview(bm[1]);
+    return new Response("Rendering — refresh this link in ~30 seconds.", {
+      status: 202, headers: { "Content-Type": "text/plain", "Cache-Control": "no-store", "Retry-After": "30" },
+    });
+  }
   // The Product Highlight cover — a cinematic hero shot of the EASYMODE
   // bottle, self-forged like everything else. Old static art serves while
   // it cooks (no-store so the upgrade appears the moment it lands).
