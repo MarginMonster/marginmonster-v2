@@ -6,7 +6,7 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -97,7 +97,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         avatarId, avatarVariant: 0, holdProduct: !!avatarId && !contentType,
         videoEngine, commercial, chargedTokens: charged, prePaid: true, initiator: "web",
       });
-      return json({ ok: "Video queued — it lands in your Archive in a few minutes. 🎬" });
+      return json({ ok: true, queued: "video" });
     }
     if (intent === "image") {
       assertCapability(shop.activePlan, "image");
@@ -114,13 +114,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         formatKey: avatarId ? undefined : formatKey,
         avatarId, avatarVariant: 0, prePaid: true,
       });
-      return json({ ok: "Image ad queued — check the Archive shortly. 🖼" });
+      return json({ ok: true, queued: "image" });
     }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
       await spendTokens(shop.id, TOKEN_COST.blog);
       await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true });
-      return json({ ok: "Article queued — check the Archive shortly. ✍️" });
+      return json({ ok: true, queued: "article" });
     }
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Couldn't queue that." });
@@ -178,6 +178,9 @@ export default function WebStudio() {
   const [videoEngine, setVideoEngine] = useState("auto");
   const [commercial, setCommercial] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
+  const [showDone, setShowDone] = useState(false);
+  const queued = actionData && "queued" in actionData ? (actionData as { queued: string }).queued : null;
+  useEffect(() => { if (actionData && "queued" in actionData) setShowDone(true); }, [actionData]);
 
   const styleChar = avatarId ?? d.cast[0]?.id ?? "ingrid";
   const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=5`;
@@ -189,7 +192,6 @@ export default function WebStudio() {
   const cfgReady = tab === "blog" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
 
   const err = actionData && "error" in actionData ? (actionData.error as string) : null;
-  const ok = actionData && "ok" in actionData ? (actionData.ok as string) : null;
 
   return (
     <div>
@@ -197,8 +199,6 @@ export default function WebStudio() {
       <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: 🪙 {d.tokens.toLocaleString()}</p>
       {!d.hasBrand && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
       {!d.hasPlan && <div className="wb-err">Pick a <Link to="/web">plan</Link> first — content runs on tokens.</div>}
-      {err && <div className="wb-err">{err}</div>}
-      {ok && <div className="wb-ok">{ok}</div>}
 
       <div className="ws-tabs">
         {([["video", "🎬 Video"], ["image", "🖼 Image"], ["blog", "✍️ Article"]] as [Tab, string][]).map(([k, label]) => (
@@ -361,6 +361,7 @@ export default function WebStudio() {
             )}
             <div className="ws-lbl">Direction <span className="ws-opt">optional</span></div>
             <input className="wb-in" name="direction" placeholder="cozy autumn morning energy, focus on the aroma" />
+            {err && <div className="wb-err" style={{ marginTop: 14 }}>{err}</div>}
             <div style={{ marginTop: 18 }}>
               <button className="wb-btn" name="intent" value={tab} disabled={busy}>
                 {busy ? "Queuing…" : `Create · ${cost} tokens`}
@@ -369,6 +370,19 @@ export default function WebStudio() {
           </>
         )}
       </Form>
+
+      {showDone && queued && (
+        <div className="ws-scrim" onClick={() => setShowDone(false)}>
+          <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
+            <span className="ws-mrose" aria-hidden />
+            <div className="ws-mi">✨</div>
+            <b className="ws-mh">Your {queued} is being made</b>
+            <p className="ws-mp">It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</p>
+            <Link className="wb-btn ws-mcta" to="/web/archive">View Archive ›</Link>
+            <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

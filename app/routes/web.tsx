@@ -138,6 +138,24 @@ const CSS = `
 .ws-fmtbox .ws-tile{animation:wsFadeUp .45s ease both}
 @media (prefers-reduced-motion: reduce){.ws-fmtbox .ws-tile{animation:none}}
 .ws-tile.lockd .ws-tile-img{filter:saturate(.35) brightness(.72);}
+/* Post-generate celebration — same energy as the embedded app's modal. */
+.ws-scrim{position:fixed;inset:0;z-index:10500;background:rgba(12,18,14,.55);backdrop-filter:blur(3px);
+  display:grid;place-items:center;padding:24px;}
+.ws-modal{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:22px;
+  padding:34px 30px 26px;max-width:400px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(10,20,14,.45);
+  animation:wsPop .35s cubic-bezier(.2,1.4,.4,1) both;}
+@keyframes wsPop{from{opacity:0;transform:scale(.86) translateY(14px)}to{opacity:1;transform:none}}
+.ws-mrose{position:absolute;top:-90px;left:50%;width:260px;height:260px;transform:translateX(-50%);border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(18,168,94,.16),rgba(176,133,38,.2),rgba(18,168,94,.16),rgba(176,133,38,.2),rgba(18,168,94,.16));
+  animation:wsSpin 14s linear infinite;pointer-events:none;}
+@keyframes wsSpin{to{transform:translateX(-50%) rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.ws-mrose{animation:none}.ws-modal{animation:none}}
+.ws-mi{position:relative;font-size:44px;margin-bottom:6px;}
+.ws-mh{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:20px;color:var(--ink);}
+.ws-mp{position:relative;color:var(--ink2);font-size:13.5px;line-height:1.55;margin:8px 0 18px;}
+.ws-mcta{position:relative;display:block;width:100%;}
+.ws-mclose{position:relative;margin-top:10px;background:none;border:0;cursor:pointer;font-weight:700;font-size:13px;color:var(--ink2);}
+.ws-mclose:hover{color:var(--ink)}
 .ws-tile.lockd:hover .ws-tile-img{filter:saturate(.6) brightness(.85);}
 .ws-lock{position:absolute;top:8px;right:8px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;
   color:#fff;background:rgba(10,14,12,.78);border:1px solid rgba(255,255,255,.35);}
