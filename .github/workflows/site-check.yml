@@ -1,0 +1,16 @@
+name: Site status check
+
+# Curls the public /art-status diagnostics (env-readiness booleans + art
+# activity log) so status is checkable from CI logs. No secrets involved.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: art-status (easymodeapp.com)
+        run: curl -sS -m 30 https://easymodeapp.com/art-status | head -c 4000 || true
+      - name: art-status (onrender host)
+        run: curl -sS -m 30 https://marginmonster-fiew.onrender.com/art-status | head -c 4000 || true
