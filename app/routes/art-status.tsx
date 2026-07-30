@@ -24,6 +24,46 @@ function listDir(dir: string): { name: string; kb: number; mtime: string }[] {
   }
 }
 
+/** Generation health — why merchant renders fail, readable without shell
+ * access. Public, so it carries NO merchant content: job type/status/age and
+ * the error MESSAGE only, with URLs, emails and long tokens scrubbed. */
+function scrub(s: string): string {
+  return s
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/[\w.+-]+@[\w.-]+\.\w+/g, "[email]")
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[token]")
+    .slice(0, 300);
+}
+
+async function generationHealth() {
+  try {
+    const { db } = await import("../db.server");
+    const types = ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"];
+    const since = new Date(Date.now() - 24 * 3600_000);
+    const jobs = await db.job.findMany({
+      where: { type: { in: types }, updatedAt: { gte: since } },
+      orderBy: { updatedAt: "desc" },
+      take: 60,
+      select: { type: true, status: true, attempts: true, updatedAt: true, lastError: true },
+    });
+    const counts: Record<string, number> = {};
+    for (const j of jobs) counts[`${j.type.replace("GENERATE_", "").toLowerCase()}:${j.status}`] = (counts[`${j.type.replace("GENERATE_", "").toLowerCase()}:${j.status}`] || 0) + 1;
+    const failures = jobs
+      .filter((j) => j.lastError)
+      .slice(0, 10)
+      .map((j) => ({
+        type: j.type.replace("GENERATE_", "").toLowerCase(),
+        status: j.status,
+        attempts: j.attempts,
+        minsAgo: Math.round((Date.now() - j.updatedAt.getTime()) / 60000),
+        error: scrub(j.lastError || ""),
+      }));
+    return { last24h: counts, failures };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message.slice(0, 160) : "unavailable" };
+  }
+}
+
 export const loader = async (_args: LoaderFunctionArgs) => {
   const cwd = process.cwd();
   const body = {
@@ -43,6 +83,7 @@ export const loader = async (_args: LoaderFunctionArgs) => {
     },
     styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
     adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
+    generation: await generationHealth(),
     activity: artLogEntries(),
   };
   return new Response(JSON.stringify(body, null, 2), {
