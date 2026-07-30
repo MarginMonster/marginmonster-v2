@@ -1228,28 +1228,66 @@ export async function generateImageAd(
           return await repRun("black-forest-labs/flux-kontext-pro", { prompt: usedPrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" });
         }
       };
-      imageUrl = await genOnce();
-      genMeta.method = "scene";
-      let qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
-      if (!qa.pass) {
-        console.log(`[image-ad] QA rejected first take (${qa.reason}) — retrying`);
+      // Backdrop composite from the real cutout — the deterministic degrade
+      // used both by the QA-failure path and by the catch below.
+      const backdropComposite = async (stage: string): Promise<boolean> => {
+        const cutout = await removeBackground(productImageUrl!);
+        if (!cutout) return false;
+        const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area across the lower third, clean space at the top for a headline. Photorealistic, magazine-quality, no text, no watermark.`;
+        const bgUrl = await fluxDevStill(bgPrompt, stage);
+        const fn = await compositeProductStill(bgUrl, cutout);
+        if (!fn) return false;
+        usedPrompt = bgPrompt;
+        localFileName = fn;
+        imageUrl = bgUrl;
+        return true;
+      };
+
+      // THIS RUNG ALWAYS RUNS on the most common path and, unlike every rung
+      // above it, used to have NO catch: a kontext 5xx or repRun's 120s timeout
+      // escaped generateImageAd and terminal-failed an ad the merchant paid for.
+      // Degrade through the product-true composite, then a plain poster, and
+      // only throw when even that fails (then the queue refunds).
+      try {
         imageUrl = await genOnce();
-        qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
-        genMeta.qaRetried = true;
-      }
-      genMeta.qa = qa;
-      // Still failing? Last rung: photo-true composite so the merchant gets a
-      // product-accurate ad instead of a warped one.
-      if (!qa.pass && mode === "scene") {
+        genMeta.method = "scene";
+        let qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
+        if (!qa.pass) {
+          console.log(`[image-ad] QA rejected first take (${qa.reason}) — retrying`);
+          imageUrl = await genOnce();
+          qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
+          genMeta.qaRetried = true;
+        }
+        genMeta.qa = qa;
+        // Still failing? Last rung: photo-true composite so the merchant gets a
+        // product-accurate ad instead of a warped one.
+        if (!qa.pass && mode === "scene") {
+          try {
+            if (await backdropComposite("photo-true-fallback")) {
+              genMeta.method = "photo-true-fallback";
+              // the shipped image is the composite, not the QA'd scene take
+              genMeta.qa = { pass: true, reason: "photo-true composite (scene take rejected)" };
+              genMeta.rejectedQa = qa;
+            }
+          } catch { /* ship the best scene take — merchant reviews before posting */ }
+        }
+      } catch (e) {
+        console.error("[image-ad] scene rung failed — degrading rather than failing the job:", e instanceof Error ? e.message.slice(0, 160) : e);
+        imageUrl = null;
+        genMeta.degradedFrom = "scene";
+        genMeta.degradeReason = e instanceof Error ? e.message.slice(0, 200) : String(e);
         try {
-          const cutout = await removeBackground(productImageUrl!);
-          if (cutout) {
-            const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area across the lower third, clean space at the top for a headline. Photorealistic, magazine-quality, no text, no watermark.`;
-            const bgUrl = await repRun("black-forest-labs/flux-dev", { prompt: bgPrompt, num_inference_steps: 30, guidance: 3, aspect_ratio: "1:1", output_format: "jpg", output_quality: 92 });
-            const fn = await compositeProductStill(bgUrl, cutout);
-            if (fn) { usedPrompt = bgPrompt; localFileName = fn; imageUrl = bgUrl; genMeta.method = "photo-true-fallback"; }
-          }
-        } catch { /* ship the best scene take — merchant reviews before posting */ }
+          if (await backdropComposite("scene-degrade-backdrop")) genMeta.method = "photo-true-degraded";
+        } catch (e2) {
+          console.error("[image-ad] degrade to photo-true failed too:", e2 instanceof Error ? e2.message.slice(0, 160) : e2);
+        }
+        if (!localFileName) {
+          // Nothing product-true available. A clean generated poster still beats
+          // a terminal failure; if THIS throws the job fails and refunds.
+          usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+          imageUrl = await fluxDevStill(usedPrompt, "scene-degrade-poster");
+          genMeta.method = "text2img-degraded";
+        }
       }
     }
   } else {
