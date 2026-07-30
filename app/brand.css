@@ -3923,6 +3923,13 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
   background: #fff; color: #4A554E; font-weight: 700; font-size: 13px; cursor: pointer;
 }
 
+.cs-seeall {
+  border: 1px solid #E4DFCF; background: #FDFCF7; color: #14201A;
+  font-weight: 800; font-size: 12.5px; padding: 9px 20px; border-radius: 999px;
+  cursor: pointer; transition: border-color .12s, box-shadow .12s;
+}
+.cs-seeall:hover { border-color: #12A85E; box-shadow: 0 4px 12px rgba(12,122,70,.12); }
+
 /* Backdrop scenes collapse behind the primary Ad Formats grid */
 .cs-scenes { margin-top: 14px; }
 .cs-scenes > summary { cursor: pointer; list-style: none; }

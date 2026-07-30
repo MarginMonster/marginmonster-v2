@@ -76,6 +76,42 @@ export const AD_FORMATS: AdFormat[] = [
     fields: ["headline", "sub", "cta"],
     preview: { headline: "Hydration, upgraded.", sub: "Everything you want. Nothing you don't.", cta: "Shop now" },
   },
+  {
+    key: "stat", name: "Number Flex", emoji: "🔢",
+    blurb: "One huge product fact — a real number that does the selling",
+    fields: ["stat", "statlabel", "headline", "cta"],
+    preview: { stat: "300mg", statlabel: "electrolytes per bottle", headline: "Numbers don't lie.", cta: "Shop now" },
+  },
+  {
+    key: "magazine", name: "Cover Story", emoji: "📰",
+    blurb: "Your product as a glossy magazine cover star — editorial flex",
+    fields: ["masthead", "cover1", "cover2"],
+    preview: { masthead: "EASYMODE", cover1: "The drink your gym bag is missing", cover2: "Zero sugar, all signal" },
+  },
+  {
+    key: "macro", name: "Detail Shots", emoji: "🔬",
+    blurb: "Three extreme close-ups — texture and craft sell quality",
+    fields: ["d1", "d2", "d3"],
+    preview: { d1: "Ice-cold condensation", d2: "Emerald clarity", d3: "Sport-cap precision" },
+  },
+  {
+    key: "unbox", name: "What's Inside", emoji: "🎁",
+    blurb: "Flat-lay of everything they get — value made visible",
+    fields: ["headline", "i1", "i2", "i3"],
+    preview: { headline: "Everything you get", i1: "The emerald original", i2: "Shaker-safe cap", i3: "Zero sugar formula" },
+  },
+  {
+    key: "founder", name: "Founder's Note", emoji: "✍️",
+    blurb: "A sincere handwritten note from the maker — trust in one card",
+    fields: ["note", "founder"],
+    preview: { note: "I got tired of sports drinks that taste like candy and do nothing. So we made the one I actually wanted.", founder: "Dan, founder" },
+  },
+  {
+    key: "poll", name: "This or That", emoji: "⚖️",
+    blurb: "A playful side-by-side pick — your product is the obvious answer",
+    fields: ["question", "left", "right"],
+    preview: { question: "Gym bag essentials only", left: "The sugary stuff", right: "EASYMODE" },
+  },
 ];
 
 export const AD_FORMAT_BY_KEY: Record<string, AdFormat> = Object.fromEntries(

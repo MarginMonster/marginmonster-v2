@@ -127,6 +127,7 @@ export default function WebStudio() {
   const [imageMode, setImageMode] = useState<"product" | "presenter" | null>(null);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [formatKey, setFormatKey] = useState<string | null>(null);
+  const [allFormats, setAllFormats] = useState(false);
   const [videoEngine, setVideoEngine] = useState("auto");
   const [commercial, setCommercial] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
@@ -270,13 +271,18 @@ export default function WebStudio() {
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
                 <div className="ws-tiles styles">
-                  {AD_FORMATS.map((f) => (
+                  {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 6)).map((f) => (
                     <button type="button" key={f.key} className={`ws-tile small${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
                       onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=1)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
                       <b>{f.emoji} {f.name}</b>
                     </button>
                   ))}
+                </div>
+                <div style={{ textAlign: "center", margin: "8px 0 2px" }}>
+                  <button type="button" className="wb-btn ghost" style={{ padding: "8px 18px", fontSize: 12.5 }} onClick={() => setAllFormats((v) => !v)}>
+                    {allFormats ? "Show fewer ▴" : `See all ${AD_FORMATS.length} formats ▾`}
+                  </button>
                 </div>
                 {formatKey && <input type="hidden" name="formatKey" value={formatKey} />}
                 <details>

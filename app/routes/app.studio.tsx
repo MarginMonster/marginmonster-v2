@@ -377,6 +377,7 @@ export default function Studio() {
   const [direction, setDirection] = useState(""); // image style / blog topic
   const [templateKey, setTemplateKey] = useState<string | null>(null); // image ad template (statue previews)
   const [formatKey, setFormatKey] = useState<string | null>(null); // image ad FORMAT (the proven compositions)
+  const [allFormats, setAllFormats] = useState(false); // "See all" expander on the format grid
   // video prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
   const [saySomething, setSaySomething] = useState("");
@@ -712,13 +713,18 @@ export default function Studio() {
                 <>
                   <div className="cfg-lbl cs-lblrow"><span>Ad format — proven structures, not filters</span>{formatKey && <button type="button" className="cs-viewall" onClick={() => setFormatKey(null)}>Clear</button>}</div>
                   <div className="cfg-cast cs-ctypes bigtiles">
-                    {AD_FORMATS.map((f) => (
+                    {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 6)).map((f) => (
                       <button type="button" key={f.key} className={`cast cs-ctype${formatKey === f.key ? " sel" : ""}`} onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                         <span className="ca-img cs-ctimg" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=1)` }}>{formatKey === f.key && <span className="ca-chk">✓</span>}</span>
                         <span className="ca-nm">{f.emoji} {f.name}</span>
                         <span className="ca-sub">{f.blurb}</span>
                       </button>
                     ))}
+                  </div>
+                  <div style={{ textAlign: "center", marginTop: 6 }}>
+                    <button type="button" className="cs-seeall" onClick={() => setAllFormats((v) => !v)}>
+                      {allFormats ? "Show fewer ▴" : `See all ${AD_FORMATS.length} formats ▾`}
+                    </button>
                   </div>
                   <p className="cfg-note cs-ctnote">Each format is a different creative <b>structure</b> — copy is written fresh for your product, the layout is built around your real photo, and a vision check rejects garbled text before you ever see it.</p>
                   <details className="cs-scenes">
