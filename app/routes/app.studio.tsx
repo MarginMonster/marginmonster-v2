@@ -41,14 +41,14 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
 // flux generations of one cast member redrawn per style (the server builds
 // them on first visit; illustrated fallbacks serve until then).
 const CARTOON_STYLES: { key: string; name: string; emoji: string; tint: string; cover: string; blurb: string }[] = [
-  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/style-tiles/dreamanime.jpg?v=2", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
-  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/style-tiles/toyfigure.jpg?v=2", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "brick", name: "Block Build", emoji: "🟥", tint: "#D93A2B", cover: "/style-tiles/brick.jpg?v=4", blurb: "Everything rebuilt from chunky pixel cubes, stop-motion style" },
-  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/style-tiles/pixar.jpg?v=2", blurb: "Big-studio 3D character film — glossy and cinematic" },
-  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/style-tiles/retroanime.jpg?v=2", blurb: "90s VHS anime — sunset palettes and speed lines" },
-  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/style-tiles/vintagetoon.jpg?v=2", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
-  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/style-tiles/puppet.jpg?v=2", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
-  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/style-tiles/clay.jpg?v=2", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", cover: "/style-tiles/dreamanime.jpg?v=4", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
+  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", cover: "/style-tiles/toyfigure.jpg?v=4", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
+  { key: "brick", name: "Block Build", emoji: "🟥", tint: "#D93A2B", cover: "/style-tiles/brick.jpg?v=6", blurb: "Everything rebuilt from chunky pixel cubes, stop-motion style" },
+  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", cover: "/style-tiles/pixar.jpg?v=4", blurb: "Big-studio 3D character film — glossy and cinematic" },
+  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", cover: "/style-tiles/retroanime.jpg?v=4", blurb: "90s VHS anime — sunset palettes and speed lines" },
+  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", cover: "/style-tiles/vintagetoon.jpg?v=4", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
+  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", cover: "/style-tiles/puppet.jpg?v=4", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
+  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", cover: "/style-tiles/clay.jpg?v=4", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -478,7 +478,7 @@ export default function Studio() {
   // while it cooks).
   const styleChar = avatarId ?? defaultAvatar ?? "ingrid";
   // ?v must move when a style's tile version bumps, or browsers pin the old art
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 4 : 2}`;
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 6 : 4}`;
 
   const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
   const costLabel = `${meta.cost + engineFee} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`;

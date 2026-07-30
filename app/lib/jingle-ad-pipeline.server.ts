@@ -226,6 +226,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
           output_format: "jpg",
         });
         frameUrl = await repPoll(id, 5 * 60_000, "anthem-style");
+        // Same no-gibberish gate as cartoon keyframes — check, repair, strip.
+        const { gateStylizedFrame } = await import("./cartoon-ad-pipeline.server");
+        frameUrl = await gateStylizedFrame(frameUrl, params.productTitle, params.productImageUrl, "anthem");
         await ckpt({ ckStyledUrl: frameUrl });
       }
       const frameDataUri = frameUrl

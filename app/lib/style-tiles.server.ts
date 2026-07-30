@@ -21,11 +21,11 @@ export const DEFAULT_TILE_CHARACTER = "ingrid";
 // disk on Render (render.yaml mountPath) — anywhere else gets wiped on every
 // deploy, which made tiles flap between rendered and portrait-fallback.
 const TILE_DIR = path.join(process.cwd(), "data", "renders", "style-tiles");
-const TILE_VERSION = 3; // v3: the held product is the emerald EASYMODE bottle
+const TILE_VERSION = 4; // v4: EASYMODE-labeled bottle composited from the real render, spell-checked
 // Per-key bumps: raise ONE style's version when its recipe changes materially,
 // so only that style re-renders instead of every tile for every character.
 const TILE_KEY_VERSIONS: Record<string, number> = {
-  brick: 5, // v5: voxel look + emerald bottle (v4 was voxel + orange bottle)
+  brick: 6, // v6: voxel look + labeled EASYMODE bottle
   avatarcover: 3, // v3: holds the real EASYMODE bottle (nano-banana composite)
   anthemcover: 3, // v3: mic + the real EASYMODE bottle (nano-banana composite)
 };
@@ -87,35 +87,38 @@ export function ensureStyleTile(character: string, key: string): void {
   (async () => {
     try {
       const { repCreate, repPoll, download } = await import("./ugc-ad-pipeline.server");
+      const { qaStylizedText, repairStylizedText } = await import("./cartoon-ad-pipeline.server");
       const recipe = CARTOON_RECIPES[key as CartoonStyleKey];
-      let id: string;
-      if (SPECIAL_PROMPTS[key]) {
-        // Covers composite the real EASYMODE bottle (statue cutout) with the
-        // character — nano-banana takes both images and keeps the label exact.
-        id = await repCreate("google/nano-banana", {
-          prompt: SPECIAL_PROMPTS[key],
-          image_input: [`${base}/avatars/${character}_0.jpg`, `${base}/ad-templates/statue.png`],
-          output_format: "jpg",
-        });
-      } else {
-        // Cartoon tiles redraw the bottle in-style: emerald EasyMode colors,
-        // deliberately no readable label (tiny stylized text turns to gibberish).
-        const prompt =
-          `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, ` +
-          `same friendly likeness, stylized for the art style. They are smiling and holding up ` +
-          `a sleek tall emerald green sports drink bottle with a black cap (plain label, ` +
-          `no readable text). ` +
-          `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
-          `no extra or missing fingers. Wide landscape composition, the character centered from ` +
-          `the waist up, beautiful style-true background scene, rich detail, no text, no watermark.`;
-        id = await repCreate("black-forest-labs/flux-kontext-pro", {
+      const portraitUrl = `${base}/avatars/${character}_0.jpg`;
+      const statueUrl = `${base}/ad-templates/statue.png`;
+      // Every tile composites the REAL EASYMODE bottle render as a second
+      // input, so the label is carried, not hallucinated — the same standard
+      // merchant products get. Cartoon styles redraw it in-style, label intact.
+      const prompt = SPECIAL_PROMPTS[key] || (
+        `Image 1 is a person; image 2 is a product bottle. Redraw BOTH as a ${recipe.look}: ` +
+        `the person becomes a charming character with the same hairstyle and a friendly stylized ` +
+        `likeness, smiling and holding up the bottle from image 2 rendered in the same art style — ` +
+        `same shape, same emerald green drink and black cap, and its label reads exactly "EASYMODE" ` +
+        `in clean bold capital letters, perfectly spelled, with no other readable text anywhere. ` +
+        `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
+        `no extra or missing fingers. Wide landscape composition, the character centered from ` +
+        `the waist up, beautiful style-true background scene, rich detail, no watermark.`);
+      // Render → spell-check → one retry → strip lettering as a last resort.
+      // A tile with gibberish on the label never reaches the disk.
+      let url = "";
+      let passed = false;
+      for (let attempt = 0; attempt < 2 && !passed; attempt++) {
+        const id = await repCreate("google/nano-banana", {
           prompt,
-          input_image: `${base}/avatars/${character}_0.jpg`,
-          aspect_ratio: "16:9",
+          image_input: [portraitUrl, statueUrl],
           output_format: "jpg",
         });
+        url = await repPoll(id, 5 * 60_000, `style-tile:${character}:${key}`);
+        const qa = await qaStylizedText(url, "EASYMODE");
+        passed = qa.pass;
+        if (!passed) artLog("style-tiles", `${flightKey}: attempt ${attempt + 1} failed label QA — ${qa.reason}`);
       }
-      const url = await repPoll(id, 5 * 60_000, `style-tile:${character}:${key}`);
+      if (!passed) url = await repairStylizedText(url, "EASYMODE", "strip");
       fs.mkdirSync(TILE_DIR, { recursive: true });
       const tmp = path.join(TILE_DIR, `.${character}-${key}.part`);
       await download(url, tmp);

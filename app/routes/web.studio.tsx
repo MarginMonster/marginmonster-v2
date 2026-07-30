@@ -133,7 +133,7 @@ export default function WebStudio() {
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
 
   const styleChar = avatarId ?? d.cast[0]?.id ?? "ingrid";
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 4 : 2}`;
+  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=${key === "brick" ? 6 : 4}`;
 
   const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
   const cost = tab === "video" ? d.costs.video + engineFee : tab === "image" ? d.costs.image : d.costs.blog;

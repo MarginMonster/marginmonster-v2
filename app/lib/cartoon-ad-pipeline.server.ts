@@ -30,6 +30,76 @@ import {
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 
+/* ---- Stylized-text quality gate -----------------------------------------
+ * Merchants ship these frames: garbled lettering is a hard product-quality
+ * failure, and prompt-only guards still slip. Every stylized frame passes a
+ * vision check; failures get a targeted lettering-repair edit, and if the
+ * lettering STILL can't be made exact it's removed entirely — clean surfaces
+ * always beat gibberish. Exported so the jingle pipeline uses the same gate. */
+
+export async function qaStylizedText(
+  frameUrl: string,
+  productTitle: string,
+  productImageUrl?: string | null
+): Promise<{ pass: boolean; reason: string }> {
+  try {
+    const { anthropicVision } = await import("./anthropic.server");
+    const urls = productImageUrl ? [productImageUrl, frameUrl] : [frameUrl];
+    const raw = await anthropicVision(
+      [
+        productImageUrl
+          ? `Image 1 is a real product photo; image 2 is a stylized cartoon ad frame featuring that product.`
+          : `This is a stylized cartoon ad frame.`,
+        `Check every piece of visible lettering (labels, packaging, box art, signs): each must be real, correctly-spelled language — and wherever it names the product it must read exactly "${productTitle}". Stylized fonts are fine; invented words, garbled or half-formed letters are a FAIL.`,
+        productImageUrl ? `Also FAIL if the product's shape or colors are unrecognizable compared to image 1.` : "",
+        `Reply ONLY JSON: {"pass": true|false, "reason": "short reason"}.`,
+      ].filter(Boolean).join(" "),
+      urls
+    );
+    const m = raw && raw.match(/\{[\s\S]*\}/);
+    if (!m) return { pass: true, reason: "qa-unavailable" };
+    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
+    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 160) };
+  } catch {
+    return { pass: true, reason: "qa-error" };
+  }
+}
+
+export async function repairStylizedText(
+  frameUrl: string,
+  productTitle: string,
+  mode: "fix" | "strip"
+): Promise<string> {
+  const prompt = mode === "fix"
+    ? `Edit this image: correct ALL lettering so that any packaging, label or box text reads exactly "${productTitle}" in clean bold letters, perfectly spelled, and remove every other piece of lettering. Change NOTHING else — same art style, same character, same product shape and colors, same composition.`
+    : `Edit this image: remove ALL lettering and text from every surface — packaging, labels, box art, signs — leaving those surfaces clean in the same art style. Change NOTHING else — same character, same product shape and colors, same composition.`;
+  const id = await repCreate("google/nano-banana", { prompt, image_input: [frameUrl], output_format: "jpg" });
+  return repPoll(id, 5 * 60_000, `stylized-text-${mode}`);
+}
+
+/** Run the full gate: check → repair lettering → re-check → strip as last
+ *  resort. Returns the best frame URL; never throws (falls back to input). */
+export async function gateStylizedFrame(
+  frameUrl: string,
+  productTitle: string,
+  productImageUrl?: string | null,
+  tag = "cartoon"
+): Promise<string> {
+  try {
+    let qa = await qaStylizedText(frameUrl, productTitle, productImageUrl);
+    if (qa.pass) return frameUrl;
+    console.log(`[${tag}] stylized frame failed text QA (${qa.reason}) — repairing lettering`);
+    const fixed = await repairStylizedText(frameUrl, productTitle, "fix");
+    qa = await qaStylizedText(fixed, productTitle, productImageUrl);
+    if (qa.pass) return fixed;
+    console.log(`[${tag}] repair still failing QA (${qa.reason}) — stripping lettering`);
+    return await repairStylizedText(frameUrl, productTitle, "strip");
+  } catch (e) {
+    console.error(`[${tag}] text gate error (using original frame):`, e instanceof Error ? e.message.slice(0, 160) : e);
+    return frameUrl;
+  }
+}
+
 /* Per-style recipe: how the keyframe is drawn, how it moves, and who narrates.
  * These are the VIRAL formats — the looks people already share — named
  * descriptively (never by the IP that popularized them) so every ad stays
@@ -257,6 +327,13 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       });
       keyframeUrl = await repPoll(id, 5 * 60_000, "cartoon-keyframe");
     }
+    // QUALITY GATE — merchants ship this frame. Vision-check the lettering,
+    // repair it to the exact product title, or strip it; gibberish never ships.
+    keyframeUrl = await gateStylizedFrame(
+      keyframeUrl,
+      params.productTitle,
+      params.serviceMode ? undefined : params.productImageUrl
+    );
     await ckpt({ ckKeyframeUrl: keyframeUrl });
   }
 
