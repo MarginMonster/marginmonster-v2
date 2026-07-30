@@ -270,9 +270,9 @@ export default function WebStudio() {
             {imageMode === "product" && (
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
-                <div className="ws-tiles styles">
-                  {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 6)).map((f) => (
-                    <button type="button" key={f.key} className={`ws-tile small${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
+                <div className="ws-tiles fmt">
+                  {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 8)).map((f) => (
+                    <button type="button" key={f.key} className={`ws-tile fmt${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
                       onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
                       <b>{f.emoji} {f.name}</b>

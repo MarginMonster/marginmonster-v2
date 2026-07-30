@@ -21,13 +21,13 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     });
   }
 
-  // AD FORMAT previews — each a genuinely different composition. Poster's
-  // preview is the classic colorblock tile; while a format forges, the
-  // colorblock preview stands in (no-store so the real one takes over).
+  // AD FORMAT previews — each a genuinely different composition, each starring
+  // a different EasyMode hero product. While a format forges, the colorblock
+  // preview stands in (no-store so the real one takes over).
   const fm = (params.file || "").match(/^format-([a-z]+)\.jpg$/);
   if (fm && AD_FORMAT_BY_KEY[fm[1]]) {
     const key = fm[1];
-    const real = key === "poster" ? adTemplateFile("preview", "colorblock") : formatPreviewFile(key);
+    const real = formatPreviewFile(key);
     if (real) {
       return new Response(new Uint8Array(fs.readFileSync(real)), {
         headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },

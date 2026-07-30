@@ -146,7 +146,10 @@ export async function acceptQuestline(params: {
   // FORMAT VARIETY — campaign image drops rotate through the proven ad
   // formats instead of defaulting to the same poster every time. Variety is
   // what makes a month of content feel hand-made (and keeps feeds fresh).
-  const FORMAT_ROTATION = ["callout", "review", "chat", "versus", "offer", "ugcframe", "beforeafter", "stat"];
+  const FORMAT_ROTATION = [
+    "callout", "review", "chat", "versus", "offer", "ugcframe", "beforeafter", "stat",
+    "tweet", "notes", "search", "threereasons", "pricemath", "faq", "ingredients", "handheld",
+  ];
   let imgFormatIdx = 0;
 
   // SHOWSTOPPER DROPS — the campaign wow factor on the Anthem tier: with

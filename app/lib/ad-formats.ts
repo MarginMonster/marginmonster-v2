@@ -1,15 +1,8 @@
 /* AD FORMATS — the statistically-proven static ad COMPOSITIONS (what Arcads
  * and Zeely lead with), replacing "one poster layout on eight backdrops".
- * Each format is a genuinely different creative structure:
- *
- *   callout      product hero + benefit callout lines   (Zeely signature)
- *   review       5-star testimonial card                (social proof)
- *   chat         text-message conversation              (Arcads signature)
- *   versus       us-vs-them comparison                  (category killer)
- *   beforeafter  split transformation                   (problem → solution)
- *   offer        big promo starburst                    (urgency/DTC sale)
- *   ugcframe     native social-feed frame               ("tiktok made me buy it")
- *   poster       bold statement headline                (the classic — existing engine)
+ * Each format is a genuinely different creative structure — callouts,
+ * testimonial cards, chat threads, comparisons, social screenshots, search
+ * bars, editorial pull quotes, gift guides and more.
  *
  * Copy is written per product by Claude (exact strings), the layout is
  * rendered by nano-banana around the merchant's REAL product photo, and a
@@ -134,6 +127,97 @@ export const AD_FORMATS: AdFormat[] = [
     fields: ["question", "left", "right"],
     hero: "a sleek water-resistant travel backpack in charcoal with matte black zippers",
     preview: { question: "Carry-on essentials only", left: "The saggy old duffel", right: "EASYMODE" },
+  },
+  {
+    key: "tweet", name: "Viral Post", emoji: "🐦",
+    blurb: "A social post raving about it — screenshot energy that stops the scroll",
+    fields: ["name", "handle", "tweet"],
+    hero: "a brushed stainless-steel insulated tumbler with a clear sliding lid",
+    preview: { name: "Maya", handle: "@mayamoves", tweet: "not to be dramatic but this tumbler kept ice frozen through a nine hour road trip. i fear no summer." },
+  },
+  {
+    key: "search", name: "Search Bar", emoji: "🔍",
+    blurb: "\"best ___\" search with your product as the answer — intent made visible",
+    fields: ["query", "s1", "s2", "s3"],
+    hero: "a slim white sunscreen tube with minimalist typography",
+    preview: { query: "best everyday sunscreen", s1: "best everyday sunscreen no white cast", s2: "best everyday sunscreen under makeup", s3: "best everyday sunscreen spf 50" },
+  },
+  {
+    key: "notes", name: "Notes App", emoji: "📝",
+    blurb: "A phone-notes checklist of reasons — private-thoughts authenticity",
+    fields: ["title", "n1", "n2", "n3", "n4"],
+    hero: "a rolled sage-green yoga mat with a carry strap",
+    preview: { title: "why i actually stretch now", n1: "rolls out flat, never curls", n2: "grippy even mid sweat", n3: "wipes clean in seconds", n4: "fits behind the couch" },
+  },
+  {
+    key: "reminder", name: "Lock Screen", emoji: "⏰",
+    blurb: "A friendly phone notification — the ad that feels like a nudge",
+    fields: ["alerttitle", "alertbody"],
+    hero: "a matte white electric toothbrush on a charging stand",
+    preview: { alerttitle: "EASYMODE", alertbody: "Two minutes. Your future smile says thanks." },
+  },
+  {
+    key: "threereasons", name: "3 Reasons", emoji: "1️⃣",
+    blurb: "Three numbered reasons to believe — the classic persuasion stack",
+    fields: ["headline", "w1", "w2", "w3"],
+    hero: "a kraft bag of dog training treats with a paw-print window",
+    preview: { headline: "Why dogs lose their minds", w1: "One ingredient: real chicken", w2: "Baked slow, never fried", w3: "Tiny enough for training" },
+  },
+  {
+    key: "handheld", name: "In Hand", emoji: "🤳",
+    blurb: "A first-person hand-held shot with a sticky note — feels like a friend's photo",
+    fields: ["caption"],
+    hero: "a slim sage-green phone case with raised protective edges",
+    preview: { caption: "the case that finally survived me dropping it down the stairs" },
+  },
+  {
+    key: "pricemath", name: "Price Math", emoji: "🧮",
+    blurb: "Cost-per-use math that makes the price feel tiny",
+    fields: ["headline", "math", "punchline"],
+    hero: "a tall dark-glass olive oil bottle with a cream minimalist label",
+    preview: { headline: "Do the math.", math: "$0.40 per drizzle", punchline: "Cheaper than a bad oil habit." },
+  },
+  {
+    key: "faq", name: "Q&A Card", emoji: "❓",
+    blurb: "The question every buyer asks, answered in one confident card",
+    fields: ["question", "answer"],
+    hero: "an amber glass plant-food dropper bottle beside a thriving monstera leaf",
+    preview: { question: "Does it actually work?", answer: "Droopy monstera to brand-new leaf in two weeks. Yes." },
+  },
+  {
+    key: "press", name: "Pull Quote", emoji: "🗞️",
+    blurb: "An editorial pull quote with big serif type — instant credibility",
+    fields: ["praise", "outlet"],
+    hero: "a minimalist brass desk lamp with a warm glowing shade",
+    preview: { praise: "The desk lamp your eyes have been begging for.", outlet: "The Daily Edit" },
+  },
+  {
+    key: "steps", name: "How It Works", emoji: "🪜",
+    blurb: "1-2-3 panels from box to payoff — simplicity sells",
+    fields: ["headline", "step1", "step2", "step3"],
+    hero: "a compact matte-black handheld milk frother",
+    preview: { headline: "Cafe foam in 20 seconds", step1: "Charge it once", step2: "Froth 20 seconds", step3: "Pour like a pro" },
+  },
+  {
+    key: "gift", name: "Gift Pick", emoji: "🎀",
+    blurb: "A gift-guide card with an editor's ribbon — seasonal money-maker",
+    fields: ["headline", "badge", "sub"],
+    hero: "a pair of thick cream merino wool socks folded neatly",
+    preview: { headline: "The gift that always wins", badge: "Editor's Pick", sub: "Wool socks they'll actually wear out." },
+  },
+  {
+    key: "restock", name: "Selling Fast", emoji: "🔥",
+    blurb: "Back-in-stock urgency — the shelf that's almost empty",
+    fields: ["headline", "urgency", "cta"],
+    hero: "a matcha green tea powder tin with a bamboo scoop",
+    preview: { headline: "Back in stock. Finally.", urgency: "Last restock sold out in days", cta: "Get yours" },
+  },
+  {
+    key: "ingredients", name: "What's In It", emoji: "🧪",
+    blurb: "Exploded ingredient view — transparency as the pitch",
+    fields: ["headline", "g1", "g2", "g3"],
+    hero: "a natural deodorant stick with a soft sage label",
+    preview: { headline: "Nothing to hide", g1: "Shea butter", g2: "Coconut oil", g3: "Zero aluminum" },
   },
 ];
 

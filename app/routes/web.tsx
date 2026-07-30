@@ -122,6 +122,10 @@ const CSS = `
 .ws-tile-sub{display:block;padding:3px 12px 0;font-size:11.5px;color:var(--ink2);line-height:1.4;}
 .ws-tile-img{position:relative;display:block;height:130px;background-size:cover;background-position:center 25%;}
 .ws-tile.small .ws-tile-img{height:96px;}
+/* Ad-format cards: the preview IS the pitch — show the full square, big. */
+.ws-tiles.fmt{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+.ws-tile.fmt .ws-tile-img{height:auto;aspect-ratio:1/1;background-position:center;}
+.ws-tile.fmt b{font-size:14px;}
 .ws-tile.lockd .ws-tile-img{filter:saturate(.35) brightness(.72);}
 .ws-tile.lockd:hover .ws-tile-img{filter:saturate(.6) brightness(.85);}
 .ws-lock{position:absolute;top:8px;right:8px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;

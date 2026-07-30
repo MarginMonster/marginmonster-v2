@@ -481,6 +481,34 @@ function formatLayoutPrompt(key: string, c: Record<string, string>, hero?: strin
       return `${base} Layout: a warm cream paper note card filling most of the frame, with handwriting-style dark ink text reading exactly: "${c.note}" and beneath it a signature-style line: "— ${c.founder}". The product rests at the bottom right corner of the card with a soft natural shadow. Honest, personal, letter-from-the-maker energy.`;
     case "poll":
       return `${base} Layout: a playful side-by-side choice card. Question in bold at the top: "${c.question}". Two framed options below: LEFT a deliberately dull, generic grey alternative labeled "${c.left}" with an empty circle; RIGHT the product, bright and hero-lit, labeled "${c.right}" with a big green check in its circle. The right side clearly wins.`;
+    case "poster":
+      return `${base} Layout: a full-bleed statement poster. The product large and hero-centered with dramatic cinematic studio lighting on a bold solid background that complements its colors. Massive ultra-bold headline across the top: "${c.headline}". A smaller sub-line beneath it: "${c.sub}". A rounded button at the bottom center: "${c.cta}". Award-winning print-advertisement energy.`;
+    case "tweet":
+      return `${base} Layout: a white social-media post card on a soft pastel background. At the top a small round avatar circle, bold display name "${c.name}" with grey username "${c.handle}" beside it. The post text below in clean dark type: "${c.tweet}". Under the text, the product appears as the post's attached photo with rounded corners. A row of small grey outline icons (heart, repost, share) at the bottom of the card. Realistic social app UI, no other text.`;
+    case "search":
+      return `${base} Layout: a clean search-engine page on a white background. A large rounded search bar at the top with a magnifier icon and the typed query "${c.query}" with a text cursor. Directly beneath, a dropdown panel of three autocomplete suggestions, each on its own row with a small magnifier: "${c.s1}", "${c.s2}", "${c.s3}". The product stands hero-lit at the bottom right as the obvious answer.`;
+    case "notes":
+      return `${base} Layout: a phone notes-app screen filling the frame, soft warm paper background. Note title in bold at the top: "${c.title}". Below it four checklist rows, each with a small round checked circle and the text: "${c.n1}", "${c.n2}", "${c.n3}", "${c.n4}". The product appears as a small photo attached at the bottom of the note. Believable notes-app typography.`;
+    case "reminder":
+      return `${base} Layout: a phone lock screen. Large thin clock digits near the top reading "7:30". Below the clock, a white rounded notification banner with a small app icon square, bold title "${c.alerttitle}" and message text "${c.alertbody}". The wallpaper behind is a softly blurred photo of the product. Realistic phone UI spacing.`;
+    case "threereasons":
+      return `${base} Layout: bold headline at the top: "${c.headline}". The product hero-lit on the left third. On the right, three stacked rows, each led by a bold number in a filled circle — 1, 2, 3 — followed by the reason text: "${c.w1}", "${c.w2}", "${c.w3}". Clean editorial spacing, confident type.`;
+    case "handheld":
+      return `${base} Layout: a first-person photo — a real hand holding the product out toward the camera at arm's length, natural daylight, believable casual setting slightly out of focus behind. A small white sticky-note style caption near the bottom reading exactly: "${c.caption}", with a thin hand-drawn arrow pointing from the note to the product.`;
+    case "pricemath":
+      return `${base} Layout: a bold receipt-style card. Headline at the top: "${c.headline}". The cost line "${c.math}" rendered HUGE in the center in ultra-bold type. The punchline "${c.punchline}" in smaller confident text beneath. The product stands beside the card, hero-lit on a complementary background.`;
+    case "faq":
+      return `${base} Layout: a large bold question at the top: "${c.question}". Beneath it a white rounded answer card containing a green check mark and the answer text: "${c.answer}". The product hero-lit at the bottom right, slightly overlapping the card with a soft shadow.`;
+    case "press":
+      return `${base} Layout: a minimalist editorial page with generous whitespace. An oversized decorative quotation mark, then the pull quote in large elegant serif type: "${c.praise}". A small attribution line beneath: "— ${c.outlet}". The product displayed beneath on a simple pedestal with soft gallery lighting.`;
+    case "steps":
+      return `${base} Layout: headline across the top: "${c.headline}". Three side-by-side panels, each led by a big bold numeral — 1, 2, 3 — showing the product at a different moment of use, with a short caption under each: "${c.step1}", "${c.step2}", "${c.step3}". Clean instructional design that still looks premium.`;
+    case "gift":
+      return `${base} Layout: a tasteful gift-guide card. A corner ribbon badge reading "${c.badge}". Headline in elegant bold type: "${c.headline}". Sub-line beneath: "${c.sub}". The product centered on a softly textured wrapping-paper background with a thin ribbon running under it. Festive but premium, never tacky.`;
+    case "restock":
+      return `${base} Layout: the product hero-lit on a clean retail shelf with several empty spots beside it where others clearly sold. Bold headline at the top: "${c.headline}". A small urgent chip near the product: "${c.urgency}". A rounded button at the bottom center: "${c.cta}". Energetic but premium.`;
+    case "ingredients":
+      return `${base} Layout: the product centered with its raw natural ingredients artfully floating around it in an exploded view, each connected by a thin line to a small label chip reading exactly: "${c.g1}", "${c.g2}", "${c.g3}". Bold headline at the top: "${c.headline}". Soft studio light, premium clean look.`;
     default:
       return base;
   }
@@ -501,7 +529,7 @@ async function formatCopy(
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
       `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
-      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a short offer like "20% OFF first order"; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere 2-sentence founder note ≤ 30 words with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name.`,
+      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a short offer like "20% OFF first order"; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere 2-sentence founder note ≤ 30 words with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 12-24 words, specific and funny, no hashtags; handle is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 4-8 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 4-8 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 8-16 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words.`,
       `No emoji, no hashtags, no quotes inside values.`,
     ].filter(Boolean).join("\n");
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 300 });
@@ -564,7 +592,7 @@ export function ensureFormatPreview(key: string): void {
     try {
       const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
       const f = AD_FORMAT_BY_KEY[key];
-      if (!f || key === "poster") return; // poster preview = the classic colorblock tile
+      if (!f) return;
       const prompt = formatLayoutPrompt(key, f.preview, f.hero);
       const expected = Object.values(f.preview);
       let buf: Buffer | null = null;

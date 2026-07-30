@@ -3888,6 +3888,9 @@ body[data-page="campaigns"] .qh-curs { color:#0C7A46 !important; }
 .cs-ctypes.bigtiles .cs-ctype { width:284px; }
 .cs-ctypes.bigtiles .cs-ctype .cs-ctimg { height:176px; border-radius:18px; }
 .cs-ctypes.bigtiles .cs-ctype .ca-nm { font-size:14.5px; }
+/* Ad-format cards: full uncropped square previews — the art IS the pitch. */
+.cs-ctypes.fmtgrid .cs-ctype { width:236px; }
+.cs-ctypes.fmtgrid .cs-ctype .cs-ctimg { height:auto; aspect-ratio:1/1; background-position:center; }
 
 /* Locked content types — the PRIMARY upgrade path: aspirational, not an error.
    Art stays visible (dimmed), a tier badge sits on the thumb, tap → upsell. */
