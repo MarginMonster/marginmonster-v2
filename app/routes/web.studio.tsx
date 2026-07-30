@@ -131,6 +131,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 type Tab = "video" | "image" | "blog";
 type CType = (typeof CONTENT_TYPES)[number]["key"];
 
+/* Module-level on purpose: defined inside the page component, React would
+ * see a NEW component type on every render and remount the strip — which
+ * reset the horizontal scroll to the first presenter on every click. */
+function Presenters({ cast, avatarId, setAvatarId, optional }: {
+  cast: { id: string; name: string; img: string }[];
+  avatarId: string | null;
+  setAvatarId: (id: string | null) => void;
+  optional?: boolean;
+}) {
+  return (
+    <>
+      <div className="ws-lbl">Presenter{optional ? <span className="ws-opt">optional</span> : null}</div>
+      <div className="ws-cast">
+        {optional && (
+          <button type="button" className={`ws-face${avatarId === null ? " sel" : ""}`} onClick={() => setAvatarId(null)}>
+            <span className="ws-face-img none">✕</span><span>None</span>
+          </button>
+        )}
+        {cast.map((c) => (
+          <button type="button" key={c.id} className={`ws-face${avatarId === c.id ? " sel" : ""}`} onClick={() => setAvatarId(c.id)}>
+            <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
+            <span>{c.name}</span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default function WebStudio() {
   const d = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -161,25 +190,6 @@ export default function WebStudio() {
 
   const err = actionData && "error" in actionData ? (actionData.error as string) : null;
   const ok = actionData && "ok" in actionData ? (actionData.ok as string) : null;
-
-  const Presenters = ({ optional }: { optional?: boolean }) => (
-    <>
-      <div className="ws-lbl">Presenter{optional ? <span className="ws-opt">optional</span> : null}</div>
-      <div className="ws-cast">
-        {optional && (
-          <button type="button" className={`ws-face${avatarId === null ? " sel" : ""}`} onClick={() => setAvatarId(null)}>
-            <span className="ws-face-img none">✕</span><span>None</span>
-          </button>
-        )}
-        {d.cast.map((c) => (
-          <button type="button" key={c.id} className={`ws-face${avatarId === c.id ? " sel" : ""}`} onClick={() => setAvatarId(c.id)}>
-            <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
-            <span>{c.name}</span>
-          </button>
-        ))}
-      </div>
-    </>
-  );
 
   return (
     <div>
@@ -232,7 +242,7 @@ export default function WebStudio() {
             <input type="hidden" name="contentType" value={contentType === "cartoon" || contentType === "jingle" ? contentType : ""} />
             {/* Presenter FIRST — the style tiles below render as the chosen
               * presenter, so picking them in this order explains the art. */}
-            {(contentType === "avatar" || showCartoonGrid) && <Presenters optional={contentType !== "avatar"} />}
+            {(contentType === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={contentType !== "avatar"} />}
             {showCartoonGrid && (
               <>
                 <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"} <span className="ws-opt">{contentType === "jingle" ? "optional — none = photoreal" : "previews show your chosen presenter"}</span></div>
@@ -323,7 +333,7 @@ export default function WebStudio() {
             )}
             {imageMode === "presenter" && (
               <>
-                <Presenters />
+                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} />
                 {avatarId && <input type="hidden" name="avatarId" value={avatarId} />}
               </>
             )}
