@@ -58,6 +58,43 @@ export function isBlockedHost(host: string): boolean {
   );
 }
 
+/** Storefronts advertise a SMALL share-card image (Wix serves 500x500 for a
+ *  1257x1735 original). Generating an ad from a thumbnail throws away detail we
+ *  can never get back, so rewrite known CDN transforms to the full-size file. */
+export function upgradeImageResolution(url: string): string {
+  try {
+    // Wix: .../media/<id>.jpg/v1/fit/w_500,h_500,q_90/file.jpg → .../media/<id>.jpg
+    const wix = url.match(/^(https?:\/\/static\.wixstatic\.com\/media\/[^/]+)\/v1\/[^?]*$/i);
+    if (wix) return wix[1];
+    // Shopify CDN: product_800x800.jpg / product_small.jpg → product.jpg
+    if (/cdn\.shopify\.com|\/cdn\/shop\//i.test(url)) {
+      return url.replace(/_(?:\d+x\d*|\d*x\d+|small|medium|large|grande|compact|icon|thumb|pico)(?=\.[a-z]{3,4}(?:$|\?))/i, "");
+    }
+    // Squarespace: ?format=750w → a much larger render
+    if (/squarespace-cdn\.com|images\.squarespace/i.test(url)) {
+      return url.replace(/([?&]format=)\d+w/i, "$12500w");
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+/** Storefront <title>/og:title usually carries a site-name suffix
+ *  ("Product | Store"). Merchants want the product, not our best guess at
+ *  their SEO template. */
+export function cleanProductTitle(raw: string, siteName?: string): string {
+  let t = decodeEntities(raw).trim();
+  if (siteName) {
+    const esc = siteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    t = t.replace(new RegExp(`\\s*[|\u2013\u2014-]\\s*${esc}\\s*$`, "i"), "");
+  }
+  // Fall back to trimming a trailing " | Anything" segment.
+  const parts = t.split(/\s+[|\u2013\u2014]\s+/);
+  if (parts.length > 1 && parts[parts.length - 1].length <= 40) t = parts.slice(0, -1).join(" | ");
+  return t.trim().slice(0, 120);
+}
+
 /** Absolutise and normalise an image URL found in markup. */
 function absolutise(src: string, pageUrl: URL): string | undefined {
   const raw = decodeEntities(src.trim());
@@ -139,7 +176,11 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
       if (prod) {
         title = typeof prod.name === "string" ? prod.name : title;
         const im = Array.isArray(prod.image) ? prod.image[0] : prod.image;
-        const src = typeof im === "object" && im ? (im as { url?: string }).url : (im as string | undefined);
+        const src = typeof im === "object" && im
+          ? ((im as { url?: string; contentUrl?: string; "@id"?: string }).contentUrl
+            || (im as { url?: string }).url
+            || (im as { "@id"?: string })["@id"])
+          : (im as string | undefined);
         if (src) image = absolutise(src, u);
         if (title || image) break;
       }
@@ -168,9 +209,10 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
   }
 
   if (!title && !image) throw new Error("Couldn't find product info on that page.");
+  const siteName = meta("og:site_name");
   return {
-    title: title ? decodeEntities(title.trim()).slice(0, 120) : undefined,
-    image,
+    title: title ? cleanProductTitle(title, siteName) : undefined,
+    image: image ? upgradeImageResolution(image) : undefined,
     url: u.href,
   };
 }
