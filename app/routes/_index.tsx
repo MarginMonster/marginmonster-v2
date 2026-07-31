@@ -33,7 +33,9 @@ export default function Index() {
       <div className="lz">
         <header className="lz-nav">
           <div className="lz-brand">
-            <img src="/easymode-head.png" width="34" height="27" alt="" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
+            <span className="lz-crest" style={{ width: 34, height: 34 }} aria-hidden="true">
+              <img src="/easymode-head.png?v=2" alt="" />
+            </span>
             <span>Easy<b>Mode</b></span>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -164,7 +166,9 @@ export default function Index() {
 
         <footer className="lz-foot">
           <div className="lz-brand small">
-            <img src="/easymode-head.png" width="26" height="20" alt="" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
+            <span className="lz-crest" style={{ width: 26, height: 26 }} aria-hidden="true">
+              <img src="/easymode-head.png?v=2" alt="" />
+            </span>
             <span>Easy<b>Mode</b><i>.io</i></span>
           </div>
           <span className="lz-copy">{t.footer.copy}</span>
@@ -329,6 +333,37 @@ html,body{margin:0;padding:0}
 .lz-foot{max-width:1000px;margin:56px auto 0;padding:24px 26px 40px;display:flex;align-items:center;justify-content:space-between;
   border-top:1px solid var(--line);flex-wrap:wrap;gap:12px;}
 .lz-copy{font-size:12.5px;color:var(--ink2);opacity:.8}
+/* The mark: the raw tile is deep green and reads as a dark blob on cream, so
+   it's set in a gold-rimmed crest and lifted — an emblem, not a smudge. */
+.lz-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;border-radius:9px;overflow:hidden;
+  border:1.5px solid rgba(199,158,63,.75);box-shadow:0 1px 3px rgba(20,32,26,.18),0 0 0 2px rgba(231,200,121,.16);}
+.lz-crest img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated;filter:brightness(1.16) saturate(1.06);}
+.lz-crest::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(150deg,rgba(255,255,255,.24),transparent 52%);}
 @media(max-width:820px){.lz-feats{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.lz-feats{grid-template-columns:1fr}.lz-stats{gap:16px;padding:14px 18px}.lz-stats b{font-size:22px}}
+/* ---- Mobile header: four controls on one 390px row is a scrum. The globe
+        collapses to the flag-less select, Log in becomes a real bordered
+        target, and Start free stays the one loud thing in the bar. ---- */
+@media(max-width:620px){
+  .lz-nav{padding:14px 16px;gap:8px;}
+  .lz-brand{font-size:16px;gap:7px;}
+  .lz-lang{font-size:12px;gap:3px;}
+  .lz-lang select{padding:7px 6px;font-size:12px;max-width:78px;}
+  .lz-navlink{font-weight:800;font-size:12.5px;color:var(--ink);padding:9px 13px;border-radius:11px;
+    background:var(--card);border:1px solid var(--line);box-shadow:0 2px 6px rgba(20,32,26,.06);}
+  .lz-navcta{font-size:12.5px;padding:10px 15px;}
+  .lz-hero{padding:34px 18px 24px;}
+  .lz-foot{padding:22px 18px 34px;}
+}
+/* Phone widths: the wordmark stays — it's the brand. The language select
+   gives up its width instead, and the two buttons tighten. */
+@media(max-width:430px){
+  .lz-nav{gap:6px;padding:12px 12px;}
+  .lz-brand{font-size:15px;gap:6px;}
+  .lz-lang{font-size:0;gap:0;}
+  .lz-lang select{max-width:54px;padding:7px 3px;font-size:11.5px;}
+  .lz-navlink{padding:9px 10px;font-size:12px;}
+  .lz-navcta{padding:9px 12px;font-size:12px;}
+}
 `;

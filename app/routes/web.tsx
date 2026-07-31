@@ -3,37 +3,70 @@
 
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
+import { totalXpForLevel } from "../lib/achievements";
+
+const EMPTY_HUD = {
+  name: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
+  tokens: 0, tokensMax: 0, tokensPct: 0, videos: 0, ads: 0,
+  planLabel: null as string | null,
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
-  if (!id) return json({ authed: false, tokens: 0, tokensMax: 0, planLabel: null as string | null });
-  const plan = id.shop.activePlan;
+  if (!id) return json({ authed: false, hud: EMPTY_HUD });
+  const { account, shop } = id;
+  const plan = shop.activePlan;
   const tier = plan?.active ? resolveTierKey(plan.type) : null;
-  const planLabel = tier
-    ? `${PLAN_BY_KEY[tier].name}${planTrialing(plan) ? " · Trial" : ""}`
-    : null;
   // Wallet ceiling = the plan's monthly allowance + purchased top-ups (mirrors
   // the embedded app's HUD math in app.tsx).
   const tokensMax = plan?.active
     ? Math.max(1, (tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded) + plan.tokensExtra)
     : 0;
-  return json({ authed: true, tokens: tokensRemainingLive(plan), tokensMax, planLabel });
+  const tokens = tokensRemainingLive(plan);
+  // XP inside the current level, same curve the embedded app plots.
+  const cur = totalXpForLevel(shop.level);
+  const next = totalXpForLevel(shop.level + 1);
+  const xpInto = Math.max(0, shop.xp - cur);
+  const xpNeed = Math.max(1, next - cur);
+  return json({
+    authed: true,
+    hud: {
+      name: account.name?.trim() || account.email.split("@")[0],
+      level: shop.level,
+      xpInto,
+      xpNeed,
+      xpPct: Math.max(0, Math.min(100, Math.round((xpInto / xpNeed) * 100))),
+      tokens,
+      tokensMax,
+      tokensPct: tokensMax > 0 ? Math.max(0, Math.min(100, Math.round((tokens / tokensMax) * 100))) : 0,
+      videos: Math.floor(tokens / TOKEN_COST.video),
+      ads: Math.floor(tokens / TOKEN_COST.image),
+      planLabel: tier ? `${PLAN_BY_KEY[tier].name}${planTrialing(plan) ? " · Trial" : ""}` : null,
+    },
+  });
 };
 
 export default function WebLayout() {
-  const { authed, tokens, tokensMax, planLabel } = useLoaderData<typeof loader>();
+  const { authed, hud } = useLoaderData<typeof loader>();
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
+
+  // HUD collapse — remembered per browser, read after mount so SSR matches.
+  const [hudMin, setHudMin] = useState(false);
+  useEffect(() => { setHudMin(localStorage.getItem("wbHudMin") === "1"); }, []);
+  const toggleHud = () => setHudMin((m) => { localStorage.setItem("wbHudMin", m ? "0" : "1"); return !m; });
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wb">
         <header className="wb-nav">
           <Link to="/" className="wb-brand">
-            <img src="/easymode-head.png" width="30" height="24" alt="" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
+            <Crest size={30} />
             <span>Easy<b>Mode</b></span>
           </Link>
           {authed && (
@@ -44,33 +77,78 @@ export default function WebLayout() {
               <Link className={tab("/web/connect")} to="/web/connect">Auto-posting</Link>
             </nav>
           )}
-          {authed ? (
-            <div className="wb-me">
-              {planLabel && <Link to="/web#plans" className="wb-plan" title="Manage your plan">{planLabel}</Link>}
-              <span
-                className="wb-tok"
-                title={`≈ ${Math.floor(tokens / TOKEN_COST.video)} videos · ${Math.floor(tokens / TOKEN_COST.image)} images`}
-              >
-                <span className="wb-tok-n">🪙 {tokens.toLocaleString()}</span>
-                {tokensMax > 0 && (
-                  <i className="wb-tokbar" aria-hidden="true">
-                    <b style={{ width: `${Math.max(0, Math.min(100, Math.round((tokens / tokensMax) * 100)))}%` }} />
-                  </i>
-                )}
-              </span>
-              <Link to="/web/logout" className="wb-out">Log out</Link>
-            </div>
-          ) : (
-            <div className="wb-me">
-              <Link to="/web/login" className="wb-out">Log in</Link>
-            </div>
-          )}
+          <div className="wb-me">
+            {authed
+              ? <Link to="/web/logout" className="wb-out">Log out</Link>
+              : <Link to="/web/login" className="wb-login">Log in</Link>}
+          </div>
         </header>
+
+        {/* Player HUD — the app's arcade status bar, ported to the web shell.
+            Level, token reserve, XP to the next level and what the wallet
+            currently affords, all in one glance. */}
+        {authed && (
+          <div className={`wb-hud${hudMin ? " min" : ""}`} aria-label="Player status">
+            {hudMin ? (
+              <button
+                type="button" className="wb-hud-mini" onClick={toggleHud}
+                title={`LVL ${hud.level} · ${hud.tokens.toLocaleString()} tokens — tap to expand`}
+                aria-label="Expand player status"
+              >
+                <Crest size={22} />
+                <span className="wb-hud-lvl">LVL {hud.level}</span>
+                <span className="wb-hud-mini-tok">🪙 {hud.tokens.toLocaleString()}</span>
+                <span className="wb-hud-caret">▾</span>
+              </button>
+            ) : (
+              <>
+                <div className="wb-hud-top">
+                  <Crest size={26} />
+                  <span className="wb-hud-name">{hud.name}</span>
+                  <span className="wb-hud-lvl" title="Your store's level — every level pays out free tokens">LVL {hud.level}</span>
+                  {hud.planLabel
+                    ? <Link to="/web#plans" className="wb-hud-plan" title="Manage your plan">{hud.planLabel}</Link>
+                    : <Link to="/web#plans" className="wb-hud-plan off">No plan</Link>}
+                  <button type="button" className="wb-hud-toggle" onClick={toggleHud} title="Collapse" aria-label="Collapse player status">▴</button>
+                </div>
+
+                <div className="wb-hud-barlabel"><span>Token reserve</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
+                <div className="wb-hud-hp" title={`${hud.tokensPct}% of your wallet remaining`}><i style={{ width: `${hud.tokensPct}%` }} /></div>
+
+                <div className="wb-hud-barlabel">
+                  <span>XP · Level {hud.level}</span>
+                  <span>{hud.xpInto.toLocaleString()} / {hud.xpNeed.toLocaleString()} · {(hud.xpNeed - hud.xpInto).toLocaleString()} to LVL {hud.level + 1}</span>
+                </div>
+                <div className="wb-hud-xp" title={`${hud.xpPct}% of the way to level ${hud.level + 1}`}><i style={{ width: `${hud.xpPct}%` }} /></div>
+
+                <div className="wb-hud-stats">
+                  <Link to="/web#plans" className="wb-hud-topup" title="Get more tokens">
+                    <span>🪙 {hud.tokens.toLocaleString()}</span><b>Add tokens</b>
+                  </Link>
+                  <span className="wb-hud-stat" title="Videos your balance affords">🎬 {hud.videos} Videos</span>
+                  <span className="wb-hud-stat" title="Image ads your balance affords">🖼 {hud.ads} Images</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <main className="wb-main">
           <Outlet />
         </main>
       </div>
     </>
+  );
+}
+
+/* The EasyMode mark. The raw tile is deep green and reads as a dark blob on
+ * cream, so it's set in a gold-rimmed crest and lifted — an emblem, not a
+ * smudge. Same mark as the embedded app, legible on a light page. */
+function Crest({ size }: { size: number }) {
+  return (
+    <span className="wb-crest" style={{ width: size, height: size }} aria-hidden="true">
+      <img src="/easymode-head.png?v=2" alt="" />
+    </span>
   );
 }
 
@@ -86,13 +164,74 @@ const CSS = `
 .wb-tab{padding:8px 16px;border-radius:11px;text-decoration:none;font-weight:700;font-size:13.5px;color:var(--ink2);}
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-me{display:flex;align-items:center;gap:12px;}
-.wb-plan{font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;color:#fff;background:linear-gradient(165deg,#12A85E,#0B6B3E);text-decoration:none;}
-.wb-tok{display:inline-flex;flex-direction:column;align-items:flex-start;gap:3px;font-weight:700;font-size:13px;color:var(--gold-deep);cursor:default;}
-.wb-tok-n{line-height:1;}
-.wb-tokbar{display:block;width:58px;height:4px;border-radius:99px;background:#EAE6D8;overflow:hidden;}
-.wb-tokbar b{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#B08526,#E7C879);transition:width .4s ease;}
-.wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;}
+.wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;padding:8px 12px;border-radius:10px;}
+.wb-out:hover{color:var(--ink);background:rgba(20,32,26,.05);}
+/* Logged-out "Log in" is a real target, not stray text floating in the bar. */
+.wb-login{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;text-decoration:none;color:var(--ink);
+  padding:9px 18px;border-radius:11px;background:var(--card);border:1px solid var(--line);box-shadow:0 2px 6px rgba(20,32,26,.06);}
+.wb-login:hover{border-color:var(--green2);color:var(--green);}
+/* The mark: gold-rimmed crest so the deep-green tile reads as an emblem
+   against cream instead of a dark smudge. */
+.wb-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;border-radius:8px;overflow:hidden;
+  border:1.5px solid rgba(199,158,63,.75);box-shadow:0 1px 3px rgba(20,32,26,.18),0 0 0 2px rgba(231,200,121,.16);}
+.wb-crest img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated;filter:brightness(1.16) saturate(1.06);}
+.wb-crest::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(150deg,rgba(255,255,255,.24),transparent 52%);}
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
+
+/* ---- Player HUD — the app's arcade status bar, GStyle for the web shell ---- */
+.wb-hud{width:min(1080px,100% - 48px);margin:0 auto 6px;padding:13px 16px;border-radius:16px;
+  background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid var(--line);box-shadow:0 3px 12px rgba(20,32,26,.07);}
+.wb-hud.min{padding:0;background:none;border:0;box-shadow:none;}
+.wb-hud-mini{display:inline-flex;align-items:center;gap:9px;cursor:pointer;padding:7px 14px;border-radius:999px;
+  background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid var(--line);box-shadow:0 3px 12px rgba(20,32,26,.07);font:inherit;}
+.wb-hud-mini-tok{font-weight:800;font-size:12.5px;color:var(--gold-deep);}
+.wb-hud-caret{font-size:10px;color:var(--ink2);}
+.wb-hud-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px;}
+.wb-hud-name{font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:var(--ink);
+  max-width:44vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wb-hud-lvl{font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.05em;color:#3A2A05;
+  padding:4px 11px;border-radius:999px;background:linear-gradient(168deg,#F3D98C,#D8AE41);border:1px solid rgba(140,105,25,.35);}
+.wb-hud-plan{font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:#fff;text-decoration:none;padding:5px 13px;border-radius:999px;background:linear-gradient(168deg,#12A85E,#0B6B3E);
+  box-shadow:0 2px 8px rgba(12,122,70,.26);}
+.wb-hud-plan.off{background:#DED9C7;color:#5A5347;box-shadow:none;}
+.wb-hud-plan:hover{filter:brightness(1.07)}
+.wb-hud-toggle{margin-left:auto;border:1px solid var(--line);background:var(--card);color:var(--ink2);
+  width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:11px;line-height:1;}
+.wb-hud-toggle:hover{color:var(--ink);border-color:var(--green2);}
+.wb-hud-barlabel{display:flex;justify-content:space-between;gap:10px;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink2);margin:8px 0 4px;}
+.wb-hud-barlabel span:last-child{color:var(--ink);letter-spacing:.02em;text-transform:none;font-variant-numeric:tabular-nums;}
+.wb-hud-hp,.wb-hud-xp{height:9px;border-radius:99px;background:#E6E1D0;overflow:hidden;border:1px solid rgba(20,32,26,.07);}
+.wb-hud-hp>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#0C7A46,#3FD186);transition:width .5s ease;}
+.wb-hud-xp>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#B08526,#F3D98C);transition:width .5s ease;}
+.wb-hud-stats{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px;font-size:12px;font-weight:700;color:var(--ink2);}
+.wb-hud-topup{display:inline-flex;align-items:center;gap:8px;text-decoration:none;padding:5px 6px 5px 11px;border-radius:999px;
+  background:var(--card);border:1px solid var(--line);color:var(--gold-deep);font-weight:800;}
+.wb-hud-topup b{font-size:11.5px;color:#fff;background:linear-gradient(168deg,#12A85E,#0B6B3E);padding:5px 11px;border-radius:999px;}
+.wb-hud-topup:hover b{filter:brightness(1.07)}
+.wb-hud-stat{white-space:nowrap;}
+
+/* ---- Mobile header: nothing wraps into a second line of tabs, nothing
+        overflows the viewport. The tab strip scrolls sideways instead. ---- */
+@media(max-width:760px){
+  .wb-nav{padding:12px 16px;gap:10px;}
+  .wb-brand{font-size:16px;gap:7px;}
+  .wb-tabs{order:3;flex:1 0 100%;gap:5px;overflow-x:auto;scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;padding-bottom:2px;margin-top:2px;}
+  .wb-tabs::-webkit-scrollbar{display:none}
+  .wb-tab{flex:0 0 auto;white-space:nowrap;padding:7px 13px;font-size:12.5px;}
+  .wb-me{margin-left:auto;gap:8px;}
+  .wb-out{padding:7px 10px;font-size:12.5px;}
+  .wb-login{padding:8px 15px;font-size:12.5px;}
+  .wb-main{padding:10px 16px 70px;}
+  .wb-hud{width:calc(100% - 32px);padding:11px 13px;}
+  .wb-hud-name{max-width:38vw;font-size:13px;}
+  .wb-hud-barlabel{font-size:9.5px;}
+  .wb-hud-barlabel span:last-child{font-size:10.5px;}
+  .wb-hud-stats{font-size:11.5px;gap:8px;}
+}
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;}
 .wb-sub{color:var(--ink2);font-size:14.5px;line-height:1.55;margin:0 0 24px;max-width:60ch;}
 .wb-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
@@ -122,18 +261,34 @@ const CSS = `
 .wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
 @keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
-/* GStyle buffer: the spinning gold engine-turned rosette, not a generic ring. */
-.wb-spin{width:52px;height:52px;border-radius:50%;display:block;animation:wbRot 3.2s linear infinite;
+/* GStyle buffer: the engine-turned gold spirograph from the app — hundreds of
+ * hairline rays, not a chunky 15-spoke pinwheel. Two conic layers at slightly
+ * different pitches beat against each other as it turns, which is what makes
+ * the guilloche shimmer; the counter-rotating inner ring adds the moiré. */
+.wb-spin{position:relative;width:68px;height:68px;border-radius:50%;display:block;
+  animation:wbRot 26s linear infinite;
   background:
-    repeating-conic-gradient(from 0deg,rgba(231,200,121,.95) 0 10deg,rgba(231,200,121,.12) 10deg 24deg),
-    repeating-radial-gradient(circle,rgba(231,200,121,.55) 0 1.5px,transparent 1.5px 7px);
-  -webkit-mask:radial-gradient(circle,transparent 22%,#000 24% 74%,transparent 78%);
-  mask:radial-gradient(circle,transparent 22%,#000 24% 74%,transparent 78%);
-  filter:drop-shadow(0 0 8px rgba(231,200,121,.35));}
+    repeating-conic-gradient(from 0deg,rgba(231,200,121,.85) 0 1deg,transparent 1deg 5.6deg),
+    repeating-conic-gradient(from 2deg,rgba(231,200,121,.5) 0 .6deg,transparent .6deg 9deg),
+    repeating-radial-gradient(circle,rgba(231,200,121,.5) 0 1px,transparent 1px 9px);
+  -webkit-mask:radial-gradient(circle,transparent 21%,#000 23% 74%,transparent 78%);
+  mask:radial-gradient(circle,transparent 21%,#000 23% 74%,transparent 78%);
+  filter:drop-shadow(0 0 9px rgba(231,200,121,.34));}
+.wb-spin::before{content:"";position:absolute;inset:11%;border-radius:50%;
+  animation:wbRotBack 17s linear infinite;
+  background:
+    repeating-conic-gradient(from 0deg,rgba(243,217,140,.7) 0 .8deg,transparent .8deg 7.2deg),
+    repeating-radial-gradient(circle,rgba(243,217,140,.34) 0 1px,transparent 1px 6px);
+  -webkit-mask:radial-gradient(circle,transparent 26%,#000 29% 82%,transparent 88%);
+  mask:radial-gradient(circle,transparent 26%,#000 29% 82%,transparent 88%);}
+/* A gold bead orbits the rosette so "it's working" reads even at a glance. */
+.wb-spin::after{content:"";position:absolute;inset:0;border-radius:50%;animation:wbRot 1.5s linear infinite;
+  background:radial-gradient(circle 3.5px at 50% 7%,#FFF0C4,rgba(231,200,121,.9) 55%,transparent 70%);}
 @keyframes wbRot{to{transform:rotate(360deg)}}
+@keyframes wbRotBack{to{transform:rotate(-360deg)}}
 .wb-eta{color:#fff;font-weight:800;font-size:12.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.6);}
 .wb-failbadge{position:relative;z-index:1;font-size:30px;color:#E9897B;font-weight:800;}
-@media (prefers-reduced-motion: reduce){.wb-cookimg::after{animation:none}.wb-spin{animation-duration:2s}}
+@media (prefers-reduced-motion: reduce){.wb-cookimg::after{animation:none}.wb-spin,.wb-spin::before,.wb-spin::after{animation:none}}
 .wb-asset .m{padding:10px 12px;font-size:13px;font-weight:600;}
 .wb-asset .s{font-size:11.5px;color:var(--ink2);font-weight:500;}
 .wb-auth{max-width:420px;margin:40px auto;}
@@ -148,7 +303,9 @@ const CSS = `
 .ws-lbl:first-child{margin-top:0}
 .ws-opt{font-family:Inter,sans-serif;font-weight:500;font-size:11px;color:var(--ink2);}
 .ws-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
-.ws-tiles.two{grid-template-columns:repeat(2,minmax(220px,300px));justify-content:center;}
+/* minmax(0,…) not minmax(220px,…): a hard 220px floor on two columns needs
+ * 454px of room, which a phone doesn't have — the first card got clipped. */
+.ws-tiles.two{grid-template-columns:repeat(2,minmax(0,300px));justify-content:center;}
 .ws-tiles.styles{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));}
 .ws-tile{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:0 0 12px;
   cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;overflow:hidden;}
@@ -220,4 +377,34 @@ const CSS = `
 .ws-upsell{margin-top:14px;padding:16px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:center;}
 .ws-upsell b{font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);}
 .ws-upsell p{font-size:12.5px;color:var(--ink2);margin:6px 0 12px;}
+
+/* ---- Mobile Studio: kill the doom scroll ----
+ * One 200px-wide column per row meant every picker was a mile of thumbnails.
+ * Two columns halves the height, and every picker gets the same contained,
+ * inner-scrolling treatment the format library already had — so the page
+ * stays a page and the choosing happens inside it. */
+@media(max-width:620px){
+  .ws-tiles,.ws-tiles.styles,.ws-tiles.fmt,.ws-tiles.two{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+  .ws-tile b{font-size:12.5px;padding:8px 9px 0;}
+  .ws-tile.fmt b{font-size:12.5px;}
+  .ws-tile-sub{font-size:10.5px;padding:2px 9px 0;line-height:1.35;}
+  .ws-tile{padding-bottom:9px;border-radius:13px;}
+  .ws-scrollbox{max-height:58vh;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;
+    padding:3px 6px 34px 3px;
+    -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 34px),transparent);
+    mask-image:linear-gradient(180deg,#000 calc(100% - 34px),transparent);}
+  .ws-fmtbox{max-height:58vh;}
+  .ws-tabs{gap:6px}
+  .ws-tab{padding:9px 14px;font-size:12.5px;}
+  .ws-lbl{margin:13px 0 7px}
+  .ws-card{padding:16px}
+  .ws-engines{gap:6px}
+  .ws-engine{padding:7px 11px}
+}
+/* Two columns is already tight at 200px art — below that, don't shrink the
+   text any further, just let the art carry it. */
+@media(max-width:380px){
+  .ws-tiles,.ws-tiles.styles,.ws-tiles.fmt,.ws-tiles.two{gap:8px;}
+  .ws-tile-sub{display:none;}
+}
 `;

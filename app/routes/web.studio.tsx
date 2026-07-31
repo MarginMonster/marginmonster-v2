@@ -438,7 +438,7 @@ export default function WebStudio() {
         {tab === "video" && !contentType && (
           <>
             <div className="ws-lbl">Pick your content type</div>
-            <div className="ws-tiles">
+            <div className="ws-tiles ws-scrollbox">
               {CONTENT_TYPES.map((ct) => {
                 const locked = !can(ct.cap);
                 return (
@@ -480,7 +480,7 @@ export default function WebStudio() {
             {showCartoonGrid && (
               <>
                 <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"} <span className="ws-opt">previews show your chosen {contentType === "jingle" ? "singer" : "presenter"}</span></div>
-                <div className="ws-tiles styles">
+                <div className="ws-tiles styles ws-scrollbox">
                   {contentType === "jingle" && (
                     <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(null)}>
@@ -573,7 +573,7 @@ export default function WebStudio() {
                 {formatKey && <input type="hidden" name="formatKey" value={formatKey} />}
                 <details>
                   <summary className="ws-lbl" style={{ cursor: "pointer" }}>Backdrop scenes (classic){templateKey ? " · 1 selected" : ""}</summary>
-                  <div className="ws-tiles styles">
+                  <div className="ws-tiles styles ws-scrollbox">
                     {d.templates.map((t) => (
                       <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
                         onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setFormatKey(null); }}>
