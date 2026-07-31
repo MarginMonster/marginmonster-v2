@@ -285,7 +285,10 @@ const WA_CSS = `
 .wa-faildiv{display:flex;align-items:center;gap:12px;margin:0 0 12px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#8C2E1B;white-space:nowrap;}
 .wa-faildiv::before,.wa-faildiv::after{content:"";height:1px;background:var(--line,#E5E0CF);flex:1;}
 .wa-scrim{position:fixed;inset:0;z-index:10500;background:rgba(10,14,12,.68);display:grid;place-items:center;padding:16px;}
-.wa-viewer{position:relative;background:var(--card,#FDFCF7);border-radius:18px;width:min(920px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(10,14,12,.45);}
+/* 100% (of the scrim's padded box), never a vw unit: a vw width ignores the
+ * scrim's own padding, so the panel overhung the right edge and took the close
+ * button and the next arrow off-screen with it. */
+.wa-viewer{position:relative;background:var(--card,#FDFCF7);border-radius:18px;width:min(920px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(10,14,12,.45);}
 .wa-vx{position:absolute;top:10px;right:10px;z-index:4;width:34px;height:34px;border-radius:50%;border:0;background:rgba(20,32,26,.75);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;}
 .wa-vnav{position:absolute;top:42%;z-index:4;width:40px;height:40px;border-radius:50%;border:0;background:rgba(20,32,26,.72);color:#E7C879;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding-bottom:3px;}
 .wa-vnav:hover{background:rgba(20,32,26,.9)}
@@ -318,7 +321,23 @@ const WA_CSS = `
 .wa-capbox:disabled{opacity:.6}
 .wa-caprow{display:flex;gap:8px;margin-top:8px;}
 .wa-caphint{display:block;font-size:11.5px;color:var(--ink2,#5b6b61);margin-top:6px;}
-@media (max-width:640px){.wa-viewer{width:100vw;max-height:96vh;border-radius:14px;}.wa-read{padding:18px;}}
+/* Phone viewer: the frame keeps its margin, the chrome pulls in with it, and
+   the ad gets more of the height back now that the buttons stack tighter. */
+@media (max-width:640px){
+  .wa-scrim{padding:10px;}
+  .wa-viewer{max-height:95vh;border-radius:14px;}
+  .wa-read{padding:18px;max-height:56vh;}
+  .wa-vfull{max-height:52vh;}
+  .wa-vx{top:8px;right:8px;width:32px;height:32px;font-size:14px;}
+  .wa-vcount{top:10px;left:10px;font-size:11px;padding:3px 9px;}
+  .wa-vnav{width:36px;height:36px;font-size:21px;}
+  .wa-vnav.prev{left:6px}
+  .wa-vnav.next{right:6px}
+  .wa-vmeta{padding:12px 14px 16px;}
+  .wa-vtitle b{font-size:13.5px;}
+  .wa-vacts{gap:7px;margin-top:10px;}
+  .wa-vbtn{padding:10px 14px;font-size:12.5px;border-radius:11px;}
+}
 `;
 
 export default function WebArchive() {

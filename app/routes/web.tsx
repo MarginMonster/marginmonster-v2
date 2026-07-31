@@ -261,31 +261,22 @@ const CSS = `
 .wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
 @keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
-/* GStyle buffer: the engine-turned gold spirograph from the app — hundreds of
- * hairline rays, not a chunky 15-spoke pinwheel. Two conic layers at slightly
- * different pitches beat against each other as it turns, which is what makes
- * the guilloche shimmer; the counter-rotating inner ring adds the moiré. */
-.wb-spin{position:relative;width:68px;height:68px;border-radius:50%;display:block;
-  animation:wbRot 26s linear infinite;
-  background:
-    repeating-conic-gradient(from 0deg,rgba(231,200,121,.85) 0 1deg,transparent 1deg 5.6deg),
-    repeating-conic-gradient(from 2deg,rgba(231,200,121,.5) 0 .6deg,transparent .6deg 9deg),
-    repeating-radial-gradient(circle,rgba(231,200,121,.5) 0 1px,transparent 1px 9px);
-  -webkit-mask:radial-gradient(circle,transparent 21%,#000 23% 74%,transparent 78%);
-  mask:radial-gradient(circle,transparent 21%,#000 23% 74%,transparent 78%);
-  filter:drop-shadow(0 0 9px rgba(231,200,121,.34));}
-.wb-spin::before{content:"";position:absolute;inset:11%;border-radius:50%;
-  animation:wbRotBack 17s linear infinite;
-  background:
-    repeating-conic-gradient(from 0deg,rgba(243,217,140,.7) 0 .8deg,transparent .8deg 7.2deg),
-    repeating-radial-gradient(circle,rgba(243,217,140,.34) 0 1px,transparent 1px 6px);
-  -webkit-mask:radial-gradient(circle,transparent 26%,#000 29% 82%,transparent 88%);
-  mask:radial-gradient(circle,transparent 26%,#000 29% 82%,transparent 88%);}
-/* A gold bead orbits the rosette so "it's working" reads even at a glance. */
-.wb-spin::after{content:"";position:absolute;inset:0;border-radius:50%;animation:wbRot 1.5s linear infinite;
-  background:radial-gradient(circle 3.5px at 50% 7%,#FFF0C4,rgba(231,200,121,.9) 55%,transparent 70%);}
+/* GStyle buffer: the actual engine-turned rosette the embedded app spins in its
+ * Autopilot card — the same hypotrochoid geometry, served from
+ * /gstyle-rosette.svg. Conic gradients can only fake radial spokes; this figure
+ * is built from overlapping petal loops, and that's what gives it the guilloche
+ * shimmer. Nothing approximates it, so we reuse the real curve. */
+.wb-bufwrap::before{content:"";position:absolute;width:210px;height:210px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(6,10,8,.88),rgba(6,10,8,.66) 34%,rgba(6,10,8,.3) 54%,transparent 72%);}
+.wb-spin{position:relative;z-index:1;width:104px;height:104px;display:block;
+  background:url(/gstyle-rosette.svg) center / contain no-repeat;
+  animation:wbRot 13s linear infinite;
+  filter:drop-shadow(0 0 10px rgba(255,210,74,.3));}
+/* A gold bead orbits the rim: the rosette turns too gracefully to signal
+   activity on its own, and merchants need to see that it's still working. */
+.wb-spin::after{content:"";position:absolute;inset:2px;border-radius:50%;animation:wbRot 1.7s linear infinite;
+  background:radial-gradient(circle 3.5px at 50% 2%,#FFF6DA,rgba(255,210,74,.95) 45%,transparent 68%);}
 @keyframes wbRot{to{transform:rotate(360deg)}}
-@keyframes wbRotBack{to{transform:rotate(-360deg)}}
 .wb-eta{color:#fff;font-weight:800;font-size:12.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.6);}
 .wb-failbadge{position:relative;z-index:1;font-size:30px;color:#E9897B;font-weight:800;}
 @media (prefers-reduced-motion: reduce){.wb-cookimg::after{animation:none}.wb-spin,.wb-spin::before,.wb-spin::after{animation:none}}
