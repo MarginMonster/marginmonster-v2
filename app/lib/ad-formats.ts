@@ -369,6 +369,17 @@ export const AD_FORMATS: AdFormat[] = [
     hero: "four bottles of matte nail polish in muted earthy tones, lined up",
     preview: { headline: "Pick your mood", sw1: "Cloud", sw2: "Clay", sw3: "Moss", sw4: "Midnight" },
   },
+  {
+    // The "breaking out of the feed" ad: the product overflows a mock post
+    // card in 3D. Hugely popular because it reads as a glitch in the scroll.
+    // The card is deliberately GENERIC — no real platform's logo, wordmark or
+    // exact UI — and carries no invented engagement counts.
+    key: "breakout", name: "Breakout", emoji: "💥",
+    blurb: "Your product bursts out of the post frame — the scroll-stopper people stop for",
+    fields: ["caption", "handle", "cta"],
+    hero: "a bold cherry-red stand mixer with a polished chrome bowl",
+    preview: { caption: "The countertop upgrade you'll actually use every day", handle: "EASYMODE", cta: "Shop now" },
+  },
 ];
 
 export const AD_FORMAT_BY_KEY: Record<string, AdFormat> = Object.fromEntries(

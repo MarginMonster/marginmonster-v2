@@ -148,7 +148,7 @@ export async function acceptQuestline(params: {
   // what makes a month of content feel hand-made (and keeps feeds fresh).
   const FORMAT_ROTATION = [
     "callout", "review", "chat", "versus", "offer", "ugcframe", "beforeafter", "stat",
-    "tweet", "notes", "search", "threereasons", "pricemath", "faq", "ingredients", "handheld",
+    "tweet", "notes", "search", "threereasons", "pricemath", "faq", "ingredients", "handheld", "breakout",
   ];
   let imgFormatIdx = 0;
 
