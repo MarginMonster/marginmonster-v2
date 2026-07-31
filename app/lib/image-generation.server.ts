@@ -674,9 +674,14 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
     const raw = await anthropicVision(
       [
         productImageUrl
-          ? `Image 1 is the real product photo; image 2 is a generated ad. Check BOTH: (a) the product in the ad matches image 1 (same shape, colors, label — not warped or reinvented), and`
+          ? `Image 1 is the real product photo; image 2 is an ad built around that product. Check BOTH: (a) the product in the ad matches image 1 (same shape, colors, packaging — not warped or reinvented), and`
           : `Check the generated ad:`,
-        `(b) every visible text string is correctly spelled real language with NO gibberish or invented words. The ad should contain roughly these strings: ${expected.slice(0, 6).map((s) => `"${s.slice(0, 40)}"`).join(", ")}.`,
+        `(b) the ad's own LAYOUT TEXT — the headline, labels, chips and button we asked for — is correctly spelled. It should read roughly: ${expected.slice(0, 6).map((s) => `"${s.slice(0, 40)}"`).join(", ")}.`,
+        // The merchant's product may be covered in Chinese, Japanese, Korean or
+        // any other script — that is THEIR PACKAGING, not our typography, and
+        // judging it as "gibberish" threw away the format the merchant chose
+        // and shipped a generic ad instead.
+        `IMPORTANT: ignore any text that is printed on the product or its packaging — including non-Latin scripts and small print. Only judge the ad's added layout text. Non-English packaging is never a failure.`,
         `Reply ONLY JSON: {"pass": true|false, "reason": "short reason"}.`,
       ].join(" "),
       urls
@@ -1122,7 +1127,15 @@ export async function generateImageAd(
         const f = AD_FORMAT_BY_KEY[formatKey];
         if (f) {
           const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-          const copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang);
+          // The merchant PICKED this format. Losing it silently and shipping a
+          // generic scene instead is the worst possible outcome, so the copy
+          // step gets a second chance and every fallthrough is recorded.
+          let copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang);
+          if (!copy) copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang);
+          if (!copy) {
+            genMeta.formatFallback = "copy-failed";
+            artLog("image-ad", `format ${f.key}: copy generation failed twice — falling back to a scene ad`);
+          }
           if (copy) {
             usedPrompt = formatLayoutPrompt(f.key, copy);
             const renderOnce = () => repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl!], output_format: "jpg" });
@@ -1136,14 +1149,19 @@ export async function generateImageAd(
             if (qa.pass) {
               genMeta.method = `format:${f.key}`;
               genMeta.formatCopy = copy;
+              artLog("image-ad", `format ${f.key}: rendered OK`);
             } else {
               imageUrl = null; // fall through to the ladder — never ship garbled text
+              genMeta.formatFallback = `qa-failed: ${qa.reason}`;
+              artLog("image-ad", `format ${f.key}: QA rejected twice (${qa.reason}) — falling back to a scene ad`);
               console.log(`[image-ad] format ${f.key} failed QA twice — falling to ladder`);
             }
           }
         }
       } catch (e) {
         imageUrl = null;
+        genMeta.formatFallback = `error: ${e instanceof Error ? e.message.slice(0, 120) : e}`;
+        artLog("image-ad", `format ${formatKey}: render failed (${e instanceof Error ? e.message.slice(0, 120) : e}) — falling back to a scene ad`);
         console.error("[image-ad] format rung failed, falling to ladder:", e instanceof Error ? e.message.slice(0, 160) : e);
       }
     }
