@@ -19,6 +19,7 @@ import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
+import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
@@ -74,36 +75,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-/** Can our render engines actually FETCH this product photo? Replicate and
- *  fal download the URL server-side; a 403/404, a login wall or an HTML error
- *  page comes back as "input was invalid" minutes later, after the merchant
- *  has already been charged. Cheap pre-flight: must answer 2xx with an image
- *  content-type (or at least real image bytes). Never blocks on our own
- *  slowness — a timeout is treated as reachable rather than failing a
- *  legitimate photo. */
-async function checkImageUrl(url: string): Promise<{ ok: boolean; why: string }> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 6000);
-  try {
-    let res = await fetch(url, { method: "HEAD", signal: ctl.signal, redirect: "follow" });
-    // Plenty of CDNs refuse HEAD — fall back to a tiny ranged GET.
-    if (res.status === 405 || res.status === 501 || res.status === 403) {
-      res = await fetch(url, { method: "GET", headers: { Range: "bytes=0-1023" }, signal: ctl.signal, redirect: "follow" });
-    }
-    if (!res.ok) return { ok: false, why: `the link returned ${res.status}` };
-    const type = (res.headers.get("content-type") || "").toLowerCase();
-    if (type && !type.startsWith("image/")) return { ok: false, why: "the link isn't an image" };
-    return { ok: true, why: "" };
-  } catch (e) {
-    // Abort = our probe was slow, not proof the URL is bad. Let it through;
-    // the pipeline degrades on its own if the fetch really fails.
-    if (e instanceof Error && e.name === "AbortError") return { ok: true, why: "" };
-    return { ok: false, why: "we couldn't reach it" };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
@@ -119,49 +90,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Import a product by URL — scrapes any storefront's page for a title +
   // image (JSON-LD → og: → <title>), with a Shopify /products/*.js shortcut.
   if (intent === "importUrl") {
-    const raw = ((form.get("url") as string) || "").trim();
     try {
-      const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-      if (!/^https?:$/.test(u.protocol)) throw new Error("bad protocol");
-      const host = u.hostname.toLowerCase();
-      if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-        return json({ importError: "That URL isn't allowed." });
-      }
-      const ua = { "user-agent": "Mozilla/5.0 (compatible; EasyMode product import)", accept: "text/html,application/json" };
-      // Shopify storefront shortcut
-      if (/\/products\/[^/?#]+\/?$/.test(u.pathname)) {
-        try {
-          const jres = await fetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: ua });
-          if (jres.ok) {
-            const pj = (await jres.json()) as { title?: string; featured_image?: string };
-            if (pj?.title) {
-              const img = pj.featured_image ? (pj.featured_image.startsWith("//") ? `https:${pj.featured_image}` : pj.featured_image) : null;
-              return json({ imported: { title: pj.title.slice(0, 120), image: img, url: u.href } });
-            }
-          }
-        } catch { /* fall through */ }
-      }
-      const res = await fetch(u.href, { signal: AbortSignal.timeout(9000), headers: ua, redirect: "follow" });
-      if (!res.ok) return json({ importError: `Couldn't reach that page (${res.status}).` });
-      const html = (await res.text()).slice(0, 600_000);
-      let title: string | undefined;
-      let image: string | undefined;
-      const ldBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
-      for (const block of ldBlocks) {
-        try {
-          const data = JSON.parse(block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, ""));
-          const nodes: { "@type"?: unknown; name?: string; image?: unknown }[] = Array.isArray(data) ? data : (data as { "@graph"?: [] })?.["@graph"] ? (data as { "@graph": [] })["@graph"] : [data];
-          const prod = nodes.find((n) => { const t = n?.["@type"]; return t === "Product" || (Array.isArray(t) && t.includes("Product")); });
-          if (prod) { title = prod.name; const im = Array.isArray(prod.image) ? prod.image[0] : prod.image; image = typeof im === "object" ? (im as { url?: string })?.url : (im as string); break; }
-        } catch { /* next */ }
-      }
-      const og = (p: string) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']og:${p}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1] || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:${p}["']`, "i"))?.[1];
-      title = title || og("title") || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
-      image = image || og("image");
-      if (!title) return json({ importError: "Couldn't find product info on that page." });
-      return json({ imported: { title: decodeEntities(title.trim()).slice(0, 120), image: image || null, url: u.href } });
-    } catch {
-      return json({ importError: "Couldn't import from that URL — check the link and try again." });
+      const p = await scrapeProductPage((form.get("url") as string) || "");
+      return json({ imported: { title: p.title || "", image: p.image || null, url: p.url } });
+    } catch (e) {
+      return json({ importError: e instanceof Error ? e.message : "Couldn't import from that URL." });
     }
   }
 
@@ -181,6 +114,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Stored on the persistent disk and served publicly at /uploads/* so the
   // render engines can fetch it like any other product URL.
   let productImageUrl = urlField;
+  let uploadedPhoto = false;
   const photo = form.get("productPhoto");
   if (photo && typeof photo !== "string" && photo.size > 0) {
     if (!/^image\//.test(photo.type)) return json({ error: "That file isn't an image — use a JPG, PNG or WebP." });
@@ -194,15 +128,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     if (!base) return json({ error: "Photo uploads aren't configured on this server yet — paste an image URL instead." });
     productImageUrl = `${base}/uploads/${name}`;
+    uploadedPhoto = true;
   }
 
-  // REACHABILITY GATE — the render engines fetch this URL themselves, and an
-  // unfetchable one made them reject the job three minutes later ("input was
-  // invalid"), after the tokens were already spent. Verify it BEFORE charging
-  // so the merchant gets an instant, fixable message instead of a refund loop.
-  if (productImageUrl) {
-    const reach = await checkImageUrl(productImageUrl);
-    if (!reach.ok) return json({ error: `That product photo can't be opened by our renderers (${reach.why}). Try uploading the file directly, or use a public image link.` });
+  // RESOLVE WHAT THEY PASTED — merchants paste product PAGE links, not .jpg
+  // files, because that's the natural thing to do. A page URL used to fail the
+  // render three minutes later ("input was invalid") with the tokens already
+  // spent. Now: direct images pass through, product pages get scraped for
+  // their hero image, and only a genuinely unusable link is refused — before
+  // any charge, with a message that says what to do.
+  if (productImageUrl && !uploadedPhoto) {
+    const resolved = await resolveImageOrPage(productImageUrl);
+    if (!resolved.image) {
+      return json({ error: `We couldn't get a product image from that link — ${resolved.why || "it isn't an image and has no product photo on the page"}. Paste a direct image link, or upload the photo.` });
+    }
+    productImageUrl = resolved.image;
   }
 
   // HARD REQUIREMENT: no product photo = the engines invent a product from
