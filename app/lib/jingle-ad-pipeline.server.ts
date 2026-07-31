@@ -554,11 +554,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     const sungLines = allLines.slice(0, Math.max(1, Math.round(allLines.length * sungShare)));
     const captionFeed = sungLines.join(" ");
 
-    // Product b-roll cut-in keeps the product on screen while the singer sings
-    // — but ONLY when they aren't already holding it. Cutting away to the bare
-    // photo on top of an in-hand performance just interrupts the song.
+    // Product b-roll. When the singer ISN'T holding it, this cutaway is how the
+    // viewer first sees the product, so it lands mid-song. When they ARE, it
+    // reveals nothing and interrupting the performance for it reads cheap —
+    // so it becomes a short closing beat and the last line of the anthem lands
+    // on a clean shot instead.
     let productImagePath: string | null = null;
-    if (talkingUrl && !heldProduct && params.productImageUrl) {
+    if (talkingUrl && params.productImageUrl) {
       try {
         productImagePath = path.join(tmp, "product.img");
         await download(params.productImageUrl, productImagePath);
@@ -577,6 +579,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       script: captionFeed, // karaoke-style captions — only the sung lines
       outPath,
       lipSynced: !!talkingUrl, // omni bakes the sung audio in; kling loops under the song
+      productCutAt: heldProduct ? "end" : "mid",
     });
 
     try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }

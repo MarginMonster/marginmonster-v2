@@ -485,6 +485,13 @@ export async function assemble(opts: {
    *  false = silent/generic motion (kling fallback): loop the clip and lay our
    *  TTS narration over it. */
   lipSynced: boolean;
+  /** Where the product b-roll lands. "mid" (default) is the UGC-style cutaway
+   *  partway through — it's how the viewer first SEES the product. "end" is a
+   *  short closing beat instead, for ads where the presenter already holds the
+   *  product throughout: there the cut-in isn't revealing anything, so cutting
+   *  away mid-song just interrupts the performance. At the end it lands the
+   *  last line on a clean shot. */
+  productCutAt?: "mid" | "end";
 }): Promise<void> {
   // CJK scripts need the Noto font (fetched once); if it can't be had, ship
   // the video without burned captions instead of burning tofu boxes.
@@ -538,9 +545,10 @@ export async function assemble(opts: {
       args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
       // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
       // reads as an intentional UGC cut, not a glitch)
-      const cutLen = lipSynced ? 1.6 : 2.2;
-      const bs = Math.max(1.2, duration * 0.5).toFixed(2);
-      const be = Math.min(duration - 0.8, duration * 0.5 + cutLen).toFixed(2);
+      const atEnd = opts.productCutAt === "end";
+      const cutLen = atEnd ? 1.4 : lipSynced ? 1.6 : 2.2;
+      const bs = (atEnd ? Math.max(0.8, duration - cutLen) : Math.max(1.2, duration * 0.5)).toFixed(2);
+      const be = (atEnd ? duration : Math.min(duration - 0.8, duration * 0.5 + cutLen)).toFixed(2);
       filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
       filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
       vLabel = "[v1]";
