@@ -391,6 +391,7 @@ async function runJob(
           customPrompt: payload.customPrompt as string | undefined,
           videoEngine: payload.videoEngine as string | undefined,
           commercial: payload.commercial === true,
+          breakout: payload.breakout === true,
           // jobId + resume: without these the prediction id is never
           // checkpointed, so each of the 3 attempts bought a BRAND-NEW video
           jobId: payload.__jobId as string | undefined,

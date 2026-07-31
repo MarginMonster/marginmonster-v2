@@ -34,6 +34,7 @@ interface GenerateVideoParams {
   avatarVariant?: number; // wardrobe variant 0-3 (see OUTFITS)
   videoEngine?: string; // engine-picker key (video-engines.ts); undefined = default
   commercial?: boolean; // big-budget studio-commercial look (color-block cyc, hero lighting)
+  breakout?: boolean; // the product bursts OUT of a mock social post card, in motion
   jobId?: string; // enables prediction checkpointing (see resume)
   resume?: {
     /** A prediction that a previous attempt already CREATED — and therefore
@@ -77,13 +78,19 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   const outfit = OUTFITS[variant];
   // The COMMERCIAL look — big-budget studio spot: seamless color-block cyc
   // matched to the product's palette, hero lighting, confident camera.
+  // BREAKOUT in motion: the still already composes the product bursting out of
+  // a generic post card, so the motion brief only has to sell the DEPTH — the
+  // product pushing further toward camera while the card holds still behind it.
+  const breakoutLook = `The product bursts OUT of a flat social-post card that sits behind it: the card stays static and flat while the product pushes further toward the camera in true 3D, its shadow sliding across the card as it emerges. Subtle parallax between the product, the card and the background, gentle float, premium product-commercial finish, vertical, no text overlay, no new lettering.`;
   const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, confident slow camera push-in and orbit, premium big-brand energy, vertical, no text overlay.`;
   const basePrompt =
     style === "AI_AVATAR" && avatar
       ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, enthusiastically presenting ${productTitle} to the camera. ${voice.tone} tone. Authentic hand-held creator feel, natural gestures, vertical.`
       : style === "AI_AVATAR"
         ? `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, vertical.`
-        : params.commercial
+        : params.breakout
+          ? `${breakoutLook} The product: ${productTitle}.`
+          : params.commercial
           ? `${commercialLook} The product: ${productTitle}.`
           : params.serviceMode
           ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${productTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.`
@@ -101,6 +108,21 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     if (base) seedImage = `${base}/avatars/${avatar.id}_${variant}.jpg`;
   } else if (style === "PRODUCT_HIGHLIGHT" && productImageUrl) {
     seedImage = productImageUrl;
+    // Breakout animates a COMPOSED frame, not the bare product photo: the
+    // still renderer already knows how to build the mock card + pop-out, so
+    // the video and image versions of this style stay identical. Any failure
+    // falls back to the plain photo rather than losing the render.
+    if (params.breakout) {
+      try {
+        const { renderFormatFrame } = await import("./image-generation.server");
+        const framed = await renderFormatFrame(
+          "breakout", productTitle, productImageUrl,
+          voice.tone as string | undefined, params.customPrompt,
+          (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang
+        );
+        if (framed) seedImage = framed;
+      } catch { /* keep the plain product photo */ }
+    }
   }
 
   // Create + poll go through the shared Replicate helpers (repCreate/repPoll):

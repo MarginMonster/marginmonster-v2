@@ -205,6 +205,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { normalizeEngineKey, engineSurcharge } = await import("../lib/video-engines");
     const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
     const commercial = form.get("commercial") === "1";
+    const breakout = form.get("breakout") === "1";
     const charged = TOKEN_COST.video + engineSurcharge(videoEngine);
     // Without a photo the engines invent a product from the title — generic AI
     // art the merchant paid for. Services legitimately have nothing to shoot.
@@ -214,7 +215,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try { await spendTokens(shop.id, charged); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine, commercial, chargedTokens: charged, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -359,6 +360,7 @@ export default function Studio() {
   // Engine picker (Arcads-style) + big-budget Commercial look toggle.
   const [videoEngine, setVideoEngine] = useState("auto");
   const [commercial, setCommercial] = useState(false);
+  const [breakout, setBreakout] = useState(false);
   // Entering Avatar AI or Cartoon Avatar defaults a presenter (cartoon ads
   // star the presenter redrawn in the picked style). Other types DON'T null
   // the shared selection — the Image tab and a later return keep the
@@ -581,8 +583,14 @@ export default function Studio() {
               )}
               {(contentType === "avatar" || contentType === "highlight") && (
                 <label className="cs-commercial">
-                  <input type="checkbox" checked={commercial} onChange={(e) => setCommercial(e.target.checked)} />
+                  <input type="checkbox" checked={commercial} onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
                   <span><b>🎬 Commercial look</b> — big-budget studio spot: seamless color-block set matched to your product, styled &amp; hero-lit</span>
+                </label>
+              )}
+              {contentType === "highlight" && (
+                <label className="cs-commercial">
+                  <input type="checkbox" checked={breakout} onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
+                  <span><b>💥 Breakout</b> — your product bursts out of a social post frame in 3D, the scroll-stopper</span>
                 </label>
               )}
               <div className="cfg-lbl cs-lblrow"><span>Video engine</span><span className="cs-opt">premium engines add tokens</span></div>

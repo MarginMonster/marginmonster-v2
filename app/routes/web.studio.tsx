@@ -160,6 +160,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
       const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
       const commercial = form.get("commercial") === "1";
+      const breakout = form.get("breakout") === "1";
       assertCapability(shop.activePlan, videoCapabilityFor(contentType));
       // Pre-charge validation: a presenter has to have something to hold —
       // fail BEFORE tokens are spent, not in the pipeline.
@@ -178,7 +179,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         holdProduct: !!avatarId && !service,
         wearProduct: !!avatarId && wear && !service,
         serviceMode: service, scene,
-        videoEngine, commercial, chargedTokens: charged, prePaid: true, initiator: "web",
+        videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true, initiator: "web",
       });
       return json({ ok: true, queued: "video" });
     }
@@ -313,6 +314,7 @@ export default function WebStudio() {
   const [allFormats, setAllFormats] = useState(false);
   const [videoEngine, setVideoEngine] = useState("auto");
   const [commercial, setCommercial] = useState(false);
+  const [breakout, setBreakout] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [direction, setDirection] = useState("");
@@ -506,8 +508,16 @@ export default function WebStudio() {
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {(contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">
-                <input type="checkbox" name="commercial" value="1" checked={commercial} onChange={(e) => setCommercial(e.target.checked)} />
+                <input type="checkbox" name="commercial" value="1" checked={commercial}
+                  onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
                 <span><b>🎬 Commercial look</b> — big-budget studio spot: color-block set matched to your product, hero-lit</span>
+              </label>
+            )}
+            {contentType === "highlight" && (
+              <label className="ws-commercial">
+                <input type="checkbox" name="breakout" value="1" checked={breakout}
+                  onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
+                <span><b>💥 Breakout</b> — your product bursts out of a social post frame in 3D, the scroll-stopper</span>
               </label>
             )}
             <div className="ws-lbl">Video engine <span className="ws-opt">premium engines add tokens</span></div>

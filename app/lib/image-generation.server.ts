@@ -996,6 +996,35 @@ const PLAN_VISUAL_DIRECTION: Record<string, string> = {
   BUILD_AWARENESS: "brand story visual, emotional resonance, people + product, editorial style",
 };
 
+/** Render a single AD-FORMAT still and return its URL — no asset, no tokens.
+ *  The video pipeline uses this to build a Breakout keyframe (the product
+ *  bursting out of a mock post card) before animating it, so the motion ad and
+ *  the image ad share one definition of the look. Returns null on any failure;
+ *  callers fall back to the plain product photo. */
+export async function renderFormatFrame(
+  formatKey: string,
+  productTitle: string,
+  productImageUrl: string,
+  tone?: string,
+  direction?: string,
+  contentLang?: string | null
+): Promise<string | null> {
+  try {
+    const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
+    const f = AD_FORMAT_BY_KEY[formatKey];
+    if (!f) return null;
+    const copy = await formatCopy(f.key, f.fields, productTitle, tone, direction, contentLang);
+    if (!copy) return null;
+    const prompt = formatLayoutPrompt(f.key, copy);
+    const url = await repRun("google/nano-banana", { prompt, image_input: [productImageUrl], output_format: "jpg" });
+    artLog("image-ad", `format ${f.key}: keyframe rendered for a video ad`);
+    return url;
+  } catch (e) {
+    artLog("image-ad", `format ${formatKey}: video keyframe failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,
