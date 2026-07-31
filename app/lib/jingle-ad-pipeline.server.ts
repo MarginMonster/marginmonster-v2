@@ -213,6 +213,14 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       `bouncy singable rhythm, and the product name sung at least twice. The`,
       `last line is a tagline that lands like a hook. No emoji, no hashtags,`,
       `no quotes, no stage directions — output ONLY the lyric lines, one per line.`,
+      ``,
+      // Listing titles are stuffed with SKUs, pack sizes and region tags, and a
+      // jingle that chants one of those fragments sounds broken ("GROW,
+      // S-CHINESE"). Sing what a person would actually call the thing.
+      `Name it the way a customer would say it out loud — a short natural name`,
+      `for what it IS. Never sing a fragment of the listing title, a SKU, a size`,
+      `or count, or a region/language tag ("S-Chinese", "2-Pack", "OEM", "V2").`,
+      `If the title has no sayable name in it, sing the plain product category.`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -261,6 +269,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   // with the song over it, as before. Singing failure falls back gracefully.
   let talkingUrl = resume.talkingUrl || "";
   let singEngine = (talkingUrl && resume.singEngine) || "";
+  // Did the performer end up actually holding the product? Survives a resume
+  // that skips the whole visual block because the lipsync was checkpointed.
+  let heldProduct = ck.ckHeldOk === "1";
   // Same poison-pill as the song: a checkpointed lipsync URL expires in ~1h and
   // assembly's download would then fail on every retry. Re-perform instead.
   if (talkingUrl && !(await checkpointUrlAlive(talkingUrl))) {
@@ -322,9 +333,69 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         });
         await ckpt({ ckStyledUrl: frameUrl });
       }
-      const frameDataUri = frameUrl
-        ? "data:image/jpeg;base64," + (await downloadBuffer(frameUrl)).toString("base64")
-        : "data:image/jpeg;base64," + fs.readFileSync(portraitFile).toString("base64");
+      // PRODUCT IN HAND — an anthem where the singer never touches the product
+      // is a music video, not an ad. Compose the product into the performer's
+      // hands BEFORE the lipsync, so it's on screen for the whole song instead
+      // of flashing past in a cutaway at the end. The style survives because
+      // the ALREADY-styled singer frame is the first reference: nano-banana is
+      // matching it, not re-inventing it.
+      let heldUrl = ck.ckHeldUrl || "";
+      if (heldUrl && !(await checkpointUrlAlive(heldUrl))) {
+        console.log("[anthem] checkpointed in-hand frame has expired — recomposing");
+        heldUrl = "";
+        delete ck.ckHoldId;
+        await ckpt({ ckHeldUrl: "", ckHoldId: "" });
+      }
+      const singerRefUrl = frameUrl || portraitPublicUrl;
+      const canHold = !params.serviceMode && !!params.productImageUrl && /^https?:\/\//.test(params.productImageUrl || "");
+      if (!heldUrl && canHold && singerRefUrl) {
+        try {
+          heldUrl = await resumablePrediction({
+            priorId: ck.ckHoldId,
+            create: () => repCreate("google/nano-banana", {
+              prompt:
+                `Keep the FIRST image's person exactly as they are — same face, same hairstyle, same outfit, same art style, ` +
+                `same lighting and same background — and put the SECOND image's product in their hands, held up at chest ` +
+                `height, facing the camera and clearly visible. They stay mid-song: mouth open singing, joyful and ` +
+                `expressive, looking straight down the lens. The product stays identical to its photo — same shape, colors, ` +
+                `materials, logos and text, never restyled or relettered — and at its TRUE real-world size next to the ` +
+                `person; never shrink or miniaturize it. A large item (board, chair, rug…) is held upright with both hands ` +
+                `or stood on the ground beside them, even if it runs past the frame. Hands are anatomically correct: five ` +
+                `fingers, natural grip. Waist-up vertical 9:16 framing with clear headroom above the head. ` +
+                `No added text, no captions, no watermark.`,
+              image_input: [singerRefUrl, params.productImageUrl],
+              output_format: "jpg",
+            }),
+            save: (id) => ckpt({ ckHoldId: id }),
+            maxMs: 5 * 60_000,
+            stage: "anthem-hold",
+          });
+          await ckpt({ ckHeldUrl: heldUrl });
+        } catch (e) {
+          console.error("[anthem] product-in-hand compose failed — singer performs without it:", e instanceof Error ? e.message.slice(0, 160) : e);
+          heldUrl = "";
+        }
+      }
+
+      // The composed frame only wins if it actually downloads. A dead or
+      // truncated link must never cost the merchant the whole performance —
+      // fall back to the plain singer frame and let assembly cut the product in.
+      let frameDataUri = "";
+      if (heldUrl) {
+        try {
+          const held = await downloadBuffer(heldUrl);
+          if (held.length > 10_000) {
+            frameDataUri = "data:image/jpeg;base64," + held.toString("base64");
+            heldProduct = true;
+            await ckpt({ ckHeldOk: "1" });
+          }
+        } catch { /* fall through to the plain singer frame */ }
+      }
+      if (!frameDataUri) {
+        frameDataUri = frameUrl
+          ? "data:image/jpeg;base64," + (await downloadBuffer(frameUrl)).toString("base64")
+          : "data:image/jpeg;base64," + fs.readFileSync(portraitFile).toString("base64");
+      }
 
       // Lipsync audio = the song up to the smart line-gap cut, faded out.
       tmpSing = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-"));
@@ -483,9 +554,11 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     const sungLines = allLines.slice(0, Math.max(1, Math.round(allLines.length * sungShare)));
     const captionFeed = sungLines.join(" ");
 
-    // Product b-roll cut-in keeps the product on screen while the singer sings.
+    // Product b-roll cut-in keeps the product on screen while the singer sings
+    // — but ONLY when they aren't already holding it. Cutting away to the bare
+    // photo on top of an in-hand performance just interrupts the song.
     let productImagePath: string | null = null;
-    if (talkingUrl && params.productImageUrl) {
+    if (talkingUrl && !heldProduct && params.productImageUrl) {
       try {
         productImagePath = path.join(tmp, "product.img");
         await download(params.productImageUrl, productImagePath);
@@ -531,6 +604,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
           avatarId: singer?.id || null,
           avatarVariant: singer ? (params.avatarVariant ?? 0) : null,
           cartoonStyle: params.cartoonStyle || null,
+          heldProduct, // did the singer perform WITH the product in hand?
           direction: params.direction || null,
           origin: params.origin || null,
         }),
