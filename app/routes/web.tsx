@@ -413,6 +413,20 @@ const CSS = `
 .ws-commercial input{accent-color:#12A85E;width:16px;height:16px;flex:0 0 auto;}
 .ws-commercial b{color:var(--ink);}
 .ws-upsell{margin-top:14px;padding:16px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:center;}
+/* Numbered step heads — the rule above each one is what actually segregates
+   the form; the badge tells you how far in you are. */
+.ws-stephead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:26px 0 14px;padding-top:20px;border-top:1px solid var(--line2);}
+.ws-stephead:first-child{margin-top:4px;padding-top:0;border-top:0;}
+.ws-stepn{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+  font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#3A2A05;line-height:1;
+  background:linear-gradient(168deg,#F3D98C,#D8AE41);border:1px solid rgba(140,105,25,.38);box-shadow:0 2px 6px rgba(140,105,25,.22);}
+.ws-stephead b{font-family:Poppins,sans-serif;font-size:15.5px;color:var(--ink);letter-spacing:-.01em;}
+.ws-stephint{font-size:11.5px;color:var(--ink2);font-weight:500;margin-left:auto;text-align:right;}
+@media(max-width:620px){
+  .ws-stephead{gap:8px;margin:20px 0 11px;padding-top:16px;}
+  .ws-stephead b{font-size:14.5px;}
+  .ws-stephint{flex:1 0 100%;margin-left:36px;text-align:left;}
+}
 .ws-upsell b{font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);}
 .ws-upsell p{font-size:12.5px;color:var(--ink2);margin:6px 0 12px;}
 

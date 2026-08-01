@@ -290,6 +290,20 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
   );
 }
 
+/* One long card reads as one long chore. Numbered heads cut the same fields
+ * into three obvious moves — look, product, direction — so the form is scanned
+ * rather than waded through. Purely presentational: no state, no wrapping, so
+ * every field stays exactly where the multipart submit expects it. */
+function StepHead({ n, title, hint }: { n: number; title: string; hint?: string }) {
+  return (
+    <div className="ws-stephead">
+      <span className="ws-stepn" aria-hidden="true">{n}</span>
+      <b>{title}</b>
+      {hint ? <span className="ws-stephint">{hint}</span> : null}
+    </div>
+  );
+}
+
 export default function WebStudio() {
   const d = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -466,6 +480,7 @@ export default function WebStudio() {
         {tab === "video" && contentType && (
           <>
             <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ Content type</button>
+            <StepHead n={1} title="Pick the look" hint="who stars in it, and how it's shot" />
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
@@ -551,6 +566,7 @@ export default function WebStudio() {
         {tab === "image" && imageMode && (
           <>
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
+            <StepHead n={1} title="Pick the look" hint="the structure your ad is built on" />
             {imageMode === "product" && !service && (
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
@@ -612,6 +628,7 @@ export default function WebStudio() {
         {/* ---- Shared product fields + CTA ---- */}
         {cfgReady && (
           <>
+            <StepHead n={2} title="Your product" hint="what we're actually selling" />
             <div className="ws-lbl"><span>Product name</span>
               <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button>
             </div>
@@ -664,6 +681,7 @@ export default function WebStudio() {
               </>
             )}
 
+            <StepHead n={3} title={`Direction & ${verb.toLowerCase()}`} hint="leave it to EasyMode, or steer it" />
             {tab === "video" ? (
               <>
                 <div className="ws-lbl"><span>Prompting</span>
