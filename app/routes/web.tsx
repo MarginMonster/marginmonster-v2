@@ -517,6 +517,7 @@ const CSS = `
   .ws-stephead b{font-size:14.5px;}
   .ws-stephint{flex:1 0 100%;margin-left:36px;text-align:left;}
 }
+.ws-offernote{font-size:11.5px;line-height:1.5;color:var(--ink2);margin:6px 0 2px;}
 .ws-upsell b{font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);}
 .ws-upsell p{font-size:12.5px;color:var(--ink2);margin:6px 0 12px;}
 

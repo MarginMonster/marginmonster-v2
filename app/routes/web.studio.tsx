@@ -256,6 +256,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         styleMode: direction ? "scene" : "backdrop",
         templateKey: avatarId || service ? undefined : templateKey,
         formatKey: avatarId || service ? undefined : formatKey,
+        // Only a merchant-declared promotion ever puts an offer on an ad.
+        merchantOffer: ((form.get("merchantOffer") as string) || "").trim().slice(0, 40) || undefined,
         avatarId: service ? undefined : avatarId, avatarVariant,
         wear: !!avatarId && wear && !service,
         serviceMode: service, scene, prePaid: true,
@@ -858,6 +860,16 @@ export default function WebStudio() {
             )}
 
             <StepHead n={3} title={`Direction & ${verb.toLowerCase()}`} hint="leave it to EasyMode, or steer it" />
+            {tab === "image" && (
+              <>
+                <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
+                <input className="wb-in" name="merchantOffer" maxLength={40} placeholder="e.g. 20% off first order" />
+                <p className="ws-offernote">
+                  Only fill this in if you&rsquo;re <b>actually</b> running it — we never invent discounts, so
+                  offer-style ads sell on the product instead when this is blank.
+                </p>
+              </>
+            )}
             {tab === "video" ? (
               <>
                 <div className="ws-lbl"><span>Prompting</span>

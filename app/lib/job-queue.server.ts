@@ -260,7 +260,8 @@ async function runJob(
         payload.serviceMode === true,
         payload.styleMode === "scene" || payload.styleMode === "backdrop" ? payload.styleMode : undefined,
         typeof payload.templateKey === "string" ? payload.templateKey : undefined,
-        typeof payload.formatKey === "string" ? payload.formatKey : undefined
+        typeof payload.formatKey === "string" ? payload.formatKey : undefined,
+        typeof payload.merchantOffer === "string" ? payload.merchantOffer : undefined
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements

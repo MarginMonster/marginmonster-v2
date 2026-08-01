@@ -30,6 +30,7 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
       `headline: 3 to 7 words, a confident, witty or provocative STATEMENT (a period at the end is allowed and often stronger).`,
       `sub: MAX 8 words, one small supporting line that lands the benefit — or "" if the headline says it all.`,
       `cta: MAX 3 words (e.g. "Shop now", "Get yours", "Start free").`,
+      `NEVER invent a discount, percentage, sale, coupon or saving — we do not know whether this merchant is running one, and a made-up offer is a promise their shop never agreed to honour.`,
       `No quotes, emoji, or hashtags inside the values.`,
     ].filter(Boolean).join("\n");
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 160 });
@@ -112,6 +113,24 @@ async function bandLuma(bin: string, src: string, yFrac: number, hFrac: number):
   return m ? parseFloat(m[1]) : null;
 }
 
+/** Pixel width of a still. The text overlay sizes against it, and guessing
+ *  wrong slices the headline off the edge. Null when ffprobe can't read it —
+ *  callers fall back to the old 1024 assumption. */
+async function probeWidth(bin: string, file: string): Promise<number | null> {
+  try {
+    const { execFileSync } = await import("node:child_process");
+    const probe = bin.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace(/ffmpeg/i, "ffprobe"));
+    const out = execFileSync(probe, [
+      "-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=width", "-of", "csv=p=0", file,
+    ], { encoding: "utf8", timeout: 8000 }).trim();
+    const w = parseInt(out, 10);
+    return Number.isFinite(w) && w > 0 ? w : null;
+  } catch {
+    return null;
+  }
+}
+
 async function overlayAdText(dir: string, srcName: string, headline: string, cta: string, sub = ""): Promise<string | null> {
   const bin = ffmpegBin();
   if (!bin) return null;
@@ -175,7 +194,13 @@ async function overlayAdText(dir: string, srcName: string, headline: string, cta
   const longestChars = Math.max(line1.length, line2.length, 1);
   const longest = longestChars * (glyph / 0.62);
   const ladder = longest > 18 ? 58 : longest > 12 ? 72 : 84;
-  const hlSize = Math.min(ladder, Math.floor((1024 * 0.92) / (longestChars * glyph)));
+  // The clamp used to assume a 1024px canvas. Renders aren't always 1024 —
+  // a portrait frame is narrower, and there the clamp did nothing, so a long
+  // headline overflowed and drawtext's x=(w-text_w)/2 went NEGATIVE, slicing
+  // the first characters off the left edge ("CASE X12" arriving as "ASE X12").
+  // Measure the actual frame and clamp to that.
+  const canvasW = (await probeWidth(bin, src)) || 1024;
+  const hlSize = Math.min(ladder, Math.floor((canvasW * 0.92) / (longestChars * glyph)));
   const topY = 84;
   const line2Y = topY + Math.round(hlSize * 1.14);
   const subY = (line2 ? line2Y : topY) + Math.round(hlSize * 1.2);
@@ -643,7 +668,8 @@ async function formatCopy(
   productTitle: string,
   tone: string | undefined,
   direction: string | undefined,
-  contentLang?: string | null
+  contentLang?: string | null,
+  merchantOffer?: string | null
 ): Promise<Record<string, string> | null> {
   try {
     const prompt = [
@@ -652,7 +678,12 @@ async function formatCopy(
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
       `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
-      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a short offer like "20% OFF first order"; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere 2-sentence founder note ≤ 30 words with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 12-24 words, specific and funny, no hashtags; handle is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 4-8 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 4-8 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 8-16 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words; k1-k4 are lowercase relatable "that's me" moments of 3-6 words; f1-f3 are punchy truthful product facts of 3-7 words; am starts "Morning:" and pm starts "Night:", each ≤ 6 words after the colon; tq1-tq3 are mini review quotes of 3-6 words with tn1-tn3 as first name + last initial; pov starts "POV:" and is 5-9 words; b1-b3 are included-item lines of 2-5 words; word is ONE powerful word ending in a period; line1/line2 are warm chalkboard lines of 3-6 words; bubble is the product playfully "speaking" in 2-6 words; v1/v2 are REAL product spec numbers with l1/l2 as their 2-4 word labels — never invented customer stats; origin is one truthful craft or materials line of 5-10 words (no fake place claims); tagline is a witty 4-8 word line; pair1/pair2 are short names for the two paired items; item is the product's short name, price a plausible price like "$29", memo a lowercase 3-5 word aside; sw1-sw4 are evocative one-or-two-word color names; handle is the brand name in caps, no @ and no invented engagement numbers; caption for the breakout format is a scroll-stopping 6-14 word line.`,
+      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 10-18 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions; offer is a benefit or invitation flash of 2-4 words ("Own the set", "New arrival") and MUST NOT contain a number, a percentage, a currency amount, or the words sale/off/free/save/deal/discount; caption is a lowercase social caption of 8-16 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere 2-sentence founder note ≤ 30 words with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 12-24 words, specific and funny, no hashtags; handle is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 4-8 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 4-8 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 8-16 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words; k1-k4 are lowercase relatable "that's me" moments of 3-6 words; f1-f3 are punchy truthful product facts of 3-7 words; am starts "Morning:" and pm starts "Night:", each ≤ 6 words after the colon; tq1-tq3 are mini review quotes of 3-6 words with tn1-tn3 as first name + last initial; pov starts "POV:" and is 5-9 words; b1-b3 are included-item lines of 2-5 words; word is ONE powerful word ending in a period; line1/line2 are warm chalkboard lines of 3-6 words; bubble is the product playfully "speaking" in 2-6 words; v1/v2 are REAL product spec numbers with l1/l2 as their 2-4 word labels — never invented customer stats; origin is one truthful craft or materials line of 5-10 words (no fake place claims); tagline is a witty 4-8 word line; pair1/pair2 are short names for the two paired items; item is the product's short name, price a plausible price like "$29", memo a lowercase 3-5 word aside; sw1-sw4 are evocative one-or-two-word color names; handle is the brand name in caps, no @ and no invented engagement numbers; caption for the breakout format is a scroll-stopping 6-14 word line.`,
+      // The merchant is the ONLY source of a discount. Anything we invent is a
+      // promise their shop never agreed to honour.
+      merchantOffer
+        ? `The merchant IS running this promotion, word for word: "${merchantOffer.slice(0, 60)}". Use it verbatim wherever an offer appears.`
+        : `The merchant is NOT running any promotion. NEVER invent a discount, percentage, sale, coupon, price cut, free shipping or any saving. Sell the product on what it IS.`,
       `No emoji, no hashtags, no quotes inside values.`,
     ].filter(Boolean).join("\n");
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 300 });
@@ -664,6 +695,13 @@ async function formatCopy(
       const v = typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "").trim() : "";
       if (!v) return null;
       out[f] = v;
+    }
+    // Belt and braces on the one field that can promise the merchant's money
+    // away: their exact words win, and any invented discount that survived the
+    // instruction gets scrubbed rather than shipped.
+    if (out.offer) {
+      const invented = /\d|%|\$|\b(off|sale|free|save|deal|discount|coupon)\b/i.test(out.offer);
+      out.offer = merchantOffer ? merchantOffer.slice(0, 40) : invented ? "Own the set" : out.offer;
     }
     return out;
   } catch { return null; }
@@ -1039,7 +1077,10 @@ export async function generateImageAd(
   serviceMode?: boolean,
   styleMode?: "backdrop" | "scene",
   templateKey?: string,
-  formatKey?: string
+  formatKey?: string,
+  /** A promotion the merchant says they ARE running. Nothing else may put an
+   *  offer on an ad — see formatCopy. */
+  merchantOffer?: string
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -1161,8 +1202,8 @@ export async function generateImageAd(
           // The merchant PICKED this format. Losing it silently and shipping a
           // generic scene instead is the worst possible outcome, so the copy
           // step gets a second chance and every fallthrough is recorded.
-          let copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang);
-          if (!copy) copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang);
+          let copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang, merchantOffer);
+          if (!copy) copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang, merchantOffer);
           if (!copy) {
             genMeta.formatFallback = "copy-failed";
             artLog("image-ad", `format ${f.key}: copy generation failed twice — falling back to a scene ad`);

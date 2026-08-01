@@ -18,6 +18,28 @@ import { productLinkFor } from "../lib/catalog-import.server";
 
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
+/** Human name for the recipe behind an asset — the ad format, backdrop
+ *  template, cartoon style or video style it was built with. metaJson carries
+ *  the picked keys; bodyJson's `method` records what the pipeline ACTUALLY
+ *  used after any fallback, which is the honest answer. */
+function recipeLabel(metaJson: string | null, bodyJson: string | null): string | null {
+  let meta: Record<string, unknown> = {};
+  let body: Record<string, unknown> = {};
+  try { meta = JSON.parse(metaJson || "{}"); } catch { /* ignore */ }
+  try { body = JSON.parse(bodyJson || "{}"); } catch { /* ignore */ }
+  const pretty = (k: string) => k.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const method = typeof body.method === "string" ? body.method : "";
+  const m = method.match(/^(format|template|template-staged|template-fallback):(.+)$/);
+  if (m) return `${pretty(m[2])}${m[1].startsWith("template") ? " backdrop" : ""}`;
+  if (typeof meta.formatKey === "string" && meta.formatKey) return pretty(meta.formatKey);
+  if (typeof meta.templateKey === "string" && meta.templateKey) return `${pretty(meta.templateKey)} backdrop`;
+  if (typeof meta.cartoonStyle === "string" && meta.cartoonStyle) return pretty(meta.cartoonStyle);
+  if (typeof meta.style === "string" && meta.style) return pretty(meta.style);
+  if (method === "presenter") return "With presenter";
+  if (method) return pretty(method);
+  return null;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const assets = await db.asset.findMany({
@@ -77,6 +99,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         isVideo: a.type === "VIDEO_AD",
         snippet: text ? text.slice(0, 140) : undefined,
         html: a.type === "BLOG_POST" && typeof body.html === "string" ? body.html : undefined,
+        // Which recipe built this? Merchants remix and compare, and "the one
+        // that worked" is unfindable if the ad won't say what it was.
+        recipe: recipeLabel(a.metaJson, a.bodyJson),
         when: a.createdAt.toISOString(),
         status: a.status,
         daysLeft,
@@ -273,6 +298,8 @@ const WA_CSS = `
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
 .wa-cd{position:absolute;top:8px;left:8px;background:rgba(20,32,26,.8);color:#E7C879;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.02em;}
 .wa-cd.urgent{background:#8C2E1B;color:#fff;}
+.wa-recipe{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.02em;
+  background:#F3F1E4;color:#6B5312;border:1px solid rgba(176,133,38,.32);}
 .wa-chip{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
 .wa-chip.new{background:#FBF4E2;color:#8a6207;border:1px solid #E7C879;}
 .wa-chip.kept{background:#EAF6EF;color:#0C7A46;border:1px solid #BFE2CD;}
@@ -605,6 +632,7 @@ export default function WebArchive() {
             <div className="wa-vmeta">
               <div className="wa-vtitle">
                 <b>{viewer.title}</b>
+                {viewer.recipe && <span className="wa-recipe" title="The recipe this ad was built with">🎛 {viewer.recipe}</span>}
                 {posted ? <span className="wa-vok">Posted to {posted} ✓</span>
                   : err ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
