@@ -238,3 +238,50 @@ export async function creditStripePack(accountId: string, tokens: number): Promi
   if (!shopId || tokens <= 0) return;
   await db.plan.updateMany({ where: { shopId }, data: { tokensExtra: { increment: tokens } } });
 }
+
+/** End a free trial NOW, at the merchant's request.
+ *
+ *  A trial is capped at TRIAL_TOKEN_CAP tokens. Burn through those on day one
+ *  and the old behaviour was to sit idle until day seven — a merchant who
+ *  WANTS to start paying being told to wait. This bills them immediately:
+ *  Stripe closes the trial and raises the first invoice, and we drop the local
+ *  trial flag so the full allowance (and any purchased top-up, which the trial
+ *  holds back) unlocks the moment they land back on the page.
+ *
+ *  Returns a human-readable reason on failure — never throws at the caller. */
+export async function endTrialNow(accountId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!stripeEnabled()) return { ok: false, error: "Billing isn't configured on this server yet." };
+  const account = await db.account.findUnique({ where: { id: accountId } });
+  if (!account?.stripeSubId) {
+    return { ok: false, error: "No live subscription on this account — pick a plan first." };
+  }
+  const conn = await db.connection.findFirst({ where: { accountId, kind: "web" } });
+  if (!conn) return { ok: false, error: "This account isn't linked to a workspace yet." };
+
+  try {
+    // trial_end=now closes the trial and invoices immediately. Stripe's
+    // customer.subscription.updated webhook follows, but we don't wait on it:
+    // the merchant is standing on the page expecting their tokens.
+    await stripePost(`/subscriptions/${account.stripeSubId}`, {
+      trial_end: "now",
+      proration_behavior: "none",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[stripe] end-trial failed:", msg.slice(0, 200));
+    // Card declines are the common case and the merchant can act on them.
+    return {
+      ok: false,
+      error: /card|declin|payment|insufficient/i.test(msg)
+        ? "Your card was declined — update it and try again."
+        : "Couldn't start the plan just now. Try again in a moment.",
+    };
+  }
+
+  await db.plan.updateMany({
+    where: { shopId: conn.externalId },
+    data: { trialEndsAt: null, periodStart: new Date(), tokensUsed: 0, active: true },
+  });
+  console.log(`[stripe] trial ended early by request for account ${accountId}`);
+  return { ok: true };
+}

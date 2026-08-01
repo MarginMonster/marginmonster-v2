@@ -11,7 +11,7 @@ import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator
 import { useEffect, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
-import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
+import { planTrialing, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
@@ -87,6 +87,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Real start time, so the elapsed counter survives a reload instead of
     // restarting at zero and making a long import look stuck.
     catalogSyncStartedAt: syncing?.createdAt.toISOString() || null,
+    // A trial that's out of tokens shouldn't strand the merchant until day 7.
+    trialing: planTrialing(shop.activePlan),
     hasBrand: !!shop.brandProfile,
     hasPlan: !!shop.activePlan?.active,
     tokens: tokensRemainingLive(shop.activePlan),
@@ -108,6 +110,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const id = ((form.get("avatarId") as string) || "").trim() || null;
     await db.shop.update({ where: { id: shop.id }, data: { brandAvatarId: id, brandAvatarVariant: 0 } });
     return json({ brandFaceSet: true });
+  }
+
+  // Out of trial tokens and ready to go? Bill now rather than making them wait
+  // out the clock. Stripe closes the trial and raises the first invoice.
+  if (intent === "endTrial") {
+    const { endTrialNow } = await import("../lib/stripe.server");
+    const { account } = await requireWebIdentity(request);
+    const r = await endTrialNow(account.id);
+    return r.ok
+      ? json({ trialEnded: "You're on the full plan — your whole allowance just unlocked. 🚀" })
+      : json({ error: r.error });
   }
 
   // Mirror the merchant's whole storefront so they can pick from a grid instead
@@ -902,6 +915,22 @@ export default function WebStudio() {
             <div className="ws-tok"><span className="tt">This {noun}</span><span className="tb"><b>{baseCost}</b><i>tokens</i></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
+            {/* The trial cap is the ONE spend failure the merchant can clear
+                themselves, so the way out sits on the message that blocked
+                them rather than three taps away on the plans page. */}
+            {err && d.trialing && /free trial/i.test(err) && (
+              <div className="ws-trialout">
+                <b>Don&rsquo;t want to wait?</b>
+                <p>Start your plan now and your full monthly allowance unlocks immediately — your card is charged today instead of on day 7.</p>
+                <button type="button" className="wb-btn" disabled={busy}
+                  onClick={() => submit({ intent: "endTrial" }, { method: "post" })}>
+                  Start my plan now
+                </button>
+              </div>
+            )}
+            {(actionData as { trialEnded?: string } | null)?.trialEnded && (
+              <div className="wb-ok" style={{ marginTop: 8 }}>{(actionData as { trialEnded?: string }).trialEnded}</div>
+            )}
             <div style={{ marginTop: 10 }}>
               <button className="wb-btn" name="intent" value={tab} disabled={ctaDisabled}>
                 {busy ? "Sending to the studio…" : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`}

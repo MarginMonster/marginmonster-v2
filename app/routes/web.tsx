@@ -274,8 +274,24 @@ const CSS = `
 .wb-lbl{display:block;font-weight:700;font-size:12.5px;margin:14px 0 5px;color:var(--ink);}
 .wb-in,.wb-sel,.wb-ta{width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:#fff;font:inherit;font-size:14px;color:var(--ink);}
 .wb-ta{min-height:76px;resize:vertical}
-.wb-btn{display:inline-block;border:0;cursor:pointer;text-decoration:none;text-align:center;font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:#fff;padding:12px 24px;border-radius:12px;background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 12px rgba(12,122,70,.28);}
+/* Green buttons get the app's treatment: a gold hairline ruled inside the
+   edge, and the engine-turned rosette turning slowly behind the label where it
+   bleeds off the right. isolation + z-index:-1 keeps the rosette above the
+   button's own gradient but under the text. */
+.wb-btn{position:relative;isolation:isolate;overflow:hidden;display:inline-block;border:0;cursor:pointer;text-decoration:none;text-align:center;
+  font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:#fff;padding:12px 24px;border-radius:12px;
+  background:linear-gradient(165deg,#12A85E,#0B6B3E);
+  box-shadow:0 4px 12px rgba(12,122,70,.28),inset 0 0 0 1px rgba(231,200,121,.34);}
+.wb-btn::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:8px;pointer-events:none;}
+/* Pushed well past the edge: parked closer in, the rosette's hollow centre
+   sits mid-button and reads as a dark disc rather than etching. */
+.wb-btn::after{content:"";position:absolute;z-index:-1;top:50%;right:-58px;width:124px;height:124px;margin-top:-62px;pointer-events:none;
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.2;animation:wbDrift 60s linear infinite;}
 .wb-btn:hover{filter:brightness(1.06)}
+/* Ghost + disabled buttons aren't gold-rule surfaces — strip the treatment. */
+.wb-btn.ghost::before,.wb-btn.ghost::after{display:none}
+.wb-btn[disabled]::after{opacity:.14}
+@media (prefers-reduced-motion:reduce){.wb-btn::after{animation:none}}
 .wb-btn.gold{background:linear-gradient(165deg,#C98F12,#8a6207);box-shadow:0 4px 12px rgba(176,133,38,.3);}
 .wb-btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:none;}
 .wb-btn[disabled]{opacity:.5;cursor:not-allowed}
@@ -413,6 +429,14 @@ const CSS = `
 .ws-commercial input{accent-color:#12A85E;width:16px;height:16px;flex:0 0 auto;}
 .ws-commercial b{color:var(--ink);}
 .ws-upsell{margin-top:14px;padding:16px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:center;}
+/* Trial cap escape hatch. Sits under the red spend error, so it reads as the
+   answer to it rather than another upsell. */
+.ws-trialout{margin-top:10px;padding:14px 16px;border-radius:14px;
+  background:linear-gradient(168deg,#FBF4E2,#F5ECD4);border:1px solid rgba(176,133,38,.42);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);}
+.ws-trialout b{display:block;font-family:Poppins,sans-serif;font-size:14px;color:#3A2A05;margin-bottom:4px;}
+.ws-trialout p{margin:0 0 11px;font-size:12.5px;line-height:1.5;color:#6B5312;}
+
 /* Catalogue import, in progress. Dark green panel on purpose: the gold cut of
    the rosette is invisible on cream, and this is the one place we badly need
    "it's alive" to read at a glance. */
