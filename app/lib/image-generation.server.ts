@@ -392,6 +392,44 @@ async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolea
   }
 }
 
+/** Vision gate for a presenter-holding still. This rung shipped un-checked,
+ *  which is why a 6-box display case arrived palm-sized with two boxes in it:
+ *  the composer both SHRANK the product and simplified it, and nothing looked.
+ *  Judges the two failures that actually happen here — wrong scale against the
+ *  body, and a product that isn't the same product any more. */
+async function qaPresenterHold(
+  productUrl: string,
+  genUrl: string,
+  scalePhrase: string | undefined
+): Promise<{ pass: boolean; reason: string }> {
+  try {
+    const raw = await anthropicVision(
+      [
+        `Image 1 is the REAL product photo. Image 2 is an AI-composed shot of a presenter holding that product.`,
+        `Return ONLY JSON: {"pass": true|false, "reason": "short"}.`,
+        scalePhrase
+          ? `The product's real size: ${scalePhrase}`
+          : `Judge scale by what the product obviously is.`,
+        `FAIL if ANY of these:`,
+        `- the product is at the WRONG SIZE against the person (a case or box shrunk to palm-size is the most common failure);`,
+        `- the product was SIMPLIFIED — fewer visible units, boxes, items or panels than the real photo shows;`,
+        `- shape, colors, logos or packaging text changed, or it became a different object;`,
+        `- the hands are deformed, have extra/missing fingers, or don't plausibly hold it.`,
+        `Otherwise PASS. Judge fidelity and scale only — not lighting or taste.`,
+      ].filter(Boolean).join("\n"),
+      [productUrl, genUrl],
+      { maxTokens: 200 }
+    );
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return { pass: true, reason: "qa-unparseable" };
+    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
+    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 200) };
+  } catch (e) {
+    // Never block a paid render on a QA outage.
+    return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}` };
+  }
+}
+
 /** Which mode fits a style when the caller didn't say: integrated scenes need
  *  generative placement; display/backdrop looks get the photo-true composite. */
 function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
@@ -1099,12 +1137,32 @@ export async function generateImageAd(
         const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
         const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
         const scaleHint = scaleFromChoice(productSize) || (await inferProductScale(productTitle, stylePrompt));
-        const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1, wear ? "wear" : "hold", scene, scaleHint?.phrase);
-        let composed: string | undefined;
-        for (let i = 0; i < 45; i++) {
-          await new Promise((r) => setTimeout(r, 2000));
-          const p = await pollCompose(q.statusUrl, q.responseUrl);
-          if (p.done) { composed = p.urls?.[0]; break; }
+        const runCompose = async (hint: string | undefined): Promise<string | undefined> => {
+          const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1, wear ? "wear" : "hold", scene, hint);
+          for (let i = 0; i < 45; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            const p = await pollCompose(q.statusUrl, q.responseUrl);
+            if (p.done) return p.urls?.[0];
+          }
+          return undefined;
+        };
+        let composed = await runCompose(scaleHint?.phrase);
+        // ONE retry when the gate says the product shrank or got simplified.
+        // The retry shouts the requirement rather than repeating it — a second
+        // identical attempt tends to reproduce the same mistake.
+        if (composed && !wear) {
+          const qa = await qaPresenterHold(productImageUrl, composed, scaleHint?.phrase);
+          if (!qa.pass) {
+            artLog("image-ad", `presenter hold rejected (${qa.reason}) — recomposing`);
+            const louder = `${scaleHint?.phrase || ""} CRITICAL: the previous attempt failed because "${qa.reason}". The product must appear at its stated real-world size and show EVERY unit, box and panel visible in the reference photo — do not simplify it, do not reduce the number of items, and do not shrink it to fit a hand.`.trim();
+            const second = await runCompose(louder);
+            if (second) {
+              const qa2 = await qaPresenterHold(productImageUrl, second, scaleHint?.phrase);
+              // Keep the retry only if it's actually better; a worse second
+              // take shouldn't replace a merely-imperfect first one.
+              if (qa2.pass) composed = second;
+            }
+          }
         }
         if (composed) {
           let localUrl = "";
