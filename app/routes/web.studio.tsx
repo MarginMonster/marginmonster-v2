@@ -20,6 +20,7 @@ import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
+import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
@@ -63,7 +64,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
+  // The merchant's own catalogue, mirrored by the importer. Present = the
+  // Studio can offer a picker instead of asking for a link every single time.
+  const [catalog, catalogCount, syncing] = await Promise.all([
+    db.catalogProduct.findMany({
+      where: { shopId: shop.id },
+      orderBy: { position: "asc" },
+      take: 400,
+      select: { id: true, title: true, url: true, imageUrl: true, priceText: true },
+    }),
+    db.catalogProduct.count({ where: { shopId: shop.id } }),
+    db.job.count({ where: { shopId: shop.id, type: "IMPORT_CATALOG", status: { in: ["PENDING", "IN_PROGRESS"] } } }),
+  ]);
   return json({
+    catalog,
+    catalogCount,
+    catalogSyncing: syncing > 0,
     hasBrand: !!shop.brandProfile,
     hasPlan: !!shop.activePlan?.active,
     tokens: tokensRemainingLive(shop.activePlan),
@@ -85,6 +101,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const id = ((form.get("avatarId") as string) || "").trim() || null;
     await db.shop.update({ where: { id: shop.id }, data: { brandAvatarId: id, brandAvatarVariant: 0 } });
     return json({ brandFaceSet: true });
+  }
+
+  // Mirror the merchant's whole storefront so they can pick from a grid instead
+  // of pasting a link every time. Queued, never inline: a sitemap-crawled store
+  // is hundreds of fetches against their own server.
+  if (intent === "importCatalog") {
+    const storeUrl = ((form.get("storeUrl") as string) || "").trim();
+    try {
+      storeOrigin(storeUrl); // validates + blocks private hosts before queueing
+    } catch (e) {
+      return json({ catalogError: e instanceof Error ? e.message : "That doesn't look like a web address." });
+    }
+    const already = await db.job.count({
+      where: { shopId: shop.id, type: "IMPORT_CATALOG", status: { in: ["PENDING", "IN_PROGRESS"] } },
+    });
+    if (already > 0) return json({ catalogQueued: true });
+    await enqueueJob(shop.id, "IMPORT_CATALOG", { storeUrl, cap: CATALOG_CAP });
+    await db.shop.update({ where: { id: shop.id }, data: { storeUrl } }).catch(() => { /* column is optional */ });
+    return json({ catalogQueued: true });
   }
 
   // Import a product by URL — scrapes any storefront's page for a title +
@@ -348,6 +383,12 @@ export default function WebStudio() {
   const wear = wearOverride === null ? apparel : wearOverride;
   // Import-by-URL (works for any storefront).
   const [showImport, setShowImport] = useState(false);
+  // Catalogue picker: the chosen product's URL rides along so the social
+  // post can deep-link shoppers straight to the buy page.
+  const [pickedUrl, setPickedUrl] = useState("");
+  const [catQuery, setCatQuery] = useState("");
+  const [showConnect, setShowConnect] = useState(false);
+  const [storeInput, setStoreInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
   // Last-used product memory — offer a one-tap refill next visit.
   const [lastProd, setLastProd] = useState<{ title: string; image: string } | null>(null);
@@ -629,6 +670,75 @@ export default function WebStudio() {
         {cfgReady && (
           <>
             <StepHead n={2} title="Your product" hint="what we're actually selling" />
+
+            {/* ---- Catalogue picker ----
+                Pasting a link and retyping the title on every generation is a
+                tax the merchant pays forever. Their storefront gets mirrored
+                once, and from then on this is two taps. */}
+            {d.catalog.length > 0 ? (
+              <>
+                <div className="ws-lbl">
+                  <span>Pick from your store</span>
+                  <span className="ws-opt">{d.catalogCount} product{d.catalogCount === 1 ? "" : "s"}</span>
+                </div>
+                {d.catalog.length > 8 && (
+                  <input className="wb-in ws-catsearch" value={catQuery} placeholder="Search your catalogue…"
+                    onChange={(e) => setCatQuery(e.target.value)} />
+                )}
+                <div className="ws-catgrid">
+                  {d.catalog
+                    .filter((c) => !catQuery.trim() || c.title.toLowerCase().includes(catQuery.trim().toLowerCase()))
+                    .slice(0, 60)
+                    .map((c) => (
+                      <button type="button" key={c.id}
+                        className={`ws-cat${productTitle === c.title ? " sel" : ""}`}
+                        title={c.title}
+                        onClick={() => {
+                          setProductTitle(c.title);
+                          setImageUrl(c.imageUrl || "");
+                          setPickedUrl(c.url);
+                        }}>
+                        <span className="ws-cat-img" style={c.imageUrl ? { backgroundImage: `url(${c.imageUrl})` } : undefined}>
+                          {!c.imageUrl && <i>🖼</i>}
+                          {productTitle === c.title && <span className="ws-chk">✓</span>}
+                        </span>
+                        <b>{c.title}</b>
+                        {c.priceText && <span className="ws-cat-p">{c.priceText}</span>}
+                      </button>
+                    ))}
+                </div>
+                <div className="ws-catfoot">
+                  {d.catalogSyncing
+                    ? <span className="ws-opt">Syncing your store…</span>
+                    : <button type="button" className="ws-addurl" onClick={() => setShowConnect((v) => !v)}>
+                        {showConnect ? "Cancel" : "↻ Refresh catalogue"}
+                      </button>}
+                </div>
+              </>
+            ) : (
+              <div className="ws-connect">
+                <b>📦 Bring your whole store in</b>
+                <p>Paste your store address once and we&rsquo;ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.</p>
+                {d.catalogSyncing
+                  ? <p className="ws-opt">Pulling your products in now — this page updates itself.</p>
+                  : <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>}
+              </div>
+            )}
+            {showConnect && !d.catalogSyncing && (
+              <div className="ws-import">
+                <input className="wb-in" type="url" value={storeInput} placeholder="yourstore.com"
+                  onChange={(e) => setStoreInput(e.target.value)} />
+                <button type="button" className="wb-btn" disabled={busy || !storeInput.trim()}
+                  onClick={() => { submit({ intent: "importCatalog", storeUrl: storeInput.trim() }, { method: "post" }); setShowConnect(false); }}>
+                  Pull my products in
+                </button>
+              </div>
+            )}
+            {(actionData as { catalogError?: string } | null)?.catalogError && (
+              <div className="wb-err" style={{ marginTop: 8 }}>{(actionData as { catalogError?: string }).catalogError}</div>
+            )}
+            {pickedUrl ? <input type="hidden" name="productUrl" value={pickedUrl} /> : null}
+
             <div className="ws-lbl"><span>Product name</span>
               <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button>
             </div>
@@ -645,7 +755,7 @@ export default function WebStudio() {
                 ↺ Use last: {lastProd.title}
               </button>
             )}
-            <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => setProductTitle(e.target.value)} placeholder="Midnight Roast — whole bean coffee" />
+            <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder="Midnight Roast — whole bean coffee" />
             {tab !== "blog" && (
               <>
                 <div className="ws-lbl">Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></div>

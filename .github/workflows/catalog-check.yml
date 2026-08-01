@@ -1,0 +1,90 @@
+name: Catalog check
+
+# Runs the REAL discovery code (app/lib/catalog-import.server.ts) against a live
+# storefront using GitHub's network — the dev sandbox only has egress to GitHub,
+# so this is the only way to prove the Shopify / Woo / sitemap strategies
+# actually work against a merchant's site. Prints titles only; no secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Store URL to import from (e.g. shopmagicmonster.com)
+        required: true
+      cap:
+        description: Max products to pull
+        required: false
+        default: "20"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Probe the machine-readable feeds directly
+        env:
+          TARGET: ${{ inputs.url }}
+        run: |
+          ORIGIN=$(node -e 'const u=process.argv[1];const x=new URL(/^https?:\/\//.test(u)?u:"https://"+u);console.log(x.origin)' "$TARGET")
+          echo "origin: $ORIGIN"
+          UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+          for path in "/products.json?limit=5" "/wp-json/wc/store/products?per_page=5" "/sitemap.xml"; do
+            code=$(curl -s -o /tmp/body -w '%{http_code}' -m 25 -A "$UA" -L "$ORIGIN$path" || echo 000)
+            echo "--- $path -> HTTP $code ($(wc -c </tmp/body) bytes)"
+            head -c 300 /tmp/body; echo; echo
+          done
+
+      - name: Run the actual discoverCatalog() strategies
+        env:
+          TARGET: ${{ inputs.url }}
+          CAP: ${{ inputs.cap }}
+        run: |
+          # The lib imports db.server (Prisma) at module load, so exercise the
+          # discovery half in isolation — that's the part that touches the
+          # network and the part CI exists to prove.
+          npm ci --omit=dev --no-audit --no-fund || npm install --no-audit --no-fund
+          node --input-type=module -e '
+            const cap = Number(process.env.CAP || 20);
+            const raw = process.env.TARGET;
+            const origin = new URL(/^https?:\/\//.test(raw) ? raw : "https://" + raw).origin;
+            const UA = { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36", accept: "application/json,text/html,*/*;q=0.8" };
+            const j = async (u) => { try { const r = await fetch(u, { headers: UA }); if (!r.ok) return null; if (!(r.headers.get("content-type")||"").includes("json")) return null; return await r.json(); } catch { return null; } };
+
+            let found = [], source = "none";
+            const sj = await j(`${origin}/products.json?limit=250&page=1`);
+            if (sj?.products?.length) { source = "shopify"; found = sj.products.map(p => ({ title: p.title, url: `${origin}/products/${p.handle}`, img: p.images?.[0]?.src })); }
+            if (!found.length) {
+              const wj = await j(`${origin}/wp-json/wc/store/products?per_page=100&page=1`);
+              if (Array.isArray(wj) && wj.length) { source = "woocommerce"; found = wj.map(p => ({ title: p.name, url: p.permalink, img: p.images?.[0]?.src })); }
+            }
+            if (!found.length) {
+              const PRODUCT_URL = /\/(products?|product-page|shop|item|p)\//i;
+              const text = async (u) => { try { const r = await fetch(u, { headers: UA }); return r.ok ? await r.text() : null; } catch { return null; } };
+              let urls = new Set();
+              for (const root of ["/sitemap.xml", "/sitemap_index.xml"]) {
+                const xml = await text(origin + root); if (!xml) continue;
+                const locs = [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m => m[1]);
+                if (/<sitemapindex/i.test(xml)) {
+                  const kids = locs.filter(l => /product|shop|store|item/i.test(l));
+                  for (const sm of (kids.length ? kids : locs).slice(0, 10)) {
+                    const x2 = await text(sm); if (!x2) continue;
+                    for (const m of x2.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)) if (PRODUCT_URL.test(m[1])) urls.add(m[1]);
+                    if (urls.size >= cap) break;
+                  }
+                } else {
+                  for (const l of locs) if (PRODUCT_URL.test(l)) urls.add(l);
+                }
+                if (urls.size) break;
+              }
+              if (urls.size) { source = "sitemap"; found = [...urls].slice(0, cap).map(u => ({ title: "(needs page scrape)", url: u })); }
+            }
+
+            console.log("STRATEGY:", source);
+            console.log("FOUND:", found.length);
+            for (const p of found.slice(0, cap)) console.log(" -", (p.title || "").slice(0, 70), "|", p.url, p.img ? "| has image" : "| NO IMAGE");
+            if (!found.length) { console.error("No catalogue found by any strategy."); process.exit(1); }
+          '

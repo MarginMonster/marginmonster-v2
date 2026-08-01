@@ -413,6 +413,31 @@ const CSS = `
 .ws-commercial input{accent-color:#12A85E;width:16px;height:16px;flex:0 0 auto;}
 .ws-commercial b{color:var(--ink);}
 .ws-upsell{margin-top:14px;padding:16px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:center;}
+/* ---- Catalogue picker: the merchant's own storefront, mirrored ---- */
+.ws-catsearch{margin-bottom:10px;}
+.ws-catgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;max-height:340px;overflow-y:auto;
+  overscroll-behavior:contain;padding:2px 6px 26px 2px;
+  -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);}
+.ws-catgrid::-webkit-scrollbar{width:8px}
+.ws-catgrid::-webkit-scrollbar-thumb{background:#BFDCCB;border-radius:99px}
+.ws-cat{position:relative;text-align:left;border:1px solid var(--line2);border-radius:13px;background:#fff;padding:0 0 8px;
+  cursor:pointer;overflow:hidden;transition:transform .12s,border-color .12s,box-shadow .12s;font:inherit;color:inherit;}
+.ws-cat:hover{transform:translateY(-2px);border-color:var(--green2);box-shadow:0 8px 20px rgba(12,122,70,.12);}
+.ws-cat.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E,0 6px 16px rgba(12,122,70,.16);}
+.ws-cat-img{position:relative;display:grid;place-items:center;aspect-ratio:1/1;background:#F2F0E6 center/cover no-repeat;font-size:22px;color:#B6B0A0;}
+.ws-cat b{display:block;padding:7px 9px 0;font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;line-height:1.3;color:var(--ink);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.ws-cat-p{display:block;padding:2px 9px 0;font-size:11px;font-weight:700;color:var(--gold-deep);}
+.ws-catfoot{display:flex;justify-content:flex-end;margin:-14px 0 4px;}
+/* First run: no catalogue yet, so sell the idea before asking for the URL. */
+.ws-connect{border:1px dashed rgba(176,133,38,.55);border-radius:14px;padding:15px 16px;background:rgba(231,200,121,.08);}
+.ws-connect b{display:block;font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);margin-bottom:5px;}
+.ws-connect p{margin:0 0 11px;font-size:12.5px;line-height:1.5;color:var(--ink2);}
+@media(max-width:620px){
+  .ws-catgrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:300px;}
+  .ws-cat b{font-size:10.5px;padding:6px 7px 0;}
+  .ws-cat-p{font-size:10px;padding:1px 7px 0;}
+}
 /* Numbered step heads — the rule above each one is what actually segregates
    the form; the badge tells you how far in you are. */
 .ws-stephead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:26px 0 14px;padding-top:20px;border-top:1px solid var(--line2);}

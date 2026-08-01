@@ -42,9 +42,9 @@ model Account {
 }
 
 model Connection {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   accountId  String
-  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   kind       String // "web" | "shopify" | "ios" | "android"
   externalId String // web: the Shop.id · shopify: the myshopify domain
   createdAt  DateTime @default(now())
@@ -70,17 +70,17 @@ model Shop {
 
   // Player progression — the arcade XP/level system. XP is awarded server-side
   // for meaningful outcomes (forge, apply, token spend…); level-ups gift tokens.
-  xp           Int @default(0)
-  level        Int @default(1)
-  forgedCount  Int @default(0) // lifetime listings forged
-  appliedCount Int @default(0) // lifetime listings applied to the store
-  tokensSpent  Int @default(0) // lifetime tokens spent
+  xp                 Int       @default(0)
+  level              Int       @default(1)
+  forgedCount        Int       @default(0) // lifetime listings forged
+  appliedCount       Int       @default(0) // lifetime listings applied to the store
+  tokensSpent        Int       @default(0) // lifetime tokens spent
   // one-shot flash for the global level-up popup: {"level":n,"gift":n}
-  pendingLevelUp String?
+  pendingLevelUp     String?
   // Brand Face — the merchant's signature presenter (avatars.ts id + outfit),
   // pre-cast on every Video Studio visit for cross-campaign consistency
   brandAvatarId      String?
-  brandAvatarVariant Int     @default(0)
+  brandAvatarVariant Int       @default(0)
   // Language the AI generates in (scripts, captions, lyrics, articles).
   // null = not chosen yet: web signups seed it from the landing language,
   // Shopify shops auto-detect once from the store's primary locale.
@@ -88,40 +88,43 @@ model Shop {
   // Companion — the merchant's chosen chibi partner (companions.ts id, or
   // "custom" with the forged art stored inline as base64 PNGs; disk on Render
   // is ephemeral so custom art lives in the DB until the R2/S3 track)
-  companionId    String?
-  companionName  String?
-  companionArt   String? // custom base frame (base64 png)
-  companionArtB  String? // custom blink frame
-  companionArtC  String? // custom cheer frame
+  companionId        String?
+  companionName      String?
+  companionArt       String? // custom base frame (base64 png)
+  companionArtB      String? // custom blink frame
+  companionArtC      String? // custom cheer frame
   // Social auto-posting via the upload-post aggregator (v1 posting backend;
   // provider-swappable). socialProfileKey = the shop's provider profile id;
   // socialsJson = cached list of platforms the merchant linked
-  socialProfileKey String?
-  socialsJson      String?
+  socialProfileKey   String?
+  socialsJson        String?
   // Cached profile analytics per linked platform (followers, reach, views,
   // likes, comments, shares, saves) + fetchedAt — refreshed hourly by the
   // worker from the provider's analytics API. Powers the organic Results view.
-  socialStatsJson  String?
+  socialStatsJson    String?
   // Growth plumbing: when we fired the in-app App Store review request (once,
   // after the first real win) and onboarding first-content + referral state.
-  reviewAskedAt    DateTime?
-  onboardKickAt    DateTime?
-  referralCode     String?   @unique
-  referredBy       String?   // referralCode of the shop that referred this one
-  referralCreditAt DateTime? // when we granted the referrer's reward
-  lastDigestAt     DateTime? // last monthly "here's what we made you" digest
-  contactEmail     String?   // store's own contact email (for the digest)
+  reviewAskedAt      DateTime?
+  onboardKickAt      DateTime?
+  referralCode       String?   @unique
+  referredBy         String? // referralCode of the shop that referred this one
+  referralCreditAt   DateTime? // when we granted the referrer's reward
+  lastDigestAt       DateTime? // last monthly "here's what we made you" digest
+  contactEmail       String? // store's own contact email (for the digest)
 
-  brandProfile   BrandProfile?
-  activePlan     Plan?
-  assets         Asset[]
-  jobs           Job[]
-  adAccounts     AdAccount[]
-  campaigns      Campaign[]
-  achievements   ShopAchievement[]
-  landingPages   LandingPage[]
-  questlines     Questline[]
-  tokenPurchases TokenPurchase[]
+  brandProfile       BrandProfile?
+  activePlan         Plan?
+  assets             Asset[]
+  jobs               Job[]
+  adAccounts         AdAccount[]
+  campaigns          Campaign[]
+  achievements       ShopAchievement[]
+  landingPages       LandingPage[]
+  questlines         Questline[]
+  tokenPurchases     TokenPurchase[]
+  /// The storefront this shop's catalogue was mirrored from (web accounts).
+  storeUrl           String?
+  catalog            CatalogProduct[]
   subscribers        Subscriber[]
   abandonedCheckouts AbandonedCheckout[]
   customerLifecycles CustomerLifecycle[]
@@ -143,25 +146,25 @@ model TokenPurchase {
 // mission with a live objective log, token cost paid upfront, and XP/reward
 // milestones. Distinct from Campaign (which models a single platform ad).
 model Questline {
-  id             String    @id @default(cuid())
-  shopId         String
-  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  template       String    // template key (questlines.ts)
-  name           String    // game name shown to the merchant
-  status         String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETE
-  avatarId       String?   // brand face starring in this questline's content
-  avatarVariant  Int       @default(0)
-  reviewMode     String    @default("REVIEW_FIRST") // REVIEW_FIRST | SET_AND_FORGET
-  productTitle   String?
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  template        String // template key (questlines.ts)
+  name            String // game name shown to the merchant
+  status          String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETE
+  avatarId        String? // brand face starring in this questline's content
+  avatarVariant   Int       @default(0)
+  reviewMode      String    @default("REVIEW_FIRST") // REVIEW_FIRST | SET_AND_FORGET
+  productTitle    String?
   productImageUrl String?
-  objectivesJson String    // [{key,label,type,target,done}]
-  scheduleJson   String    @default("{}") // {slots:[{idx,day,date,time,type,spot,productTitle,productImageUrl,status}],weeksAwarded:[]}
-  durationDays   Int       @default(30) // monthly segment
-  tokenCost      Int       @default(0) // charged upfront on accept
-  xpReward       Int       @default(0) // dropped on completion
-  progress       Int       @default(0) // 0-100
-  createdAt      DateTime  @default(now())
-  completedAt    DateTime?
+  objectivesJson  String // [{key,label,type,target,done}]
+  scheduleJson    String    @default("{}") // {slots:[{idx,day,date,time,type,spot,productTitle,productImageUrl,status}],weeksAwarded:[]}
+  durationDays    Int       @default(30) // monthly segment
+  tokenCost       Int       @default(0) // charged upfront on accept
+  xpReward        Int       @default(0) // dropped on completion
+  progress        Int       @default(0) // 0-100
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
 
   @@index([shopId, status])
 }
@@ -184,7 +187,7 @@ model LandingPage {
   title       String
   productName String
   goal        String   @default("BUY")
-  contentJson String   // hero, subhead, benefits[], testimonial, cta, ctaUrl
+  contentJson String // hero, subhead, benefits[], testimonial, cta, ctaUrl
   published   Boolean  @default(false)
   views       Int      @default(0)
   createdAt   DateTime @default(now())
@@ -192,16 +195,16 @@ model LandingPage {
 }
 
 model BrandProfile {
-  id          String   @id @default(cuid())
-  shopId      String   @unique
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  shopId    String   @unique
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // AI-generated brand intelligence
-  voiceJson   String   // JSON: tone, vocabulary, values, sample phrases
-  visualJson  String   // JSON: primaryColor, accentColor, fontStyle, imageStyle
-  productJson String   // JSON: top products, categories, price range, AOV
+  voiceJson   String // JSON: tone, vocabulary, values, sample phrases
+  visualJson  String // JSON: primaryColor, accentColor, fontStyle, imageStyle
+  productJson String // JSON: top products, categories, price range, AOV
 }
 
 enum PlanType {
@@ -228,50 +231,50 @@ enum CampaignGoal {
 }
 
 model Plan {
-  id                String     @id @default(cuid())
-  shopId            String     @unique
-  shop              Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  type              PlanType
-  reviewMode        ReviewMode @default(REVIEW_FIRST)
-  active            Boolean    @default(true)
+  id         String     @id @default(cuid())
+  shopId     String     @unique
+  shop       Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type       PlanType
+  reviewMode ReviewMode @default(REVIEW_FIRST)
+  active     Boolean    @default(true)
 
   // Add-ons
-  adCreativePack    Boolean    @default(false)
-  campaignAutopilot Boolean    @default(false)
+  adCreativePack    Boolean @default(false)
+  campaignAutopilot Boolean @default(false)
 
   // Monthly quotas (seeded from the tier at selection time)
-  blogQuota         Int        @default(0)
-  videoQuota        Int        @default(0)
-  imageQuota        Int        @default(0)
+  blogQuota  Int @default(0)
+  videoQuota Int @default(0)
+  imageQuota Int @default(0)
 
   // Usage in the current billing period
-  blogUsed          Int        @default(0)
-  videoUsed         Int        @default(0)
-  periodStart       DateTime   @default(now())
+  blogUsed    Int      @default(0)
+  videoUsed   Int      @default(0)
+  periodStart DateTime @default(now())
 
   // Unified token wallet — every AI action spends from here
-  tokensIncluded    Int        @default(0) // monthly allowance from the tier
-  tokensUsed        Int        @default(0) // spent this billing period
-  tokensExtra       Int        @default(0) // purchased top-up (does not reset)
+  tokensIncluded Int @default(0) // monthly allowance from the tier
+  tokensUsed     Int @default(0) // spent this billing period
+  tokensExtra    Int @default(0) // purchased top-up (does not reset)
 
   // Free-trial window (first subscription only). While now < trialEndsAt the
   // wallet is hard-capped at TRIAL_TOKEN_CAP and anthem/cartoon stay locked.
-  trialEndsAt       DateTime?
+  trialEndsAt DateTime?
 
   // Purchased overage credits
-  blogCredits       Int        @default(0)
-  imageCredits      Int        @default(0)
-  videoCredits      Int        @default(0)
+  blogCredits  Int @default(0)
+  imageCredits Int @default(0)
+  videoCredits Int @default(0)
 
   // Days between auto-published blog posts
-  postIntervalDays  Int        @default(3)
+  postIntervalDays Int @default(3)
 
   // Only used when the Campaign Autopilot add-on is enabled
-  campaignGoal      CampaignGoal @default(GROW_SALES)
-  weeklyBudget      Float      @default(0)
+  campaignGoal CampaignGoal @default(GROW_SALES)
+  weeklyBudget Float        @default(0)
 
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum AssetType {
@@ -291,20 +294,20 @@ enum AssetStatus {
 }
 
 model Asset {
-  id          String      @id @default(cuid())
-  shopId      String
-  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  type        AssetType
-  status      AssetStatus @default(PENDING)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        String      @id @default(cuid())
+  shopId    String
+  shop      Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type      AssetType
+  status    AssetStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   // Content
-  title       String?
-  bodyJson    String      // JSON: varies by type (imageUrl, blogHtml, adCopy, etc.)
-  metaJson    String      // JSON: targetProductId, planType, generationPrompt
+  title    String?
+  bodyJson String // JSON: varies by type (imageUrl, blogHtml, adCopy, etc.)
+  metaJson String // JSON: targetProductId, planType, generationPrompt
 
-  campaigns   Campaign[]
+  campaigns Campaign[]
 }
 
 enum JobType {
@@ -320,6 +323,7 @@ enum JobType {
   SEND_WELCOME
   SEND_POST_PURCHASE
   SEND_WINBACK
+  IMPORT_CATALOG
 }
 
 enum JobStatus {
@@ -335,7 +339,7 @@ model Job {
   shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   type        JobType
   status      JobStatus @default(PENDING)
-  payload     String    // JSON
+  payload     String // JSON
   attempts    Int       @default(0)
   lastError   String?
   runAt       DateTime? // scheduled jobs (campaign drip) wait until this time; null = run now
@@ -350,18 +354,18 @@ enum AdPlatform {
 }
 
 model AdAccount {
-  id              String     @id @default(cuid())
-  shopId          String
-  shop            Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  platform        AdPlatform
-  externalId      String
-  name            String
-  accessToken     String
-  tokenExpiresAt  DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  shopId         String
+  shop           Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  platform       AdPlatform
+  externalId     String
+  name           String
+  accessToken    String
+  tokenExpiresAt DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  campaigns       Campaign[]
+  campaigns Campaign[]
 
   @@unique([shopId, platform])
 }
@@ -375,36 +379,36 @@ enum CampaignStatus {
 }
 
 model Campaign {
-  id              String         @id @default(cuid())
-  shopId          String
-  shop            Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  adAccountId     String
-  adAccount       AdAccount      @relation(fields: [adAccountId], references: [id])
-  assetId         String
-  asset           Asset          @relation(fields: [assetId], references: [id])
-  platform        AdPlatform
-  externalId      String?        // platform campaign ID (null until launched)
-  status          CampaignStatus @default(DRAFT)
-  budgetCents     Int
-  spentCents      Int            @default(0)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id          String         @id @default(cuid())
+  shopId      String
+  shop        Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  adAccountId String
+  adAccount   AdAccount      @relation(fields: [adAccountId], references: [id])
+  assetId     String
+  asset       Asset          @relation(fields: [assetId], references: [id])
+  platform    AdPlatform
+  externalId  String? // platform campaign ID (null until launched)
+  status      CampaignStatus @default(DRAFT)
+  budgetCents Int
+  spentCents  Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  metrics         PerformanceMetric[]
+  metrics PerformanceMetric[]
 }
 
 model PerformanceMetric {
-  id              String   @id @default(cuid())
-  campaignId      String
-  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  recordedAt      DateTime @default(now())
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recordedAt DateTime @default(now())
 
-  impressions     Int      @default(0)
-  clicks          Int      @default(0)
-  conversions     Int      @default(0)
-  spendCents      Int      @default(0)
-  revenueCents    Int      @default(0)
-  roas            Float    @default(0)
+  impressions  Int   @default(0)
+  clicks       Int   @default(0)
+  conversions  Int   @default(0)
+  spendCents   Int   @default(0)
+  revenueCents Int   @default(0)
+  roas         Float @default(0)
 }
 
 // 📧 Email list built by EasyMode's own signup popup (PCD-free — these are
@@ -458,4 +462,27 @@ model CustomerLifecycle {
 
   @@unique([shopId, email])
   @@index([shopId])
+}
+
+/// A merchant's own storefront catalogue, pulled in once so they can pick a
+/// product from a grid instead of pasting a link and retyping the title on
+/// every single generation. Shopify-embedded shops read products live from the
+/// Admin API; web accounts have no such API, so we mirror theirs here.
+model CatalogProduct {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title      String
+  url        String
+  imageUrl   String?
+  handle     String?
+  priceText  String?
+  position   Int      @default(0)
+  // Refreshes re-stamp this; anything not seen in the newest sync is stale
+  // (delisted upstream) and gets swept, so the picker never offers a dead SKU.
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([shopId, url])
+  @@index([shopId, position])
 }

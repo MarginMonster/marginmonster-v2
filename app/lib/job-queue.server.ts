@@ -217,6 +217,16 @@ async function runJob(
       break;
     }
 
+    // A catalogue import can be hundreds of fetches against the merchant's own
+    // storefront, so it runs here rather than inside a request. Costs nothing:
+    // no tokens, no models — it's their own data coming home.
+    case "IMPORT_CATALOG": {
+      const { importCatalog } = await import("./catalog-import.server");
+      const r = await importCatalog(shopId, payload.storeUrl as string, payload.cap as number | undefined);
+      console.log(`[catalog] ${shopId}: imported ${r.imported} via ${r.source}, swept ${r.removed}`);
+      break;
+    }
+
     case "GENERATE_BLOG_POST": {
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");

@@ -14,6 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { assertCapability, videoCapabilityFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
+import { productLinkFor } from "../lib/catalog-import.server";
 
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -192,7 +193,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const tune = platforms.includes("instagram") ? "instagram" : platforms[0];
     const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
     const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
-    return json({ draft: buildPostTitle(captions[tune], "", fbText) });
+    // Deep-link the post at the actual product page when we mirrored their
+    // catalogue — an ad nobody can act on is half an ad.
+    const buyUrl = await productLinkFor(shop.id, title);
+    return json({ draft: buildPostTitle(captions[tune], buyUrl, fbText) });
   }
   if (intent === "post") {
     if (!socialProviderEnabled()) return json({ error: "Social posting is coming online — check back shortly." });
@@ -229,7 +233,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } else {
       const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
       const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
-      titleFor = (p) => buildPostTitle(captions[p], "", fbText, credit);
+      const buyUrl = await productLinkFor(shop.id, title);
+      titleFor = (p) => buildPostTitle(captions[p], buyUrl, fbText, credit);
     }
     let anyOk = false;
     let lastErr: string | undefined;
