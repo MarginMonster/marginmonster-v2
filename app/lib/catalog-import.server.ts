@@ -295,3 +295,23 @@ export async function productLinkFor(shopId: string, productTitle?: string | nul
     return "";
   }
 }
+
+/** The catalogue image for a product we generated an ad about.
+ *
+ *  Ads made before metaJson carried the photo have no way to rebuild — but if
+ *  the merchant has since mirrored their store, the photo is sitting right
+ *  there under the same title. Recovers the whole back catalogue for remixing
+ *  instead of stranding it. */
+export async function catalogImageFor(shopId: string, productTitle?: string | null): Promise<string | null> {
+  const t = (productTitle || "").trim();
+  if (!t) return null;
+  try {
+    const hit = await db.catalogProduct.findFirst({
+      where: { shopId, title: t, imageUrl: { not: null } },
+      select: { imageUrl: true },
+    });
+    return hit?.imageUrl || null;
+  } catch {
+    return null;
+  }
+}

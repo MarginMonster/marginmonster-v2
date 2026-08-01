@@ -14,7 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { assertCapability, videoCapabilityFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
-import { productLinkFor } from "../lib/catalog-import.server";
+import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -170,7 +170,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const avatarId = meta.avatarId || undefined;
     const direction = meta.direction || undefined;
     const nextVariant = avatarId ? (((meta.avatarVariant ?? 0) + 1) % 4) : 0; // rotate the take
-    const productImageUrl = asset.type !== "BLOG_POST" ? meta.productImageUrl || undefined : undefined;
+    // Ads made before metaJson carried the photo would be un-remixable forever.
+    // The catalogue has the same product under the same title, so recover from
+    // there rather than stranding the whole back catalogue.
+    const productImageUrl = asset.type !== "BLOG_POST"
+      ? meta.productImageUrl || (await catalogImageFor(shop.id, productTitle)) || undefined
+      : undefined;
+    // Same story for the recipe: older assets never stored formatKey, but
+    // bodyJson.method recorded what actually ran ("format:callout"). Recover it
+    // so a remix of a Callout is another Callout, not a plain scene.
+    if (!meta.formatKey && !meta.templateKey) {
+      try {
+        const body = JSON.parse(asset.bodyJson || "{}") as { method?: string };
+        const m = (body.method || "").match(/^(format|template|template-staged|template-fallback):(.+)$/);
+        if (m) {
+          if (m[1] === "format") meta.formatKey = m[2];
+          else meta.templateKey = m[2];
+        }
+      } catch { /* no recipe to recover */ }
+    }
     const type = asset.type === "VIDEO_AD" ? "video" : asset.type === "IMAGE_AD" ? "image" : "blog";
     // No photo means the pipeline invents a product from its name. That's the
     // AI-slop path, and it costs the SAME as a real render — 150 tokens on a
