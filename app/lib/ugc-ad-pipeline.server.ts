@@ -525,7 +525,7 @@ export async function assemble(opts: {
   /** One encode pass. captionText === "" builds ZERO drawtext filters — that's
    *  the recovery pass below, and the reason the caption filters are built here
    *  rather than once up front. */
-  const encode = async (captionText: string) => {
+  const encode = async (captionText: string, withBroll = true) => {
     const args: string[] = ["-y"];
     if (!lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
     args.push("-i", opts.talkingPath);
@@ -538,7 +538,7 @@ export async function assemble(opts: {
     if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
     filters.push(`${base}[v0]`);
 
-    if (opts.productImagePath) {
+    if (opts.productImagePath && withBroll) {
       // b-roll product image = the next input. Lip-synced has [0]=video only, so
       // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
       const brIdx = useBakedAudio ? 1 : 2;
@@ -549,7 +549,12 @@ export async function assemble(opts: {
       const cutLen = atEnd ? 1.4 : lipSynced ? 1.6 : 2.2;
       const bs = (atEnd ? Math.max(0.8, duration - cutLen) : Math.max(1.2, duration * 0.5)).toFixed(2);
       const be = (atEnd ? duration : Math.min(duration - 0.8, duration * 0.5 + cutLen)).toFixed(2);
-      filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280[br]`);
+      // FIT the product shot, don't crop it. Product photos are square or
+      // landscape far more often than 9:16, and cover-cropping one into a
+      // vertical frame amputates it — a booster box came out with its own name
+      // sliced off both edges. The whole point of this beat is that the viewer
+      // sees the product, so letterbox it onto the brand's near-black instead.
+      filters.push(`[${brIdx}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=0x0B0F0D[br]`);
       filters.push(`[v0][br]overlay=enable='between(t,${bs},${be})'[v1]`);
       vLabel = "[v1]";
     }
@@ -588,6 +593,15 @@ export async function assemble(opts: {
     console.error(`[ugc:assemble] encode failed — retrying WITHOUT burned captions: ${(run.stderr || "").slice(-300)}`);
     run = await encode("");
     if (run.status === 0) console.log("[ugc:assemble] recovered — shipped without burned captions");
+  }
+  // THE B-ROLL IS ALSO A NICE-TO-HAVE. Same reasoning as the captions above:
+  // by now the song and the lipsync are bought and paid for, and the product
+  // cut-in is two filters (overlay + pad) that a thin ffmpeg build can be
+  // missing. Losing the closing beat beats losing the ad and refunding.
+  if ((run.status !== 0 || !fs.existsSync(opts.outPath)) && opts.productImagePath) {
+    console.error(`[ugc:assemble] still failing — retrying WITHOUT the product cut-in: ${(run.stderr || "").slice(-300)}`);
+    run = await encode("", false);
+    if (run.status === 0) console.log("[ugc:assemble] recovered — shipped without the product cut-in");
   }
   if (run.status !== 0 || !fs.existsSync(opts.outPath)) {
     throw new Error(`[ugc:assemble] ffmpeg failed: ${(run.stderr || "").slice(-400)}`);
