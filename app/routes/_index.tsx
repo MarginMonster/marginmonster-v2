@@ -186,8 +186,11 @@ html,body{margin:0;padding:0}
   --green:#0C7A46;--green2:#0F9152;--green-deep:#0A3D26;--gold:#B08526;--gold-hi:#E7C879;--gold-deep:#7E5E13;--mint:#7FE0AC;
   position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow-x:hidden;
   background:
-    radial-gradient(60% 45% at 50% -5%,rgba(15,145,82,.10),transparent 60%),
+    repeating-linear-gradient(57deg,rgba(12,122,70,.035) 0 1px,transparent 1px 9px),
+    repeating-linear-gradient(123deg,rgba(12,122,70,.028) 0 1px,transparent 1px 9px),
+    radial-gradient(60% 45% at 50% -5%,rgba(15,145,82,.13),transparent 60%),
     radial-gradient(50% 40% at 92% 4%,rgba(176,133,38,.10),transparent 60%),
+    radial-gradient(46% 34% at 4% 46%,rgba(12,122,70,.075),transparent 66%),
     var(--paper);}
 .lz-nav{display:flex;align-items:center;justify-content:space-between;max-width:1080px;margin:0 auto;padding:22px 26px;}
 .lz-brand{display:flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;color:var(--ink);}
@@ -297,24 +300,19 @@ html,body{margin:0;padding:0}
 .lz-vs-col.us li{color:#EAF4EE;}
 .lz-vs-col.us li::before{content:"✓";position:absolute;left:2px;color:#7FE0AC;font-weight:900;}
 @media(max-width:600px){.lz-vs{grid-template-columns:1fr}}
-/* GStyle rosettes — the app's spinning engine-turned gold spirographs,
-   CSS-only so the public page stays light. Same family as the CTA medallion. */
-.lz-rose{position:absolute;border-radius:50%;pointer-events:none;z-index:0;
-  background:
-    repeating-conic-gradient(from 0deg,rgba(231,200,121,.5) 0 1deg,transparent 1deg 5.6deg),
-    repeating-conic-gradient(from 2deg,rgba(231,200,121,.3) 0 .6deg,transparent .6deg 9deg),
-    repeating-radial-gradient(circle,rgba(231,200,121,.42) 0 1px,transparent 1px 9px);
-  -webkit-mask:radial-gradient(circle,transparent 24%,#000 25% 60%,transparent 62%);
-  mask:radial-gradient(circle,transparent 24%,#000 25% 60%,transparent 62%);
+/* GStyle rosettes — the REAL engine-turned figure, the same hypotrochoid the
+   embedded app spins, served as an asset. Conic gradients can only fake radial
+   spokes; this shape is built from overlapping petal loops, and that is what
+   makes it shimmer. Gold cut on the dark bands, green cut on cream where gold
+   would simply vanish. */
+.lz-rose{position:absolute;pointer-events:none;z-index:0;
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;
   animation:lz-medallion 44s linear infinite;}
 .lz-hero{position:relative;}
-.lz-rose-hero{right:-150px;top:-70px;width:430px;height:430px;opacity:.32;z-index:-1;
-  background:
-    repeating-conic-gradient(from 0deg,rgba(176,133,38,.4) 0 1deg,transparent 1deg 5.6deg),
-    repeating-conic-gradient(from 2deg,rgba(12,122,70,.25) 0 .6deg,transparent .6deg 9deg),
-    repeating-radial-gradient(circle,rgba(176,133,38,.32) 0 1px,transparent 1px 9px);}
-.lz-rose-band{right:-100px;top:50%;width:400px;height:400px;margin-top:-200px;opacity:.5;}
-.lz-rose-vs{right:-80px;bottom:-90px;width:280px;height:280px;opacity:.42;}
+.lz-rose-hero{right:-170px;top:-90px;width:500px;height:500px;opacity:.13;z-index:-1;
+  background-image:url(/gstyle-rosette-green.svg);}
+.lz-rose-band{right:-110px;top:50%;width:430px;height:430px;margin-top:-215px;opacity:.3;}
+.lz-rose-vs{right:-90px;bottom:-100px;width:310px;height:310px;opacity:.26;}
 .lz-band-in>*{position:relative;z-index:1;}
 .lz-band-in .lz-rose{z-index:0;}
 .lz-vs-col.us>*{position:relative;z-index:1;}

@@ -155,8 +155,33 @@ function Crest({ size }: { size: number }) {
 const CSS = `
 @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap");
 *{box-sizing:border-box} html,body{margin:0;padding:0}
-.wb{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E4DFCF;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;
-  min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,sans-serif;background:radial-gradient(60% 45% at 50% -5%,rgba(15,145,82,.08),transparent 60%),var(--paper);}
+.wb{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;
+  position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,sans-serif;
+  /* A green field instead of flat cream. Three soft washes give the page a
+     direction to read down, and the two hairline diagonals are the same
+     engine-turned texture the embedded app rules across its dark cards —
+     barely there, but it stops the background being a blank sheet. */
+  background:
+    repeating-linear-gradient(57deg,rgba(12,122,70,.035) 0 1px,transparent 1px 9px),
+    repeating-linear-gradient(123deg,rgba(12,122,70,.028) 0 1px,transparent 1px 9px),
+    radial-gradient(72% 52% at 50% -8%,rgba(15,145,82,.14),transparent 62%),
+    radial-gradient(46% 34% at 4% 24%,rgba(12,122,70,.09),transparent 66%),
+    radial-gradient(54% 40% at 98% 64%,rgba(176,133,38,.075),transparent 68%),
+    var(--paper);}
+/* Two ambient rosettes drifting behind everything — the same figure the buffer
+   spins, in the green cut so it reads as a watermark on cream rather than
+   disappearing. Fixed, so they sit still while the page scrolls past. */
+.wb::before,.wb::after{content:"";position:fixed;z-index:0;pointer-events:none;
+  background-repeat:no-repeat;background-position:center;background-size:contain;}
+.wb::before{top:-190px;right:-240px;width:660px;height:660px;opacity:.075;
+  background-image:url(/gstyle-rosette-green.svg);animation:wbDrift 210s linear infinite;}
+.wb::after{bottom:-290px;left:-270px;width:620px;height:620px;opacity:.05;
+  background-image:url(/gstyle-rosette-green.svg);animation:wbDriftBack 260s linear infinite;}
+@keyframes wbDrift{to{transform:rotate(360deg)}}
+@keyframes wbDriftBack{to{transform:rotate(-360deg)}}
+@media (prefers-reduced-motion:reduce){.wb::before,.wb::after{animation:none}}
+/* Everything real sits above the ambient layer. */
+.wb-nav,.wb-hud,.wb-main{position:relative;z-index:1;}
 .wb-nav{display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
 .wb-brand{display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
 .wb-brand b{color:var(--gold)}
@@ -180,9 +205,16 @@ const CSS = `
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
 
 /* ---- Player HUD — the app's arcade status bar, GStyle for the web shell ---- */
-.wb-hud{width:min(1080px,100% - 48px);margin:0 auto 6px;padding:13px 16px;border-radius:16px;
-  background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid var(--line);box-shadow:0 3px 12px rgba(20,32,26,.07);}
-.wb-hud.min{padding:0;background:none;border:0;box-shadow:none;}
+.wb-hud{width:min(1080px,100% - 48px);margin:0 auto 6px;padding:13px 16px;border-radius:16px;position:relative;overflow:hidden;isolation:isolate;
+  background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid var(--line);
+  /* Gold hairline inside the border, the way the app rules its status card. */
+  box-shadow:0 3px 12px rgba(20,32,26,.07),inset 0 0 0 1px rgba(231,200,121,.3),inset 0 1px 0 rgba(255,255,255,.7);}
+/* The HUD gets the gold cut of the rosette bleeding off its right edge —
+   this is the app's Autopilot card treatment, brought over. */
+.wb-hud:not(.min)::after{content:"";position:absolute;z-index:-1;top:50%;right:-72px;width:238px;height:238px;margin-top:-119px;
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.16;pointer-events:none;
+  animation:wbDrift 150s linear infinite;}
+.wb-hud.min{padding:0;background:none;border:0;box-shadow:none;overflow:visible;}
 .wb-hud-mini{display:inline-flex;align-items:center;gap:9px;cursor:pointer;padding:7px 14px;border-radius:999px;
   background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid var(--line);box-shadow:0 3px 12px rgba(20,32,26,.07);font:inherit;}
 .wb-hud-mini-tok{font-weight:800;font-size:12.5px;color:var(--gold-deep);}
@@ -234,7 +266,12 @@ const CSS = `
 }
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;}
 .wb-sub{color:var(--ink2);font-size:14.5px;line-height:1.55;margin:0 0 24px;max-width:60ch;}
-.wb-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
+/* Cards were flat white inside a flat cream border. Now they carry a faint
+   top-to-bottom warmth, a greener border line, and a hairline of white along
+   the top edge — the thing that makes a panel read as a raised surface rather
+   than a rectangle drawn on the page. */
+.wb-card{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid var(--line2);border-radius:18px;padding:22px;
+  box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);}
 .wb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;}
 .wb-lbl{display:block;font-weight:700;font-size:12.5px;margin:14px 0 5px;color:var(--ink);}
 .wb-in,.wb-sel,.wb-ta{width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:#fff;font:inherit;font-size:14px;color:var(--ink);}
@@ -295,7 +332,13 @@ const CSS = `
 .ws-tab{padding:10px 20px;border-radius:12px;border:1px solid var(--line);background:var(--card);
   font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2);cursor:pointer;}
 .ws-tab.on{background:linear-gradient(165deg,#12A85E,#0B6B3E);border-color:transparent;color:#fff;box-shadow:0 4px 12px rgba(12,122,70,.25);}
-.ws-card{overflow:hidden;}
+/* The Studio form is the longest card on the site, so it gets its own drifting
+   rosette in the bottom corner to break up the field behind the controls. */
+.ws-card{overflow:hidden;position:relative;isolation:isolate;}
+.ws-card::after{content:"";position:absolute;z-index:-1;bottom:-290px;right:-250px;width:520px;height:520px;
+  background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.085;pointer-events:none;
+  animation:wbDrift 240s linear infinite;}
+@media (prefers-reduced-motion:reduce){.wb-hud::after,.ws-card::after{animation:none}}
 .ws-lbl{display:flex;align-items:baseline;gap:8px;font-family:Poppins,sans-serif;font-weight:700;font-size:13px;color:var(--ink);margin:16px 0 8px;}
 .ws-lbl:first-child{margin-top:0}
 .ws-opt{font-family:Inter,sans-serif;font-weight:500;font-size:11px;color:var(--ink2);}
