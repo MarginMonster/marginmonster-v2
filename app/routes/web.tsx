@@ -157,13 +157,11 @@ const CSS = `
 *{box-sizing:border-box} html,body{margin:0;padding:0}
 .wb{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;
   position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,sans-serif;
-  /* A green field instead of flat cream. Three soft washes give the page a
-     direction to read down, and the two hairline diagonals are the same
-     engine-turned texture the embedded app rules across its dark cards —
-     barely there, but it stops the background being a blank sheet. */
+  /* A green field instead of flat cream: three soft washes give the page a
+     direction to read down. There WAS a diagonal hairline hatch here too, but
+     two crossing diagonals make diamonds, and diamonds at this scale read as
+     reptile scales. The rosettes below carry the texture instead. */
   background:
-    repeating-linear-gradient(57deg,rgba(12,122,70,.035) 0 1px,transparent 1px 9px),
-    repeating-linear-gradient(123deg,rgba(12,122,70,.028) 0 1px,transparent 1px 9px),
     radial-gradient(72% 52% at 50% -8%,rgba(15,145,82,.14),transparent 62%),
     radial-gradient(46% 34% at 4% 24%,rgba(12,122,70,.09),transparent 66%),
     radial-gradient(54% 40% at 98% 64%,rgba(176,133,38,.075),transparent 68%),

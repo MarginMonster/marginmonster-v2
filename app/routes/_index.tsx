@@ -186,8 +186,6 @@ html,body{margin:0;padding:0}
   --green:#0C7A46;--green2:#0F9152;--green-deep:#0A3D26;--gold:#B08526;--gold-hi:#E7C879;--gold-deep:#7E5E13;--mint:#7FE0AC;
   position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow-x:hidden;
   background:
-    repeating-linear-gradient(57deg,rgba(12,122,70,.035) 0 1px,transparent 1px 9px),
-    repeating-linear-gradient(123deg,rgba(12,122,70,.028) 0 1px,transparent 1px 9px),
     radial-gradient(60% 45% at 50% -5%,rgba(15,145,82,.13),transparent 60%),
     radial-gradient(50% 40% at 92% 4%,rgba(176,133,38,.10),transparent 60%),
     radial-gradient(46% 34% at 4% 46%,rgba(12,122,70,.075),transparent 66%),
@@ -236,14 +234,16 @@ html,body{margin:0;padding:0}
 .lz-arr{transition:transform .15s}
 .lz-cta:hover .lz-arr{transform:translateX(3px)}
 .lz-note{font-size:12.5px;color:var(--ink2);opacity:.85}
-.lz-stats{display:inline-flex;align-items:center;gap:24px;margin-top:42px;padding:16px 28px;border-radius:16px;background:var(--card);
-  border:1px solid var(--line);box-shadow:0 10px 30px rgba(20,32,26,.06);}
+.lz-stats{display:inline-flex;align-items:center;gap:24px;margin-top:42px;padding:16px 28px;border-radius:16px;
+  background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;
+  box-shadow:0 10px 30px rgba(20,32,26,.07),inset 0 1px 0 rgba(255,255,255,.85);}
 .lz-stats>div{text-align:center}
 .lz-stats b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:26px;color:var(--green);line-height:1;}
 .lz-stats span{font-size:11px;color:var(--ink2)}
 .lz-div{width:1px;height:30px;background:var(--line)}
 .lz-feats{max-width:1000px;margin:56px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;}
-.lz-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px 20px;box-shadow:0 2px 8px rgba(20,32,26,.05);
+.lz-card{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:18px;padding:22px 20px;
+  box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);
   transition:transform .12s,border-color .12s,box-shadow .12s;}
 .lz-card:hover{transform:translateY(-4px);border-color:var(--green2);box-shadow:0 16px 40px rgba(12,122,70,.14)}
 .lz-ic{width:46px;height:46px;display:grid;place-items:center;font-size:23px;border-radius:13px;margin-bottom:14px;
@@ -254,14 +254,15 @@ html,body{margin:0;padding:0}
 .lz-show h2,.lz-price h2,.lz-faq h2{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:10px 0 8px;color:var(--ink);text-wrap:balance;}
 .lz-show-sub{font-size:15.5px;color:var(--ink2);margin:0 auto 28px;max-width:56ch;line-height:1.55;}
 .lz-show-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;}
-.lz-show-card{margin:0;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 2px 8px rgba(20,32,26,.05);transition:transform .12s,box-shadow .12s;}
+.lz-show-card{margin:0;background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:18px;overflow:hidden;box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);transition:transform .12s,box-shadow .12s;}
 .lz-show-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(12,122,70,.14);}
 .lz-show-img{display:block;height:150px;background-size:cover;background-position:center 22%;}
 .lz-show-card figcaption{padding:12px 14px;text-align:left;}
 .lz-show-card b{display:block;font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);}
 .lz-show-card span:not(.lz-show-img){font-size:12px;color:var(--ink2);}
 .lz-price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;text-align:left;margin-top:26px;}
-.lz-price-card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px 24px;box-shadow:0 2px 8px rgba(20,32,26,.05);display:flex;flex-direction:column;}
+.lz-price-card{position:relative;background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:20px;padding:26px 24px;
+  box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);display:flex;flex-direction:column;}
 .lz-price-card.feat{border-color:rgba(18,168,94,.55);box-shadow:0 18px 44px rgba(12,122,70,.16);}
 .lz-price-ribbon{position:absolute;top:-11px;left:50%;transform:translateX(-50%);padding:4px 14px;border-radius:999px;font-family:Poppins,sans-serif;font-weight:800;font-size:11px;color:#fff;background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 10px rgba(12,122,70,.3);}
 .lz-price-name{font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);}
@@ -277,7 +278,8 @@ html,body{margin:0;padding:0}
 .lz-price-cta:hover{filter:brightness(1.06);}
 .lz-price-note{margin-top:20px;font-size:13px;color:var(--ink2);}
 .lz-faq-list{max-width:660px;margin:26px auto 0;display:flex;flex-direction:column;gap:10px;text-align:left;}
-.lz-faq details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 18px;}
+.lz-faq details{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:14px;padding:15px 18px;
+  box-shadow:0 2px 8px rgba(20,32,26,.05),inset 0 1px 0 rgba(255,255,255,.8);}
 .lz-faq summary{cursor:pointer;font-family:Poppins,sans-serif;font-weight:700;font-size:14.5px;color:var(--ink);}
 .lz-faq p{font-size:13.5px;line-height:1.6;color:var(--ink2);margin:10px 0 2px;}
 .lz-compare{max-width:920px;margin:72px auto 0;padding:0 26px;text-align:center;}
@@ -286,7 +288,7 @@ html,body{margin:0;padding:0}
 .lz-compare-sub{font-size:15.5px;color:var(--ink2);margin:0 auto 30px;max-width:52ch;line-height:1.55;}
 .lz-vs{display:grid;grid-template-columns:1fr 1fr;gap:16px;text-align:left;}
 .lz-vs-col{border-radius:18px;padding:24px 22px;}
-.lz-vs-col.them{background:var(--card);border:1px solid var(--line);box-shadow:0 2px 8px rgba(20,32,26,.05);}
+.lz-vs-col.them{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);}
 .lz-vs-col.us{position:relative;overflow:hidden;isolation:isolate;color:#EAF4EE;
   background:repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),linear-gradient(160deg,#0E5233,#0A3421 58%,#062417);
   border:1px solid rgba(231,200,121,.34);box-shadow:0 18px 44px rgba(8,42,26,.32);}
@@ -308,9 +310,15 @@ html,body{margin:0;padding:0}
 .lz-rose{position:absolute;pointer-events:none;z-index:0;
   background:url(/gstyle-rosette.svg) center/contain no-repeat;
   animation:lz-medallion 44s linear infinite;}
-.lz-hero{position:relative;}
-.lz-rose-hero{right:-170px;top:-90px;width:500px;height:500px;opacity:.13;z-index:-1;
-  background-image:url(/gstyle-rosette-green.svg);}
+/* isolation, or the hero rosette is invisible: .lz is position:relative with
+   z-index:auto, so it makes no stacking context, and a z-index:-1 child of
+   .lz-hero escapes all the way behind .lz's own background. */
+.lz-hero{position:relative;isolation:isolate;}
+/* The gold flower, front and centre of the hero — the mark people recognise
+   from the app. It was the green cut parked so far off the right edge that a
+   phone never saw it at all. */
+.lz-rose-hero{right:-120px;top:-70px;width:440px;height:440px;opacity:.34;z-index:-1;}
+@media(max-width:620px){.lz-rose-hero{right:-150px;top:-40px;width:400px;height:400px;opacity:.28;}}
 .lz-rose-band{right:-110px;top:50%;width:430px;height:430px;margin-top:-215px;opacity:.3;}
 .lz-rose-vs{right:-90px;bottom:-100px;width:310px;height:310px;opacity:.26;}
 .lz-band-in>*{position:relative;z-index:1;}
