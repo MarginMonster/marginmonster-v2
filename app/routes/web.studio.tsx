@@ -7,7 +7,7 @@
  * name + photo (upload, URL, or scraped from any store's product page). */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
@@ -74,12 +74,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       select: { id: true, title: true, url: true, imageUrl: true, priceText: true },
     }),
     db.catalogProduct.count({ where: { shopId: shop.id } }),
-    db.job.count({ where: { shopId: shop.id, type: "IMPORT_CATALOG", status: { in: ["PENDING", "IN_PROGRESS"] } } }),
+    db.job.findFirst({
+      where: { shopId: shop.id, type: "IMPORT_CATALOG", status: { in: ["PENDING", "IN_PROGRESS"] } },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
   ]);
   return json({
     catalog,
     catalogCount,
-    catalogSyncing: syncing > 0,
+    catalogSyncing: !!syncing,
+    // Real start time, so the elapsed counter survives a reload instead of
+    // restarting at zero and making a long import look stuck.
+    catalogSyncStartedAt: syncing?.createdAt.toISOString() || null,
     hasBrand: !!shop.brandProfile,
     hasPlan: !!shop.activePlan?.active,
     tokens: tokensRemainingLive(shop.activePlan),
@@ -322,6 +329,50 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
         </div>
       )}
     </>
+  );
+}
+
+/* "Pulling your products in now" as flat text reads as a page that died. This
+ * is the same beat the Archive's cooking tiles hit: the gold rosette turning on
+ * a dark panel, a live elapsed clock, and the page quietly revalidating so the
+ * grid appears the moment the import lands — nobody has to guess or refresh. */
+function CatalogSync({ startedAt }: { startedAt: string | null }) {
+  const revalidator = useRevalidator();
+  const [elapsed, setElapsed] = useState(0);
+
+  // Tick the clock from the job's REAL start time, so a reload mid-import
+  // shows "2m 10s", not a counter that just began.
+  useEffect(() => {
+    const base = startedAt ? new Date(startedAt).getTime() : Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - base) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  // Poll for completion. 6s is frequent enough to feel instant and cheap
+  // enough that a long sitemap crawl doesn't hammer our own server.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 6000);
+    return () => clearInterval(id);
+  }, [revalidator]);
+
+  const mm = Math.floor(elapsed / 60);
+  const ss = elapsed % 60;
+  return (
+    <div className="ws-catload" role="status" aria-live="polite">
+      <span className="ws-catload-spin" aria-hidden="true" />
+      <div className="ws-catload-txt">
+        <b>Pulling your products in…</b>
+        <span>
+          {mm > 0 ? `${mm}m ${ss}s` : `${ss}s`} — reading your storefront.
+          {elapsed > 90 ? " Big catalogues take a few minutes." : ""}
+        </span>
+        <i>This page updates itself the moment it lands.</i>
+      </div>
+    </div>
   );
 }
 
@@ -708,22 +759,24 @@ export default function WebStudio() {
                     ))}
                 </div>
                 <div className="ws-catfoot">
-                  {d.catalogSyncing
-                    ? <span className="ws-opt">Syncing your store…</span>
-                    : <button type="button" className="ws-addurl" onClick={() => setShowConnect((v) => !v)}>
-                        {showConnect ? "Cancel" : "↻ Refresh catalogue"}
-                      </button>}
+                  {!d.catalogSyncing && (
+                    <button type="button" className="ws-addurl" onClick={() => setShowConnect((v) => !v)}>
+                      {showConnect ? "Cancel" : "↻ Refresh catalogue"}
+                    </button>
+                  )}
                 </div>
+                {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
               </>
             ) : (
               <div className="ws-connect">
                 <b>📦 Bring your whole store in</b>
                 <p>Paste your store address once and we&rsquo;ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.</p>
-                {d.catalogSyncing
-                  ? <p className="ws-opt">Pulling your products in now — this page updates itself.</p>
-                  : <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>}
+                {!d.catalogSyncing && (
+                  <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>
+                )}
               </div>
             )}
+            {d.catalogSyncing && d.catalog.length === 0 && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
             {showConnect && !d.catalogSyncing && (
               <div className="ws-import">
                 <input className="wb-in" type="url" value={storeInput} placeholder="yourstore.com"

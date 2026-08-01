@@ -359,7 +359,7 @@ const CSS = `
 .ws-tile.fmt b,.ws-tile b{font-size:14px;}
 /* Expanded format library: contained, smooth-scrolling, staggered reveal —
  * the page never becomes a mile-long scroll. */
-.ws-fmtbox{max-height:64vh;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;padding:4px 8px 46px 4px;
+.ws-fmtbox{max-height:64vh;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;padding:4px 16px 46px 4px;scrollbar-gutter:stable;
   -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);}
 .ws-fmtbox::-webkit-scrollbar{width:9px}
 .ws-fmtbox::-webkit-scrollbar-thumb{background:#BFDCCB;border-radius:99px}
@@ -394,7 +394,7 @@ const CSS = `
   background:#12A85E;color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 .ws-back{border:0;background:none;color:var(--green);font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-bottom:6px;}
 .ws-note{font-size:13px;color:var(--ink2);background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:8px 0;}
-.ws-cast{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;}
+.ws-cast{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scrollbar-gutter:stable;}
 .ws-face{flex:0 0 auto;width:76px;border:0;background:none;cursor:pointer;text-align:center;font-size:11px;color:var(--ink2);font-weight:600;}
 .ws-face-img{position:relative;display:block;width:68px;height:68px;margin:0 auto 5px;border-radius:50%;background-size:cover;background-position:center 20%;
   border:2px solid var(--line);}
@@ -413,10 +413,31 @@ const CSS = `
 .ws-commercial input{accent-color:#12A85E;width:16px;height:16px;flex:0 0 auto;}
 .ws-commercial b{color:var(--ink);}
 .ws-upsell{margin-top:14px;padding:16px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:center;}
+/* Catalogue import, in progress. Dark green panel on purpose: the gold cut of
+   the rosette is invisible on cream, and this is the one place we badly need
+   "it's alive" to read at a glance. */
+.ws-catload{display:flex;align-items:center;gap:15px;margin-top:12px;padding:15px 17px;border-radius:16px;color:#EAF4EE;
+  background:linear-gradient(160deg,#0E5233,#0A3421 58%,#072617);
+  border:1px solid rgba(231,200,121,.34);box-shadow:0 12px 30px rgba(8,42,26,.28),inset 0 0 0 1px rgba(231,200,121,.16);}
+.ws-catload-spin{flex:0 0 auto;width:52px;height:52px;display:block;
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;
+  animation:wbRot 13s linear infinite;filter:drop-shadow(0 0 8px rgba(255,210,74,.32));}
+.ws-catload-txt{min-width:0;display:flex;flex-direction:column;gap:3px;}
+.ws-catload-txt b{font-family:Poppins,sans-serif;font-size:14px;color:#F4EAC8;}
+.ws-catload-txt span{font-size:12.5px;color:rgba(220,240,225,.85);font-variant-numeric:tabular-nums;}
+.ws-catload-txt i{font-style:normal;font-size:11.5px;color:rgba(220,240,225,.6);}
+@media (prefers-reduced-motion:reduce){.ws-catload-spin{animation:none}}
+@media(max-width:620px){
+  .ws-catload{gap:12px;padding:13px 14px;}
+  .ws-catload-spin{width:44px;height:44px;}
+  .ws-catload-txt b{font-size:13.5px;}
+  .ws-catload-txt span{font-size:12px;}
+}
+
 /* ---- Catalogue picker: the merchant's own storefront, mirrored ---- */
 .ws-catsearch{margin-bottom:10px;}
 .ws-catgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;max-height:340px;overflow-y:auto;
-  overscroll-behavior:contain;padding:2px 6px 26px 2px;
+  overscroll-behavior:contain;padding:2px 15px 26px 2px;scrollbar-gutter:stable;
   -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);}
 .ws-catgrid::-webkit-scrollbar{width:8px}
 .ws-catgrid::-webkit-scrollbar-thumb{background:#BFDCCB;border-radius:99px}
@@ -467,7 +488,8 @@ const CSS = `
   .ws-tile-sub{font-size:10.5px;padding:2px 9px 0;line-height:1.35;}
   .ws-tile{padding-bottom:9px;border-radius:13px;}
   .ws-scrollbox{max-height:58vh;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;
-    padding:3px 6px 34px 3px;
+    /* Right gutter: the scroll thumb was riding on the tile art. */
+    padding:3px 15px 34px 3px;scrollbar-gutter:stable;
     -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 34px),transparent);
     mask-image:linear-gradient(180deg,#000 calc(100% - 34px),transparent);}
   .ws-fmtbox{max-height:58vh;}
