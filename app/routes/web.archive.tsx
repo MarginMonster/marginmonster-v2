@@ -163,7 +163,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const id = (form.get("assetId") as string) || "";
     const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } } });
     if (!asset) return json({ error: "That piece is gone — refresh and try again." });
-    let meta: { productTitle?: string; avatarId?: string; avatarVariant?: number; direction?: string; style?: string; cartoonStyle?: string; productImageUrl?: string } = {};
+    let meta: { productTitle?: string; avatarId?: string; avatarVariant?: number; direction?: string; style?: string; cartoonStyle?: string; productImageUrl?: string; formatKey?: string; templateKey?: string; serviceMode?: boolean; styleMode?: string; wear?: boolean } = {};
     try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* ignore */ }
     const productTitle = (meta.productTitle || asset.title || "").trim();
     if (!productTitle) return json({ error: "Couldn't tell which product this was — remake it from the Studio." });
@@ -171,8 +171,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const direction = meta.direction || undefined;
     const nextVariant = avatarId ? (((meta.avatarVariant ?? 0) + 1) % 4) : 0; // rotate the take
     const productImageUrl = asset.type !== "BLOG_POST" ? meta.productImageUrl || undefined : undefined;
-    if (asset.type === "IMAGE_AD" && avatarId && !productImageUrl) {
-      return json({ error: "This piece has no product photo to remix with — remake it from the Studio." });
+    // No photo means the pipeline would invent a product from the name. Older
+    // ads predate metaJson carrying the photo, so this is a real case — refuse
+    // BEFORE spending, rather than charging for slop.
+    if (asset.type === "IMAGE_AD" && !meta.serviceMode && !productImageUrl) {
+      return json({ error: "This ad was made before we started saving its product photo, so a remix would invent one. Remake it from the Studio — pick the product and we'll keep the recipe." });
     }
     const type = asset.type === "VIDEO_AD" ? "video" : asset.type === "IMAGE_AD" ? "image" : "blog";
     const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
@@ -194,7 +197,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const contentType = meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined;
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, initiator: "remix" });
     } else if (type === "image") {
-      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, avatarId, avatarVariant: nextVariant, wear: false, prePaid: true });
+      // A remix is a VARIATION of this ad, so the recipe rides along — without
+      // the format/template the "remix" quietly became a different ad entirely.
+      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        productTitle, productImageUrl, stylePrompt: direction,
+        avatarId, avatarVariant: nextVariant, wear: !!meta.wear,
+        formatKey: meta.formatKey || undefined,
+        templateKey: meta.templateKey || undefined,
+        serviceMode: !!meta.serviceMode,
+        styleMode: meta.styleMode === "scene" || meta.styleMode === "backdrop" ? meta.styleMode : undefined,
+        prePaid: true,
+      });
     } else {
       await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true });
     }

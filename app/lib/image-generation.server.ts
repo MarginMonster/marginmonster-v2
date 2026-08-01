@@ -1143,7 +1143,13 @@ export async function generateImageAd(
               shopId, type: "IMAGE_AD", status: "PENDING",
               title: `${productTitle} — held by presenter`,
               bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter holding ${productTitle}`, method: "presenter", avatarId }),
-              metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle, avatarId }),
+              metaJson: JSON.stringify({
+                campaignGoal: plan.campaignGoal, productTitle, avatarId,
+                avatarVariant: avatarVariant ?? 0,
+                productImageUrl: productImageUrl || null,
+                direction: stylePrompt || null,
+                wear: !!wear,
+              }),
             },
           });
           return asset.id;
@@ -1445,7 +1451,19 @@ export async function generateImageAd(
       status: "PENDING",
       title: `Ad image for ${productTitle}`,
       bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt: usedPrompt, ...genMeta }),
-      metaJson: JSON.stringify({ campaignGoal: plan.campaignGoal, productTitle }),
+      // Everything a REMIX needs to rebuild this ad. Without the photo here,
+      // remixing regenerated from the title alone — which is the AI-slop path
+      // we closed in the Studio, quietly reachable from the Remix button.
+      metaJson: JSON.stringify({
+        campaignGoal: plan.campaignGoal,
+        productTitle,
+        productImageUrl: productImageUrl || null,
+        formatKey: formatKey || null,
+        templateKey: templateKey || null,
+        direction: stylePrompt || null,
+        serviceMode: !!serviceMode,
+        styleMode: styleMode || null,
+      }),
     },
   });
 
