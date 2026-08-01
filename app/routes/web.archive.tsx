@@ -264,7 +264,7 @@ const WA_CSS = `
 .wa-wallet{font-size:13px;font-weight:800;color:#0C7A46;margin:0 0 12px;}
 .wa-shelfnote{font-size:12.5px;color:var(--ink2,#5b6b61);margin:-4px 0 14px;}
 .wa-poster{position:relative;display:block;width:100%;padding:0;border:0;background:#0b0f0d;cursor:pointer;font:inherit;color:inherit;}
-.wa-poster video,.wa-poster img{width:100%;height:220px;object-fit:cover;display:block;pointer-events:none;}
+.wa-poster video,.wa-poster img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;pointer-events:none;}
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
 .wa-cd{position:absolute;top:8px;left:8px;background:rgba(20,32,26,.8);color:#E7C879;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.02em;}
 .wa-cd.urgent{background:#8C2E1B;color:#fff;}

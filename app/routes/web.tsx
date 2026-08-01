@@ -255,9 +255,15 @@ const CSS = `
 .wb-feats li::before{content:"✓";position:absolute;left:0;color:var(--green2);font-weight:900;}
 .wb-assets{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
 .wb-asset{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
-.wb-asset video,.wb-asset img{width:100%;height:220px;object-fit:cover;display:block;background:#0b0f0d;}
+/* Tiles are PORTRAIT, because the content is. A fixed 220px-tall box is
+ * landscape once a card goes full-width on a phone, and cover-cropping a 9:16
+ * video into it threw away two thirds of the frame — you got a mouth and a
+ * beard. At 4/5 the same video keeps ~70% of its height, and square ad images
+ * keep 80% of their width, while every tile stays the same shape so the grid
+ * doesn't go ragged. Cooking tiles and posters below match it exactly. */
+.wb-asset video,.wb-asset img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;background:#0b0f0d;}
 /* Cooking tiles — live render placeholders with shimmer + ETA. */
-.wb-cookimg{position:relative;height:220px;background-color:#101612;background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden;}
+.wb-cookimg{position:relative;aspect-ratio:4/5;height:auto;background-color:#101612;background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden;}
 .wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
 @keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
