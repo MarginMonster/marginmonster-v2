@@ -601,6 +601,8 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           avatarVariant: params.avatarId ? (params.avatarVariant ?? 0) : null,
           direction: params.direction || null,
           origin: params.origin || null,
+          productImageUrl: params.productImageUrl || null,
+          serviceMode: !!params.serviceMode,
         }),
       },
     });

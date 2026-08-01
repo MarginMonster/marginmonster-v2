@@ -962,6 +962,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           avatarVariant: variant,
           direction: params.direction || null,
           origin: params.origin || null,
+          productImageUrl: params.productImageUrl || null,
+          serviceMode: !!params.serviceMode,
         }),
       },
     });

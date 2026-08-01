@@ -171,13 +171,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const direction = meta.direction || undefined;
     const nextVariant = avatarId ? (((meta.avatarVariant ?? 0) + 1) % 4) : 0; // rotate the take
     const productImageUrl = asset.type !== "BLOG_POST" ? meta.productImageUrl || undefined : undefined;
-    // No photo means the pipeline would invent a product from the name. Older
-    // ads predate metaJson carrying the photo, so this is a real case — refuse
-    // BEFORE spending, rather than charging for slop.
-    if (asset.type === "IMAGE_AD" && !meta.serviceMode && !productImageUrl) {
-      return json({ error: "This ad was made before we started saving its product photo, so a remix would invent one. Remake it from the Studio — pick the product and we'll keep the recipe." });
-    }
     const type = asset.type === "VIDEO_AD" ? "video" : asset.type === "IMAGE_AD" ? "image" : "blog";
+    // No photo means the pipeline invents a product from its name. That's the
+    // AI-slop path, and it costs the SAME as a real render — 150 tokens on a
+    // video. Refuse BEFORE the spend. Anything made before we started saving
+    // the photo lands here, which is a one-time cliff, not an ongoing one.
+    if (asset.type !== "BLOG_POST" && !meta.serviceMode && !productImageUrl) {
+      return json({
+        error: `This ${type === "video" ? "video" : "ad"} was made before we started saving its product photo, so a remix would invent a product instead of using yours. Remake it from the Studio — pick the product and we'll keep the rest.`,
+      });
+    }
     const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
     // Tier gate BEFORE the spend: old assets stay viewable/postable forever,
     // but remixing (new generation) needs the capability on the current tier.

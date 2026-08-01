@@ -610,6 +610,8 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
           heldProduct, // did the singer perform WITH the product in hand?
           direction: params.direction || null,
           origin: params.origin || null,
+          productImageUrl: params.productImageUrl || null,
+          serviceMode: !!params.serviceMode,
         }),
       },
     });
