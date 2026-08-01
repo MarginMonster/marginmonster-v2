@@ -1080,7 +1080,9 @@ export async function generateImageAd(
   formatKey?: string,
   /** A promotion the merchant says they ARE running. Nothing else may put an
    *  offer on an ad — see formatCopy. */
-  merchantOffer?: string
+  merchantOffer?: string,
+  /** Merchant's explicit size class; beats the inferred one. */
+  productSize?: string
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -1095,7 +1097,9 @@ export async function generateImageAd(
         const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
         const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
-        const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1, wear ? "wear" : "hold", scene);
+        const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
+        const scaleHint = scaleFromChoice(productSize) || (await inferProductScale(productTitle, stylePrompt));
+        const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1, wear ? "wear" : "hold", scene, scaleHint?.phrase);
         let composed: string | undefined;
         for (let i = 0; i < 45; i++) {
           await new Promise((r) => setTimeout(r, 2000));

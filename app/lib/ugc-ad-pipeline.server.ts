@@ -64,6 +64,8 @@ interface UgcAdParams {
   wearProduct?: boolean; // apparel → presenter models (wears) the item instead of holding it
   serviceMode?: boolean; // intangible offering — no product to hold; presenter EXPLAINS and sells the outcome
   scene?: string; // merchant's setting/action → shapes the composed opening frame
+  productSize?: string; // merchant's explicit size class — beats inference
+
   resume?: {
     // stage checkpoints from a previous interrupted attempt — restarts must
     // NEVER re-spend on completed stages or abandon a live omni prediction
@@ -754,7 +756,11 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     if (!composedUrl && !params.serviceMode && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
       try {
         const { composeHoldingFrames } = await import("./fal-image.server");
-        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene);
+        // A cutout carries no scale, so tell the composer how big this
+        // actually is — otherwise a 12-box case comes out palm-sized.
+        const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
+        const hint = scaleFromChoice(params.productSize) || (await inferProductScale(params.productTitle, params.productDescription));
+        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene, hint?.phrase);
         composedUrl = frames[0] || "";
         if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
       } catch (e) {

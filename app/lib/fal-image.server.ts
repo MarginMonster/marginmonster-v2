@@ -19,12 +19,13 @@ export async function composeHoldingFrames(
   productTitle: string,
   numImages = 1,
   mode: "hold" | "wear" = "hold",
-  scene?: string
+  scene?: string,
+  scaleHint?: string
 ): Promise<string[]> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
 
   // Worker-context path (campaign drips): no request deadline, poll up to 2 min.
-  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene);
+  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene, scaleHint);
   for (let i = 0; i < 48; i++) {
     await new Promise((r) => setTimeout(r, 2500));
     const p = await pollCompose(q.statusUrl, q.responseUrl);
@@ -50,13 +51,18 @@ export async function submitCompose(
   productTitle: string,
   numImages = 2,
   mode: "hold" | "wear" = "hold",
-  scene?: string
+  scene?: string,
+  /** Concrete physical size brief (product-scale.server). "True real-world
+   *  size" is an instruction a model can't follow off a white-background
+   *  cutout; "roughly 40cm, needs both hands" is. */
+  scaleHint?: string
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
   // Product-integrity guard — the #1 compose failure is the product getting
   // warped/restyled, and the #2 is it getting MINIATURIZED (a snowboard
   // shrunk into a hand-held tube). Lock identity AND true real-world scale.
-  const integrity = `Keep the ${productTitle || "product"} identical to the second image — same exact shape, colors, materials, logos and text; do not distort, warp, restyle, crop oddly or add any text. CRITICAL: keep the product at its TRUE real-world size relative to the person — never shrink, miniaturize or turn it into a smaller object. A large item (snowboard, ski, surfboard, chair, rug…) is held upright with both hands or stood on the ground beside the presenter, even if it extends past the frame.`;
+  const sizing = scaleHint ? ` ${scaleHint}` : "";
+  const integrity = `Keep the ${productTitle || "product"} identical to the second image — same exact shape, colors, materials, logos and text; do not distort, warp, restyle, crop oddly or add any text. CRITICAL: keep the product at its TRUE real-world size relative to the person — never shrink, miniaturize or turn it into a smaller object. A large item (snowboard, ski, surfboard, chair, rug…) is held upright with both hands or stood on the ground beside the presenter, even if it extends past the frame.${sizing}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
   const s = (scene || "").trim().slice(0, 220);

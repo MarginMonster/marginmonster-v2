@@ -21,6 +21,7 @@ import { AD_FORMATS, AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
 import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
+import { SIZE_CHOICES } from "../lib/product-scale";
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
@@ -232,6 +233,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         contentType, cartoonStyle,
         avatarId, avatarVariant,
         holdProduct: !!avatarId && !service,
+        productSize: ((form.get("productSize") as string) || "").trim() || undefined,
         wearProduct: !!avatarId && wear && !service,
         serviceMode: service, scene,
         videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true, initiator: "web",
@@ -258,6 +260,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         formatKey: avatarId || service ? undefined : formatKey,
         // Only a merchant-declared promotion ever puts an offer on an ad.
         merchantOffer: ((form.get("merchantOffer") as string) || "").trim().slice(0, 40) || undefined,
+        productSize: ((form.get("productSize") as string) || "").trim() || undefined,
         avatarId: service ? undefined : avatarId, avatarVariant,
         wear: !!avatarId && wear && !service,
         serviceMode: service, scene, prePaid: true,
@@ -453,6 +456,7 @@ export default function WebStudio() {
   // post can deep-link shoppers straight to the buy page.
   const [pickedUrl, setPickedUrl] = useState("");
   const [catQuery, setCatQuery] = useState("");
+  const [productSize, setProductSize] = useState("");
   const [showConnect, setShowConnect] = useState(false);
   const [storeInput, setStoreInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -801,6 +805,24 @@ export default function WebStudio() {
                   Pull my products in
                 </button>
               </div>
+            )}
+            {showWear && (
+              <>
+                <div className="ws-lbl"><span>How big is it?</span> <span className="ws-opt">so the presenter holds it at the right size</span></div>
+                <div className="ws-seg ws-sizeseg">
+                  <button type="button" className={!productSize ? "sel" : ""} onClick={() => setProductSize("")}>Auto</button>
+                  {SIZE_CHOICES.map((sz) => (
+                    <button type="button" key={sz.key} className={productSize === sz.key ? "sel" : ""} onClick={() => setProductSize(sz.key)}>
+                      {sz.label}
+                    </button>
+                  ))}
+                </div>
+                {productSize ? <input type="hidden" name="productSize" value={productSize} /> : null}
+                <p className="ws-offernote">
+                  A product photo on a white background carries no scale, so we read the size from your
+                  title. Set it yourself if a render comes out too big or too small.
+                </p>
+              </>
             )}
             {(actionData as { catalogError?: string } | null)?.catalogError && (
               <div className="wb-err" style={{ marginTop: 8 }}>{(actionData as { catalogError?: string }).catalogError}</div>
