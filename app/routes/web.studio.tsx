@@ -945,7 +945,14 @@ export default function WebStudio() {
         <div className="ws-scrim" onClick={() => setShowDone(false)}>
           <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
             <span className="ws-mrose" aria-hidden />
-            <div className="ws-mi">✨</div>
+            {/* The flex: crest, wordmark, gold rule. A stock sparkle emoji is
+                the one thing on screen that isn't ours — this is the moment
+                the merchant just paid for, so put our name on it. */}
+            <div className="ws-flex" aria-hidden="true">
+              <span className="ws-flex-crest"><img src="/easymode-head.png?v=2" alt="" /></span>
+              <span className="ws-flex-word">Easy<b>Mode</b></span>
+              <span className="ws-flex-rule" />
+            </div>
             <b className="ws-mh">Your {queued} is being made</b>
             <p className="ws-mp">It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</p>
             <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}`}>View Archive ›</Link>

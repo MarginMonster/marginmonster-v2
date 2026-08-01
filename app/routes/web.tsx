@@ -392,12 +392,32 @@ const CSS = `
   padding:34px 30px 26px;max-width:400px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(10,20,14,.45);
   animation:wsPop .35s cubic-bezier(.2,1.4,.4,1) both;}
 @keyframes wsPop{from{opacity:0;transform:scale(.86) translateY(14px)}to{opacity:1;transform:none}}
-.ws-mrose{position:absolute;top:-90px;left:50%;width:260px;height:260px;transform:translateX(-50%);border-radius:50%;
-  background:conic-gradient(from 0deg,rgba(18,168,94,.16),rgba(176,133,38,.2),rgba(18,168,94,.16),rgba(176,133,38,.2),rgba(18,168,94,.16));
-  animation:wsSpin 14s linear infinite;pointer-events:none;}
-@keyframes wsSpin{to{transform:translateX(-50%) rotate(360deg)}}
+/* Sits high, so it fans out behind the crest rather than under the copy. */
+.ws-mrose{position:absolute;top:-172px;left:50%;width:340px;height:340px;margin-left:-170px;pointer-events:none;
+  background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.15;
+  animation:wsSpin 40s linear infinite;}
+@keyframes wsSpin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.ws-mrose{animation:none}.ws-modal{animation:none}}
 .ws-mi{position:relative;font-size:44px;margin-bottom:6px;}
+/* ---- EasyMode flex: the brand lockup that fronts the celebration ---- */
+.ws-flex{position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;margin-bottom:14px;}
+.ws-flex-crest{position:relative;width:56px;height:56px;border-radius:15px;overflow:hidden;display:grid;place-items:center;
+  border:1.5px solid rgba(199,158,63,.85);
+  box-shadow:0 4px 14px rgba(20,32,26,.22),0 0 0 4px rgba(231,200,121,.16),0 0 22px rgba(255,210,74,.3);
+  animation:wsFlexIn .5s cubic-bezier(.2,1.5,.4,1) both;}
+.ws-flex-crest img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated;filter:brightness(1.16) saturate(1.06);}
+.ws-flex-crest::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(150deg,rgba(255,255,255,.28),transparent 52%);}
+.ws-flex-word{font-family:Poppins,sans-serif;font-weight:800;font-size:25px;letter-spacing:-.02em;line-height:1;color:var(--ink);
+  animation:wsFlexIn .5s .07s cubic-bezier(.2,1.5,.4,1) both;}
+/* Gold on "Mode" — the same split the wordmark uses everywhere else, just
+   turned up to a proper metallic gradient for the celebration. */
+.ws-flex-word b{background:linear-gradient(100deg,#B08526,#F3D98C 45%,#B08526);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.ws-flex-rule{display:block;width:74px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,rgba(199,158,63,.95),transparent);
+  animation:wsFlexIn .5s .14s cubic-bezier(.2,1.5,.4,1) both;}
+@keyframes wsFlexIn{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.ws-flex-crest,.ws-flex-word,.ws-flex-rule{animation:none}}
 .ws-mh{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:20px;color:var(--ink);}
 .ws-mp{position:relative;color:var(--ink2);font-size:13.5px;line-height:1.55;margin:8px 0 18px;}
 .ws-mcta{position:relative;display:block;width:100%;}
