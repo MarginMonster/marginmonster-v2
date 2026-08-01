@@ -273,6 +273,7 @@ const WA_CSS = `
 .wa-chip.kept{background:#EAF6EF;color:#0C7A46;border:1px solid #BFE2CD;}
 .wa-chip.posted{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;border:1px solid transparent;}
 .wa-tileacts{display:flex;gap:8px;align-items:center;margin-top:8px;}
+.wa-jacts{display:flex;gap:8px;margin-top:8px;}
 .wa-icon{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:10px;border:1px solid var(--line,#E5E0CF);background:#fff;color:var(--ink,#14201A);cursor:pointer;font-size:14px;text-decoration:none;padding:0;}
 .wa-icon:hover{filter:brightness(.97)}
 .wa-icon[disabled]{opacity:.5;cursor:not-allowed}
@@ -321,6 +322,32 @@ const WA_CSS = `
 .wa-capbox:disabled{opacity:.6}
 .wa-caprow{display:flex;gap:8px;margin-top:8px;}
 .wa-caphint{display:block;font-size:11.5px;color:var(--ink2,#5b6b61);margin-top:6px;}
+/* ---- Phone shelf: the same doom-scroll relief the Studio pickers got. ----
+ * One full-width column of 4/5 tiles is a ~500px card apiece, so a dozen
+ * finished pieces became a mile of scrolling. Two-up halves it and the crop
+ * is unchanged (aspect is what decides that, not size). Everything inside the
+ * card tightens to survive a ~170px column — the retry row wraps rather than
+ * running off the edge. */
+@media (max-width:640px){
+  .wb-assets{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .wb-asset{border-radius:14px;}
+  .wb-asset .m{padding:9px 10px;font-size:12px;line-height:1.35;}
+  .wb-asset .s{font-size:10.5px;}
+  .wa-tileacts{gap:6px;margin-top:7px;}
+  .wa-icon{width:28px;height:28px;border-radius:9px;font-size:13px;}
+  .wa-chip{font-size:9.5px;padding:3px 7px;}
+  .wa-play{font-size:26px;}
+  .wa-cd{top:6px;left:6px;font-size:10.5px;padding:3px 7px;}
+  /* Inline styles on these buttons, so !important is the only lever. */
+  .wa-jacts{flex-wrap:wrap;gap:6px;}
+  .wa-jacts .wb-btn{padding:8px 12px !important;font-size:11.5px !important;}
+  /* The buffer scales with the tile it now lives in. */
+  .wb-bufwrap{gap:7px;}
+  .wb-bufwrap::before{width:150px;height:150px;}
+  .wb-spin{width:74px;height:74px;}
+  .wb-eta{font-size:11.5px;}
+  .wb-failbadge{font-size:24px;}
+}
 /* Phone viewer: the frame keeps its margin, the chrome pulls in with it, and
    the ad gets more of the height back now that the buttons stack tighter. */
 @media (max-width:640px){
@@ -534,7 +561,7 @@ export default function WebArchive() {
                 <div className="m">
                   This {j.kind} didn&apos;t make it{j.refunded ? " — tokens refunded" : ""}.
                   <div className="s">Failed — retry it right here</div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <div className="wa-jacts">
                     <button type="button" className="wb-btn" style={{ padding: "8px 16px", fontSize: 12.5 }} disabled={busy} onClick={() => retryJob(j.jobId)}>
                       {j.retryCost > 0 ? `Retry · ${j.retryCost} tokens` : "Retry free"}
                     </button>
