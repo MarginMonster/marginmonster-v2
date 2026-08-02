@@ -51,6 +51,9 @@ export interface Cell {
   /** Flat filename under data/renders, served at /renders/<file>. */
   file: string | null;
   rubric: Rubric | null;
+  /** Why there's no rubric, when there's no rubric. An ungraded cell is not a
+   *  failed cell, and conflating the two makes the summary lie. */
+  rubricError?: string;
   ms: number;
   error?: string;
 }
@@ -93,7 +96,7 @@ export async function discoverGoldenSet(storeUrl: string, size = 8): Promise<Gol
  *  generation time, useless for tracking a prompt change — "pass rate went
  *  61% → 68%" hides WHICH failure moved. Scoring dimensions separately makes
  *  a regression attributable. */
-export async function scoreAd(productImageUrl: string, adUrl: string, expected: string[]): Promise<Rubric | null> {
+export async function scoreAd(productImageUrl: string, adUrl: string, expected: string[], attempt = 0): Promise<Rubric> {
   try {
     const raw = await anthropicVision(
       [
@@ -115,11 +118,20 @@ export async function scoreAd(productImageUrl: string, adUrl: string, expected: 
       [productImageUrl, adUrl]
     );
     const m = raw && raw.match(/\{[\s\S]*\}/);
-    if (!m) return null;
+    if (!m) throw new Error("no JSON in the reply");
     return JSON.parse(m[0]) as Rubric;
   } catch (e) {
-    console.error("[ad-qa] rubric failed:", e instanceof Error ? e.message.slice(0, 140) : e);
-    return null;
+    const msg = e instanceof Error ? e.message.slice(0, 140) : String(e);
+    // Half the cells in the first full run came back ungraded and the summary
+    // quietly counted them as "would not ship". Retry once — most of these are
+    // transient rate limits from grading many cells at once — and when it
+    // still fails, SAY so rather than returning a bare null.
+    if (attempt === 0) {
+      await new Promise((r) => setTimeout(r, 2500));
+      return scoreAd(productImageUrl, adUrl, expected, 1);
+    }
+    console.error("[ad-qa] rubric failed:", msg);
+    throw new Error(msg);
   }
 }
 
@@ -161,11 +173,18 @@ export async function runQaCell(p: GoldenProduct, formatKey: string, runId: stri
     }
     // Score the rejects too — they're the interesting ones, and dropping them
     // would hide exactly the failure mode this is here to measure.
-    const rubric = r.imageUrl && r.copy ? await scoreAd(p.imageUrl, r.imageUrl, Object.values(r.copy)) : null;
+    let rubric: Rubric | null = null;
+    let rubricError: string | undefined;
+    if (r.imageUrl && r.copy) {
+      try { rubric = await scoreAd(p.imageUrl, r.imageUrl, Object.values(r.copy)); }
+      catch (e) { rubricError = e instanceof Error ? e.message : String(e); }
+    } else {
+      rubricError = "nothing to grade";
+    }
 
     return {
       ...base, ok: r.qaPass, retried: r.retried, fallback: r.fallback,
-      qaReason: r.qaReason, copy: r.copy, file, rubric, ms: Date.now() - t0,
+      qaReason: r.qaReason, copy: r.copy, file, rubric, rubricError, ms: Date.now() - t0,
     };
   } catch (e) {
     return { ...base, ms: Date.now() - t0, error: e instanceof Error ? e.message.slice(0, 200) : String(e) };
@@ -191,26 +210,36 @@ export async function pool<T, R>(items: T[], n: number, fn: (item: T, i: number)
 export function summaryMarkdown(cells: Cell[], truncated = 0): string {
   const n = cells.length || 1;
   const passed = cells.filter((c) => c.ok).length;
-  const shipped = cells.filter((c) => c.rubric?.wouldShip).length;
   const scored = cells.filter((c) => c.rubric);
+  // wouldShip is measured against the cells that were actually GRADED. The
+  // first full run reported it two different ways on one page — 33% in the
+  // header (dividing by every cell) and 67% in the table (dividing by graded
+  // cells) — because an ungraded cell was being counted as a rejection. It
+  // isn't one. It's a missing measurement, and it gets its own row.
+  const shipped = scored.filter((c) => c.rubric!.wouldShip).length;
+  const sd = scored.length || 1;
   const lines = [
     `## Ad QA — golden set`, ``,
     `| | |`, `|---|---|`,
-    `| cells | ${cells.length}${truncated ? ` (${truncated} not run — hit the cap)` : ""} |`,
+    `| cells run | ${cells.length}${truncated ? ` (${truncated} not run — hit the cap)` : ""} |`,
     `| live gate passed | **${passed}/${n}** (${Math.round((passed / n) * 100)}%) |`,
     `| passed only on retry | ${cells.filter((c) => c.ok && c.retried).length} |`,
-    `| would ship (art director) | **${shipped}/${n}** (${Math.round((shipped / n) * 100)}%) |`,
+    `| graded | ${scored.length}/${cells.length}${scored.length < cells.length ? " — the rest could not be graded, which is NOT the same as failing" : ""} |`,
+    `| would ship (of graded) | **${shipped}/${scored.length}** (${Math.round((shipped / sd) * 100)}%) |`,
     ``, `### Rubric`, ``, `| dimension | clean |`, `|---|---|`,
   ];
   for (const k of RUBRIC_KEYS) {
     const good = scored.filter((c) => c.rubric![k] !== false).length;
     lines.push(`| ${k} | ${scored.length ? `${good}/${scored.length}` : "not scored"} |`);
   }
-  const bad = cells.filter((c) => !c.ok || c.rubric?.wouldShip === false || c.error);
+  const bad = cells.filter((c) => !c.ok || c.rubric?.wouldShip === false || c.error || c.rubricError);
   if (bad.length) {
     lines.push(``, `### Needs a look`, ``, `| format | product | what |`, `|---|---|---|`);
     for (const c of bad) {
-      const what = c.error ? `error: ${c.error}` : !c.ok ? `fell back — ${c.qaReason || c.fallback}` : c.rubric?.notes || "would not ship";
+      const what = c.error ? `error: ${c.error}`
+        : !c.ok ? `fell back — ${c.qaReason || c.fallback}`
+        : c.rubricError ? `not graded — ${c.rubricError}`
+        : c.rubric?.notes || "would not ship";
       lines.push(`| ${c.format} | ${c.product.slice(0, 40)} | ${what.slice(0, 110).replace(/\|/g, "/")} |`);
     }
   }
@@ -235,6 +264,7 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
         ${bad.length ? `<div class="bad">✗ ${bad.map(esc).join(" · ")}</div>` : c.rubric ? `<div class="good">✓ all rubric checks</div>` : ""}
         ${c.rubric?.notes ? `<div class="nt">${esc(c.rubric.notes)}</div>` : ""}
         ${!c.ok && c.qaReason ? `<div class="nt">gate: ${esc(c.qaReason)}</div>` : ""}
+        ${c.rubricError && !c.error ? `<div class="nt">not graded — ${esc(c.rubricError)}</div>` : ""}
         ${c.error ? `<div class="bad">${esc(c.error)}</div>` : ""}
       </figcaption>
     </figure>`;
@@ -242,8 +272,8 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
 
   const n = cells.length || 1;
   const passed = cells.filter((c) => c.ok).length;
-  const shipped = cells.filter((c) => c.rubric?.wouldShip).length;
   const scored = cells.filter((c) => c.rubric);
+  const shipped = scored.filter((c) => c.rubric!.wouldShip).length;
   const rows = RUBRIC_KEYS.map((k) => {
     const good = scored.filter((c) => c.rubric![k] !== false).length;
     // "0%" when nothing was scored reads as a catastrophic regression. A QA
@@ -270,10 +300,12 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
  .qa .bad{color:#7A2E1D;font-size:11px;margin-top:5px;font-weight:600}
  .qa .good{color:#0C7A46;font-size:11px;margin-top:5px;font-weight:600}
  .qa .nt{color:#4A554E;font-size:11px;margin-top:3px}
+ .qa .warn{background:#FDF4E3;border:1px solid #E8D3A6;color:#7A5A12;padding:8px 12px;border-radius:9px;font-size:12px;margin:0 0 16px}
 </style>
 <div class="qa">
 <h2>Golden set</h2>
-<p class="sub">${cells.length} cells${truncated ? ` · ${truncated} not run (hit the cap)` : ""} · gate passed ${passed}/${n} (${Math.round((passed / n) * 100)}%) · would ship ${shipped}/${n} (${Math.round((shipped / n) * 100)}%)</p>
+<p class="sub">${cells.length} cells${truncated ? ` · ${truncated} not run (hit the cap)` : ""} · gate passed ${passed}/${n} (${Math.round((passed / n) * 100)}%) · would ship ${shipped}/${scored.length || 0} of the graded (${scored.length ? Math.round((shipped / scored.length) * 100) : 0}%)</p>
+${scored.length < cells.length ? `<p class="warn">${cells.length - scored.length} of ${cells.length} could not be graded. That is a missing measurement, not a failure — they are excluded from every percentage above.</p>` : ""}
 <table><tr><th>rubric dimension</th><th>clean</th><th></th></tr>${rows}</table>
 <div class="grid">${cards}</div>
 </div>`;

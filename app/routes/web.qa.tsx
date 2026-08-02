@@ -107,8 +107,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const chosen = picked.length ? picked.map((i) => golden[i]) : golden.slice(0, Math.max(1, Number(form.get("limit")) || 3));
     if (!chosen.length) return json({ error: "Pick at least one product." }, { status: 400 });
 
+    // Order matters once the cap bites. Nesting the loops (every product for
+    // format 1, then format 2…) meant a 24-cell cap out of 320 tested only the
+    // first THREE formats — so a run that looked broad was actually narrow, and
+    // dimensions like anatomy scored a perfect 100% having never seen a format
+    // with a person in it. Walk the grid diagonally instead: the cap now takes
+    // a spread across formats and products rather than one corner of it.
     const want: { p: GoldenProduct; f: string }[] = [];
-    for (const f of formats) for (const p of chosen) want.push({ p, f });
+    const F = formats.length, P = chosen.length;
+    for (let k = 0; k < F * P; k++) {
+      const f = formats[k % F];
+      const p = chosen[(Math.floor(k / F) + (k % F)) % P];
+      want.push({ p, f });
+    }
     // Truncation is reported, never silent — a partial run that reads like a
     // full one is how "we tested everything" quietly becomes untrue.
     const truncated = Math.max(0, want.length - CAP);
