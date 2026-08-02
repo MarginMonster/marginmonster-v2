@@ -237,7 +237,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         .slice(0, 6)
         .join("\n")
         .trim(),
-      params.productTitle, "jingle:lyrics");
+      params.productTitle, "jingle:lyrics", params.productDescription);
     const words = lyrics.split(/\s+/);
     if (words.length > 48) lyrics = words.slice(0, 48).join(" ");
     await ckpt({ ckLyrics: lyrics });

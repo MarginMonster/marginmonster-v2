@@ -681,7 +681,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         .replace(/["“”\n]+/g, " ")
         .replace(/\s+/g, " ")
         .trim(),
-      params.productTitle, "ugc:script");
+      params.productTitle, "ugc:script", params.productDescription);
     const w = script.split(" ");
     if (w.length > 34) script = w.slice(0, 34).join(" "); // 12s budget — hard cap so it never runs past the lip-sync sweet spot
     // give the voice model a clean final stop so it doesn't rush/trail the ending

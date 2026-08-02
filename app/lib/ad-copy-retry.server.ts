@@ -47,7 +47,8 @@ export function categoryDescription(productTitle: string): string {
 export async function withBrandFallback(
   write: (productRef: string, debranded: boolean) => Promise<string>,
   productTitle: string,
-  label: string
+  label: string,
+  productDescription?: string
 ): Promise<string> {
   let out = (await write(productTitle, false)).trim();
   if (out) return out;
@@ -56,9 +57,20 @@ export async function withBrandFallback(
   if (out) return out;
 
   const category = categoryDescription(productTitle);
-  console.warn(`[${label}] model returned nothing twice for "${productTitle.slice(0, 60)}" — retrying as "${category}"`);
+  console.warn(`[${label}] nothing twice for "${productTitle.slice(0, 60)}" — retrying as "${category}"`);
   out = (await write(category, true)).trim();
   if (out) return out;
 
-  throw new Error(`[${label}] no copy after two attempts and a de-branded retry`);
+  // "2024 Sonny Angel Christmas Series Sealed Set" reduces to "series sealed
+  // set", which names no object — the writer had nothing to sell and returned
+  // nothing again. When the title has no usable noun in it, the merchant's own
+  // description does, so use that as the product reference.
+  const fromDesc = (productDescription || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (fromDesc && fromDesc.toLowerCase() !== category) {
+    console.warn(`[${label}] "${category}" also refused — retrying from the description`);
+    out = (await write(fromDesc, true)).trim();
+    if (out) return out;
+  }
+
+  throw new Error(`[${label}] no copy after two attempts, a de-branded retry and a description retry`);
 }

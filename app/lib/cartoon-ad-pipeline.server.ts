@@ -328,7 +328,8 @@ export async function writeCartoonScript(o: {
   return withBrandFallback(
     (productRef, debranded) => writeCartoonScriptOnce({ ...o, productTitle: productRef, debranded }),
     o.productTitle,
-    "cartoon:script"
+    "cartoon:script",
+    o.productDescription
   );
 }
 
