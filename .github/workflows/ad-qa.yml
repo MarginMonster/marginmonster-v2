@@ -89,22 +89,27 @@ jobs:
           ls -la ad-qa.mjs
 
       - name: Which credentials can this job see?
-        # Names only — never values. A secret that exists but is scoped to an
-        # Environment, an Organization without this repo shared, or stored as
-        # a Dependabot/Codespaces secret is invisible here, and reads exactly
-        # like "not set". This prints the truth instead of guessing at it.
+        # Booleans only — the expressions below evaluate to true/false and the
+        # secret VALUES never enter the environment. (Serialising the whole
+        # secrets context would also work, but it puts every value in a job
+        # env var and GitHub gates workflows that do it.)
+        #
+        # A secret can exist and still be invisible here: scoped to an
+        # Environment, owned by an Organization that hasn't shared it with this
+        # repo, or stored as a Dependabot/Codespaces secret rather than an
+        # Actions one. All three look exactly like "not set" from inside a job.
         env:
-          SECRET_NAMES: ${{ toJSON(secrets) }}
+          HAS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY != '' }}
+          HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY != '' }}
+          HAS_ANTHROPIC_TOKEN: ${{ secrets.ANTHROPIC_TOKEN != '' }}
+          HAS_REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN != '' }}
+          HAS_REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN != '' }}
+          HAS_REPLICATE_API_KEY: ${{ secrets.REPLICATE_API_KEY != '' }}
+          HAS_FAL_KEY: ${{ secrets.FAL_KEY != '' }}
         run: |
-          node -e '
-            const names = Object.keys(JSON.parse(process.env.SECRET_NAMES || "{}"))
-              .filter(n => n !== "github_token").sort();
-            console.log("Actions secrets visible to this job (" + names.length + "):");
-            for (const n of names) console.log("  - " + n);
-            for (const want of ["ANTHROPIC_API_KEY", "REPLICATE_API_TOKEN"]) {
-              console.log((names.includes(want) ? "OK   " : "MISS ") + want);
-            }
-          '
+          echo "Which credential names are visible to this job:"
+          env | grep '^HAS_' | sort | sed 's/^HAS_/  /'
 
       - name: Run the golden set
         env:
