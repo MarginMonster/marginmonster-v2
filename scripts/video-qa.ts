@@ -34,8 +34,9 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
-  let leaked = 0, total = 0, tooLong = 0;
+  let leaked = 0, total = 0, tooLong = 0, errored = 0;
   const bad: string[] = [];
+  const errs: string[] = [];
 
   for (const style of styles) {
     for (const p of PRODUCTS) {
@@ -56,25 +57,36 @@ async function main() {
             console.log(`[vqa] ok   ${CARTOON_RECIPES[style].name.padEnd(14)} ${words}w  ${script.slice(0, 74)}`);
           }
         } catch (e) {
-          bad.push(`${style} / ${p.title.slice(0, 32)} → ERROR ${e instanceof Error ? e.message.slice(0, 120) : e}`);
-          console.log(`[vqa] ERR  ${style}`);
+          errored++;
+          const msg = e instanceof Error ? e.message.slice(0, 160) : String(e);
+          errs.push(`${CARTOON_RECIPES[style].name} / ${p.title.slice(0, 32)} → ${msg}`);
+          console.log(`[vqa] ERR  ${CARTOON_RECIPES[style].name.padEnd(14)} ${msg}`);
         }
       }
     }
   }
 
+  // A script that errored was never written, so counting it as written and
+  // then reporting "0 leaked" says the run was clean when part of it did not
+  // happen. Errors get their own row and their own section, always.
+  const written = total - errored;
   const md = [
     `## Video QA — cartoon voice-over scripts`,
     ``,
     `| | |`, `|---|---|`,
-    `| scripts written | ${total} |`,
-    `| leaked a style/medium word | **${leaked}** |`,
+    `| attempted | ${total} |`,
+    `| scripts written | ${written} |`,
+    `| failed to generate | ${errored ? `**${errored}**` : "0"} |`,
+    `| leaked a style/medium word | **${leaked}**${written ? ` of ${written}` : ""} |`,
     `| over the 32-word cap | ${tooLong} |`,
     ``,
     leaked
       ? `### Leaks\n\n\`\`\`\n${bad.join("\n\n")}\n\`\`\``
-      : `No script named the animation style, the medium, or the fact that it is an ad.`,
+      : written
+        ? `None of the ${written} scripts written named the animation style, the medium, or the fact that it is an ad.`
+        : `Nothing was written, so nothing was tested.`,
     ``,
+    errored ? `### Failed to generate\n\n\`\`\`\n${errs.join("\n")}\n\`\`\`\n` : ``,
     `Only the SCRIPT step is covered here. Product fidelity in the stylised`,
     `keyframe and the absence of lip-sync both need a real render to verify.`,
   ].join("\n");
