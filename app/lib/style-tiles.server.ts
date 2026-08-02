@@ -43,9 +43,9 @@ const PICKER_KEYS: CartoonStyleKey[] = [
 // bottle, never a generic prop.
 const SPECIAL_PROMPTS: Record<string, string> = {
   anthemcover:
-    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, the other hand holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), both hands anatomically correct with five fingers. Colorful warm stage lighting with soft bokeh lights behind them, natural skin texture, centered on them from the waist up, no other text, no watermark.",
+    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — singing joyfully into a retro silver studio microphone like a pop star mid-note, eyes bright, genuine delighted expression, one hand on the mic, the other hand holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), both hands anatomically correct with four fingers and one thumb, five digits each and never six. Colorful warm stage lighting with soft bokeh lights behind them, natural skin texture, centered on them from the waist up, no other text, no watermark.",
   avatarcover:
-    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), the hand holding the bottle anatomically correct with five fingers and a natural grip. Bright airy daylight room softly blurred behind them, natural skin texture, centered on them from the chest up, no other text, no watermark.",
+    "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), the hand holding the bottle anatomically correct with four fingers and one thumb, five digits and never six, and a natural grip. Bright airy daylight room softly blurred behind them, natural skin texture, centered on them from the chest up, no other text, no watermark.",
 };
 
 const inFlight = new Set<string>();
@@ -102,7 +102,7 @@ export function ensureStyleTile(character: string, key: string): void {
         `likeness, smiling and holding up the bottle from image 2 rendered in the same art style — ` +
         `same shape, same emerald green drink and black cap, and its label reads exactly "EASYMODE", facing the camera and right-side-up, ` +
         `in clean bold capital letters, perfectly spelled, with no other readable text anywhere. ` +
-        `The hand gripping the bottle is anatomically correct — five fingers, natural relaxed grip, ` +
+        `The hand gripping the bottle is anatomically correct — four fingers and one thumb, five digits and never six, natural relaxed grip, ` +
         `no extra or missing fingers. Wide landscape composition, the character centered from ` +
         `the waist up, beautiful style-true background scene, rich detail, no watermark.`);
       // Render → spell-check → one retry → strip lettering as a last resort.

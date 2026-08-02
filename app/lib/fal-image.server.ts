@@ -85,9 +85,19 @@ export async function submitCompose(
       : `The person from the first image holding the ${productTitle || "product"} from the second image, ` +
         `product facing the camera and clearly visible — small items held up at chest height in one hand with a natural relaxed grip; ` +
         `large items held upright with both hands or stood beside them at full size. ` +
-        `Hands are anatomically correct: five fingers per hand, natural grip, no extra or missing fingers. EXACTLY TWO hands are visible in the whole image and both belong to the presenter — never add a third hand, a spare arm, or a disembodied hand holding the product. ` +
+        // "five fingers per hand" was our own bug: anatomically a hand is FOUR
+        // fingers plus ONE thumb, so asking for five fingers AND getting a thumb
+        // is six digits — which is exactly what came back.
+        `Hands are anatomically correct: each hand has FOUR fingers and ONE thumb, five digits total, never six. ` +
+        `If the thumb is hidden behind the product, exactly FOUR fingers are visible on that hand — never five fingers plus a hidden thumb. ` +
+        `EXACTLY TWO hands are visible in the whole image and both belong to the presenter — never add a third hand, a spare arm, or a disembodied hand holding the product. ` +
         `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-        `Candid smartphone selfie UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
+        // NOT a selfie. A selfie needs a hand on the phone, so asking for one
+        // while both hands hold the product forces the model to invent a third
+        // arm reaching toward the lens. Someone else is taking this photo.
+        `The photo is taken BY SOMEONE ELSE standing in front of them — this is NOT a selfie and the presenter is NOT holding the camera. ` +
+        `Both arms stay bent with the elbows down and close to the body; no arm reaches out toward the lens or extends off-frame toward the camera. ` +
+        `Candid smartphone UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },

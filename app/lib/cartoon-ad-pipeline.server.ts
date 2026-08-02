@@ -432,7 +432,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
         `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
         `${params.serviceMode ? "" : `Keep the ${params.productTitle} they are presenting clearly recognizable — same shape, colors, logos and TRUE real-world size, never miniaturized. `}` +
-        `Hands are anatomically correct — five fingers per hand, natural relaxed grip, no extra or missing fingers. ` +
+        `Hands are anatomically correct — FOUR fingers and ONE thumb per hand, five digits total and never six, natural relaxed grip. ` +
         `Delightful advertising scene, simple complementary background.${sceneBits}${exactText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
       url = await run({

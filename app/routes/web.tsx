@@ -282,11 +282,24 @@ const CSS = `
   font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:#fff;padding:12px 24px;border-radius:12px;
   background:linear-gradient(165deg,#12A85E,#0B6B3E);
   box-shadow:0 4px 12px rgba(12,122,70,.28),inset 0 0 0 1px rgba(231,200,121,.34);}
-.wb-btn::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:8px;pointer-events:none;}
+/* ---- The gold rule, applied to EVERY green surface in one place ----
+   This started as a .wb-btn-only treatment, which meant every other green
+   button on the site (Studio tabs, Archive actions, the plans toggle) shipped
+   bare and had to be chased down one at a time. Anything with the green
+   gradient goes in these selector lists — that's the rule now. */
+.ws-tab.on,.wa-vbtn,.wd-toggle button.on{position:relative;isolation:isolate;overflow:hidden;}
+.wb-btn::before,.ws-tab.on::before,.wa-vbtn::before,.wd-toggle button.on::before{
+  content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:8px;pointer-events:none;}
 /* Pushed well past the edge: parked closer in, the rosette's hollow centre
    sits mid-button and reads as a dark disc rather than etching. */
-.wb-btn::after{content:"";position:absolute;z-index:-1;top:50%;right:-58px;width:124px;height:124px;margin-top:-62px;pointer-events:none;
+.wb-btn::after,.ws-tab.on::after,.wa-vbtn::after,.wd-toggle button.on::after{
+  content:"";position:absolute;z-index:-1;top:50%;right:-58px;width:124px;height:124px;margin-top:-62px;pointer-events:none;
   background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.2;animation:wbDrift 60s linear infinite;}
+/* Pill-shaped buttons need the inner rule to follow the pill, not a rounded
+   rectangle sitting inside it. */
+.wd-toggle button.on::before{inset:3px;border-radius:999px;}
+.ws-tab.on::before{border-radius:9px;}
+@media (prefers-reduced-motion:reduce){.ws-tab.on::after,.wa-vbtn::after,.wd-toggle button.on::after{animation:none}}
 .wb-btn:hover{filter:brightness(1.06)}
 /* Ghost + disabled buttons aren't gold-rule surfaces — strip the treatment. */
 .wb-btn.ghost::before,.wb-btn.ghost::after{display:none}

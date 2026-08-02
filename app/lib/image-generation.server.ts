@@ -417,7 +417,14 @@ async function qaPresenterHold(
         `- printed packaging lettering or logos came out in the WRONG COLOUR (a gold logo rendered purple, for example);`,
         `- marketing text, a caption, a price flash or a shop WATERMARK from the original photo's background was copied into the shot, or packaging text was duplicated;`,
         `- an EXTRA hand, arm or limb appears — a third hand on the product, a disembodied hand floating in frame, or an arm that belongs to nobody. Count the hands: a single presenter has exactly two, both attached to their own arms;`,
-        `- the hands are deformed, have extra/missing fingers, or don't plausibly hold it.`,
+        // Count digits explicitly. "extra fingers" alone passed a hand showing
+        // five fingers with the thumb tucked out of sight — six digits, but each
+        // one individually plausible.
+        `- COUNT THE DIGITS on every visible hand. A hand has FOUR fingers plus ONE thumb. If you can see five fingers AND a thumb, that is six digits — FAIL. If the thumb is hidden behind the product, only four fingers should be visible; five visible fingers with a hidden thumb is also six — FAIL;`,
+        // A presenter reaching toward the lens reads as holding the camera, which
+        // means a third hand exists somewhere off-frame.
+        `- an arm is stretched out toward the camera as though the presenter is holding the phone taking the photo, while their other hands are on the product — that implies a third arm off-frame — FAIL;`,
+        `- the hands are deformed, at an impossible angle for the arm they attach to, or don't plausibly hold it.`,
         `Otherwise PASS. Judge fidelity and scale only — not lighting or taste.`,
       ].filter(Boolean).join("\n"),
       [productUrl, genUrl],

@@ -216,17 +216,21 @@ html,body{margin:0;padding:0}
     repeating-linear-gradient(123deg,rgba(255,220,120,.09) 0 1px,transparent 1px 8px),
     linear-gradient(165deg,#12A85E,#0B6B3E);
   box-shadow:0 6px 0 #064e2e,0 16px 36px rgba(12,122,70,.34);transition:transform .09s,filter .12s;}
-/* Spinning guilloché medallion — engine-turned money etching, CSS-only so the
-   public page stays light (no big SVG). Fine conic rays + radial waves spin. */
-.lz-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-18px;width:104px;height:104px;margin-top:-52px;border-radius:50%;
-  background:
-    repeating-conic-gradient(from 0deg,rgba(255,228,158,.15) 0deg 1.4deg,transparent 1.4deg 4deg),
-    repeating-conic-gradient(from 0deg,rgba(255,228,158,.10) 0deg .7deg,transparent .7deg 7deg),
-    repeating-radial-gradient(circle,rgba(255,228,158,.12) 0 1px,transparent 1px 6px);
-  -webkit-mask:radial-gradient(circle,#000 60%,transparent 63%);mask:radial-gradient(circle,#000 60%,transparent 63%);
-  opacity:.8;animation:lz-medallion 26s linear infinite;pointer-events:none;}
+/* The real GStyle rosette, not an approximation. Conic gradients were used
+   here to keep the public page light, but the figure is overlapping petal
+   loops — rays and rings never looked like it, and it read as a plain disc.
+   One cached SVG shared with the app is the honest version. */
+.lz-cta::after,.lz-navcta::after,.lz-price-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-52px;
+  width:118px;height:118px;margin-top:-59px;pointer-events:none;
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.22;animation:lz-medallion 60s linear infinite;}
+.lz-cta::after{right:-40px;width:132px;height:132px;margin-top:-66px;opacity:.26;}
 @keyframes lz-medallion{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.lz-cta::after{animation:none}}
+/* Every green button on the page carries the same gold rule + rosette. */
+.lz-navcta,.lz-price-cta{position:relative;isolation:isolate;overflow:hidden;}
+.lz-navcta::before,.lz-price-cta::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);
+  border-radius:8px;pointer-events:none;}
+.lz-price-cta::before{border-radius:9px;}
+@media (prefers-reduced-motion:reduce){.lz-cta::after,.lz-navcta::after,.lz-price-cta::after{animation:none}}
 .lz-cta::before{content:"";position:absolute;inset:6px;border:1px solid rgba(255,210,74,.45);border-radius:11px;pointer-events:none;z-index:1;}
 .lz-cta:hover{filter:brightness(1.05)}
 .lz-cta:active{transform:translateY(3px);box-shadow:0 3px 0 #064e2e,0 8px 18px rgba(12,122,70,.3)}
