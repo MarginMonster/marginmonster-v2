@@ -96,7 +96,22 @@ export async function discoverGoldenSet(storeUrl: string, size = 8): Promise<Gol
  *  generation time, useless for tracking a prompt change — "pass rate went
  *  61% → 68%" hides WHICH failure moved. Scoring dimensions separately makes
  *  a regression attributable. */
-export async function scoreAd(productImageUrl: string, adUrl: string, expected: string[], attempt = 0): Promise<Rubric> {
+/* Grading is serialised through this chain. Cells render in parallel, which is
+ * fine — but their grade calls then land on the vision API together and half
+ * of them came back rate-limited. An ungraded cell is a render already paid
+ * for that taught us nothing, so the throughput isn't worth it. */
+let gradeQueue: Promise<unknown> = Promise.resolve();
+function serialise<T>(fn: () => Promise<T>): Promise<T> {
+  const next = gradeQueue.then(fn, fn);
+  gradeQueue = next.catch(() => {});
+  return next;
+}
+
+export function scoreAd(productImageUrl: string, adUrl: string, expected: string[]): Promise<Rubric> {
+  return serialise(() => scoreAdOnce(productImageUrl, adUrl, expected, 0));
+}
+
+async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: string[], attempt: number): Promise<Rubric> {
   try {
     const raw = await anthropicVision(
       [
@@ -122,15 +137,15 @@ export async function scoreAd(productImageUrl: string, adUrl: string, expected: 
     return JSON.parse(m[0]) as Rubric;
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 140) : String(e);
-    // Half the cells in the first full run came back ungraded and the summary
-    // quietly counted them as "would not ship". Retry once — most of these are
-    // transient rate limits from grading many cells at once — and when it
-    // still fails, SAY so rather than returning a bare null.
-    if (attempt === 0) {
-      await new Promise((r) => setTimeout(r, 2500));
-      return scoreAd(productImageUrl, adUrl, expected, 1);
+    // Backoff, not a single retry: one retry still left half the cells
+    // ungraded. 3s, 12s, 30s — slow, but a slow grade beats a paid-for render
+    // that never gets measured.
+    const waits = [3_000, 12_000, 30_000];
+    if (attempt < waits.length) {
+      await new Promise((r) => setTimeout(r, waits[attempt]));
+      return scoreAdOnce(productImageUrl, adUrl, expected, attempt + 1);
     }
-    console.error("[ad-qa] rubric failed:", msg);
+    console.error("[ad-qa] rubric failed after retries:", msg);
     throw new Error(msg);
   }
 }
