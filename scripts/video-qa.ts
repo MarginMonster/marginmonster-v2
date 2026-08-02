@@ -255,19 +255,22 @@ async function presenterHoldCheck(): Promise<string> {
       } else if (r.url) {
         await saveFrame(r.url, frameName);
       }
+      // The bare stand-in as well. When the blank path fails it is the only
+      // way to tell a bad blank box from a bad paste.
+      if (r.standInUrl) await saveFrame(r.standInUrl, `standin-${portrait.split("/").pop()}`);
       // What production would actually DO with this frame, which is now the
       // number that matters: a wrong-product hold is dropped for a product
       // still rather than shipped with a lookalike in the presenter's hands.
       const delivered = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
-      rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
+      rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
-      rows.push(`| ${portrait.split("/").pop()} | ERROR | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`);
+      rows.push(`| ${portrait.split("/").pop()} | ERROR | — | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`);
     }
   }
   return [
     `### Presenter image ads — does the merchant's artwork survive?`, ``,
     `${shipped}/${portraits.length - ungraded} graded frames passed an independent judge${ungraded ? ` · **${ungraded} could not be graded at all**` : ""}. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
-    `| presenter | product | merchant gets | production gate | independent judge | frame |`, `|---|---|---|---|---|---|`, ...rows,
+    `| presenter | product | stand-in attempt | merchant gets | production gate | independent judge | frame |`, `|---|---|---|---|---|---|---|`, ...rows,
   ].join("\n");
 }
 

@@ -572,12 +572,16 @@ async function qaPresenterHold(
  *  Every bail says WHY on the way out. The first run of this shipped silent
  *  returns, the sweep reported "drawn" for both presenters, and there was no
  *  way to tell which of four steps had given up. */
+type PasteResult =
+  | { ok: true; file: string; absPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
+  | { ok: false; failed: string };
+
 async function overlayRealProduct(
   frameUrl: string,
   productImageUrl: string,
   opts: { blank?: boolean } = {}
-): Promise<{ file: string; absPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } } | null> {
-  const give = (why: string) => { console.warn(`[presenter:paste] skipped — ${why}`); return null; };
+): Promise<PasteResult> {
+  const give = (why: string): PasteResult => { console.warn(`[presenter:paste] skipped — ${why}`); return { ok: false, failed: why }; };
   const bin = ffmpegBin();
   if (!bin) return give("no ffmpeg binary");
 
@@ -666,7 +670,7 @@ async function overlayRealProduct(
       // Where the product ACTUALLY landed, so the edge blend can build its
       // mask around the real thing rather than around the model's guess.
       const px = bx + Math.round((bw - tw) / 2);
-      return { file: fileName, absPath: out, rect: { x: px, y: bottom - th, w: tw, h: th }, frame: { w: W, h: H } };
+      return { ok: true, file: fileName, absPath: out, rect: { x: px, y: bottom - th, w: tw, h: th }, frame: { w: W, h: H } };
     }
     return give(ok ? "ffmpeg wrote nothing usable" : "ffmpeg overlay failed");
   } catch (e) {
@@ -761,6 +765,13 @@ export interface PresenterHoldResult {
   /** On-disk path of the composited frame, when there is one. The QA harness
    *  publishes these bytes; production only needs the URL. */
   localPath?: string;
+  /** What happened on the blank stand-in attempt, in one line. Lives on the
+   *  result rather than in a console warning because a console warning is not
+   *  in the report, and anything not in the report does not exist. */
+  standIn?: string;
+  /** The bare stand-in frame, so a run can show whether the blank box itself
+   *  came out usable. */
+  standInUrl?: string;
   /** How the delivered frame was made: the merchant's photograph pasted onto
    *  a blank stand-in, the same paste used to repair a bad generative frame,
    *  or a purely generated product. */
@@ -803,11 +814,17 @@ export async function runPresenterHold(opts: {
   // packaging, and prompting it harder is what produced the robot hands. So
   // it draws a featureless box, which it does reliably, and the merchant's
   // own photograph goes on top. The only thing left to get right is the pose.
+  let standIn = "not attempted";
+  let standInUrl: string | undefined;
   if (!opts.wear) {
     const blank = await runCompose(opts.scalePhrase, "blank", await productAspect(opts.productImageUrl));
+    standInUrl = blank;
+    standIn = blank ? "stand-in composed" : "stand-in compose returned nothing";
     if (blank) {
-      const pasted = await overlayRealProduct(blank, opts.productImageUrl, { blank: true });
-      if (pasted) {
+      const attempt = await overlayRealProduct(blank, opts.productImageUrl, { blank: true });
+      if (!attempt.ok) standIn = `paste failed: ${attempt.failed}`;
+      else {
+        const pasted = attempt;
         // The paste covered the fingers that were gripping the stand-in, so
         // blend them back over its edges. Grade whichever version survives —
         // the blend is an improvement, not a guarantee.
@@ -827,9 +844,12 @@ export async function runPresenterHold(opts: {
             via: "blank-standin",
             failed: [],
             wrongProduct: false,
+            standIn: `pasted${blended ? " + blended" : ", no blend"} · accepted`,
+            standInUrl,
           };
         }
-        console.warn(`[presenter:blank] stand-in paste rejected (${qaB.reason}) — falling back to the generative hold`);
+        standIn = `pasted${blended ? " + blended" : ", no blend"} · gate rejected it: ${qaB.reason}`;
+        console.warn(`[presenter:blank] ${standIn} — falling back to the generative hold`);
       }
     }
   }
@@ -862,7 +882,9 @@ export async function runPresenterHold(opts: {
   // frame, which is worse than the thing it was fixing. So it is a repair,
   // not a step — it runs when the identity check failed, and never otherwise.
   const needsRepair = qa.bad.some((k) => IDENTITY_FIELDS.includes(k));
-  const pasted = needsRepair ? await overlayRealProduct(composed, opts.productImageUrl) : null;
+  const repair = needsRepair ? await overlayRealProduct(composed, opts.productImageUrl) : null;
+  if (repair && !repair.ok) standIn = `${standIn} · repair paste failed: ${repair.failed}`;
+  const pasted = repair?.ok ? repair : null;
   if (pasted) {
     // Grade the BYTES, not a URL. The composite exists on the render disk
     // before it has a public address, and off production there is no public
@@ -884,6 +906,8 @@ export async function runPresenterHold(opts: {
         composited: true,
         localPath: pasted.absPath,
         via: "paste-repair",
+        standIn,
+        standInUrl,
         failed: qa3.bad,
         wrongProduct: qa3.bad.some((k) => IDENTITY_FIELDS.includes(k)),
       };
@@ -896,6 +920,8 @@ export async function runPresenterHold(opts: {
     retried,
     composited: false,
     via: "drawn",
+    standIn,
+    standInUrl,
     failed: qa.bad,
     wrongProduct: qa.bad.some((k) => IDENTITY_FIELDS.includes(k)),
   };
