@@ -16,7 +16,7 @@
  */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useLoaderData, useRevalidator } from "@remix-run/react";
+import { Form, isRouteErrorResponse, useActionData, useLoaderData, useRevalidator, useRouteError } from "@remix-run/react";
 import { useEffect } from "react";
 import fs from "node:fs";
 import path from "node:path";
@@ -73,10 +73,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "seed") {
     const url = String(form.get("storeUrl") || "").trim();
-    const set = await discoverGoldenSet(url, Number(form.get("size") || 6));
-    fs.mkdirSync(path.dirname(goldenPath()), { recursive: true });
-    fs.writeFileSync(goldenPath(), JSON.stringify(set, null, 2));
-    return json({ ok: `Seeded ${set.length} products.` });
+    if (!url) return json({ error: "Paste a store address first." }, { status: 400 });
+    // Discovery talks to someone else's web server: a bad address, a site with
+    // no readable product feed, or a timeout are all NORMAL outcomes, not
+    // crashes. Letting them throw gave a blank "Application error" with no clue
+    // what went wrong, which is the worst possible way to fail.
+    try {
+      const set = await discoverGoldenSet(url, Number(form.get("size")) || 6);
+      if (!set.length) return json({ error: `Found no products with images at ${url}.` }, { status: 400 });
+      fs.mkdirSync(path.dirname(goldenPath()), { recursive: true });
+      fs.writeFileSync(goldenPath(), JSON.stringify(set, null, 2));
+      return json({ ok: `Seeded ${set.length} products from ${url}.` });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[ad-qa] seed failed:", msg);
+      return json({ error: `Couldn't read that store: ${msg.slice(0, 300)}` }, { status: 400 });
+    }
   }
 
   if (intent === "run") {
@@ -124,8 +136,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ error: "Unknown action" }, { status: 400 });
 };
 
+/* Without this, ANY throw on this page renders the bare framework
+ * "Application error" with no clue what broke — which is exactly what a
+ * diagnostic tool must never do. */
+export function ErrorBoundary() {
+  const err = useRouteError();
+  const msg = isRouteErrorResponse(err)
+    ? `${err.status} ${err.statusText}${err.data ? ` — ${String(err.data).slice(0, 300)}` : ""}`
+    : err instanceof Error ? err.message : String(err);
+  return (
+    <div className="wb-card">
+      <b>Ad QA hit an error</b>
+      <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, marginTop: 8, color: "#7A2E1D" }}>{msg}</pre>
+      <p className="wb-sub" style={{ marginTop: 8 }}>
+        A 404 here means <code>QA_KEY</code> is unset in Render, or the <code>?key=</code> in the URL doesn&apos;t match it.
+      </p>
+    </div>
+  );
+}
+
 export default function WebQa() {
   const d = useLoaderData<typeof loader>();
+  const a = useActionData<typeof action>() as { ok?: string; error?: string } | undefined;
   const rev = useRevalidator();
 
   // Poll while a run is in flight so progress and the finished sheet appear
@@ -144,6 +176,9 @@ export default function WebQa() {
         one render per cell, two if the gate rejects the first. Cap is {d.cap} cells.
       </p>
 
+      {a?.error && <div className="wb-err">{a.error}</div>}
+      {a?.ok && <div className="wb-ok">{a.ok}</div>}
+
       <div className="wb-card">
         <b>1 · Golden set</b>
         <p className="wb-sub" style={{ marginTop: 6 }}>
@@ -153,7 +188,7 @@ export default function WebQa() {
         </p>
         <Form method="post" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input type="hidden" name="intent" value="seed" />
-          <input className="wb-in" name="storeUrl" placeholder="shopmagicmonster.com" style={{ maxWidth: 260 }} />
+          <input className="wb-in" name="storeUrl" placeholder="shopmagicmonster.com" required style={{ maxWidth: 260 }} />
           <input className="wb-in" name="size" defaultValue="6" style={{ maxWidth: 80 }} />
           <button className="wb-btn ghost" type="submit">Seed</button>
         </Form>
