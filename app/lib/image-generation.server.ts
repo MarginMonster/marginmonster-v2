@@ -793,10 +793,31 @@ export async function runFormatRung(opts: {
   if (!copy) return nil("copy-failed");
 
   const prompt = formatLayoutPrompt(opts.formatKey, copy);
+  // The rejection reason goes into an IMAGE prompt, and the QA reply often
+  // quotes the offending words back ('repeated word "still"'). Handing quoted
+  // words to an image model is a good way to get them drawn into the picture —
+  // the correction becoming the next defect. So the retry gets the CATEGORY of
+  // failure, never the reviewer's prose.
+  const correction = (reason: string): string => {
+    const r = reason.toLowerCase();
+    const notes: string[] = [];
+    if (/textsensible|repeat|duplicat|stutter|garbl|nonsense/.test(r)) {
+      notes.push("the previous attempt rendered a word or phrase twice — write each line ONCE, as clean grammatical English");
+    }
+    if (/textmatches|missing|cut off|misspell|spell/.test(r)) {
+      notes.push("the previous attempt mis-rendered or dropped some of the required text — reproduce every requested string exactly and completely");
+    }
+    if (/productintact|warp|distort|reinvent|restyl/.test(r)) {
+      notes.push("the previous attempt altered the product — keep it pixel-faithful to the reference photo");
+    }
+    if (/nosourcetext|watermark|badge|caption/.test(r)) {
+      notes.push("the previous attempt copied text from the reference photo's background — reproduce only the product itself");
+    }
+    if (!notes.length) notes.push("the previous attempt was rejected for text quality — render every string once, correctly spelled");
+    return ` Retry: ${notes.join("; ")}.`;
+  };
   const renderOnce = (fix?: string) => repRun("google/nano-banana", {
-    prompt: fix
-      ? `${prompt} The previous attempt was rejected because: ${fix}. Fix exactly that — render every string once, spelled correctly and reading as natural English.`
-      : prompt,
+    prompt: fix ? `${prompt}${correction(fix)}` : prompt,
     image_input: [opts.productImageUrl],
     output_format: "jpg",
   });

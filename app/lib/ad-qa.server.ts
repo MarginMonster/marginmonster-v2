@@ -207,10 +207,24 @@ export async function pool<T, R>(items: T[], n: number, fn: (item: T, i: number)
 
 /* ---------- reporting ---------- */
 
+/* Two different questions, and conflating them made a real improvement look
+ * like a regression.
+ *
+ *  - RAW GENERATION quality: how good is what the model hands back, before
+ *    our gate judges it. Graded over every cell including the rejects.
+ *  - WHAT A MERCHANT RECEIVES: only cells the gate PASSED. A rejected render
+ *    is discarded in production and the merchant gets a fallback ad instead —
+ *    so grading rejects and calling it "would ship" measures ads nobody ever
+ *    sees. Tightening the gate pushes raw quality DOWN (more rejects land in
+ *    the graded pool) while pushing delivered quality UP. One number cannot
+ *    say both. */
 export function summaryMarkdown(cells: Cell[], truncated = 0): string {
   const n = cells.length || 1;
   const passed = cells.filter((c) => c.ok).length;
   const scored = cells.filter((c) => c.rubric);
+  const delivered = scored.filter((c) => c.ok);
+  const dShip = delivered.filter((c) => c.rubric!.wouldShip).length;
+  const rejected = cells.filter((c) => !c.ok).length;
   // wouldShip is measured against the cells that were actually GRADED. The
   // first full run reported it two different ways on one page — 33% in the
   // header (dividing by every cell) and 67% in the table (dividing by graded
@@ -225,8 +239,25 @@ export function summaryMarkdown(cells: Cell[], truncated = 0): string {
     `| live gate passed | **${passed}/${n}** (${Math.round((passed / n) * 100)}%) |`,
     `| passed only on retry | ${cells.filter((c) => c.ok && c.retried).length} |`,
     `| graded | ${scored.length}/${cells.length}${scored.length < cells.length ? " — the rest could not be graded, which is NOT the same as failing" : ""} |`,
-    `| would ship (of graded) | **${shipped}/${scored.length}** (${Math.round((shipped / sd) * 100)}%) |`,
-    ``, `### Rubric`, ``, `| dimension | clean |`, `|---|---|`,
+    ``,
+    `### What a merchant would receive`,
+    ``,
+    `Only cells the gate PASSED — a rejected render never reaches anyone.`,
+    ``,
+    `| | |`, `|---|---|`,
+    `| delivered as the chosen format | ${passed}/${cells.length} |`,
+    `| fell back to a plain product ad | ${rejected}/${cells.length} |`,
+    `| of the delivered ones, would ship | **${dShip}/${delivered.length}** (${delivered.length ? Math.round((dShip / delivered.length) * 100) : 0}%) |`,
+    ``,
+    `### Raw generation quality`,
+    ``,
+    `Every graded cell INCLUDING the ones the gate threw away. Tightening the`,
+    `gate makes this number go DOWN — more rejects in the pool — while the`,
+    `delivered number above goes up. That is the gate working, not a regression.`,
+    ``,
+    `| would ship (of all graded) | **${shipped}/${scored.length}** (${Math.round((shipped / sd) * 100)}%) |`,
+    `|---|---|`,
+    ``, `### Rubric (all graded cells)`, ``, `| dimension | clean |`, `|---|---|`,
   ];
   for (const k of RUBRIC_KEYS) {
     const good = scored.filter((c) => c.rubric![k] !== false).length;
@@ -274,6 +305,8 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
   const passed = cells.filter((c) => c.ok).length;
   const scored = cells.filter((c) => c.rubric);
   const shipped = scored.filter((c) => c.rubric!.wouldShip).length;
+  const delivered = scored.filter((c) => c.ok);
+  const dShip = delivered.filter((c) => c.rubric!.wouldShip).length;
   const rows = RUBRIC_KEYS.map((k) => {
     const good = scored.filter((c) => c.rubric![k] !== false).length;
     // "0%" when nothing was scored reads as a catastrophic regression. A QA
@@ -300,11 +333,32 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
  .qa .bad{color:#7A2E1D;font-size:11px;margin-top:5px;font-weight:600}
  .qa .good{color:#0C7A46;font-size:11px;margin-top:5px;font-weight:600}
  .qa .nt{color:#4A554E;font-size:11px;margin-top:3px}
+ .qa .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:0 0 18px}
+ .qa .box{background:#fff;border:1px solid #E4DFCF;border-radius:12px;padding:14px 16px}
+ .qa .box.good{border-color:#BFE2CD;background:#F6FBF8}
+ .qa .box h3{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#4A554E}
+ .qa .big{margin:4px 0 2px;font-size:30px;font-weight:800;color:#14201A;line-height:1}
+ .qa .box.good .big{color:#0C7A46}
+ .qa .lbl{margin:2px 0 0;font-size:11.5px;color:#4A554E;line-height:1.4}
  .qa .warn{background:#FDF4E3;border:1px solid #E8D3A6;color:#7A5A12;padding:8px 12px;border-radius:9px;font-size:12px;margin:0 0 16px}
 </style>
 <div class="qa">
 <h2>Golden set</h2>
-<p class="sub">${cells.length} cells${truncated ? ` · ${truncated} not run (hit the cap)` : ""} · gate passed ${passed}/${n} (${Math.round((passed / n) * 100)}%) · would ship ${shipped}/${scored.length || 0} of the graded (${scored.length ? Math.round((shipped / scored.length) * 100) : 0}%)</p>
+<p class="sub">${cells.length} cells${truncated ? ` · ${truncated} not run (hit the cap)` : ""}</p>
+<div class="two">
+  <div class="box good">
+    <h3>What a merchant would receive</h3>
+    <p class="big">${delivered.length ? Math.round((dShip / delivered.length) * 100) : 0}%</p>
+    <p class="lbl">${dShip} of ${delivered.length} delivered ads would ship</p>
+    <p class="lbl">${passed}/${n} kept the chosen format · ${cells.length - passed} fell back to a plain ad</p>
+  </div>
+  <div class="box">
+    <h3>Raw generation quality</h3>
+    <p class="big">${scored.length ? Math.round((shipped / scored.length) * 100) : 0}%</p>
+    <p class="lbl">${shipped} of ${scored.length} graded, <b>including rejects the gate caught</b></p>
+    <p class="lbl">A stricter gate pushes this DOWN and the number on the left UP.</p>
+  </div>
+</div>
 ${scored.length < cells.length ? `<p class="warn">${cells.length - scored.length} of ${cells.length} could not be graded. That is a missing measurement, not a failure — they are excluded from every percentage above.</p>` : ""}
 <table><tr><th>rubric dimension</th><th>clean</th><th></th></tr>${rows}</table>
 <div class="grid">${cards}</div>
