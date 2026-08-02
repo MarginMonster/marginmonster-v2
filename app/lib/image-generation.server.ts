@@ -620,7 +620,7 @@ async function overlayRealProduct(
     const raw = await anthropicVision(
       [
         opts.blank
-          ? `The person in this photo is holding a PLAIN UNMARKED BOX up to the camera.`
+          ? `This photo contains a PLAIN UNMARKED BOX — either held up to the camera or resting on a surface in front of the person.`
           : `The person in this photo is holding a product up to the camera.`,
         opts.blank
           ? `Return the bounding box of that blank box's FRONT FACE — the flat panel facing the camera. Not the hands, not the arms, not the side faces.`
@@ -910,11 +910,26 @@ export async function runPresenterHold(opts: {
   wear?: boolean;
   scene?: string;
   scalePhrase?: string;
+  /** palm | two-hand | large | floor, from product-scale. Decides whether the
+   *  presenter holds the product or stands behind it. */
+  sizeClass?: string;
 }): Promise<PresenterHoldResult> {
+  // LAYOUT. A hand-sized item gets held; anything bigger gets set down in
+  // front of the presenter, which is how creators actually shoot it and the
+  // only framing where a large product and a visible face coexist. Holding a
+  // twelve-count display case chest-up put it over the presenter's mouth in
+  // every single attempt, because that is what would happen in real life.
+  //
+  // PRESENTER_LAYOUT=hold forces the old behaviour for everything, so the
+  // previous pipeline stays one environment variable away.
+  const forced = (process.env.PRESENTER_LAYOUT || "").trim().toLowerCase();
+  const showcase = forced === "showcase"
+    || (forced !== "hold" && !opts.wear && ["two-hand", "large", "floor"].includes(opts.sizeClass || ""));
+
   const { submitCompose, pollCompose } = await import("./fal-image.server");
   const runCompose = async (
     hint: string | undefined,
-    mode: "hold" | "wear" | "blank" = opts.wear ? "wear" : "hold",
+    mode: "hold" | "wear" | "blank" | "showcase" = opts.wear ? "wear" : "hold",
     aspect?: number
   ): Promise<string | undefined> => {
     const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect);
@@ -938,9 +953,10 @@ export async function runPresenterHold(opts: {
   let maskPath: string | undefined;
   let prePastePath: string | undefined;
   if (!opts.wear) {
-    const blank = await runCompose(opts.scalePhrase, "blank", await productAspect(opts.productImageUrl));
+    const layout = showcase ? "showcase" : "blank";
+    const blank = await runCompose(opts.scalePhrase, layout, await productAspect(opts.productImageUrl));
     standInUrl = blank;
-    standIn = blank ? "stand-in composed" : "stand-in compose returned nothing";
+    standIn = `${layout}: ${blank ? "stand-in composed" : "compose returned nothing"}`;
     if (blank) {
       const attempt = await overlayRealProduct(blank, opts.productImageUrl, { blank: true });
       if (!attempt.ok) standIn = `paste failed: ${attempt.failed}`;
@@ -1920,7 +1936,8 @@ export async function generateImageAd(
         const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
         const scaleHint = scaleFromChoice(productSize) || (await inferProductScale(productTitle, stylePrompt));
         const held = await runPresenterHold({
-          portraitUrl, productImageUrl, productTitle, wear, scene, scalePhrase: scaleHint?.phrase,
+          portraitUrl, productImageUrl, productTitle, wear, scene,
+          scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass,
         });
         if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
         // A presenter holding something that merely RESEMBLES the product is

@@ -175,7 +175,14 @@ async function presenterHoldCheck(): Promise<string> {
   let ungraded = 0;
   for (const portrait of portraits) {
     try {
-      const r = await runPresenterHold({ portraitUrl: portrait, productImageUrl: productUrl, productTitle });
+      // Same size inference production uses, so the harness exercises the
+      // same layout choice a merchant would get rather than always the hold.
+      const { inferProductScale } = await import("../app/lib/product-scale.server");
+      const scale = await inferProductScale(productTitle);
+      const r = await runPresenterHold({
+        portraitUrl: portrait, productImageUrl: productUrl, productTitle,
+        scalePhrase: scale?.phrase, sizeClass: scale?.sizeClass,
+      });
       // Grade INDEPENDENTLY of the gate. The production gate saying "clean" is
       // exactly the claim under test — a second opinion is the only way to
       // catch a gate that is too lenient, which is how this defect shipped.
