@@ -35,6 +35,7 @@ import {
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
+import { withBrandFallback } from "./ad-copy-retry.server";
 
 /* ---- Resume plumbing: never re-BUY what a restart interrupted ------------
  * Two failure modes here cost merchants real money:
@@ -320,6 +321,26 @@ export async function writeCartoonScript(o: {
   direction?: string;
   contentLang?: string | null;
 }): Promise<string> {
+  // A sweep of 54 scripts failed 14 times and every failure was a branded
+  // collectible — the model declines to write promotional copy for someone
+  // else's trademark and returns nothing. Resellers are a large share of who
+  // this is for, so the retry drops the brand and sells the category instead.
+  return withBrandFallback(
+    (productRef, debranded) => writeCartoonScriptOnce({ ...o, productTitle: productRef, debranded }),
+    o.productTitle,
+    "cartoon:script"
+  );
+}
+
+async function writeCartoonScriptOnce(o: {
+  productTitle: string;
+  productDescription?: string;
+  serviceMode?: boolean;
+  tone?: string;
+  direction?: string;
+  contentLang?: string | null;
+  debranded?: boolean;
+}): Promise<string> {
   const scriptPrompt = [
     `You write voice-over scripts for short animated (cartoon) video ads.${langDirective(o.contentLang)}`,
     o.serviceMode
@@ -327,6 +348,7 @@ export async function writeCartoonScript(o: {
       : `Product: "${o.productTitle}".`,
     o.productDescription ? `Context: ${o.productDescription.slice(0, 300)}` : "",
     o.tone ? `Brand voice/tone: ${o.tone}.` : "",
+    o.debranded ? `Sell what the item IS and what owning it feels like. Do not name any brand, franchise or character.` : "",
     `NEVER name or refer to the animation style, art style, medium, or the fact that this is an advertisement. Do not use words like claymation, clay, cartoon, animated, animation, 3D, render, pixel, anime, stop-motion, or "in this video". Talk only about the product and the customer.`,
     o.direction ? `Merchant direction (follow it): ${o.direction}` : "",
     ``,
@@ -340,7 +362,8 @@ export async function writeCartoonScript(o: {
 
   let script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
     .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!script) throw new Error("[cartoon:script] empty script from model");
+  // Empty is a REFUSAL, not a crash — withBrandFallback decides what next.
+  if (!script) return "";
   const w = script.split(" ");
   if (w.length > 32) script = w.slice(0, 32).join(" ");
   if (!/[.!?]$/.test(script)) script += ".";

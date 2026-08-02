@@ -39,6 +39,7 @@ import {
 } from "./cartoon-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
+import { withBrandFallback } from "./ad-copy-retry.server";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
 // on a between-line gap in the vocal (found via silencedetect), never mid-word.
@@ -200,11 +201,12 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   let lyrics = resume.lyrics || "";
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
   if (!lyrics) {
-    const lyricsPrompt = [
+    const buildLyricsPrompt = (productRef: string, debranded: boolean) => [
       `You write short advertising JINGLES — early-2000s TV-commercial energy, the kind that gets stuck in your head.${langDirective(contentLang)}`,
       params.serviceMode
-        ? `The offer (a service, not a physical product): "${params.productTitle}". Sing the RESULT the customer gets.`
-        : `The product: "${params.productTitle}".`,
+        ? `The offer (a service, not a physical product): "${productRef}". Sing the RESULT the customer gets.`
+        : `The product: "${productRef}".`,
+      debranded ? `Sing about what the item IS and how owning it feels. Do not name any brand, franchise or character.` : "",
       params.productDescription ? `Context: ${params.productDescription.slice(0, 250)}` : "",
       voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
       params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
@@ -224,15 +226,18 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     ]
       .filter(Boolean)
       .join("\n");
-    lyrics = ((await anthropicText(lyricsPrompt, { model: "claude-sonnet-5", maxTokens: 250 })) || "")
-      .replace(/["“”]+/g, "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, 6)
-      .join("\n")
-      .trim();
-    if (!lyrics) throw new Error("[jingle:lyrics] empty lyrics from model");
+    // A branded title can be refused outright — retry, then drop the brand and
+    // sing the category. See ad-copy-retry.server.ts.
+    lyrics = await withBrandFallback(async (productRef, debranded) =>
+      ((await anthropicText(buildLyricsPrompt(productRef, debranded), { model: "claude-sonnet-5", maxTokens: 250 })) || "")
+        .replace(/["“”]+/g, "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+        .join("\n")
+        .trim(),
+      params.productTitle, "jingle:lyrics");
     const words = lyrics.split(/\s+/);
     if (words.length > 48) lyrics = words.slice(0, 48).join(" ");
     await ckpt({ ckLyrics: lyrics });

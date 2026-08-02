@@ -11,6 +11,7 @@
  * Total COGS ≈ $2-3 per finished ad. Output saved to data/renders and served
  * via the /renders/:file resource route. */
 
+import { withBrandFallback } from "./ad-copy-retry.server";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -646,12 +647,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
 
   // 1) SCRIPT — hook-first, ~13s spoken. Services sell the OUTCOME, not an
   // object the presenter holds up.
-  const scriptPrompt = [
+  const buildScriptPrompt = (productRef: string, debranded: boolean) => [
     `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).${langDirective(contentLang)}`,
     `Presenter: ${avatar.name}, ${avatar.desc}.`,
     params.serviceMode
-      ? `This is a SERVICE / offer (not a physical product): "${params.productTitle}". The presenter is a spokesperson talking to camera — they do NOT hold a product. Sell the RESULT the customer gets, the pain it removes, and why it's worth it.`
-      : `Product: "${params.productTitle}".`,
+      ? `This is a SERVICE / offer (not a physical product): "${productRef}". The presenter is a spokesperson talking to camera — they do NOT hold a product. Sell the RESULT the customer gets, the pain it removes, and why it's worth it.`
+      : `Product: "${productRef}".`,
+    debranded ? `Talk about what the item IS and what owning it feels like. Do not name any brand, franchise or character.` : "",
     params.productDescription ? `${params.serviceMode ? "What it does / the outcome" : "Product details"}: ${params.productDescription.slice(0, 300)}` : "",
     voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
     params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
@@ -671,11 +673,15 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
 
   let script = resume.script || "";
   if (!script) {
-    script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
-      .replace(/["“”\n]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!script) throw new Error("[ugc:script] empty script from model");
+    // A branded product title can be refused outright, returning nothing —
+    // retry, then drop the brand and sell the category. See
+    // ad-copy-retry.server.ts for what the sweep showed.
+    script = await withBrandFallback(async (productRef, debranded) =>
+      ((await anthropicText(buildScriptPrompt(productRef, debranded), { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+        .replace(/["“”\n]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+      params.productTitle, "ugc:script");
     const w = script.split(" ");
     if (w.length > 34) script = w.slice(0, 34).join(" "); // 12s budget — hard cap so it never runs past the lip-sync sweet spot
     // give the voice model a clean final stop so it doesn't rush/trail the ending
