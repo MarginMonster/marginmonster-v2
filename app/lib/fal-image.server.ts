@@ -85,16 +85,15 @@ export async function submitCompose(
       : `The person from the first image holding the ${productTitle || "product"} from the second image, ` +
         `product facing the camera and clearly visible — small items held up at chest height in one hand with a natural relaxed grip; ` +
         `large items held upright with both hands or stood beside them at full size. ` +
-        // "five fingers per hand" was our own bug: anatomically a hand is FOUR
-        // fingers plus ONE thumb, so asking for five fingers AND getting a thumb
-        // is six digits — which is exactly what came back.
-        `Hands are anatomically correct: each hand has FOUR fingers and ONE thumb, five digits total, never six. ` +
-        `If the thumb is hidden behind the product, exactly FOUR fingers are visible on that hand — never five fingers plus a hidden thumb. ` +
-        `EXACTLY TWO hands are visible in the whole image and both belong to the presenter — never add a third hand, a spare arm, or a disembodied hand holding the product. ` +
-        // Counting was not enough: a frame came back with the right number of
-        // fingers rendered as pale wooden dolls' fingers with painted-on joint
-        // lines, gripping the box like a marionette.
-        `The fingers are LIVING HUMAN fingers with the same skin tone as the wrists they grow from, natural tapering, real nails and knuckles — never wooden, plastic, doll-like, prosthetic or mannequin fingers, never pale sausage shapes with drawn-on joint lines. ` +
+        // WE caused the robot hands. Chasing a six-finger frame, this grew into
+        // four consecutive sentences of clinical finger anatomy — count the
+        // digits, hide the thumb, never wooden — and a diffusion model renders
+        // what the prompt dwells on. Told to treat fingers as countable
+        // articulated parts, Seedream drew countable articulated parts:
+        // segmented, jointed, doll-like. Every extra word about fingers made it
+        // worse. So describe the GRIP, once, in plain language, and let the
+        // model draw a hand the way it already knows how.
+        `An ordinary relaxed grip, both hands cupping it from the sides the way anyone picks something up off a shelf. Only the presenter's own two hands are in the picture. ` +
         // The product is the pitch, but the presenter is the ad. A case held up
         // over the mouth is a frame with nobody talking in it.
         `The product is held at chest height, BELOW the chin — the presenter's whole face stays unobstructed, with eyes, nose and mouth fully visible above the product. Never raise the product in front of the face. ` +

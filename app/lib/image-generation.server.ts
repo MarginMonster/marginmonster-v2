@@ -463,7 +463,7 @@ async function qaPresenterHold(
   productUrl: string,
   genUrl: string,
   scalePhrase: string | undefined
-): Promise<{ pass: boolean; reason: string }> {
+): Promise<{ pass: boolean; reason: string; bad: string[] }> {
   try {
     const raw = await anthropicVision(
       [
@@ -475,6 +475,9 @@ async function qaPresenterHold(
         // it is the same kind of thing. So ask about the ARTWORK, panel by
         // panel, as its own question.
         `artworkMatches: compare the PRINTED ARTWORK panel by panel. The characters or images shown on the packaging, their colours, their positions, the logo placement, the background colour of the box. A package of the same SHAPE carrying different character art, different colours or a different layout is a FAILURE — it is not the merchant's product. Be strict: this is the single most common defect.`,
+        // A flattened case passed "artworkMatches" because the art on the flat
+        // card did roughly match. Same picture, different object.
+        `sameObject: is this the SAME PHYSICAL THING, built the same way? Same three-dimensional form, same depth, same construction, the same faces and panels visible. A deep display case or tray rendered as a flat printed card or poster is a FAILURE even when the artwork on it looks right. So is a case whose lid, side panel or inner rows have disappeared.`,
         `notSimplified: does image 2 show the same number of visible units, boxes, windows or panels as image 1? Fewer is a failure.`,
         `textFaithful: is the packaging lettering the same words in the same colours? A gold logo rendered purple is a failure.`,
         scalePhrase
@@ -492,22 +495,26 @@ async function qaPresenterHold(
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
-        `Reply ONLY JSON: {"artworkMatches":bool,"notSimplified":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
+        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productUrl, genUrl],
-      { maxTokens: 300 }
+      // The cheap vision model looked straight at plastic doll fingers with
+      // painted-on joints and answered "hands human". It is fine at reading
+      // packaging text; it is not reliable at judging anatomy. This gate runs
+      // at most three times per presenter ad, so it can afford the better one.
+      { maxTokens: 300, model: "claude-sonnet-5" }
     );
     const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: true, reason: "qa-unparseable" };
+    if (!m) return { pass: true, reason: "qa-unparseable", bad: [] };
     const j = JSON.parse(m[0]) as Record<string, unknown>;
-    const bad = (["artworkMatches", "notSimplified", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
-      .filter((k) => j[k] === false);
-    if (!bad.length) return { pass: true, reason: "clean" };
+    const bad = (["artworkMatches", "sameObject", "notSimplified", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
+      .filter((k) => j[k] === false) as string[];
+    if (!bad.length) return { pass: true, reason: "clean", bad };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
-    return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200) };
+    return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200), bad };
   } catch (e) {
     // Never block a paid render on a QA outage.
-    return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}` };
+    return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, bad: [] };
   }
 }
 
@@ -587,20 +594,32 @@ async function overlayRealProduct(
     const H = await probeHeight(bin, tmpFrame);
     if (!W || !H) return give("could not probe frame dimensions");
 
-    // Fit INSIDE the box the model used, so the product keeps its own aspect
-    // ratio rather than being stretched to whatever shape got drawn.
-    const bw = Math.round((box.w / 100) * W);
-    const bh = Math.round((box.h / 100) * H);
-    const bx = Math.round((box.x / 100) * W);
-    const by = Math.round((box.y / 100) * H);
+    // COVER the drawn box, don't fit inside it. Fitting a landscape case
+    // inside a squarer bbox shrank it until the model's own red box was still
+    // visible around the edges — a real product floating in front of a fake
+    // one. Match the box's WIDTH, inflate a little to swallow the outline, and
+    // sit the bottom edge where the drawn bottom edge was so the product still
+    // lands in the hands instead of hovering in the middle of them.
+    const pad = 1.08;
+    const bw = Math.round((box.w / 100) * W * pad);
+    const bh = Math.round((box.h / 100) * H * pad);
+    const bx = Math.round((box.x / 100) * W - ((box.w / 100) * W * (pad - 1)) / 2);
+    const bottom = Math.round(((box.y + box.h) / 100) * H + ((box.h / 100) * H * (pad - 1)) / 2);
+    // Size it from the cutout's own aspect ratio: fill the box's width, and
+    // only fall back to fitting by height if that would make it wildly taller
+    // than the space the model left for it.
+    const cut = headerSize(tmpCut);
+    let tw = bw;
+    let th = cut ? Math.round((bw * cut.h) / cut.w) : bh;
+    if (cut && th > bh * 1.6) { th = bh; tw = Math.round((bh * cut.w) / cut.h); }
     const filters =
-      `[1:v]scale=${bw}:${bh}:force_original_aspect_ratio=decrease[cut];` +
+      `[1:v]scale=${tw}:${th}[cut];` +
       `[cut]split[c1][c2];` +
       // A hard paste reads as a sticker. A blurred dark copy behind it gives
       // the product contact with the hands holding it.
       `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=10,colorchannelmixer=aa=0.34[sh];` +
-      `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${by}+(${bh}-h)/2+8[b1];` +
-      `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${by}+(${bh}-h)/2[outv]`;
+      `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${bottom}-h+8[b1];` +
+      `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${bottom}-h[outv]`;
     const { ok } = await runFfmpegStill(bin, ["-y", "-i", tmpFrame, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out]);
     if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
     return give(ok ? "ffmpeg wrote nothing usable" : "ffmpeg overlay failed");
@@ -617,6 +636,10 @@ async function overlayRealProduct(
  *  Extracted so the QA harness drives the SAME code merchants hit. This is the
  *  path that produced cases with the right shape and the wrong artwork, and it
  *  was the one part of the image pipeline the harness could not reach. */
+/** The gate fields that mean "this is not the merchant's product". Scale and
+ *  anatomy are defects; these are a different item. */
+const IDENTITY_FIELDS = ["artworkMatches", "sameObject", "notSimplified", "textFaithful"];
+
 export interface PresenterHoldResult {
   url: string | null;
   pass: boolean;
@@ -627,6 +650,13 @@ export interface PresenterHoldResult {
   /** On-disk path of the composited frame, when there is one. The QA harness
    *  publishes these bytes; production only needs the URL. */
   localPath?: string;
+  /** Which gate fields came back false, so callers can act on WHICH defect
+   *  rather than sniffing the reason string. */
+  failed: string[];
+  /** True when the delivered frame does not show the merchant's actual product
+   *  — wrong artwork, wrong object, or units missing — and the paste did not
+   *  rescue it. Shipping one of these is the complaint that started all this. */
+  wrongProduct: boolean;
 }
 
 export async function runPresenterHold(opts: {
@@ -649,8 +679,8 @@ export async function runPresenterHold(opts: {
   };
 
   let composed = await runCompose(opts.scalePhrase);
-  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false };
-  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false };
+  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, failed: [], wrongProduct: false };
+  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, failed: [], wrongProduct: false };
 
   let qa = await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase);
   let retried = false;
@@ -688,10 +718,20 @@ export async function runPresenterHold(opts: {
         retried,
         composited: true,
         localPath: pasted.absPath,
+        failed: qa3.bad,
+        wrongProduct: qa3.bad.some((k) => IDENTITY_FIELDS.includes(k)),
       };
     }
   }
-  return { url: composed, pass: qa.pass, reason: qa.reason, retried, composited: false };
+  return {
+    url: composed,
+    pass: qa.pass,
+    reason: qa.reason,
+    retried,
+    composited: false,
+    failed: qa.bad,
+    wrongProduct: qa.bad.some((k) => IDENTITY_FIELDS.includes(k)),
+  };
 }
 
 /** Which mode fits a style when the caller didn't say: integrated scenes need
@@ -1530,7 +1570,16 @@ export async function generateImageAd(
           portraitUrl, productImageUrl, productTitle, wear, scene, scalePhrase: scaleHint?.phrase,
         });
         if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
-        const composed = held.url || undefined;
+        // A presenter holding something that merely RESEMBLES the product is
+        // the complaint this whole path exists to answer, and until now the
+        // gate only wrote a log line before shipping the frame anyway. Two
+        // composes and a paste have already had their turn; if the thing in
+        // his hands still isn't the merchant's item, fall through to the
+        // product still, which is the real photograph.
+        const composed = held.wrongProduct ? undefined : (held.url || undefined);
+        if (held.wrongProduct) {
+          artLog("image-ad", `presenter hold: not the merchant's product (${held.failed.join(", ")}) — shipping a product still instead`);
+        }
         if (composed) {
           let localUrl = "";
           try {
@@ -1538,13 +1587,16 @@ export async function generateImageAd(
             // a presenter still from its prompt — storing the raw fal URL means
             // a card that goes permanently blank. Try a few times, then let the
             // ladder deliver a product still instead of a dying link.
+            // A pasted composite is already on our own disk; re-fetching it
+            // over HTTP from ourselves is a round trip that can only fail.
+            let buf: Buffer | null = held.localPath && fs.existsSync(held.localPath) ? fs.readFileSync(held.localPath) : null;
             let res: Response | null = null;
-            for (let i = 0; i < 3 && !res?.ok; i++) {
+            for (let i = 0; i < 3 && !buf && !res?.ok; i++) {
               if (i) await new Promise((r) => setTimeout(r, 1500));
               res = await fetch(composed).catch(() => null);
             }
-            if (res?.ok) {
-              const buf = Buffer.from(await res.arrayBuffer());
+            if (buf || res?.ok) {
+              buf = buf || Buffer.from(await res!.arrayBuffer());
               if (buf.length > 5_000) {
                 const dir = path.join(process.cwd(), "data", "renders");
                 fs.mkdirSync(dir, { recursive: true });

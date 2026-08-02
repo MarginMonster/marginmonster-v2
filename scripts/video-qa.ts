@@ -194,6 +194,7 @@ async function presenterHoldCheck(): Promise<string> {
             // was never asked about the LETTERING. Artwork and text are
             // different failures and need different questions.
             `textFaithful: READ every word printed on the packaging and compare it letter by letter with image 1. A brand name rendered as "POP MILLMART" instead of "POP MART", a doubled letter, a dropped letter, or any invented word is a FAILURE. Spell out what you actually read if it differs.`,
+            `sameObject: is it the SAME PHYSICAL THING, built the same way — same 3D form, same depth, same faces and panels? A deep display case or tray rendered as a flat printed card or poster is a FAILURE even when the artwork on it looks right.`,
             `notSimplified: does image 2 show the same NUMBER of units, boxes or panels as image 1? A twelve-box display case rendered as a single box is a FAILURE.`,
             `correctScale: believable real-world size against the person?`,
             `handsOk: four fingers and one thumb per hand, exactly two hands, no extra limb.`,
@@ -203,17 +204,22 @@ async function presenterHoldCheck(): Promise<string> {
             `handsHuman: ignoring the count, are the fingers LIVING HUMAN fingers — skin matching the wrists, natural taper, real nails? Wooden, plastic, doll-like or mannequin fingers, or pale sausages with drawn-on joint lines, are a FAILURE.`,
             `faceVisible: are the presenter's eyes, nose AND mouth all unobstructed? A product held up over the mouth or chin is a FAILURE.`,
             `notes: one short sentence on the worst problem, or "clean".`,
-            `Reply ONLY JSON: {"artworkMatches":bool,"textFaithful":bool,"notSimplified":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
+            `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"textFaithful":bool,"notSimplified":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
           ].join("\n"),
-          [productUrl, judgeRef]
+          [productUrl, judgeRef],
+          // Same reason the gate moved up: the cheap model called plastic doll
+          // fingers human. A judge that agrees with a broken gate for the same
+          // reason the gate is broken is not a second opinion.
+          { maxTokens: 400, model: "claude-sonnet-5" }
         );
         const m = raw && raw.match(/\{[\s\S]*\}/);
         const j = m ? JSON.parse(m[0]) as Record<string, unknown> : null;
         const yes = (k: string) => !!j && j[k] !== false && j[k] !== undefined;
-        const ok = ["artworkMatches", "textFaithful", "notSimplified", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
+        const ok = ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
         if (ok) shipped++;
         verdict = [
           yes("artworkMatches") ? "art ok" : "**ART WRONG**",
+          yes("sameObject") ? "same object" : "**DIFFERENT OBJECT**",
           yes("textFaithful") ? "text ok" : "**TEXT WRONG**",
           yes("notSimplified") ? "count ok" : "**simplified**",
           yes("correctScale") ? "scale ok" : "**scale off**",
@@ -233,15 +239,19 @@ async function presenterHoldCheck(): Promise<string> {
       } else if (r.url) {
         await saveFrame(r.url, frameName);
       }
-      rows.push(`| ${portrait.split("/").pop()} | ${r.composited ? "**real photo pasted**" : "drawn"} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
+      // What production would actually DO with this frame, which is now the
+      // number that matters: a wrong-product hold is dropped for a product
+      // still rather than shipped with a lookalike in the presenter's hands.
+      const delivered = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
+      rows.push(`| ${portrait.split("/").pop()} | ${r.composited ? "**real photo pasted**" : "drawn"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
-      rows.push(`| ${portrait.split("/").pop()} | ERROR | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | |`);
+      rows.push(`| ${portrait.split("/").pop()} | ERROR | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`);
     }
   }
   return [
     `### Presenter image ads — does the merchant's artwork survive?`, ``,
     `${shipped}/${portraits.length} passed an independent judge. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
-    `| presenter | product | production gate | independent judge | frame |`, `|---|---|---|---|---|`, ...rows,
+    `| presenter | product | merchant gets | production gate | independent judge | frame |`, `|---|---|---|---|---|---|`, ...rows,
   ].join("\n");
 }
 
