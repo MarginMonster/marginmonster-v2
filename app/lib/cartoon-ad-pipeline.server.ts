@@ -316,7 +316,12 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         : `Product: "${params.productTitle}".`,
       params.productDescription ? `Context: ${params.productDescription.slice(0, 300)}` : "",
       voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
-      `Animation style: ${recipe.name} — lean into its energy.`,
+      // The style name used to be handed to the script writer "for energy",
+      // and it wrote it into the dialogue — a presenter announcing
+      // "claymation" mid-ad. The viewer can SEE the style; naming it breaks
+      // the ad. The look is a visual instruction and belongs nowhere near the
+      // spoken words.
+      `NEVER name or refer to the animation style, art style, medium, or the fact that this is an advertisement. Do not use words like claymation, clay, cartoon, animated, animation, 3D, render, pixel, anime, stop-motion, or "in this video". Talk only about the product and the customer.`,
       params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
       ``,
       `Rules: The FIRST sentence must be a scroll-stopping hook. 24 to 30 words`,
@@ -431,7 +436,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       const prompt =
         `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
         `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
-        `${params.serviceMode ? "" : `Keep the ${params.productTitle} they are presenting clearly recognizable — same shape, colors, logos and TRUE real-world size, never miniaturized. `}` +
+        `${params.serviceMode ? "" : `CRITICAL — the PRODUCT is the one thing that is NOT stylized. Stylize the person, the background and the lighting, but reproduce the ${params.productTitle} exactly as it appears in the photo: identical packaging artwork, identical logos, identical printed text, identical colors and proportions, at its TRUE real-world size and never miniaturized. Do not redraw it in the art style, do not simplify it, do not invent a similar-looking package. A merchant must recognise their own product instantly. `}` +
         `Hands are anatomically correct — FOUR fingers and ONE thumb per hand, five digits total and never six, natural relaxed grip. ` +
         `Delightful advertising scene, simple complementary background.${sceneBits}${exactText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
@@ -509,8 +514,12 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     }
     const { id: animId } = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
-      prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible" : "the product stays the clear hero"}, vertical video.`,
-      negativePrompt: "photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
+      // This pipeline has NO lipsync — the voice-over is a separate track laid
+      // over the animation. So a character animated as though talking can only
+      // ever look out of sync. It is narration, and the animation must not
+      // pretend otherwise.
+      prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible. The character does NOT speak: no talking, no mouth opening and closing, no lip movement — the voice is a narrator off-screen, so keep the mouth closed or in a natural smile throughout" : "the product stays the clear hero"}, vertical video.`,
+      negativePrompt: "talking, speaking, mouth opening, lip movement, photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
     });
     await ckpt({ ckKlingId: animId });
     animUrl = await repPoll(animId, 12 * 60_000, "cartoon-animate");
