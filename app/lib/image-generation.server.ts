@@ -573,7 +573,7 @@ async function qaPresenterHold(
  *  returns, the sweep reported "drawn" for both presenters, and there was no
  *  way to tell which of four steps had given up. */
 type PasteResult =
-  | { ok: true; file: string; absPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
+  | { ok: true; file: string; absPath: string; cutoutPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
   | { ok: false; failed: string };
 
 async function overlayRealProduct(
@@ -670,13 +670,16 @@ async function overlayRealProduct(
       // Where the product ACTUALLY landed, so the edge blend can build its
       // mask around the real thing rather than around the model's guess.
       const px = bx + Math.round((bw - tw) / 2);
-      return { ok: true, file: fileName, absPath: out, rect: { x: px, y: bottom - th, w: tw, h: th }, frame: { w: W, h: H } };
+      return { ok: true, file: fileName, absPath: out, cutoutPath: tmpCut, rect: { x: px, y: bottom - th, w: tw, h: th }, frame: { w: W, h: H } };
     }
     return give(ok ? "ffmpeg wrote nothing usable" : "ffmpeg overlay failed");
   } catch (e) {
     return give(`overlay threw: ${(e as Error).message.slice(0, 120)}`);
   } finally {
-    try { fs.rmSync(tmpFrame, { force: true }); fs.rmSync(tmpCut, { force: true }); } catch { /* best-effort */ }
+    // tmpCut deliberately survives: the edge blend masks by the product's own
+    // silhouette, and re-running background removal to get it back would cost
+    // another call for bytes we already have. The blend deletes it.
+    try { fs.rmSync(tmpFrame, { force: true }); } catch { /* best-effort */ }
   }
 }
 
@@ -693,7 +696,7 @@ async function overlayRealProduct(
  *
  *  Returns null on any failure, leaving the flat paste in place. */
 async function blendProductEdges(
-  pasted: { absPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
+  pasted: { absPath: string; cutoutPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
 ): Promise<{ file: string; absPath: string } | null> {
   const bin = ffmpegBin();
   if (!bin) return null;
@@ -713,19 +716,34 @@ async function blendProductEdges(
   const oh = Math.min(frame.h - oy, rect.h + out * 2);
   try {
     fs.mkdirSync(dir, { recursive: true });
+    // Protect the product by its OWN SILHOUETTE, not by a rectangle.
+    //
+    // A rectangle left the stand-in's blank corners showing around an angled
+    // display case, and the gate called it exactly right: "3D display box
+    // reduced to a flat printed image on a card". Masking by the cutout's
+    // alpha means everything that is not the product — including whatever is
+    // left of the plain box — is editable, so the case becomes the object in
+    // the hands instead of a picture stuck to one.
+    const keep = Math.max(2, Math.round(rect.w * 0.012)); // hairline of product kept safe from bleed
     const mk = await runFfmpegStill(bin, [
-      "-y", "-f", "lavfi", "-i", `color=black:s=${frame.w}x${frame.h}`,
-      "-vf",
-      `drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill,` +
-      `drawbox=x=${rect.x + inn}:y=${rect.y + inn}:w=${Math.max(1, rect.w - inn * 2)}:h=${Math.max(1, rect.h - inn * 2)}:color=black@1.0:t=fill`,
-      "-frames:v", "1", maskFile,
+      "-y",
+      "-f", "lavfi", "-i", `color=black:s=${frame.w}x${frame.h}`,
+      "-i", pasted.cutoutPath,
+      "-filter_complex",
+      `[0:v]drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill,format=gray[box];` +
+      // alphaextract → white where the product is; negate → black where it is;
+      // pad white so multiplying leaves everything outside the product alone.
+      `[1:v]scale=${rect.w}:${rect.h},alphaextract,boxblur=${keep}:1,negate,` +
+      `pad=${frame.w}:${frame.h}:${rect.x}:${rect.y}:color=white[prot];` +
+      `[box][prot]blend=all_mode=multiply[mask]`,
+      "-map", "[mask]", "-frames:v", "1", maskFile,
     ]);
     if (!mk.ok || !fs.existsSync(maskFile)) { console.warn("[presenter:blend] could not build the mask"); return null; }
 
     const edited = await inpaintFill(
       `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`,
       `data:image/png;base64,${fs.readFileSync(maskFile).toString("base64")}`,
-      "Human hands holding this box: fingers wrap around its left and right edges and curl slightly onto the front face at the very edges, thumbs near the lower corners, the box resting in both palms. Natural skin matching the arms, a soft contact shadow where the box meets the fingers, and the background continuing seamlessly. Do not add any text, label or printing."
+      "The person's two hands holding the object shown: fingers wrap around its left and right edges, thumbs near the lower corners, its weight resting in both palms, with a soft contact shadow where it meets the skin. Everywhere else the room behind them continues naturally. There is no plain box, no card, no tray and no panel behind the object — only the object, the hands and the background. Do not add any text, label, logo or printing anywhere."
     );
     if (!edited) return null;
 
@@ -741,7 +759,7 @@ async function blendProductEdges(
     console.warn(`[presenter:blend] ${(e as Error).message.slice(0, 140)}`);
     return null;
   } finally {
-    try { fs.rmSync(maskFile, { force: true }); } catch { /* best-effort */ }
+    try { fs.rmSync(maskFile, { force: true }); fs.rmSync(pasted.cutoutPath, { force: true }); } catch { /* best-effort */ }
   }
 }
 

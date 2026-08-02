@@ -94,7 +94,10 @@ export async function submitCompose(
     `The box is a simple matte light-grey cardboard box, ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces and clean straight edges. ` +
     `Its front face is square-on to the camera and entirely unobstructed: no fingers, thumbs or hair cross in front of it, and nothing overlaps it. ` +
     `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
-    `The box sits BELOW the chin; the presenter's whole face stays unobstructed, eyes, nose and mouth fully visible above it. ` +
+    // The first stand-ins were technically perfect and still covered the
+    // mouth: "below the chin" was read as "touching the chin". Give it a gap
+    // it can measure.
+    `The top edge of the box sits at least a hand's width BELOW the chin, around the middle of the chest, leaving clear space between the box and the jaw. The presenter's whole face stays unobstructed — eyes, nose, mouth and chin all fully visible above it. ` +
     `Exactly ONE box in the whole image.${sizing} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `The photo is taken BY SOMEONE ELSE standing in front of them — NOT a selfie, no arm reaching toward the lens. ` +
