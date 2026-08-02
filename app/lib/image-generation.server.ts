@@ -443,6 +443,60 @@ async function qaPresenterHold(
   }
 }
 
+/** The presenter-hold rung: compose the presenter holding the real product,
+ *  gate it, and re-compose once with the failure shouted back.
+ *
+ *  Extracted so the QA harness drives the SAME code merchants hit. This is the
+ *  path that produced cases with the right shape and the wrong artwork, and it
+ *  was the one part of the image pipeline the harness could not reach. */
+export interface PresenterHoldResult {
+  url: string | null;
+  pass: boolean;
+  reason: string;
+  retried: boolean;
+}
+
+export async function runPresenterHold(opts: {
+  portraitUrl: string;
+  productImageUrl: string;
+  productTitle: string;
+  wear?: boolean;
+  scene?: string;
+  scalePhrase?: string;
+}): Promise<PresenterHoldResult> {
+  const { submitCompose, pollCompose } = await import("./fal-image.server");
+  const runCompose = async (hint: string | undefined): Promise<string | undefined> => {
+    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, opts.wear ? "wear" : "hold", opts.scene, hint);
+    for (let i = 0; i < 45; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const p = await pollCompose(q.statusUrl, q.responseUrl);
+      if (p.done) return p.urls?.[0];
+    }
+    return undefined;
+  };
+
+  let composed = await runCompose(opts.scalePhrase);
+  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false };
+  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false };
+
+  let qa = await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase);
+  let retried = false;
+  if (!qa.pass) {
+    // The retry SHOUTS the requirement rather than repeating it — a second
+    // identical attempt tends to reproduce the same mistake.
+    retried = true;
+    const louder = `${opts.scalePhrase || ""} CRITICAL: the previous attempt failed because "${qa.reason}". The product must appear at its stated real-world size, carry the EXACT printed artwork from the reference photo — same characters, same colours, same layout, same logos — and show EVERY unit, box and panel visible in it. Do not simplify it, do not redraw the artwork, do not invent a similar-looking package, do not shrink it to fit a hand.`.trim();
+    const second = await runCompose(louder);
+    if (second) {
+      const qa2 = await qaPresenterHold(opts.productImageUrl, second, opts.scalePhrase);
+      // Keep the retry only if it's actually better; a worse second take
+      // shouldn't replace a merely-imperfect first one.
+      if (qa2.pass) { composed = second; qa = qa2; }
+    }
+  }
+  return { url: composed, pass: qa.pass, reason: qa.reason, retried };
+}
+
 /** Which mode fits a style when the caller didn't say: integrated scenes need
  *  generative placement; display/backdrop looks get the photo-true composite. */
 function inferStyleMode(stylePrompt?: string): "backdrop" | "scene" {
@@ -1268,40 +1322,18 @@ export async function generateImageAd(
   // Services have nothing to hold → skip straight to the outcome scene.
   if (!serviceMode && avatarId && productImageUrl && /^https?:\/\//.test(productImageUrl)) {
     try {
-      const { submitCompose, pollCompose, falImageEnabled } = await import("./fal-image.server");
+      const { falImageEnabled } = await import("./fal-image.server");
       if (falImageEnabled()) {
         const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
         const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
         const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
         const scaleHint = scaleFromChoice(productSize) || (await inferProductScale(productTitle, stylePrompt));
-        const runCompose = async (hint: string | undefined): Promise<string | undefined> => {
-          const q = await submitCompose(portraitUrl, productImageUrl, productTitle, 1, wear ? "wear" : "hold", scene, hint);
-          for (let i = 0; i < 45; i++) {
-            await new Promise((r) => setTimeout(r, 2000));
-            const p = await pollCompose(q.statusUrl, q.responseUrl);
-            if (p.done) return p.urls?.[0];
-          }
-          return undefined;
-        };
-        let composed = await runCompose(scaleHint?.phrase);
-        // ONE retry when the gate says the product shrank or got simplified.
-        // The retry shouts the requirement rather than repeating it — a second
-        // identical attempt tends to reproduce the same mistake.
-        if (composed && !wear) {
-          const qa = await qaPresenterHold(productImageUrl, composed, scaleHint?.phrase);
-          if (!qa.pass) {
-            artLog("image-ad", `presenter hold rejected (${qa.reason}) — recomposing`);
-            const louder = `${scaleHint?.phrase || ""} CRITICAL: the previous attempt failed because "${qa.reason}". The product must appear at its stated real-world size and show EVERY unit, box and panel visible in the reference photo — do not simplify it, do not reduce the number of items, and do not shrink it to fit a hand.`.trim();
-            const second = await runCompose(louder);
-            if (second) {
-              const qa2 = await qaPresenterHold(productImageUrl, second, scaleHint?.phrase);
-              // Keep the retry only if it's actually better; a worse second
-              // take shouldn't replace a merely-imperfect first one.
-              if (qa2.pass) composed = second;
-            }
-          }
-        }
+        const held = await runPresenterHold({
+          portraitUrl, productImageUrl, productTitle, wear, scene, scalePhrase: scaleHint?.phrase,
+        });
+        if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
+        const composed = held.url || undefined;
         if (composed) {
           let localUrl = "";
           try {

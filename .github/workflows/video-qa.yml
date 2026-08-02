@@ -16,6 +16,14 @@ on:
         description: 'Scripts per style/product pair — raise to catch rare leaks'
         required: false
         default: "1"
+      presenter:
+        description: 'Also test the IMAGE-ad presenter path — compose, gate, independent judge (needs FAL_KEY). Costs renders.'
+        required: false
+        default: ""
+      portraits:
+        description: 'Comma-separated presenter photo URLs for the presenter test'
+        required: false
+        default: ""
       keyframe:
         description: 'Also render a stylised keyframe and check the product survived (needs FAL_KEY). Costs renders.'
         required: false
@@ -77,6 +85,8 @@ jobs:
           FAL_KEY: ${{ secrets.FAL_KEY }}
           REPEATS: ${{ inputs.repeats || '1' }}
           KEYFRAME: ${{ inputs.keyframe }}
+          PRESENTER: ${{ inputs.presenter }}
+          QA_PORTRAITS: ${{ inputs.portraits }}
           KEYFRAME_STYLES: ${{ inputs.keyframe_styles || 'clay' }}
           QA_PORTRAIT_URL: ${{ inputs.portrait_url }}
           QA_PRODUCT_URL: ${{ inputs.product_url }}
