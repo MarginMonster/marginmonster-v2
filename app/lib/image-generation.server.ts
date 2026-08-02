@@ -822,36 +822,56 @@ export async function runFormatRung(opts: {
   };
 }
 
-/** Vision QA for format ads: exact-ish text + unwarped product. */
+/** Vision QA for format ads.
+ *
+ *  Asks each question SEPARATELY and derives pass/fail from the answers.
+ *
+ *  This used to ask for one combined verdict, and the golden-set harness
+ *  showed exactly what that cost: the gate passed 96% of ads while an
+ *  independent per-dimension review found a third of them had garbled text.
+ *  Same model, same images, same wording about duplicated words — the only
+ *  difference was being asked "is this ad OK?" versus being asked "is the
+ *  text sensible?" as its own question. A lumped verdict anchors on whether
+ *  the ad broadly looks right, and a stutter is easy to miss when it does.
+ *
+ *  Failing open on an outage is deliberate: a QA hiccup must never turn into
+ *  a merchant losing the format they paid for. */
 async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[]): Promise<{ pass: boolean; reason: string }> {
   try {
     const urls = productImageUrl ? [productImageUrl, imageUrl] : [imageUrl];
     const raw = await anthropicVision(
       [
         productImageUrl
-          ? `Image 1 is the real product photo; image 2 is an ad built around that product. Check BOTH: (a) the product in the ad matches image 1 (same shape, colors, packaging — not warped or reinvented), and`
-          : `Check the generated ad:`,
-        // "Correctly spelled" was too weak a test. A diffusion model stutters
-        // — "we still each still got", "first try first try" — and every one
-        // of those words is spelled perfectly, so garbled copy sailed through.
-        // Compare against the strings we actually asked for, and say the
-        // duplication failure out loud.
-        `(b) the ad's own LAYOUT TEXT — the headline, quote, labels, chips and button we asked for. These EXACT strings were requested: ${expected.slice(0, 10).map((s) => `"${s.slice(0, 90)}"`).join(", ")}.`,
-        `FAIL if any of them is misspelled, cut off mid-word, or does not match what was requested. FAIL if a word or phrase is REPEATED where it shouldn't be — read each sentence back and check it is grammatical English that says what the requested string says. Duplicated words are the most common failure here and every word in them is spelled correctly, so read for SENSE, not spelling.`,
-        `FAIL if any requested string is missing from the ad entirely.`,
+          ? `Image 1 is the real product photo. Image 2 is an ad our system built around that product.`
+          : `Judge this generated ad.`,
+        `These EXACT text strings were requested: ${expected.slice(0, 10).map((s) => `"${s.slice(0, 90)}"`).join(", ")}.`,
+        ``,
+        `Answer each field INDEPENDENTLY — do not let a good overall impression carry a field that is actually wrong.`,
+        productImageUrl
+          ? `productIntact: is the product in the ad the same product as image 1 — same shape, colors, packaging artwork, logos — not warped, restyled or reinvented?`
+          : `productIntact: answer true.`,
+        `textSensible: does every line of the ad's own text read as grammatical English that makes sense? A repeated word or phrase ("we still each still got", "first try first try") is a FAILURE even though every word in it is spelled correctly. Read each sentence back for SENSE, not spelling.`,
+        `textMatches: does the ad's text say the requested strings above — none missing, none cut off mid-word, none invented?`,
+        `noSourceText: has any marketing text, watermark, price badge or caption from the SOURCE photo's background been copied into the ad? Answer true if NOT (the product's own packaging text is expected and fine).`,
+        `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
+        ``,
         // The merchant's product may be covered in Chinese, Japanese, Korean or
         // any other script — that is THEIR PACKAGING, not our typography, and
         // judging it as "gibberish" threw away the format the merchant chose
         // and shipped a generic ad instead.
-        `IMPORTANT: ignore any text that is printed on the product or its packaging — including non-Latin scripts and small print. Only judge the ad's added layout text. Non-English packaging is never a failure.`,
-        `Reply ONLY JSON: {"pass": true|false, "reason": "short reason"}.`,
+        `IMPORTANT: ignore text printed on the product or its packaging, including non-Latin scripts and small print. Only judge the ad's added layout text. Non-English packaging is never a failure.`,
+        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"reason":"..."}`,
       ].join(" "),
       urls
     );
     const m = raw && raw.match(/\{[\s\S]*\}/);
     if (!m) return { pass: true, reason: "qa-unavailable" };
-    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
-    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 160) };
+    const j = JSON.parse(m[0]) as Record<string, unknown>;
+    const bad = (["productIntact", "textSensible", "textMatches", "noSourceText"] as const)
+      .filter((k) => j[k] === false);
+    if (!bad.length) return { pass: true, reason: "clean" };
+    const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
+    return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 160) };
   } catch { return { pass: true, reason: "qa-error" }; }
 }
 
