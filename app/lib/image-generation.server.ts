@@ -589,6 +589,12 @@ async function overlayRealProduct(
   productImageUrl: string,
   opts: { blank?: boolean } = {}
 ): Promise<PasteResult> {
+  // On the blank path the stand-in is scenery, not a frame to fit inside: the
+  // blend erases whatever it does not cover, so the product may overhang it.
+  // Fitting INSIDE it is what produced a postage-stamp product marooned on a
+  // white shipping box — the model drew a squat box, the near-square product
+  // hit the height cap, and the paste shrank to a third of the width.
+  const fillWidth = !!opts.blank;
   const give = (why: string): PasteResult => { console.warn(`[presenter:paste] skipped — ${why}`); return { ok: false, failed: why }; };
   const bin = ffmpegBin();
   if (!bin) return give("no ffmpeg binary");
@@ -664,21 +670,25 @@ async function overlayRealProduct(
     const cut = headerSize(tmpCut);
     let tw = bw;
     let th = cut ? Math.round((bw * cut.h) / cut.w) : bh;
-    if (cut && th > bh * 1.6) { th = bh; tw = Math.round((bh * cut.w) / cut.h); }
+    if (!fillWidth && cut && th > bh * 1.6) { th = bh; tw = Math.round((bh * cut.w) / cut.h); }
+    const anchorY = fillWidth ? Math.round(bottom - bh + (bh - th) / 2) : bottom - th;
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +
       `[cut]split[c1][c2];` +
       // A hard paste reads as a sticker. A blurred dark copy behind it gives
       // the product contact with the hands holding it.
       `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=10,colorchannelmixer=aa=0.34[sh];` +
-      `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${bottom}-h+8[b1];` +
-      `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${bottom}-h[outv]`;
+      // Bottom-aligned normally, so a drawn product stays sitting in the
+      // hands. Centred on the stand-in, which the product is allowed to
+      // overhang in both directions.
+      `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${anchorY}+8[b1];` +
+      `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${anchorY}[outv]`;
     const { ok } = await runFfmpegStill(bin, ["-y", "-i", tmpFrame, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out]);
     if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) {
       // Where the product ACTUALLY landed, so the edge blend can build its
       // mask around the real thing rather than around the model's guess.
       const px = bx + Math.round((bw - tw) / 2);
-      return { ok: true, file: fileName, absPath: out, cutoutPath: tmpCut, rect: { x: px, y: bottom - th, w: tw, h: th }, frame: { w: W, h: H } };
+      return { ok: true, file: fileName, absPath: out, cutoutPath: tmpCut, rect: { x: px, y: anchorY, w: tw, h: th }, frame: { w: W, h: H } };
     }
     return give(ok ? "ffmpeg wrote nothing usable" : "ffmpeg overlay failed");
   } catch (e) {
@@ -795,7 +805,9 @@ async function blendProductEdges(
     const edited = await inpaintFill(
       `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`,
       `data:image/png;base64,${fs.readFileSync(maskFile).toString("base64")}`,
-      "The person's two hands holding the object shown: fingers wrap around its left and right edges, thumbs near the lower corners, its weight resting in both palms, with a soft contact shadow where it meets the skin. Everywhere else the room behind them continues naturally. There is no plain box, no card, no tray and no panel behind the object — only the object, the hands and the background. Do not add any text, label, logo or printing anywhere."
+      "The person's two hands holding the object shown: fingers wrap around its left and right edges, thumbs near the lower corners, its weight resting in both palms, with a soft contact shadow where it meets the skin. " +
+      "Everywhere else is the person's plain unprinted t-shirt and the ordinary room behind them, continuing naturally. There is no white box, no cardboard, no card, no tray and no panel — anything like that is removed and replaced by clothing and background. " +
+      "Absolutely no writing anywhere: no text, letters, words, labels, logos, barcodes or printing of any kind outside the object itself."
     );
     if (!edited) return give("inpaint returned nothing");
 

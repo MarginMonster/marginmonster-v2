@@ -88,10 +88,18 @@ export async function submitCompose(
   // featureless box, which is the one thing it renders reliably, and paste
   // the merchant's actual photograph onto it afterwards. Nothing to
   // reinvent, nothing to misspell, and one unambiguous outline to paste onto.
-  const shape = !aspect ? "roughly square" : aspect > 1.35 ? "clearly wider than it is tall" : aspect < 0.75 ? "clearly taller than it is wide" : "roughly square";
+  // A vague shape word got a squat box for a near-square product, and the
+  // pasted photograph then had nowhere to go. Give the ratio as a number.
+  const shape = !aspect
+    ? "roughly square, about as wide as it is tall"
+    : aspect >= 1.15
+      ? `about ${aspect.toFixed(1)} times as WIDE as it is tall — a wide, letterbox-shaped front face`
+      : aspect <= 0.87
+        ? `about ${(1 / aspect).toFixed(1)} times as TALL as it is wide — an upright, portrait-shaped front face`
+        : "square — the front face is as wide as it is tall";
   const blankPrompt =
     `The exact person from the first image holding a PLAIN UNMARKED BOX up to the camera at chest height. ` +
-    `The box is a simple matte light-grey cardboard box, ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces and clean straight edges. ` +
+    `The box is a simple matte light-grey cardboard box whose front face is ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces and clean straight edges. ` +
     `Its front face is square-on to the camera and entirely unobstructed: no fingers, thumbs or hair cross in front of it, and nothing overlaps it. ` +
     `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
     // The first stand-ins were technically perfect and still covered the
