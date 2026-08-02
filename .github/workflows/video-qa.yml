@@ -32,6 +32,10 @@ on:
         description: 'Public URL of the product photo (keyframe check only)'
         required: false
         default: ""
+      store_url:
+        description: 'Find the product in this storefront instead of pasting a URL'
+        required: false
+        default: ""
       product_title:
         description: 'Product title (keyframe check only)'
         required: false
@@ -76,5 +80,6 @@ jobs:
           KEYFRAME_STYLES: ${{ inputs.keyframe_styles || 'clay' }}
           QA_PORTRAIT_URL: ${{ inputs.portrait_url }}
           QA_PRODUCT_URL: ${{ inputs.product_url }}
+          QA_STORE_URL: ${{ inputs.store_url }}
           QA_PRODUCT_TITLE: ${{ inputs.product_title }}
         run: node video-qa.cjs

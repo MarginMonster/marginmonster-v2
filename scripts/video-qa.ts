@@ -120,11 +120,23 @@ async function keyframeCheck(): Promise<string> {
   }
   const { composeHoldingFrames } = await import("../app/lib/fal-image.server");
   const portrait = process.env.QA_PORTRAIT_URL;
-  const productUrl = process.env.QA_PRODUCT_URL;
-  const productTitle = process.env.QA_PRODUCT_TITLE || "POP MART SkullPanda Blind Box Case (12 pcs)";
-  if (!portrait || !productUrl) {
-    return `### Keyframe check\n\nSKIPPED — QA_PORTRAIT_URL and QA_PRODUCT_URL are required (a presenter photo and the product photo).`;
+  let productUrl = process.env.QA_PRODUCT_URL || "";
+  let productTitle = process.env.QA_PRODUCT_TITLE || "";
+  // Rather than hand-copying a CDN URL that will rot, find the product in the
+  // merchant's own catalogue — the same discovery the Studio uses.
+  if (!productUrl && process.env.QA_STORE_URL) {
+    const { discoverCatalog } = await import("../app/lib/catalog-import.server");
+    const { products } = await discoverCatalog(process.env.QA_STORE_URL, 250);
+    const want = productTitle.toLowerCase();
+    const hit = (want ? products.find((x) => x.title.toLowerCase().includes(want)) : null)
+      || products.find((x) => !!x.imageUrl);
+    if (hit?.imageUrl) { productUrl = hit.imageUrl; productTitle = hit.title; }
+    console.log(`[vqa] catalogue lookup → ${productTitle || "(nothing)"}`);
   }
+  if (!portrait || !productUrl) {
+    return `### Keyframe check\n\nSKIPPED — need QA_PORTRAIT_URL plus either QA_PRODUCT_URL or QA_STORE_URL. Nothing was tested.`;
+  }
+  if (!productTitle) productTitle = "the product";
   const styles = (process.env.KEYFRAME_STYLES || "clay").split(",").map((x) => x.trim()) as CartoonStyleKey[];
   const rows: string[] = [];
   for (const style of styles) {
