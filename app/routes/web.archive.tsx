@@ -80,7 +80,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_BLOG_POST: 40 };
   const KIND: Record<string, "video" | "image" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_BLOG_POST: "blog" };
   const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
-  const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; refunded: boolean; retryCost: number }[] = [];
+  const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
     let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
@@ -89,10 +89,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
     if (!failed && !generating) continue; // future-scheduled drip isn't "cooking"
     const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
-    const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
+    // Math.max(5, …) pinned the countdown at "5s left" forever once the
+    // estimate ran out — a merchant watched it say that for two minutes. An
+    // estimate that has expired is not a five-second estimate; it is an
+    // expired estimate, and the honest thing is to stop counting and say the
+    // render is taking longer than usual.
+    const elapsedSec = Math.round((nowMs - startMs) / 1000);
+    const etaSec = generating ? Math.round(TYPICAL[j.type] - elapsedSec) : 0;
     const pl = p as { chargedTokens?: number };
     const retryCost = failed && p.refunded ? (typeof pl.chargedTokens === "number" && pl.chargedTokens > 0 ? pl.chargedTokens : RETRY_FLAT[j.type] || 0) : 0;
-    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, refunded: !!p.refunded, retryCost });
+    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, elapsedSec, refunded: !!p.refunded, retryCost });
   }
   const linked = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
   // Un-kept media (PENDING video/photo) auto-clears at 30 days — surface a
@@ -332,8 +338,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({});
 };
 
-function fmtEta(s: number): string {
-  return s >= 60 ? `${Math.ceil(s / 60)} min` : `${s}s`;
+/** Countdown text, or the truth when the estimate has run out.
+ *
+ *  These are queued renders behind a third-party API — they routinely run
+ *  past a typical time, and a stuck "5s left" makes a working render look
+ *  frozen. Below ~10s we stop giving a number at all, because a number that
+ *  keeps not arriving is worse than no number. */
+function fmtEta(etaSec: number, elapsedSec?: number): string {
+  if (etaSec > 60) return `${Math.ceil(etaSec / 60)} min left`;
+  if (etaSec > 10) return `${etaSec}s left`;
+  if (etaSec > 0) return "almost there";
+  const mins = Math.floor((elapsedSec ?? 0) / 60);
+  return mins >= 1 ? `taking longer than usual · ${mins} min in` : "taking longer than usual";
 }
 // Sanitized download filename from the piece's title.
 function dlName(title: string, isVideo: boolean): string {
@@ -580,11 +596,11 @@ export default function WebArchive() {
                 className="wb-cookimg"
                 style={j.productImage ? { backgroundImage: `linear-gradient(rgba(10,14,12,.5),rgba(10,14,12,.55)), url(${j.productImage})` } : undefined}
               >
-                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">~{fmtEta(j.etaSec)}</span></span>
+                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</span></span>
               </div>
               <div className="m">
                 {j.kind === "blog" ? `Writing${j.productTitle ? ` about ${j.productTitle}` : " your article"}…` : `Creating your ${j.kind}${j.productTitle ? ` — ${j.productTitle}` : ""}…`}
-                <div className="s">Rendering · ~{fmtEta(j.etaSec)} left</div>
+                <div className="s">Rendering · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</div>
               </div>
             </div>
           ))}
