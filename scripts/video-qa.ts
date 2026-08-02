@@ -170,6 +170,9 @@ async function presenterHoldCheck(): Promise<string> {
 
   const rows: string[] = [];
   let shipped = 0;
+  // Counted and reported separately. A frame nobody graded is not a frame
+  // that failed, and it is certainly not a frame that passed.
+  let ungraded = 0;
   for (const portrait of portraits) {
     try {
       const r = await runPresenterHold({ portraitUrl: portrait, productImageUrl: productUrl, productTitle });
@@ -211,14 +214,25 @@ async function presenterHoldCheck(): Promise<string> {
           // Same reason the gate moved up: the cheap model called plastic doll
           // fingers human. A judge that agrees with a broken gate for the same
           // reason the gate is broken is not a second opinion.
-          { maxTokens: 400, model: "claude-sonnet-5" }
+          // Nine fields plus a sentence at 400 tokens came back truncated —
+          // no closing brace, no parse — and the table printed four
+          // BYTE-IDENTICAL all-failed verdicts for four different images,
+          // flagging a clear face as FACE BLOCKED. A missing answer must
+          // never be rendered as a definite one.
+          { maxTokens: 1200, model: "claude-sonnet-5" }
         );
         const m = raw && raw.match(/\{[\s\S]*\}/);
         const j = m ? JSON.parse(m[0]) as Record<string, unknown> : null;
+        if (!j) {
+          // Say so, publish the frame anyway, and count it apart from the
+          // pass/fail tally — the frame still needs looking at by a human.
+          console.log(`[vqa] presenter ${portrait.split("/").pop()}: judge returned no readable verdict — ${String(raw).slice(0, 140)}`);
+          ungraded++;
+        }
         const yes = (k: string) => !!j && j[k] !== false && j[k] !== undefined;
-        const ok = ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "singleProduct", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
+        const ok = !!j && ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "singleProduct", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
         if (ok) shipped++;
-        verdict = [
+        verdict = !j ? "**NO VERDICT — judge unreadable**" : [
           yes("artworkMatches") ? "art ok" : "**ART WRONG**",
           yes("sameObject") ? "same object" : "**DIFFERENT OBJECT**",
           yes("textFaithful") ? "text ok" : "**TEXT WRONG**",
@@ -229,7 +243,7 @@ async function presenterHoldCheck(): Promise<string> {
           yes("handsHuman") ? "hands human" : "**HANDS INHUMAN**",
           yes("faceVisible") ? "face clear" : "**FACE BLOCKED**",
         ].join(" · ");
-        console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${String(j?.notes || "")}`);
+        if (j) console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${String(j.notes || "")}`);
       }
       // Publish what was actually JUDGED. Saving r.url after a paste would
       // ship the pre-composite frame and quietly disagree with the verdict.
@@ -252,7 +266,7 @@ async function presenterHoldCheck(): Promise<string> {
   }
   return [
     `### Presenter image ads — does the merchant's artwork survive?`, ``,
-    `${shipped}/${portraits.length} passed an independent judge. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
+    `${shipped}/${portraits.length - ungraded} graded frames passed an independent judge${ungraded ? ` · **${ungraded} could not be graded at all**` : ""}. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
     `| presenter | product | merchant gets | production gate | independent judge | frame |`, `|---|---|---|---|---|---|`, ...rows,
   ].join("\n");
 }

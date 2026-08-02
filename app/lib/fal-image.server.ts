@@ -93,7 +93,10 @@ export async function submitCompose(
         // segmented, jointed, doll-like. Every extra word about fingers made it
         // worse. So describe the GRIP, once, in plain language, and let the
         // model draw a hand the way it already knows how.
-        `An ordinary relaxed grip, both hands cupping it from the sides the way anyone picks something up off a shelf. Only the presenter's own two hands are in the picture. ` +
+        // "Cupping it from the sides" got flat open palms held BESIDE the
+        // product, not touching it — three of four presenters ended up
+        // presenting a box that floats. Say where the hands make contact.
+        `They are actually holding it: fingers over the front edges, thumbs underneath, its weight resting in both palms, the way anyone picks something up off a shelf. The hands touch the product. Only the presenter's own two hands are in the picture. ` +
         // The product is the pitch, but the presenter is the ad. A case held up
         // over the mouth is a frame with nobody talking in it.
         `The product is held at chest height, BELOW the chin — the presenter's whole face stays unobstructed, with eyes, nose and mouth fully visible above the product. Never raise the product in front of the face. ` +

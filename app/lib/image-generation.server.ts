@@ -505,10 +505,21 @@ async function qaPresenterHold(
       // painted-on joints and answered "hands human". It is fine at reading
       // packaging text; it is not reliable at judging anatomy. This gate runs
       // at most three times per presenter ad, so it can afford the better one.
-      { maxTokens: 300, model: "claude-sonnet-5" }
+      //
+      // The token budget is generous on purpose: ten fields and a reason
+      // string at 300 tokens came back truncated, the closing brace never
+      // arrived, and every frame in a four-presenter sweep — including one
+      // holding a red lunchbox — was recorded as a PASS.
+      { maxTokens: 1000, model: "claude-sonnet-5" }
     );
     const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: true, reason: "qa-unparseable", bad: [] };
+    // An answer we could not read is NOT an approval. It used to return
+    // pass:true, so every parse failure shipped as a clean frame and the
+    // report said the gate was happy.
+    if (!m) {
+      console.warn(`[presenter:gate] unreadable verdict, treating as a failure: ${raw.slice(0, 160)}`);
+      return { pass: false, reason: "gate could not read its own verdict", bad: ["unreadable"] };
+    }
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     const bad = (["artworkMatches", "sameObject", "notSimplified", "singleProduct", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
       .filter((k) => j[k] === false) as string[];
@@ -516,7 +527,10 @@ async function qaPresenterHold(
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
     return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200), bad };
   } catch (e) {
-    // Never block a paid render on a QA outage.
+    // A QA OUTAGE is different from an unreadable verdict: the model never
+    // answered at all, and blocking a paid render on our own downtime would
+    // be worse than shipping. Distinguished from "unreadable" above, which
+    // means the model did answer and the answer was not usable.
     return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, bad: [] };
   }
 }
