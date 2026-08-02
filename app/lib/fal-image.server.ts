@@ -85,7 +85,7 @@ export async function submitCompose(
       : `The person from the first image holding the ${productTitle || "product"} from the second image, ` +
         `product facing the camera and clearly visible — small items held up at chest height in one hand with a natural relaxed grip; ` +
         `large items held upright with both hands or stood beside them at full size. ` +
-        `Hands are anatomically correct: five fingers per hand, natural grip, no extra or missing fingers. ` +
+        `Hands are anatomically correct: five fingers per hand, natural grip, no extra or missing fingers. EXACTLY TWO hands are visible in the whole image and both belong to the presenter — never add a third hand, a spare arm, or a disembodied hand holding the product. ` +
         `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Candid smartphone selfie UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {

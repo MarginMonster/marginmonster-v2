@@ -416,6 +416,7 @@ async function qaPresenterHold(
         `- shape, colors, logos or packaging text changed, or it became a different object;`,
         `- printed packaging lettering or logos came out in the WRONG COLOUR (a gold logo rendered purple, for example);`,
         `- marketing text, a caption, a price flash or a shop WATERMARK from the original photo's background was copied into the shot, or packaging text was duplicated;`,
+        `- an EXTRA hand, arm or limb appears — a third hand on the product, a disembodied hand floating in frame, or an arm that belongs to nobody. Count the hands: a single presenter has exactly two, both attached to their own arms;`,
         `- the hands are deformed, have extra/missing fingers, or don't plausibly hold it.`,
         `Otherwise PASS. Judge fidelity and scale only — not lighting or taste.`,
       ].filter(Boolean).join("\n"),
