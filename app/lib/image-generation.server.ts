@@ -695,11 +695,17 @@ async function overlayRealProduct(
  *  packaging cannot be redrawn, misspelt or turned into a lunchbox.
  *
  *  Returns null on any failure, leaving the flat paste in place. */
+type BlendResult = { ok: true; file: string; absPath: string } | { ok: false; why: string };
+
 async function blendProductEdges(
   pasted: { absPath: string; cutoutPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
-): Promise<{ file: string; absPath: string } | null> {
+): Promise<BlendResult> {
+  // Third time writing this note: a reason in console.warn is a reason nobody
+  // reads. The blend failed on every frame of a sweep and the report could
+  // only say "no blend".
+  const give = (why: string): BlendResult => { console.warn(`[presenter:blend] ${why}`); return { ok: false, why }; };
   const bin = ffmpegBin();
-  if (!bin) return null;
+  if (!bin) return give("no ffmpeg binary");
   const { inpaintFill } = await import("./fal-image.server");
   const dir = path.join(process.cwd(), "data", "renders");
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -738,26 +744,25 @@ async function blendProductEdges(
       `[box][prot]blend=all_mode=multiply[mask]`,
       "-map", "[mask]", "-frames:v", "1", maskFile,
     ]);
-    if (!mk.ok || !fs.existsSync(maskFile)) { console.warn("[presenter:blend] could not build the mask"); return null; }
+    if (!mk.ok || !fs.existsSync(maskFile)) return give(mk.ok ? "mask filter wrote no file" : "mask filter failed");
 
     const edited = await inpaintFill(
       `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`,
       `data:image/png;base64,${fs.readFileSync(maskFile).toString("base64")}`,
       "The person's two hands holding the object shown: fingers wrap around its left and right edges, thumbs near the lower corners, its weight resting in both palms, with a soft contact shadow where it meets the skin. Everywhere else the room behind them continues naturally. There is no plain box, no card, no tray and no panel behind the object — only the object, the hands and the background. Do not add any text, label, logo or printing anywhere."
     );
-    if (!edited) return null;
+    if (!edited) return give("inpaint returned nothing");
 
     const res = await fetch(edited, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) { console.warn(`[presenter:blend] download ${res.status}`); return null; }
+    if (!res.ok) return give(`inpaint download ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 20_000) return null;
+    if (buf.length < 20_000) return give(`inpaint result too small (${buf.length}b)`);
     const fileName = `img-${stamp}-blend.jpg`;
     const abs = path.join(dir, fileName);
     fs.writeFileSync(abs, buf);
-    return { file: fileName, absPath: abs };
+    return { ok: true, file: fileName, absPath: abs };
   } catch (e) {
-    console.warn(`[presenter:blend] ${(e as Error).message.slice(0, 140)}`);
-    return null;
+    return give(`threw: ${(e as Error).message.slice(0, 140)}`);
   } finally {
     try { fs.rmSync(maskFile, { force: true }); fs.rmSync(pasted.cutoutPath, { force: true }); } catch { /* best-effort */ }
   }
@@ -846,7 +851,9 @@ export async function runPresenterHold(opts: {
         // The paste covered the fingers that were gripping the stand-in, so
         // blend them back over its edges. Grade whichever version survives —
         // the blend is an improvement, not a guarantee.
-        const blended = await blendProductEdges(pasted);
+        const blend = await blendProductEdges(pasted);
+        const blended = blend.ok ? blend : null;
+        const blendNote = blend.ok ? "blended" : `blend failed: ${blend.why}`;
         const best = blended || { file: pasted.file, absPath: pasted.absPath };
         const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
         const qaB = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
@@ -862,11 +869,11 @@ export async function runPresenterHold(opts: {
             via: "blank-standin",
             failed: [],
             wrongProduct: false,
-            standIn: `pasted${blended ? " + blended" : ", no blend"} · accepted`,
+            standIn: `pasted · ${blendNote} · accepted`,
             standInUrl,
           };
         }
-        standIn = `pasted${blended ? " + blended" : ", no blend"} · gate rejected it: ${qaB.reason}`;
+        standIn = `pasted · ${blendNote} · gate rejected it: ${qaB.reason}`;
         console.warn(`[presenter:blank] ${standIn} — falling back to the generative hold`);
       }
     }
@@ -904,11 +911,18 @@ export async function runPresenterHold(opts: {
   if (repair && !repair.ok) standIn = `${standIn} · repair paste failed: ${repair.failed}`;
   const pasted = repair?.ok ? repair : null;
   if (pasted) {
+    // The repair paste needs the same edge blend as the stand-in one. Without
+    // it the delivered frame carries a hard rectangular cut, the old drawn box
+    // showing past its sides, and no fingers in front of the product — a
+    // photograph held up rather than a product held.
+    const rBlend = await blendProductEdges(pasted);
+    if (!rBlend.ok) standIn = `${standIn} · repair blend failed: ${rBlend.why}`;
+    const best = rBlend.ok ? rBlend : pasted;
     // Grade the BYTES, not a URL. The composite exists on the render disk
     // before it has a public address, and off production there is no public
     // address to give it — the first cut built one from SHOPIFY_APP_URL, which
     // is unset in CI, so the paste could never be scored there.
-    const inline = `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`;
+    const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
     const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
     // Take the repair only if it actually repaired something. The old
     // condition also accepted it whenever the ORIGINAL had failed, which is
@@ -917,12 +931,12 @@ export async function runPresenterHold(opts: {
     if (qa3.pass) {
       const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
       return {
-        url: base ? `${base}/renders/${pasted.file}` : composed,
+        url: base ? `${base}/renders/${best.file}` : composed,
         pass: qa3.pass,
-        reason: `real-product-composite · ${qa3.reason}`,
+        reason: `real-product-composite${rBlend.ok ? " + edge-blend" : ""} · ${qa3.reason}`,
         retried,
         composited: true,
-        localPath: pasted.absPath,
+        localPath: best.absPath,
         via: "paste-repair",
         standIn,
         standInUrl,
