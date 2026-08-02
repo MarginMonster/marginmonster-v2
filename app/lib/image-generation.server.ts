@@ -75,29 +75,37 @@ const FFMPEG_STILL_TIMEOUT_MS = 90_000;
 function runFfmpegStill(
   bin: string,
   args: string[],
-  opts: { captureStdout?: boolean; timeoutMs?: number } = {}
-): Promise<{ ok: boolean; stdout: string }> {
+  // captureStderr: ffmpeg says exactly what is wrong with a filter graph on
+  // stderr and we were throwing it away, so a broken graph could only ever be
+  // reported as "it failed". Off by default — it is only worth the pipe when
+  // the caller intends to surface the message.
+  opts: { captureStdout?: boolean; captureStderr?: boolean; timeoutMs?: number } = {}
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     let settled = false;
     let timer: NodeJS.Timeout | undefined;
     let out = "";
+    let err = "";
     const finish = (ok: boolean) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      resolve({ ok, stdout: out });
+      resolve({ ok, stdout: out, stderr: err });
     };
     try {
-      const p = spawn(bin, args, { stdio: ["ignore", opts.captureStdout ? "pipe" : "ignore", "ignore"] });
+      const p = spawn(bin, args, {
+        stdio: ["ignore", opts.captureStdout ? "pipe" : "ignore", opts.captureStderr ? "pipe" : "ignore"],
+      });
       timer = setTimeout(() => {
         console.error(`[image-ad] ffmpeg wedged past ${Math.round((opts.timeoutMs ?? FFMPEG_STILL_TIMEOUT_MS) / 1000)}s — killing it`);
         try { p.kill("SIGKILL"); } catch { /* already gone */ }
         finish(false);
       }, opts.timeoutMs ?? FFMPEG_STILL_TIMEOUT_MS);
       p.stdout?.on("data", (c: Buffer) => { out += c.toString(); });
-      p.on("error", () => finish(false));
+      p.stderr?.on("data", (c: Buffer) => { err = (err + c.toString()).slice(-2000); });
+      p.on("error", (e) => { err = err || e.message; finish(false); });
       p.on("close", (code) => finish(code === 0));
-    } catch { finish(false); }
+    } catch (e) { err = err || (e as Error).message; finish(false); }
   });
 }
 
@@ -711,11 +719,9 @@ async function blendProductEdges(
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const maskFile = path.join(dir, `.mk-${stamp}.png`);
   const { rect, frame } = pasted;
-  // Ring geometry: how far out the fingers may be drawn, and how far in they
-  // may overlap the packaging. Both scale with the product so a small item
-  // doesn't get a ring wider than itself.
+  // How far beyond the product the fingers may be drawn. Scales with the
+  // product so a small item doesn't get a work area wider than itself.
   const out = Math.max(24, Math.round(rect.w * 0.10));
-  const inn = Math.max(10, Math.round(rect.w * 0.035));
   const ox = Math.max(0, rect.x - out);
   const oy = Math.max(0, rect.y - out);
   const ow = Math.min(frame.w - ox, rect.w + out * 2);
@@ -730,21 +736,31 @@ async function blendProductEdges(
     // alpha means everything that is not the product — including whatever is
     // left of the plain box — is editable, so the case becomes the object in
     // the hands instead of a picture stuck to one.
-    const keep = Math.max(2, Math.round(rect.w * 0.012)); // hairline of product kept safe from bleed
-    const mk = await runFfmpegStill(bin, [
-      "-y",
-      "-f", "lavfi", "-i", `color=black:s=${frame.w}x${frame.h}`,
-      "-i", pasted.cutoutPath,
-      "-filter_complex",
-      `[0:v]drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill,format=gray[box];` +
-      // alphaextract → white where the product is; negate → black where it is;
-      // pad white so multiplying leaves everything outside the product alone.
-      `[1:v]scale=${rect.w}:${rect.h},alphaextract,boxblur=${keep}:1,negate,` +
-      `pad=${frame.w}:${frame.h}:${rect.x}:${rect.y}:color=white[prot];` +
-      `[box][prot]blend=all_mode=multiply[mask]`,
-      "-map", "[mask]", "-frames:v", "1", maskFile,
-    ]);
-    if (!mk.ok || !fs.existsSync(maskFile)) return give(mk.ok ? "mask filter wrote no file" : "mask filter failed");
+    // Built with overlay rather than pad. pad REFUSES a placement that runs
+    // past the canvas — negative x/y, or x+w beyond the width — and the
+    // pasted product legitimately clips the frame edge, so the whole graph
+    // failed and the blend never ran once. overlay clips instead of refusing.
+    //
+    //   box   = white over the work area
+    //   prot  = white canvas with the product's silhouette painted BLACK
+    //   mask  = box × prot → white only where editing is allowed
+    const soft = Math.max(1, Math.round(rect.w * 0.006)); // feather, so the seam is not a cliff
+    const graph =
+      `color=black:s=${frame.w}x${frame.h},format=rgb24,` +
+      `drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill[box];` +
+      `color=white:s=${frame.w}x${frame.h},format=rgb24[cv];` +
+      `[0:v]scale=${rect.w}:${rect.h},alphaextract,gblur=sigma=${soft},negate,format=rgb24[pa];` +
+      `[cv][pa]overlay=x=${rect.x}:y=${rect.y}:format=rgb[prot];` +
+      `[box][prot]blend=all_mode=multiply,format=gray[mask]`;
+    const mk = await runFfmpegStill(
+      bin,
+      ["-y", "-i", pasted.cutoutPath, "-filter_complex", graph, "-map", "[mask]", "-frames:v", "1", maskFile],
+      { captureStderr: true }
+    );
+    if (!mk.ok || !fs.existsSync(maskFile)) {
+      const tail = (mk.stderr || "").split("\n").filter((l) => /error|invalid|unable|no such|not within|failed/i.test(l)).slice(-2).join(" · ");
+      return give(`mask filter failed${tail ? `: ${tail.slice(0, 180)}` : " (no stderr)"}`);
+    }
 
     const edited = await inpaintFill(
       `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`,
