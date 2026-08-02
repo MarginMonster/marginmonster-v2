@@ -4,13 +4,19 @@
  *   2. KEYFRAME — flux-kontext-pro redraws the REAL product photo in the
  *                 chosen cartoon style (product identity locked); no photo /
  *                 service mode → flux-dev paints the scene from scratch
- *   3. ANIMATE  — kling v1.6 brings the keyframe to life with style-matched
- *                 motion (kling has been rock-solid on this account)
- *   4. VOICE    — minimax speech-02-hd narrator cast per style
- *   5. ASSEMBLY — shared ffmpeg assembler: loop the clip to the narration,
+ *   3. VOICE    — minimax speech-02-hd narrator cast per style. Runs BEFORE
+ *                 the animation because the lipsync needs audio to sync to.
+ *   4. PERFORMANCE — omni-human lipsyncs the character to that narration.
+ *                 The anthem pipeline already lipsyncs a cartoon-styled
+ *                 singer, so a stylized face is no obstacle.
+ *   5. MOTION   — kling v1.6, used when there is no character to sync (a
+ *                 product-hero cartoon) or when the lipsync failed. That path
+ *                 tells the character NOT to mouth words, because nothing
+ *                 would be syncing them.
+ *   6. ASSEMBLY — shared ffmpeg assembler: loop the clip to the narration,
  *                 burn UGC captions, mux the VO
- * COGS ≈ $0.04 keyframe + ~$0.25-0.50 kling + $0.001 TTS. Checkpointed like
- * the UGC pipeline so deploy restarts never re-spend completed stages. */
+ * COGS ≈ $0.04 keyframe + ~$0.25-0.50 performance + $0.001 TTS. Checkpointed
+ * like the UGC pipeline so deploy restarts never re-spend completed stages. */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -571,11 +577,89 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   let keyframeUrl = resume.keyframeUrl || "";
   if (!keyframeUrl) keyframeUrl = await forgeKeyframe();
 
-  // 3) ANIMATE — kling brings the keyframe to life. The keyframe is a hosted
+  // 3) VOICE — moved AHEAD of the animation because the lipsync step needs
+  // the audio to sync to. Style-cast narrator reads the script (cheap; regen
+  // on dead URL).
+  let audioBuf: Buffer | null = null;
+  if (resume.audioUrl) {
+    try { audioBuf = await downloadBuffer(resume.audioUrl); } catch { audioBuf = null; }
+  }
+  if (!audioBuf || audioBuf.length < 10_000) {
+    let audioUrl: string;
+    // Cheap, but still billed at create — a restart mid-poll re-attaches.
+    try {
+      audioUrl = await resumablePrediction({
+        priorId: ck.ckTtsId,
+        create: () => repCreate("minimax/speech-02-hd", {
+          text: script,
+          voice_id: recipe.voice,
+          emotion: "happy",
+          english_normalization: true,
+          language_boost: "English",
+        }),
+        save: (id) => ckpt({ ckTtsId: id }),
+        maxMs: 3 * 60_000,
+        stage: "cartoon-tts",
+      });
+    } catch {
+      audioUrl = await resumablePrediction({
+        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: recipe.voice }),
+        save: (id) => ckpt({ ckTtsId: id }),
+        maxMs: 3 * 60_000,
+        stage: "cartoon-tts",
+      });
+    }
+    await ckpt({ ckAudioUrl: audioUrl });
+    audioBuf = await downloadBuffer(audioUrl);
+  }
+  if (audioBuf.length < 10_000) throw new Error("[cartoon:tts] audio came back empty");
+
+  // 4) PERFORMANCE — lipsync the character to the narration.
+  //
+  // This pipeline used to animate the keyframe with kling and lay the voice
+  // over the top, which cannot sync by construction: a talking character and
+  // an unrelated audio track. Muting the character hid it but threw away the
+  // thing that makes a spokesperson ad work.
+  //
+  // The anthem pipeline already lipsyncs a CARTOON-STYLED singer with
+  // omni-human, so a stylized face is not an obstacle — the same call works
+  // here. Only when there is a character on screen: a product-hero cartoon has
+  // no face to sync, and kling gives it better motion.
+  let animUrl = resume.animUrl || "";
+  if (!animUrl && params.avatarId) {
+    let tmpLip = "";
+    try {
+      tmpLip = fs.mkdtempSync(path.join(os.tmpdir(), "cartoon-lip-"));
+      const framePath = path.join(tmpLip, "frame.jpg");
+      await download(keyframeUrl, framePath);
+      const frameDataUri = "data:image/jpeg;base64," + fs.readFileSync(framePath).toString("base64");
+      const audioDataUri = "data:audio/mpeg;base64," + audioBuf.toString("base64");
+      // Billed at create, so a restart mid-poll re-attaches rather than
+      // re-buying the performance.
+      animUrl = await resumablePrediction({
+        priorId: ck.ckCartoonOmniId,
+        create: () => repCreate("bytedance/omni-human", { image: frameDataUri, audio: audioDataUri }),
+        save: (id) => ckpt({ ckCartoonOmniId: id }),
+        maxMs: 12 * 60_000,
+        stage: "cartoon-lipsync",
+      });
+      await ckpt({ ckAnimUrl: animUrl });
+      console.log("[cartoon] lipsynced performance ok");
+    } catch (e) {
+      // A failed lipsync must never cost the merchant the whole ad — fall
+      // through to the motion path below, which does not fake talking.
+      animUrl = "";
+      console.error("[cartoon] lipsync failed, falling back to motion:", e instanceof Error ? e.message.slice(0, 180) : e);
+    } finally {
+      if (tmpLip) { try { fs.rmSync(tmpLip, { recursive: true, force: true }); } catch { /* tidy */ } }
+    }
+  }
+
+  // 5) MOTION — fallback when there is no character to lipsync, or the
+  // lipsync failed. kling brings the keyframe to life. The keyframe is a hosted
   // replicate.delivery URL (same provider), so it's passed directly — no
   // multi-MB base64 body. A restart mid-poll re-attaches to the SAME paid
   // prediction (omni-human pattern) instead of buying a second render.
-  let animUrl = resume.animUrl || "";
   if (!animUrl && resume.klingPredictionId) {
     try {
       animUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "cartoon-animate(resumed)");
@@ -611,42 +695,8 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     await ckpt({ ckAnimUrl: animUrl });
   }
 
-  // 4) VOICE — style-cast narrator reads the script (cheap; regen on dead URL).
-  let audioBuf: Buffer | null = null;
-  if (resume.audioUrl) {
-    try { audioBuf = await downloadBuffer(resume.audioUrl); } catch { audioBuf = null; }
-  }
-  if (!audioBuf || audioBuf.length < 10_000) {
-    let audioUrl: string;
-    // Cheap, but still billed at create — a restart mid-poll re-attaches.
-    try {
-      audioUrl = await resumablePrediction({
-        priorId: ck.ckTtsId,
-        create: () => repCreate("minimax/speech-02-hd", {
-          text: script,
-          voice_id: recipe.voice,
-          emotion: "happy",
-          english_normalization: true,
-          language_boost: "English",
-        }),
-        save: (id) => ckpt({ ckTtsId: id }),
-        maxMs: 3 * 60_000,
-        stage: "cartoon-tts",
-      });
-    } catch {
-      audioUrl = await resumablePrediction({
-        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: recipe.voice }),
-        save: (id) => ckpt({ ckTtsId: id }),
-        maxMs: 3 * 60_000,
-        stage: "cartoon-tts",
-      });
-    }
-    await ckpt({ ckAudioUrl: audioUrl });
-    audioBuf = await downloadBuffer(audioUrl);
-  }
-  if (audioBuf.length < 10_000) throw new Error("[cartoon:tts] audio came back empty");
 
-  // 5) ASSEMBLY — loop the animation to the narration, captions on, no photo
+  // 6) ASSEMBLY — loop the animation to the narration, captions on, no photo
   // b-roll (a real photo cutting into a cartoon reads as a glitch).
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "toon-"));
   try {
