@@ -280,7 +280,13 @@ const CSS = `
    button's own gradient but under the text. */
 .wb-btn{position:relative;isolation:isolate;overflow:hidden;display:inline-block;border:0;cursor:pointer;text-decoration:none;text-align:center;
   font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:#fff;padding:12px 24px;border-radius:12px;
-  background:linear-gradient(165deg,#12A85E,#0B6B3E);
+  /* The right side darkens toward the rosette. In the app the rosette sits on
+     a DARK green card, which is the only reason thin gold lines read as gold —
+     on flat bright #12A85E the same gold has no contrast and turns into pale
+     green scribble. This recreates the dark field locally. */
+  background:
+    linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530),
+    linear-gradient(165deg,#12A85E,#0B6B3E);
   box-shadow:0 4px 12px rgba(12,122,70,.28),inset 0 0 0 1px rgba(231,200,121,.34);}
 /* ---- The gold rule, applied to EVERY green surface in one place ----
    This started as a .wb-btn-only treatment, which meant every other green
@@ -290,11 +296,28 @@ const CSS = `
 .ws-tab.on,.wa-vbtn,.wd-toggle button.on{position:relative;isolation:isolate;overflow:hidden;}
 .wb-btn::before,.ws-tab.on::before,.wa-vbtn::before,.wd-toggle button.on::before{
   content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:8px;pointer-events:none;}
-/* Pushed well past the edge: parked closer in, the rosette's hollow centre
-   sits mid-button and reads as a dark disc rather than etching. */
+/* The rosette is MASKED rather than drawn: the SVG's own stroke colour is
+   fixed, and masking lets the gold be picked per surface. Pushed far enough
+   right that its hollow centre clears the edge — parked closer in, the centre
+   reads as a dark smudge on the button instead of etching. */
 .wb-btn::after,.ws-tab.on::after,.wa-vbtn::after,.wd-toggle button.on::after{
-  content:"";position:absolute;z-index:-1;top:50%;right:-58px;width:124px;height:124px;margin-top:-62px;pointer-events:none;
-  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.2;animation:wbDrift 60s linear infinite;}
+  content:"";position:absolute;z-index:-1;top:50%;pointer-events:none;background:#FFD24A;
+  -webkit-mask-image:url(/gstyle-rosette.svg);-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat;
+  mask-image:url(/gstyle-rosette.svg);mask-size:contain;mask-position:center;mask-repeat:no-repeat;
+  animation:wbDrift 60s linear infinite;}
+/* Wide CTAs carry the full medallion. */
+.wb-btn::after{right:-96px;width:158px;height:158px;margin-top:-79px;opacity:.6;}
+/* Compact buttons get a smaller one held further out, so it stays a corner
+   flourish and never crosses a short label like "Video". */
+.ws-tab.on::after,.wa-vbtn::after,.wd-toggle button.on::after{
+  right:-74px;width:112px;height:112px;margin-top:-56px;opacity:.5;}
+/* Scoped through .wb-main so this beats the child routes' own background
+   declarations on specificity — child route <style> blocks render AFTER this
+   one, so an equal-specificity rule here would silently lose. */
+.wb-main .ws-tab.on,.wb-main .wa-vbtn,.wb-main .wd-toggle button.on{
+  background:
+    linear-gradient(100deg,#12A85E 58%,#0B7443 86%,#095F36),
+    linear-gradient(165deg,#12A85E,#0B6B3E);}
 /* Pill-shaped buttons need the inner rule to follow the pill, not a rounded
    rectangle sitting inside it. */
 .wd-toggle button.on::before{inset:3px;border-radius:999px;}

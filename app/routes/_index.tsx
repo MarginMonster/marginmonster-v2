@@ -220,10 +220,27 @@ html,body{margin:0;padding:0}
    here to keep the public page light, but the figure is overlapping petal
    loops — rays and rings never looked like it, and it read as a plain disc.
    One cached SVG shared with the app is the honest version. */
-.lz-cta::after,.lz-navcta::after,.lz-price-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-52px;
-  width:118px;height:118px;margin-top:-59px;pointer-events:none;
-  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.22;animation:lz-medallion 60s linear infinite;}
-.lz-cta::after{right:-40px;width:132px;height:132px;margin-top:-66px;opacity:.26;}
+/* Masked, not drawn: the SVG's stroke colour is fixed, and masking lets the
+   gold be chosen per surface. The right side of each button also darkens —
+   in the app the rosette sits on a dark green card, which is the only reason
+   thin gold lines read as gold. On flat bright #12A85E they have no contrast
+   and come out as pale green scribble. */
+.lz-cta::after,.lz-navcta::after,.lz-price-cta::after{content:"";position:absolute;z-index:-1;top:50%;pointer-events:none;background:#FFD24A;
+  -webkit-mask-image:url(/gstyle-rosette.svg);-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat;
+  mask-image:url(/gstyle-rosette.svg);mask-size:contain;mask-position:center;mask-repeat:no-repeat;
+  animation:lz-medallion 60s linear infinite;}
+/* Far enough right that the rosette's hollow centre clears the edge — closer
+   in, the centre reads as a dark smudge sitting on the button. */
+.lz-cta::after,.lz-price-cta::after{right:-96px;width:158px;height:158px;margin-top:-79px;opacity:.6;}
+.lz-navcta::after{right:-74px;width:112px;height:112px;margin-top:-56px;opacity:.5;}
+.lz-cta{background:
+    repeating-linear-gradient(57deg,rgba(255,220,120,.12) 0 1px,transparent 1px 8px),
+    repeating-linear-gradient(123deg,rgba(255,220,120,.09) 0 1px,transparent 1px 8px),
+    linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530),
+    linear-gradient(165deg,#12A85E,#0B6B3E);}
+.lz-navcta{background:
+    linear-gradient(100deg,#12A85E 58%,#0B7443 86%,#095F36),
+    linear-gradient(165deg,#12A85E,#0B6B3E);}
 @keyframes lz-medallion{to{transform:rotate(360deg)}}
 /* Every green button on the page carries the same gold rule + rosette. */
 .lz-navcta,.lz-price-cta{position:relative;isolation:isolate;overflow:hidden;}
@@ -278,7 +295,8 @@ html,body{margin:0;padding:0}
 .lz-price-card ul{list-style:none;margin:16px 0 18px;padding:0;display:flex;flex-direction:column;gap:9px;flex:1;}
 .lz-price-card li{position:relative;padding-left:24px;font-size:13.5px;line-height:1.45;color:var(--ink2);}
 .lz-price-card li::before{content:"✓";position:absolute;left:2px;color:var(--green2);font-weight:900;}
-.lz-price-cta{display:block;text-align:center;text-decoration:none;font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:#fff;padding:13px 18px;border-radius:13px;background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 5px 14px rgba(12,122,70,.28);transition:filter .12s;}
+.lz-price-cta{display:block;text-align:center;text-decoration:none;font-family:Poppins,sans-serif;font-weight:800;font-size:14px;color:#fff;padding:13px 18px;border-radius:13px;box-shadow:0 5px 14px rgba(12,122,70,.28);transition:filter .12s;
+  background:linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530),linear-gradient(165deg,#12A85E,#0B6B3E);}
 .lz-price-cta:hover{filter:brightness(1.06);}
 .lz-price-note{margin-top:20px;font-size:13px;color:var(--ink2);}
 .lz-faq-list{max-width:660px;margin:26px auto 0;display:flex;flex-direction:column;gap:10px;text-align:left;}
