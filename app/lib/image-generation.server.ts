@@ -722,7 +722,9 @@ async function overlayRealProduct(
  *  packaging cannot be redrawn, misspelt or turned into a lunchbox.
  *
  *  Returns null on any failure, leaving the flat paste in place. */
-type BlendResult = { ok: true; file: string; absPath: string } | { ok: false; why: string };
+type BlendResult =
+  | { ok: true; file: string; absPath: string; maskPath: string }
+  | { ok: false; why: string; maskPath?: string };
 
 async function blendProductEdges(
   pasted: { absPath: string; cutoutPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } },
@@ -827,11 +829,15 @@ async function blendProductEdges(
     const fileName = `img-${stamp}-blend.jpg`;
     const abs = path.join(dir, fileName);
     fs.writeFileSync(abs, buf);
-    return { ok: true, file: fileName, absPath: abs };
+    return { ok: true, file: fileName, absPath: abs, maskPath: maskFile };
   } catch (e) {
     return give(`threw: ${(e as Error).message.slice(0, 140)}`);
   } finally {
-    try { fs.rmSync(maskFile, { force: true }); fs.rmSync(pasted.cutoutPath, { force: true }); } catch { /* best-effort */ }
+    // The mask deliberately survives. Which region was editable is the single
+    // most useful fact about a bad composite, and inferring it from the
+    // output is guesswork — two runs were spent staring at frames trying to
+    // work out which object the model had invented and which was the paste.
+    try { fs.rmSync(pasted.cutoutPath, { force: true }); } catch { /* best-effort */ }
   }
 }
 
@@ -866,6 +872,8 @@ export interface PresenterHoldResult {
    *  this a rejected attempt is invisible: the report shows the frame that
    *  shipped instead, and the thing being iterated on can never be looked at. */
   attemptPath?: string;
+  /** The inpaint mask — white is what the model was allowed to redraw. */
+  maskPath?: string;
   /** How the delivered frame was made: the merchant's photograph pasted onto
    *  a blank stand-in, the same paste used to repair a bad generative frame,
    *  or a purely generated product. */
@@ -911,6 +919,7 @@ export async function runPresenterHold(opts: {
   let standIn = "not attempted";
   let standInUrl: string | undefined;
   let attemptPath: string | undefined;
+  let maskPath: string | undefined;
   if (!opts.wear) {
     const blank = await runCompose(opts.scalePhrase, "blank", await productAspect(opts.productImageUrl));
     standInUrl = blank;
@@ -928,6 +937,7 @@ export async function runPresenterHold(opts: {
         // difference between the model drawing fingers and the model drawing
         // another box.
         const blend = await blendProductEdges(pasted, 0.12);
+        maskPath = blend.maskPath;
         const blended = blend.ok ? blend : null;
         const blendNote = blend.ok ? "blended" : `blend failed: ${blend.why}`;
         const best = blended || { file: pasted.file, absPath: pasted.absPath };
@@ -949,6 +959,7 @@ export async function runPresenterHold(opts: {
             standIn: `pasted · ${blendNote} · accepted`,
             standInUrl,
             attemptPath,
+            maskPath,
           };
         }
         standIn = `pasted · ${blendNote} · gate rejected it: ${qaB.reason}`;
@@ -994,6 +1005,7 @@ export async function runPresenterHold(opts: {
     // showing past its sides, and no fingers in front of the product — a
     // photograph held up rather than a product held.
     const rBlend = await blendProductEdges(pasted);
+    maskPath = rBlend.maskPath || maskPath;
     if (!rBlend.ok) standIn = `${standIn} · repair blend failed: ${rBlend.why}`;
     const best = rBlend.ok ? rBlend : pasted;
     // Grade the BYTES, not a URL. The composite exists on the render disk
@@ -1020,6 +1032,7 @@ export async function runPresenterHold(opts: {
         standIn,
         standInUrl,
         attemptPath,
+        maskPath,
         failed: qa3.bad,
         wrongProduct: qa3.bad.some((k) => IDENTITY_FIELDS.includes(k)),
       };
@@ -1035,6 +1048,7 @@ export async function runPresenterHold(opts: {
     standIn,
     standInUrl,
     attemptPath,
+    maskPath,
     failed: qa.bad,
     wrongProduct: qa.bad.some((k) => IDENTITY_FIELDS.includes(k)),
   };
