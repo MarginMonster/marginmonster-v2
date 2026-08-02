@@ -40,6 +40,10 @@ on:
         description: 'Fail the job if the gate pass rate is under this %% (0 = never fail)'
         required: false
         default: "0"
+      environment:
+        description: 'GitHub Environment holding the API secrets (leave blank if they are repository secrets)'
+        required: false
+        default: ""
 
   # Prompt edits are exactly what this is for, but auto-running on every push
   # spends money without anyone asking. Off until you set the repository
@@ -60,6 +64,10 @@ jobs:
     # Manual runs always go. Push runs only when the repo opts in.
     if: github.event_name == 'workflow_dispatch' || vars.AD_QA_ON_PUSH == 'true'
     runs-on: ubuntu-latest
+    # Secrets stored on a GitHub Environment are invisible to a job that
+    # doesn't name that Environment — they read exactly like "not set". Blank
+    # is a no-op, so this is safe when they're plain repository secrets.
+    environment: ${{ inputs.environment }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
