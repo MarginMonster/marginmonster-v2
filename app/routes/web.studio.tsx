@@ -408,6 +408,42 @@ function StepHead({ n, title, hint }: { n: number; title: string; hint?: string 
   );
 }
 
+/* Tab glyphs, drawn rather than typed.
+ *
+ * Emoji were doing two things wrong here: they render as a different typeface
+ * on every platform (Apple's clapperboard is nothing like Android's), and they
+ * carry their own colour — so on the selected green tab the picture stayed a
+ * beige-and-blue sticker while the label went white. These inherit
+ * currentColor, so they turn white with the label and green-grey without. */
+function TabIcon({ kind }: { kind: Tab }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return (
+    <svg className="ws-tabi" viewBox="0 0 20 20" width="17" height="17" aria-hidden="true">
+      {kind === "video" && (
+        <>
+          <rect x="2.2" y="4.4" width="15.6" height="11.2" rx="2.4" {...p} />
+          <path d="M8.4 8.2 12.6 10l-4.2 1.8Z" {...p} fill="currentColor" />
+          <path d="M2.2 7.6h15.6" {...p} />
+        </>
+      )}
+      {kind === "image" && (
+        <>
+          <rect x="2.4" y="3.8" width="15.2" height="12.4" rx="2.4" {...p} />
+          <circle cx="7.3" cy="8.1" r="1.35" {...p} />
+          <path d="m3.6 14.4 3.9-3.6a1.5 1.5 0 0 1 2 0l2.1 1.9 1.5-1.3a1.5 1.5 0 0 1 2 0l3.3 3" {...p} />
+        </>
+      )}
+      {kind === "blog" && (
+        <>
+          <path d="M4 3.4h8.4L16.4 7v9.6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" {...p} />
+          <path d="M12.2 3.6V7h3.9" {...p} />
+          <path d="M6.1 10.3h6.4M6.1 13.2h4.3" {...p} />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export default function WebStudio() {
   const d = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -553,8 +589,10 @@ export default function WebStudio() {
       {err && <div className="wb-err">Couldn&apos;t generate: {err}</div>}
 
       <div className="ws-tabs">
-        {([["video", "🎬 Video"], ["image", "🖼 Image"], ["blog", "✍️ Article"]] as [Tab, string][]).map(([k, label]) => (
-          <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>{label}</button>
+        {([["video", "Video"], ["image", "Image"], ["blog", "Article"]] as [Tab, string][]).map(([k, label]) => (
+          <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
+            <TabIcon kind={k} />{label}
+          </button>
         ))}
       </div>
 

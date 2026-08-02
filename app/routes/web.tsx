@@ -342,10 +342,15 @@ const CSS = `
 .wb-auth{max-width:420px;margin:40px auto;}
 
 /* ---- Web Studio: the embedded-app experience, GStyle ---- */
-.ws-tabs{display:flex;gap:8px;margin:4px 0 16px;}
-.ws-tab{padding:10px 20px;border-radius:12px;border:1px solid var(--line);background:var(--card);
+/* Centred: three equal choices read as a set, and left-hanging them under a
+   centred page title left a lopsided gap on every width. */
+.ws-tabs{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin:4px 0 16px;}
+.ws-tab{display:inline-flex;align-items:center;gap:7px;padding:10px 20px;border-radius:12px;border:1px solid var(--line);background:var(--card);
   font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2);cursor:pointer;}
 .ws-tab.on{background:linear-gradient(165deg,#12A85E,#0B6B3E);border-color:transparent;color:#fff;box-shadow:0 4px 12px rgba(12,122,70,.25);}
+/* Line art, not emoji — inherits the tab's colour so it flips white on select. */
+.ws-tabi{flex:none;opacity:.62;}
+.ws-tab.on .ws-tabi{opacity:1;}
 /* The Studio form is the longest card on the site, so it gets its own drifting
    rosette in the bottom corner to break up the field behind the controls. */
 .ws-card{overflow:hidden;position:relative;isolation:isolate;}
@@ -542,7 +547,7 @@ const CSS = `
     mask-image:linear-gradient(180deg,#000 calc(100% - 34px),transparent);}
   .ws-fmtbox{max-height:58vh;}
   .ws-tabs{gap:6px}
-  .ws-tab{padding:9px 14px;font-size:12.5px;}
+  .ws-tab{padding:9px 13px;font-size:12.5px;gap:6px;}
   .ws-lbl{margin:13px 0 7px}
   .ws-card{padding:16px}
   .ws-engines{gap:6px}
