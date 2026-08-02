@@ -479,6 +479,9 @@ async function qaPresenterHold(
         // card did roughly match. Same picture, different object.
         `sameObject: is this the SAME PHYSICAL THING, built the same way? Same three-dimensional form, same depth, same construction, the same faces and panels visible. A deep display case or tray rendered as a flat printed card or poster is a FAILURE even when the artwork on it looks right. So is a case whose lid, side panel or inner rows have disappeared.`,
         `notSimplified: does image 2 show the same number of visible units, boxes, windows or panels as image 1? Fewer is a failure.`,
+        // Our own repair step produced this: the real case pasted on top of the
+        // drawn one, two copies of the product stacked in a single frame.
+        `singleProduct: does image 2 contain exactly ONE of the product? Two overlapping or stacked copies of the same item — one behind the other, or one floating in front of another — is a FAILURE, even if one of them looks correct.`,
         `textFaithful: is the packaging lettering the same words in the same colours? A gold logo rendered purple is a failure.`,
         scalePhrase
           ? `correctScale: the product's real size is ${scalePhrase}. Is it that size against the person? A case or box shrunk to palm-size is the most common scale failure.`
@@ -495,7 +498,7 @@ async function qaPresenterHold(
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
-        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
+        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productUrl, genUrl],
       // The cheap vision model looked straight at plastic doll fingers with
@@ -507,7 +510,7 @@ async function qaPresenterHold(
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) return { pass: true, reason: "qa-unparseable", bad: [] };
     const j = JSON.parse(m[0]) as Record<string, unknown>;
-    const bad = (["artworkMatches", "sameObject", "notSimplified", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
+    const bad = (["artworkMatches", "sameObject", "notSimplified", "singleProduct", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
       .filter((k) => j[k] === false) as string[];
     if (!bad.length) return { pass: true, reason: "clean", bad };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
@@ -697,11 +700,16 @@ export async function runPresenterHold(opts: {
       if (qa2.pass) { composed = second; qa = qa2; }
     }
   }
-  // THE REAL PRODUCT GOES ON TOP. Everything above only had to get the POSE
-  // right; the packaging itself is a photograph we already hold. Gated like
-  // anything else, and reverted if it scores worse than what it replaced —
-  // a badly-placed paste is worse than a well-drawn approximation.
-  const pasted = await overlayRealProduct(composed, opts.productImageUrl);
+  // THE REAL PRODUCT GOES ON TOP — but ONLY when the drawn one is wrong.
+  //
+  // The paste exists because the composer used to redraw packaging as a
+  // lookalike. Once the finger-anatomy noise came out of the prompt, the
+  // composer started getting the packaging RIGHT, and pasting over a correct
+  // product just stacked a second copy on top of the first: two cases in one
+  // frame, which is worse than the thing it was fixing. So it is a repair,
+  // not a step — it runs when the identity check failed, and never otherwise.
+  const needsRepair = qa.bad.some((k) => IDENTITY_FIELDS.includes(k));
+  const pasted = needsRepair ? await overlayRealProduct(composed, opts.productImageUrl) : null;
   if (pasted) {
     // Grade the BYTES, not a URL. The composite exists on the render disk
     // before it has a public address, and off production there is no public
@@ -709,7 +717,11 @@ export async function runPresenterHold(opts: {
     // is unset in CI, so the paste could never be scored there.
     const inline = `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`;
     const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
-    if (qa3.pass || !qa.pass) {
+    // Take the repair only if it actually repaired something. The old
+    // condition also accepted it whenever the ORIGINAL had failed, which is
+    // how a frame with the real case pasted below the drawn one — two
+    // products, neither held — came back as the delivered ad.
+    if (qa3.pass) {
       const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
       return {
         url: base ? `${base}/renders/${pasted.file}` : composed,

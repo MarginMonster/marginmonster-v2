@@ -196,6 +196,7 @@ async function presenterHoldCheck(): Promise<string> {
             `textFaithful: READ every word printed on the packaging and compare it letter by letter with image 1. A brand name rendered as "POP MILLMART" instead of "POP MART", a doubled letter, a dropped letter, or any invented word is a FAILURE. Spell out what you actually read if it differs.`,
             `sameObject: is it the SAME PHYSICAL THING, built the same way — same 3D form, same depth, same faces and panels? A deep display case or tray rendered as a flat printed card or poster is a FAILURE even when the artwork on it looks right.`,
             `notSimplified: does image 2 show the same NUMBER of units, boxes or panels as image 1? A twelve-box display case rendered as a single box is a FAILURE.`,
+            `singleProduct: does image 2 contain exactly ONE of the product? Two overlapping or stacked copies of the same item in one frame is a FAILURE even if one of them looks correct.`,
             `correctScale: believable real-world size against the person?`,
             `handsOk: four fingers and one thumb per hand, exactly two hands, no extra limb.`,
             // Counting digits is not looking at them: a frame with the right
@@ -204,7 +205,7 @@ async function presenterHoldCheck(): Promise<string> {
             `handsHuman: ignoring the count, are the fingers LIVING HUMAN fingers — skin matching the wrists, natural taper, real nails? Wooden, plastic, doll-like or mannequin fingers, or pale sausages with drawn-on joint lines, are a FAILURE.`,
             `faceVisible: are the presenter's eyes, nose AND mouth all unobstructed? A product held up over the mouth or chin is a FAILURE.`,
             `notes: one short sentence on the worst problem, or "clean".`,
-            `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"textFaithful":bool,"notSimplified":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
+            `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"textFaithful":bool,"notSimplified":bool,"singleProduct":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
           ].join("\n"),
           [productUrl, judgeRef],
           // Same reason the gate moved up: the cheap model called plastic doll
@@ -215,13 +216,14 @@ async function presenterHoldCheck(): Promise<string> {
         const m = raw && raw.match(/\{[\s\S]*\}/);
         const j = m ? JSON.parse(m[0]) as Record<string, unknown> : null;
         const yes = (k: string) => !!j && j[k] !== false && j[k] !== undefined;
-        const ok = ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
+        const ok = ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "singleProduct", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
         if (ok) shipped++;
         verdict = [
           yes("artworkMatches") ? "art ok" : "**ART WRONG**",
           yes("sameObject") ? "same object" : "**DIFFERENT OBJECT**",
           yes("textFaithful") ? "text ok" : "**TEXT WRONG**",
           yes("notSimplified") ? "count ok" : "**simplified**",
+          yes("singleProduct") ? "one product" : "**DOUBLED**",
           yes("correctScale") ? "scale ok" : "**scale off**",
           yes("handsOk") ? "digits ok" : "**digit count bad**",
           yes("handsHuman") ? "hands human" : "**HANDS INHUMAN**",
