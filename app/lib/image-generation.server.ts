@@ -605,7 +605,7 @@ function formatLayoutPrompt(key: string, c: Record<string, string>, hero?: strin
   const productClause = hero
     ? `The hero product is ${hero}. Any wordmark or label on it must read exactly "EASYMODE" — spelled E-A-S-Y-M-O-D-E in clean capital letters — and contain no other readable words.`
     : "The product from the provided image must stay perfectly identical — same shape, colors, label and logos, never redrawn or warped.";
-  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, with NO other words, gibberish or invented text anywhere. ${productClause}`;
+  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, with NO other words, gibberish or invented text anywhere. Each string appears ONCE and reads as grammatical English — never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
   switch (key) {
     case "callout":
       return `${base} Layout: the product large in the center on a soft solid-color studio background that complements its palette. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
@@ -764,7 +764,14 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
         productImageUrl
           ? `Image 1 is the real product photo; image 2 is an ad built around that product. Check BOTH: (a) the product in the ad matches image 1 (same shape, colors, packaging — not warped or reinvented), and`
           : `Check the generated ad:`,
-        `(b) the ad's own LAYOUT TEXT — the headline, labels, chips and button we asked for — is correctly spelled. It should read roughly: ${expected.slice(0, 6).map((s) => `"${s.slice(0, 40)}"`).join(", ")}.`,
+        // "Correctly spelled" was too weak a test. A diffusion model stutters
+        // — "we still each still got", "first try first try" — and every one
+        // of those words is spelled perfectly, so garbled copy sailed through.
+        // Compare against the strings we actually asked for, and say the
+        // duplication failure out loud.
+        `(b) the ad's own LAYOUT TEXT — the headline, quote, labels, chips and button we asked for. These EXACT strings were requested: ${expected.slice(0, 10).map((s) => `"${s.slice(0, 90)}"`).join(", ")}.`,
+        `FAIL if any of them is misspelled, cut off mid-word, or does not match what was requested. FAIL if a word or phrase is REPEATED where it shouldn't be — read each sentence back and check it is grammatical English that says what the requested string says. Duplicated words are the most common failure here and every word in them is spelled correctly, so read for SENSE, not spelling.`,
+        `FAIL if any requested string is missing from the ad entirely.`,
         // The merchant's product may be covered in Chinese, Japanese, Korean or
         // any other script — that is THEIR PACKAGING, not our typography, and
         // judging it as "gibberish" threw away the format the merchant chose
@@ -1293,12 +1300,18 @@ export async function generateImageAd(
           }
           if (copy) {
             usedPrompt = formatLayoutPrompt(f.key, copy);
-            const renderOnce = () => repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl!], output_format: "jpg" });
+            const renderOnce = (fix?: string) => repRun("google/nano-banana", {
+              prompt: fix ? `${usedPrompt} The previous attempt was rejected because: ${fix}. Fix exactly that — render every string once, spelled correctly and reading as natural English.` : usedPrompt,
+              image_input: [productImageUrl!],
+              output_format: "jpg",
+            });
             imageUrl = await renderOnce();
             let qa = await qaFormat(imageUrl, productImageUrl!, Object.values(copy));
             if (!qa.pass) {
               console.log(`[image-ad] format QA rejected (${qa.reason}) — retrying`);
-              imageUrl = await renderOnce();
+              // A blind re-roll of the identical prompt repeats the same
+              // mistake as often as not. Tell it what went wrong.
+              imageUrl = await renderOnce(qa.reason);
               qa = await qaFormat(imageUrl, productImageUrl!, Object.values(copy));
             }
             if (qa.pass) {

@@ -22,6 +22,23 @@ const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g
  *  template, cartoon style or video style it was built with. metaJson carries
  *  the picked keys; bodyJson's `method` records what the pipeline ACTUALLY
  *  used after any fallback, which is the honest answer. */
+/** The format the merchant picked, when the render didn't manage to deliver it.
+ *
+ *  A silent fallback is worse than a visible one: the merchant spent tokens on
+ *  a Versus ad, got a scene ad, and had no way to tell whether the pick was
+ *  ignored or the layout just didn't land. Surfacing it also makes Remix the
+ *  obvious next move. */
+function pickedButMissed(metaJson: string | null, bodyJson: string | null): string | null {
+  let meta: Record<string, unknown> = {};
+  let body: Record<string, unknown> = {};
+  try { meta = JSON.parse(metaJson || "{}"); } catch { /* ignore */ }
+  try { body = JSON.parse(bodyJson || "{}"); } catch { /* ignore */ }
+  if (typeof body.formatFallback !== "string" || !body.formatFallback) return null;
+  const key = typeof meta.formatKey === "string" ? meta.formatKey : "";
+  if (!key) return null;
+  return key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function recipeLabel(metaJson: string | null, bodyJson: string | null): string | null {
   let meta: Record<string, unknown> = {};
   let body: Record<string, unknown> = {};
@@ -31,6 +48,11 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
   const method = typeof body.method === "string" ? body.method : "";
   const m = method.match(/^(format|template|template-staged|template-fallback):(.+)$/);
   if (m) return `${pretty(m[2])}${m[1].startsWith("template") ? " backdrop" : ""}`;
+  // metaJson always records the format the merchant PICKED, but the render
+  // falls back to a plain scene ad when the layout fails QA. Claiming the
+  // format anyway told merchants they got a Versus ad when they plainly
+  // hadn't — the label has to describe what was BUILT, not what was asked for.
+  if (typeof body.formatFallback === "string" && body.formatFallback) return method ? pretty(method) : null;
   if (typeof meta.formatKey === "string" && meta.formatKey) return pretty(meta.formatKey);
   if (typeof meta.templateKey === "string" && meta.templateKey) return `${pretty(meta.templateKey)} backdrop`;
   if (typeof meta.cartoonStyle === "string" && meta.cartoonStyle) return pretty(meta.cartoonStyle);
@@ -102,6 +124,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Which recipe built this? Merchants remix and compare, and "the one
         // that worked" is unfindable if the ad won't say what it was.
         recipe: recipeLabel(a.metaJson, a.bodyJson),
+        missed: pickedButMissed(a.metaJson, a.bodyJson),
         when: a.createdAt.toISOString(),
         status: a.status,
         daysLeft,
@@ -373,6 +396,8 @@ const WA_CSS = `
 .wa-vok{font-size:12.5px;font-weight:800;color:#0C7A46;}
 .wa-verr{font-size:12.5px;font-weight:700;color:#8C2E1B;}
 .wa-vcdnote{display:block;margin-top:6px;font-size:12px;color:#8a6207;font-weight:600;}
+.wa-vmissed{display:block;margin-top:8px;padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.45;
+  background:#FDF4E3;border:1px solid #E8D3A6;color:#7A5A12;font-weight:600;}
 .wa-vcdnote.urgent{color:#8C2E1B;}
 .wa-aitag{display:inline-block;margin-top:6px;font-size:11.5px;color:var(--ink2,#5b6b61);}
 .wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;}
@@ -671,6 +696,11 @@ export default function WebArchive() {
                   : err ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>
+              {viewer.missed && (
+                <span className="wa-vmissed">
+                  ⚠ The <b>{viewer.missed}</b> layout didn&apos;t render cleanly, so this went out as a plain product ad instead. <b>Remix</b> re-rolls it.
+                </span>
+              )}
               {viewer.daysLeft != null && !posted && (
                 <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}>⏳ Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — <b>Keep</b> saves it for good.</span>
               )}
