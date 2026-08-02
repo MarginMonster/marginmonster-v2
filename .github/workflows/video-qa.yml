@@ -53,6 +53,9 @@ on:
       - 'app/lib/cartoon-ad-pipeline.server.ts'
       - 'scripts/video-qa.ts'
 
+permissions:
+  contents: write
+
 concurrency:
   group: video-qa-${{ github.ref }}
   cancel-in-progress: true
@@ -93,3 +96,26 @@ jobs:
           QA_STORE_URL: ${{ inputs.store_url }}
           QA_PRODUCT_TITLE: ${{ inputs.product_title }}
         run: node video-qa.cjs
+
+      # Publish the actual frames back through git. The replicate.delivery
+      # links in the report expire within the hour, and a reviewer working
+      # from a sandbox with GitHub-only egress cannot fetch them at all — so
+      # the bytes come back on a throwaway branch that is force-pushed each
+      # run rather than accumulating binaries on main.
+      - name: Publish frames
+        if: always()
+        run: |
+          if [ ! -d qa-out/frames ] || [ -z "$(ls -A qa-out/frames 2>/dev/null)" ]; then
+            echo "no frames to publish"; exit 0
+          fi
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+          rm -rf /tmp/pub && mkdir -p /tmp/pub && cp qa-out/frames/* /tmp/pub/
+          git checkout --orphan qa-frames
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          find . -maxdepth 1 -not -name .git -not -name . -exec rm -rf {} + 2>/dev/null || true
+          mkdir -p frames && cp /tmp/pub/* frames/
+          git add -A frames
+          git commit -q -m "QA frames from run ${GITHUB_RUN_ID}"
+          git push -f origin qa-frames
+          echo "published $(ls frames | wc -l) frames to the qa-frames branch"

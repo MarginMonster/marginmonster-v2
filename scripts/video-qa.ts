@@ -124,7 +124,27 @@ async function resolveProduct(): Promise<{ url: string; title: string } | null> 
   }
   if (!url) return null;
   resolvedProduct = { url, title: title || "the product" };
+  await saveFrame(url, "00-source-product.jpg");
   return resolvedProduct;
+}
+
+
+/** Download a frame next to the report.
+ *
+ *  The replicate.delivery links in the report expire within the hour and are
+ *  unreachable from the dev sandbox, so the run publishes the actual bytes
+ *  back through git — otherwise "here are the frames" is a list of links that
+ *  are dead by the time anyone clicks them. */
+async function saveFrame(url: string, name: string): Promise<string> {
+  try {
+    const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
+    require("node:fs").mkdirSync(dir, { recursive: true });
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) return "";
+    const file = require("node:path").join(dir, name);
+    require("node:fs").writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    return file;
+  } catch { return ""; }
 }
 
 /* ---------- image ads: the presenter holding the real product ----------
@@ -176,6 +196,7 @@ async function presenterHoldCheck(): Promise<string> {
         verdict = `${j?.artworkMatches ? "art ok" : "**ART WRONG**"} · ${j?.correctScale ? "scale ok" : "**scale off**"} · ${j?.handsOk ? "hands ok" : "**hands bad**"}`;
         console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${j?.notes || ""}`);
       }
+      if (r.url) await saveFrame(r.url, `presenter-${portrait.split("/").pop()}`);
       rows.push(`| ${portrait.split("/").pop()} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
       rows.push(`| ${portrait.split("/").pop()} | ERROR | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | |`);
@@ -234,6 +255,7 @@ async function keyframeCheck(): Promise<string> {
       );
       const m = raw && raw.match(/\{[\s\S]*\}/);
       const j = m ? JSON.parse(m[0]) as { productSurvived?: boolean; anatomyOk?: boolean; notes?: string } : null;
+      await saveFrame(styled, `keyframe-${style}.jpg`);
       rows.push(`| ${CARTOON_RECIPES[style].name} | ${j?.productSurvived ? "yes" : "**NO**"} | ${j?.anatomyOk ? "ok" : "**bad**"} | ${(j?.notes || "").slice(0, 80)} | [frame](${styled}) |`);
       console.log(`[vqa] keyframe ${style}: product=${j?.productSurvived} anatomy=${j?.anatomyOk} ${j?.notes || ""}`);
     } catch (e) {
