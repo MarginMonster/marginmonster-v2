@@ -576,7 +576,7 @@ async function overlayRealProduct(
   frameUrl: string,
   productImageUrl: string,
   opts: { blank?: boolean } = {}
-): Promise<{ file: string; absPath: string } | null> {
+): Promise<{ file: string; absPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } } | null> {
   const give = (why: string) => { console.warn(`[presenter:paste] skipped — ${why}`); return null; };
   const bin = ffmpegBin();
   if (!bin) return give("no ffmpeg binary");
@@ -662,12 +662,82 @@ async function overlayRealProduct(
       `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${bottom}-h+8[b1];` +
       `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${bottom}-h[outv]`;
     const { ok } = await runFfmpegStill(bin, ["-y", "-i", tmpFrame, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out]);
-    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) {
+      // Where the product ACTUALLY landed, so the edge blend can build its
+      // mask around the real thing rather than around the model's guess.
+      const px = bx + Math.round((bw - tw) / 2);
+      return { file: fileName, absPath: out, rect: { x: px, y: bottom - th, w: tw, h: th }, frame: { w: W, h: H } };
+    }
     return give(ok ? "ffmpeg wrote nothing usable" : "ffmpeg overlay failed");
   } catch (e) {
     return give(`overlay threw: ${(e as Error).message.slice(0, 120)}`);
   } finally {
     try { fs.rmSync(tmpFrame, { force: true }); fs.rmSync(tmpCut, { force: true }); } catch { /* best-effort */ }
+  }
+}
+
+
+/** Put the fingers back over the pasted product's edges.
+ *
+ *  A flat paste is exact but dead: it covers the hands that were gripping the
+ *  stand-in, so the product ends up floating in front of two hands rather than
+ *  held by them. Everyone doing AI product imagery solves this the same way —
+ *  freeze the product, regenerate around it — so that is what this does. A
+ *  mask exposes a RING around the pasted rectangle and nothing else; the
+ *  product's own pixels are not in the editable region at all, so the
+ *  packaging cannot be redrawn, misspelt or turned into a lunchbox.
+ *
+ *  Returns null on any failure, leaving the flat paste in place. */
+async function blendProductEdges(
+  pasted: { absPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
+): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const { inpaintFill } = await import("./fal-image.server");
+  const dir = path.join(process.cwd(), "data", "renders");
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const maskFile = path.join(dir, `.mk-${stamp}.png`);
+  const { rect, frame } = pasted;
+  // Ring geometry: how far out the fingers may be drawn, and how far in they
+  // may overlap the packaging. Both scale with the product so a small item
+  // doesn't get a ring wider than itself.
+  const out = Math.max(24, Math.round(rect.w * 0.10));
+  const inn = Math.max(10, Math.round(rect.w * 0.035));
+  const ox = Math.max(0, rect.x - out);
+  const oy = Math.max(0, rect.y - out);
+  const ow = Math.min(frame.w - ox, rect.w + out * 2);
+  const oh = Math.min(frame.h - oy, rect.h + out * 2);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const mk = await runFfmpegStill(bin, [
+      "-y", "-f", "lavfi", "-i", `color=black:s=${frame.w}x${frame.h}`,
+      "-vf",
+      `drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill,` +
+      `drawbox=x=${rect.x + inn}:y=${rect.y + inn}:w=${Math.max(1, rect.w - inn * 2)}:h=${Math.max(1, rect.h - inn * 2)}:color=black@1.0:t=fill`,
+      "-frames:v", "1", maskFile,
+    ]);
+    if (!mk.ok || !fs.existsSync(maskFile)) { console.warn("[presenter:blend] could not build the mask"); return null; }
+
+    const edited = await inpaintFill(
+      `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`,
+      `data:image/png;base64,${fs.readFileSync(maskFile).toString("base64")}`,
+      "Human hands holding this box: fingers wrap around its left and right edges and curl slightly onto the front face at the very edges, thumbs near the lower corners, the box resting in both palms. Natural skin matching the arms, a soft contact shadow where the box meets the fingers, and the background continuing seamlessly. Do not add any text, label or printing."
+    );
+    if (!edited) return null;
+
+    const res = await fetch(edited, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) { console.warn(`[presenter:blend] download ${res.status}`); return null; }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 20_000) return null;
+    const fileName = `img-${stamp}-blend.jpg`;
+    const abs = path.join(dir, fileName);
+    fs.writeFileSync(abs, buf);
+    return { file: fileName, absPath: abs };
+  } catch (e) {
+    console.warn(`[presenter:blend] ${(e as Error).message.slice(0, 140)}`);
+    return null;
+  } finally {
+    try { fs.rmSync(maskFile, { force: true }); } catch { /* best-effort */ }
   }
 }
 
@@ -738,17 +808,22 @@ export async function runPresenterHold(opts: {
     if (blank) {
       const pasted = await overlayRealProduct(blank, opts.productImageUrl, { blank: true });
       if (pasted) {
-        const inline = `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`;
+        // The paste covered the fingers that were gripping the stand-in, so
+        // blend them back over its edges. Grade whichever version survives —
+        // the blend is an improvement, not a guarantee.
+        const blended = await blendProductEdges(pasted);
+        const best = blended || { file: pasted.file, absPath: pasted.absPath };
+        const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
         const qaB = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
         if (qaB.pass) {
           const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
           return {
-            url: base ? `${base}/renders/${pasted.file}` : blank,
+            url: base ? `${base}/renders/${best.file}` : blank,
             pass: true,
-            reason: `blank-standin-composite · ${qaB.reason}`,
+            reason: `blank-standin-composite${blended ? " + edge-blend" : ""} · ${qaB.reason}`,
             retried: false,
             composited: true,
-            localPath: pasted.absPath,
+            localPath: best.absPath,
             via: "blank-standin",
             failed: [],
             wrongProduct: false,

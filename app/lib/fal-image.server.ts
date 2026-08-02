@@ -8,6 +8,8 @@
  * back to the plain portrait so a bad compose never blocks a render. */
 
 const MODEL = "fal-ai/bytedance/seedream/v4/edit";
+/** Masked inpainting — edits only what the mask exposes, leaves the rest byte-identical. */
+const FILL_MODEL = "fal-ai/flux-pro/v1/fill";
 
 export function falImageEnabled(): boolean {
   return !!process.env.FAL_KEY;
@@ -158,6 +160,48 @@ export async function submitCompose(
     throw new Error("compose: no queue urls");
   }
   return { statusUrl: q.status_url, responseUrl: q.response_url };
+}
+
+
+/** Masked inpaint — the merchant's product pixels stay FROZEN and only the
+ *  region under the white mask is redrawn.
+ *
+ *  This is what the product-photography tools all do (Photoroom, Flair,
+ *  Pebblely): never regenerate the product, isolate it and generate around
+ *  it. We had been doing the opposite — asking a model to redraw the
+ *  packaging and then grading how close it got. It got a red lunchbox.
+ *
+ *  Used to put fingers back over the edges of a pasted product so it reads as
+ *  held rather than stuck on. Data URIs so a frame that only exists on our
+ *  render disk can be edited without a public address. */
+export async function inpaintFill(
+  imageDataUri: string,
+  maskDataUri: string,
+  prompt: string
+): Promise<string | undefined> {
+  if (!falImageEnabled()) return undefined;
+  const submit = await fetch(`https://queue.fal.run/${FILL_MODEL}`, {
+    method: "POST",
+    headers: { ...auth(), "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, image_url: imageDataUri, mask_url: maskDataUri, num_images: 1 }),
+  });
+  if (!submit.ok) {
+    console.warn(`[inpaint] submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
+    return undefined;
+  }
+  const q = (await submit.json()) as { status_url?: string; response_url?: string };
+  if (!q.status_url || !q.response_url || !isFalQueueUrl(q.status_url) || !isFalQueueUrl(q.response_url)) return undefined;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const p = await pollCompose(q.status_url, q.response_url);
+      if (p.done) return p.urls?.[0];
+    } catch (e) {
+      console.warn(`[inpaint] ${(e as Error).message.slice(0, 120)}`);
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 /** One status check on an in-flight compose. done:false = still cooking. */
