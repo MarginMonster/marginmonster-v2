@@ -355,6 +355,59 @@ export function scriptLeaks(script: string): string[] {
   return BANNED_SCRIPT_WORDS.filter((w) => t.includes(` ${w} `));
 }
 
+/** The prompt that stylizes a photoreal presenter-holding-product frame into
+ *  the chosen cartoon look.
+ *
+ *  Pulled out as a pure function so the video QA harness renders with the
+ *  EXACT string production uses. This is the step that produced a merchant's
+ *  product as generic slop — the whole photo was being restyled, packaging
+ *  included — so the product is now the stated exception. */
+export function characterKeyframePrompt(o: {
+  productTitle: string;
+  recipe: { look: string; name: string };
+  serviceMode?: boolean;
+  sceneBits?: string;
+  exactText?: string;
+}): string {
+  return (
+    `Redraw this ENTIRE photo as a ${o.recipe.look}. The person becomes a charming ${o.recipe.name} character ` +
+    `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
+    `${o.serviceMode ? "" : `CRITICAL — the PRODUCT is the one thing that is NOT stylized. Stylize the person, the background and the lighting, but reproduce the ${o.productTitle} exactly as it appears in the photo: identical packaging artwork, identical logos, identical printed text, identical colors and proportions, at its TRUE real-world size and never miniaturized. Do not redraw it in the art style, do not simplify it, do not invent a similar-looking package. A merchant must recognise their own product instantly. `}` +
+    `Hands are anatomically correct — FOUR fingers and ONE thumb per hand, five digits total and never six, natural relaxed grip. ` +
+    `Delightful advertising scene, simple complementary background.${o.sceneBits || ""}${o.exactText || ""} ` +
+    `Vertical 9:16 composition, no watermark, no caption text.`
+  );
+}
+
+/** Packaging-text rule, shared with production so the harness cannot drift. */
+export function keyframeExactTextRule(productTitle: string): string {
+  return (
+    ` If any packaging, box art or label appears in the scene, it displays ONLY the title "${productTitle}" ` +
+    `in clean bold lettering spelled EXACTLY like that — never invented words, never gibberish text; any other surface stays text-free.`
+  );
+}
+
+/** Harness entry point: stylize one composed frame with the production prompt
+ *  and the production model. Deliberately free of checkpoints, the DB and the
+ *  QA gate — those are orchestration, and what needs measuring here is whether
+ *  the merchant's product survives the restyle. */
+export async function stylizeKeyframeForTest(o: {
+  sourcePhotoUrl: string;
+  productTitle: string;
+  styleKey: CartoonStyleKey;
+}): Promise<string> {
+  const recipe = CARTOON_RECIPES[o.styleKey];
+  const prompt = characterKeyframePrompt({
+    productTitle: o.productTitle,
+    recipe,
+    exactText: keyframeExactTextRule(o.productTitle),
+  });
+  const id = await repCreate("black-forest-labs/flux-kontext-pro", {
+    prompt, input_image: o.sourcePhotoUrl, aspect_ratio: "9:16", output_format: "jpg",
+  });
+  return repPoll(String(id), 5 * 60_000, "qa-keyframe");
+}
+
 export async function generateCartoonAd(params: CartoonAdParams): Promise<string> {
   const recipe = CARTOON_RECIPES[(params.styleKey as CartoonStyleKey)] || CARTOON_RECIPES.dreamanime;
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
@@ -469,13 +522,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
 
     let url: string;
     if (sourcePhotoUrl && withCharacter) {
-      const prompt =
-        `Redraw this ENTIRE photo as a ${recipe.look}. The person becomes a charming ${recipe.name} character ` +
-        `with the same hairstyle, outfit colors and a friendly stylized likeness. ` +
-        `${params.serviceMode ? "" : `CRITICAL — the PRODUCT is the one thing that is NOT stylized. Stylize the person, the background and the lighting, but reproduce the ${params.productTitle} exactly as it appears in the photo: identical packaging artwork, identical logos, identical printed text, identical colors and proportions, at its TRUE real-world size and never miniaturized. Do not redraw it in the art style, do not simplify it, do not invent a similar-looking package. A merchant must recognise their own product instantly. `}` +
-        `Hands are anatomically correct — FOUR fingers and ONE thumb per hand, five digits total and never six, natural relaxed grip. ` +
-        `Delightful advertising scene, simple complementary background.${sceneBits}${exactText} ` +
-        `Vertical 9:16 composition, no watermark, no caption text.`;
+      const prompt = characterKeyframePrompt({
+        productTitle: params.productTitle, recipe, serviceMode: params.serviceMode, sceneBits, exactText,
+      });
       url = await run({
         prompt,
         input_image: sourcePhotoUrl,

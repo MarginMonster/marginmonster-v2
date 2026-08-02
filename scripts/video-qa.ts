@@ -9,7 +9,8 @@
  * Calls writeCartoonScript, the same writer the pipeline uses.
  */
 
-import { writeCartoonScript, scriptLeaks, CARTOON_RECIPES, type CartoonStyleKey } from "../app/lib/cartoon-ad-pipeline.server";
+import { writeCartoonScript, scriptLeaks, stylizeKeyframeForTest, CARTOON_RECIPES, type CartoonStyleKey } from "../app/lib/cartoon-ad-pipeline.server";
+import { anthropicVision } from "../app/lib/anthropic.server";
 
 /* Products chosen to bait the failure: styles whose NAME is a word a writer
  * might reach for anyway ("clay", "brick", "paper"), and products that invite
@@ -91,9 +92,68 @@ async function main() {
     `keyframe and the absence of lip-sync both need a real render to verify.`,
   ].join("\n");
 
-  if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + "\n");
-  console.log(`\n${md}\n`);
+  const kf = await keyframeCheck();
+
+  const all = kf ? `${md}\n\n${kf}` : md;
+  if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
+  console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
+}
+
+
+/* ---------- keyframe: does the merchant's product survive the restyle? ----------
+ *
+ * The bug: a presenter held a box that only RESEMBLED the merchant's product,
+ * because the stylize step redrew the whole photo, packaging included. This
+ * composes a presenter holding the real product (fal), stylizes it with the
+ * production prompt (stylizeKeyframeForTest), and asks a vision model whether
+ * the product survived.
+ *
+ * Needs FAL_KEY and REPLICATE_API_TOKEN. Skipped, loudly, without them —
+ * a check that silently does nothing is worse than no check.
+ */
+async function keyframeCheck(): Promise<string> {
+  if (!process.env.KEYFRAME) return "";
+  const missing = ["FAL_KEY", "REPLICATE_API_TOKEN"].filter((k) => !process.env[k]?.trim());
+  if (missing.length) {
+    return `### Keyframe check\n\nSKIPPED — ${missing.join(" and ")} not set, so product fidelity in the stylised frame was NOT tested.`;
+  }
+  const { composeHoldingFrames } = await import("../app/lib/fal-image.server");
+  const portrait = process.env.QA_PORTRAIT_URL;
+  const productUrl = process.env.QA_PRODUCT_URL;
+  const productTitle = process.env.QA_PRODUCT_TITLE || "POP MART SkullPanda Blind Box Case (12 pcs)";
+  if (!portrait || !productUrl) {
+    return `### Keyframe check\n\nSKIPPED — QA_PORTRAIT_URL and QA_PRODUCT_URL are required (a presenter photo and the product photo).`;
+  }
+  const styles = (process.env.KEYFRAME_STYLES || "clay").split(",").map((x) => x.trim()) as CartoonStyleKey[];
+  const rows: string[] = [];
+  for (const style of styles) {
+    try {
+      const frames = await composeHoldingFrames(portrait, productUrl, productTitle, 1, "hold");
+      const composed = frames[0];
+      if (!composed) { rows.push(`| ${style} | compose returned nothing |`); continue; }
+      const styled = await stylizeKeyframeForTest({ sourcePhotoUrl: composed, productTitle, styleKey: style });
+      const raw = await anthropicVision(
+        [
+          `Image 1 is the merchant's real product photo. Image 2 is a stylized cartoon ad frame built from it.`,
+          `The PERSON and BACKGROUND are supposed to be stylized. The PRODUCT is not.`,
+          `productSurvived: is the product held in image 2 recognisably the SAME item as image 1 — same packaging artwork, same logos, same printed text, same colours and proportions? A similar-looking invented package is a FAILURE.`,
+          `anatomyOk: four fingers and one thumb per visible hand, no extra or disembodied limb.`,
+          `notes: one short sentence on the worst problem, or "clean".`,
+          `Reply ONLY JSON: {"productSurvived":bool,"anatomyOk":bool,"notes":"..."}`,
+        ].join("\n"),
+        [productUrl, styled]
+      );
+      const m = raw && raw.match(/\{[\s\S]*\}/);
+      const j = m ? JSON.parse(m[0]) as { productSurvived?: boolean; anatomyOk?: boolean; notes?: string } : null;
+      rows.push(`| ${CARTOON_RECIPES[style].name} | ${j?.productSurvived ? "yes" : "**NO**"} | ${j?.anatomyOk ? "ok" : "**bad**"} | ${(j?.notes || "").slice(0, 80)} | [frame](${styled}) |`);
+      console.log(`[vqa] keyframe ${style}: product=${j?.productSurvived} anatomy=${j?.anatomyOk} ${j?.notes || ""}`);
+    } catch (e) {
+      rows.push(`| ${style} | ERROR | | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | |`);
+    }
+  }
+  return [`### Keyframe check — does the product survive the restyle?`, ``,
+    `| style | product survived | hands | notes | frame |`, `|---|---|---|---|---|`, ...rows].join("\n");
 }
 
 main().catch((e) => { console.error("[vqa] fatal:", e); process.exit(1); });

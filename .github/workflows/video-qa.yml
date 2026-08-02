@@ -16,6 +16,26 @@ on:
         description: 'Scripts per style/product pair — raise to catch rare leaks'
         required: false
         default: "1"
+      keyframe:
+        description: 'Also render a stylised keyframe and check the product survived (needs FAL_KEY). Costs renders.'
+        required: false
+        default: ""
+      keyframe_styles:
+        description: 'Styles to render for the keyframe check'
+        required: false
+        default: clay
+      portrait_url:
+        description: 'Public URL of a presenter photo (keyframe check only)'
+        required: false
+        default: ""
+      product_url:
+        description: 'Public URL of the product photo (keyframe check only)'
+        required: false
+        default: ""
+      product_title:
+        description: 'Product title (keyframe check only)'
+        required: false
+        default: ""
   push:
     paths:
       - 'app/lib/cartoon-ad-pipeline.server.ts'
@@ -49,5 +69,12 @@ jobs:
       - name: Sweep the scripts
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN || secrets.REPLICATE_TOKEN }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
           REPEATS: ${{ inputs.repeats || '1' }}
+          KEYFRAME: ${{ inputs.keyframe }}
+          KEYFRAME_STYLES: ${{ inputs.keyframe_styles || 'clay' }}
+          QA_PORTRAIT_URL: ${{ inputs.portrait_url }}
+          QA_PRODUCT_URL: ${{ inputs.product_url }}
+          QA_PRODUCT_TITLE: ${{ inputs.product_title }}
         run: node video-qa.cjs
