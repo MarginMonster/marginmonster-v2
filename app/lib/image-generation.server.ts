@@ -687,7 +687,13 @@ async function overlayRealProduct(
     } else if (cut && th > bh * 1.6) {
       th = bh; tw = Math.round((bh * cut.w) / cut.h);
     }
-    const anchorY = cover ? Math.round(bottom - bh + (bh - th) / 2) : bottom - th;
+    // TOP-ALIGNED when covering. Centring split the extra height between top
+    // and bottom, and the top half went straight into the presenter's face —
+    // the one thing the composite still failed on. The top edge now stays
+    // exactly where the box it replaces began, which the compose prompt
+    // already keeps below the chin, and every extra pixel goes downward over
+    // the chest where there is nothing to obscure.
+    const anchorY = cover ? Math.round(bottom - bh) : bottom - th;
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +
       `[cut]split[c1][c2];` +
