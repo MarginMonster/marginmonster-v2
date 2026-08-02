@@ -224,7 +224,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (presenterVideo && !productImageUrl && !service) {
         return json({ error: "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to ✨ Service / offer.)" });
       }
-      const charged = TOKEN_COST.video + engineSurcharge(videoEngine);
+      // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
+      // not use one: it goes through the lipsync chain (HeyGen/omni-human), so
+      // generateUgcAd never even receives videoEngine — and a cartoon with a
+      // presenter now lipsyncs too. Charging the Seedance or Veo surcharge on
+      // those was billing for an engine that never ran.
+      const engineDrivesRender = !avatarId;
+      const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
+      const charged = TOKEN_COST.video + engineSurcharge(effectiveEngine);
       await spendTokens(shop.id, charged);
       // Services: the presenter explains the offer to camera — nothing to hold.
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
@@ -236,7 +243,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         productSize: ((form.get("productSize") as string) || "").trim() || undefined,
         wearProduct: !!avatarId && wear && !service,
         serviceMode: service, scene,
-        videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true, initiator: "web",
+        videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true, initiator: "web",
       });
       return json({ ok: true, queued: "video" });
     }
@@ -522,7 +529,11 @@ export default function WebStudio() {
   const styleChar = avatarId ?? d.cast[0]?.id ?? "ingrid";
   const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=5`;
 
-  const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
+  // Mirror the server: no presenter → the engine renders the video and its
+  // surcharge is real. With a presenter the lipsync engine does the work, so
+  // quoting a surcharge here would quote a fee we don't take.
+  const engineApplies = tab === "video" && !avatarId;
+  const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
   const verb = tab === "blog" ? "Write" : "Generate";
   const noun = tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : d.costs.blog;
@@ -685,7 +696,12 @@ export default function WebStudio() {
               </label>
             )}
             <div className="ws-lbl">Video engine <span className="ws-opt">premium engines add tokens</span></div>
-            <div className="ws-engines">
+            {!engineApplies && (
+              <p className="ws-enginenote">
+                Presenter ads are rendered by our lip-sync engine, so the engine choice and its surcharge don&apos;t apply here.
+              </p>
+            )}
+            <div className={`ws-engines${engineApplies ? "" : " off"}`}>
               {VIDEO_ENGINES.map((e) => (
                 <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={e.blurb} onClick={() => setVideoEngine(e.key)}>
                   <b>{e.name}</b><span>{e.surcharge > 0 ? `+${e.surcharge}` : "included"}</span>

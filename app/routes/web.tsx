@@ -480,6 +480,11 @@ const CSS = `
 .ws-face-img b{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
   background:#12A85E;color:#fff;font-size:11px;}
 .ws-engines{display:flex;gap:8px;flex-wrap:wrap;}
+/* Dimmed, not hidden: the merchant should still see the engines exist and
+   why they aren't in play, rather than the row silently vanishing. */
+.ws-engines.off{opacity:.45;}
+.ws-enginenote{margin:0 0 8px;font-size:11.5px;line-height:1.45;color:var(--ink2);
+  background:#FDF4E3;border:1px solid #E8D3A6;border-radius:9px;padding:8px 11px;}
 .ws-engine{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 13px;border-radius:11px;cursor:pointer;
   border:1px solid var(--line);background:#fff;}
 .ws-engine b{font-size:12px;color:var(--ink);}
