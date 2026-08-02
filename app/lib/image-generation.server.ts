@@ -116,6 +116,21 @@ async function bandLuma(bin: string, src: string, yFrac: number, hFrac: number):
 /** Pixel width of a still. The text overlay sizes against it, and guessing
  *  wrong slices the headline off the edge. Null when ffprobe can't read it —
  *  callers fall back to the old 1024 assumption. */
+async function probeHeight(bin: string, file: string): Promise<number | null> {
+  try {
+    const { execFileSync } = await import("node:child_process");
+    const probe = bin.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace(/ffmpeg/i, "ffprobe"));
+    const out = execFileSync(probe, [
+      "-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=height", "-of", "csv=p=0", file,
+    ], { encoding: "utf8", timeout: 8000 }).trim();
+    const h = parseInt(out, 10);
+    return Number.isFinite(h) && h > 0 ? h : null;
+  } catch {
+    return null;
+  }
+}
+
 async function probeWidth(bin: string, file: string): Promise<number | null> {
   try {
     const { execFileSync } = await import("node:child_process");
@@ -443,6 +458,93 @@ async function qaPresenterHold(
   }
 }
 
+/** Paste the merchant's ACTUAL product over the one the model drew.
+ *
+ *  Asking a generative model to reproduce packaging faithfully is a losing
+ *  game — a twelve-box display came back as one box with a logo reading "POP
+ *  MILLMART". The pixels of the real product already exist, so the model only
+ *  needs to get the POSE right: a presenter holding something of roughly that
+ *  shape. Then the real thing goes on top.
+ *
+ *  Same machinery the exact-template path has used all along — removeBackground
+ *  for a transparent cutout, ffmpeg to overlay it with a soft contact shadow —
+ *  just never wired to presenter holds.
+ *
+ *  Returns null on any failure so the caller keeps the generative frame: a
+ *  mispasted product is worse than an approximated one. */
+async function overlayRealProduct(frameUrl: string, productImageUrl: string): Promise<string | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+
+  // Where did the model put it? Percentages so the answer is resolution-free.
+  let box: { x: number; y: number; w: number; h: number } | null = null;
+  try {
+    const raw = await anthropicVision(
+      [
+        `The person in this photo is holding a product up to the camera.`,
+        `Return the bounding box of THE PRODUCT ONLY — the box or package itself, not the hands, not the arms.`,
+        `Use percentages of the image dimensions, where x,y is the TOP-LEFT corner.`,
+        `Be tight: the box should touch the product's outer edges with no margin.`,
+        `Reply ONLY JSON: {"x":number,"y":number,"w":number,"h":number}`,
+      ].join(" "),
+      [frameUrl],
+      { maxTokens: 120 }
+    );
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) {
+      const j = JSON.parse(m[0]) as Record<string, number>;
+      const ok = ["x", "y", "w", "h"].every((k) => typeof j[k] === "number" && j[k] >= 0 && j[k] <= 100);
+      // A box that covers almost everything, or almost nothing, is a bad read
+      // rather than a real answer — better to keep the generative frame.
+      if (ok && j.w > 8 && j.h > 8 && j.w < 95 && j.h < 95) box = { x: j.x, y: j.y, w: j.w, h: j.h };
+    }
+  } catch { /* no box → caller keeps the generative frame */ }
+  if (!box) return null;
+
+  const cutout = await removeBackground(productImageUrl);
+  if (!cutout) return null;
+
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tmpFrame = path.join(dir, `.hf-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.hc-${stamp}.png`);
+  const fileName = `img-${stamp}.jpg`;
+  const out = path.join(dir, fileName);
+  try {
+    for (const [src, file] of [[frameUrl, tmpFrame], [cutout, tmpCut]] as const) {
+      const res = await fetch(src);
+      if (!res.ok) return null;
+      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    }
+    const W = await probeWidth(bin, tmpFrame);
+    const H = await probeHeight(bin, tmpFrame);
+    if (!W || !H) return null;
+
+    // Fit INSIDE the box the model used, so the product keeps its own aspect
+    // ratio rather than being stretched to whatever shape got drawn.
+    const bw = Math.round((box.w / 100) * W);
+    const bh = Math.round((box.h / 100) * H);
+    const bx = Math.round((box.x / 100) * W);
+    const by = Math.round((box.y / 100) * H);
+    const filters =
+      `[1:v]scale=${bw}:${bh}:force_original_aspect_ratio=decrease[cut];` +
+      `[cut]split[c1][c2];` +
+      // A hard paste reads as a sticker. A blurred dark copy behind it gives
+      // the product contact with the hands holding it.
+      `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=10,colorchannelmixer=aa=0.34[sh];` +
+      `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${by}+(${bh}-h)/2+8[b1];` +
+      `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${by}+(${bh}-h)/2[outv]`;
+    const { ok } = await runFfmpegStill(bin, ["-y", "-i", tmpFrame, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out]);
+    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return fileName;
+    return null;
+  } catch {
+    return null;
+  } finally {
+    try { fs.rmSync(tmpFrame, { force: true }); fs.rmSync(tmpCut, { force: true }); } catch { /* best-effort */ }
+  }
+}
+
 /** The presenter-hold rung: compose the presenter holding the real product,
  *  gate it, and re-compose once with the failure shouted back.
  *
@@ -454,6 +556,8 @@ export interface PresenterHoldResult {
   pass: boolean;
   reason: string;
   retried: boolean;
+  /** True when the merchant's real product photo was pasted over the drawn one. */
+  composited?: boolean;
 }
 
 export async function runPresenterHold(opts: {
@@ -476,8 +580,8 @@ export async function runPresenterHold(opts: {
   };
 
   let composed = await runCompose(opts.scalePhrase);
-  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false };
-  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false };
+  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false };
+  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false };
 
   let qa = await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase);
   let retried = false;
@@ -494,7 +598,19 @@ export async function runPresenterHold(opts: {
       if (qa2.pass) { composed = second; qa = qa2; }
     }
   }
-  return { url: composed, pass: qa.pass, reason: qa.reason, retried };
+  // THE REAL PRODUCT GOES ON TOP. Everything above only had to get the POSE
+  // right; the packaging itself is a photograph we already hold. Gated like
+  // anything else, and reverted if it scores worse than what it replaced —
+  // a badly-placed paste is worse than a well-drawn approximation.
+  const pasted = await overlayRealProduct(composed, opts.productImageUrl);
+  if (pasted) {
+    const pastedUrl = `${(process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "")}/renders/${pasted}`;
+    const qa3 = await qaPresenterHold(opts.productImageUrl, pastedUrl, opts.scalePhrase);
+    if (qa3.pass || !qa.pass) {
+      return { url: pastedUrl, pass: qa3.pass, reason: `real-product-composite · ${qa3.reason}`, retried, composited: true };
+    }
+  }
+  return { url: composed, pass: qa.pass, reason: qa.reason, retried, composited: false };
 }
 
 /** Which mode fits a style when the caller didn't say: integrated scenes need

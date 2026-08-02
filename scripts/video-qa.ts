@@ -208,7 +208,7 @@ async function presenterHoldCheck(): Promise<string> {
         console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${j?.notes || ""}`);
       }
       if (r.url) await saveFrame(r.url, `presenter-${portrait.split("/").pop()}`);
-      rows.push(`| ${portrait.split("/").pop()} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
+      rows.push(`| ${portrait.split("/").pop()} | ${r.composited ? "**real photo pasted**" : "drawn"} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
       rows.push(`| ${portrait.split("/").pop()} | ERROR | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | |`);
     }
@@ -216,7 +216,7 @@ async function presenterHoldCheck(): Promise<string> {
   return [
     `### Presenter image ads — does the merchant's artwork survive?`, ``,
     `${shipped}/${portraits.length} passed an independent judge. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
-    `| presenter | production gate | independent judge | frame |`, `|---|---|---|---|`, ...rows,
+    `| presenter | product | production gate | independent judge | frame |`, `|---|---|---|---|---|`, ...rows,
   ].join("\n");
 }
 
