@@ -102,14 +102,17 @@ export async function submitCompose(
     `The box is a simple matte light-grey cardboard box whose front face is ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces and clean straight edges. ` +
     `Its front face is square-on to the camera and entirely unobstructed: no fingers, thumbs or hair cross in front of it, and nothing overlaps it. ` +
     `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
-    // The first stand-ins were technically perfect and still covered the
-    // mouth: "below the chin" was read as "touching the chin". Give it a gap
-    // it can measure.
-    `The top edge of the box sits at least a hand's width BELOW the chin, around the middle of the chest, leaving clear space between the box and the jaw. The presenter's whole face stays unobstructed — eyes, nose, mouth and chin all fully visible above it. ` +
+    // Third attempt at this. "Below the chin" was read as "touching the
+    // chin"; "a hand's width below the chin" landed at the chin again. Asking
+    // for clearance keeps failing because the framing itself is too tight —
+    // in a chest-up crop there is nowhere for the box to go. So specify the
+    // FRAMING and let the gap follow from it, rather than asking for a gap
+    // inside a crop that has no room for one.
+    `Frame the shot from the top of the head down to the hips, with the head in the TOP THIRD of the picture. The box is held low, at the bottom of the ribcage, so the whole middle of the chest is visible empty between the chin and the top of the box. The presenter's face is entirely unobstructed — eyes, nose, mouth and chin all clearly visible with space to spare. ` +
     `Exactly ONE box in the whole image.${sizing} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `The photo is taken BY SOMEONE ELSE standing in front of them — NOT a selfie, no arm reaching toward the lens. ` +
-    `Candid smartphone UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
+    `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
   const prompt =
     mode === "blank"
       ? blankPrompt
