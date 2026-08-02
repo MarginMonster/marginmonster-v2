@@ -104,6 +104,29 @@ async function main() {
 
 
 
+
+/** Resolve the product once, for whichever checks need it. Lives outside the
+ *  individual checks because having the lookup inside one of them meant the
+ *  other silently skipped when you ran it on its own. */
+let resolvedProduct: { url: string; title: string } | null = null;
+async function resolveProduct(): Promise<{ url: string; title: string } | null> {
+  if (resolvedProduct) return resolvedProduct;
+  let url = process.env.QA_PRODUCT_URL || "";
+  let title = process.env.QA_PRODUCT_TITLE || "";
+  if (!url && process.env.QA_STORE_URL) {
+    const { discoverCatalog } = await import("../app/lib/catalog-import.server");
+    const { products } = await discoverCatalog(process.env.QA_STORE_URL, 250);
+    const want = title.toLowerCase();
+    const hit = (want ? products.find((x) => x.title.toLowerCase().includes(want) && x.imageUrl) : null)
+      || products.find((x) => !!x.imageUrl);
+    if (hit?.imageUrl) { url = hit.imageUrl; title = hit.title; }
+    console.log(`[vqa] catalogue lookup → ${title || "(nothing)"}`);
+  }
+  if (!url) return null;
+  resolvedProduct = { url, title: title || "the product" };
+  return resolvedProduct;
+}
+
 /* ---------- image ads: the presenter holding the real product ----------
  *
  * The merchant's screenshot that started this: four SkullPanda cases, four
@@ -119,10 +142,11 @@ async function presenterHoldCheck(): Promise<string> {
   const missing = ["FAL_KEY", "REPLICATE_API_TOKEN", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]?.trim());
   if (missing.length) return `### Presenter image ads\n\nSKIPPED — ${missing.join(", ")} not set. Nothing was tested.`;
 
-  const productUrl = process.env.QA_PRODUCT_URL || "";
-  const productTitle = process.env.QA_PRODUCT_TITLE || "";
+  const prod = await resolveProduct();
   const portraits = (process.env.QA_PORTRAITS || process.env.QA_PORTRAIT_URL || "").split(",").map((x) => x.trim()).filter(Boolean);
-  if (!productUrl || !portraits.length) return `### Presenter image ads\n\nSKIPPED — need QA_PRODUCT_URL and QA_PORTRAITS. Nothing was tested.`;
+  if (!prod || !portraits.length) return `### Presenter image ads\n\nSKIPPED — need a product (QA_PRODUCT_URL or QA_STORE_URL) and QA_PORTRAITS. Nothing was tested.`;
+  const productUrl = prod.url;
+  const productTitle = prod.title;
 
   const rows: string[] = [];
   let shipped = 0;
@@ -182,24 +206,13 @@ async function keyframeCheck(): Promise<string> {
     return `### Keyframe check\n\nSKIPPED — ${missing.join(" and ")} not set, so product fidelity in the stylised frame was NOT tested.`;
   }
   const { composeHoldingFrames } = await import("../app/lib/fal-image.server");
-  const portrait = process.env.QA_PORTRAIT_URL;
-  let productUrl = process.env.QA_PRODUCT_URL || "";
-  let productTitle = process.env.QA_PRODUCT_TITLE || "";
-  // Rather than hand-copying a CDN URL that will rot, find the product in the
-  // merchant's own catalogue — the same discovery the Studio uses.
-  if (!productUrl && process.env.QA_STORE_URL) {
-    const { discoverCatalog } = await import("../app/lib/catalog-import.server");
-    const { products } = await discoverCatalog(process.env.QA_STORE_URL, 250);
-    const want = productTitle.toLowerCase();
-    const hit = (want ? products.find((x) => x.title.toLowerCase().includes(want)) : null)
-      || products.find((x) => !!x.imageUrl);
-    if (hit?.imageUrl) { productUrl = hit.imageUrl; productTitle = hit.title; }
-    console.log(`[vqa] catalogue lookup → ${productTitle || "(nothing)"}`);
+  const portrait = process.env.QA_PORTRAIT_URL || (process.env.QA_PORTRAITS || "").split(",")[0]?.trim();
+  const prod = await resolveProduct();
+  if (!portrait || !prod) {
+    return `### Keyframe check\n\nSKIPPED — need a presenter photo and a product (QA_PRODUCT_URL or QA_STORE_URL). Nothing was tested.`;
   }
-  if (!portrait || !productUrl) {
-    return `### Keyframe check\n\nSKIPPED — need QA_PORTRAIT_URL plus either QA_PRODUCT_URL or QA_STORE_URL. Nothing was tested.`;
-  }
-  if (!productTitle) productTitle = "the product";
+  const productUrl = prod.url;
+  const productTitle = prod.title;
   const styles = (process.env.KEYFRAME_STYLES || "clay").split(",").map((x) => x.trim()) as CartoonStyleKey[];
   const rows: string[] = [];
   for (const style of styles) {
