@@ -259,7 +259,7 @@ async function presenterHoldCheck(): Promise<string> {
       // number that matters: a wrong-product hold is dropped for a product
       // still rather than shipped with a lookalike in the presenter's hands.
       const delivered = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
-      rows.push(`| ${portrait.split("/").pop()} | ${r.composited ? "**real photo pasted**" : "drawn"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
+      rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
       rows.push(`| ${portrait.split("/").pop()} | ERROR | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`);
     }

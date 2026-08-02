@@ -50,12 +50,15 @@ export async function submitCompose(
   productImageUrl: string,
   productTitle: string,
   numImages = 2,
-  mode: "hold" | "wear" = "hold",
+  mode: "hold" | "wear" | "blank" = "hold",
   scene?: string,
   /** Concrete physical size brief (product-scale.server). "True real-world
    *  size" is an instruction a model can't follow off a white-background
    *  cutout; "roughly 40cm, needs both hands" is. */
-  scaleHint?: string
+  scaleHint?: string,
+  /** blank mode only: width:height of the real product, so the stand-in has
+   *  the right footprint for the photograph that replaces it. */
+  aspect?: number
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
   // Product-integrity guard — the #1 compose failure is the product getting
@@ -76,8 +79,28 @@ export async function submitCompose(
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
   // their top instead of being clutched on a hanger.
+  // BLANK STAND-IN. Four attempts from one reference photo produced four
+  // different objects — a 12-count display case came back as a single box, a
+  // four-box strip, and a red metal lunchbox with clasps. Asking harder is
+  // what produced the robot hands, so stop asking: have the model draw a
+  // featureless box, which is the one thing it renders reliably, and paste
+  // the merchant's actual photograph onto it afterwards. Nothing to
+  // reinvent, nothing to misspell, and one unambiguous outline to paste onto.
+  const shape = !aspect ? "roughly square" : aspect > 1.35 ? "clearly wider than it is tall" : aspect < 0.75 ? "clearly taller than it is wide" : "roughly square";
+  const blankPrompt =
+    `The exact person from the first image holding a PLAIN UNMARKED BOX up to the camera at chest height. ` +
+    `The box is a simple matte light-grey cardboard box, ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces and clean straight edges. ` +
+    `Its front face is square-on to the camera and entirely unobstructed: no fingers, thumbs or hair cross in front of it, and nothing overlaps it. ` +
+    `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
+    `The box sits BELOW the chin; the presenter's whole face stays unobstructed, eyes, nose and mouth fully visible above it. ` +
+    `Exactly ONE box in the whole image.${sizing} ` +
+    `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
+    `The photo is taken BY SOMEONE ELSE standing in front of them — NOT a selfie, no arm reaching toward the lens. ` +
+    `Candid smartphone UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
   const prompt =
-    mode === "wear"
+    mode === "blank"
+      ? blankPrompt
+      : mode === "wear"
       ? `The exact person from the first image WEARING the ${productTitle || "item"} from the second image — ` +
         `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
         `${integrity}${noSourceText} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
@@ -112,7 +135,10 @@ export async function submitCompose(
     headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
-      image_urls: [portraitUrl, productImageUrl],
+      // Blank mode deliberately withholds the product photo. Handing it over
+      // is an invitation to redraw the packaging, which is the failure being
+      // designed out.
+      image_urls: mode === "blank" ? [portraitUrl] : [portraitUrl, productImageUrl],
       image_size: "portrait_4_3",
       num_images: numImages,
       max_images: numImages,

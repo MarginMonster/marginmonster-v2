@@ -156,6 +156,25 @@ function headerSize(file: string): { w: number; h: number } | null {
   }
 }
 
+/** width:height of a product photo, so a blank stand-in can be asked for with
+ *  roughly the right footprint. Undefined when the bytes can't be read — the
+ *  prompt just omits the shape hint rather than guessing one. */
+async function productAspect(url: string): Promise<number | undefined> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return undefined;
+    const dir = path.join(process.cwd(), "data", "renders");
+    fs.mkdirSync(dir, { recursive: true });
+    const tmp = path.join(dir, `.pa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
+    const size = headerSize(tmp);
+    fs.rmSync(tmp, { force: true });
+    return size ? size.w / size.h : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Pixel width of a still. The text overlay sizes against it, and guessing
  *  wrong slices the headline off the edge. Null when ffprobe can't read it —
  *  callers fall back to the old 1024 assumption. */
@@ -555,7 +574,8 @@ async function qaPresenterHold(
  *  way to tell which of four steps had given up. */
 async function overlayRealProduct(
   frameUrl: string,
-  productImageUrl: string
+  productImageUrl: string,
+  opts: { blank?: boolean } = {}
 ): Promise<{ file: string; absPath: string } | null> {
   const give = (why: string) => { console.warn(`[presenter:paste] skipped — ${why}`); return null; };
   const bin = ffmpegBin();
@@ -567,8 +587,12 @@ async function overlayRealProduct(
   try {
     const raw = await anthropicVision(
       [
-        `The person in this photo is holding a product up to the camera.`,
-        `Return the bounding box of THE PRODUCT ONLY — the box or package itself, not the hands, not the arms.`,
+        opts.blank
+          ? `The person in this photo is holding a PLAIN UNMARKED BOX up to the camera.`
+          : `The person in this photo is holding a product up to the camera.`,
+        opts.blank
+          ? `Return the bounding box of that blank box's FRONT FACE — the flat panel facing the camera. Not the hands, not the arms, not the side faces.`
+          : `Return the bounding box of THE PRODUCT ONLY — the box or package itself, not the hands, not the arms.`,
         `Use percentages of the image dimensions, where x,y is the TOP-LEFT corner.`,
         `Be tight: the box should touch the product's outer edges with no margin.`,
         `Reply ONLY JSON: {"x":number,"y":number,"w":number,"h":number}`,
@@ -667,6 +691,10 @@ export interface PresenterHoldResult {
   /** On-disk path of the composited frame, when there is one. The QA harness
    *  publishes these bytes; production only needs the URL. */
   localPath?: string;
+  /** How the delivered frame was made: the merchant's photograph pasted onto
+   *  a blank stand-in, the same paste used to repair a bad generative frame,
+   *  or a purely generated product. */
+  via: "blank-standin" | "paste-repair" | "drawn";
   /** Which gate fields came back false, so callers can act on WHICH defect
    *  rather than sniffing the reason string. */
   failed: string[];
@@ -685,8 +713,12 @@ export async function runPresenterHold(opts: {
   scalePhrase?: string;
 }): Promise<PresenterHoldResult> {
   const { submitCompose, pollCompose } = await import("./fal-image.server");
-  const runCompose = async (hint: string | undefined): Promise<string | undefined> => {
-    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, opts.wear ? "wear" : "hold", opts.scene, hint);
+  const runCompose = async (
+    hint: string | undefined,
+    mode: "hold" | "wear" | "blank" = opts.wear ? "wear" : "hold",
+    aspect?: number
+  ): Promise<string | undefined> => {
+    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect);
     for (let i = 0; i < 45; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const p = await pollCompose(q.statusUrl, q.responseUrl);
@@ -695,9 +727,41 @@ export async function runPresenterHold(opts: {
     return undefined;
   };
 
+  // ── BLANK STAND-IN FIRST ────────────────────────────────────────────────
+  // Four presenters, one reference photo, four different objects — including
+  // a red metal lunchbox. The composer cannot be trusted to reproduce
+  // packaging, and prompting it harder is what produced the robot hands. So
+  // it draws a featureless box, which it does reliably, and the merchant's
+  // own photograph goes on top. The only thing left to get right is the pose.
+  if (!opts.wear) {
+    const blank = await runCompose(opts.scalePhrase, "blank", await productAspect(opts.productImageUrl));
+    if (blank) {
+      const pasted = await overlayRealProduct(blank, opts.productImageUrl, { blank: true });
+      if (pasted) {
+        const inline = `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`;
+        const qaB = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
+        if (qaB.pass) {
+          const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+          return {
+            url: base ? `${base}/renders/${pasted.file}` : blank,
+            pass: true,
+            reason: `blank-standin-composite · ${qaB.reason}`,
+            retried: false,
+            composited: true,
+            localPath: pasted.absPath,
+            via: "blank-standin",
+            failed: [],
+            wrongProduct: false,
+          };
+        }
+        console.warn(`[presenter:blank] stand-in paste rejected (${qaB.reason}) — falling back to the generative hold`);
+      }
+    }
+  }
+
   let composed = await runCompose(opts.scalePhrase);
-  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, failed: [], wrongProduct: false };
-  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, failed: [], wrongProduct: false };
+  if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
+  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
 
   let qa = await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase);
   let retried = false;
@@ -744,6 +808,7 @@ export async function runPresenterHold(opts: {
         retried,
         composited: true,
         localPath: pasted.absPath,
+        via: "paste-repair",
         failed: qa3.bad,
         wrongProduct: qa3.bad.some((k) => IDENTITY_FIELDS.includes(k)),
       };
@@ -755,6 +820,7 @@ export async function runPresenterHold(opts: {
     reason: qa.reason,
     retried,
     composited: false,
+    via: "drawn",
     failed: qa.bad,
     wrongProduct: qa.bad.some((k) => IDENTITY_FIELDS.includes(k)),
   };
