@@ -414,6 +414,8 @@ async function qaPresenterHold(
         `- the product is at the WRONG SIZE against the person (a case or box shrunk to palm-size is the most common failure);`,
         `- the product was SIMPLIFIED — fewer visible units, boxes, items or panels than the real photo shows;`,
         `- shape, colors, logos or packaging text changed, or it became a different object;`,
+        `- printed packaging lettering or logos came out in the WRONG COLOUR (a gold logo rendered purple, for example);`,
+        `- marketing text, a caption, a price flash or a shop WATERMARK from the original photo's background was copied into the shot, or packaging text was duplicated;`,
         `- the hands are deformed, have extra/missing fingers, or don't plausibly hold it.`,
         `Otherwise PASS. Judge fidelity and scale only — not lighting or taste.`,
       ].filter(Boolean).join("\n"),
@@ -1188,7 +1190,12 @@ export async function generateImageAd(
                 // Overlay headline + CTA (best-effort) so the presenter still is a real ad.
                 try {
                   const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-                  const copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
+                  // Retry once: a single flaky copy call was the difference
+                  // between a presenter still that carries our poster headline
+                  // and one that ships bare. "Sometimes" is not a standard.
+                  let copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
+                  if (!copy) copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
+                  if (!copy) artLog("image-ad", "presenter still: ad copy failed twice — shipping without the poster overlay");
                   if (copy) {
                     const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
                     if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
