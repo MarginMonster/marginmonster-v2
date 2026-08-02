@@ -19,9 +19,27 @@ prompts contradicting themselves:
 All four are visible in ten seconds of looking at a rendered ad. Nobody was
 looking, because looking meant generating by hand and paying for it.
 
-## Running it
+## Two ways to run it — same code
 
-**Actions → Ad QA (golden set) → Run workflow.**
+The logic lives in `app/lib/ad-qa.server.ts`. Both front ends call it, so
+neither can drift from the other.
+
+### A. On the live server — `/web/qa` (recommended)
+
+The API keys are in Render's environment. Copying them into GitHub Actions
+secrets would put the same credential in two places: one more to leak, one
+more to rotate, one more to go stale. So run the harness where the keys
+already are.
+
+1. Render → Environment → add `QA_KEY` (any long random string).
+2. Visit `https://easymodeapp.com/web/qa?key=YOUR_QA_KEY` while logged in.
+3. Seed the golden set from a storefront, then Run.
+
+Renders land straight on the persistent disk and the contact sheet appears on
+the page — no artifact to download. With `QA_KEY` unset the route 404s, so it
+does not exist unless you switch it on. **Unset it when you're done.**
+
+### B. In CI — `Actions → Ad QA (golden set) → Run workflow`
 
 | input | meaning |
 |---|---|
@@ -49,15 +67,21 @@ Pick products that stress different things: something with heavy packaging
 text, something with non-Latin script, something tiny, something large,
 something on a white background and something shot in a room.
 
-## Required secrets
+## Required credentials
 
-Settings → Secrets and variables → Actions:
+| where | needs |
+|---|---|
+| `/web/qa` | `QA_KEY` in Render. The AI keys are already there. |
+| CI | `ANTHROPIC_API_KEY` and `REPLICATE_API_TOKEN` as **Actions repository secrets** |
 
-- `ANTHROPIC_API_KEY` — copy generation, the live gate, the rubric
-- `REPLICATE_API_TOKEN` — the renders
+Render environment variables are **not** visible to GitHub Actions — they are
+separate systems. A key set in Render reads as "not set" inside a workflow,
+which is exactly what happened the first time this ran. The workflow prints
+which credential names it can see (booleans only, never values) so that
+question is answered by observation rather than argument.
 
-Missing either, the job exits neutral rather than red. Nothing was tested, and
-that isn't a code failure.
+Missing keys make the CI job exit neutral rather than red. Nothing was tested,
+and that isn't a code failure.
 
 ## Auto-running on prompt changes
 
