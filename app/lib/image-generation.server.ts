@@ -597,7 +597,18 @@ async function overlayRealProduct(
   // model a large empty region to repair got exactly what a large empty
   // region gets: it drew a SECOND product there. The reliable answer is to
   // leave it almost nothing to fill.
-  const cover = !!opts.blank;
+  // ALWAYS cover, on both paths.
+  //
+  // With the blend switched off the composite still had two products in it,
+  // and the mask proved the blend never touched that region. It is the repair
+  // path: the frame underneath is the model's own drawn box, the real
+  // photograph was fitted INSIDE its bounding box, and the drawn one stayed
+  // visible around the edges. A real product with a fake one framing it.
+  //
+  // Covering overhangs rather than distorts, and a product slightly larger
+  // than the one it replaces is not a defect — a visible counterfeit behind
+  // it is.
+  const cover = true;
   const give = (why: string): PasteResult => { console.warn(`[presenter:paste] skipped — ${why}`); return { ok: false, failed: why }; };
   const bin = ffmpegBin();
   if (!bin) return give("no ffmpeg binary");
@@ -656,12 +667,8 @@ async function overlayRealProduct(
     const H = await probeHeight(bin, tmpFrame);
     if (!W || !H) return give("could not probe frame dimensions");
 
-    // COVER the drawn box, don't fit inside it. Fitting a landscape case
-    // inside a squarer bbox shrank it until the model's own red box was still
-    // visible around the edges — a real product floating in front of a fake
-    // one. Match the box's WIDTH, inflate a little to swallow the outline, and
-    // sit the bottom edge where the drawn bottom edge was so the product still
-    // lands in the hands instead of hovering in the middle of them.
+    // The bounding box the model reported, inflated a little so the paste
+    // swallows the drawn outline rather than stopping exactly on it.
     const pad = 1.08;
     const bw = Math.round((box.w / 100) * W * pad);
     const bh = Math.round((box.h / 100) * H * pad);
