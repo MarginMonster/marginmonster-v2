@@ -14,3 +14,7 @@ ad-qa.mjs
 qa-out/
 
 video-qa.cjs
+
+# QA frames pulled from the qa-frames branch for review — they live there,
+# not in main history (see .github/workflows/video-qa.yml).
+frames/

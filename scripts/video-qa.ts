@@ -182,18 +182,29 @@ async function presenterHoldCheck(): Promise<string> {
           [
             `Image 1 is the merchant's real product photo. Image 2 is an ad of a presenter holding it.`,
             `artworkMatches: compare the PRINTED ARTWORK panel by panel — characters, their colours, their positions, logo placement, box background colour. Same shape with different art is a FAILURE. Be strict.`,
+            // The judge passed a box whose logo read "POP MILLMART" because it
+            // was never asked about the LETTERING. Artwork and text are
+            // different failures and need different questions.
+            `textFaithful: READ every word printed on the packaging and compare it letter by letter with image 1. A brand name rendered as "POP MILLMART" instead of "POP MART", a doubled letter, a dropped letter, or any invented word is a FAILURE. Spell out what you actually read if it differs.`,
+            `notSimplified: does image 2 show the same NUMBER of units, boxes or panels as image 1? A twelve-box display case rendered as a single box is a FAILURE.`,
             `correctScale: believable real-world size against the person?`,
             `handsOk: four fingers and one thumb per hand, exactly two hands, no extra limb.`,
             `notes: one short sentence on the worst problem, or "clean".`,
-            `Reply ONLY JSON: {"artworkMatches":bool,"correctScale":bool,"handsOk":bool,"notes":"..."}`,
+            `Reply ONLY JSON: {"artworkMatches":bool,"textFaithful":bool,"notSimplified":bool,"correctScale":bool,"handsOk":bool,"notes":"..."}`,
           ].join("\n"),
           [productUrl, r.url]
         );
         const m = raw && raw.match(/\{[\s\S]*\}/);
-        const j = m ? JSON.parse(m[0]) as { artworkMatches?: boolean; correctScale?: boolean; handsOk?: boolean; notes?: string } : null;
-        const ok = !!j?.artworkMatches && !!j?.correctScale && !!j?.handsOk;
+        const j = m ? JSON.parse(m[0]) as { artworkMatches?: boolean; textFaithful?: boolean; notSimplified?: boolean; correctScale?: boolean; handsOk?: boolean; notes?: string } : null;
+        const ok = !!j?.artworkMatches && !!j?.textFaithful && !!j?.notSimplified && !!j?.correctScale && !!j?.handsOk;
         if (ok) shipped++;
-        verdict = `${j?.artworkMatches ? "art ok" : "**ART WRONG**"} · ${j?.correctScale ? "scale ok" : "**scale off**"} · ${j?.handsOk ? "hands ok" : "**hands bad**"}`;
+        verdict = [
+          j?.artworkMatches ? "art ok" : "**ART WRONG**",
+          j?.textFaithful ? "text ok" : "**TEXT WRONG**",
+          j?.notSimplified ? "count ok" : "**simplified**",
+          j?.correctScale ? "scale ok" : "**scale off**",
+          j?.handsOk ? "hands ok" : "**hands bad**",
+        ].join(" · ");
         console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${j?.notes || ""}`);
       }
       if (r.url) await saveFrame(r.url, `presenter-${portrait.split("/").pop()}`);
