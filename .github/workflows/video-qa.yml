@@ -1,0 +1,53 @@
+name: Video QA (cartoon scripts)
+
+# The cartoon pipeline's script step, swept across every style.
+#
+# A full cartoon ad is 150 tokens and several minutes, so video cannot be
+# swept the way images are. But the bug that prompted this — a presenter
+# saying "claymation" out loud mid-ad — lives entirely in the SCRIPT step,
+# which is one text call. That part IS cheap to test exhaustively, so it is.
+#
+# Needs ANTHROPIC_API_KEY only. No renders, no Replicate, pennies per run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: 'Scripts per style/product pair — raise to catch rare leaks'
+        required: false
+        default: "1"
+  push:
+    paths:
+      - 'app/lib/cartoon-ad-pipeline.server.ts'
+      - 'scripts/video-qa.ts'
+
+concurrency:
+  group: video-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vqa:
+    # Cheap enough to run on every touch of the pipeline — unlike the image
+    # sweep, this spends text tokens, not renders.
+    if: github.event_name == 'workflow_dispatch' || vars.VIDEO_QA_ON_PUSH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+      - name: Bundle
+        run: |
+          npx esbuild scripts/video-qa.ts \
+            --bundle --platform=node --format=cjs --target=node20 \
+            --external:@prisma/client --external:ffmpeg-static --external:sharp \
+            --outfile=video-qa.cjs
+      - name: Sweep the scripts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_API_KEY }}
+          REPEATS: ${{ inputs.repeats || '1' }}
+        run: node video-qa.cjs

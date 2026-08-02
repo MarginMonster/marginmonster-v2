@@ -12,3 +12,5 @@ good_voices.json
 # Ad QA harness build + output (see .github/workflows/ad-qa.yml)
 ad-qa.mjs
 qa-out/
+
+video-qa.cjs

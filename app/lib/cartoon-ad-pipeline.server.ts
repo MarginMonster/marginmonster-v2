@@ -295,6 +295,66 @@ interface CartoonAdParams {
   };
 }
 
+/** The cartoon voice-over script.
+ *
+ *  Extracted so the QA harness exercises the SAME writer the pipeline uses —
+ *  a check against a re-implementation proves nothing. Cheap to test too: it
+ *  is one text call, no render, so verifying that a presenter never again
+ *  announces "claymation" mid-ad costs a fraction of a cent instead of a
+ *  150-token video.
+ *
+ *  The style name is deliberately ABSENT. It used to be passed in "for
+ *  energy" and the writer put it in the dialogue. The viewer can see the
+ *  style; saying it out loud breaks the ad. */
+export async function writeCartoonScript(o: {
+  productTitle: string;
+  productDescription?: string;
+  serviceMode?: boolean;
+  tone?: string;
+  direction?: string;
+  contentLang?: string | null;
+}): Promise<string> {
+  const scriptPrompt = [
+    `You write voice-over scripts for short animated (cartoon) video ads.${langDirective(o.contentLang)}`,
+    o.serviceMode
+      ? `This is a SERVICE / offer (not a physical product): "${o.productTitle}". Sell the RESULT the customer gets.`
+      : `Product: "${o.productTitle}".`,
+    o.productDescription ? `Context: ${o.productDescription.slice(0, 300)}` : "",
+    o.tone ? `Brand voice/tone: ${o.tone}.` : "",
+    `NEVER name or refer to the animation style, art style, medium, or the fact that this is an advertisement. Do not use words like claymation, clay, cartoon, animated, animation, 3D, render, pixel, anime, stop-motion, or "in this video". Talk only about the product and the customer.`,
+    o.direction ? `Merchant direction (follow it): ${o.direction}` : "",
+    ``,
+    `Rules: The FIRST sentence must be a scroll-stopping hook. 24 to 30 words`,
+    `TOTAL (about 11 seconds spoken). Playful, warm, a little witty — like a`,
+    `beloved animated commercial. End with a short call to action.`,
+    `SPEECH PACING (a voice model reads this aloud): commas where a person`,
+    `breathes, a period at the END of every sentence. Short complete sentences.`,
+    `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
+  ].filter(Boolean).join("\n");
+
+  let script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+    .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!script) throw new Error("[cartoon:script] empty script from model");
+  const w = script.split(" ");
+  if (w.length > 32) script = w.slice(0, 32).join(" ");
+  if (!/[.!?]$/.test(script)) script += ".";
+  return script;
+}
+
+/** Words that must never reach a viewer's ears. The failure this catches was
+ *  real: a presenter said "claymation" in a Clay-style ad. */
+export const BANNED_SCRIPT_WORDS = [
+  "claymation", "clay", "cartoon", "animated", "animation", "anime",
+  "stop-motion", "stop motion", "3d", "render", "rendered", "pixel",
+  "pixar", "cgi", "this video", "this ad", "advertisement",
+];
+
+/** Returns the banned words a script leaked, if any. */
+export function scriptLeaks(script: string): string[] {
+  const t = ` ${script.toLowerCase().replace(/[^a-z0-9 -]/g, " ").replace(/\s+/g, " ")} `;
+  return BANNED_SCRIPT_WORDS.filter((w) => t.includes(` ${w} `));
+}
+
 export async function generateCartoonAd(params: CartoonAdParams): Promise<string> {
   const recipe = CARTOON_RECIPES[(params.styleKey as CartoonStyleKey)] || CARTOON_RECIPES.dreamanime;
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
@@ -309,38 +369,14 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // 1) SCRIPT — cartoon ads earn their keep with playful, jingle-adjacent VO.
   let script = resume.script || "";
   if (!script) {
-    const scriptPrompt = [
-      `You write voice-over scripts for short animated (cartoon) video ads.${langDirective(contentLang)}`,
-      params.serviceMode
-        ? `This is a SERVICE / offer (not a physical product): "${params.productTitle}". Sell the RESULT the customer gets.`
-        : `Product: "${params.productTitle}".`,
-      params.productDescription ? `Context: ${params.productDescription.slice(0, 300)}` : "",
-      voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
-      // The style name used to be handed to the script writer "for energy",
-      // and it wrote it into the dialogue — a presenter announcing
-      // "claymation" mid-ad. The viewer can SEE the style; naming it breaks
-      // the ad. The look is a visual instruction and belongs nowhere near the
-      // spoken words.
-      `NEVER name or refer to the animation style, art style, medium, or the fact that this is an advertisement. Do not use words like claymation, clay, cartoon, animated, animation, 3D, render, pixel, anime, stop-motion, or "in this video". Talk only about the product and the customer.`,
-      params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
-      ``,
-      `Rules: The FIRST sentence must be a scroll-stopping hook. 24 to 30 words`,
-      `TOTAL (about 11 seconds spoken). Playful, warm, a little witty — like a`,
-      `beloved animated commercial. End with a short call to action.`,
-      `SPEECH PACING (a voice model reads this aloud): commas where a person`,
-      `breathes, a period at the END of every sentence. Short complete sentences.`,
-      `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
-      .replace(/["“”\n]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!script) throw new Error("[cartoon:script] empty script from model");
-    const w = script.split(" ");
-    if (w.length > 32) script = w.slice(0, 32).join(" ");
-    if (!/[.!?]$/.test(script)) script += ".";
+    script = await writeCartoonScript({
+      productTitle: params.productTitle,
+      productDescription: params.productDescription,
+      serviceMode: params.serviceMode,
+      tone: voiceJson.tone,
+      direction: params.direction,
+      contentLang,
+    });
     await ckpt({ ckScript: script });
   }
 
