@@ -149,7 +149,7 @@ async function keyframeCheck(): Promise<string> {
         [
           `Image 1 is the merchant's real product photo. Image 2 is a stylized cartoon ad frame built from it.`,
           `The PERSON and BACKGROUND are supposed to be stylized. The PRODUCT is not.`,
-          `productSurvived: is the product held in image 2 recognisably the SAME item as image 1 — same packaging artwork, same logos, same printed text, same colours and proportions? A similar-looking invented package is a FAILURE.`,
+          `productSurvived: compare the PRINTED ARTWORK panel by panel — the characters or images on the packaging, their colours, their positions, the logo placement, the box's background colour. Same SHAPE with different character art, different colours or a different layout is a FAILURE: it is not the merchant's product. Be strict; "close enough" is a fail.`,
           `anatomyOk: four fingers and one thumb per visible hand, no extra or disembodied limb.`,
           `notes: one short sentence on the worst problem, or "clean".`,
           `Reply ONLY JSON: {"productSurvived":bool,"anatomyOk":bool,"notes":"..."}`,

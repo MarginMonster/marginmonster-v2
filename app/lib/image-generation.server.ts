@@ -406,34 +406,37 @@ async function qaPresenterHold(
     const raw = await anthropicVision(
       [
         `Image 1 is the REAL product photo. Image 2 is an AI-composed shot of a presenter holding that product.`,
-        `Return ONLY JSON: {"pass": true|false, "reason": "short"}.`,
+        `Answer each field INDEPENDENTLY. Do not let a good overall impression carry a field that is actually wrong.`,
+        ``,
+        // The failure merchants actually see: a box of the right SHAPE with
+        // completely different art on it. "Same product?" gets a yes, because
+        // it is the same kind of thing. So ask about the ARTWORK, panel by
+        // panel, as its own question.
+        `artworkMatches: compare the PRINTED ARTWORK panel by panel. The characters or images shown on the packaging, their colours, their positions, the logo placement, the background colour of the box. A package of the same SHAPE carrying different character art, different colours or a different layout is a FAILURE — it is not the merchant's product. Be strict: this is the single most common defect.`,
+        `notSimplified: does image 2 show the same number of visible units, boxes, windows or panels as image 1? Fewer is a failure.`,
+        `textFaithful: is the packaging lettering the same words in the same colours? A gold logo rendered purple is a failure.`,
         scalePhrase
-          ? `The product's real size: ${scalePhrase}`
-          : `Judge scale by what the product obviously is.`,
-        `FAIL if ANY of these:`,
-        `- the product is at the WRONG SIZE against the person (a case or box shrunk to palm-size is the most common failure);`,
-        `- the product was SIMPLIFIED — fewer visible units, boxes, items or panels than the real photo shows;`,
-        `- shape, colors, logos or packaging text changed, or it became a different object;`,
-        `- printed packaging lettering or logos came out in the WRONG COLOUR (a gold logo rendered purple, for example);`,
-        `- marketing text, a caption, a price flash or a shop WATERMARK from the original photo's background was copied into the shot, or packaging text was duplicated;`,
-        `- an EXTRA hand, arm or limb appears — a third hand on the product, a disembodied hand floating in frame, or an arm that belongs to nobody. Count the hands: a single presenter has exactly two, both attached to their own arms;`,
-        // Count digits explicitly. "extra fingers" alone passed a hand showing
-        // five fingers with the thumb tucked out of sight — six digits, but each
-        // one individually plausible.
-        `- COUNT THE DIGITS on every visible hand. A hand has FOUR fingers plus ONE thumb. If you can see five fingers AND a thumb, that is six digits — FAIL. If the thumb is hidden behind the product, only four fingers should be visible; five visible fingers with a hidden thumb is also six — FAIL;`,
-        // A presenter reaching toward the lens reads as holding the camera, which
-        // means a third hand exists somewhere off-frame.
-        `- an arm is stretched out toward the camera as though the presenter is holding the phone taking the photo, while their other hands are on the product — that implies a third arm off-frame — FAIL;`,
-        `- the hands are deformed, at an impossible angle for the arm they attach to, or don't plausibly hold it.`,
-        `Otherwise PASS. Judge fidelity and scale only — not lighting or taste.`,
+          ? `correctScale: the product's real size is ${scalePhrase}. Is it that size against the person? A case or box shrunk to palm-size is the most common scale failure.`
+          : `correctScale: judging by what the product obviously is, is it a believable size against the person?`,
+        `noSourceText: has marketing text, a caption, a price flash or a shop watermark from image 1's BACKGROUND been copied in, or packaging text duplicated? Answer true if NOT.`,
+        `handsOk: COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
+        `notSelfie: is the presenter NOT reaching an arm toward the lens as though holding the camera? An outstretched arm while both hands hold the product implies a third arm off-frame.`,
+        `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
+        ``,
+        `Judge fidelity, scale and anatomy only — not lighting or taste.`,
+        `Reply ONLY JSON: {"artworkMatches":bool,"notSimplified":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productUrl, genUrl],
-      { maxTokens: 200 }
+      { maxTokens: 300 }
     );
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) return { pass: true, reason: "qa-unparseable" };
-    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
-    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 200) };
+    const j = JSON.parse(m[0]) as Record<string, unknown>;
+    const bad = (["artworkMatches", "notSimplified", "textFaithful", "correctScale", "noSourceText", "handsOk", "notSelfie"] as const)
+      .filter((k) => j[k] === false);
+    if (!bad.length) return { pass: true, reason: "clean" };
+    const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
+    return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200) };
   } catch (e) {
     // Never block a paid render on a QA outage.
     return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}` };

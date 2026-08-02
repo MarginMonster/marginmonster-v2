@@ -85,9 +85,13 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, confident slow camera push-in and orbit, premium big-brand energy, vertical, no text overlay.`;
   const basePrompt =
     style === "AI_AVATAR" && avatar
-      ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, enthusiastically presenting ${productTitle} to the camera. ${voice.tone} tone. Authentic hand-held creator feel, natural gestures, vertical.`
+      // This path has NO lip-sync (see VIDEO_MODEL note above), so a presenter
+      // animated mid-speech is guaranteed to look out of time with whatever
+      // audio plays over it — the same fault found in the cartoon pipeline.
+      // Gestures and presence, not talking.
+      ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, warmly showing ${productTitle} to the camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, no lip movement, mouth closed or in a natural smile. Authentic hand-held creator feel, vertical.`
       : style === "AI_AVATAR"
-        ? `UGC-style spokesperson enthusiastically presenting ${productTitle}. ${voice.tone} tone. Authentic, hand-held feel, vertical.`
+        ? `UGC-style spokesperson warmly showing ${productTitle} to camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, mouth closed or smiling. Authentic, hand-held feel, vertical.`
         : params.breakout
           ? `${breakoutLook} The product: ${productTitle}.`
           : params.commercial
