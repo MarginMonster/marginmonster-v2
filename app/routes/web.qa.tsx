@@ -27,7 +27,7 @@ import {
   type Cell, type GoldenProduct, type QaReport,
 } from "../lib/ad-qa.server";
 
-const CAP = 24;
+const CAP = 60; // fits a full sweep: every format once
 const CONCURRENCY = 2; // gentle: this is the box serving merchants
 
 function assertEnabled(request: Request): void {
@@ -185,6 +185,7 @@ export default function WebQa() {
     { label: "Quick check", keys: ["review", "versus"], why: "the two that have been failing" },
     { label: "Text-heavy", keys: ["review", "chat", "versus", "tweet"], why: "most words = most ways to garble" },
     { label: "Hands & people", keys: ["handheld", "ugcframe"], why: "the only ones that test anatomy" },
+    { label: "Every format", keys: d.formats.map((f) => f.key), why: `all ${d.formats.length}, one product each` },
   ];
 
   const [formats, setFormats] = useState<string[]>(["review", "versus"]);
@@ -283,6 +284,12 @@ export default function WebQa() {
             <input type="hidden" name="intent" value="run" />
             <input type="hidden" name="formats" value={formats.join(",")} />
             <input type="hidden" name="products" value={products.join(",")} />
+            {formats.length > 12 && products.length > 1 && (
+              <p className="qa-warnline">
+                {formats.length} formats × {products.length} products is {formats.length * products.length} ads — over the {d.cap} cap.
+                For a full sweep use <b>one</b> product: <button type="button" className="qa-link" onClick={() => setProducts(products.slice(0, 1))}>use just the first product</button>.
+              </p>
+            )}
             <p className="qa-count">
               <b>{Math.min(cells, d.cap)} ads</b> — {formats.length} type{formats.length === 1 ? "" : "s"} × {products.length} product{products.length === 1 ? "" : "s"}.
               Each one is a real paid generation, and a rejected first attempt is retried once, so budget up to {Math.min(cells, d.cap) * 2} renders.
@@ -336,6 +343,9 @@ const QA_CSS = `
 .qa-count{font-size:13px;color:var(--ink2);margin:0 0 12px;line-height:1.5;}
 .qa-count b{color:var(--ink);font-size:14px;}
 .qa-over{color:#7A5A12;font-weight:700;}
+.qa-warnline{background:#FDF4E3;border:1px solid #E8D3A6;color:#7A5A12;padding:9px 12px;border-radius:9px;
+  font-size:12px;line-height:1.45;margin:0 0 10px;}
+.qa-link{border:0;background:none;padding:0;font:inherit;font-weight:800;color:#0C7A46;cursor:pointer;text-decoration:underline;}
 .qa-bar{height:7px;border-radius:99px;background:#E9EDE7;overflow:hidden;margin-top:8px;}
 .qa-bar i{display:block;height:100%;background:linear-gradient(90deg,#12A85E,#0B6B3E);transition:width .4s;}
 @media (max-width:520px){

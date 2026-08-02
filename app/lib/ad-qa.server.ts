@@ -294,6 +294,37 @@ export function summaryMarkdown(cells: Cell[], truncated = 0): string {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 
+/** Per-format verdict. With a full 49-format sweep the card grid is a wall —
+ *  the question you actually have is "which templates are broken", and that
+ *  should be one glance, not fifty. Worst first. */
+function byFormat(cells: Cell[]): string {
+  const groups = new Map<string, Cell[]>();
+  for (const c of cells) groups.set(c.format, [...(groups.get(c.format) || []), c]);
+  const rows = [...groups.entries()].map(([f, cs]) => {
+    const kept = cs.filter((c) => c.ok).length;
+    const graded = cs.filter((c) => c.rubric);
+    const ship = graded.filter((c) => c.rubric!.wouldShip).length;
+    // Rank: formats that fall back are the problem, then ones that ship poorly.
+    const rank = (cs.length - kept) * 10 + (graded.length - ship);
+    const worst = cs.find((c) => !c.ok)?.qaReason
+      || cs.find((c) => c.rubric && !c.rubric.wouldShip)?.rubric?.notes
+      || cs.find((c) => c.rubricError)?.rubricError
+      || "";
+    const state = kept < cs.length ? "fail" : ship < graded.length ? "warn" : "ok";
+    return { f, cs, kept, graded: graded.length, ship, rank, worst, state };
+  }).sort((a, b) => b.rank - a.rank || a.f.localeCompare(b.f));
+
+  const broken = rows.filter((r) => r.rank > 0).length;
+  return `<h3 class="bfh">By template — ${broken ? `${broken} of ${rows.length} need attention` : `all ${rows.length} clean`}</h3>
+  <table class="bf"><tr><th>template</th><th>kept format</th><th>would ship</th><th>worst problem</th></tr>
+  ${rows.map((r) => `<tr class="${r.state}">
+    <td><b>${esc(r.f)}</b></td>
+    <td>${r.kept}/${r.cs.length}</td>
+    <td>${r.graded ? `${r.ship}/${r.graded}` : "—"}</td>
+    <td>${esc(r.worst.slice(0, 90))}</td></tr>`).join("")}
+  </table>`;
+}
+
 /** Contact sheet. `imgBase` is "" for the CLI (local files) or "/renders/" on
  *  the server, where the images are served off the persistent disk. */
 export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string {
@@ -355,6 +386,12 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
  .qa .big{margin:4px 0 2px;font-size:30px;font-weight:800;color:#14201A;line-height:1}
  .qa .box.good .big{color:#0C7A46}
  .qa .lbl{margin:2px 0 0;font-size:11.5px;color:#4A554E;line-height:1.4}
+ .qa .bfh{font-size:13px;margin:0 0 8px;color:#14201A}
+ .qa table.bf{width:100%;margin-bottom:20px}
+ .qa table.bf td{font-size:12px}
+ .qa table.bf tr.fail td:first-child{box-shadow:inset 3px 0 0 #C0503A}
+ .qa table.bf tr.warn td:first-child{box-shadow:inset 3px 0 0 #C98F12}
+ .qa table.bf tr.ok td:first-child{box-shadow:inset 3px 0 0 #12A85E}
  .qa .warn{background:#FDF4E3;border:1px solid #E8D3A6;color:#7A5A12;padding:8px 12px;border-radius:9px;font-size:12px;margin:0 0 16px}
 </style>
 <div class="qa">
@@ -376,6 +413,7 @@ export function contactSheet(cells: Cell[], imgBase = "", truncated = 0): string
 </div>
 ${scored.length < cells.length ? `<p class="warn">${cells.length - scored.length} of ${cells.length} could not be graded. That is a missing measurement, not a failure — they are excluded from every percentage above.</p>` : ""}
 <table><tr><th>rubric dimension</th><th>clean</th><th></th></tr>${rows}</table>
+${byFormat(cells)}
 <div class="grid">${cards}</div>
 </div>`;
 }
