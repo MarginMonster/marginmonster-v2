@@ -148,7 +148,7 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
   if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage };
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
-  return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: opts.negativePrompt || "morphing, distortion, extra objects, text, watermark, blur", duration: 10, cfg_scale: 0.5 };
+  return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur", duration: 10, cfg_scale: 0.5 };
 }
 
 /** Start an image-to-video prediction on the chosen engine; falls back to the
@@ -881,8 +881,11 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       await ckpt({ ckEngine: engine }); // written BEFORE the create — see above
       const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
         start_image: animSourceDataUri,
-        prompt: `${avatar.desc}, talking directly to the camera with natural hand gestures and subtle head movement, enthusiastic friendly energy, static camera, plain studio background, vertical video`,
-        negative_prompt: "camera movement, zoom, pan, morphing, distortion, extra people, text, watermark",
+        prompt: `${avatar.desc}, talking directly to the camera with natural hand gestures and subtle head movement, enthusiastic friendly energy, static camera, plain studio background, vertical video. Anything held in frame stays SOLID and fully visible for the entire clip — same object, same size, same position in the hands, never fading, never vanishing, never re-forming.`,
+        // "glitching in and out of his hands" — the motion brief never
+        // mentioned the product, so nothing anchored it and the model treated
+        // it as scenery it could drop between frames.
+        negative_prompt: "object disappearing, product vanishing, flickering, fading in and out, object changing shape, hands passing through the product, camera movement, zoom, pan, morphing, distortion, extra people, text, watermark",
         duration: 10,
         cfg_scale: 0.5,
       });

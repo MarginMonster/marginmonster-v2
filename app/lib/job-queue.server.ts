@@ -313,6 +313,7 @@ async function runJob(
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
           videoEngine: payload.videoEngine as string | undefined,
+          productSize: payload.productSize as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
@@ -375,6 +376,11 @@ async function runJob(
           wearProduct: payload.wearProduct === true,
           serviceMode: payload.serviceMode === true,
           scene: payload.scene as string | undefined,
+          // The Studio's size control was reaching the payload and stopping
+          // here: generateUgcAd reads productSize and this dispatch never sent
+          // it, so "Large" fell through to inference and a case came out
+          // palm-sized. A control the merchant sets has to arrive.
+          productSize: payload.productSize as string | undefined,
           resume: {
             script: payload.ckScript as string | undefined,
             audioUrl: payload.ckAudioUrl as string | undefined,

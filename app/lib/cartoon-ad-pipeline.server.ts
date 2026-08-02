@@ -290,6 +290,7 @@ interface CartoonAdParams {
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean; // intangible offer — draw the OUTCOME, not an object
   videoEngine?: string; // engine-picker key (video-engines.ts); undefined = default
+  productSize?: string; // merchant's explicit size class — beats inference
   origin?: string; // provenance label for the finished card
   jobId?: string; // enables stage checkpointing
   resume?: {
@@ -519,7 +520,12 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         if (!composedUrl && !params.serviceMode && params.productImageUrl) {
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
-            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction);
+            // Without a scale hint the composer guesses, and a 12-piece case
+            // guesses small — the same "too small even on Large" the UGC path
+            // had. The merchant's choice wins over inference.
+            const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
+            const hint = scaleFromChoice(params.productSize) || (await inferProductScale(params.productTitle, params.productDescription));
+            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase);
             composedUrl = frames[0] || "";
             if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
           } catch (e) {
