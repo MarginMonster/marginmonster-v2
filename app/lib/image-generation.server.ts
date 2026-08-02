@@ -874,6 +874,9 @@ export interface PresenterHoldResult {
   attemptPath?: string;
   /** The inpaint mask — white is what the model was allowed to redraw. */
   maskPath?: string;
+  /** The composite BEFORE the blend. With this and the mask, which step
+   *  introduced a defect is a fact rather than a deduction from the output. */
+  prePastePath?: string;
   /** How the delivered frame was made: the merchant's photograph pasted onto
    *  a blank stand-in, the same paste used to repair a bad generative frame,
    *  or a purely generated product. */
@@ -920,6 +923,7 @@ export async function runPresenterHold(opts: {
   let standInUrl: string | undefined;
   let attemptPath: string | undefined;
   let maskPath: string | undefined;
+  let prePastePath: string | undefined;
   if (!opts.wear) {
     const blank = await runCompose(opts.scalePhrase, "blank", await productAspect(opts.productImageUrl));
     standInUrl = blank;
@@ -936,7 +940,17 @@ export async function runPresenterHold(opts: {
         // only a narrow band is left to repair — and a narrow band is the
         // difference between the model drawing fingers and the model drawing
         // another box.
-        const blend = await blendProductEdges(pasted, 0.12);
+        prePastePath = pasted.absPath;
+        // The blend is OFF unless asked for. The best frame produced all day
+        // was a flat paste with no blend: the merchant's real photograph,
+        // every line of packaging text crisp. The blend is a seam refinement,
+        // and a refinement that has introduced a new defect on each of its
+        // three outings does not get to stand between a merchant and a
+        // correct product. PRESENTER_EDGE_BLEND=1 turns it back on for
+        // whoever picks the seam work up.
+        const blend = process.env.PRESENTER_EDGE_BLEND === "1"
+          ? await blendProductEdges(pasted, 0.12)
+          : ({ ok: false, why: "disabled (PRESENTER_EDGE_BLEND unset)" } as BlendResult);
         maskPath = blend.maskPath;
         const blended = blend.ok ? blend : null;
         const blendNote = blend.ok ? "blended" : `blend failed: ${blend.why}`;
@@ -960,6 +974,7 @@ export async function runPresenterHold(opts: {
             standInUrl,
             attemptPath,
             maskPath,
+            prePastePath,
           };
         }
         standIn = `pasted · ${blendNote} · gate rejected it: ${qaB.reason}`;
@@ -1004,7 +1019,10 @@ export async function runPresenterHold(opts: {
     // it the delivered frame carries a hard rectangular cut, the old drawn box
     // showing past its sides, and no fingers in front of the product — a
     // photograph held up rather than a product held.
-    const rBlend = await blendProductEdges(pasted);
+    prePastePath = pasted.absPath;
+    const rBlend = process.env.PRESENTER_EDGE_BLEND === "1"
+      ? await blendProductEdges(pasted)
+      : ({ ok: false, why: "disabled (PRESENTER_EDGE_BLEND unset)" } as BlendResult);
     maskPath = rBlend.maskPath || maskPath;
     if (!rBlend.ok) standIn = `${standIn} · repair blend failed: ${rBlend.why}`;
     const best = rBlend.ok ? rBlend : pasted;
@@ -1033,6 +1051,7 @@ export async function runPresenterHold(opts: {
         standInUrl,
         attemptPath,
         maskPath,
+        prePastePath,
         failed: qa3.bad,
         wrongProduct: qa3.bad.some((k) => IDENTITY_FIELDS.includes(k)),
       };
@@ -1049,6 +1068,7 @@ export async function runPresenterHold(opts: {
     standInUrl,
     attemptPath,
     maskPath,
+    prePastePath,
     failed: qa.bad,
     wrongProduct: qa.bad.some((k) => IDENTITY_FIELDS.includes(k)),
   };

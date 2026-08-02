@@ -261,6 +261,11 @@ async function presenterHoldCheck(): Promise<string> {
       // And the composite that was BUILT, accepted or not. A rejected attempt
       // is otherwise invisible — the table shows whatever shipped instead —
       // and the rejected one is the thing being worked on.
+      if (r.prePastePath && r.prePastePath !== r.attemptPath && require("node:fs").existsSync(r.prePastePath)) {
+        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
+        require("node:fs").mkdirSync(dir, { recursive: true });
+        require("node:fs").copyFileSync(r.prePastePath, require("node:path").join(dir, `preblend-${portrait.split("/").pop()}`));
+      }
       if (r.maskPath && require("node:fs").existsSync(r.maskPath)) {
         const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
         require("node:fs").mkdirSync(dir, { recursive: true });
