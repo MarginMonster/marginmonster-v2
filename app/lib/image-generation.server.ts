@@ -589,12 +589,15 @@ async function overlayRealProduct(
   productImageUrl: string,
   opts: { blank?: boolean } = {}
 ): Promise<PasteResult> {
-  // On the blank path the stand-in is scenery, not a frame to fit inside: the
-  // blend erases whatever it does not cover, so the product may overhang it.
-  // Fitting INSIDE it is what produced a postage-stamp product marooned on a
-  // white shipping box — the model drew a squat box, the near-square product
-  // hit the height cap, and the paste shrank to a third of the width.
-  const fillWidth = !!opts.blank;
+  // On the blank path the product COVERS the stand-in — it fills the box's
+  // width and its height, overhanging in whichever direction it must.
+  //
+  // Fitting inside gave a postage-stamp product on a white box. Filling only
+  // the width left the box's upper half exposed, and handing a diffusion
+  // model a large empty region to repair got exactly what a large empty
+  // region gets: it drew a SECOND product there. The reliable answer is to
+  // leave it almost nothing to fill.
+  const cover = !!opts.blank;
   const give = (why: string): PasteResult => { console.warn(`[presenter:paste] skipped — ${why}`); return { ok: false, failed: why }; };
   const bin = ffmpegBin();
   if (!bin) return give("no ffmpeg binary");
@@ -670,8 +673,14 @@ async function overlayRealProduct(
     const cut = headerSize(tmpCut);
     let tw = bw;
     let th = cut ? Math.round((bw * cut.h) / cut.w) : bh;
-    if (!fillWidth && cut && th > bh * 1.6) { th = bh; tw = Math.round((bh * cut.w) / cut.h); }
-    const anchorY = fillWidth ? Math.round(bottom - bh + (bh - th) / 2) : bottom - th;
+    if (cover && cut) {
+      // max of the two fits — covers the box in both directions.
+      tw = Math.max(bw, Math.round((bh * cut.w) / cut.h));
+      th = Math.round((tw * cut.h) / cut.w);
+    } else if (cut && th > bh * 1.6) {
+      th = bh; tw = Math.round((bh * cut.w) / cut.h);
+    }
+    const anchorY = cover ? Math.round(bottom - bh + (bh - th) / 2) : bottom - th;
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +
       `[cut]split[c1][c2];` +
@@ -914,9 +923,11 @@ export async function runPresenterHold(opts: {
         // The paste covered the fingers that were gripping the stand-in, so
         // blend them back over its edges. Grade whichever version survives —
         // the blend is an improvement, not a guarantee.
-        // Wide, on this path: the whole stand-in has to disappear, not just
-        // its outline.
-        const blend = await blendProductEdges(pasted, 0.3);
+        // A THIN ring, even here. The product now covers the stand-in, so
+        // only a narrow band is left to repair — and a narrow band is the
+        // difference between the model drawing fingers and the model drawing
+        // another box.
+        const blend = await blendProductEdges(pasted, 0.12);
         const blended = blend.ok ? blend : null;
         const blendNote = blend.ok ? "blended" : `blend failed: ${blend.why}`;
         const best = blended || { file: pasted.file, absPath: pasted.absPath };
