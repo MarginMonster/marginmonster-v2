@@ -1,0 +1,109 @@
+name: Ad QA (golden set)
+
+# Renders a FIXED set of real products through the real ad pipeline, scores
+# every result with a vision rubric, and publishes a contact sheet.
+#
+# This exists because the dev sandbox has no AI keys and no egress beyond
+# GitHub, so this workflow is the only place the generation path can actually
+# be exercised. Before it existed, the only QA was the founder spotting bad ads
+# in the Archive on a phone — every prompt fix this month was reactive.
+#
+# It SPENDS MONEY: one nano-banana render per cell (two if the live gate
+# rejects the first), plus two Claude vision calls. MAX_RENDERS is a hard cap.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   ANTHROPIC_API_KEY     — copy generation + the vision gate + the rubric
+#   REPLICATE_API_TOKEN   — the nano-banana renders
+# Without them the job exits neutral (78) rather than failing red: nothing was
+# tested, and that is not a code failure.
+
+on:
+  workflow_dispatch:
+    inputs:
+      formats:
+        description: 'Comma-separated format keys (e.g. review,versus,callout,chat)'
+        required: false
+        default: review,versus,callout,chat
+      limit:
+        description: 'How many golden-set products to use'
+        required: false
+        default: "4"
+      max_renders:
+        description: 'Hard cap on cells — cost control'
+        required: false
+        default: "24"
+      store_url:
+        description: 'Only needed to SEED qa/golden-set.json the first time'
+        required: false
+        default: ""
+      fail_under:
+        description: 'Fail the job if the gate pass rate is under this %% (0 = never fail)'
+        required: false
+        default: "0"
+
+  # Prompt edits are exactly what this is for, but auto-running on every push
+  # spends money without anyone asking. Off until you set the repository
+  # variable AD_QA_ON_PUSH to "true" (Settings → Variables → Actions).
+  push:
+    paths:
+      - 'app/lib/image-generation.server.ts'
+      - 'app/lib/ad-formats.ts'
+      - 'app/lib/fal-image.server.ts'
+      - 'scripts/ad-qa.ts'
+
+concurrency:
+  group: ad-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    # Manual runs always go. Push runs only when the repo opts in.
+    if: github.event_name == 'workflow_dispatch' || vars.AD_QA_ON_PUSH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma client
+        # image-generation.server.ts imports db.server, which constructs a
+        # PrismaClient at module load. No database is contacted — the harness
+        # never queries — but the generated client has to exist to import.
+        run: npx prisma generate
+
+      - name: Bundle the harness
+        # esbuild (already present via Vite) resolves the app's TS imports and
+        # emits one runnable ESM file. Externals are packages that must load
+        # from node_modules at runtime rather than be inlined.
+        run: |
+          npx esbuild scripts/ad-qa.ts \
+            --bundle --platform=node --format=esm --target=node20 \
+            --external:@prisma/client --external:ffmpeg-static --external:sharp \
+            --outfile=ad-qa.mjs
+          ls -la ad-qa.mjs
+
+      - name: Run the golden set
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          FORMATS: ${{ inputs.formats || 'review,versus,callout,chat' }}
+          LIMIT: ${{ inputs.limit || '3' }}
+          MAX_RENDERS: ${{ inputs.max_renders || '12' }}
+          STORE_URL: ${{ inputs.store_url }}
+          FAIL_UNDER: ${{ inputs.fail_under || '0' }}
+          QA_OUT: qa-out
+        run: node ad-qa.mjs
+
+      - name: Upload contact sheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ad-qa-report
+          path: qa-out
+          retention-days: 14

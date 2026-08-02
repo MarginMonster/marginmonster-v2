@@ -755,6 +755,73 @@ async function formatCopy(
   } catch { return null; }
 }
 
+/** The format rung, end to end: copy → layout → render → QA → one corrective
+ *  retry. Extracted so the QA harness (scripts/ad-qa.mts) exercises the SAME
+ *  code path merchants hit, rather than a parallel re-implementation that can
+ *  drift from it — a harness testing a copy of the pipeline proves nothing.
+ *
+ *  Deliberately free of the DB, tokens, plans and asset writing that wrap it
+ *  in generateImageAd, so it can be run in CI against a product photo alone. */
+export interface FormatRunResult {
+  imageUrl: string | null;
+  copy: Record<string, string> | null;
+  prompt: string | null;
+  qaPass: boolean;
+  qaReason: string;
+  retried: boolean;
+  /** Set when the rung gave up — the caller falls through to the scene ladder. */
+  fallback: string | null;
+}
+
+export async function runFormatRung(opts: {
+  formatKey: string;
+  fields: string[];
+  productTitle: string;
+  productImageUrl: string;
+  tone?: string;
+  direction?: string;
+  contentLang?: string | null;
+  merchantOffer?: string | null;
+}): Promise<FormatRunResult> {
+  const nil = (fallback: string): FormatRunResult =>
+    ({ imageUrl: null, copy: null, prompt: null, qaPass: false, qaReason: "", retried: false, fallback });
+
+  // The merchant PICKED this format. Losing it silently and shipping a generic
+  // scene instead is the worst possible outcome, so copy gets a second chance.
+  let copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer);
+  if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer);
+  if (!copy) return nil("copy-failed");
+
+  const prompt = formatLayoutPrompt(opts.formatKey, copy);
+  const renderOnce = (fix?: string) => repRun("google/nano-banana", {
+    prompt: fix
+      ? `${prompt} The previous attempt was rejected because: ${fix}. Fix exactly that — render every string once, spelled correctly and reading as natural English.`
+      : prompt,
+    image_input: [opts.productImageUrl],
+    output_format: "jpg",
+  });
+
+  let imageUrl = await renderOnce();
+  let qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy));
+  let retried = false;
+  if (!qa.pass) {
+    // A blind re-roll of the identical prompt repeats the same mistake as often
+    // as not. Tell it what went wrong.
+    retried = true;
+    imageUrl = await renderOnce(qa.reason);
+    qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy));
+  }
+  return {
+    imageUrl,
+    copy,
+    prompt,
+    qaPass: qa.pass,
+    qaReason: qa.reason,
+    retried,
+    fallback: qa.pass ? null : `qa-failed: ${qa.reason}`,
+  };
+}
+
 /** Vision QA for format ads: exact-ish text + unwarped product. */
 async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[]): Promise<{ pass: boolean; reason: string }> {
   try {
@@ -1289,41 +1356,21 @@ export async function generateImageAd(
         const f = AD_FORMAT_BY_KEY[formatKey];
         if (f) {
           const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-          // The merchant PICKED this format. Losing it silently and shipping a
-          // generic scene instead is the worst possible outcome, so the copy
-          // step gets a second chance and every fallthrough is recorded.
-          let copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang, merchantOffer);
-          if (!copy) copy = await formatCopy(f.key, f.fields, productTitle, voiceTone, stylePrompt, contentLang, merchantOffer);
-          if (!copy) {
-            genMeta.formatFallback = "copy-failed";
-            artLog("image-ad", `format ${f.key}: copy generation failed twice — falling back to a scene ad`);
-          }
-          if (copy) {
-            usedPrompt = formatLayoutPrompt(f.key, copy);
-            const renderOnce = (fix?: string) => repRun("google/nano-banana", {
-              prompt: fix ? `${usedPrompt} The previous attempt was rejected because: ${fix}. Fix exactly that — render every string once, spelled correctly and reading as natural English.` : usedPrompt,
-              image_input: [productImageUrl!],
-              output_format: "jpg",
-            });
-            imageUrl = await renderOnce();
-            let qa = await qaFormat(imageUrl, productImageUrl!, Object.values(copy));
-            if (!qa.pass) {
-              console.log(`[image-ad] format QA rejected (${qa.reason}) — retrying`);
-              // A blind re-roll of the identical prompt repeats the same
-              // mistake as often as not. Tell it what went wrong.
-              imageUrl = await renderOnce(qa.reason);
-              qa = await qaFormat(imageUrl, productImageUrl!, Object.values(copy));
-            }
-            if (qa.pass) {
-              genMeta.method = `format:${f.key}`;
-              genMeta.formatCopy = copy;
-              artLog("image-ad", `format ${f.key}: rendered OK`);
-            } else {
-              imageUrl = null; // fall through to the ladder — never ship garbled text
-              genMeta.formatFallback = `qa-failed: ${qa.reason}`;
-              artLog("image-ad", `format ${f.key}: QA rejected twice (${qa.reason}) — falling back to a scene ad`);
-              console.log(`[image-ad] format ${f.key} failed QA twice — falling to ladder`);
-            }
+          const r = await runFormatRung({
+            formatKey: f.key, fields: f.fields, productTitle, productImageUrl: productImageUrl!,
+            tone: voiceTone, direction: stylePrompt, contentLang, merchantOffer,
+          });
+          if (r.qaPass && r.imageUrl) {
+            imageUrl = r.imageUrl;
+            usedPrompt = r.prompt || usedPrompt;
+            genMeta.method = `format:${f.key}`;
+            genMeta.formatCopy = r.copy;
+            artLog("image-ad", `format ${f.key}: rendered OK${r.retried ? " (on retry)" : ""}`);
+          } else {
+            imageUrl = null; // fall through to the ladder — never ship garbled text
+            genMeta.formatFallback = r.fallback || "unknown";
+            artLog("image-ad", `format ${f.key}: ${r.fallback} — falling back to a scene ad`);
+            console.log(`[image-ad] format ${f.key} failed (${r.fallback}) — falling to ladder`);
           }
         }
       } catch (e) {
