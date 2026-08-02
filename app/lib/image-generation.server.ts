@@ -706,7 +706,14 @@ async function overlayRealProduct(
 type BlendResult = { ok: true; file: string; absPath: string } | { ok: false; why: string };
 
 async function blendProductEdges(
-  pasted: { absPath: string; cutoutPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } }
+  pasted: { absPath: string; cutoutPath: string; rect: { x: number; y: number; w: number; h: number }; frame: { w: number; h: number } },
+  // How far beyond the product the editable area reaches, as a fraction of
+  // the product's width. A ring is enough to put fingers back on a product
+  // the model drew. A stand-in needs far more, because the plain box is
+  // BIGGER than the photo pasted onto it and whatever is left outside the
+  // work area survives — which is exactly what "a flat printed poster glued
+  // onto a plain shipping box" means.
+  dilate = 0.10
 ): Promise<BlendResult> {
   // Third time writing this note: a reason in console.warn is a reason nobody
   // reads. The blend failed on every frame of a sweep and the report could
@@ -719,9 +726,7 @@ async function blendProductEdges(
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const maskFile = path.join(dir, `.mk-${stamp}.png`);
   const { rect, frame } = pasted;
-  // How far beyond the product the fingers may be drawn. Scales with the
-  // product so a small item doesn't get a work area wider than itself.
-  const out = Math.max(24, Math.round(rect.w * 0.10));
+  const out = Math.max(24, Math.round(rect.w * dilate));
   const ox = Math.max(0, rect.x - out);
   const oy = Math.max(0, rect.y - out);
   const ow = Math.min(frame.w - ox, rect.w + out * 2);
@@ -836,6 +841,10 @@ export interface PresenterHoldResult {
   /** The bare stand-in frame, so a run can show whether the blank box itself
    *  came out usable. */
   standInUrl?: string;
+  /** The composite that was built, whether or not it was accepted. Without
+   *  this a rejected attempt is invisible: the report shows the frame that
+   *  shipped instead, and the thing being iterated on can never be looked at. */
+  attemptPath?: string;
   /** How the delivered frame was made: the merchant's photograph pasted onto
    *  a blank stand-in, the same paste used to repair a bad generative frame,
    *  or a purely generated product. */
@@ -880,6 +889,7 @@ export async function runPresenterHold(opts: {
   // own photograph goes on top. The only thing left to get right is the pose.
   let standIn = "not attempted";
   let standInUrl: string | undefined;
+  let attemptPath: string | undefined;
   if (!opts.wear) {
     const blank = await runCompose(opts.scalePhrase, "blank", await productAspect(opts.productImageUrl));
     standInUrl = blank;
@@ -892,10 +902,13 @@ export async function runPresenterHold(opts: {
         // The paste covered the fingers that were gripping the stand-in, so
         // blend them back over its edges. Grade whichever version survives —
         // the blend is an improvement, not a guarantee.
-        const blend = await blendProductEdges(pasted);
+        // Wide, on this path: the whole stand-in has to disappear, not just
+        // its outline.
+        const blend = await blendProductEdges(pasted, 0.3);
         const blended = blend.ok ? blend : null;
         const blendNote = blend.ok ? "blended" : `blend failed: ${blend.why}`;
         const best = blended || { file: pasted.file, absPath: pasted.absPath };
+        attemptPath = best.absPath;
         const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
         const qaB = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
         if (qaB.pass) {
@@ -912,6 +925,7 @@ export async function runPresenterHold(opts: {
             wrongProduct: false,
             standIn: `pasted · ${blendNote} · accepted`,
             standInUrl,
+            attemptPath,
           };
         }
         standIn = `pasted · ${blendNote} · gate rejected it: ${qaB.reason}`;
@@ -963,6 +977,7 @@ export async function runPresenterHold(opts: {
     // before it has a public address, and off production there is no public
     // address to give it — the first cut built one from SHOPIFY_APP_URL, which
     // is unset in CI, so the paste could never be scored there.
+    attemptPath = best.absPath;
     const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
     const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
     // Take the repair only if it actually repaired something. The old
@@ -981,6 +996,7 @@ export async function runPresenterHold(opts: {
         via: "paste-repair",
         standIn,
         standInUrl,
+        attemptPath,
         failed: qa3.bad,
         wrongProduct: qa3.bad.some((k) => IDENTITY_FIELDS.includes(k)),
       };
@@ -995,6 +1011,7 @@ export async function runPresenterHold(opts: {
     via: "drawn",
     standIn,
     standInUrl,
+    attemptPath,
     failed: qa.bad,
     wrongProduct: qa.bad.some((k) => IDENTITY_FIELDS.includes(k)),
   };

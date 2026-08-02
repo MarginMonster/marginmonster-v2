@@ -258,6 +258,14 @@ async function presenterHoldCheck(): Promise<string> {
       // The bare stand-in as well. When the blank path fails it is the only
       // way to tell a bad blank box from a bad paste.
       if (r.standInUrl) await saveFrame(r.standInUrl, `standin-${portrait.split("/").pop()}`);
+      // And the composite that was BUILT, accepted or not. A rejected attempt
+      // is otherwise invisible — the table shows whatever shipped instead —
+      // and the rejected one is the thing being worked on.
+      if (r.attemptPath && r.attemptPath !== r.localPath && require("node:fs").existsSync(r.attemptPath)) {
+        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
+        require("node:fs").mkdirSync(dir, { recursive: true });
+        require("node:fs").copyFileSync(r.attemptPath, require("node:path").join(dir, `composite-${portrait.split("/").pop()}`));
+      }
       // What production would actually DO with this frame, which is now the
       // number that matters: a wrong-product hold is dropped for a product
       // still rather than shipped with a lookalike in the presenter's hands.
