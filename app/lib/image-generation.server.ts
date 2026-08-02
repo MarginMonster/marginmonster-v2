@@ -736,30 +736,55 @@ async function blendProductEdges(
     // alpha means everything that is not the product — including whatever is
     // left of the plain box — is editable, so the case becomes the object in
     // the hands instead of a picture stuck to one.
-    // Built with overlay rather than pad. pad REFUSES a placement that runs
-    // past the canvas — negative x/y, or x+w beyond the width — and the
-    // pasted product legitimately clips the frame edge, so the whole graph
-    // failed and the blend never ran once. overlay clips instead of refusing.
     //
-    //   box   = white over the work area
-    //   prot  = white canvas with the product's silhouette painted BLACK
+    // NO lavfi SOURCE. Both earlier versions of this died with
+    // "vost#0:0/png … return code -22 (Invalid argument) · Conversion
+    // failed!", and the one thing they shared was a `color=` filter source
+    // feeding a PNG output. Every ffmpeg call in this file that works — the
+    // paste, the text overlay — feeds only decoded files. So both canvases
+    // are made by flooding a copy of the pasted frame with drawbox, which
+    // costs nothing and keeps the graph on the path that is known good.
+    //
+    //   box   = black frame, white over the work area
+    //   prot  = white frame, product silhouette in black
     //   mask  = box × prot → white only where editing is allowed
     const soft = Math.max(1, Math.round(rect.w * 0.006)); // feather, so the seam is not a cliff
     const graph =
-      `color=black:s=${frame.w}x${frame.h},format=rgb24,` +
-      `drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill[box];` +
-      `color=white:s=${frame.w}x${frame.h},format=rgb24[cv];` +
-      `[0:v]scale=${rect.w}:${rect.h},alphaextract,gblur=sigma=${soft},negate,format=rgb24[pa];` +
-      `[cv][pa]overlay=x=${rect.x}:y=${rect.y}:format=rgb[prot];` +
+      `[0:v]split=2[a][b];` +
+      `[a]drawbox=x=0:y=0:w=${frame.w}:h=${frame.h}:color=black@1.0:t=fill,` +
+      `drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill,format=gbrp[box];` +
+      `[b]drawbox=x=0:y=0:w=${frame.w}:h=${frame.h}:color=white@1.0:t=fill,format=gbrp[cv];` +
+      `[1:v]scale=${rect.w}:${rect.h},alphaextract,gblur=sigma=${soft},negate,format=gbrp[pa];` +
+      `[cv][pa]overlay=x=${rect.x}:y=${rect.y}[prot];` +
       `[box][prot]blend=all_mode=multiply,format=gray[mask]`;
     const mk = await runFfmpegStill(
       bin,
-      ["-y", "-i", pasted.cutoutPath, "-filter_complex", graph, "-map", "[mask]", "-frames:v", "1", maskFile],
+      ["-y", "-i", pasted.absPath, "-i", pasted.cutoutPath, "-filter_complex", graph, "-map", "[mask]", "-frames:v", "1", maskFile],
       { captureStderr: true }
     );
+    const why = (r: { stderr: string }) =>
+      (r.stderr || "").split("\n").filter((l) => /error|invalid|unable|no such|not within|failed/i.test(l)).slice(-2).join(" · ").slice(0, 180);
+
     if (!mk.ok || !fs.existsSync(maskFile)) {
-      const tail = (mk.stderr || "").split("\n").filter((l) => /error|invalid|unable|no such|not within|failed/i.test(l)).slice(-2).join(" · ");
-      return give(`mask filter failed${tail ? `: ${tail.slice(0, 180)}` : " (no stderr)"}`);
+      // The silhouette needs the cutout to carry an alpha channel. If
+      // background removal handed back something flat, alphaextract has
+      // nothing to read — fall back to a plain ring around the product, which
+      // still buys fingers over the edges and a contact shadow, and say which
+      // one was used rather than pretending they are the same thing.
+      const ring = await runFfmpegStill(
+        bin,
+        ["-y", "-i", pasted.absPath, "-filter_complex",
+          `[0:v]drawbox=x=0:y=0:w=${frame.w}:h=${frame.h}:color=black@1.0:t=fill,` +
+          `drawbox=x=${ox}:y=${oy}:w=${ow}:h=${oh}:color=white@1.0:t=fill,` +
+          `drawbox=x=${rect.x + soft * 2}:y=${rect.y + soft * 2}:w=${Math.max(1, rect.w - soft * 4)}:h=${Math.max(1, rect.h - soft * 4)}:color=black@1.0:t=fill,` +
+          `format=gray[mask]`,
+          "-map", "[mask]", "-frames:v", "1", maskFile],
+        { captureStderr: true }
+      );
+      if (!ring.ok || !fs.existsSync(maskFile)) {
+        return give(`mask filter failed: ${why(mk) || "(no stderr)"} · ring fallback also failed: ${why(ring) || "(no stderr)"}`);
+      }
+      console.warn(`[presenter:blend] silhouette mask failed (${why(mk)}) — using the rectangular ring`);
     }
 
     const edited = await inpaintFill(
