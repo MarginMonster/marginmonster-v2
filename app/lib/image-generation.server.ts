@@ -113,10 +113,55 @@ async function bandLuma(bin: string, src: string, yFrac: number, hFrac: number):
   return m ? parseFloat(m[1]) : null;
 }
 
+/** Read a JPEG or PNG's dimensions out of its own header.
+ *
+ *  Both probes below shell out to ffprobe, derived from the ffmpeg path — but
+ *  ffmpeg-static ships ffmpeg ALONE, and the GitHub runner image no longer
+ *  carries a system ffmpeg. So on CI the derived ffprobe path pointed at a
+ *  file that does not exist, every probe returned null, and the presenter
+ *  composite bailed out before it ever pasted anything. The bytes are already
+ *  on disk and both formats state their size in the first few hundred bytes;
+ *  no subprocess required. */
+function headerSize(file: string): { w: number; h: number } | null {
+  try {
+    // Whole file: fal's frames carry ~130 KB of ICC and XMP ahead of the SOF
+    // marker, so a fixed head buffer misses it and reports nothing. Stills are
+    // a couple of megabytes at worst.
+    const buf = fs.readFileSync(file);
+    const read = buf.length;
+    if (read < 24) return null;
+    // PNG: IHDR is always the first chunk, width/height at bytes 16..24.
+    if (buf.readUInt32BE(0) === 0x89504e47) {
+      const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+      return w > 0 && h > 0 ? { w, h } : null;
+    }
+    // JPEG: walk the segment chain to the first SOF marker, which carries them.
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let i = 2;
+      while (i + 9 < read) {
+        if (buf[i] !== 0xff) { i++; continue; }
+        const marker = buf[i + 1];
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+        const len = buf.readUInt16BE(i + 2);
+        // SOF0-SOF15, excluding the DHT/JPG/DAC markers interleaved in that range.
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+          return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+        }
+        i += 2 + len;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Pixel width of a still. The text overlay sizes against it, and guessing
  *  wrong slices the headline off the edge. Null when ffprobe can't read it —
  *  callers fall back to the old 1024 assumption. */
 async function probeHeight(bin: string, file: string): Promise<number | null> {
+  const hdr = headerSize(file);
+  if (hdr) return hdr.h;
   try {
     const { execFileSync } = await import("node:child_process");
     const probe = bin.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace(/ffmpeg/i, "ffprobe"));
@@ -132,6 +177,8 @@ async function probeHeight(bin: string, file: string): Promise<number | null> {
 }
 
 async function probeWidth(bin: string, file: string): Promise<number | null> {
+  const hdr = headerSize(file);
+  if (hdr) return hdr.w;
   try {
     const { execFileSync } = await import("node:child_process");
     const probe = bin.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace(/ffmpeg/i, "ffprobe"));
@@ -435,11 +482,17 @@ async function qaPresenterHold(
           : `correctScale: judging by what the product obviously is, is it a believable size against the person?`,
         `noSourceText: has marketing text, a caption, a price flash or a shop watermark from image 1's BACKGROUND been copied in, or packaging text duplicated? Answer true if NOT.`,
         `handsOk: COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
+        // Counting digits is not the same as looking at them. A frame came back
+        // with the right NUMBER of fingers rendered as pale wooden dolls'
+        // fingers with drawn-on knuckle lines, and a count-only question waved
+        // it through as "hands ok".
+        `handsHuman: LOOK AT the fingers, ignoring how many there are. Are they living human fingers — skin the same tone as the wrists and arms they grow from, tapering naturally, with real nails and knuckles? A failure is fingers that look wooden, plastic, doll-like, prosthetic or mannequin; pale sausage shapes with painted-on joint lines; fingers that do not join the hand; fingers melting into the product. If they would make a viewer flinch, this is false.`,
+        `faceVisible: is the presenter's whole face — eyes, nose AND mouth — unobstructed? A product held up covering the mouth or chin is a failure; the presenter is meant to be selling to camera.`,
         `notSelfie: is the presenter NOT reaching an arm toward the lens as though holding the camera? An outstretched arm while both hands hold the product implies a third arm off-frame.`,
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
-        `Reply ONLY JSON: {"artworkMatches":bool,"notSimplified":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"notSelfie":bool,"reason":"..."}`,
+        `Reply ONLY JSON: {"artworkMatches":bool,"notSimplified":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productUrl, genUrl],
       { maxTokens: 300 }
@@ -447,7 +500,7 @@ async function qaPresenterHold(
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) return { pass: true, reason: "qa-unparseable" };
     const j = JSON.parse(m[0]) as Record<string, unknown>;
-    const bad = (["artworkMatches", "notSimplified", "textFaithful", "correctScale", "noSourceText", "handsOk", "notSelfie"] as const)
+    const bad = (["artworkMatches", "notSimplified", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
       .filter((k) => j[k] === false);
     if (!bad.length) return { pass: true, reason: "clean" };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
@@ -471,13 +524,22 @@ async function qaPresenterHold(
  *  just never wired to presenter holds.
  *
  *  Returns null on any failure so the caller keeps the generative frame: a
- *  mispasted product is worse than an approximated one. */
-async function overlayRealProduct(frameUrl: string, productImageUrl: string): Promise<string | null> {
+ *  mispasted product is worse than an approximated one.
+ *
+ *  Every bail says WHY on the way out. The first run of this shipped silent
+ *  returns, the sweep reported "drawn" for both presenters, and there was no
+ *  way to tell which of four steps had given up. */
+async function overlayRealProduct(
+  frameUrl: string,
+  productImageUrl: string
+): Promise<{ file: string; absPath: string } | null> {
+  const give = (why: string) => { console.warn(`[presenter:paste] skipped — ${why}`); return null; };
   const bin = ffmpegBin();
-  if (!bin) return null;
+  if (!bin) return give("no ffmpeg binary");
 
   // Where did the model put it? Percentages so the answer is resolution-free.
   let box: { x: number; y: number; w: number; h: number } | null = null;
+  let boxNote = "vision returned no JSON box";
   try {
     const raw = await anthropicVision(
       [
@@ -496,13 +558,17 @@ async function overlayRealProduct(frameUrl: string, productImageUrl: string): Pr
       const ok = ["x", "y", "w", "h"].every((k) => typeof j[k] === "number" && j[k] >= 0 && j[k] <= 100);
       // A box that covers almost everything, or almost nothing, is a bad read
       // rather than a real answer — better to keep the generative frame.
-      if (ok && j.w > 8 && j.h > 8 && j.w < 95 && j.h < 95) box = { x: j.x, y: j.y, w: j.w, h: j.h };
+      if (!ok) boxNote = `box out of range: ${m[0].slice(0, 80)}`;
+      else if (!(j.w > 8 && j.h > 8 && j.w < 95 && j.h < 95)) boxNote = `implausible box ${Math.round(j.w)}×${Math.round(j.h)}%`;
+      else box = { x: j.x, y: j.y, w: j.w, h: j.h };
     }
-  } catch { /* no box → caller keeps the generative frame */ }
-  if (!box) return null;
+  } catch (e) {
+    boxNote = `vision failed: ${(e as Error).message.slice(0, 120)}`;
+  }
+  if (!box) return give(boxNote);
 
   const cutout = await removeBackground(productImageUrl);
-  if (!cutout) return null;
+  if (!cutout) return give("background removal returned nothing");
 
   const dir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(dir, { recursive: true });
@@ -514,12 +580,12 @@ async function overlayRealProduct(frameUrl: string, productImageUrl: string): Pr
   try {
     for (const [src, file] of [[frameUrl, tmpFrame], [cutout, tmpCut]] as const) {
       const res = await fetch(src);
-      if (!res.ok) return null;
+      if (!res.ok) return give(`download ${res.status} for ${src.slice(0, 60)}`);
       fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
     }
     const W = await probeWidth(bin, tmpFrame);
     const H = await probeHeight(bin, tmpFrame);
-    if (!W || !H) return null;
+    if (!W || !H) return give("could not probe frame dimensions");
 
     // Fit INSIDE the box the model used, so the product keeps its own aspect
     // ratio rather than being stretched to whatever shape got drawn.
@@ -536,10 +602,10 @@ async function overlayRealProduct(frameUrl: string, productImageUrl: string): Pr
       `[0:v][sh]overlay=x=${bx}+(${bw}-w)/2+6:y=${by}+(${bh}-h)/2+8[b1];` +
       `[b1][c1]overlay=x=${bx}+(${bw}-w)/2:y=${by}+(${bh}-h)/2[outv]`;
     const { ok } = await runFfmpegStill(bin, ["-y", "-i", tmpFrame, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out]);
-    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return fileName;
-    return null;
-  } catch {
-    return null;
+    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return give(ok ? "ffmpeg wrote nothing usable" : "ffmpeg overlay failed");
+  } catch (e) {
+    return give(`overlay threw: ${(e as Error).message.slice(0, 120)}`);
   } finally {
     try { fs.rmSync(tmpFrame, { force: true }); fs.rmSync(tmpCut, { force: true }); } catch { /* best-effort */ }
   }
@@ -558,6 +624,9 @@ export interface PresenterHoldResult {
   retried: boolean;
   /** True when the merchant's real product photo was pasted over the drawn one. */
   composited?: boolean;
+  /** On-disk path of the composited frame, when there is one. The QA harness
+   *  publishes these bytes; production only needs the URL. */
+  localPath?: string;
 }
 
 export async function runPresenterHold(opts: {
@@ -604,10 +673,22 @@ export async function runPresenterHold(opts: {
   // a badly-placed paste is worse than a well-drawn approximation.
   const pasted = await overlayRealProduct(composed, opts.productImageUrl);
   if (pasted) {
-    const pastedUrl = `${(process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "")}/renders/${pasted}`;
-    const qa3 = await qaPresenterHold(opts.productImageUrl, pastedUrl, opts.scalePhrase);
+    // Grade the BYTES, not a URL. The composite exists on the render disk
+    // before it has a public address, and off production there is no public
+    // address to give it — the first cut built one from SHOPIFY_APP_URL, which
+    // is unset in CI, so the paste could never be scored there.
+    const inline = `data:image/jpeg;base64,${fs.readFileSync(pasted.absPath).toString("base64")}`;
+    const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
     if (qa3.pass || !qa.pass) {
-      return { url: pastedUrl, pass: qa3.pass, reason: `real-product-composite · ${qa3.reason}`, retried, composited: true };
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      return {
+        url: base ? `${base}/renders/${pasted.file}` : composed,
+        pass: qa3.pass,
+        reason: `real-product-composite · ${qa3.reason}`,
+        retried,
+        composited: true,
+        localPath: pasted.absPath,
+      };
     }
   }
   return { url: composed, pass: qa.pass, reason: qa.reason, retried, composited: false };

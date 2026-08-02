@@ -81,7 +81,12 @@ export async function anthropicText(
 }
 
 /** Vision call — same raw-fetch client, with image URLs attached. Used by the
- *  image-ad QA gate to score product fidelity before a still ships. */
+ *  image-ad QA gate to score product fidelity before a still ships.
+ *
+ *  Accepts `data:image/...;base64,...` alongside http(s) URLs. Frames we build
+ *  ourselves — an ffmpeg composite, say — live on the render disk before they
+ *  have a public address, and outside production there may be no public
+ *  address at all. Those still have to be gradeable, so they go up inline. */
 export async function anthropicVision(
   prompt: string,
   imageUrls: string[],
@@ -90,10 +95,13 @@ export async function anthropicVision(
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
   const model = opts.model || "claude-haiku-4-5-20251001";
-  const content: unknown[] = imageUrls.map((url) => ({
-    type: "image",
-    source: { type: "url", url },
-  }));
+  const content: unknown[] = imageUrls.map((url) => {
+    const inline = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(url);
+    if (inline) {
+      return { type: "image", source: { type: "base64", media_type: inline[1].toLowerCase(), data: inline[2] } };
+    }
+    return { type: "image", source: { type: "url", url } };
+  });
   content.push({ type: "text", text: prompt });
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",

@@ -176,8 +176,16 @@ async function presenterHoldCheck(): Promise<string> {
       // Grade INDEPENDENTLY of the gate. The production gate saying "clean" is
       // exactly the claim under test — a second opinion is the only way to
       // catch a gate that is too lenient, which is how this defect shipped.
+      // Judge the BYTES when we have them. A composited frame lives on the
+      // render disk with no public address in CI, so grading it by URL
+      // silently graded nothing — which is how the first paste run reported
+      // "drawn" for every row with no explanation.
+      let judgeRef = r.url;
+      if (r.localPath && require("node:fs").existsSync(r.localPath)) {
+        judgeRef = `data:image/jpeg;base64,${require("node:fs").readFileSync(r.localPath).toString("base64")}`;
+      }
       let verdict = "not graded";
-      if (r.url) {
+      if (judgeRef) {
         const raw = await anthropicVision(
           [
             `Image 1 is the merchant's real product photo. Image 2 is an ad of a presenter holding it.`,
@@ -189,25 +197,42 @@ async function presenterHoldCheck(): Promise<string> {
             `notSimplified: does image 2 show the same NUMBER of units, boxes or panels as image 1? A twelve-box display case rendered as a single box is a FAILURE.`,
             `correctScale: believable real-world size against the person?`,
             `handsOk: four fingers and one thumb per hand, exactly two hands, no extra limb.`,
+            // Counting digits is not looking at them: a frame with the right
+            // NUMBER of fingers, drawn as pale wooden dolls' fingers with
+            // painted-on joints, was graded "hands ok" by the count question.
+            `handsHuman: ignoring the count, are the fingers LIVING HUMAN fingers — skin matching the wrists, natural taper, real nails? Wooden, plastic, doll-like or mannequin fingers, or pale sausages with drawn-on joint lines, are a FAILURE.`,
+            `faceVisible: are the presenter's eyes, nose AND mouth all unobstructed? A product held up over the mouth or chin is a FAILURE.`,
             `notes: one short sentence on the worst problem, or "clean".`,
-            `Reply ONLY JSON: {"artworkMatches":bool,"textFaithful":bool,"notSimplified":bool,"correctScale":bool,"handsOk":bool,"notes":"..."}`,
+            `Reply ONLY JSON: {"artworkMatches":bool,"textFaithful":bool,"notSimplified":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
           ].join("\n"),
-          [productUrl, r.url]
+          [productUrl, judgeRef]
         );
         const m = raw && raw.match(/\{[\s\S]*\}/);
-        const j = m ? JSON.parse(m[0]) as { artworkMatches?: boolean; textFaithful?: boolean; notSimplified?: boolean; correctScale?: boolean; handsOk?: boolean; notes?: string } : null;
-        const ok = !!j?.artworkMatches && !!j?.textFaithful && !!j?.notSimplified && !!j?.correctScale && !!j?.handsOk;
+        const j = m ? JSON.parse(m[0]) as Record<string, unknown> : null;
+        const yes = (k: string) => !!j && j[k] !== false && j[k] !== undefined;
+        const ok = ["artworkMatches", "textFaithful", "notSimplified", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
         if (ok) shipped++;
         verdict = [
-          j?.artworkMatches ? "art ok" : "**ART WRONG**",
-          j?.textFaithful ? "text ok" : "**TEXT WRONG**",
-          j?.notSimplified ? "count ok" : "**simplified**",
-          j?.correctScale ? "scale ok" : "**scale off**",
-          j?.handsOk ? "hands ok" : "**hands bad**",
+          yes("artworkMatches") ? "art ok" : "**ART WRONG**",
+          yes("textFaithful") ? "text ok" : "**TEXT WRONG**",
+          yes("notSimplified") ? "count ok" : "**simplified**",
+          yes("correctScale") ? "scale ok" : "**scale off**",
+          yes("handsOk") ? "digits ok" : "**digit count bad**",
+          yes("handsHuman") ? "hands human" : "**HANDS INHUMAN**",
+          yes("faceVisible") ? "face clear" : "**FACE BLOCKED**",
         ].join(" · ");
-        console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${j?.notes || ""}`);
+        console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${String(j?.notes || "")}`);
       }
-      if (r.url) await saveFrame(r.url, `presenter-${portrait.split("/").pop()}`);
+      // Publish what was actually JUDGED. Saving r.url after a paste would
+      // ship the pre-composite frame and quietly disagree with the verdict.
+      const frameName = `presenter-${portrait.split("/").pop()}`;
+      if (r.localPath && require("node:fs").existsSync(r.localPath)) {
+        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
+        require("node:fs").mkdirSync(dir, { recursive: true });
+        require("node:fs").copyFileSync(r.localPath, require("node:path").join(dir, frameName));
+      } else if (r.url) {
+        await saveFrame(r.url, frameName);
+      }
       rows.push(`| ${portrait.split("/").pop()} | ${r.composited ? "**real photo pasted**" : "drawn"} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
       rows.push(`| ${portrait.split("/").pop()} | ERROR | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | |`);

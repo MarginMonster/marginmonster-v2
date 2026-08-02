@@ -91,6 +91,13 @@ export async function submitCompose(
         `Hands are anatomically correct: each hand has FOUR fingers and ONE thumb, five digits total, never six. ` +
         `If the thumb is hidden behind the product, exactly FOUR fingers are visible on that hand — never five fingers plus a hidden thumb. ` +
         `EXACTLY TWO hands are visible in the whole image and both belong to the presenter — never add a third hand, a spare arm, or a disembodied hand holding the product. ` +
+        // Counting was not enough: a frame came back with the right number of
+        // fingers rendered as pale wooden dolls' fingers with painted-on joint
+        // lines, gripping the box like a marionette.
+        `The fingers are LIVING HUMAN fingers with the same skin tone as the wrists they grow from, natural tapering, real nails and knuckles — never wooden, plastic, doll-like, prosthetic or mannequin fingers, never pale sausage shapes with drawn-on joint lines. ` +
+        // The product is the pitch, but the presenter is the ad. A case held up
+        // over the mouth is a frame with nobody talking in it.
+        `The product is held at chest height, BELOW the chin — the presenter's whole face stays unobstructed, with eyes, nose and mouth fully visible above the product. Never raise the product in front of the face. ` +
         `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         // NOT a selfie. A selfie needs a hand on the phone, so asking for one
         // while both hands hold the product forces the model to invent a third
