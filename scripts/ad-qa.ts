@@ -51,8 +51,12 @@ async function main() {
   }
 
   // Cheap validation first — a typo in FORMATS shouldn't cost a catalogue crawl.
-  const formats = (process.env.FORMATS || "review,versus,callout,chat")
-    .split(",").map((s) => s.trim()).filter(Boolean);
+  const raw = (process.env.FORMATS || "review,versus,callout,chat").trim();
+  // "all" sweeps every template. Spelling out 49 keys by hand is how a sweep
+  // quietly becomes a partial one because two got dropped from the list.
+  const formats = /^all$/i.test(raw)
+    ? AD_FORMATS.map((f) => f.key)
+    : raw.split(",").map((s) => s.trim()).filter(Boolean);
   const unknown = formats.filter((f) => !AD_FORMAT_BY_KEY[f]);
   if (unknown.length) {
     console.error(`[qa] unknown formats: ${unknown.join(", ")}`);

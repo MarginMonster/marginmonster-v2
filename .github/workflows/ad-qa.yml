@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       formats:
-        description: 'Comma-separated format keys (e.g. review,versus,callout,chat)'
+        description: 'Comma-separated format keys, or "all" to sweep every template'
         required: false
         default: review,versus,callout,chat
       limit:
@@ -29,13 +29,17 @@ on:
         required: false
         default: "4"
       max_renders:
-        description: 'Hard cap on cells — cost control'
+        description: 'Hard cap on cells — cost control. 60 fits a full 49-template sweep.'
         required: false
         default: "24"
       store_url:
         description: 'Only needed to SEED qa/golden-set.json the first time'
         required: false
         default: ""
+      seed_size:
+        description: 'How many products to pull when seeding'
+        required: false
+        default: "6"
       fail_under:
         description: 'Fail the job if the gate pass rate is under this %% (0 = never fail)'
         required: false
@@ -130,6 +134,7 @@ jobs:
           FORMATS: ${{ inputs.formats || 'review,versus,callout,chat' }}
           LIMIT: ${{ inputs.limit || '3' }}
           MAX_RENDERS: ${{ inputs.max_renders || '12' }}
+          SEED_SIZE: ${{ inputs.seed_size || '6' }}
           STORE_URL: ${{ inputs.store_url }}
           FAIL_UNDER: ${{ inputs.fail_under || '0' }}
           QA_OUT: qa-out
