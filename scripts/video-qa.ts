@@ -217,9 +217,13 @@ async function cutawayAssembleCheck(): Promise<string> {
     // the kling-fallback shape, and the b-roll graph under test is identical
     // in both lipSynced modes.
     const talkingPath = path2.join(tmp, "talking.mp4");
+    // Scale to the canvas BEFORE x264: catalogue originals routinely have odd
+    // dimensions, and yuv420p rejects those with a bare "-22 Invalid argument"
+    // (which is exactly how this check failed on its first CI run).
     const mk = await runFfmpeg(["-y", "-loop", "1", "-framerate", "30", "-t", String(secs), "-i", imgPath,
+      "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280",
       "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", talkingPath]);
-    if (mk.status !== 0) return `${head}\n\nFAILED building the synthetic talking clip:\n\n\`\`\`\n${mk.stderr.slice(-400)}\n\`\`\``;
+    if (mk.status !== 0) return `${head}\n\nFAILED building the synthetic talking clip:\n\n\`\`\`\n${mk.stderr.slice(-900)}\n\`\`\``;
 
     // zoompan probed ALONE, so assemble's static-fallback rung can't quietly
     // pass this check on a build where the motion never rendered.
@@ -257,7 +261,7 @@ async function cutawayAssembleCheck(): Promise<string> {
       `| frames | ${names.map((x) => `\`${x}\``).join(" · ") || "**none extracted**"} |`,
       "",
       "`cutaway-cut1-early` vs `cutaway-cut1-late` should show the SAME product at visibly different zoom — that is the Ken Burns push-in. `cutaway-aroll` is the base clip between beats.",
-      zpProbe.status !== 0 ? `\n\`\`\`\n${zpProbe.stderr.slice(-300)}\n\`\`\`` : "",
+      zpProbe.status !== 0 ? `\n\`\`\`\n${zpProbe.stderr.slice(-900)}\n\`\`\`` : "",
     ].filter(Boolean).join("\n");
   } catch (e) {
     return `${head}\n\nFAILED: ${e instanceof Error ? e.message.slice(0, 400) : e}`;
