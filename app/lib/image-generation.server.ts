@@ -587,7 +587,7 @@ type PasteResult =
 async function overlayRealProduct(
   frameUrl: string,
   productImageUrl: string,
-  opts: { blank?: boolean; whole?: boolean } = {}
+  opts: { blank?: boolean; whole?: boolean; sizeClass?: string } = {}
 ): Promise<PasteResult> {
   // On the blank path the product COVERS the stand-in — it fills the box's
   // width and its height, overhanging in whichever direction it must.
@@ -705,12 +705,24 @@ async function overlayRealProduct(
     // Size it from the cutout's own aspect ratio: fill the box's width, and
     // only fall back to fitting by height if that would make it wildly taller
     // than the space the model left for it.
+    // SIZE FROM THE BODY, NOT FROM THE STAND-IN.
+    //
+    // Matching the stand-in exactly is faithful and wrong: the composer draws
+    // a small box on the counter, the paste matches it, and every rejection
+    // reads "palm-size instead of spanning torso". The stand-in's JOB is to
+    // fix the pose and the lighting; how big the product should be is
+    // something we already know from its real dimensions, and a fraction of
+    // the frame is a measurement the composer cannot get wrong for us.
+    const bodyFrac: Record<string, number> = { palm: 0.24, "two-hand": 0.46, large: 0.62, floor: 0.74 };
+    const wantW = opts.sizeClass ? Math.round(W * (bodyFrac[opts.sizeClass] ?? 0)) : 0;
+
     const cut = headerSize(tmpCut);
     let tw = bw;
     let th = cut ? Math.round((bw * cut.h) / cut.w) : bh;
     if (cover && cut) {
-      // max of the two fits — covers the box in both directions.
-      tw = Math.max(bw, Math.round((bh * cut.w) / cut.h));
+      // Cover the stand-in in both directions, then take the body-derived
+      // width if it is bigger. Never smaller: the stand-in must stay hidden.
+      tw = Math.max(bw, Math.round((bh * cut.w) / cut.h), wantW);
       th = Math.round((tw * cut.h) / cut.w);
     } else if (cut && th > bh * 1.6) {
       th = bh; tw = Math.round((bh * cut.w) / cut.h);
@@ -721,7 +733,9 @@ async function overlayRealProduct(
     // exactly where the box it replaces began, which the compose prompt
     // already keeps below the chin, and every extra pixel goes downward over
     // the chest where there is nothing to obscure.
-    const anchorY = cover ? Math.round(bottom - bh) : bottom - th;
+    // On a counter it sits on the surface, so the bottom edge is fixed and it
+    // grows upward into empty chest. Held, it grows downward, away from the face.
+    const anchorY = opts.whole ? bottom - th : cover ? Math.round(bottom - bh) : bottom - th;
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +
       `[cut]split[c1][c2];` +
@@ -1005,7 +1019,7 @@ export async function runPresenterHold(opts: {
           const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase);
           return { c, frame, qa, note: `${c.name}: ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
         }
-        const put = await overlayRealProduct(frame, opts.productImageUrl, { blank: true, whole: c.mode === "showcase" });
+        const put = await overlayRealProduct(frame, opts.productImageUrl, { blank: true, whole: c.mode === "showcase", sizeClass: opts.sizeClass });
         if (!put.ok) return { c, frame, note: `${c.name}: paste failed — ${put.failed}` };
         const inline = `data:image/jpeg;base64,${fs.readFileSync(put.absPath).toString("base64")}`;
         const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
