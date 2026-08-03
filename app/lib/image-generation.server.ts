@@ -571,11 +571,14 @@ async function qaPresenterHold(
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
     return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200), bad };
   } catch (e) {
-    // A QA OUTAGE is different from an unreadable verdict: the model never
-    // answered at all, and blocking a paid render on our own downtime would
-    // be worse than shipping. Distinguished from "unreadable" above, which
-    // means the model did answer and the answer was not usable.
-    return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, bad: [] };
+    // A QA outage FAILS CLOSED. This used to pass on the theory that
+    // blocking a paid render on our own downtime was worse than shipping —
+    // then an exhausted API balance shipped six UNGATED drawn frames in one
+    // sweep. The fallback for a failed gate is the merchant's real product
+    // photo, which is always safe; an ungated drawn product is the one thing
+    // this whole pipeline exists to prevent. The merchant loses nothing but
+    // the presenter flourish while the outage lasts.
+    return { pass: false, reason: `qa-outage: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, bad: ["qa-outage"] };
   }
 }
 
