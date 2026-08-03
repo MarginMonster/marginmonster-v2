@@ -2187,7 +2187,13 @@ export async function generateImageAd(
               fresh = fresh || Buffer.from(await res!.arrayBuffer());
               if (fresh.length > 5_000) {
                 buf = fresh;
-                if (held.pass && !held.wrongProduct) freezeReason = held.reason;
+                // FREEZE ONLY REAL PIXELS. A drawn frame can pass the gate on
+                // a good day (a Funism hold did, with a garbled logo the
+                // independent judge caught) — it may ship once, but freezing
+                // it would serve that gamble forever. Only paste-backed
+                // frames, where the artwork is the merchant's photograph,
+                // earn a place in the library.
+                if (held.pass && !held.wrongProduct && held.via !== "drawn") freezeReason = held.reason;
               }
             }
           }
