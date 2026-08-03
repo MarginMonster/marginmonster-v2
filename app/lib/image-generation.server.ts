@@ -806,12 +806,19 @@ async function overlayRealProduct(
         // arbitrates correctScale on whatever ships).
         const pasteBottom = anchorY + th;
         const maxH = pasteBottom - minTop;
-        if (cut && maxH > th * 0.72) {
+        // The shrink must respect BOTH standing invariants: modest (past
+        // ~28% the product reads palm-sized) AND still big enough to hide
+        // the drawn stand-in — a paste smaller than the stand-in leaves
+        // drawn box edges peeking out, which the judge correctly flags as a
+        // doubled/different object. If the chin line, the stand-in size and
+        // the 28% cap can't all be satisfied, the candidate is unsaveable.
+        const shrunkW = cut ? Math.round((maxH * cut.w) / cut.h) : 0;
+        if (cut && maxH > th * 0.72 && maxH >= bh && shrunkW >= bw) {
           th = Math.floor(maxH);
-          tw = Math.round((th * cut.w) / cut.h);
+          tw = shrunkW;
           anchorY = pasteBottom - th;
         } else {
-          return give(`paste would cover the face (top ${Math.round((anchorY / H) * 100)}% vs chin ${Math.round((chinY / H) * 100)}%, shrink-to-fit would exceed 28%)`);
+          return give(`paste would cover the face (top ${Math.round((anchorY / H) * 100)}% vs chin ${Math.round((chinY / H) * 100)}%, no fit below chin that still hides the stand-in)`);
         }
       }
     } else if (anchorY < H * 0.36) {
