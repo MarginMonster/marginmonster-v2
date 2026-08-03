@@ -89,6 +89,11 @@ export async function submitCompose(
   // about drawing. Whether it obeyed is the gate's job to check, not the
   // prompt's job to enumerate.
   const noSourceText = ` Reproduce only the physical product; ignore any marketing text or watermark on the reference photo's background.`;
+  // Fine print is where every otherwise-good frame died in the size-matrix
+  // sweep: the model INVENTS letters it cannot resolve ("Cog Neodles"). A
+  // real photograph solves this with optics — fine print smaller than the
+  // lens can resolve goes soft, it doesn't go wrong. Ask for exactly that.
+  const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.`;
   const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person.${sizing}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
@@ -141,7 +146,7 @@ export async function submitCompose(
     `The exact person from the first image standing behind a kitchen counter or table, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
     `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
-    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing} ` +
+    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${textRule} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `Filmed from a step further back across the counter so the whole scene fits — a WIDE half-body shot, not a close-up — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in. NOT a selfie, no arm reaching toward the lens. ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
@@ -176,7 +181,7 @@ export async function submitCompose(
       // not a check on whether it worked.
       : `The person from the first image holding the ${productTitle || "product"} from the second image — the COMPLETE item exactly as pictured, with every unit, box and panel it has, not one piece of it. ` +
         `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. ` +
-        `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
+        `${integrity}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Photographed by someone standing in front of them, not a selfie. ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
@@ -188,6 +193,11 @@ export async function submitCompose(
       // over on purpose: the drawn approximation is the paste's camouflage.
       image_urls: mode === "blank" ? [portraitUrl] : [portraitUrl, productImageUrl],
       image_size: "portrait_4_3",
+      // Fine-print experiment: more output pixels = more room for small
+      // lettering to resolve instead of scramble. Opt-in per environment
+      // (e.g. "4K" doubles Nano Banana Pro's per-edit price); engines that
+      // don't know the field ignore it.
+      ...(process.env.COMPOSE_RESOLUTION?.trim() ? { resolution: process.env.COMPOSE_RESOLUTION.trim() } : {}),
       num_images: numImages,
       max_images: numImages,
     }),
