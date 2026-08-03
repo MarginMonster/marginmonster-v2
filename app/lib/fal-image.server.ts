@@ -11,14 +11,16 @@
  *  this?" is a question with a measurable answer, and swapping one should not
  *  need a code change to find out. Seedream v4 edit stays the default until
  *  something beats it on the harness. */
-const MODEL = process.env.COMPOSE_MODEL?.trim() || "fal-ai/bytedance/seedream/v4/edit";
 /** Masked inpainting — edits only what the mask exposes, leaves the rest byte-identical. */
 const FILL_MODEL = "fal-ai/flux-pro/v1/fill";
 
-/** Which engine composed a frame, for the report — a pass rate is meaningless
- *  without knowing what produced it. */
+/** Which engine composes frames. Read at CALL time, not import time: the
+ *  harness's engine A/B loop flips COMPOSE_MODEL between rounds, and the old
+ *  import-time constant forced a require-cache purge that crashed the bundled
+ *  CI build (require.resolve has nothing to resolve inside a .cjs bundle) —
+ *  the A/B was never actually runnable in CI until this. */
 export function composeModel(): string {
-  return MODEL;
+  return process.env.COMPOSE_MODEL?.trim() || "fal-ai/bytedance/seedream/v4/edit";
 }
 
 export function falImageEnabled(): boolean {
@@ -177,7 +179,7 @@ export async function submitCompose(
         `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Photographed by someone standing in front of them, not a selfie. ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
-  const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
+  const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({

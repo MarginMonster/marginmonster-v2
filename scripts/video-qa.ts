@@ -177,9 +177,9 @@ async function presenterHoldCheck(): Promise<string> {
       // engine's frames silently overwrite the first's on the qa-frames
       // branch and the comparison is only half inspectable.
       process.env.QA_TAG_PREFIX = `${(e.split("/").filter(Boolean).slice(-2).join("-") || "engine").replace(/[^a-z0-9-]/gi, "")}-`;
-      // The module reads COMPOSE_MODEL at import time, so it has to be
-      // re-imported per engine or every row reports the first one.
-      delete require.cache[require.resolve("../app/lib/fal-image.server")];
+      // composeModel() reads COMPOSE_MODEL at call time now — no re-import
+      // needed. (The old require-cache purge crashed the bundled CI build:
+      // require.resolve has nothing to resolve inside a .cjs bundle.)
       out.push(`#### engine: \`${e}\`\n\n${await presenterHoldOnce()}`);
     }
     return [`### Presenter image ads — engine comparison`, ``, ...out].join("\n\n");
