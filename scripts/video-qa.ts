@@ -157,8 +157,27 @@ async function saveFrame(url: string, name: string): Promise<string> {
  * Calls runPresenterHold, the same rung production calls, so what is measured
  * is what merchants get: compose, gate, one shouted retry.
  */
+/* Engine A/B. QA_ENGINES is a comma-separated list of fal model ids; the whole
+ * presenter check runs once per engine and each row says which one made it.
+ * Unset runs whatever the default is, exactly as before. */
 async function presenterHoldCheck(): Promise<string> {
   if (!process.env.PRESENTER) return "";
+  const engines = (process.env.QA_ENGINES || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (engines.length) {
+    const out: string[] = [];
+    for (const e of engines) {
+      process.env.COMPOSE_MODEL = e;
+      // The module reads COMPOSE_MODEL at import time, so it has to be
+      // re-imported per engine or every row reports the first one.
+      delete require.cache[require.resolve("../app/lib/fal-image.server")];
+      out.push(`#### engine: \`${e}\`\n\n${await presenterHoldOnce()}`);
+    }
+    return [`### Presenter image ads — engine comparison`, ``, ...out].join("\n\n");
+  }
+  return presenterHoldOnce();
+}
+
+async function presenterHoldOnce(): Promise<string> {
   const missing = ["FAL_KEY", "REPLICATE_API_TOKEN", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]?.trim());
   if (missing.length) return `### Presenter image ads\n\nSKIPPED — ${missing.join(", ")} not set. Nothing was tested.`;
 

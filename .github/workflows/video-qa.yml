@@ -48,6 +48,10 @@ on:
         description: 'Product title (keyframe check only)'
         required: false
         default: ""
+      engines:
+        description: 'Comma-separated fal compose model ids to A/B against each other (blank = current default)'
+        required: false
+        default: ""
   push:
     paths:
       - 'app/lib/cartoon-ad-pipeline.server.ts'
@@ -95,6 +99,7 @@ jobs:
           QA_PRODUCT_URL: ${{ inputs.product_url }}
           QA_STORE_URL: ${{ inputs.store_url }}
           QA_PRODUCT_TITLE: ${{ inputs.product_title }}
+          QA_ENGINES: ${{ inputs.engines }}
         run: node video-qa.cjs
 
       # Publish the actual frames back through git. The replicate.delivery
