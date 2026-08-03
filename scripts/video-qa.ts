@@ -306,7 +306,11 @@ async function presenterHoldOnce(): Promise<string> {
       // number that matters: a wrong-product hold is dropped for a product
       // still rather than shipped with a lookalike in the presenter's hands.
       const delivered = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
-      rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
+      // With several stand-ins per attempt the interesting number is how many
+      // of them cleared the gate, not just whether one did.
+      const attempts = (r.standIn || "").split(" · ").filter((x) => /^(showcase|stand-in)/.test(x));
+      const won = attempts.filter((x) => /passed/.test(x)).length;
+      rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""}${attempts.length ? ` · ${won}/${attempts.length} stand-ins ok` : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
       rows.push(`| ${portrait.split("/").pop()} | ERROR | — | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`);
     }

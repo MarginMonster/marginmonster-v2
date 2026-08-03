@@ -1007,9 +1007,24 @@ export async function runPresenterHold(opts: {
     // Order = preference when both pass. A real photograph beats a drawn one
     // for a large product, where the drawing has the most to get wrong; a
     // natural hold beats a composite for something hand-sized.
+    //
+    // THREE stand-ins, not one. Across four sweeps the showcase path passed
+    // exactly once per run and it was a different presenter every time —
+    // grace, then diego, then aditi. That is not a defect that needs another
+    // geometry fix, it is variance: roughly one stand-in in four comes out
+    // usable and we were only ever drawing one card. The gate already picks
+    // the winner, so give it more to pick from. Three tries at ~25% each is
+    // the difference between a coin flip and a reliable path.
+    const tries = Number(process.env.PRESENTER_TRIES || 3);
     const plan: { name: string; mode: "hold" | "blank" | "showcase"; paste: boolean }[] = showcase
-      ? [{ name: "showcase", mode: "showcase", paste: true }, { name: "hold", mode: "hold", paste: false }]
-      : [{ name: "hold", mode: "hold", paste: false }, { name: "stand-in", mode: "blank", paste: true }];
+      ? [
+          ...Array.from({ length: tries }, (_, i) => ({ name: `showcase ${i + 1}`, mode: "showcase" as const, paste: true })),
+          { name: "hold", mode: "hold" as const, paste: false },
+        ]
+      : [
+          { name: "hold", mode: "hold" as const, paste: false },
+          ...Array.from({ length: tries }, (_, i) => ({ name: `stand-in ${i + 1}`, mode: "blank" as const, paste: true })),
+        ];
 
     const tried = await Promise.all(plan.map(async (c) => {
       try {
