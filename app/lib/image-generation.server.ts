@@ -1165,7 +1165,13 @@ async function planShot(
   scalePhrase?: string,
   cm?: number
 ): Promise<ShotPlan | null> {
-  if (process.env.PRESENTER_PLANNER !== "1") return null;
+  // ON BY DEFAULT since the A/B: the generic-prompt arm shipped a fully
+  // INVENTED Pocky box (gorgeous, plausible, nonexistent) that only the
+  // independent judge caught, while the planner arm — told what the object
+  // actually is — drew the merchant's real bare stick. 4/9 judge-clean with
+  // the planner vs 1/9 without, and zero judge-bad ships on the planner arm.
+  // PRESENTER_PLANNER=0 is the off switch.
+  if (process.env.PRESENTER_PLANNER === "0") return null;
   const hit = shotPlans.get(productImageUrl);
   if (hit !== undefined) return hit;
   try {
