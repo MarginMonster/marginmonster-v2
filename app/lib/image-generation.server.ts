@@ -510,6 +510,38 @@ async function qaPresenterHold(
         if (pbuf.length > 5_000) productRef = `data:image/jpeg;base64,${pbuf.toString("base64")}`;
       }
     } catch { /* URL fallback — no worse than before */ }
+    // The COMPOSED frame also goes up as vision-sized BYTES when it lives on
+    // a URL. A 4K compose is a ~20MB PNG on a short-lived fal link; the API's
+    // own fetcher times out downloading it and the timeout lands in the catch
+    // below as a rejection — so the harder the engine tried, the more the
+    // gate broke. Downscale to grading size first; the fields being judged
+    // (artwork, object, headline text, scale, hands) all survive 1568px.
+    let genRef = genUrl;
+    if (/^https?:/i.test(genUrl)) {
+      try {
+        const gres = await fetch(genUrl);
+        if (gres.ok) {
+          const gbuf = Buffer.from(await gres.arrayBuffer());
+          let out: Buffer | null = gbuf.length > 5_000 ? gbuf : null;
+          const bin = ffmpegBin();
+          if (out && out.length > 2_000_000 && bin) {
+            const { execFileSync } = await import("node:child_process");
+            const os = await import("node:os");
+            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gate-"));
+            try {
+              const inP = path.join(tmp, "in.img");
+              const outP = path.join(tmp, "out.jpg");
+              fs.writeFileSync(inP, out);
+              execFileSync(bin, ["-y", "-i", inP, "-vf", "scale='min(1568,iw)':-2", "-q:v", "3", outP], { timeout: 30_000, stdio: "ignore" });
+              if (fs.existsSync(outP)) out = fs.readFileSync(outP);
+            } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+          }
+          // The API caps a base64 image around 5MB — an un-shrunk giant is
+          // worse inlined than fetched, so it keeps its URL and its luck.
+          if (out && out.length < 4_500_000) genRef = `data:image/jpeg;base64,${out.toString("base64")}`;
+        }
+      } catch { /* URL fallback — no worse than before */ }
+    }
     const raw = await anthropicVision(
       [
         `Image 1 is the REAL product photo. Image 2 is an AI-composed shot of a presenter holding that product.`,
@@ -553,7 +585,7 @@ async function qaPresenterHold(
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
         `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"renderedSize":"palm|two-hands|torso|floor","scalePlausible":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
-      [productRef, genUrl],
+      [productRef, genRef],
       // The cheap vision model looked straight at plastic doll fingers with
       // painted-on joints and answered "hands human". It is fine at reading
       // packaging text; it is not reliable at judging anatomy. This gate runs
