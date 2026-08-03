@@ -20,7 +20,7 @@ const FILL_MODEL = "fal-ai/flux-pro/v1/fill";
  *  CI build (require.resolve has nothing to resolve inside a .cjs bundle) —
  *  the A/B was never actually runnable in CI until this. */
 export function composeModel(): string {
-  return process.env.COMPOSE_MODEL?.trim() || "fal-ai/bytedance/seedream/v4/edit";
+  return process.env.COMPOSE_MODEL?.trim() || "fal-ai/nano-banana-pro/edit";
 }
 
 export function falImageEnabled(): boolean {
