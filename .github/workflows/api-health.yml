@@ -1,0 +1,40 @@
+name: API health check
+
+# Diagnoses the Anthropic API keys in this repo's secrets WITHOUT exposing
+# them: for each configured secret it prints a console-style fingerprint
+# (prefix + last 4 — how console.anthropic.com displays keys), whether the
+# key authenticates, and whether its account has credit. Born from a top-up
+# that landed on a different org than the key CI actually uses.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check keys
+        env:
+          K1: ${{ secrets.ANTHROPIC_API_KEY }}
+          K2: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          check () {
+            name="$1"; key="$2"
+            if [ -z "$key" ]; then echo "[$name] not set"; return; fi
+            # Console-style fingerprint only — never the key itself.
+            echo "[$name] fingerprint: $(printf %s "$key" | cut -c1-14)...$(printf %s "$key" | rev | cut -c1-4 | rev) (length $(printf %s "$key" | wc -c))"
+            auth=$(curl -s -o /tmp/models.json -w "%{http_code}" https://api.anthropic.com/v1/models \
+              -H "x-api-key: $key" -H "anthropic-version: 2023-06-01")
+            echo "[$name] auth check (GET /v1/models): HTTP $auth"
+            bill=$(curl -s -o /tmp/msg.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $key" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+              -d '{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}')
+            echo "[$name] billing check (1-token message): HTTP $bill"
+            if [ "$bill" != "200" ]; then echo "[$name] error body: $(head -c 300 /tmp/msg.json)"; fi
+          }
+          check ANTHROPIC_API_KEY "$K1"
+          check CLAUDE_API_KEY "$K2"
