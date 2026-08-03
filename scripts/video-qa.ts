@@ -198,6 +198,18 @@ async function presenterHoldCheck(): Promise<string> {
     }
     return [`### Presenter image ads — engine comparison`, ``, ...out].join("\n\n");
   }
+  // Planner A/B: same products, same avatars, same engine — the only variable
+  // is whether planShot writes the grip/size/text clauses or the generic
+  // box-shaped prompt runs. Same mechanism as the engine loop.
+  if (process.env.QA_PLANNER_AB) {
+    const out: string[] = [];
+    for (const on of [false, true]) {
+      process.env.PRESENTER_PLANNER = on ? "1" : "0";
+      process.env.QA_TAG_PREFIX = on ? "planner-on-" : "planner-off-";
+      out.push(`#### planner: ${on ? "ON (intelligent prompting)" : "OFF (generic prompt)"}\n\n${await presenterHoldOnce()}`);
+    }
+    return [`### Presenter image ads — shot-planner A/B`, ``, ...out].join("\n\n");
+  }
   return presenterHoldOnce();
 }
 

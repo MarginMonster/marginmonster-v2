@@ -1149,6 +1149,74 @@ export function presenterLayout(sizeClass?: string, wear?: boolean): "hold" | "s
   return wear ? "wear" : "hold";
 }
 
+/** The shot plan: what a person would actually DO with this product on
+ *  camera, decided by LOOKING at it. One static prompt written for boxes
+ *  gave every product a two-hand chest-height grip — which is exactly how a
+ *  one-hand soda bottle came out two-handed and twice life size. */
+export type ShotPlan = { gripDetail?: string; sizeAnchor?: string; textElements?: string[] };
+
+/** Keyed by product image URL: the plan describes the product, not the pair,
+ *  so a merchant's catalogue plans once per product per process. */
+const shotPlans = new Map<string, ShotPlan | null>();
+
+async function planShot(
+  productImageUrl: string,
+  productTitle: string,
+  scalePhrase?: string,
+  cm?: number
+): Promise<ShotPlan | null> {
+  if (process.env.PRESENTER_PLANNER !== "1") return null;
+  const hit = shotPlans.get(productImageUrl);
+  if (hit !== undefined) return hit;
+  try {
+    // Bytes, same as the gate — Shopify originals can be AVIF or >8000px.
+    let ref = productImageUrl;
+    try {
+      const { visionSafeUrl } = await import("./anthropic.server");
+      const r = await fetch(visionSafeUrl(productImageUrl));
+      if (r.ok) {
+        const b = Buffer.from(await r.arrayBuffer());
+        if (b.length > 5_000) ref = `data:image/jpeg;base64,${b.toString("base64")}`;
+      }
+    } catch { /* URL fallback */ }
+    const raw = await anthropicVision(
+      [
+        `This is a merchant's product photo: "${productTitle}".${scalePhrase ? ` Its real size: ${scalePhrase}.` : ""}${cm ? ` Longest dimension roughly ${cm}cm.` : ""}`,
+        `A presenter will hold or show this product to camera in a UGC-style ad. Plan the shot from what the product actually IS:`,
+        ``,
+        `gripDetail: how a real person presents THIS object, one short phrase (max 12 words). E.g. "in one hand, fingers around the bottle's narrow waist" for a small bottle; "cradled with both hands under its base" for a boxed case. Small light items take ONE hand.`,
+        `sizeAnchor: its honest size expressed against the presenter's own body, one short phrase (max 12 words). E.g. "about as tall as her face — small in one hand". Use head/hand/torso as the ruler; never centimetres.`,
+        `textElements: the up-to-3 most prominent printed elements that MUST appear faithfully, each max 6 words. E.g. ["red katakana logo", "blue whale illustration"].`,
+        ``,
+        `Reply ONLY JSON: {"gripDetail":"...","sizeAnchor":"...","textElements":["..."]}`,
+      ].join("\n"),
+      [ref],
+      { maxTokens: 300, model: "claude-sonnet-5" }
+    );
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("no JSON in plan");
+    const j = JSON.parse(m[0]) as Record<string, unknown>;
+    const clamp = (s: unknown, words: number) =>
+      typeof s === "string" && s.trim() ? s.trim().split(/\s+/).slice(0, words).join(" ") : undefined;
+    const plan: ShotPlan = {
+      gripDetail: clamp(j.gripDetail, 14),
+      sizeAnchor: clamp(j.sizeAnchor, 14),
+      textElements: Array.isArray(j.textElements)
+        ? (j.textElements.map((t) => clamp(t, 7)).filter(Boolean) as string[]).slice(0, 3)
+        : undefined,
+    };
+    shotPlans.set(productImageUrl, plan);
+    console.log(`[presenter:plan] ${productTitle.slice(0, 40)}: ${plan.gripDetail || "—"} · ${plan.sizeAnchor || "—"} · ${(plan.textElements || []).join(" / ") || "—"}`);
+    return plan;
+  } catch (e) {
+    // A failed plan means the generic prompt — the path that exists today —
+    // never a blocked render.
+    console.warn(`[presenter:plan] failed, using generic prompt: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`);
+    shotPlans.set(productImageUrl, null);
+    return null;
+  }
+}
+
 export async function runPresenterHold(opts: {
   portraitUrl: string;
   productImageUrl: string;
@@ -1176,12 +1244,15 @@ export async function runPresenterHold(opts: {
   const showcase = presenterLayout(opts.sizeClass, opts.wear) === "showcase";
 
   const { submitCompose, pollCompose } = await import("./fal-image.server");
+  // The plan is per-product and cached; a failure degrades to the generic
+  // prompt, so this can sit on the hot path.
+  const plan = opts.wear ? null : await planShot(opts.productImageUrl, opts.productTitle, opts.scalePhrase, opts.cm);
   const runCompose = async (
     hint: string | undefined,
     mode: "hold" | "wear" | "blank" | "showcase" = opts.wear ? "wear" : "hold",
     aspect?: number
   ): Promise<string | undefined> => {
-    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect);
+    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect, plan || undefined);
     // 3 minutes, not 90 seconds: a 4K compose regularly outlives the old
     // window, and an expired poll reads as "compose returned nothing" — the
     // render finishes anyway, billed, and thrown away.

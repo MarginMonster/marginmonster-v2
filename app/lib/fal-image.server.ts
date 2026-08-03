@@ -72,7 +72,11 @@ export async function submitCompose(
   scaleHint?: string,
   /** blank mode only: width:height of the real product, so the stand-in has
    *  the right footprint for the photograph that replaces it. */
-  aspect?: number
+  aspect?: number,
+  /** Shot plan from looking at the actual product (image-generation's
+   *  planShot). Swaps the generic box-shaped grip/size clauses for ones that
+   *  fit THIS object — same prompt length, better description. */
+  plan?: { gripDetail?: string; sizeAnchor?: string; textElements?: string[] }
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
   // Product-integrity guard — the #1 compose failure is the product getting
@@ -93,7 +97,13 @@ export async function submitCompose(
   // sweep: the model INVENTS letters it cannot resolve ("Cog Neodles"). A
   // real photograph solves this with optics — fine print smaller than the
   // lens can resolve goes soft, it doesn't go wrong. Ask for exactly that.
-  const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.`;
+  const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.${plan?.textElements?.length ? ` The packaging clearly shows: ${plan.textElements.join(", ")}.` : ""}`;
+  // Plan-driven hold clause: what a person actually does with THIS object,
+  // at its honest size — versus the generic two-hand chest-height grip that
+  // was written for boxes and two-handed a soda bottle at twice life size.
+  const holdClause = plan?.gripDetail || plan?.sizeAnchor
+    ? `Held ${plan.gripDetail || "naturally"}${plan.sizeAnchor ? ` — ${plan.sizeAnchor}` : ""}. Product facing the camera and clearly visible, below the chin so their face stays visible. `
+    : `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. `;
   const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis: a hand-sized item stays small in the hand.${sizing}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
@@ -146,7 +156,7 @@ export async function submitCompose(
     `The exact person from the first image standing behind a kitchen counter or table, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
     `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
-    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${textRule} ` +
+    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${textRule} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `Filmed from a step further back across the counter so the whole scene fits — a WIDE half-body shot, not a close-up — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in. NOT a selfie, no arm reaching toward the lens. ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
@@ -180,7 +190,7 @@ export async function submitCompose(
       // of a twelve-unit display case. That is a description of what to draw,
       // not a check on whether it worked.
       : `The person from the first image holding the ${productTitle || "product"} from the second image — the COMPLETE item exactly as pictured, with every unit, box and panel it has, not one piece of it. ` +
-        `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. ` +
+        holdClause +
         `${integrity}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Photographed by someone standing in front of them, not a selfie. ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
