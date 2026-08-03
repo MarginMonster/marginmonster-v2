@@ -80,6 +80,22 @@ export async function anthropicText(
   return block?.text || "";
 }
 
+/** Shopify CDN serves ORIGINALS — routinely past the API's 8000px image
+ *  limit — and a ten-product sweep lost three products to 400s because of it.
+ *  Worse, the production gate swallows that 400 as a QA outage and passes the
+ *  frame, so any merchant with big product photos was silently ungated. The
+ *  CDN resizes on request; ask it for a vision-sized rendition. */
+function visionSafeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (/(^|\.)cdn\.shopify\.com$/i.test(u.hostname) && !u.searchParams.has("width")) {
+      u.searchParams.set("width", "1568");
+      return u.toString();
+    }
+  } catch { /* not a URL we can improve */ }
+  return url;
+}
+
 /** Vision call — same raw-fetch client, with image URLs attached. Used by the
  *  image-ad QA gate to score product fidelity before a still ships.
  *
@@ -100,7 +116,7 @@ export async function anthropicVision(
     if (inline) {
       return { type: "image", source: { type: "base64", media_type: inline[1].toLowerCase(), data: inline[2] } };
     }
-    return { type: "image", source: { type: "url", url } };
+    return { type: "image", source: { type: "url", url: visionSafeUrl(url) } };
   });
   content.push({ type: "text", text: prompt });
   const res = await fetch(ANTHROPIC_URL, {
