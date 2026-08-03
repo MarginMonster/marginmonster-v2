@@ -922,6 +922,8 @@ export async function runPresenterHold(opts: {
   //
   // PRESENTER_LAYOUT=hold forces the old behaviour for everything, so the
   // previous pipeline stays one environment variable away.
+  let preComposed: string | undefined;
+  let preQa: { pass: boolean; reason: string; bad: string[] } | undefined;
   const forced = (process.env.PRESENTER_LAYOUT || "").trim().toLowerCase();
   const showcase = forced === "showcase"
     || (forced !== "hold" && !opts.wear && ["two-hand", "large", "floor"].includes(opts.sizeClass || ""));
@@ -941,82 +943,89 @@ export async function runPresenterHold(opts: {
     return undefined;
   };
 
-  // ── BLANK STAND-IN FIRST ────────────────────────────────────────────────
-  // Four presenters, one reference photo, four different objects — including
-  // a red metal lunchbox. The composer cannot be trusted to reproduce
-  // packaging, and prompting it harder is what produced the robot hands. So
-  // it draws a featureless box, which it does reliably, and the merchant's
-  // own photograph goes on top. The only thing left to get right is the pose.
+  // ── CANDIDATES, THEN PICK ───────────────────────────────────────────────
+  //
+  // One fixed ladder was the mistake. Whichever rung ran first had to be right
+  // for every product, so each new failure got answered by re-ordering the
+  // ladder and the previous good behaviour was lost. The plain generative hold
+  // was producing natural, well-composed frames before today and got buried
+  // under machinery aimed at a different defect.
+  //
+  // So compose two candidates at once and let the gate choose. Cheap (~$0.03
+  // each, run in parallel) and it means the simplest path wins whenever it is
+  // good enough, which for a hand-sized product it usually is.
   let standIn = "not attempted";
   let standInUrl: string | undefined;
   let attemptPath: string | undefined;
   let maskPath: string | undefined;
   let prePastePath: string | undefined;
+
   if (!opts.wear) {
-    const layout = showcase ? "showcase" : "blank";
-    const blank = await runCompose(opts.scalePhrase, layout, await productAspect(opts.productImageUrl));
-    standInUrl = blank;
-    standIn = `${layout}: ${blank ? "stand-in composed" : "compose returned nothing"}`;
-    if (blank) {
-      const attempt = await overlayRealProduct(blank, opts.productImageUrl, { blank: true });
-      if (!attempt.ok) standIn = `paste failed: ${attempt.failed}`;
-      else {
-        const pasted = attempt;
-        // The paste covered the fingers that were gripping the stand-in, so
-        // blend them back over its edges. Grade whichever version survives —
-        // the blend is an improvement, not a guarantee.
-        // A THIN ring, even here. The product now covers the stand-in, so
-        // only a narrow band is left to repair — and a narrow band is the
-        // difference between the model drawing fingers and the model drawing
-        // another box.
-        prePastePath = pasted.absPath;
-        // The blend is OFF unless asked for. The best frame produced all day
-        // was a flat paste with no blend: the merchant's real photograph,
-        // every line of packaging text crisp. The blend is a seam refinement,
-        // and a refinement that has introduced a new defect on each of its
-        // three outings does not get to stand between a merchant and a
-        // correct product. PRESENTER_EDGE_BLEND=1 turns it back on for
-        // whoever picks the seam work up.
-        const blend = process.env.PRESENTER_EDGE_BLEND === "1"
-          ? await blendProductEdges(pasted, 0.12)
-          : ({ ok: false, why: "disabled (PRESENTER_EDGE_BLEND unset)" } as BlendResult);
-        maskPath = blend.maskPath;
-        const blended = blend.ok ? blend : null;
-        const blendNote = blend.ok ? "blended" : `blend failed: ${blend.why}`;
-        const best = blended || { file: pasted.file, absPath: pasted.absPath };
-        attemptPath = best.absPath;
-        const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
-        const qaB = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
-        if (qaB.pass) {
-          const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-          return {
-            url: base ? `${base}/renders/${best.file}` : blank,
-            pass: true,
-            reason: `blank-standin-composite${blended ? " + edge-blend" : ""} · ${qaB.reason}`,
-            retried: false,
-            composited: true,
-            localPath: best.absPath,
-            via: "blank-standin",
-            failed: [],
-            wrongProduct: false,
-            standIn: `pasted · ${blendNote} · accepted`,
-            standInUrl,
-            attemptPath,
-            maskPath,
-            prePastePath,
-          };
+    const aspect = await productAspect(opts.productImageUrl);
+    // Order = preference when both pass. A real photograph beats a drawn one
+    // for a large product, where the drawing has the most to get wrong; a
+    // natural hold beats a composite for something hand-sized.
+    const plan: { name: string; mode: "hold" | "blank" | "showcase"; paste: boolean }[] = showcase
+      ? [{ name: "showcase", mode: "showcase", paste: true }, { name: "hold", mode: "hold", paste: false }]
+      : [{ name: "hold", mode: "hold", paste: false }, { name: "stand-in", mode: "blank", paste: true }];
+
+    const tried = await Promise.all(plan.map(async (c) => {
+      try {
+        const frame = await runCompose(opts.scalePhrase, c.mode, aspect);
+        if (!frame) return { c, note: `${c.name}: compose returned nothing` };
+        if (!c.paste) {
+          const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase);
+          return { c, frame, qa, note: `${c.name}: ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
         }
-        standIn = `pasted · ${blendNote} · gate rejected it: ${qaB.reason}`;
-        console.warn(`[presenter:blank] ${standIn} — falling back to the generative hold`);
+        const put = await overlayRealProduct(frame, opts.productImageUrl, { blank: true });
+        if (!put.ok) return { c, frame, note: `${c.name}: paste failed — ${put.failed}` };
+        const inline = `data:image/jpeg;base64,${fs.readFileSync(put.absPath).toString("base64")}`;
+        const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
+        return { c, frame, put, qa, note: `${c.name}: pasted, ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
+      } catch (e) {
+        return { c, note: `${c.name}: threw — ${(e as Error).message.slice(0, 80)}` };
       }
+    }));
+
+    standIn = tried.map((t) => t.note).join(" · ");
+    standInUrl = tried.find((t) => t.c.paste)?.frame;
+    const winner = tried.find((t) => t.qa?.pass);
+    if (winner) {
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      const local = winner.put?.absPath;
+      attemptPath = local;
+      prePastePath = local;
+      return {
+        url: local && base ? `${base}/renders/${winner.put!.file}` : winner.frame!,
+        pass: true,
+        reason: `${winner.c.name} · ${winner.qa!.reason}`,
+        retried: false,
+        composited: !!local,
+        localPath: local,
+        standIn,
+        standInUrl,
+        attemptPath,
+        maskPath,
+        prePastePath,
+        via: local ? "blank-standin" : "drawn",
+        failed: [],
+        wrongProduct: false,
+      };
+    }
+    // Nothing passed. Carry the best generative frame into the retry-and-
+    // repair path below rather than composing a third time from scratch.
+    const fallback = tried.find((t) => t.c.mode === "hold" && t.frame) || tried.find((t) => t.frame);
+    if (fallback?.frame) {
+      preComposed = fallback.frame;
+      preQa = fallback.c.paste ? undefined : fallback.qa;
     }
   }
 
-  let composed = await runCompose(opts.scalePhrase);
+  let composed = preComposed || (await runCompose(opts.scalePhrase));
   if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
   if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
 
-  let qa = await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase);
+  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase));
   let retried = false;
   if (!qa.pass) {
     // The retry SHOUTS the requirement rather than repeating it — a second

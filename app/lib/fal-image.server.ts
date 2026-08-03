@@ -72,8 +72,12 @@ export async function submitCompose(
   // logo badge in the corner). The composer reproduces them faithfully, so
   // they land in the ad — doubled, garbled, and colliding with our own
   // headline. They are not part of the product; say so.
-  const noSourceText = ` The reference photo may have the shop's own marketing text, captions, price flashes or a watermark logo sitting on its BACKGROUND — none of that is part of the product. Reproduce ONLY the physical product itself. Do NOT copy, redraw or invent any text, caption, badge or watermark that is not physically printed on the product's own packaging, and never duplicate packaging text. Printed packaging artwork and lettering must keep their EXACT original colors.`;
-  const integrity = `Keep the ${productTitle || "product"} identical to the second image — same exact shape, colors, materials, logos and text; do not distort, warp, restyle, crop oddly or add any text. CRITICAL: keep the product at its TRUE real-world size relative to the person — never shrink, miniaturize or turn it into a smaller object. A large item (snowboard, ski, surfboard, chair, rug…) is held upright with both hands or stood on the ground beside the presenter, even if it extends past the frame.${sizing}`;
+  // One clause, not a paragraph. The long version listed every kind of text
+  // that must not appear, which is a list of things for the model to think
+  // about drawing. Whether it obeyed is the gate's job to check, not the
+  // prompt's job to enumerate.
+  const noSourceText = ` Reproduce only the physical product; ignore any marketing text or watermark on the reference photo's background.`;
+  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person.${sizing}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
   const s = (scene || "").trim().slice(0, 220);
@@ -134,31 +138,24 @@ export async function submitCompose(
         `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
         `${integrity}${noSourceText} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
         `Waist-up vertical portrait with a little clear headroom above the head, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
-      : `The person from the first image holding the ${productTitle || "product"} from the second image, ` +
-        `product facing the camera and clearly visible — small items held up at chest height in one hand with a natural relaxed grip; ` +
-        `large items held upright with both hands or stood beside them at full size. ` +
-        // WE caused the robot hands. Chasing a six-finger frame, this grew into
-        // four consecutive sentences of clinical finger anatomy — count the
-        // digits, hide the thumb, never wooden — and a diffusion model renders
-        // what the prompt dwells on. Told to treat fingers as countable
-        // articulated parts, Seedream drew countable articulated parts:
-        // segmented, jointed, doll-like. Every extra word about fingers made it
-        // worse. So describe the GRIP, once, in plain language, and let the
-        // model draw a hand the way it already knows how.
-        // "Cupping it from the sides" got flat open palms held BESIDE the
-        // product, not touching it — three of four presenters ended up
-        // presenting a box that floats. Say where the hands make contact.
-        `They are actually holding it: fingers over the front edges, thumbs underneath, its weight resting in both palms, the way anyone picks something up off a shelf. The hands touch the product. Only the presenter's own two hands are in the picture. ` +
-        // The product is the pitch, but the presenter is the ad. A case held up
-        // over the mouth is a frame with nobody talking in it.
-        `The product is held at chest height, BELOW the chin — the presenter's whole face stays unobstructed, with eyes, nose and mouth fully visible above the product. Never raise the product in front of the face. ` +
+      // SHORT ON PURPOSE.
+      //
+      // This prompt started the day at five clauses and ended it at eleven,
+      // one per defect: count the fingers, not a selfie, elbows down, face
+      // clear, framing, grip, no text. Each addition fixed the thing it named
+      // and diluted everything else — the robot hands were the loudest
+      // symptom, not the only one. Composition quality tracked prompt length
+      // downward the whole way.
+      //
+      // What belongs here is a DESCRIPTION of the shot. What belongs in the
+      // gate is every check about whether we got it. Two of today's additions
+      // were genuinely descriptive and stay: the photo is taken by someone
+      // else (a selfie needs a hand on the phone, which invents a third arm),
+      // and the product sits below the chin. The rest is the gate's problem.
+      : `The person from the first image holding the ${productTitle || "product"} from the second image, product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. ` +
         `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-        // NOT a selfie. A selfie needs a hand on the phone, so asking for one
-        // while both hands hold the product forces the model to invent a third
-        // arm reaching toward the lens. Someone else is taking this photo.
-        `The photo is taken BY SOMEONE ELSE standing in front of them — this is NOT a selfie and the presenter is NOT holding the camera. ` +
-        `Both arms stay bent with the elbows down and close to the body; no arm reaches out toward the lens or extends off-frame toward the camera. ` +
-        `Candid smartphone UGC style, waist-up vertical portrait with a little clear headroom above the head, photorealistic, natural skin texture.`;
+        `Photographed by someone standing in front of them, not a selfie. ` +
+        `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },
