@@ -98,17 +98,23 @@ export async function submitCompose(
   // real photograph solves this with optics — fine print smaller than the
   // lens can resolve goes soft, it doesn't go wrong. Ask for exactly that.
   const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.${plan?.textElements?.length ? ` The packaging clearly shows: ${plan.textElements.join(", ")}.` : ""}`;
-  // Plan-driven hold clause: what a person actually does with THIS object,
-  // at its honest size — versus the generic two-hand chest-height grip that
-  // was written for boxes and two-handed a soda bottle at twice life size.
-  const holdClause = plan?.gripDetail || plan?.sizeAnchor
-    ? `Held ${plan.gripDetail || "naturally"}${plan.sizeAnchor ? ` — ${plan.sizeAnchor}` : ""}. Product facing the camera and clearly visible, below the chin so their face stays visible. `
-    : `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. `;
-  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis: a hand-sized item stays small in the hand.${sizing}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
   const s = (scene || "").trim().slice(0, 220);
   const bg = s ? `Setting: ${s}, with natural matching lighting.` : `Keep the same background and lighting as the first image.`;
+  // WHO DIRECTS THE SHOT. When the merchant typed direction (scene), they are
+  // the director: our staging clauses step aside so "mid-workout at the gym"
+  // is not fought by "held at chest height below the chin". Only the FACTS
+  // stay — honest size, real artwork, real text — because no creative
+  // direction is served by a counterfeit product. With no merchant direction
+  // (automated campaigns, hands-off drips), the planner or the generic
+  // template does the staging, because somebody has to.
+  const holdClause = s
+    ? `Product clearly visible.${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""} `
+    : plan?.gripDetail || plan?.sizeAnchor
+      ? `Held ${plan?.gripDetail || "naturally"}${plan?.sizeAnchor ? ` — ${plan.sizeAnchor}` : ""}. Product facing the camera and clearly visible, below the chin so their face stays visible. `
+      : `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. `;
+  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis: a hand-sized item stays small in the hand.${sizing}`;
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
   // their top instead of being clutched on a hanger.
@@ -153,12 +159,14 @@ export async function submitCompose(
   // under the paste — and any sliver that peeks out around the edges is
   // case-coloured, reading as depth and shadow instead of a foreign object.
   const showcasePrompt =
-    `The exact person from the first image standing behind a kitchen counter or table, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
+    // Merchant direction replaces our default set dressing here too — "at
+    // the warehouse loading dock" must not come out as a kitchen counter.
+    `The exact person from the first image standing behind ${s ? "a surface in the setting described below" : "a kitchen counter or table"}, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
     `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
     `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${textRule} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-    `Filmed from a step further back across the counter so the whole scene fits — a WIDE half-body shot, not a close-up — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in. NOT a selfie, no arm reaching toward the lens. ` +
+    `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}. NOT a selfie, no arm reaching toward the lens. ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
   const prompt =
