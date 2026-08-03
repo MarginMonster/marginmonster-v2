@@ -612,15 +612,20 @@ async function qaPresenterHold(
       .filter((k) => j[k] === false) as string[];
     const soft: string[] = [];
     if (j.finePrintFaithful === false) soft.push("finePrint");
-    // Two-way size-class distance. One band off ships with a note (a wholesale
-    // case held at the chest); two or more bands off is a lie in either
-    // direction (a lip balm as a shoebox, a case as a palm trinket) and blocks.
+    // Size-class distance, DIRECTION-AWARE. Two or more bands off blocks in
+    // either direction (a lip balm as a shoebox, a case as a palm trinket).
+    // One band off is asymmetric: a wholesale case held at the chest reads
+    // fine (soft note), but a PALM product one band UP is a familiar handheld
+    // object drawn at twice life size — a 200ml Ramune bottle shipped as a
+    // half-metre jug before this rule — and every viewer knows how big a
+    // bottle is. Oversizing the small stuff blocks.
     const ORD: Record<string, number> = { palm: 0, "two-hand": 1, "two-hands": 1, large: 2, torso: 2, floor: 3 };
     const expected = ORD[(sizeClass || "").trim()];
     const rendered = ORD[String(j.renderedSize || "").trim().toLowerCase()];
     if (expected !== undefined && rendered !== undefined) {
       const diff = Math.abs(expected - rendered);
       if (diff >= 2) bad.push("scaleFar");
+      else if (diff === 1 && expected === 0 && rendered > expected) bad.push("scaleUp");
       else if (diff === 1) soft.push("scaleNear");
     } else if (j.scalePlausible === false) {
       // No expected band to measure against — fall back to believability.

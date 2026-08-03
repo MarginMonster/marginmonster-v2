@@ -94,7 +94,7 @@ export async function submitCompose(
   // real photograph solves this with optics — fine print smaller than the
   // lens can resolve goes soft, it doesn't go wrong. Ask for exactly that.
   const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.`;
-  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person.${sizing}`;
+  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis: a hand-sized item stays small in the hand.${sizing}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
   const s = (scene || "").trim().slice(0, 220);
