@@ -489,8 +489,9 @@ async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolea
 async function qaPresenterHold(
   productUrl: string,
   genUrl: string,
-  scalePhrase: string | undefined
-): Promise<{ pass: boolean; reason: string; bad: string[] }> {
+  scalePhrase: string | undefined,
+  sizeClass?: string
+): Promise<{ pass: boolean; reason: string; bad: string[]; soft: string[] }> {
   try {
     // The real product photo goes up as BYTES. Passed as a URL, the API's own
     // fetcher receives AVIF from Shopify's CDN for some originals and the
@@ -526,10 +527,18 @@ async function qaPresenterHold(
         // Our own repair step produced this: the real case pasted on top of the
         // drawn one, two copies of the product stacked in a single frame.
         `singleProduct: does image 2 contain exactly ONE of the product? Two overlapping or stacked copies of the same item — one behind the other, or one floating in front of another — is a FAILURE, even if one of them looks correct.`,
-        `textFaithful: is the packaging lettering the same words in the same colours? A gold logo rendered purple is a failure.`,
-        scalePhrase
-          ? `correctScale: the product's real size is ${scalePhrase}. Is it that size against the person? A case or box shrunk to palm-size is the most common scale failure.`
-          : `correctScale: judging by what the product obviously is, is it a believable size against the person?`,
+        // Fine print is judged separately and never blocks. At feed resolution
+        // nobody can read a contact label; a wrong BRAND NAME everyone can.
+        `textFaithful: judge ONLY the PROMINENT lettering — brand names, logos, the product title, any heading large enough to read at a glance. Same words, same colours? A gold logo rendered purple, or a brand name misspelled, is a failure. IGNORE small paragraph text, legal print, contact details and anything smaller than the title lettering for this field.`,
+        `finePrintFaithful: now the SMALL print only — paragraph text, legal lines, contact labels. Is it faithful and legible? (This field is advisory; answer honestly but it does not block.)`,
+        // Scale is a CLASSIFICATION, not a bool. The old yes/no question made
+        // one strictness fit every merchant: it killed a wholesale case held at
+        // the chest (one class small — a human would ship it) with the same
+        // severity as a lip balm drawn as a shoebox (a lie). The gate now
+        // reports which size band the render READS as and the caller measures
+        // the distance from the expected band, both directions.
+        `renderedSize: against the person, how big does the product READ in image 2? Answer exactly one of: "palm" (fits in one palm), "two-hands" (needs both hands, smaller than the torso), "torso" (spans the torso or needs arms wrapped around), "floor" (furniture-sized or larger).${scalePhrase ? ` For context, the real product is ${scalePhrase}.` : ""}`,
+        `scalePlausible: judging by what the product obviously is, is it a believable size against the person?`,
         `noSourceText: has marketing text, a caption, a price flash or a shop watermark from image 1's BACKGROUND been copied in, or packaging text duplicated? Answer true if NOT.`,
         `handsOk: if no hand is visible in the picture, answer true — a product resting on a surface does not need one. Otherwise COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
         // Counting digits is not the same as looking at them. A frame came back
@@ -542,7 +551,7 @@ async function qaPresenterHold(
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
-        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
+        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"renderedSize":"palm|two-hands|torso|floor","scalePlausible":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productRef, genUrl],
       // The cheap vision model looked straight at plastic doll fingers with
@@ -562,14 +571,32 @@ async function qaPresenterHold(
     // report said the gate was happy.
     if (!m) {
       console.warn(`[presenter:gate] unreadable verdict, treating as a failure: ${raw.slice(0, 160)}`);
-      return { pass: false, reason: "gate could not read its own verdict", bad: ["unreadable"] };
+      return { pass: false, reason: "gate could not read its own verdict", bad: ["unreadable"], soft: [] };
     }
     const j = JSON.parse(m[0]) as Record<string, unknown>;
-    const bad = (["artworkMatches", "sameObject", "notSimplified", "singleProduct", "textFaithful", "correctScale", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
+    // HARD fails block the frame: these are lies about the merchant's product
+    // or anatomy a viewer would flinch at. Everything else is a soft note.
+    const bad = (["artworkMatches", "sameObject", "notSimplified", "singleProduct", "textFaithful", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
       .filter((k) => j[k] === false) as string[];
-    if (!bad.length) return { pass: true, reason: "clean", bad };
+    const soft: string[] = [];
+    if (j.finePrintFaithful === false) soft.push("finePrint");
+    // Two-way size-class distance. One band off ships with a note (a wholesale
+    // case held at the chest); two or more bands off is a lie in either
+    // direction (a lip balm as a shoebox, a case as a palm trinket) and blocks.
+    const ORD: Record<string, number> = { palm: 0, "two-hand": 1, "two-hands": 1, large: 2, torso: 2, floor: 3 };
+    const expected = ORD[(sizeClass || "").trim()];
+    const rendered = ORD[String(j.renderedSize || "").trim().toLowerCase()];
+    if (expected !== undefined && rendered !== undefined) {
+      const diff = Math.abs(expected - rendered);
+      if (diff >= 2) bad.push("scaleFar");
+      else if (diff === 1) soft.push("scaleNear");
+    } else if (j.scalePlausible === false) {
+      // No expected band to measure against — fall back to believability.
+      bad.push("scalePlausible");
+    }
+    if (!bad.length) return { pass: true, reason: soft.length ? `clean (soft: ${soft.join(", ")})` : "clean", bad, soft };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
-    return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200), bad };
+    return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 200), bad, soft };
   } catch (e) {
     // A QA outage FAILS CLOSED. This used to pass on the theory that
     // blocking a paid render on our own downtime was worse than shipping —
@@ -578,7 +605,7 @@ async function qaPresenterHold(
     // photo, which is always safe; an ungated drawn product is the one thing
     // this whole pipeline exists to prevent. The merchant loses nothing but
     // the presenter flourish while the outage lasts.
-    return { pass: false, reason: `qa-outage: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, bad: ["qa-outage"] };
+    return { pass: false, reason: `qa-outage: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, bad: ["qa-outage"], soft: [] };
   }
 }
 
@@ -1123,7 +1150,14 @@ export async function runPresenterHold(opts: {
   let maskPath: string | undefined;
   let prePastePath: string | undefined;
 
-  if (!opts.wear) {
+  // ONE SHOT BY DEFAULT. The candidate spray below was built for engines that
+  // drew the product wrong most of the time — five paste candidates existed
+  // because each had a ~25% survival rate against a gate that had plenty to
+  // catch. Nano Banana Pro draws accurate packaging, so production now takes
+  // one compose, gates it on hard fails only, retries once on a hard fail and
+  // then falls back to the product still. PRESENTER_SPRAY=1 resurrects the
+  // spray for CI experiments.
+  if (!opts.wear && process.env.PRESENTER_SPRAY === "1") {
     const aspect = await productAspect(opts.productImageUrl);
     // Order = preference when both pass. A real photograph beats a drawn one
     // for a large product, where the drawing has the most to get wrong; a
@@ -1160,13 +1194,13 @@ export async function runPresenterHold(opts: {
         const frame = await runCompose(opts.scalePhrase, c.mode, aspect);
         if (!frame) return { c, note: `${c.name}: compose returned nothing` };
         if (!c.paste) {
-          const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase);
+          const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase, opts.sizeClass);
           return { c, frame, qa, note: `${c.name}: ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
         }
         const put = await overlayRealProduct(frame, opts.productImageUrl, { whole: c.mode === "showcase", sizeClass: opts.sizeClass });
         if (!put.ok) return { c, frame, note: `${c.name}: paste failed — ${put.failed}` };
         const inline = `data:image/jpeg;base64,${fs.readFileSync(put.absPath).toString("base64")}`;
-        const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
+        const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase, opts.sizeClass);
         return { c, frame, put, qa, note: `${c.name}: pasted, ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
       } catch (e) {
         return { c, note: `${c.name}: threw — ${(e as Error).message.slice(0, 80)}` };
@@ -1207,20 +1241,24 @@ export async function runPresenterHold(opts: {
     }
   }
 
-  let composed = preComposed || (await runCompose(opts.scalePhrase));
+  // Large products compose in showcase framing even on the one-shot path —
+  // the mode used to be picked inside the spray block, so skipping the spray
+  // silently demoted every wholesale case to a chest-up hold.
+  const oneMode = opts.wear ? ("wear" as const) : showcase ? ("showcase" as const) : ("hold" as const);
+  let composed = preComposed || (await runCompose(opts.scalePhrase, oneMode));
   if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
   if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
 
-  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase));
+  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase, opts.sizeClass));
   let retried = false;
   if (!qa.pass) {
     // The retry SHOUTS the requirement rather than repeating it — a second
     // identical attempt tends to reproduce the same mistake.
     retried = true;
     const louder = `${opts.scalePhrase || ""} CRITICAL: the previous attempt failed because "${qa.reason}". The product must appear at its stated real-world size, carry the EXACT printed artwork from the reference photo — same characters, same colours, same layout, same logos — and show EVERY unit, box and panel visible in it. Do not simplify it, do not redraw the artwork, do not invent a similar-looking package, do not shrink it to fit a hand.`.trim();
-    const second = await runCompose(louder);
+    const second = await runCompose(louder, oneMode);
     if (second) {
-      const qa2 = await qaPresenterHold(opts.productImageUrl, second, opts.scalePhrase);
+      const qa2 = await qaPresenterHold(opts.productImageUrl, second, opts.scalePhrase, opts.sizeClass);
       // Keep the retry only if it's actually better; a worse second take
       // shouldn't replace a merely-imperfect first one.
       if (qa2.pass) { composed = second; qa = qa2; }
@@ -1234,7 +1272,11 @@ export async function runPresenterHold(opts: {
   // product just stacked a second copy on top of the first: two cases in one
   // frame, which is worse than the thing it was fixing. So it is a repair,
   // not a step — it runs when the identity check failed, and never otherwise.
-  const needsRepair = qa.bad.some((k) => IDENTITY_FIELDS.includes(k));
+  // The paste repair rides with the spray: an engine accurate enough for
+  // one-shot delivery doesn't need a photograph glued over its work, and the
+  // paste is where the double-product frames came from. PRESENTER_PASTE=1
+  // turns it back on alongside PRESENTER_SPRAY for experiments.
+  const needsRepair = process.env.PRESENTER_PASTE === "1" && qa.bad.some((k) => IDENTITY_FIELDS.includes(k));
   const repair = needsRepair ? await overlayRealProduct(composed, opts.productImageUrl) : null;
   if (repair && !repair.ok) standIn = `${standIn} · repair paste failed: ${repair.failed}`;
   const pasted = repair?.ok ? repair : null;
@@ -1256,7 +1298,7 @@ export async function runPresenterHold(opts: {
     // is unset in CI, so the paste could never be scored there.
     attemptPath = best.absPath;
     const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
-    const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
+    const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase, opts.sizeClass);
     // Take the repair only if it actually repaired something. The old
     // condition also accepted it whenever the ORIGINAL had failed, which is
     // how a frame with the real case pasted below the drawn one — two
@@ -2190,13 +2232,14 @@ export async function generateImageAd(
               fresh = fresh || Buffer.from(await res!.arrayBuffer());
               if (fresh.length > 5_000) {
                 buf = fresh;
-                // FREEZE ONLY REAL PIXELS. A drawn frame can pass the gate on
-                // a good day (a Funism hold did, with a garbled logo the
-                // independent judge caught) — it may ship once, but freezing
-                // it would serve that gamble forever. Only paste-backed
-                // frames, where the artwork is the merchant's photograph,
-                // earn a place in the library.
-                if (held.pass && !held.wrongProduct && held.via !== "drawn") freezeReason = held.reason;
+                // Freeze every gate-passed frame, drawn included. The old
+                // rule froze only paste-backed pixels because drawn frames
+                // were a gamble that occasionally squeaked past the gate; on
+                // the one-shot pipeline the drawn frame IS the product — it
+                // passed a hard-fail identity gate — and refusing to freeze
+                // it would bill a fresh $0.15 compose for every repeat and
+                // hollow out the Shot Library economics entirely.
+                if (held.pass && !held.wrongProduct) freezeReason = held.reason;
               }
             }
           }
