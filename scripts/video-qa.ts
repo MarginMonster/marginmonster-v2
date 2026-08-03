@@ -173,6 +173,10 @@ async function presenterHoldCheck(): Promise<string> {
     const out: string[] = [];
     for (const e of engines) {
       process.env.COMPOSE_MODEL = e;
+      // Distinct published frame names per engine — without this the second
+      // engine's frames silently overwrite the first's on the qa-frames
+      // branch and the comparison is only half inspectable.
+      process.env.QA_TAG_PREFIX = `${(e.split("/").filter(Boolean).slice(-2).join("-") || "engine").replace(/[^a-z0-9-]/gi, "")}-`;
       // The module reads COMPOSE_MODEL at import time, so it has to be
       // re-imported per engine or every row reports the first one.
       delete require.cache[require.resolve("../app/lib/fal-image.server")];
@@ -323,7 +327,7 @@ async function presenterHoldOnce(): Promise<string> {
   // Multi-product: one presenter per product, cycling. Single-product: one
   // row per presenter, as before.
   const pairs = count > 1
-    ? prods.map((p, i) => ({ prod: p, portrait: portraits[i % portraits.length], tag: `p${String(i + 1).padStart(2, "0")}-${productSlug(p.title)}` }))
+    ? prods.map((p, i) => ({ prod: p, portrait: portraits[i % portraits.length], tag: `${process.env.QA_TAG_PREFIX || ""}p${String(i + 1).padStart(2, "0")}-${productSlug(p.title)}` }))
     : portraits.map((portrait) => ({ prod: prods[0], portrait, tag: (portrait.split("/").pop() || "presenter").replace(/\.jpe?g$/i, "") }));
 
   const rows: string[] = [];
