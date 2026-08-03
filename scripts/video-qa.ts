@@ -95,8 +95,9 @@ async function main() {
 
   const kf = await keyframeCheck();
   const ph = await presenterHoldCheck();
+  const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -175,6 +176,94 @@ async function presenterHoldCheck(): Promise<string> {
     return [`### Presenter image ads — engine comparison`, ``, ...out].join("\n\n");
   }
   return presenterHoldOnce();
+}
+
+/* ---------- cutaway assembly: the deterministic b-roll graph ----------
+ *
+ * Free — no AI spend at all. The cutaway format's whole promise is that the
+ * b-roll is deterministic ffmpeg, so it can be tested exactly, every run.
+ * Inputs are synthesized by hand (a WAV written byte-by-byte, a talking clip
+ * looped from the product photo) because the static build's lavfi sources are
+ * precisely what failed us in the mask saga — real file inputs only. */
+async function cutawayAssembleCheck(): Promise<string> {
+  const head = "### Cutaway video assembly (deterministic Ken Burns b-roll)";
+  const prod = await resolveProduct();
+  if (!prod) return `${head}\n\nSKIPPED — need a product image (QA_PRODUCT_URL or QA_STORE_URL). Nothing was tested.`;
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  const os2 = require("node:os") as typeof import("node:os");
+  const tmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), "vqa-cut-"));
+  try {
+    const { assemble, runFfmpeg, ffprobeDuration } = await import("../app/lib/ugc-ad-pipeline.server");
+
+    const imgPath = path2.join(tmp, "product.img");
+    const res = await fetch(prod.url, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) return `${head}\n\nSKIPPED — product image fetch failed (${res.status}). Nothing was tested.`;
+    fs2.writeFileSync(imgPath, Buffer.from(await res.arrayBuffer()));
+
+    // 12 seconds of narration-shaped audio, hand-built PCM. 12s → the two-beat
+    // plan: push-in mid-ad, pull-back on the close.
+    const secs = 12, rate = 16000, n = secs * rate;
+    const wav = Buffer.alloc(44 + n * 2);
+    wav.write("RIFF", 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write("WAVEfmt ", 8);
+    wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+    wav.write("data", 36); wav.writeUInt32LE(n * 2, 40);
+    for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(6000 * Math.sin((2 * Math.PI * 220 * i) / rate)), 44 + i * 2);
+    const audioPath = path2.join(tmp, "voice.wav");
+    fs2.writeFileSync(audioPath, wav);
+
+    // "Talking" clip: the product photo looped. Silent on purpose — that is
+    // the kling-fallback shape, and the b-roll graph under test is identical
+    // in both lipSynced modes.
+    const talkingPath = path2.join(tmp, "talking.mp4");
+    const mk = await runFfmpeg(["-y", "-loop", "1", "-framerate", "30", "-t", String(secs), "-i", imgPath,
+      "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", talkingPath]);
+    if (mk.status !== 0) return `${head}\n\nFAILED building the synthetic talking clip:\n\n\`\`\`\n${mk.stderr.slice(-400)}\n\`\`\``;
+
+    // zoompan probed ALONE, so assemble's static-fallback rung can't quietly
+    // pass this check on a build where the motion never rendered.
+    const zpProbe = await runFfmpeg(["-y", "-i", imgPath, "-vf",
+      "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,zoompan=z='1+0.12*on/53':d=54:s=720x1280:fps=30",
+      "-frames:v", "54", "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", path2.join(tmp, "zp.mp4")]);
+
+    const outPath = path2.join(tmp, "out.mp4");
+    await assemble({
+      talkingPath, audioPath, productImagePath: imgPath, outPath,
+      script: "Watch the product get its own moving shots while the voice keeps going.",
+      lipSynced: false, cutaway: true,
+    });
+    const dur = ffprobeDuration(outPath);
+
+    // Publish frames: base clip, early + late inside beat 1 (same product at
+    // visibly different zoom = the motion is real), and beat 2. 12s beats land
+    // at 4.56–6.36 and 10.10–11.90.
+    const framesDir = path2.join(process.env.QA_OUT || "qa-out", "frames");
+    fs2.mkdirSync(framesDir, { recursive: true });
+    const grabs: [number, string][] = [[1.0, "aroll"], [4.8, "cut1-early"], [6.1, "cut1-late"], [10.9, "cut2"]];
+    const names: string[] = [];
+    for (const [t, tag] of grabs) {
+      const name = `cutaway-${tag}.jpg`;
+      const g = await runFfmpeg(["-y", "-ss", t.toFixed(1), "-i", outPath, "-frames:v", "1", path2.join(framesDir, name)]);
+      if (g.status === 0) names.push(name);
+    }
+
+    return [head, "",
+      "Free and deterministic — synthetic 12s narration + a looped product clip, assembled with `cutaway: true`.",
+      "", "| | |", "|---|---|",
+      `| assembled | ${fs2.existsSync(outPath) ? "yes" : "**NO**"} |`,
+      `| duration | ${dur.toFixed(1)}s (want ~12) |`,
+      `| zoompan standalone | ${zpProbe.status === 0 ? "works" : "**FAILED** — assemble shipped the STATIC fallback, not the motion"} |`,
+      `| frames | ${names.map((x) => `\`${x}\``).join(" · ") || "**none extracted**"} |`,
+      "",
+      "`cutaway-cut1-early` vs `cutaway-cut1-late` should show the SAME product at visibly different zoom — that is the Ken Burns push-in. `cutaway-aroll` is the base clip between beats.",
+      zpProbe.status !== 0 ? `\n\`\`\`\n${zpProbe.stderr.slice(-300)}\n\`\`\`` : "",
+    ].filter(Boolean).join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED: ${e instanceof Error ? e.message.slice(0, 400) : e}`;
+  } finally {
+    try { fs2.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
 }
 
 function productSlug(title: string): string {

@@ -495,6 +495,13 @@ export async function assemble(opts: {
    *  away mid-song just interrupts the performance. At the end it lands the
    *  last line on a clean shot. */
   productCutAt?: "mid" | "end";
+  /** The creator-style cutaway format: the product b-roll becomes moving
+   *  Ken Burns beats (slow push-in mid-ad, pull-back on the close) built
+   *  deterministically from the merchant's REAL photo, with the narration
+   *  running underneath uncut. This is how the big UGC shops shoot product
+   *  reveals — the presenter talks, the product gets its own moving shots.
+   *  Falls back to the static cut-in if the zoompan graph fails. */
+  cutaway?: boolean;
 }): Promise<void> {
   // CJK scripts need the Noto font (fetched once); if it can't be had, ship
   // the video without burned captions instead of burning tofu boxes.
@@ -528,7 +535,7 @@ export async function assemble(opts: {
   /** One encode pass. captionText === "" builds ZERO drawtext filters — that's
    *  the recovery pass below, and the reason the caption filters are built here
    *  rather than once up front. */
-  const encode = async (captionText: string, withBroll = true) => {
+  const encode = async (captionText: string, withBroll = true, kenBurns = !!opts.cutaway) => {
     const args: string[] = ["-y"];
     if (!lipSynced) args.push("-stream_loop", "-1"); // loop only the silent kling fallback
     args.push("-i", opts.talkingPath);
@@ -541,7 +548,33 @@ export async function assemble(opts: {
     if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
     filters.push(`${base}[v0]`);
 
-    if (opts.productImagePath && withBroll) {
+    if (opts.productImagePath && withBroll && kenBurns) {
+      // KEN BURNS CUTAWAYS. The still is scaled to 2x the canvas first so the
+      // zoom samples from real pixels instead of jittering on upscale, then
+      // each beat gets its own zoompan branch: a push-in for the mid-ad reveal
+      // and a pull-back for the close. setpts shifts each branch to its window
+      // and overlay+enable drops it onto the performance; the audio track is
+      // untouched, so the narration runs continuously under the cuts — the
+      // grammar of every real creator ad.
+      const brIdx = useBakedAudio ? 1 : 2;
+      args.push("-i", opts.productImagePath); // single frame — zoompan makes the motion
+      const cutLen = 1.8;
+      const beats: { bs: number; out: boolean }[] = duration >= 8.5
+        ? [{ bs: Math.max(1.6, duration * 0.38), out: false }, { bs: duration - cutLen - 0.1, out: true }]
+        : [{ bs: Math.max(1.4, duration * 0.5), out: false }]; // short clip → one beat
+      filters.push(`[${brIdx}:v]scale=1440:2560:force_original_aspect_ratio=decrease,pad=1440:2560:(ow-iw)/2:(oh-ih)/2:color=0x0B0F0D[bsrc]`);
+      filters.push(`[bsrc]split=${beats.length}${beats.map((_, i) => `[bp${i}]`).join("")}`);
+      beats.forEach((b, i) => {
+        const frames = Math.round(cutLen * 30);
+        const z = b.out ? `max(1.12-0.12*on/${frames - 1},1.001)` : `1+0.12*on/${frames - 1}`;
+        filters.push(
+          `[bp${i}]zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,` +
+          `setpts=PTS-STARTPTS+${b.bs.toFixed(2)}/TB[cut${i}]`
+        );
+        filters.push(`${vLabel}[cut${i}]overlay=enable='between(t,${b.bs.toFixed(2)},${(b.bs + cutLen).toFixed(2)})':eof_action=pass[vb${i}]`);
+        vLabel = `[vb${i}]`;
+      });
+    } else if (opts.productImagePath && withBroll) {
       // b-roll product image = the next input. Lip-synced has [0]=video only, so
       // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
       const brIdx = useBakedAudio ? 1 : 2;
@@ -596,6 +629,14 @@ export async function assemble(opts: {
     console.error(`[ugc:assemble] encode failed — retrying WITHOUT burned captions: ${(run.stderr || "").slice(-300)}`);
     run = await encode("");
     if (run.status === 0) console.log("[ugc:assemble] recovered — shipped without burned captions");
+  }
+  // THE MOTION IS A NICE-TO-HAVE TOO. zoompan/split are exactly the kind of
+  // filters a thin ffmpeg build ships without, and the cutaway beats must
+  // never cost an ad the static cut-in could still deliver. One rung down.
+  if ((run.status !== 0 || !fs.existsSync(opts.outPath)) && opts.cutaway && opts.productImagePath) {
+    console.error(`[ugc:assemble] still failing — retrying with a STATIC product cut instead of Ken Burns: ${(run.stderr || "").slice(-300)}`);
+    run = await encode("", true, false);
+    if (run.status === 0) console.log("[ugc:assemble] recovered — shipped with the static cut-in");
   }
   // THE B-ROLL IS ALSO A NICE-TO-HAVE. Same reasoning as the captions above:
   // by now the song and the lipsync are bought and paid for, and the product
@@ -754,12 +795,27 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // composed "presenter holding the product" frame makes the whole ad an
   // in-hand demo. Studio passes an approved frame; campaign drips auto-compose
   // (checkpointed — restarts never re-spend). Failure → plain portrait.
+  // THE CUTAWAY FORMAT — how Arcads-class shops actually build these: the
+  // presenter performs to camera from the PLAIN portrait (no generative
+  // product-in-hand roll, so no chance of a wrong product in anyone's hands),
+  // and the product gets its own moving b-roll beats cut deterministically
+  // from the merchant's REAL photo, narration running underneath. The one
+  // risky generative step in the video pipeline is simply gone.
+  //
+  // A Studio-approved composed frame is human-gated, so it is always
+  // respected; apparel still needs the presenter wearing the item; services
+  // have no product to cut to. UGC_CUTAWAY=0 restores the product-in-frame
+  // pipeline everywhere — the backburner switch, same as every other one.
+  const cutawayMode = process.env.UGC_CUTAWAY !== "0"
+    && !params.serviceMode && !params.wearProduct && !params.composedFrameUrl
+    && !!params.productImageUrl;
+
   let heldProduct = false;
   let animSourceUrl = portraitPublicUrl; // what HeyGen fetches
   let animSourceDataUri = portraitDataUri; // what omni/kling get inline
   {
     let composedUrl = params.composedFrameUrl || resume.composedUrl || "";
-    if (!composedUrl && !params.serviceMode && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
+    if (!composedUrl && !cutawayMode && !params.serviceMode && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
       try {
         const { composeHoldingFrames } = await import("./fal-image.server");
         // A cutout carries no scale, so tell the composer how big this
@@ -948,6 +1004,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       // omni-human AND fal HeyGen bake the lip-synced audio into their output;
       // only the silent kling fallback needs the TTS muxed over a looped clip.
       lipSynced: engine === "omni-human" || engine === "heygen-fal",
+      cutaway: cutawayMode,
     });
 
     // Mirror to durable object storage (no-op unless configured) so the clip
@@ -964,6 +1021,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           style: "AI_AVATAR",
           engine,
           heldProduct, // the presenter is holding the product in-frame
+          cutaway: cutawayMode, // plain-portrait A-roll + Ken Burns product beats
           voiceId: delivery.voice, // which voice spoke — curation data
           voiceDelivery: delivery, // full cast signature: pitch/speed/emotion
           videoUrl: `/renders/${fileName}`,
