@@ -766,6 +766,14 @@ async function overlayRealProduct(
       if (anchorY < chinY + H * 0.02) {
         return give(`paste would cover the face (top ${Math.round((anchorY / H) * 100)}% vs chin ${Math.round((chinY / H) * 100)}%)`);
       }
+    } else if (anchorY < H * 0.36) {
+      // NO FACE READ IS NOT AN ALIBI. When the face couldn't be located the
+      // guard used to skip entirely, and a full-height paste shipped with the
+      // presenter's head completely behind it (the Hirono sheet — gate said
+      // "face clear" six times). The compose prompt keeps the head in the top
+      // third, so a paste whose top edge reaches the top ~36% of the frame is
+      // covering where a face lives, bbox or no bbox.
+      return give(`paste top at ${Math.round((anchorY / H) * 100)}% with no face read — would cover the head zone`);
     }
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +

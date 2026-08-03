@@ -124,6 +124,23 @@ function sniffImageType(b64: string): string | null {
   return null;
 }
 
+/** The API accepts only JPEG/PNG/GIF/WebP. Anything else — Shopify's CDN
+ *  has started serving AVIF from .jpg URLs — gets re-encoded to JPEG via
+ *  sharp (already a dependency). Five of six judge verdicts died on AVIF in
+ *  one sweep; correct labelling can't fix bytes the API won't take. */
+async function toSupportedImage(b64: string, claimed: string): Promise<{ media: string; data: string }> {
+  const sniffed = sniffImageType(b64);
+  if (sniffed) return { media: sniffed, data: b64 };
+  try {
+    const sharp = (await import("sharp")).default;
+    const jpg = await sharp(Buffer.from(b64, "base64")).jpeg({ quality: 92 }).toBuffer();
+    return { media: "image/jpeg", data: jpg.toString("base64") };
+  } catch (e) {
+    console.error("[anthropic:vision] unsupported image could not be re-encoded:", e instanceof Error ? e.message : e);
+    return { media: claimed, data: b64 };
+  }
+}
+
 /** Vision call — same raw-fetch client, with image URLs attached. Used by the
  *  image-ad QA gate to score product fidelity before a still ships.
  *
@@ -139,17 +156,18 @@ export async function anthropicVision(
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
   const model = opts.model || "claude-haiku-4-5-20251001";
-  const content: unknown[] = imageUrls.map((url) => {
+  const content: unknown[] = await Promise.all(imageUrls.map(async (url) => {
     const inline = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(url);
     if (inline) {
-      // Trust the BYTES over the caller's label: Shopify's CDN happily serves
-      // WebP from a .jpg URL, callers hardcode "data:image/jpeg", and the API
-      // rejects a mislabelled body outright — two judge verdicts died on
-      // exactly that in one sweep.
-      return { type: "image", source: { type: "base64", media_type: sniffImageType(inline[2]) || inline[1].toLowerCase(), data: inline[2] } };
+      // Trust the BYTES over the caller's label: Shopify's CDN serves WebP —
+      // and now AVIF — from .jpg URLs, callers hardcode "data:image/jpeg",
+      // and the API rejects a mislabelled or unsupported body outright. Sniff
+      // the real format; anything the API can't take (AVIF) gets re-encoded.
+      const img = await toSupportedImage(inline[2], inline[1].toLowerCase());
+      return { type: "image", source: { type: "base64", media_type: img.media, data: img.data } };
     }
     return { type: "image", source: { type: "url", url: visionSafeUrl(url) } };
-  });
+  }));
   content.push({ type: "text", text: prompt });
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
