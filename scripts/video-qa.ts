@@ -389,7 +389,7 @@ async function gradeOne(
     const scale = await inferProductScale(productTitle);
     const r = await runPresenterHold({
       portraitUrl: portrait, productImageUrl: productUrl, productTitle,
-      scalePhrase: scale?.phrase, sizeClass: scale?.sizeClass,
+      scalePhrase: scale?.phrase, sizeClass: scale?.sizeClass, cm: scale?.cm,
     });
     // Grade INDEPENDENTLY of the gate. The production gate saying "clean" is
     // exactly the claim under test — a second opinion is the only way to

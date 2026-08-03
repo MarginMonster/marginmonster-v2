@@ -490,7 +490,8 @@ async function qaPresenterHold(
   productUrl: string,
   genUrl: string,
   scalePhrase: string | undefined,
-  sizeClass?: string
+  sizeClass?: string,
+  cm?: number
 ): Promise<{ pass: boolean; reason: string; bad: string[]; soft: string[] }> {
   try {
     // The real product photo goes up as BYTES. Passed as a URL, the API's own
@@ -570,6 +571,11 @@ async function qaPresenterHold(
         // reports which size band the render READS as and the caller measures
         // the distance from the expected band, both directions.
         `renderedSize: against the person, how big does the product READ in image 2? Answer exactly one of: "palm" (fits in one palm), "two-hands" (needs both hands, smaller than the torso), "torso" (spans the torso or needs arms wrapped around), "floor" (furniture-sized or larger).${scalePhrase ? ` For context, the real product is ${scalePhrase}.` : ""}`,
+        // Bands are too coarse to catch a lie WITHIN a band — a 20cm bottle
+        // drawn at 45cm is "two-hands" either way and twice life size. So
+        // also take an absolute measurement against the one ruler always in
+        // frame: the presenter's own head.
+        `headHeights: measure the product's longest visible dimension in image 2 against the presenter's HEAD (chin to top of head). Answer a decimal number — e.g. 0.5 if it is half a head tall, 2 if it is two heads tall. Measure what is DRAWN, not what the product should be.`,
         `scalePlausible: judging by what the product obviously is, is it a believable size against the person?`,
         `noSourceText: has marketing text, a caption, a price flash or a shop watermark from image 1's BACKGROUND been copied in, or packaging text duplicated? Answer true if NOT.`,
         `handsOk: if no hand is visible in the picture, answer true — a product resting on a surface does not need one. Otherwise COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
@@ -583,7 +589,7 @@ async function qaPresenterHold(
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
-        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"renderedSize":"palm|two-hands|torso|floor","scalePlausible":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
+        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"renderedSize":"palm|two-hands|torso|floor","headHeights":number,"scalePlausible":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productRef, genRef],
       // The cheap vision model looked straight at plastic doll fingers with
@@ -628,8 +634,19 @@ async function qaPresenterHold(
       else if (diff === 1 && expected === 0 && rendered > expected) bad.push("scaleUp");
       else if (diff === 1) soft.push("scaleNear");
     } else if (j.scalePlausible === false) {
-      // No expected band to measure against — fall back to believability.
       bad.push("scalePlausible");
+    }
+    // Absolute check, catches within-band lies the coarse bands cannot: the
+    // real size in cm against the drawn size measured in head-heights (an
+    // adult head is ~23cm chin to crown and is always in a presenter frame).
+    // A 20cm bottle drawn two heads tall shipped before this — same band as
+    // life size, twice the size. 1.8x either way is a visible lie.
+    const heads = Number(j.headHeights);
+    if (cm && Number.isFinite(heads) && heads > 0) {
+      const ratio = (heads * 23) / cm;
+      if ((ratio >= 1.8 || ratio <= 0.55) && !bad.includes("scaleFar") && !bad.includes("scaleUp")) {
+        bad.push(ratio >= 1.8 ? "scaleUp" : "scaleFar");
+      }
     }
     if (!bad.length) return { pass: true, reason: soft.length ? `clean (soft: ${soft.join(", ")})` : "clean", bad, soft };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
@@ -1142,6 +1159,9 @@ export async function runPresenterHold(opts: {
   /** palm | two-hand | large | floor, from product-scale. Decides whether the
    *  presenter holds the product or stands behind it. */
   sizeClass?: string;
+  /** Real longest dimension in cm (product-scale) — powers the gate's
+   *  absolute head-height scale check. */
+  cm?: number;
 }): Promise<PresenterHoldResult> {
   // LAYOUT. A hand-sized item gets held; anything bigger gets set down in
   // front of the presenter, which is how creators actually shoot it and the
@@ -1234,13 +1254,13 @@ export async function runPresenterHold(opts: {
         const frame = await runCompose(opts.scalePhrase, c.mode, aspect);
         if (!frame) return { c, note: `${c.name}: compose returned nothing` };
         if (!c.paste) {
-          const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase, opts.sizeClass);
+          const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase, opts.sizeClass, opts.cm);
           return { c, frame, qa, note: `${c.name}: ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
         }
         const put = await overlayRealProduct(frame, opts.productImageUrl, { whole: c.mode === "showcase", sizeClass: opts.sizeClass });
         if (!put.ok) return { c, frame, note: `${c.name}: paste failed — ${put.failed}` };
         const inline = `data:image/jpeg;base64,${fs.readFileSync(put.absPath).toString("base64")}`;
-        const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase, opts.sizeClass);
+        const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase, opts.sizeClass, opts.cm);
         return { c, frame, put, qa, note: `${c.name}: pasted, ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
       } catch (e) {
         return { c, note: `${c.name}: threw — ${(e as Error).message.slice(0, 80)}` };
@@ -1289,7 +1309,7 @@ export async function runPresenterHold(opts: {
   if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
   if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
 
-  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase, opts.sizeClass));
+  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase, opts.sizeClass, opts.cm));
   let retried = false;
   if (!qa.pass) {
     // The retry SHOUTS the requirement rather than repeating it — a second
@@ -1298,7 +1318,7 @@ export async function runPresenterHold(opts: {
     const louder = `${opts.scalePhrase || ""} CRITICAL: the previous attempt failed because "${qa.reason}". The product must appear at its stated real-world size, carry the EXACT printed artwork from the reference photo — same characters, same colours, same layout, same logos — and show EVERY unit, box and panel visible in it. Do not simplify it, do not redraw the artwork, do not invent a similar-looking package, do not shrink it to fit a hand.`.trim();
     const second = await runCompose(louder, oneMode);
     if (second) {
-      const qa2 = await qaPresenterHold(opts.productImageUrl, second, opts.scalePhrase, opts.sizeClass);
+      const qa2 = await qaPresenterHold(opts.productImageUrl, second, opts.scalePhrase, opts.sizeClass, opts.cm);
       // Keep the retry only if it's actually better; a worse second take
       // shouldn't replace a merely-imperfect first one.
       if (qa2.pass) { composed = second; qa = qa2; }
@@ -1338,7 +1358,7 @@ export async function runPresenterHold(opts: {
     // is unset in CI, so the paste could never be scored there.
     attemptPath = best.absPath;
     const inline = `data:image/jpeg;base64,${fs.readFileSync(best.absPath).toString("base64")}`;
-    const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase, opts.sizeClass);
+    const qa3 = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase, opts.sizeClass, opts.cm);
     // Take the repair only if it actually repaired something. The old
     // condition also accepted it whenever the ORIGINAL had failed, which is
     // how a frame with the real case pasted below the drawn one — two
@@ -2242,7 +2262,7 @@ export async function generateImageAd(
         } else {
           const held = await runPresenterHold({
             portraitUrl, productImageUrl, productTitle, wear, scene,
-            scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass,
+            scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass, cm: scaleHint?.cm,
           });
           if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
           // A presenter holding something that merely RESEMBLES the product is
