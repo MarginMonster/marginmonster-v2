@@ -71,6 +71,23 @@ export default function Index() {
           </div>
         </main>
 
+        {/* AI trust strip — the engines behind the output, named openly so
+            merchants know what's building their ads. Wordmarks are set as
+            styled TEXT: official logo SVGs can drop straight into these spans
+            once brand-guideline assets are added — hand-recreating third-party
+            logos risks misrepresenting them. */}
+        <section className="lz-powered" aria-label="AI technology powering EasyMode">
+          <span className="lz-eyebrow">{(t.powered || LANDING_I18N.en.powered!).eyebrow}</span>
+          <div className="lz-pow-row">
+            <span className="lz-pow"><b>Claude</b><i>Anthropic</i></span>
+            <span className="lz-pow"><b>Nano&nbsp;Banana</b><i>Google DeepMind</i></span>
+            <span className="lz-pow"><b>Seedream</b><i>ByteDance</i></span>
+            <span className="lz-pow"><b>Kling&nbsp;AI</b><i>Kuaishou</i></span>
+            <span className="lz-pow"><b>MiniMax</b><i>Speech&nbsp;&amp;&nbsp;Voice</i></span>
+          </div>
+          <p className="lz-pow-note">{(t.powered || LANDING_I18N.en.powered!).note}</p>
+        </section>
+
         <section className="lz-feats">
           {t.features.map((f) => (
             <div className="lz-card" key={f.title}>
@@ -262,6 +279,16 @@ html,body{margin:0;padding:0}
 .lz-stats b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:26px;color:var(--green);line-height:1;}
 .lz-stats span{font-size:11px;color:var(--ink2)}
 .lz-div{width:1px;height:30px;background:var(--line)}
+/* The AI trust strip. Quiet by design: wordmarks sit muted until hover so
+   the strip reads as infrastructure, not advertising for someone else. */
+.lz-powered{max-width:900px;margin:44px auto 0;padding:0 26px;text-align:center;}
+.lz-pow-row{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 34px;margin:18px 0 14px;}
+.lz-pow{display:inline-flex;flex-direction:column;align-items:center;gap:2px;opacity:.62;filter:grayscale(1);transition:opacity .2s,filter .2s;}
+.lz-pow:hover{opacity:1;filter:none;}
+.lz-pow b{font-family:Poppins,sans-serif;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--ink);}
+.lz-pow i{font-style:normal;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.lz-pow-note{max-width:560px;margin:0 auto;font-size:13.5px;line-height:1.55;color:var(--muted);}
+@media(max-width:620px){.lz-pow-row{gap:12px 22px;}.lz-pow b{font-size:15px;}}
 .lz-feats{max-width:1000px;margin:56px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;}
 .lz-card{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:18px;padding:22px 20px;
   box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);

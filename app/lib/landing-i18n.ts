@@ -32,6 +32,10 @@ export interface LandingCopy {
   compare: { eyebrow: string; h2a: string; h2b: string; sub: string; themH: string; usH: string; them: string[]; us: string[] };
   band: { h2: string; p: string; cta: string };
   footer: { copy: string };
+  /** The AI trust strip — provider names themselves are proper nouns and
+   *  never translated; only the framing copy is. Optional so older language
+   *  packs fall back to English until translated. */
+  powered?: { eyebrow: string; note: string };
 }
 
 const EN: LandingCopy = {
@@ -130,6 +134,7 @@ const EN: LandingCopy = {
     cta: "Get EasyMode",
   },
   footer: { copy: "AI marketing autopilot for your store." },
+  powered: { eyebrow: "Powered by frontier AI", note: "Every ad is built and quality-checked by the same AI models the biggest studios use — then reviewed by you before it ships." },
 };
 
 const ES: LandingCopy = {
@@ -228,6 +233,7 @@ const ES: LandingCopy = {
     cta: "Consigue EasyMode",
   },
   footer: { copy: "Piloto automático de marketing con IA para tu tienda." },
+  powered: { eyebrow: "Impulsado por IA de frontera", note: "Cada anuncio se crea y verifica con los mismos modelos de IA que usan los grandes estudios — y tú lo apruebas antes de publicarse." },
 };
 
 const FR: LandingCopy = {
@@ -326,6 +332,7 @@ const FR: LandingCopy = {
     cta: "Adopter EasyMode",
   },
   footer: { copy: "Le pilote automatique marketing IA de votre boutique." },
+  powered: { eyebrow: "Propulsé par une IA de pointe", note: "Chaque publicité est créée et contrôlée par les mêmes modèles d'IA que les grands studios — puis validée par vous avant diffusion." },
 };
 
 const DE: LandingCopy = {
@@ -424,6 +431,7 @@ const DE: LandingCopy = {
     cta: "EasyMode holen",
   },
   footer: { copy: "KI-Marketing-Autopilot für deinen Shop." },
+  powered: { eyebrow: "Angetrieben von Frontier-KI", note: "Jede Anzeige wird von denselben KI-Modellen erstellt und geprüft, die die großen Studios nutzen — und von dir freigegeben, bevor sie live geht." },
 };
 
 const ZH: LandingCopy = {
@@ -522,6 +530,7 @@ const ZH: LandingCopy = {
     cta: "获取 EasyMode",
   },
   footer: { copy: "你店铺的 AI 营销自动驾驶。" },
+  powered: { eyebrow: "由前沿 AI 驱动", note: "每条广告都由顶级工作室同款 AI 模型生成并质检——发布前由你亲自审核。" },
 };
 
 export const LANDING_I18N: Record<LangKey, LandingCopy> = { en: EN, es: ES, fr: FR, de: DE, zh: ZH };
