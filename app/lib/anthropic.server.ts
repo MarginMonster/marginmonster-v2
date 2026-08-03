@@ -111,6 +111,19 @@ function visionSafeUrl(url: string): string {
   return url;
 }
 
+/** What image format are these bytes ACTUALLY in? Magic numbers only —
+ *  extensions and content-type headers both lie (see anthropicVision). */
+function sniffImageType(b64: string): string | null {
+  try {
+    const head = Buffer.from(b64.slice(0, 24), "base64");
+    if (head[0] === 0xff && head[1] === 0xd8) return "image/jpeg";
+    if (head[0] === 0x89 && head[1] === 0x50) return "image/png";
+    if (head[0] === 0x47 && head[1] === 0x49) return "image/gif";
+    if (head.subarray(0, 4).toString("latin1") === "RIFF" && head.subarray(8, 12).toString("latin1") === "WEBP") return "image/webp";
+  } catch { /* unreadable → keep the caller's label */ }
+  return null;
+}
+
 /** Vision call — same raw-fetch client, with image URLs attached. Used by the
  *  image-ad QA gate to score product fidelity before a still ships.
  *
@@ -129,7 +142,11 @@ export async function anthropicVision(
   const content: unknown[] = imageUrls.map((url) => {
     const inline = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(url);
     if (inline) {
-      return { type: "image", source: { type: "base64", media_type: inline[1].toLowerCase(), data: inline[2] } };
+      // Trust the BYTES over the caller's label: Shopify's CDN happily serves
+      // WebP from a .jpg URL, callers hardcode "data:image/jpeg", and the API
+      // rejects a mislabelled body outright — two judge verdicts died on
+      // exactly that in one sweep.
+      return { type: "image", source: { type: "base64", media_type: sniffImageType(inline[2]) || inline[1].toLowerCase(), data: inline[2] } };
     }
     return { type: "image", source: { type: "url", url: visionSafeUrl(url) } };
   });

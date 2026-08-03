@@ -201,10 +201,17 @@ async function cutawayAssembleCheck(): Promise<string> {
   try {
     const { assemble, runFfmpeg, ffprobeDuration } = await import("../app/lib/ugc-ad-pipeline.server");
 
-    const imgPath = path2.join(tmp, "product.img");
+    const rawImg = path2.join(tmp, "product.img");
     const res = await fetch(prod.url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) return `${head}\n\nSKIPPED — product image fetch failed (${res.status}). Nothing was tested.`;
-    fs2.writeFileSync(imgPath, Buffer.from(await res.arrayBuffer()));
+    fs2.writeFileSync(rawImg, Buffer.from(await res.arrayBuffer()));
+    // Re-encode whatever the CDN sent into a plain JPEG before anything else
+    // touches it: Shopify serves WebP bytes from .jpg URLs, and image2's
+    // -loop option refuses webp_pipe input ("Option loop not found") — this
+    // exact check died on it last run.
+    const imgPath = path2.join(tmp, "product.jpg");
+    const norm = await runFfmpeg(["-y", "-i", rawImg, "-frames:v", "1", imgPath]);
+    if (norm.status !== 0) return `${head}\n\nFAILED re-encoding the product image:\n\n\`\`\`\n${norm.stderr.slice(-600)}\n\`\`\``;
 
     // 12 seconds of narration-shaped audio, hand-built PCM. 12s → the two-beat
     // plan: push-in mid-ad, pull-back on the close.

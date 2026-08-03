@@ -532,6 +532,20 @@ export async function assemble(opts: {
   const useBakedAudio = lipSynced && !truncated;
   const duration = useBakedAudio ? talkingDur : audioDur;
 
+  // NORMALIZE THE B-ROLL INPUT. Shopify's CDN serves WebP bytes from .jpg
+  // URLs, and image2's -loop option (the static cut-in) rejects webp_pipe
+  // input outright ("Option loop not found") — so the product cut-in was
+  // silently dying on the recovery ladder for any merchant whose CDN sent
+  // WebP. One cheap re-encode up front makes the input format boring for
+  // every caller of assemble (UGC, cartoon, jingle alike).
+  let bRollPath = opts.productImagePath;
+  if (bRollPath) {
+    const norm = `${bRollPath}.norm.jpg`;
+    const conv = await runFfmpeg(["-y", "-i", bRollPath, "-frames:v", "1", norm]);
+    if (conv.status === 0 && fs.existsSync(norm)) bRollPath = norm;
+    else console.error(`[ugc:assemble] product image re-encode failed — using original: ${(conv.stderr || "").slice(-200)}`);
+  }
+
   /** One encode pass. captionText === "" builds ZERO drawtext filters — that's
    *  the recovery pass below, and the reason the caption filters are built here
    *  rather than once up front. */
@@ -548,7 +562,7 @@ export async function assemble(opts: {
     if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
     filters.push(`${base}[v0]`);
 
-    if (opts.productImagePath && withBroll && kenBurns) {
+    if (bRollPath && withBroll && kenBurns) {
       // KEN BURNS CUTAWAYS. The still is scaled to 2x the canvas first so the
       // zoom samples from real pixels instead of jittering on upscale, then
       // each beat gets its own zoompan branch: a push-in for the mid-ad reveal
@@ -557,7 +571,7 @@ export async function assemble(opts: {
       // untouched, so the narration runs continuously under the cuts — the
       // grammar of every real creator ad.
       const brIdx = useBakedAudio ? 1 : 2;
-      args.push("-i", opts.productImagePath); // single frame — zoompan makes the motion
+      args.push("-i", bRollPath); // single frame — zoompan makes the motion
       const cutLen = 1.8;
       const beats: { bs: number; out: boolean }[] = duration >= 8.5
         ? [{ bs: Math.max(1.6, duration * 0.38), out: false }, { bs: duration - cutLen - 0.1, out: true }]
@@ -574,11 +588,11 @@ export async function assemble(opts: {
         filters.push(`${vLabel}[cut${i}]overlay=enable='between(t,${b.bs.toFixed(2)},${(b.bs + cutLen).toFixed(2)})':eof_action=pass[vb${i}]`);
         vLabel = `[vb${i}]`;
       });
-    } else if (opts.productImagePath && withBroll) {
+    } else if (bRollPath && withBroll) {
       // b-roll product image = the next input. Lip-synced has [0]=video only, so
       // it's input 1; fallback has [0]=video [1]=audio, so it's input 2.
       const brIdx = useBakedAudio ? 1 : 2;
-      args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", opts.productImagePath);
+      args.push("-loop", "1", "-framerate", "30", "-t", String(Math.ceil(duration)), "-i", bRollPath);
       // during a lip-synced clip keep the cutaway short (hides the mouth briefly —
       // reads as an intentional UGC cut, not a glitch)
       const atEnd = opts.productCutAt === "end";
