@@ -100,7 +100,7 @@ export async function anthropicText(
  *  Worse, the production gate swallows that 400 as a QA outage and passes the
  *  frame, so any merchant with big product photos was silently ungated. The
  *  CDN resizes on request; ask it for a vision-sized rendition. */
-function visionSafeUrl(url: string): string {
+export function visionSafeUrl(url: string): string {
   try {
     const u = new URL(url);
     if (/(^|\.)cdn\.shopify\.com$/i.test(u.hostname) && !u.searchParams.has("width")) {

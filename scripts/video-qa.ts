@@ -377,6 +377,19 @@ async function gradeOne(
     if (r.localPath && require("node:fs").existsSync(r.localPath)) {
       judgeRef = `data:image/jpeg;base64,${require("node:fs").readFileSync(r.localPath).toString("base64")}`;
     }
+    // The product reference goes up as BYTES too: passed as a URL, the API's
+    // own fetcher receives AVIF from Shopify for some products (the gate's
+    // ?width=1568 rendition dodges it; the raw original doesn't) and the
+    // verdict dies on a format 400. Inlined bytes go through the client's
+    // sniff-and-reencode instead.
+    let productRef = productUrl;
+    try {
+      // The vision-sized rendition, not the raw original — originals can
+      // exceed the API's 8000px limit as well as its format support.
+      const { visionSafeUrl } = await import("../app/lib/anthropic.server");
+      const pres = await fetch(visionSafeUrl(productUrl), { signal: AbortSignal.timeout(60_000) });
+      if (pres.ok) productRef = `data:image/jpeg;base64,${Buffer.from(await pres.arrayBuffer()).toString("base64")}`;
+    } catch { /* URL fallback — no worse than before */ }
     let verdict = "not graded";
     if (judgeRef) {
       try {
@@ -395,7 +408,7 @@ async function gradeOne(
           `notes: one short sentence on the worst problem, or "clean".`,
           `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"textFaithful":bool,"notSimplified":bool,"singleProduct":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
         ].join("\n"),
-        [productUrl, judgeRef],
+        [productRef, judgeRef],
         { maxTokens: 1200, model: "claude-sonnet-5" }
       );
       const m = raw && raw.match(/\{[\s\S]*\}/);

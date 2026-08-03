@@ -492,6 +492,23 @@ async function qaPresenterHold(
   scalePhrase: string | undefined
 ): Promise<{ pass: boolean; reason: string; bad: string[] }> {
   try {
+    // The real product photo goes up as BYTES. Passed as a URL, the API's own
+    // fetcher receives AVIF from Shopify's CDN for some originals and the
+    // whole gate call 400s — which the catch below treats as a QA outage and
+    // FAILS OPEN. Inlined bytes go through the client's sniff-and-reencode,
+    // so the merchant's image format can never un-gate the merchant.
+    let productRef = productUrl;
+    try {
+      // Fetch the vision-sized RENDITION, not the raw original — Shopify
+      // originals routinely exceed the API's 8000px limit, which is the bug
+      // visionSafeUrl already fixed once. Never reintroduce it via bytes.
+      const { visionSafeUrl } = await import("./anthropic.server");
+      const pres = await fetch(visionSafeUrl(productUrl));
+      if (pres.ok) {
+        const pbuf = Buffer.from(await pres.arrayBuffer());
+        if (pbuf.length > 5_000) productRef = `data:image/jpeg;base64,${pbuf.toString("base64")}`;
+      }
+    } catch { /* URL fallback — no worse than before */ }
     const raw = await anthropicVision(
       [
         `Image 1 is the REAL product photo. Image 2 is an AI-composed shot of a presenter holding that product.`,
@@ -527,7 +544,7 @@ async function qaPresenterHold(
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
         `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"correctScale":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
-      [productUrl, genUrl],
+      [productRef, genUrl],
       // The cheap vision model looked straight at plastic doll fingers with
       // painted-on joints and answered "hands human". It is fine at reading
       // packaging text; it is not reliable at judging anatomy. This gate runs
@@ -680,20 +697,33 @@ async function overlayRealProduct(
   // the presenter's mouth — one wrong word from a vision model shipped the
   // day's only bad frame. A rectangle-intersection test cannot be charmed.
   let face: { x: number; y: number; w: number; h: number } | null = null;
+  // The failure reason travels WITH the rejection so a sweep shows why the
+  // precise chin test didn't run — a whole week of face reads failed silently
+  // (null → guard skipped → the Hirono full-face paste shipped) and nothing
+  // in any report said so.
+  let faceNote = "";
   try {
     const rawF = await anthropicVision(
-      `Return the bounding box of the person's FACE — forehead to chin, ear to ear. Percentages of the image, x,y = TOP-LEFT. Reply ONLY JSON: {"x":number,"y":number,"w":number,"h":number}`,
+      `Return the bounding box of the person's FACE — forehead to chin, ear to ear. Use PERCENTAGES of the image (0-100), x,y = TOP-LEFT corner. Reply ONLY JSON, no prose: {"x":number,"y":number,"w":number,"h":number}`,
       [frameUrl],
-      { maxTokens: 120 }
+      // sonnet-5: haiku's box answers never parsed (silently, 100% of the
+      // time). With thinking disabled sonnet-5 is budget-safe at this size.
+      { maxTokens: 200, model: "claude-sonnet-5" }
     );
     const mF = rawF.match(/\{[\s\S]*\}/);
     if (mF) {
       const jF = JSON.parse(mF[0]) as Record<string, number>;
       if (["x", "y", "w", "h"].every((k) => typeof jF[k] === "number") && jF.w > 2 && jF.h > 2 && jF.w < 60 && jF.h < 60) {
         face = { x: jF.x, y: jF.y, w: jF.w, h: jF.h };
+      } else {
+        faceNote = ` (face box implausible: ${mF[0].slice(0, 60)})`;
       }
+    } else {
+      faceNote = ` (face read unparseable: ${rawF.slice(0, 60)})`;
     }
-  } catch { /* no face read → skip the overlap guard rather than block the paste */ }
+  } catch (e) {
+    faceNote = ` (face read error: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)})`;
+  }
 
   const cutout = await removeBackground(productImageUrl);
   if (!cutout) return give("background removal returned nothing");
@@ -773,7 +803,7 @@ async function overlayRealProduct(
       // "face clear" six times). The compose prompt keeps the head in the top
       // third, so a paste whose top edge reaches the top ~36% of the frame is
       // covering where a face lives, bbox or no bbox.
-      return give(`paste top at ${Math.round((anchorY / H) * 100)}% with no face read — would cover the head zone`);
+      return give(`paste top at ${Math.round((anchorY / H) * 100)}% with no face read — would cover the head zone${faceNote}`);
     }
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +
