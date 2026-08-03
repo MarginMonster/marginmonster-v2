@@ -103,6 +103,8 @@ jobs:
         env:
           K1: ${{ secrets.ANTHROPIC_API_KEY }}
           K2: ${{ secrets.CLAUDE_API_KEY }}
+          C1: ${{ secrets.CREATIFY_API_ID }}
+          C2: ${{ secrets.CREATIFY_API_KEY }}
         run: |
           check () {
             name="$1"; key="$2"
@@ -119,6 +121,14 @@ jobs:
           }
           check ANTHROPIC_API_KEY "$K1"
           check CLAUDE_API_KEY "$K2"
+          # Creatify (Commercial pipeline): credits check without exposing keys
+          if [ -n "$C1" ] && [ -n "$C2" ]; then
+            cr=$(curl -s -o /tmp/cr.json -w "%{http_code}" https://api.creatify.ai/api/remaining_credits/ \
+              -H "X-API-ID: $C1" -H "X-API-KEY: $C2")
+            echo "[CREATIFY] credits check: HTTP $cr → $(head -c 120 /tmp/cr.json)"
+          else
+            echo "[CREATIFY] not set"
+          fi
       - name: Stop after health check
         if: inputs.health_only != ''
         run: echo "health_only set — skipping the sweep" && exit 0

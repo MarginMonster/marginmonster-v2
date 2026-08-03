@@ -29,6 +29,7 @@ const CONTENT_TYPES = [
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 59 },
   { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 59 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 59 },
+  { key: "commercial", name: "Commercial", cover: "/ad-templates/phcover.jpg?v=1", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 59 },
 ] as const;
 
 const CARTOON_STYLES = [
@@ -680,6 +681,7 @@ export default function WebStudio() {
               </>
             )}
             {contentType === "highlight" && <p className="ws-note">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
+            {contentType === "commercial" && <p className="ws-note">🎥 <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {(contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">

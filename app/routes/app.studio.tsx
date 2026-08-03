@@ -25,7 +25,7 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
 // else, then the screen shifts in place to that style's picker. All four are
 // live pipelines: avatar (UGC), highlight (cinematic), cartoon (illustrated
 // keyframe + kling), jingle (sung ad).
-type CType = "avatar" | "highlight" | "cartoon" | "jingle";
+type CType = "avatar" | "highlight" | "cartoon" | "jingle" | "commercial";
 // Covers carry ?v= so replacing the art actually reaches browsers that
 // cached the old file under the same name.
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
@@ -33,6 +33,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", live: true },
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", live: true },
+  { key: "commercial", name: "Commercial", icon: "🎥", cover: "/ad-templates/phcover.jpg?v=1", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
@@ -380,6 +381,7 @@ export default function Studio() {
     (tab === "video" && (
       contentType === "avatar" ||
       contentType === "highlight" ||
+      contentType === "commercial" ||
       contentType === "jingle" ||
       (contentType === "cartoon" && !!cartoonStyle)));
   const [direction, setDirection] = useState(""); // image style / blog topic

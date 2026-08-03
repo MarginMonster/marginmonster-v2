@@ -325,6 +325,27 @@ async function runJob(
             audioUrl: payload.ckAudioUrl as string | undefined,
           },
         });
+      } else if (payload.contentType === "commercial") {
+        // COMMERCIAL → cinematic multi-scene story ad with a packshot
+        // finale, rendered by Creatify. Lazy import, same as the others.
+        const { generateCommercialAd } = await import("./creatify-ad-pipeline.server");
+        forgedAssetId = await generateCommercialAd({
+          shopId,
+          brandProfile: shop.brandProfile,
+          productTitle: payload.productTitle as string,
+          productDescription: payload.productDescription as string | undefined,
+          productImageUrl: payload.productImageUrl as string | undefined,
+          productPageUrl: payload.productPageUrl as string | undefined,
+          direction: payload.customPrompt as string | undefined,
+          lengthSec: payload.lengthSec != null ? Number(payload.lengthSec) : undefined,
+          aspectRatio: payload.aspectRatio as string | undefined,
+          origin,
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            creatifyLinkId: payload.ckCreatifyLinkId as string | undefined,
+            creatifyVideoId: payload.ckCreatifyVideoId as string | undefined,
+          },
+        });
       } else if (payload.contentType === "jingle") {
         // ANTHEM → sung theme song, lipsynced by the cast singer (photoreal
         // or cartoon-styled), or played over a hero product clip.
