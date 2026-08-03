@@ -514,12 +514,12 @@ async function qaPresenterHold(
           ? `correctScale: the product's real size is ${scalePhrase}. Is it that size against the person? A case or box shrunk to palm-size is the most common scale failure.`
           : `correctScale: judging by what the product obviously is, is it a believable size against the person?`,
         `noSourceText: has marketing text, a caption, a price flash or a shop watermark from image 1's BACKGROUND been copied in, or packaging text duplicated? Answer true if NOT.`,
-        `handsOk: COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
+        `handsOk: if no hand is visible in the picture, answer true — a product resting on a surface does not need one. Otherwise COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
         // Counting digits is not the same as looking at them. A frame came back
         // with the right NUMBER of fingers rendered as pale wooden dolls'
         // fingers with drawn-on knuckle lines, and a count-only question waved
         // it through as "hands ok".
-        `handsHuman: LOOK AT the fingers, ignoring how many there are. Are they living human fingers — skin the same tone as the wrists and arms they grow from, tapering naturally, with real nails and knuckles? A failure is fingers that look wooden, plastic, doll-like, prosthetic or mannequin; pale sausage shapes with painted-on joint lines; fingers that do not join the hand; fingers melting into the product. If they would make a viewer flinch, this is false.`,
+        `handsHuman: if no hand is visible, answer true. Otherwise LOOK AT the fingers, ignoring how many there are. Are they living human fingers — skin the same tone as the wrists and arms they grow from, tapering naturally, with real nails and knuckles? A failure is fingers that look wooden, plastic, doll-like, prosthetic or mannequin; pale sausage shapes with painted-on joint lines; fingers that do not join the hand; fingers melting into the product. If they would make a viewer flinch, this is false.`,
         `faceVisible: is the presenter's whole face — eyes, nose AND mouth — unobstructed? A product held up covering the mouth or chin is a failure; the presenter is meant to be selling to camera.`,
         `notSelfie: is the presenter NOT reaching an arm toward the lens as though holding the camera? An outstretched arm while both hands hold the product implies a third arm off-frame.`,
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
@@ -644,6 +644,28 @@ async function overlayRealProduct(
     }
   } catch (e) {
     boxNote = `vision failed: ${(e as Error).message.slice(0, 120)}`;
+  }
+  if (!box && boxNote.startsWith("implausible")) {
+    // A single bad read killed an entire composite ("implausible box 0×1%").
+    // The question is cheap; ask it once more before giving up on the paste.
+    try {
+      const raw2 = await anthropicVision(
+        [
+          `Find the ${opts.blank ? "plain unmarked box" : "product"} in this photo — it may be held up or sitting on a surface.`,
+          `Reply ONLY JSON with its bounding box as percentages of the image, x,y being the TOP-LEFT corner:`,
+          `{"x":number,"y":number,"w":number,"h":number}`,
+        ].join(" "),
+        [frameUrl],
+        { maxTokens: 120 }
+      );
+      const m2 = raw2.match(/\{[\s\S]*\}/);
+      if (m2) {
+        const j2 = JSON.parse(m2[0]) as Record<string, number>;
+        if (["x", "y", "w", "h"].every((k) => typeof j2[k] === "number") && j2.w > 8 && j2.h > 8 && j2.w < 95 && j2.h < 95) {
+          box = { x: j2.x, y: j2.y, w: j2.w, h: j2.h };
+        }
+      }
+    } catch { /* second read failed too — fall through to the bail below */ }
   }
   if (!box) return give(boxNote);
 

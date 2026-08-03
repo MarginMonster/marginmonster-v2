@@ -123,7 +123,10 @@ export async function submitCompose(
     `The box is a simple matte light-grey cardboard box whose front face is ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces, clean straight edges. ` +
     `Its front face is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The box sits in the LOWER HALF of the frame and takes up a good part of the width. The presenter is behind and above it, head in the TOP THIRD, their whole face clearly visible with plenty of clear space between their chin and the top of the box — the box never rises past their shoulders. ` +
-    `One hand rests lightly on the surface beside the box or gestures toward it, open and relaxed; they are NOT lifting it. Exactly ONE box in the whole image.${sizing} ` +
+    // "Resting beside it" read as no contact at all: three showcase frames
+    // came back with the product apparently floating and the gate rightly
+    // called it. A creator rests a hand ON the box. Contact, without lifting.
+    `One hand rests flat on top of the box or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE box in the whole image.${sizing} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `Shot from slightly above at chest height by someone standing across the counter, the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in. NOT a selfie, no arm reaching toward the lens. ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
@@ -152,7 +155,12 @@ export async function submitCompose(
       // were genuinely descriptive and stay: the photo is taken by someone
       // else (a selfie needs a hand on the phone, which invents a third arm),
       // and the product sits below the chin. The rest is the gate's problem.
-      : `The person from the first image holding the ${productTitle || "product"} from the second image, product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. ` +
+      // "The complete item" earns its place: cutting the prompt back lost it,
+      // and three of four holds came back as a single small blind box in place
+      // of a twelve-unit display case. That is a description of what to draw,
+      // not a check on whether it worked.
+      : `The person from the first image holding the ${productTitle || "product"} from the second image — the COMPLETE item exactly as pictured, with every unit, box and panel it has, not one piece of it. ` +
+        `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. ` +
         `${integrity}${noSourceText} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Photographed by someone standing in front of them, not a selfie. ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
