@@ -976,6 +976,22 @@ export interface PresenterHoldResult {
   wrongProduct: boolean;
 }
 
+/** Which framing this presenter × product pair gets. A hand-sized item is
+ *  held; anything bigger goes on the counter with the presenter behind it
+ *  (showcase); apparel is worn. PRESENTER_LAYOUT=hold|showcase forces one
+ *  everywhere — the backburner switch for the pre-showcase pipeline.
+ *
+ *  This is THE layout decision — runPresenterHold obeys it and the shot
+ *  library keys on it, so a cached shot is always the same framing the
+ *  pipeline would have generated. */
+export function presenterLayout(sizeClass?: string, wear?: boolean): "hold" | "showcase" | "wear" {
+  const forced = (process.env.PRESENTER_LAYOUT || "").trim().toLowerCase();
+  const showcase = forced === "showcase"
+    || (forced !== "hold" && !wear && ["two-hand", "large", "floor"].includes(sizeClass || ""));
+  if (showcase) return "showcase";
+  return wear ? "wear" : "hold";
+}
+
 export async function runPresenterHold(opts: {
   portraitUrl: string;
   productImageUrl: string;
@@ -997,9 +1013,7 @@ export async function runPresenterHold(opts: {
   // previous pipeline stays one environment variable away.
   let preComposed: string | undefined;
   let preQa: { pass: boolean; reason: string; bad: string[] } | undefined;
-  const forced = (process.env.PRESENTER_LAYOUT || "").trim().toLowerCase();
-  const showcase = forced === "showcase"
-    || (forced !== "hold" && !opts.wear && ["two-hand", "large", "floor"].includes(opts.sizeClass || ""));
+  const showcase = presenterLayout(opts.sizeClass, opts.wear) === "showcase";
 
   const { submitCompose, pollCompose } = await import("./fal-image.server");
   const runCompose = async (
@@ -2046,61 +2060,96 @@ export async function generateImageAd(
         const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
         const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
         const scaleHint = scaleFromChoice(productSize) || (await inferProductScale(productTitle, stylePrompt));
-        const held = await runPresenterHold({
-          portraitUrl, productImageUrl, productTitle, wear, scene,
-          scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass,
-        });
-        if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
-        // A presenter holding something that merely RESEMBLES the product is
-        // the complaint this whole path exists to answer, and until now the
-        // gate only wrote a log line before shipping the frame anyway. Two
-        // composes and a paste have already had their turn; if the thing in
-        // his hands still isn't the merchant's item, fall through to the
-        // product still, which is the real photograph.
-        const composed = held.wrongProduct ? undefined : (held.url || undefined);
-        if (held.wrongProduct) {
-          artLog("image-ad", `presenter hold: not the merchant's product (${held.failed.join(", ")}) — shipping a product still instead`);
-        }
-        if (composed) {
-          let localUrl = "";
-          try {
+
+        // THE SHOT LIBRARY. The presenter × product composite is the one
+        // genuinely risky generative step in this pipeline, so it runs ONCE:
+        // the first gate-passed frame for a pair is frozen on disk and every
+        // later ad for the same pair reuses it — fresh copy overlay, zero
+        // compose/QA spend, zero new chance of drift. This is how the big
+        // creators' tools all work (generate once, human-gate, freeze).
+        const { shotLibraryEnabled, presenterShotKey, findPresenterShot, savePresenterShot } =
+          await import("./presenter-shots.server");
+        const layout = presenterLayout(scaleHint?.sizeClass, wear);
+        const shotKey = presenterShotKey(avatarId, avatarVariant || 0, productImageUrl, layout);
+        const cachedShot = shotLibraryEnabled() ? await findPresenterShot(shopId, shotKey) : null;
+
+        let buf: Buffer | null = null;
+        let fileName = "";
+        let composed: string | undefined;
+        let freezeReason: string | undefined; // set only for a fresh gate-passed frame
+        if (cachedShot) {
+          buf = cachedShot.buf;
+          fileName = cachedShot.fileName;
+          artLog("image-ad", `presenter shot library: reusing the frozen ${layout} shot for this presenter — instant, no generation`);
+        } else {
+          const held = await runPresenterHold({
+            portraitUrl, productImageUrl, productTitle, wear, scene,
+            scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass,
+          });
+          if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
+          // A presenter holding something that merely RESEMBLES the product is
+          // the complaint this whole path exists to answer, and until now the
+          // gate only wrote a log line before shipping the frame anyway. Two
+          // composes and a paste have already had their turn; if the thing in
+          // his hands still isn't the merchant's item, fall through to the
+          // product still, which is the real photograph.
+          composed = held.wrongProduct ? undefined : (held.url || undefined);
+          if (held.wrongProduct) {
+            artLog("image-ad", `presenter hold: not the merchant's product (${held.failed.join(", ")}) — shipping a product still instead`);
+          }
+          if (composed) {
             // fal delivery URLs expire in ~an hour and the healer can't re-forge
             // a presenter still from its prompt — storing the raw fal URL means
             // a card that goes permanently blank. Try a few times, then let the
             // ladder deliver a product still instead of a dying link.
             // A pasted composite is already on our own disk; re-fetching it
             // over HTTP from ourselves is a round trip that can only fail.
-            let buf: Buffer | null = held.localPath && fs.existsSync(held.localPath) ? fs.readFileSync(held.localPath) : null;
+            let fresh: Buffer | null = held.localPath && fs.existsSync(held.localPath) ? fs.readFileSync(held.localPath) : null;
             let res: Response | null = null;
-            for (let i = 0; i < 3 && !buf && !res?.ok; i++) {
+            for (let i = 0; i < 3 && !fresh && !res?.ok; i++) {
               if (i) await new Promise((r) => setTimeout(r, 1500));
               res = await fetch(composed).catch(() => null);
             }
-            if (buf || res?.ok) {
-              buf = buf || Buffer.from(await res!.arrayBuffer());
-              if (buf.length > 5_000) {
-                const dir = path.join(process.cwd(), "data", "renders");
-                fs.mkdirSync(dir, { recursive: true });
-                const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-                fs.writeFileSync(path.join(dir, fileName), buf);
-                try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
-                localUrl = `/renders/${fileName}`;
-                // Overlay headline + CTA (best-effort) so the presenter still is a real ad.
-                try {
-                  const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-                  // Retry once: a single flaky copy call was the difference
-                  // between a presenter still that carries our poster headline
-                  // and one that ships bare. "Sometimes" is not a standard.
-                  let copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
-                  if (!copy) copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
-                  if (!copy) artLog("image-ad", "presenter still: ad copy failed twice — shipping without the poster overlay");
-                  if (copy) {
-                    const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
-                    if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
-                  }
-                } catch (e) { console.error("[image-ad] presenter overlay skipped:", e instanceof Error ? e.message : e); }
+            if (fresh || res?.ok) {
+              fresh = fresh || Buffer.from(await res!.arrayBuffer());
+              if (fresh.length > 5_000) {
+                buf = fresh;
+                if (held.pass && !held.wrongProduct) freezeReason = held.reason;
               }
             }
+          }
+        }
+        if (buf) {
+          let localUrl = "";
+          try {
+            const dir = path.join(process.cwd(), "data", "renders");
+            fs.mkdirSync(dir, { recursive: true });
+            if (!fileName) {
+              fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+              fs.writeFileSync(path.join(dir, fileName), buf);
+              try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
+              if (freezeReason !== undefined) {
+                // Freeze the CLEAN composite (pre text-overlay) so every
+                // reuse can carry its own headline and CTA.
+                await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName, gateReason: freezeReason });
+                artLog("image-ad", "presenter shot library: froze this gate-passed shot — future ads for this pair are instant");
+              }
+            }
+            localUrl = `/renders/${fileName}`;
+            // Overlay headline + CTA (best-effort) so the presenter still is a real ad.
+            try {
+              const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+              // Retry once: a single flaky copy call was the difference
+              // between a presenter still that carries our poster headline
+              // and one that ships bare. "Sometimes" is not a standard.
+              let copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
+              if (!copy) copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
+              if (!copy) artLog("image-ad", "presenter still: ad copy failed twice — shipping without the poster overlay");
+              if (copy) {
+                const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
+                if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
+              }
+            } catch (e) { console.error("[image-ad] presenter overlay skipped:", e instanceof Error ? e.message : e); }
           } catch (e) { console.error("[image-ad] presenter still persist failed:", e); }
           // No durable copy → don't mint a card that dies in an hour; the
           // ladder below still delivers a real (product) ad for this job.
@@ -2109,7 +2158,7 @@ export async function generateImageAd(
             data: {
               shopId, type: "IMAGE_AD", status: "PENDING",
               title: `${productTitle} — held by presenter`,
-              bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter holding ${productTitle}`, method: "presenter", avatarId }),
+              bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed || null, prompt: `presenter holding ${productTitle}`, method: "presenter", avatarId, shotReused: !!cachedShot }),
               metaJson: JSON.stringify({
                 campaignGoal: plan.campaignGoal, productTitle, avatarId,
                 avatarVariant: avatarVariant ?? 0,
