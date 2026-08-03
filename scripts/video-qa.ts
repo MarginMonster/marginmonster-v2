@@ -274,6 +274,7 @@ async function gradeOne(
     }
     let verdict = "not graded";
     if (judgeRef) {
+      try {
       const raw = await anthropicVision(
         [
           `Image 1 is the merchant's real product photo. Image 2 is an ad of a presenter with it.`,
@@ -315,6 +316,16 @@ async function gradeOne(
         yes("faceVisible") ? "face clear" : "**FACE BLOCKED**",
       ].join(" · ");
       if (j) console.log(`[vqa] ${tag}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${String(j.notes || "")}`);
+      } catch (je) {
+        // A judge failure is not a row failure: the frame, gate verdict and
+        // candidate trace are all still real results. Log the FULL error —
+        // two sweeps of truncated "Anthropic API 400: ...mess" told us
+        // nothing about which images the API refuses or why.
+        ungraded = 1;
+        const msg = je instanceof Error ? je.message : String(je);
+        console.log(`[vqa] ${tag}: judge errored — ${msg}`);
+        verdict = `**judge errored** — ${msg.slice(0, 160)}`;
+      }
     }
     // Publish what was actually JUDGED. Saving r.url after a paste would
     // ship the pre-composite frame and quietly disagree with the verdict.

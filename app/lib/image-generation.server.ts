@@ -936,12 +936,6 @@ async function blendProductEdges(
 /** The gate fields that mean "this is not the merchant's product". Scale and
  *  anatomy are defects; these are a different item. */
 const IDENTITY_FIELDS = ["artworkMatches", "sameObject", "notSimplified", "textFaithful"];
-/** Fields that make a frame UNDELIVERABLE. The ten-product sweep delivered
- *  two frames the gate had affirmatively failed for a covered face — identity
- *  was the only thing that triggered the fallback, and every other rejection
- *  shipped with a log line. A presenter ad where the presenter's face is
- *  hidden is not a presenter ad; it drops to the product still too. */
-const DROP_FIELDS = [...IDENTITY_FIELDS, "faceVisible"];
 
 export interface PresenterHoldResult {
   url: string | null;
@@ -1193,7 +1187,13 @@ export async function runPresenterHold(opts: {
         maskPath,
         prePastePath,
         failed: qa3.bad,
-        wrongProduct: qa3.bad.some((k) => DROP_FIELDS.includes(k)),
+        // Ship ONLY what passed. Field-list drop rules kept growing a hole at
+        // a time — identity, then faceVisible, and tonight a sweep shipped
+        // frames rejected for scale and frames whose verdict was unreadable,
+        // because neither was on the list. An affirmative rejection is a
+        // rejection; the sole exception stays the qa-error outage path, which
+        // fails OPEN upstream (pass=true) and never reaches this branch.
+        wrongProduct: !qa3.pass,
       };
     }
   }
@@ -1210,7 +1210,7 @@ export async function runPresenterHold(opts: {
     maskPath,
     prePastePath,
     failed: qa.bad,
-    wrongProduct: qa.bad.some((k) => DROP_FIELDS.includes(k)),
+    wrongProduct: !qa.pass,
   };
 }
 
