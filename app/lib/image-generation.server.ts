@@ -1046,15 +1046,23 @@ export async function runPresenterHold(opts: {
     // usable and we were only ever drawing one card. The gate already picks
     // the winner, so give it more to pick from. Three tries at ~25% each is
     // the difference between a coin flip and a reliable path.
-    const tries = Number(process.env.PRESENTER_TRIES || 3);
-    const plan: { name: string; mode: "hold" | "blank" | "showcase"; paste: boolean }[] = showcase
+    // Five draws by default: measured stand-in hit rate is ~25-33%, and at
+    // that rate three draws still left a ~34% chance of delivering nothing.
+    const tries = Number(process.env.PRESENTER_TRIES || 5);
+    // NO BLANK BOX ANYWHERE. Every candidate composes the real product and
+    // gets the real photograph pasted over the drawn one — the drawn version
+    // is the paste's colour-matched camouflage, so coverage misses read as
+    // depth instead of a white slab. The bare hold stays in the pool ungated
+    // by paste because for unbranded products the drawn item can pass as-is,
+    // and when it does it is the most natural frame available.
+    const plan: { name: string; mode: "hold" | "showcase"; paste: boolean }[] = showcase
       ? [
           ...Array.from({ length: tries }, (_, i) => ({ name: `showcase ${i + 1}`, mode: "showcase" as const, paste: true })),
           { name: "hold", mode: "hold" as const, paste: false },
         ]
       : [
           { name: "hold", mode: "hold" as const, paste: false },
-          ...Array.from({ length: tries }, (_, i) => ({ name: `stand-in ${i + 1}`, mode: "blank" as const, paste: true })),
+          ...Array.from({ length: tries }, (_, i) => ({ name: `hold+paste ${i + 1}`, mode: "hold" as const, paste: true })),
         ];
 
     const tried = await Promise.all(plan.map(async (c) => {
@@ -1065,7 +1073,7 @@ export async function runPresenterHold(opts: {
           const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase);
           return { c, frame, qa, note: `${c.name}: ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
         }
-        const put = await overlayRealProduct(frame, opts.productImageUrl, { blank: true, whole: c.mode === "showcase", sizeClass: opts.sizeClass });
+        const put = await overlayRealProduct(frame, opts.productImageUrl, { whole: c.mode === "showcase", sizeClass: opts.sizeClass });
         if (!put.ok) return { c, frame, note: `${c.name}: paste failed — ${put.failed}` };
         const inline = `data:image/jpeg;base64,${fs.readFileSync(put.absPath).toString("base64")}`;
         const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);

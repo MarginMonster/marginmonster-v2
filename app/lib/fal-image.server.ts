@@ -124,19 +124,22 @@ export async function submitCompose(
 
   // SHOWCASE — the shot creators actually post for anything bigger than a
   // hand. Nobody holds a twelve-count display case up to their own face; they
-  // set it on the counter, stand behind it, and talk over the top of it. That
-  // framing is also the only one where a large product and an unobstructed
-  // face can both exist, which is why every attempt to shrink a case into a
-  // chest-up hold ended with it over somebody's mouth.
+  // set it on the counter, stand behind it, and talk over the top of it.
+  //
+  // THE REAL PRODUCT IS BACK IN THE PROMPT. The blank stand-in solved the
+  // garbled-packaging problem and created a worse one: whatever the paste
+  // didn't cover stayed in the frame as a bright white box — a pedestal, a
+  // carton, a slab — foreign in every shot it appeared in. The fix is not a
+  // better white box, it is a backing object that CAMOUFLAGES. Let the
+  // composer draw its approximation of the actual product; the exact
+  // photograph gets pasted over it regardless, so its garbled lettering dies
+  // under the paste — and any sliver that peeks out around the edges is
+  // case-coloured, reading as depth and shadow instead of a foreign object.
   const showcasePrompt =
-    `The exact person from the first image standing behind a kitchen counter or table, with a PLAIN UNMARKED BOX resting on the surface in front of them, closer to the camera than they are. ` +
-    `The box is a simple matte light-grey cardboard box whose front face is ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces, clean straight edges. ` +
-    `Its front face is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
-    `The box sits in the LOWER HALF of the frame and takes up a good part of the width. The presenter is behind and above it, head in the TOP THIRD, their whole face clearly visible with plenty of clear space between their chin and the top of the box — the box never rises past their shoulders. ` +
-    // "Resting beside it" read as no contact at all: three showcase frames
-    // came back with the product apparently floating and the gate rightly
-    // called it. A creator rests a hand ON the box. Contact, without lifting.
-    `One hand rests flat on top of the box or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE box in the whole image.${sizing} ` +
+    `The exact person from the first image standing behind a kitchen counter or table, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
+    `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
+    `The product sits in the LOWER HALF of the frame and takes up a good part of the width. The presenter is behind and above it, head in the TOP THIRD, their whole face clearly visible with plenty of clear space between their chin and the top of the product — it never rises past their shoulders. ` +
+    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `Shot from slightly above at chest height by someone standing across the counter, the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in. NOT a selfie, no arm reaching toward the lens. ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
@@ -179,10 +182,9 @@ export async function submitCompose(
     headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
-      // Blank mode deliberately withholds the product photo. Handing it over
-      // is an invitation to redraw the packaging, which is the failure being
-      // designed out.
-      image_urls: mode === "blank" || mode === "showcase" ? [portraitUrl] : [portraitUrl, productImageUrl],
+      // Only blank mode withholds the product photo now. Showcase hands it
+      // over on purpose: the drawn approximation is the paste's camouflage.
+      image_urls: mode === "blank" ? [portraitUrl] : [portraitUrl, productImageUrl],
       image_size: "portrait_4_3",
       num_images: numImages,
       max_images: numImages,

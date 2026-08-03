@@ -308,7 +308,7 @@ async function presenterHoldOnce(): Promise<string> {
       const delivered = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
       // With several stand-ins per attempt the interesting number is how many
       // of them cleared the gate, not just whether one did.
-      const attempts = (r.standIn || "").split(" · ").filter((x) => /^(showcase|stand-in)/.test(x));
+      const attempts = (r.standIn || "").split(" · ").filter((x) => /^(showcase|stand-in|hold\+paste)/.test(x));
       const won = attempts.filter((x) => /passed/.test(x)).length;
       rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""}${attempts.length ? ` · ${won}/${attempts.length} stand-ins ok` : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
     } catch (e) {
