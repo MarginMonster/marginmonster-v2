@@ -793,8 +793,26 @@ async function overlayRealProduct(
     // paste and trades a blocked face for a floating box.
     if (face) {
       const chinY = ((face.y + face.h) / 100) * H;
-      if (anchorY < chinY + H * 0.02) {
-        return give(`paste would cover the face (top ${Math.round((anchorY / H) * 100)}% vs chin ${Math.round((chinY / H) * 100)}%)`);
+      const minTop = chinY + H * 0.02;
+      if (anchorY < minTop) {
+        // FIT BELOW THE CHIN before giving up. With the face read finally
+        // working, a hard reject here killed every showcase candidate in a
+        // sweep where the composer framed presenters chest-up (chin at
+        // 45-66% of frame height) — a torso-scale paste anchored at the
+        // counter ALWAYS topped out above those chins. Shrink the paste so
+        // its top lands at the chin line, bottom edge staying put; accept
+        // only a modest shrink, because past that the product reads
+        // palm-sized and the gate would reject it anyway (and the gate still
+        // arbitrates correctScale on whatever ships).
+        const pasteBottom = anchorY + th;
+        const maxH = pasteBottom - minTop;
+        if (cut && maxH > th * 0.72) {
+          th = Math.floor(maxH);
+          tw = Math.round((th * cut.w) / cut.h);
+          anchorY = pasteBottom - th;
+        } else {
+          return give(`paste would cover the face (top ${Math.round((anchorY / H) * 100)}% vs chin ${Math.round((chinY / H) * 100)}%, shrink-to-fit would exceed 28%)`);
+        }
       }
     } else if (anchorY < H * 0.36) {
       // NO FACE READ IS NOT AN ALIBI. When the face couldn't be located the
