@@ -71,19 +71,18 @@ export default function Index() {
           </div>
         </main>
 
-        {/* AI trust strip — the engines behind the output, named openly so
-            merchants know what's building their ads. Wordmarks are set as
-            styled TEXT: official logo SVGs can drop straight into these spans
-            once brand-guideline assets are added — hand-recreating third-party
-            logos risks misrepresenting them. */}
+        {/* AI trust strip — the engines behind the output, named openly with
+            their official brand glyphs (Simple Icons set) so merchants know
+            exactly what's building their ads. Greyscale until hover, then
+            true brand colour. */}
         <section className="lz-powered" aria-label="AI technology powering EasyMode">
           <span className="lz-eyebrow">{(t.powered || LANDING_I18N.en.powered!).eyebrow}</span>
           <div className="lz-pow-row">
-            <span className="lz-pow"><b>Claude</b><i>Anthropic</i></span>
-            <span className="lz-pow"><b>Nano&nbsp;Banana</b><i>Google DeepMind</i></span>
-            <span className="lz-pow"><b>Seedream</b><i>ByteDance</i></span>
-            <span className="lz-pow"><b>Kling&nbsp;AI</b><i>Kuaishou</i></span>
-            <span className="lz-pow"><b>MiniMax</b><i>Speech&nbsp;&amp;&nbsp;Voice</i></span>
+            <span className="lz-pow"><img src="/ai-logos/claude.svg" alt="Claude logo" /><b>Claude</b><i>Anthropic</i></span>
+            <span className="lz-pow"><img src="/ai-logos/deepmind.svg" alt="Google DeepMind logo" /><b>Nano&nbsp;Banana</b><i>Google DeepMind</i></span>
+            <span className="lz-pow"><img src="/ai-logos/bytedance.svg" alt="ByteDance logo" /><b>Seedream</b><i>ByteDance</i></span>
+            <span className="lz-pow"><img src="/ai-logos/kuaishou.svg" alt="Kuaishou logo" /><b>Kling&nbsp;AI</b><i>Kuaishou</i></span>
+            <span className="lz-pow"><img src="/ai-logos/minimax.svg" alt="MiniMax logo" /><b>MiniMax</b><i>Speech&nbsp;&amp;&nbsp;Voice</i></span>
           </div>
           <p className="lz-pow-note">{(t.powered || LANDING_I18N.en.powered!).note}</p>
         </section>
@@ -283,8 +282,9 @@ html,body{margin:0;padding:0}
    the strip reads as infrastructure, not advertising for someone else. */
 .lz-powered{max-width:900px;margin:44px auto 0;padding:0 26px;text-align:center;}
 .lz-pow-row{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 34px;margin:18px 0 14px;}
-.lz-pow{display:inline-flex;flex-direction:column;align-items:center;gap:2px;opacity:.62;filter:grayscale(1);transition:opacity .2s,filter .2s;}
+.lz-pow{display:inline-flex;flex-direction:column;align-items:center;gap:4px;opacity:.62;filter:grayscale(1);transition:opacity .2s,filter .2s;}
 .lz-pow:hover{opacity:1;filter:none;}
+.lz-pow img{width:26px;height:26px;display:block;}
 .lz-pow b{font-family:Poppins,sans-serif;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--ink);}
 .lz-pow i{font-style:normal;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
 .lz-pow-note{max-width:560px;margin:0 auto;font-size:13.5px;line-height:1.55;color:var(--muted);}
