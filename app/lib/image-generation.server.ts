@@ -587,7 +587,7 @@ type PasteResult =
 async function overlayRealProduct(
   frameUrl: string,
   productImageUrl: string,
-  opts: { blank?: boolean } = {}
+  opts: { blank?: boolean; whole?: boolean } = {}
 ): Promise<PasteResult> {
   // On the blank path the product COVERS the stand-in — it fills the box's
   // width and its height, overhanging in whichever direction it must.
@@ -622,7 +622,13 @@ async function overlayRealProduct(
         opts.blank
           ? `This photo contains a PLAIN UNMARKED BOX — either held up to the camera or resting on a surface in front of the person.`
           : `The person in this photo is holding a product up to the camera.`,
-        opts.blank
+        opts.whole
+          // On a counter the box is seen at an angle, so its front face is a
+          // fraction of the object. Pasting to the FACE left the top and side
+          // panels showing under the product — which every rejection called a
+          // "white pedestal". Take the whole silhouette instead.
+          ? `Return the bounding box of the ENTIRE box as it appears — every part of it, including its top face and any side face turned toward the camera, from its leftmost to its rightmost edge and from its highest point to where it meets the surface. Not the hands, not the arms, not the surface.`
+          : opts.blank
           ? `Return the bounding box of that blank box's FRONT FACE — the flat panel facing the camera. Not the hands, not the arms, not the side faces.`
           : `Return the bounding box of THE PRODUCT ONLY — the box or package itself, not the hands, not the arms.`,
         `Use percentages of the image dimensions, where x,y is the TOP-LEFT corner.`,
@@ -999,7 +1005,7 @@ export async function runPresenterHold(opts: {
           const qa = await qaPresenterHold(opts.productImageUrl, frame, opts.scalePhrase);
           return { c, frame, qa, note: `${c.name}: ${qa.pass ? "passed" : `rejected — ${qa.reason}`}` };
         }
-        const put = await overlayRealProduct(frame, opts.productImageUrl, { blank: true });
+        const put = await overlayRealProduct(frame, opts.productImageUrl, { blank: true, whole: c.mode === "showcase" });
         if (!put.ok) return { c, frame, note: `${c.name}: paste failed — ${put.failed}` };
         const inline = `data:image/jpeg;base64,${fs.readFileSync(put.absPath).toString("base64")}`;
         const qa = await qaPresenterHold(opts.productImageUrl, inline, opts.scalePhrase);
