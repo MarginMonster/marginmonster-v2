@@ -491,8 +491,11 @@ async function gradeOne(
     }
     // What production would actually DO with this frame: a wrong-product hold
     // is dropped for a product still rather than shipped with a lookalike.
-    if (!r.wrongProduct) delivered = 1;
-    const deliveredCell = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
+    // Delivered means a frame actually shipped: gate pass AND a URL. The old
+    // check only asked "not the wrong product", so a compose that returned
+    // NOTHING was counted (and labeled) as a delivered presenter ad — twice.
+    if (r.pass && r.url) delivered = 1;
+    const deliveredCell = r.pass && r.url ? "presenter ad" : "**dropped → product still**";
     const attempts = (r.standIn || "").split(" · ").filter((x) => /^(showcase|stand-in|hold\+paste)/.test(x));
     const won = attempts.filter((x) => /passed/.test(x)).length;
     const row = `| ${label} | ${{ "blank-standin": "**real photo pasted**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${deliveredCell} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""}${attempts.length ? ` · ${won}/${attempts.length} candidates ok` : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`;

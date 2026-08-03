@@ -1162,7 +1162,10 @@ export async function runPresenterHold(opts: {
     aspect?: number
   ): Promise<string | undefined> => {
     const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect);
-    for (let i = 0; i < 45; i++) {
+    // 3 minutes, not 90 seconds: a 4K compose regularly outlives the old
+    // window, and an expired poll reads as "compose returned nothing" — the
+    // render finishes anyway, billed, and thrown away.
+    for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const p = await pollCompose(q.statusUrl, q.responseUrl);
       if (p.done) return p.urls?.[0];
