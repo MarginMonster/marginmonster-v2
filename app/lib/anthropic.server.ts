@@ -126,19 +126,40 @@ function sniffImageType(b64: string): string | null {
 
 /** The API accepts only JPEG/PNG/GIF/WebP. Anything else — Shopify's CDN
  *  has started serving AVIF from .jpg URLs — gets re-encoded to JPEG via
- *  sharp (already a dependency). Five of six judge verdicts died on AVIF in
- *  one sweep; correct labelling can't fix bytes the API won't take. */
+ *  ffmpeg, which every deployment of this app already carries (full build in
+ *  the prod image, system binary in CI, ffmpeg-static as fallback). Five of
+ *  six judge verdicts died on AVIF in one sweep; correct labelling can't fix
+ *  bytes the API won't take. On any conversion failure the original bytes go
+ *  through unchanged — no worse than before. */
 async function toSupportedImage(b64: string, claimed: string): Promise<{ media: string; data: string }> {
   const sniffed = sniffImageType(b64);
   if (sniffed) return { media: sniffed, data: b64 };
   try {
-    const sharp = (await import("sharp")).default;
-    const jpg = await sharp(Buffer.from(b64, "base64")).jpeg({ quality: 92 }).toBuffer();
-    return { media: "image/jpeg", data: jpg.toString("base64") };
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+    let bin = ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"].find((p) => fs.existsSync(p)) || "";
+    if (!bin) bin = ((await import("ffmpeg-static")) as unknown as { default?: string }).default || "";
+    if (!bin) return { media: claimed, data: b64 };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vimg-"));
+    try {
+      const src = path.join(dir, "in.bin");
+      const dst = path.join(dir, "out.jpg");
+      fs.writeFileSync(src, Buffer.from(b64, "base64"));
+      const r = spawnSync(bin, ["-y", "-i", src, "-frames:v", "1", "-q:v", "3", dst], { timeout: 30_000 });
+      if (r.status === 0 && fs.existsSync(dst)) {
+        const out = fs.readFileSync(dst);
+        if (out.length > 1_000) return { media: "image/jpeg", data: out.toString("base64") };
+      }
+      console.error("[anthropic:vision] unsupported image could not be re-encoded — sending as-is");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   } catch (e) {
-    console.error("[anthropic:vision] unsupported image could not be re-encoded:", e instanceof Error ? e.message : e);
-    return { media: claimed, data: b64 };
+    console.error("[anthropic:vision] image re-encode failed:", e instanceof Error ? e.message : e);
   }
+  return { media: claimed, data: b64 };
 }
 
 /** Vision call — same raw-fetch client, with image URLs attached. Used by the
