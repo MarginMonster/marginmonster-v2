@@ -675,6 +675,26 @@ async function overlayRealProduct(
   }
   if (!box) return give(boxNote);
 
+  // WHERE IS THE FACE. Asked as a measurement, not a yes/no. The gate's
+  // faceVisible question answered "true" on a frame with the header card over
+  // the presenter's mouth — one wrong word from a vision model shipped the
+  // day's only bad frame. A rectangle-intersection test cannot be charmed.
+  let face: { x: number; y: number; w: number; h: number } | null = null;
+  try {
+    const rawF = await anthropicVision(
+      `Return the bounding box of the person's FACE — forehead to chin, ear to ear. Percentages of the image, x,y = TOP-LEFT. Reply ONLY JSON: {"x":number,"y":number,"w":number,"h":number}`,
+      [frameUrl],
+      { maxTokens: 120 }
+    );
+    const mF = rawF.match(/\{[\s\S]*\}/);
+    if (mF) {
+      const jF = JSON.parse(mF[0]) as Record<string, number>;
+      if (["x", "y", "w", "h"].every((k) => typeof jF[k] === "number") && jF.w > 2 && jF.h > 2 && jF.w < 60 && jF.h < 60) {
+        face = { x: jF.x, y: jF.y, w: jF.w, h: jF.h };
+      }
+    }
+  } catch { /* no face read → skip the overlap guard rather than block the paste */ }
+
   const cutout = await removeBackground(productImageUrl);
   if (!cutout) return give("background removal returned nothing");
 
@@ -735,7 +755,18 @@ async function overlayRealProduct(
     // the chest where there is nothing to obscure.
     // On a counter it sits on the surface, so the bottom edge is fixed and it
     // grows upward into empty chest. Held, it grows downward, away from the face.
-    const anchorY = opts.whole ? bottom - th : cover ? Math.round(bottom - bh) : bottom - th;
+    let anchorY = opts.whole ? bottom - th : cover ? Math.round(bottom - bh) : bottom - th;
+    // FACE GUARD — deterministic. If the paste's top edge would cross the
+    // chin, the composition is unusable no matter how good the paste is:
+    // fail this candidate and let another stand-in win. Shifting it down was
+    // considered and rejected, because that exposes the stand-in above the
+    // paste and trades a blocked face for a floating box.
+    if (face) {
+      const chinY = ((face.y + face.h) / 100) * H;
+      if (anchorY < chinY + H * 0.02) {
+        return give(`paste would cover the face (top ${Math.round((anchorY / H) * 100)}% vs chin ${Math.round((chinY / H) * 100)}%)`);
+      }
+    }
     const filters =
       `[1:v]scale=${tw}:${th}[cut];` +
       `[cut]split[c1][c2];` +
