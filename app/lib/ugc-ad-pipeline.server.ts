@@ -717,12 +717,16 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // A branded product title can be refused outright, returning nothing —
     // retry, then drop the brand and sell the category. See
     // ad-copy-retry.server.ts for what the sweep showed.
-    script = await withBrandFallback(async (productRef, debranded) =>
-      ((await anthropicText(buildScriptPrompt(productRef, debranded), { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+    script = await withBrandFallback(async (productRef, debranded) => {
+      const raw = ((await anthropicText(buildScriptPrompt(productRef, debranded), { model: "claude-sonnet-5", maxTokens: 200 })) || "")
         .replace(/["“”\n]+/g, " ")
         .replace(/\s+/g, " ")
-        .trim(),
-      params.productTitle, "ugc:script", params.productDescription);
+        .trim();
+      // A truncated fragment is worse than empty — the spec is 26-32 words,
+      // so anything under 12 is a mangled output. Return "" so the fallback
+      // ladder treats it as a refusal and retries instead of shipping it.
+      return raw.split(/\s+/).length < 12 ? "" : raw;
+    }, params.productTitle, "ugc:script", params.productDescription);
     const w = script.split(" ");
     if (w.length > 34) script = w.slice(0, 34).join(" "); // 12s budget — hard cap so it never runs past the lip-sync sweet spot
     // give the voice model a clean final stop so it doesn't rush/trail the ending

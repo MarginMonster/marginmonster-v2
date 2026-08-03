@@ -366,6 +366,10 @@ async function writeCartoonScriptOnce(o: {
     .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim();
   // Empty is a REFUSAL, not a crash — withBrandFallback decides what next.
   if (!script) return "";
+  // A truncated fragment is WORSE than empty: "Every t." shipped as a voice
+  // -over once. The spec is 24-30 words; anything under 12 is a mangled
+  // output, so treat it exactly like a refusal and let the ladder retry.
+  if (script.split(/\s+/).length < 12) return "";
   const w = script.split(" ");
   if (w.length > 32) script = w.slice(0, 32).join(" ");
   if (!/[.!?]$/.test(script)) script += ".";

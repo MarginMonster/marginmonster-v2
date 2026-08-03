@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
-  let leaked = 0, total = 0, tooLong = 0, errored = 0;
+  let leaked = 0, total = 0, tooLong = 0, tooShort = 0, errored = 0;
   const bad: string[] = [];
   const errs: string[] = [];
 
@@ -51,6 +51,10 @@ async function main() {
           const leaks = scriptLeaks(script);
           const words = script.split(/\s+/).length;
           if (words > 32) tooLong++;
+          // The writer treats <12 words as a refusal and retries, so one
+          // surviving here means that guard failed — a "You never know."
+          // shipping as a whole voice-over is a real defect, count it loudly.
+          if (words < 12) tooShort++;
           if (leaks.length) {
             leaked++;
             bad.push(`${CARTOON_RECIPES[style].name} / ${p.title.slice(0, 32)} → LEAKED [${leaks.join(", ")}]\n      ${script}`);
@@ -81,6 +85,7 @@ async function main() {
     `| failed to generate | ${errored ? `**${errored}**` : "0"} |`,
     `| leaked a style/medium word | **${leaked}**${written ? ` of ${written}` : ""} |`,
     `| over the 32-word cap | ${tooLong} |`,
+    `| under 12 words (truncated fragment shipped) | ${tooShort ? `**${tooShort}**` : "0"} |`,
     ``,
     leaked
       ? `### Leaks\n\n\`\`\`\n${bad.join("\n\n")}\n\`\`\``

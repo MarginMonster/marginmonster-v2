@@ -12,6 +12,20 @@ export interface AnthropicOptions {
   maxTokens?: number;
 }
 
+/** claude-sonnet-5 runs ADAPTIVE THINKING by default when the request has no
+ *  `thinking` field, and max_tokens caps thinking + visible text TOGETHER. At
+ *  our small budgets the model was spending most of the budget thinking and
+ *  the visible answer came out empty (looked like a refusal) or truncated
+ *  mid-sentence — the "Every t." two-word ad script, the water-bottle scripts
+ *  that "refused" four times, and the original truncated-JSON gate verdicts
+ *  were all this one default. Our calls are short structured outputs (30-word
+ *  scripts, JSON verdicts); they don't need thinking, they need the budget.
+ *  Sonnet 5 accepts an explicit disabled; other models we use keep their
+ *  default behaviour, so only sonnet-5 gets the field. */
+function thinkingFieldFor(model: string): Record<string, unknown> {
+  return model.startsWith("claude-sonnet-5") ? { thinking: { type: "disabled" } } : {};
+}
+
 export async function anthropicText(
   prompt: string,
   opts: AnthropicOptions = {}
@@ -53,6 +67,7 @@ export async function anthropicText(
         body: JSON.stringify({
           model,
           max_tokens: maxTokens,
+          ...thinkingFieldFor(model),
           messages: [{ role: "user", content: prompt }],
         }),
       },
@@ -129,6 +144,7 @@ export async function anthropicVision(
     body: JSON.stringify({
       model,
       max_tokens: opts.maxTokens || 500,
+      ...thinkingFieldFor(model),
       messages: [{ role: "user", content }],
     }),
   });
