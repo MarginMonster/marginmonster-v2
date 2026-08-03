@@ -725,6 +725,16 @@ async function overlayRealProduct(
     faceNote = ` (face read error: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)})`;
   }
 
+  // CHEST-UP FRAMES CAN'T BE SAVED — reject them before paying for a paste.
+  // With the chin below ~52% of the frame there is no rectangle that hides
+  // the stand-in, clears the chin, and reads torso-scale (six sweeps of
+  // arithmetic say so). The composer is prompted for a wide half-body shot;
+  // a candidate that came back framed close is a bad candidate, and saying
+  // so here costs nothing while a paste costs a rembg call and an encode.
+  if (opts.whole && face && (face.y + face.h) > 52) {
+    return give(`composer framed presenter too close (chin at ${Math.round(face.y + face.h)}%) — no room for the product below the face`);
+  }
+
   const cutout = await removeBackground(productImageUrl);
   if (!cutout) return give("background removal returned nothing");
 
