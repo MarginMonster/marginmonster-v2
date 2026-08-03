@@ -114,11 +114,25 @@ async function main() {
 /** Resolve the product once, for whichever checks need it. Lives outside the
  *  individual checks because having the lookup inside one of them meant the
  *  other silently skipped when you ran it on its own. */
+/* Explicit product list: "url | title ;; url | title ;; ...". Cuts the sweep
+ * loose from storefront JSON entirely — a password-protected shop (or one the
+ * runner can't reach) stops being able to blank a whole QA run. */
+function explicitProducts(): { url: string; title: string }[] {
+  return (process.env.QA_PRODUCT_URLS || "")
+    .split(";;").map((s) => s.trim()).filter(Boolean)
+    .map((pair) => {
+      const [url, title] = pair.split("|").map((x) => x.trim());
+      return { url: url || "", title: title || "the product" };
+    })
+    .filter((p) => p.url.startsWith("http"));
+}
+
 let resolvedProduct: { url: string; title: string } | null = null;
 async function resolveProduct(): Promise<{ url: string; title: string } | null> {
   if (resolvedProduct) return resolvedProduct;
-  let url = process.env.QA_PRODUCT_URL || "";
-  let title = process.env.QA_PRODUCT_TITLE || "";
+  const listed = explicitProducts();
+  let url = process.env.QA_PRODUCT_URL || listed[0]?.url || "";
+  let title = process.env.QA_PRODUCT_TITLE || (url === listed[0]?.url ? listed[0]?.title : "") || "";
   if (!url && process.env.QA_STORE_URL) {
     const { discoverCatalog } = await import("../app/lib/catalog-import.server");
     const { products } = await discoverCatalog(process.env.QA_STORE_URL, 250);
@@ -295,6 +309,11 @@ function productSlug(title: string): string {
  * products and pair each with a different presenter, so a sweep shows the
  * pipeline across the range — and exercises both layouts, since sizes differ. */
 async function resolveProducts(count: number): Promise<{ url: string; title: string }[]> {
+  const listed = explicitProducts();
+  if (listed.length) {
+    console.log(`[vqa] explicit product list → ${listed.length} products`);
+    return listed.slice(0, count > 1 ? count : listed.length);
+  }
   if (count <= 1 || !process.env.QA_STORE_URL) {
     const one = await resolveProduct();
     return one ? [one] : [];

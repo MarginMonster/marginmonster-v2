@@ -56,6 +56,10 @@ on:
         description: 'Test this many DISTINCT catalogue products (needs store_url); each pairs with a different presenter'
         required: false
         default: "1"
+      product_urls:
+        description: 'Explicit product list "url | title ;; url | title" — overrides store_url/product_url discovery'
+        required: false
+        default: ""
       health_only:
         description: 'Just diagnose the API keys (fingerprint + auth + billing) and stop — no renders, no AI spend'
         required: false
@@ -141,6 +145,7 @@ jobs:
           QA_PRODUCT_TITLE: ${{ inputs.product_title }}
           QA_ENGINES: ${{ inputs.engines }}
           QA_PRODUCT_COUNT: ${{ inputs.product_count || '1' }}
+          QA_PRODUCT_URLS: ${{ inputs.product_urls }}
         run: node video-qa.cjs
 
       # Publish the actual frames back through git. The replicate.delivery
