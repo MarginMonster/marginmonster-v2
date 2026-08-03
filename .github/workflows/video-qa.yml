@@ -52,6 +52,10 @@ on:
         description: 'Comma-separated fal compose model ids to A/B against each other (blank = current default)'
         required: false
         default: ""
+      product_count:
+        description: 'Test this many DISTINCT catalogue products (needs store_url); each pairs with a different presenter'
+        required: false
+        default: "1"
   push:
     paths:
       - 'app/lib/cartoon-ad-pipeline.server.ts'
@@ -70,7 +74,9 @@ jobs:
     # sweep, this spends text tokens, not renders.
     if: github.event_name == 'workflow_dispatch' || vars.VIDEO_QA_ON_PUSH == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A ten-product sweep is ~10 × (6 parallel composes + pastes + vision QA)
+    # ≈ 25 minutes of wall time; 20 was sized for the single-product sweep.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -100,6 +106,7 @@ jobs:
           QA_STORE_URL: ${{ inputs.store_url }}
           QA_PRODUCT_TITLE: ${{ inputs.product_title }}
           QA_ENGINES: ${{ inputs.engines }}
+          QA_PRODUCT_COUNT: ${{ inputs.product_count || '1' }}
         run: node video-qa.cjs
 
       # Publish the actual frames back through git. The replicate.delivery

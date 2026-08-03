@@ -177,149 +177,177 @@ async function presenterHoldCheck(): Promise<string> {
   return presenterHoldOnce();
 }
 
+function productSlug(title: string): string {
+  return (title || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 28) || "product";
+}
+
+/* Many products, one run. The single-product sweep kept answering "does this
+ * work" for one SKU; a merchant's catalogue is not one SKU. Pull N distinct
+ * products and pair each with a different presenter, so a sweep shows the
+ * pipeline across the range — and exercises both layouts, since sizes differ. */
+async function resolveProducts(count: number): Promise<{ url: string; title: string }[]> {
+  if (count <= 1 || !process.env.QA_STORE_URL) {
+    const one = await resolveProduct();
+    return one ? [one] : [];
+  }
+  const { discoverCatalog } = await import("../app/lib/catalog-import.server");
+  const { products } = await discoverCatalog(process.env.QA_STORE_URL, 250);
+  const seen = new Set<string>();
+  const out: { url: string; title: string }[] = [];
+  for (const p of products) {
+    if (!p.imageUrl) continue;
+    const key = p.title.toLowerCase().replace(/\s+/g, " ").trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ url: p.imageUrl, title: p.title });
+    if (out.length >= count) break;
+  }
+  console.log(`[vqa] catalogue → ${out.length} distinct products with images`);
+  return out;
+}
+
 async function presenterHoldOnce(): Promise<string> {
   const missing = ["FAL_KEY", "REPLICATE_API_TOKEN", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]?.trim());
   if (missing.length) return `### Presenter image ads\n\nSKIPPED — ${missing.join(", ")} not set. Nothing was tested.`;
 
-  const prod = await resolveProduct();
   const portraits = (process.env.QA_PORTRAITS || process.env.QA_PORTRAIT_URL || "").split(",").map((x) => x.trim()).filter(Boolean);
-  if (!prod || !portraits.length) return `### Presenter image ads\n\nSKIPPED — need a product (QA_PRODUCT_URL or QA_STORE_URL) and QA_PORTRAITS. Nothing was tested.`;
-  const productUrl = prod.url;
-  const productTitle = prod.title;
+  const count = Number(process.env.QA_PRODUCT_COUNT || 1);
+  const prods = await resolveProducts(count);
+  if (!prods.length || !portraits.length) return `### Presenter image ads\n\nSKIPPED — need a product (QA_PRODUCT_URL or QA_STORE_URL) and QA_PORTRAITS. Nothing was tested.`;
+
+  // Multi-product: one presenter per product, cycling. Single-product: one
+  // row per presenter, as before.
+  const pairs = count > 1
+    ? prods.map((p, i) => ({ prod: p, portrait: portraits[i % portraits.length], tag: `p${String(i + 1).padStart(2, "0")}-${productSlug(p.title)}` }))
+    : portraits.map((portrait) => ({ prod: prods[0], portrait, tag: (portrait.split("/").pop() || "presenter").replace(/\.jpe?g$/i, "") }));
 
   const rows: string[] = [];
   let shipped = 0;
+  let delivered = 0;
   // Counted and reported separately. A frame nobody graded is not a frame
   // that failed, and it is certainly not a frame that passed.
   let ungraded = 0;
-  for (const portrait of portraits) {
-    try {
-      // Same size inference production uses, so the harness exercises the
-      // same layout choice a merchant would get rather than always the hold.
-      const { inferProductScale } = await import("../app/lib/product-scale.server");
-      const scale = await inferProductScale(productTitle);
-      const r = await runPresenterHold({
-        portraitUrl: portrait, productImageUrl: productUrl, productTitle,
-        scalePhrase: scale?.phrase, sizeClass: scale?.sizeClass,
-      });
-      // Grade INDEPENDENTLY of the gate. The production gate saying "clean" is
-      // exactly the claim under test — a second opinion is the only way to
-      // catch a gate that is too lenient, which is how this defect shipped.
-      // Judge the BYTES when we have them. A composited frame lives on the
-      // render disk with no public address in CI, so grading it by URL
-      // silently graded nothing — which is how the first paste run reported
-      // "drawn" for every row with no explanation.
-      let judgeRef = r.url;
-      if (r.localPath && require("node:fs").existsSync(r.localPath)) {
-        judgeRef = `data:image/jpeg;base64,${require("node:fs").readFileSync(r.localPath).toString("base64")}`;
-      }
-      let verdict = "not graded";
-      if (judgeRef) {
-        const raw = await anthropicVision(
-          [
-            `Image 1 is the merchant's real product photo. Image 2 is an ad of a presenter holding it.`,
-            `artworkMatches: compare the PRINTED ARTWORK panel by panel — characters, their colours, their positions, logo placement, box background colour. Same shape with different art is a FAILURE. Be strict.`,
-            // The judge passed a box whose logo read "POP MILLMART" because it
-            // was never asked about the LETTERING. Artwork and text are
-            // different failures and need different questions.
-            `textFaithful: READ every word printed on the packaging and compare it letter by letter with image 1. A brand name rendered as "POP MILLMART" instead of "POP MART", a doubled letter, a dropped letter, or any invented word is a FAILURE. Spell out what you actually read if it differs.`,
-            `sameObject: is it the SAME PHYSICAL THING, built the same way — same 3D form, same depth, same faces and panels? A deep display case or tray rendered as a flat printed card or poster is a FAILURE even when the artwork on it looks right.`,
-            `notSimplified: does image 2 show the same NUMBER of units, boxes or panels as image 1? A twelve-box display case rendered as a single box is a FAILURE.`,
-            `singleProduct: does image 2 contain exactly ONE of the product? Two overlapping or stacked copies of the same item in one frame is a FAILURE even if one of them looks correct.`,
-            `correctScale: believable real-world size against the person?`,
-            `handsOk: four fingers and one thumb per hand, exactly two hands, no extra limb.`,
-            // Counting digits is not looking at them: a frame with the right
-            // NUMBER of fingers, drawn as pale wooden dolls' fingers with
-            // painted-on joints, was graded "hands ok" by the count question.
-            `handsHuman: ignoring the count, are the fingers LIVING HUMAN fingers — skin matching the wrists, natural taper, real nails? Wooden, plastic, doll-like or mannequin fingers, or pale sausages with drawn-on joint lines, are a FAILURE.`,
-            `faceVisible: are the presenter's eyes, nose AND mouth all unobstructed? A product held up over the mouth or chin is a FAILURE.`,
-            `notes: one short sentence on the worst problem, or "clean".`,
-            `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"textFaithful":bool,"notSimplified":bool,"singleProduct":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
-          ].join("\n"),
-          [productUrl, judgeRef],
-          // Same reason the gate moved up: the cheap model called plastic doll
-          // fingers human. A judge that agrees with a broken gate for the same
-          // reason the gate is broken is not a second opinion.
-          // Nine fields plus a sentence at 400 tokens came back truncated —
-          // no closing brace, no parse — and the table printed four
-          // BYTE-IDENTICAL all-failed verdicts for four different images,
-          // flagging a clear face as FACE BLOCKED. A missing answer must
-          // never be rendered as a definite one.
-          { maxTokens: 1200, model: "claude-sonnet-5" }
-        );
-        const m = raw && raw.match(/\{[\s\S]*\}/);
-        const j = m ? JSON.parse(m[0]) as Record<string, unknown> : null;
-        if (!j) {
-          // Say so, publish the frame anyway, and count it apart from the
-          // pass/fail tally — the frame still needs looking at by a human.
-          console.log(`[vqa] presenter ${portrait.split("/").pop()}: judge returned no readable verdict — ${String(raw).slice(0, 140)}`);
-          ungraded++;
-        }
-        const yes = (k: string) => !!j && j[k] !== false && j[k] !== undefined;
-        const ok = !!j && ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "singleProduct", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
-        if (ok) shipped++;
-        verdict = !j ? "**NO VERDICT — judge unreadable**" : [
-          yes("artworkMatches") ? "art ok" : "**ART WRONG**",
-          yes("sameObject") ? "same object" : "**DIFFERENT OBJECT**",
-          yes("textFaithful") ? "text ok" : "**TEXT WRONG**",
-          yes("notSimplified") ? "count ok" : "**simplified**",
-          yes("singleProduct") ? "one product" : "**DOUBLED**",
-          yes("correctScale") ? "scale ok" : "**scale off**",
-          yes("handsOk") ? "digits ok" : "**digit count bad**",
-          yes("handsHuman") ? "hands human" : "**HANDS INHUMAN**",
-          yes("faceVisible") ? "face clear" : "**FACE BLOCKED**",
-        ].join(" · ");
-        if (j) console.log(`[vqa] presenter ${portrait.split("/").pop()}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${String(j.notes || "")}`);
-      }
-      // Publish what was actually JUDGED. Saving r.url after a paste would
-      // ship the pre-composite frame and quietly disagree with the verdict.
-      const frameName = `presenter-${portrait.split("/").pop()}`;
-      if (r.localPath && require("node:fs").existsSync(r.localPath)) {
-        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
-        require("node:fs").mkdirSync(dir, { recursive: true });
-        require("node:fs").copyFileSync(r.localPath, require("node:path").join(dir, frameName));
-      } else if (r.url) {
-        await saveFrame(r.url, frameName);
-      }
-      // The bare stand-in as well. When the blank path fails it is the only
-      // way to tell a bad blank box from a bad paste.
-      if (r.standInUrl) await saveFrame(r.standInUrl, `standin-${portrait.split("/").pop()}`);
-      // And the composite that was BUILT, accepted or not. A rejected attempt
-      // is otherwise invisible — the table shows whatever shipped instead —
-      // and the rejected one is the thing being worked on.
-      if (r.prePastePath && r.prePastePath !== r.attemptPath && require("node:fs").existsSync(r.prePastePath)) {
-        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
-        require("node:fs").mkdirSync(dir, { recursive: true });
-        require("node:fs").copyFileSync(r.prePastePath, require("node:path").join(dir, `preblend-${portrait.split("/").pop()}`));
-      }
-      if (r.maskPath && require("node:fs").existsSync(r.maskPath)) {
-        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
-        require("node:fs").mkdirSync(dir, { recursive: true });
-        require("node:fs").copyFileSync(r.maskPath, require("node:path").join(dir, `mask-${(portrait.split("/").pop() || "").replace(/\.jpe?g$/i, "")}.png`));
-      }
-      if (r.attemptPath && r.attemptPath !== r.localPath && require("node:fs").existsSync(r.attemptPath)) {
-        const dir = require("node:path").join(process.env.QA_OUT || "qa-out", "frames");
-        require("node:fs").mkdirSync(dir, { recursive: true });
-        require("node:fs").copyFileSync(r.attemptPath, require("node:path").join(dir, `composite-${portrait.split("/").pop()}`));
-      }
-      // What production would actually DO with this frame, which is now the
-      // number that matters: a wrong-product hold is dropped for a product
-      // still rather than shipped with a lookalike in the presenter's hands.
-      const delivered = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
-      // With several stand-ins per attempt the interesting number is how many
-      // of them cleared the gate, not just whether one did.
-      const attempts = (r.standIn || "").split(" · ").filter((x) => /^(showcase|stand-in|hold\+paste)/.test(x));
-      const won = attempts.filter((x) => /passed/.test(x)).length;
-      rows.push(`| ${portrait.split("/").pop()} | ${{ "blank-standin": "**real photo on blank box**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${delivered} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""}${attempts.length ? ` · ${won}/${attempts.length} stand-ins ok` : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`);
-    } catch (e) {
-      rows.push(`| ${portrait.split("/").pop()} | ERROR | — | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`);
-    }
+  for (const pair of pairs) {
+    const res = await gradeOne(pair.portrait, pair.prod, pair.tag, count > 1);
+    rows.push(res.row);
+    shipped += res.shipped;
+    ungraded += res.ungraded;
+    delivered += res.delivered;
   }
   return [
     `### Presenter image ads — does the merchant's artwork survive?`, ``,
-    `${shipped}/${portraits.length - ungraded} graded frames passed an independent judge${ungraded ? ` · **${ungraded} could not be graded at all**` : ""}. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
-    `| presenter | product | stand-in attempt | merchant gets | production gate | independent judge | frame |`, `|---|---|---|---|---|---|---|`, ...rows,
+    `${delivered}/${pairs.length} delivered as presenter ads · ${shipped}/${pairs.length - ungraded} graded frames passed an independent judge${ungraded ? ` · **${ungraded} could not be graded at all**` : ""}. The gate column is what production decided; the judge column is a second opinion on the same frame.`, ``,
+    `| ${count > 1 ? "product (presenter)" : "presenter"} | product | stand-in attempt | merchant gets | production gate | independent judge | frame |`, `|---|---|---|---|---|---|---|`, ...rows,
   ].join("\n");
+}
+
+async function gradeOne(
+  portrait: string,
+  prod: { url: string; title: string },
+  tag: string,
+  multi: boolean
+): Promise<{ row: string; shipped: number; ungraded: number; delivered: number }> {
+  const label = multi ? `${prod.title.slice(0, 40)} (${(portrait.split("/").pop() || "").replace(/\.jpe?g$/i, "")})` : (portrait.split("/").pop() || "presenter");
+  const productUrl = prod.url;
+  const productTitle = prod.title;
+  let shipped = 0;
+  let ungraded = 0;
+  let delivered = 0;
+  try {
+    if (multi) await saveFrame(productUrl, `source-${tag}.jpg`);
+    // Same size inference production uses, so the harness exercises the
+    // same layout choice a merchant would get rather than always the hold.
+    const { inferProductScale } = await import("../app/lib/product-scale.server");
+    const scale = await inferProductScale(productTitle);
+    const r = await runPresenterHold({
+      portraitUrl: portrait, productImageUrl: productUrl, productTitle,
+      scalePhrase: scale?.phrase, sizeClass: scale?.sizeClass,
+    });
+    // Grade INDEPENDENTLY of the gate. The production gate saying "clean" is
+    // exactly the claim under test — a second opinion is the only way to
+    // catch a gate that is too lenient, which is how this defect shipped.
+    // Judge the BYTES when we have them: a composited frame lives on the
+    // render disk with no public address in CI.
+    let judgeRef = r.url;
+    if (r.localPath && require("node:fs").existsSync(r.localPath)) {
+      judgeRef = `data:image/jpeg;base64,${require("node:fs").readFileSync(r.localPath).toString("base64")}`;
+    }
+    let verdict = "not graded";
+    if (judgeRef) {
+      const raw = await anthropicVision(
+        [
+          `Image 1 is the merchant's real product photo. Image 2 is an ad of a presenter with it.`,
+          `artworkMatches: compare the PRINTED ARTWORK panel by panel — characters, their colours, their positions, logo placement, box background colour. Same shape with different art is a FAILURE. Be strict.`,
+          `textFaithful: READ every word printed on the packaging and compare it letter by letter with image 1. A brand name rendered as "POP MILLMART" instead of "POP MART", a doubled letter, a dropped letter, or any invented word is a FAILURE. Spell out what you actually read if it differs.`,
+          `sameObject: is it the SAME PHYSICAL THING, built the same way — same 3D form, same depth, same faces and panels? A deep display case or tray rendered as a flat printed card or poster is a FAILURE even when the artwork on it looks right.`,
+          `notSimplified: does image 2 show the same NUMBER of units, boxes or panels as image 1? A twelve-box display case rendered as a single box is a FAILURE.`,
+          `singleProduct: does image 2 contain exactly ONE of the product? Two overlapping or stacked copies of the same item in one frame is a FAILURE even if one of them looks correct.`,
+          `correctScale: believable real-world size against the person?`,
+          `handsOk: if no hand is visible, answer true. Otherwise: four fingers and one thumb per hand, at most two hands, no extra limb.`,
+          `handsHuman: if no hand is visible, answer true. Otherwise, ignoring the count: are the fingers LIVING HUMAN fingers — skin matching the wrists, natural taper, real nails? Wooden, plastic, doll-like or mannequin fingers are a FAILURE.`,
+          `faceVisible: are the presenter's eyes, nose AND mouth all unobstructed? A product held up over the mouth or chin is a FAILURE.`,
+          `notes: one short sentence on the worst problem, or "clean".`,
+          `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"textFaithful":bool,"notSimplified":bool,"singleProduct":bool,"correctScale":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notes":"..."}`,
+        ].join("\n"),
+        [productUrl, judgeRef],
+        { maxTokens: 1200, model: "claude-sonnet-5" }
+      );
+      const m = raw && raw.match(/\{[\s\S]*\}/);
+      const j = m ? JSON.parse(m[0]) as Record<string, unknown> : null;
+      if (!j) {
+        // Say so, publish the frame anyway, and count it apart from the
+        // pass/fail tally — the frame still needs looking at by a human.
+        console.log(`[vqa] ${tag}: judge returned no readable verdict — ${String(raw).slice(0, 140)}`);
+        ungraded = 1;
+      }
+      const yes = (k: string) => !!j && j[k] !== false && j[k] !== undefined;
+      const ok = !!j && ["artworkMatches", "sameObject", "textFaithful", "notSimplified", "singleProduct", "correctScale", "handsOk", "handsHuman", "faceVisible"].every(yes);
+      if (ok) shipped = 1;
+      verdict = !j ? "**NO VERDICT — judge unreadable**" : [
+        yes("artworkMatches") ? "art ok" : "**ART WRONG**",
+        yes("sameObject") ? "same object" : "**DIFFERENT OBJECT**",
+        yes("textFaithful") ? "text ok" : "**TEXT WRONG**",
+        yes("notSimplified") ? "count ok" : "**simplified**",
+        yes("singleProduct") ? "one product" : "**DOUBLED**",
+        yes("correctScale") ? "scale ok" : "**scale off**",
+        yes("handsOk") ? "digits ok" : "**digit count bad**",
+        yes("handsHuman") ? "hands human" : "**HANDS INHUMAN**",
+        yes("faceVisible") ? "face clear" : "**FACE BLOCKED**",
+      ].join(" · ");
+      if (j) console.log(`[vqa] ${tag}: gate=${r.pass ? "pass" : "FELL"} judge=${ok ? "ok" : "BAD"} ${String(j.notes || "")}`);
+    }
+    // Publish what was actually JUDGED. Saving r.url after a paste would
+    // ship the pre-composite frame and quietly disagree with the verdict.
+    const fs2 = require("node:fs");
+    const path2 = require("node:path");
+    const dir = path2.join(process.env.QA_OUT || "qa-out", "frames");
+    fs2.mkdirSync(dir, { recursive: true });
+    if (r.localPath && fs2.existsSync(r.localPath)) {
+      fs2.copyFileSync(r.localPath, path2.join(dir, `presenter-${tag}.jpg`));
+    } else if (r.url) {
+      await saveFrame(r.url, `presenter-${tag}.jpg`);
+    }
+    if (r.standInUrl) await saveFrame(r.standInUrl, `standin-${tag}.jpg`);
+    if (r.prePastePath && r.prePastePath !== r.attemptPath && fs2.existsSync(r.prePastePath)) {
+      fs2.copyFileSync(r.prePastePath, path2.join(dir, `preblend-${tag}.jpg`));
+    }
+    if (r.maskPath && fs2.existsSync(r.maskPath)) {
+      fs2.copyFileSync(r.maskPath, path2.join(dir, `mask-${tag}.png`));
+    }
+    if (r.attemptPath && r.attemptPath !== r.localPath && fs2.existsSync(r.attemptPath)) {
+      fs2.copyFileSync(r.attemptPath, path2.join(dir, `composite-${tag}.jpg`));
+    }
+    // What production would actually DO with this frame: a wrong-product hold
+    // is dropped for a product still rather than shipped with a lookalike.
+    if (!r.wrongProduct) delivered = 1;
+    const deliveredCell = r.wrongProduct ? "**dropped → product still**" : "presenter ad";
+    const attempts = (r.standIn || "").split(" · ").filter((x) => /^(showcase|stand-in|hold\+paste)/.test(x));
+    const won = attempts.filter((x) => /passed/.test(x)).length;
+    const row = `| ${label} | ${{ "blank-standin": "**real photo pasted**", "paste-repair": "**real photo pasted (repair)**", drawn: "drawn" }[r.via]} | ${r.standIn || "—"} | ${deliveredCell} | ${r.pass ? "pass" : "**rejected**"}${r.retried ? " (retried)" : ""}${attempts.length ? ` · ${won}/${attempts.length} candidates ok` : ""} | ${verdict} | ${r.url ? `[frame](${r.url})` : "—"} |`;
+    return { row, shipped, ungraded, delivered };
+  } catch (e) {
+    return { row: `| ${label} | ERROR | — | — | ${(e instanceof Error ? e.message : String(e)).slice(0, 80)} | | |`, shipped: 0, ungraded: 1, delivered: 0 };
+  }
 }
 
 /* ---------- keyframe: does the merchant's product survive the restyle? ----------
