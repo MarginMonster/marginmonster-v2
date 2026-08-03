@@ -56,6 +56,10 @@ on:
         description: 'Test this many DISTINCT catalogue products (needs store_url); each pairs with a different presenter'
         required: false
         default: "1"
+      health_only:
+        description: 'Just diagnose the API keys (fingerprint + auth + billing) and stop — no renders, no AI spend'
+        required: false
+        default: ""
   push:
     paths:
       - 'app/lib/cartoon-ad-pipeline.server.ts'
@@ -78,8 +82,38 @@ jobs:
     # ≈ 25 minutes of wall time; 20 was sized for the single-product sweep.
     timeout-minutes: 45
     steps:
+      # Key diagnosis WITHOUT exposing the keys: console-style fingerprint
+      # (prefix + last 4 — how console.anthropic.com displays them), auth
+      # check, billing check. Born from a top-up that landed on a different
+      # org than the key CI uses.
+      - name: API key health
+        if: inputs.health_only != ''
+        env:
+          K1: ${{ secrets.ANTHROPIC_API_KEY }}
+          K2: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          check () {
+            name="$1"; key="$2"
+            if [ -z "$key" ]; then echo "[$name] not set"; return; fi
+            echo "[$name] fingerprint: $(printf %s "$key" | cut -c1-14)...$(printf %s "$key" | rev | cut -c1-4 | rev) (length $(printf %s "$key" | wc -c))"
+            auth=$(curl -s -o /tmp/models.json -w "%{http_code}" https://api.anthropic.com/v1/models \
+              -H "x-api-key: $key" -H "anthropic-version: 2023-06-01")
+            echo "[$name] auth check (GET /v1/models): HTTP $auth"
+            bill=$(curl -s -o /tmp/msg.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $key" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+              -d '{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}')
+            echo "[$name] billing check (1-token message): HTTP $bill"
+            if [ "$bill" != "200" ]; then echo "[$name] error body: $(head -c 300 /tmp/msg.json)"; fi
+          }
+          check ANTHROPIC_API_KEY "$K1"
+          check CLAUDE_API_KEY "$K2"
+      - name: Stop after health check
+        if: inputs.health_only != ''
+        run: echo "health_only set — skipping the sweep" && exit 0
       - uses: actions/checkout@v4
+        if: inputs.health_only == ''
       - uses: actions/setup-node@v4
+        if: inputs.health_only == ''
         with:
           node-version: 20
           cache: npm
