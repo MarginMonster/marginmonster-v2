@@ -311,6 +311,14 @@ async function commercialCheck(): Promise<string> {
       await saveFrame(url, `commercial-beat${i + 1}-keyframe.jpg`);
       console.log(`[commercial] beat ${i + 1} keyframe ready`);
     }
+    // Storyboard gate: stills + script only, zero video spend — the human
+    // kills weak beats BEFORE the motion dollars move.
+    if (process.env.QA_COMMERCIAL_STORYBOARD) {
+      return [head, ``, `**Storyboard stills only — no video rendered (approval gate).**`, ``,
+        `| beat | scene | narration |`, `|---|---|---|`,
+        ...plan.beats.map((b, i) => `| ${i + 1} | ${b.scene.replace(/\|/g, "/")} | ${b.narration.replace(/\|/g, "/")} |`),
+        ``, `tagline: **${plan.tagline}** · ${Math.round((Date.now() - t0) / 60_000)} min`].join("\n");
+    }
     // Beats are independent — render them all at once (wall time = slowest
     // clip, not the sum of five).
     const clips: string[] = await Promise.all(plan.beats.map((b, i) => (async () => {
