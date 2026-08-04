@@ -99,7 +99,9 @@ export async function planCommercial(
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,
     ].filter(Boolean).join("\n"),
-    { maxTokens: 700, model: "claude-sonnet-5" }
+    // 1400: the restate-the-protagonist rule makes scene sentences long, and
+    // a truncated JSON plan kills the render before it starts.
+    { maxTokens: 1400, model: "claude-sonnet-5" }
   );
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) throw new Error("commercial plan: no JSON");

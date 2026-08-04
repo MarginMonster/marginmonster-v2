@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -105,10 +105,11 @@ async function main() {
   const kf = await keyframeCheck();
   const ph = await presenterHoldCheck();
   const bl = await brandLab();
+  const hc = await heroCut();
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, bl, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, hc, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -217,6 +218,233 @@ async function presenterHoldCheck(): Promise<string> {
     return [`### Presenter image ads — shot-planner A/B`, ``, ...out].join("\n\n");
   }
   return presenterHoldOnce();
+}
+
+/* ---------- Hero Cut: the product-truth super ad ----------
+ *
+ * No AI-generated footage at all. The ad IS the product working: kinetic
+ * brand hook → a sentence typed into the REAL studio prompt (our design
+ * system, frame-rendered by Chrome) → a cascade of genuine EasyMode outputs
+ * labelled per format → the gstyle close-out with live-spun rosettes.
+ * Deterministic Chromium + ffmpeg; the only AI spend is three TTS lines.
+ * QA_HERO=1 enables. */
+async function heroCut(): Promise<string> {
+  if (!process.env.QA_HERO) return "";
+  const head = "### Hero Cut — the product-truth super ad";
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  const os2 = require("node:os") as typeof import("node:os");
+  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+  const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+  const chrome = [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"]
+    .find((c) => c && fs2.existsSync(c));
+  if (!chrome) return `${head}\n\nSKIPPED — no Chrome on this runner.`;
+  const tmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), "hero-"));
+  const font = path2.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  const rosette = path2.join(process.cwd(), "public", "gstyle-rosette.svg");
+  const crest = path2.join(process.cwd(), "public", "easymode-head.png");
+  const shoot = (html: string, out: string) => {
+    const page = `<!doctype html><html><head><style>
+      @font-face{font-family:P;src:url(file://${font});font-weight:800}
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{width:720px;height:1280px;overflow:hidden;font-family:P,sans-serif}
+    </style></head><body>${html}</body></html>`;
+    const f = out.replace(/\.png$/, ".html");
+    fs2.writeFileSync(f, page);
+    execFileSync(chrome!, ["--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+      "--window-size=720,1280", `--screenshot=${out}`, `file://${f}`], { stdio: "ignore" });
+  };
+  const still = (img: string, sec: number, out: string, zoomIn = true, label?: string) => {
+    const fr = Math.max(2, Math.round(sec * 30));
+    const z = zoomIn ? `1+${(0.12 / fr).toFixed(5)}*on` : `1.12-${(0.12 / fr).toFixed(5)}*on`;
+    const args = ["-y", "-loop", "1", "-framerate", "30", "-t", String(sec + 0.1), "-i", img];
+    const zchain = `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30`;
+    if (label && fs2.existsSync(label)) {
+      args.push("-loop", "1", "-framerate", "30", "-t", String(sec + 0.1), "-i", label,
+        "-filter_complex", `[0:v]${zchain}[b];[b][1:v]overlay=x=28:y=H-h-64,format=yuv420p[v]`, "-map", "[v]");
+    } else {
+      args.push("-vf", `${zchain},format=yuv420p`);
+    }
+    args.push("-t", String(sec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", out);
+    execFileSync(ff, args, { stdio: "ignore" });
+  };
+  try {
+    const t0 = Date.now();
+    const segs: string[] = [];
+    const green = `background:radial-gradient(120% 90% at 50% 40%, #0C6A3F 0%, #0A3D26 55%, #072A1A 100%)`;
+    const roseDiv = `<div style="position:absolute;left:50%;top:46%;width:900px;height:900px;transform:translate(-50%,-50%);opacity:.1;background:url(file://${rosette}) center/contain no-repeat;filter:brightness(3)"></div>`;
+
+    // A) HOOK — two kinetic-type cards on the brand field.
+    for (const [i, line] of [["1", "Your whole store&rsquo;s<br>marketing."], ["2", "Running<br><span style='color:#E7C879'>itself.</span>"]] as const) {
+      const p = path2.join(tmp, `hook${i}.png`);
+      shoot(`<div style="position:relative;width:720px;height:1280px;${green};display:flex;align-items:center;justify-content:center">${roseDiv}
+        <div style="position:relative;color:#F4F1E6;font-weight:800;font-size:64px;line-height:1.12;text-align:center;letter-spacing:-.01em">${line}</div></div>`, p);
+      still(p, 1.3, path2.join(tmp, `segA${i}.mp4`), i === "1");
+      segs.push(path2.join(tmp, `segA${i}.mp4`));
+    }
+
+    // B) TYPING — the REAL studio prompt, one frame per keystroke.
+    const sentence = "my citrus sports drink";
+    const studioFrame = (text: string, caret: boolean, pressed: boolean) =>
+      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:56px 34px 0">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px">
+          <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px">
+          <div style="font-size:24px;color:#14201A">Easy<span style="color:#B08526">Mode</span><span style="font-size:15px;color:#4A554E;margin-left:10px;font-weight:800">Studio</span></div>
+        </div>
+        <div style="background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid #E1DECD;border-radius:18px;box-shadow:0 3px 12px rgba(20,32,26,.07);padding:26px 24px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:-40px;top:-40px;width:220px;height:220px;background:url(file://${rosette}) center/contain no-repeat;opacity:.14"></div>
+          <div style="font-size:16px;color:#4A554E;margin-bottom:12px">What are you selling?</div>
+          <div style="background:#fff;border:1.5px solid ${caret || text ? "#0C7A46" : "#E1DECD"};border-radius:12px;padding:18px 16px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:21px;color:#14201A;min-height:62px">${text}${caret ? `<span style="display:inline-block;width:2.5px;height:24px;background:#0C7A46;vertical-align:-4px;margin-left:2px"></span>` : ""}</div>
+          <div style="margin-top:22px;display:flex;justify-content:flex-end">
+            <div style="font-size:17px;color:#fff;background:linear-gradient(160deg,#12A85E,#0C7A46);padding:15px 30px;border-radius:12px;box-shadow:0 4px 0 #0A3D26${pressed ? ";transform:translateY(3px) scale(.98);box-shadow:0 1px 0 #0A3D26;filter:brightness(1.15)" : ""}">Generate &rarr;</div>
+          </div>
+        </div>
+        <div style="margin-top:26px;text-align:center;font-size:15px;color:#4A554E;opacity:.75">one sentence. that&rsquo;s the whole job.</div>
+      </div>`;
+    const typedFrames: { png: string; dur: number }[] = [];
+    for (let k = 0; k <= sentence.length; k++) {
+      const p = path2.join(tmp, `type${String(k).padStart(3, "0")}.png`);
+      shoot(studioFrame(sentence.slice(0, k), true, false), p);
+      typedFrames.push({ png: p, dur: k === 0 ? 0.5 : 0.07 });
+    }
+    for (let b = 0; b < 4; b++) {
+      const p = path2.join(tmp, `hold${b}.png`);
+      shoot(studioFrame(sentence, b % 2 === 0, false), p);
+      typedFrames.push({ png: p, dur: 0.3 });
+    }
+    const pressPng = path2.join(tmp, "press.png");
+    shoot(studioFrame(sentence, false, true), pressPng);
+    typedFrames.push({ png: pressPng, dur: 0.45 });
+    const typeList = path2.join(tmp, "type.txt");
+    fs2.writeFileSync(typeList, typedFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${pressPng}'`);
+    const segB = path2.join(tmp, "segB.mp4");
+    execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", typeList,
+      "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segB], { stdio: "ignore" });
+    segs.push(segB);
+
+    // C) CASCADE — genuine outputs only: paid clips off qa-frames, committed
+    // renders, live prod format cards. Each stamped with its format label.
+    const label = (text: string, out: string) => {
+      shoot(`<div style="position:absolute;left:0;top:0;width:720px;height:1280px"><div style="position:absolute;left:0;bottom:0;display:inline-flex;align-items:center;gap:9px">
+        <div style="color:#fff;font-weight:800;font-size:24px;text-shadow:0 2px 3px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.5)">${text}</div>
+        <div style="color:#7FE0AC;font-weight:800;font-size:19px;text-shadow:0 2px 3px rgba(0,0,0,.9)">&middot; 1 tap</div></div></div>`, out);
+      // Chrome writes full-canvas; crop to the corner strip so overlay math stays simple.
+      const cropped = out.replace(/\.png$/, "-c.png");
+      execFileSync(ff, ["-y", "-i", out, "-vf", "crop=440:70:0:1210", cropped], { stdio: "ignore" });
+      return cropped;
+    };
+    type CItem = { kind: "clip" | "still"; src: string; text: string };
+    const items: CItem[] = [];
+    const curl = (url: string, out: string) => {
+      try { execFileSync("curl", ["-sf", "--max-time", "20", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 5000; } catch { return false; }
+    };
+    for (let i = 1; i <= 3; i++) {
+      const c = path2.join(tmp, `qclip${i}.mp4`);
+      if (curl(`https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/clip${i}.mp4`, c)) items.push({ kind: "clip", src: c, text: "Commercial" });
+    }
+    const flexDir = path2.join(process.cwd(), "public", "showcase", "flex");
+    const flexPick: [string, string][] = [["03-surge-pack.jpg", "Pack shot"], ["02-surge-finish.jpg", "Commercial"], ["04-daybreak-can.jpg", "Pack shot"], ["01-surge-wall.jpg", "Commercial"]];
+    for (const [f, t] of flexPick) { const p = path2.join(flexDir, f); if (fs2.existsSync(p)) items.push({ kind: "still", src: p, text: t }); }
+    const prodPick: [string, string][] = [["ad-templates/format-review.jpg", "Social proof"], ["ad-templates/format-tweet.jpg", "Viral post"], ["ad-templates/format-magazine.jpg", "Cover story"], ["style-tiles/cover.jpg", "Cartoon"]];
+    for (const [u, t] of prodPick) {
+      const p = path2.join(tmp, u.replace(/\//g, "_"));
+      if (curl(`https://easymodeapp.com/${u}`, p)) items.push({ kind: "still", src: p, text: t });
+    }
+    let ci = 0;
+    for (const it of items.slice(0, 9)) {
+      const lp = label(it.text, path2.join(tmp, `lab${ci}.png`));
+      const seg = path2.join(tmp, `segC${ci}.mp4`);
+      if (it.kind === "clip") {
+        execFileSync(ff, ["-y", "-ss", "1", "-t", "1.5", "-i", it.src, "-loop", "1", "-framerate", "30", "-t", "1.5", "-i", lp,
+          "-filter_complex", "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[b];[b][1:v]overlay=x=28:y=H-h-64,format=yuv420p[v]",
+          "-map", "[v]", "-t", "1.5", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", seg], { stdio: "ignore" });
+      } else {
+        still(it.src, 0.75, seg, ci % 2 === 0, lp);
+      }
+      segs.push(seg); ci++;
+    }
+
+    // D) CLOSE — the gstyle card with live-spun rosettes.
+    const base = path2.join(process.cwd(), "public", "showcase", "endcard-base.png");
+    const rose = path2.join(process.cwd(), "public", "showcase", "endcard-rosette.png");
+    const segD = path2.join(tmp, "segD.mp4");
+    execFileSync(ff, ["-y", "-loop", "1", "-framerate", "30", "-t", "4.2", "-i", base, "-loop", "1", "-framerate", "30", "-t", "4.2", "-i", rose,
+      "-filter_complex",
+      "[0:v]scale=720:1280[bg];[1:v]format=rgba,scale=460:460,split[ra][rb];" +
+      "[ra]rotate=t*0.35:c=none:ow=hypot(iw\\,ih):oh=ow[r1];[rb]rotate=-t*0.28:c=none:ow=hypot(iw\\,ih):oh=ow[r2];" +
+      "[bg][r1]overlay=x=W-w*0.72:y=-h*0.28[b1];[b1][r2]overlay=x=-w*0.28:y=H-h*0.72[b2];" +
+      "[b2]fade=t=in:st=0:d=0.4,fade=t=out:st=3.6:d=0.5,format=yuv420p[v]",
+      "-map", "[v]", "-t", "4", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segD], { stdio: "ignore" });
+    segs.push(segD);
+
+    // VOICE — three lines, placed at hook / cascade / close.
+    const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+    const cascadeStart = 2.6 + typedFrames.reduce((a, f) => a + f.dur, 0);
+    const cascadeLen = segs.length >= 4 ? 0 : 0; // computed below from files
+    const lines: [string, number][] = [
+      ["Meet your new marketing team.", 0.3],
+      ["Real ads. Real posts. One tap each.", cascadeStart + 0.3],
+      ["EasyMode. Marketing on easy mode.", 0], // start set after total known
+    ];
+    // total video length
+    const segLens: number[] = [1.3, 1.3, typedFrames.reduce((a, f) => a + f.dur, 0)];
+    for (let k = 0; k < ci; k++) segLens.push(items[k].kind === "clip" ? 1.5 : 0.75);
+    segLens.push(4);
+    const totalSec = segLens.reduce((a, b) => a + b, 0);
+    lines[2][1] = totalSec - 3.6;
+    const voFiles: string[] = [];
+    await Promise.all(lines.map(async ([text], i) => {
+      const id = await repCreate("minimax/speech-02-hd", { text, voice_id: "English_Trustworth_Man", emotion: "neutral", english_normalization: true, language_boost: "English" });
+      const url = await repPoll(id, 3 * 60_000, `hero-vo-${i + 1}`);
+      const p = path2.join(tmp, `vo${i}.mp3`);
+      fs2.writeFileSync(p, await downloadBuffer(url));
+      voFiles[i] = p;
+    }));
+
+    // FINAL — concat, watermark from the cascade onward, VO mix.
+    const wm = renderOverlayPng(
+      `<div style="color:#fff;font-weight:800;font-size:23px;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.6)">Easy<span style="color:#E7C879">Mode</span></div>`,
+      170, 42, path2.join(tmp, "wm.png"));
+    const list = path2.join(tmp, "list.txt");
+    fs2.writeFileSync(list, segs.map((s) => `file '${s}'`).join("\n"));
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const outPath = path2.join(outDir, "hero-cut.mp4");
+    const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
+    voFiles.forEach((p) => args.push("-i", p));
+    if (wm) args.push("-loop", "1", "-framerate", "30", "-t", String(totalSec), "-i", wm);
+    const fparts: string[] = [];
+    let vcur = "0:v";
+    if (wm) {
+      const wmIdx = 1 + voFiles.length;
+      fparts.push(`[${wmIdx}:v]format=rgba[wmk]`);
+      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${(cascadeStart).toFixed(2)},${(totalSec - 4).toFixed(2)})'[vw]`);
+      vcur = "vw";
+    }
+    fparts.push(`[${vcur}]eq=contrast=1.03:saturation=1.06,format=yuv420p[vout]`);
+    const amixIns = voFiles.map((_, i) => {
+      fparts.push(`[${i + 1}:a]adelay=${Math.round(lines[i][1] * 1000)}:all=1[va${i}]`);
+      return `[va${i}]`;
+    }).join("");
+    fparts.push(`${amixIns}amix=inputs=${voFiles.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`);
+    args.push("-filter_complex", fparts.join(";"), "-map", "[vout]", "-map", "[aout]",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-t", String(totalSec), outPath);
+    execFileSync(ff, args, { stdio: "ignore" });
+    // Report frames: one per segment family.
+    const grabs: [string, number][] = [["hero-hook.jpg", 1.9], ["hero-typing.jpg", 4.4], ["hero-cascade.jpg", cascadeStart + 1], ["hero-close.jpg", totalSec - 2]];
+    for (const [name, t] of grabs) {
+      try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
+    }
+    return [head, ``, `| | |`, `|---|---|`,
+      `| length | ${totalSec.toFixed(1)}s |`,
+      `| cascade items | ${ci} (${items.slice(0, 9).map((i) => i.text).join(", ")}) |`,
+      `| AI footage | none — Chromium + ffmpeg + real outputs |`,
+      `| wall time | ${Math.round((Date.now() - t0) / 60_000)} min |`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+  } finally {
+    try { fs2.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
 }
 
 /* ---------- Brand Lab: EasyMode hero products + commercial cut scenes ----
