@@ -300,7 +300,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } else {
       const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
       const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
-      titleFor = (p) => buildPostTitle(captions[p], "", fbText, credit);
+      // Tracked link, not a bare caption: clicks count on this exact piece
+      // via /go/a before forwarding to the product with UTM tags.
+      const appBase = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      titleFor = (p) => buildPostTitle(captions[p], appBase ? `${appBase}/go/a/${id}` : "", fbText, credit);
     }
     const urls: Record<string, string> = {};
     let anyOk = false;
@@ -311,7 +314,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       else lastErr = r.error;
     }
     if (!anyOk) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your connected accounts.` });
-    await db.asset.update({ where: { id }, data: { status: "PUBLISHED" } });
+    // Live post links persist for the Boost panel; clicks accrue on metaJson.
+    let pmeta: Record<string, unknown> = {};
+    try { pmeta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
+    pmeta.postedUrls = { ...(pmeta.postedUrls as Record<string, string> | undefined), ...urls };
+    pmeta.postedAt = new Date().toISOString();
+    await db.asset.update({ where: { id }, data: { status: "PUBLISHED", metaJson: JSON.stringify(pmeta) } });
     return json({ posted: platforms.join(", ") });
   }
   if (intent === "boost") {

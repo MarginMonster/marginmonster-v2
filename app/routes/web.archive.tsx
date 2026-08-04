@@ -134,6 +134,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         when: a.createdAt.toISOString(),
         status: a.status,
         daysLeft,
+        // Post tracking: clicks counted by the /go/a turnstile + where the
+        // piece went live, for the Boost panel.
+        clicks: (() => { try { return Number(JSON.parse(a.metaJson || "{}").clicks) || 0; } catch { return 0; } })(),
+        postedUrls: (() => { try { const u = JSON.parse(a.metaJson || "{}").postedUrls; return u && typeof u === "object" ? (u as Record<string, string>) : undefined; } catch { return undefined; } })(),
       };
     }),
   });
@@ -321,19 +325,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } else {
       const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
       const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
-      const buyUrl = await productLinkFor(shop.id, title);
-      titleFor = (p) => buildPostTitle(captions[p], buyUrl, fbText, credit);
+      // The caption links through OUR turnstile, not the raw product page —
+      // every click gets counted on this exact piece before forwarding with
+      // UTM tags. This is where "which post made money" starts.
+      const goUrl = `${base}/go/a/${id}`;
+      titleFor = (p) => buildPostTitle(captions[p], goUrl, fbText, credit);
     }
     let anyOk = false;
     let lastErr: string | undefined;
+    const postedUrls: Record<string, string> = {};
     for (const p of platforms) {
       const r = await publishPost(profileKey, { title: titleFor(p), mediaUrl, isVideo, platforms: [p] });
-      if (r.ok) anyOk = true;
-      else lastErr = r.error;
+      if (r.ok) {
+        anyOk = true;
+        if (r.urls) Object.assign(postedUrls, r.urls);
+      } else lastErr = r.error;
     }
     if (!anyOk) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your linked accounts.` });
-    await db.asset.update({ where: { id }, data: { status: "PUBLISHED" } });
-    return json({ posted: platforms.join(" · "), ok: `Posted to ${platforms.join(" · ")} 🎉` });
+    // Remember WHERE it landed: the live post links power the Boost panel
+    // and stay on the card long after this response is gone.
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
+    meta.postedUrls = { ...(meta.postedUrls as Record<string, string> | undefined), ...postedUrls };
+    meta.postedAt = new Date().toISOString();
+    await db.asset.update({ where: { id }, data: { status: "PUBLISHED", metaJson: JSON.stringify(meta) } });
+    return json({ posted: platforms.join(" · "), ok: `Posted to ${platforms.join(" · ")} 🎉`, postedUrls });
   }
   return json({});
 };
@@ -371,6 +387,11 @@ const WA_CSS = `
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
 .wa-cd{position:absolute;top:8px;left:8px;background:rgba(20,32,26,.8);color:#E7C879;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.02em;}
 .wa-cd.urgent{background:#8C2E1B;color:#fff;}
+.wa-track{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border:1px solid var(--line,#e4e1d5);border-radius:10px;background:rgba(255,255,255,.55);}
+.wa-clicks{font-size:12px;font-weight:800;color:#0A3D26;background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:5px 11px;}
+.wa-boost{font-size:12px;font-weight:800;text-decoration:none;color:#5b3c00;background:#FFF3D6;border:1px solid #EAD79E;border-radius:999px;padding:5px 11px;}
+.wa-boost:hover{background:#FFE9B3;}
+.wa-boosthint{flex-basis:100%;font-size:11.5px;color:var(--ink2,#4a4f4b);opacity:.85;line-height:1.5;}
 .wa-recipe{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.02em;
   background:#F3F1E4;color:#6B5312;border:1px solid rgba(176,133,38,.32);}
 .wa-chip{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
@@ -716,6 +737,21 @@ export default function WebArchive() {
                 <span className="wa-vmissed">
                   ⚠ The <b>{viewer.missed}</b> layout didn&apos;t render cleanly, so this went out as a plain product ad instead. <b>Remix</b> re-rolls it.
                 </span>
+              )}
+              {/* Post tracking + the Boost Bridge. Clicks come from the /go/a
+                  turnstile in every posted caption; the live post links open
+                  the exact post so boosting is two taps in Meta's own UI —
+                  the SMB way to put spend behind a winner, no ads API needed. */}
+              {(viewer.clicks > 0 || viewer.postedUrls) && (
+                <div className="wa-track">
+                  <span className="wa-clicks" title="Shoppers who tapped the link in this post's caption">🔗 {viewer.clicks} click{viewer.clicks === 1 ? "" : "s"}</span>
+                  {viewer.postedUrls && Object.entries(viewer.postedUrls).map(([p, u]) => (
+                    <a key={p} className="wa-boost" href={u} target="_blank" rel="noreferrer">⚡ Boost on {p.charAt(0).toUpperCase() + p.slice(1)} ↗</a>
+                  ))}
+                  {viewer.postedUrls && (
+                    <span className="wa-boosthint">Open the post → tap <b>⋯ / Boost</b>. Suggested start: $10/day × 3 days, Advantage+ audience. Clicks above tell you which piece earned the spend.</span>
+                  )}
+                </div>
               )}
               {viewer.daysLeft != null && !posted && (
                 <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}>⏳ Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — <b>Keep</b> saves it for good.</span>
