@@ -34,13 +34,17 @@ async function main() {
   }
 
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
-  console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
+  // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
+  // six minutes of noise in front of it. Sweep only when nothing else asked.
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB);
+  if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
+  else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
   let leaked = 0, total = 0, tooLong = 0, tooShort = 0, errored = 0;
   const bad: string[] = [];
   const errs: string[] = [];
 
-  for (const style of styles) {
+  for (const style of renderOnly ? [] : styles) {
     for (const p of PRODUCTS) {
       for (let r = 0; r < REPEATS; r++) {
         total++;
@@ -307,11 +311,12 @@ async function commercialCheck(): Promise<string> {
       await saveFrame(url, `commercial-beat${i + 1}-keyframe.jpg`);
       console.log(`[commercial] beat ${i + 1} keyframe ready`);
     }
-    const clips: string[] = [];
-    for (let i = 0; i < plan.beats.length; i++) {
+    // Beats are independent — render them all at once (wall time = slowest
+    // clip, not the sum of five).
+    const clips: string[] = await Promise.all(plan.beats.map((b, i) => (async () => {
       const opts = {
         startImage: keyframes[i],
-        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${svc ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
+        prompt: `${b.motion}. Cinematic live-action, natural physics${svc ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
         negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
       };
       let clip = await renderMotionClip(engine, opts, `qa-commercial-beat-${i + 1}`);
@@ -320,22 +325,21 @@ async function commercialCheck(): Promise<string> {
         console.log(`[commercial] beat ${i + 1} FAILED motion gate (${gate.why}) — re-rolling once`);
         clip = await renderMotionClip(engine, opts, `qa-commercial-beat-${i + 1}-reroll`);
       }
-      clips.push(clip);
       console.log(`[commercial] beat ${i + 1} animated${gate.ok ? "" : " (re-rolled)"}`);
-    }
+      return clip;
+    })()));
     // Per-line VO, same as production: each line lands on its own beat.
     const voLines = [...plan.beats.map((b) => b.narration || plan.tagline), `${plan.tagline}.`];
-    const voUrls: string[] = [];
-    for (let i = 0; i < voLines.length; i++) {
+    const voUrls: string[] = await Promise.all(voLines.map((text, i) => (async () => {
       const voId = await repCreate("minimax/speech-02-hd", {
-        text: voLines[i],
+        text,
         voice_id: "English_Trustworth_Man",
         emotion: "neutral",
         english_normalization: true,
         language_boost: "English",
       });
-      voUrls.push(await repPoll(voId, 3 * 60_000, `qa-commercial-vo-${i + 1}`));
-    }
+      return repPoll(voId, 3 * 60_000, `qa-commercial-vo-${i + 1}`);
+    })()));
     const tmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), "qa-comm-"));
     const clipPaths: string[] = [];
     for (let i = 0; i < clips.length; i++) { const p = path2.join(tmp, `c${i}.mp4`); await download(clips[i], p); clipPaths.push(p); }

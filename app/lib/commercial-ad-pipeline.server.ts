@@ -438,18 +438,24 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${serviceMode ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
     negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
   });
+  // Beats are independent — render them ALL at once. Sequential clips made
+  // a five-beat spot take 5× the slowest clip; parallel makes it take 1×.
   let clipUrls: string[] = params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : [];
   if (clipUrls.length < plan.beats.length) {
-    for (let i = clipUrls.length; i < plan.beats.length; i++) {
-      let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`);
-      const gate = await motionGate(clip, serviceMode);
-      if (!gate.ok) {
-        console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
-        clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
-      }
-      clipUrls.push(clip);
-      await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
-    }
+    const fresh = await Promise.all(
+      plan.beats.slice(clipUrls.length).map((_, k) => (async () => {
+        const i = clipUrls.length + k;
+        let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`);
+        const gate = await motionGate(clip, serviceMode);
+        if (!gate.ok) {
+          console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
+          clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
+        }
+        return clip;
+      })())
+    );
+    clipUrls = [...clipUrls, ...fresh];
+    await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
   }
 
   // 4) VOICE — one TTS read PER LINE (plus the tagline), so assembly can
@@ -461,17 +467,20 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     audioUrls = JSON.parse(params.resume.audioUrl) as string[];
   } // a legacy single-URL checkpoint is a differently-paced read — re-synthesize
   if (audioUrls.length < voLines.length) {
-    for (let i = audioUrls.length; i < voLines.length; i++) {
-      const id = await repCreate("minimax/speech-02-hd", {
-        text: voLines[i],
-        voice_id: "English_Trustworth_Man",
-        emotion: "neutral",
-        english_normalization: true,
-        language_boost: "English",
-      });
-      audioUrls.push(await repPoll(id, 3 * 60_000, `commercial-vo-${i + 1}`));
-      await ckpt({ ckCommercialAudio: JSON.stringify(audioUrls) });
-    }
+    const freshVo = await Promise.all(
+      voLines.slice(audioUrls.length).map((text, k) => (async () => {
+        const id = await repCreate("minimax/speech-02-hd", {
+          text,
+          voice_id: "English_Trustworth_Man",
+          emotion: "neutral",
+          english_normalization: true,
+          language_boost: "English",
+        });
+        return repPoll(id, 3 * 60_000, `commercial-vo-${audioUrls.length + k + 1}`);
+      })())
+    );
+    audioUrls = [...audioUrls, ...freshVo];
+    await ckpt({ ckCommercialAudio: JSON.stringify(audioUrls) });
   }
 
   // 5) FINALE FRAME — product mode closes on the REAL photo; service mode
