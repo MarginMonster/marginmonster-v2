@@ -97,8 +97,8 @@ jobs:
     # A ten-product sweep is ~10 × (6 parallel composes + pastes + vision QA)
     # ≈ 25 minutes of wall time; 20 was sized for the single-product sweep.
     # The planner A/B (18 4K renders) ran headlong into 45 and got clipped at
-  # the finish line; commercial renders add ~20 min of kling wall time.
-  timeout-minutes: 75
+    # the finish line; commercial renders add ~20 min of kling wall time.
+    timeout-minutes: 75
     steps:
       # Key diagnosis WITHOUT exposing the keys: console-style fingerprint
       # (prefix + last 4 — how console.anthropic.com displays them), auth
