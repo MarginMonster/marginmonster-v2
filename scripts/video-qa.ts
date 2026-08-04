@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -107,11 +107,12 @@ async function main() {
   const bl = await brandLab();
   const rx = await referenceExtract();
   const pf = await portfolioAssets();
+  const fl = await flankClips();
   const hc = await heroCut();
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, bl, rx, pf, hc, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, rx, pf, fl, hc, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -282,13 +283,18 @@ async function portfolioAssets(): Promise<string> {
       ["port-t2", "Anime style young woman holding an unbranded water bottle on a sunrise hilltop, wind in her hair, painterly sky, soft cel shading.", "hair and grass move in the wind"],
     ];
     const STILLS: [string, string][] = [
-      ["port-s1", "Studio packshot of an unbranded kraft paper coffee bag with a blank label, white seamless background, soft key light, e-commerce hero shot. No text anywhere."],
+      // s0 is the INPUT — a merchant's own phone snap, deliberately casual.
+      ["port-s0", `Casual smartphone photo a small business owner took of their product: a matte kraft coffee bag with a simple minimal cream label reading "COFFEE", standing upright on a wooden kitchen counter near a window, soft natural morning light, slightly imperfect casual angle, realistic phone-camera look. NOT a studio shot. The ONLY text anywhere is exactly "COFFEE".`],
+      ["port-s1", `Studio packshot of a kraft paper coffee bag with a simple minimal cream label reading "COFFEE", standing UPRIGHT with the label facing the camera, white seamless background, soft key light, e-commerce hero shot. The ONLY text anywhere is exactly "COFFEE".`],
       ["port-s2", "Luxury studio packshot of a frosted glass serum dropper bottle with a blank label on a dark stone surface, dramatic side light. No text anywhere."],
     ];
     const engine = process.env.QA_COMMERCIAL_ENGINE?.trim() || "veo";
+    // QA_PORTFOLIO=stills regenerates only the still assets — the clips are
+    // already published and expensive.
+    const stillsOnly = process.env.QA_PORTFOLIO === "stills";
     const made: string[] = [];
     await Promise.all([
-      ...CLIPS.map(([name, scene, motion]) => (async () => {
+      ...(stillsOnly ? [] : CLIPS).map(([name, scene, motion]) => (async () => {
         const kf = await sceneKeyframe(undefined, scene);
         let clip = await renderMotionClip(engine, { startImage: kf, prompt: `${motion}. Cinematic live-action, natural physics. No morphing, no text.`, negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion" }, name);
         const gate = await motionGate(clip, true);
@@ -310,6 +316,68 @@ async function portfolioAssets(): Promise<string> {
       })()),
     ]);
     return [head, ``, `${made.length}/10 assets made (${made.sort().join(", ")}) · ${Math.round((Date.now() - t0) / 60_000)} min`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+  }
+}
+
+/* ---------- Flanks: desktop hero side videos + new studio tile covers ----
+ *
+ * The desktop landing hero is one lonely phone on a wide empty stage — the
+ * flanks are two SIMPLE EasyMode clips (a presenter holding the brand bottle,
+ * and a cinematic bottle highlight) that sit either side of it. Both compose
+ * from the canonical statue bottle so the branding matches every picker tile.
+ * Also forges preview stills for the three NEW studio content-type covers
+ * (UGC Review / Unboxing / Satisfying Close-Up) with the same prompts prod
+ * self-forges from, so the art gets approved before merchants see it.
+ * QA_FLANKS=1 enables (~$3: 2 Veo clips + 5 composes). */
+async function flankClips(): Promise<string> {
+  if (!process.env.QA_FLANKS) return "";
+  const head = "### Flanks — desktop hero side clips + studio covers";
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  try {
+    const { sceneKeyframe, renderMotionClip, motionGate } = await import("../app/lib/commercial-ad-pipeline.server");
+    const { download } = await import("../app/lib/ugc-ad-pipeline.server");
+    const t0 = Date.now();
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    // The ONE canonical brand bottle — same reference every picker tile uses.
+    const statue = "https://easymodeapp.com/ad-templates/statue.png";
+    const engine = process.env.QA_COMMERCIAL_ENGINE?.trim() || "veo";
+    const CLIPS: [string, string, string][] = [
+      ["flank-left",
+        "Vertical 9:16 social video frame: a friendly photoreal young woman creator in a bright modern kitchen, holding the green EASYMODE sports drink bottle from the reference image up beside her face with the label toward the camera, mid-sentence talking to camera with a warm genuine smile, soft natural daylight, shallow depth of field.",
+        "She talks to the camera naturally with subtle hand gestures, keeping the bottle steady and its label visible."],
+      ["flank-right",
+        "Cinematic hero product shot, tall vertical composition: the green EASYMODE sports drink bottle from the reference image standing on a wet glossy black stone pedestal, dramatic golden rim light carving its silhouette, soft mist swirling at the base, deep emerald-black studio background with a faint warm glow, ultra sharp, luxurious big-budget advertising photography.",
+        "Slow orbital drift around the bottle, mist curling, light glinting off the label."],
+    ];
+    // KEEP IN SYNC with CT_COVER_PROMPTS in image-generation.server.ts — prod
+    // self-forges its own covers from these exact prompts.
+    const COVERS: [string, string][] = [
+      ["ctcover-review", "Selfie-style UGC frame: a young woman creator filming herself on her phone in a cozy bedroom lit by a warm ring-light glow, holding the bottle from the reference image up to the lens, mid-review expression, authentic social-feed energy, slightly casual framing."],
+      ["ctcover-unboxing", "First-impressions unboxing moment: hands lifting the bottle from the reference image out of an open kraft shipping box with crinkled tissue paper, on a warm wooden desk in soft daylight, close and personal framing, genuine excitement in the scene."],
+      ["ctcover-asmr", "Extreme macro close-up of the bottle from the reference image, condensation droplets rolling down the plastic, dark glossy background, one dramatic beam of light carving the silhouette — oddly satisfying, mesmerizing product photography."],
+    ];
+    const made: string[] = [];
+    await Promise.all([
+      ...CLIPS.map(([name, scene, motion]) => (async () => {
+        const kf = await sceneKeyframe(statue, scene);
+        await saveFrame(kf, `${name}.jpg`); // the <video> poster
+        let clip = await renderMotionClip(engine, { startImage: kf, prompt: `${motion} Cinematic live-action, natural physics. No morphing, no extra text.`, negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion" }, name);
+        const gate = await motionGate(clip, true);
+        if (!gate.ok) clip = await renderMotionClip(engine, { startImage: kf, prompt: `${motion} Cinematic live-action, natural physics. No morphing, no extra text.` }, `${name}-reroll`);
+        await download(clip, path2.join(outDir, `${name}.mp4`));
+        made.push(name);
+      })()),
+      ...COVERS.map(([name, prompt]) => (async () => {
+        const url = await sceneKeyframe(statue, prompt);
+        await saveFrame(url, `${name}.jpg`);
+        made.push(name);
+      })()),
+    ]);
+    return [head, ``, `${made.length}/5 assets made (${made.sort().join(", ")}) · ${Math.round((Date.now() - t0) / 60_000)} min`].join("\n");
   } catch (e) {
     return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
   }
