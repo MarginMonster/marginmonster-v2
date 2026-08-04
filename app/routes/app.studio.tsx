@@ -33,7 +33,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", live: true },
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", live: true },
-  { key: "commercial", name: "Commercial", icon: "🎥", cover: "/showcase/commercial-cover.jpg?v=1", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", live: true },
+  { key: "commercial", name: "Commercial", icon: "🎥", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
