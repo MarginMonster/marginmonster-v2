@@ -49,7 +49,7 @@ const EN: LandingCopy = {
     cta: "Start free — 7-day trial",
     note: "Any store, any platform · cancel anytime",
   },
-  stats: { types: "content types", channels: "social channels", start: "to start" },
+  stats: { types: "ad formats, one subscription", channels: "posting to TikTok, IG & FB", start: "to start" },
   features: [
     { icon: "🎬", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
     { icon: "🎨", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, block build, claymation — or an Anthem your avatar sings on camera." },
@@ -149,7 +149,7 @@ const ES: LandingCopy = {
     cta: "Empieza gratis — prueba de 7 días",
     note: "Cualquier tienda, cualquier plataforma · cancela cuando quieras",
   },
-  stats: { types: "tipos de contenido", channels: "redes sociales", start: "para empezar" },
+  stats: { types: "formatos de anuncio, una suscripción", channels: "publicación en TikTok, IG y FB", start: "para empezar" },
   features: [
     { icon: "🎬", title: "Videos UGC que venden", body: "Presentadores de IA sostienen tu producto y lo presentan — en formato vertical para TikTok, Reels y Shorts." },
     { icon: "🎨", title: "Anuncios cartoon virales", body: "Tu producto en los formatos que internet ya comparte — anime, figura de colección, bloques, claymation — o un Anthem que tu avatar canta a cámara." },
@@ -249,7 +249,7 @@ const FR: LandingCopy = {
     cta: "Essai gratuit — 7 jours",
     note: "Toute boutique, toute plateforme · annulez à tout moment",
   },
-  stats: { types: "types de contenu", channels: "réseaux sociaux", start: "pour commencer" },
+  stats: { types: "formats de pub, un seul abonnement", channels: "publication TikTok, IG & FB", start: "pour commencer" },
   features: [
     { icon: "🎬", title: "Des vidéos UGC qui vendent", body: "Des présentateurs IA tiennent votre produit et en parlent — au format vertical pour TikTok, Reels et Shorts." },
     { icon: "🎨", title: "Pubs cartoon virales", body: "Votre produit dans les formats que l'internet partage déjà — anime, figurine en boîte, briques, claymation — ou un Anthem que votre avatar chante face caméra." },
@@ -349,7 +349,7 @@ const DE: LandingCopy = {
     cta: "Kostenlos starten — 7 Tage testen",
     note: "Jeder Shop, jede Plattform · jederzeit kündbar",
   },
-  stats: { types: "Content-Formate", channels: "Social-Kanäle", start: "zum Start" },
+  stats: { types: "Anzeigenformate, ein Abo", channels: "Posting auf TikTok, IG & FB", start: "zum Start" },
   features: [
     { icon: "🎬", title: "UGC-Videos, die verkaufen", body: "KI-Presenter halten dein Produkt in der Hand und stellen es vor — vertikal formatiert für TikTok, Reels & Shorts." },
     { icon: "🎨", title: "Virale Cartoon-Ads", body: "Dein Produkt in den Formaten, die das Internet schon teilt — Anime, Sammelfigur, Klötzchen-Look, Knetanimation — oder ein Anthem, das dein Avatar vor der Kamera singt." },
@@ -449,7 +449,7 @@ const ZH: LandingCopy = {
     cta: "免费开始 — 7 天试用",
     note: "任何店铺、任何平台 · 随时取消",
   },
-  stats: { types: "种内容形式", channels: "个社交渠道", start: "起步价" },
+  stats: { types: "种广告形式，一份订阅", channels: "键发布到 TikTok、IG 和 FB", start: "起步价" },
   features: [
     { icon: "🎬", title: "能带货的 UGC 视频", body: "AI 主播手持你的产品进行讲解 — 竖屏格式，适配 TikTok、Reels 和 Shorts。" },
     { icon: "🎨", title: "病毒式卡通广告", body: "把你的产品做成全网疯传的风格 — 梦幻动漫、盒装手办、方块世界、黏土动画 — 或者让你的头像出镜演唱产品主题曲 Anthem。" },

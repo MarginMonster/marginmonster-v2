@@ -72,7 +72,7 @@ export const PLAN_TIERS: PlanTier[] = [
   },
   {
     key: "ANTHEM",
-    name: "Anthem",
+    name: "Legend",
     price: 69,
     tagline: "Everything in Studio at nearly double the volume — built for stores that post every day.",
     monthlyTokens: 1600,
