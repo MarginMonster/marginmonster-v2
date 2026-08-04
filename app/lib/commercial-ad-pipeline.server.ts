@@ -244,10 +244,14 @@ export async function assembleCommercial(opts: {
     const packSec = opts.packshotSec ?? 4;
     const pack = path.join(tmp, "pack.mp4");
     const frames = Math.round(packSec * 30);
+    // fade must come AFTER zoompan: zoompan expands input frame 0 across the
+    // whole packshot, and a pre-zoom fade-in makes frame 0 pure black — which
+    // is 4 seconds of zoomed black, the bug that ate every packshot so far.
     await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.productJpegPath,
       "-vf",
       `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
-      `fade=t=in:st=0:d=0.4,zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,format=yuv420p`,
+      `zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,` +
+      `fade=t=in:st=0:d=0.4,fade=t=out:st=${(packSec - 0.5).toFixed(2)}:d=0.5,format=yuv420p`,
       "-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack]);
     norm.push(pack);
     // 3) The voice track. Per-beat narrations are each delayed to their own
