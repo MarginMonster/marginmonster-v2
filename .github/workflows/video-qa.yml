@@ -229,11 +229,18 @@ jobs:
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
           rm -rf /tmp/pub && mkdir -p /tmp/pub && cp qa-out/frames/* /tmp/pub/
-          git checkout --orphan qa-frames
-          git rm -rf --cached . >/dev/null 2>&1 || true
-          find . -maxdepth 1 -not -name .git -not -name . -exec rm -rf {} + 2>/dev/null || true
+          # Overlay onto the existing branch instead of orphan-wiping it:
+          # a stills-only run once silently destroyed ~$8 of published Veo
+          # clips. Same-name frames still overwrite; nothing else is lost.
+          if git fetch origin qa-frames 2>/dev/null; then
+            git checkout -B qa-frames FETCH_HEAD
+          else
+            git checkout --orphan qa-frames
+            git rm -rf --cached . >/dev/null 2>&1 || true
+            find . -maxdepth 1 -not -name .git -not -name . -exec rm -rf {} + 2>/dev/null || true
+          fi
           mkdir -p frames && cp /tmp/pub/* frames/
           git add -A frames
           git commit -q -m "QA frames from run ${GITHUB_RUN_ID}"
           git push -f origin qa-frames
-          echo "published $(ls frames | wc -l) frames to the qa-frames branch"
+          echo "published $(ls /tmp/pub | wc -l) new frames to the qa-frames branch ($(ls frames | wc -l) total)"

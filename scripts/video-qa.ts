@@ -502,7 +502,6 @@ async function heroCut(): Promise<string> {
             <div style="font-size:25px;color:#F4F1E6">Easy<span style="color:#E7C879">Mode</span><span style="font-size:15px;color:#7FE0AC;margin-left:10px;font-weight:800">Studio</span></div>
           </div>
           <div style="background:linear-gradient(168deg,#10231A,#0B1A12);border:1px solid rgba(127,224,172,.28);border-radius:20px;box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 70px rgba(18,168,94,.16);padding:28px 26px;position:relative;overflow:hidden">
-            <div style="position:absolute;right:-40px;top:-40px;width:240px;height:240px;background:url(file://${rosette}) center/contain no-repeat;opacity:.12;filter:brightness(3)"></div>
             <div style="font-size:15px;color:#7FE0AC;margin-bottom:12px;font-weight:800;letter-spacing:.06em;${disp}">PASTE YOUR PRODUCT LINK</div>
             <div style="background:rgba(4,10,7,.75);border:1.5px solid ${state >= 1 ? "#12A85E" : "rgba(127,224,172,.25)"};border-radius:13px;padding:17px 16px;font-family:Arial,sans-serif;font-weight:600;font-size:19px;color:${state >= 1 ? "#F4F1E6" : "#5d6a61"};${state === 1 ? "box-shadow:0 0 26px rgba(18,168,94,.35);background:rgba(18,168,94,.14);" : ""}">${state >= 1 ? pasteUrl : "https://…"}</div>
             ${state === 2 ? `<div style="margin-top:16px;display:flex;align-items:center;gap:11px;font-size:17px;font-weight:700;color:#E7C879;${disp}">
@@ -541,7 +540,6 @@ async function heroCut(): Promise<string> {
       `<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center;overflow:hidden">${headline}
         <div style="width:640px;transform:perspective(1300px) rotateX(6deg) rotateY(${(-2 + n * 1.4).toFixed(1)}deg) scale(${(1.02 + n * 0.015).toFixed(3)})">
           <div style="background:linear-gradient(168deg,#10231A,#0B1A12);border:1px solid rgba(127,224,172,.28);border-radius:20px;box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 70px rgba(18,168,94,.16);padding:26px 24px;position:relative;overflow:hidden">
-            <div style="position:absolute;right:-40px;top:-40px;width:240px;height:240px;background:url(file://${rosette}) center/contain no-repeat;opacity:.12;filter:brightness(3)"></div>
             <div style="background:rgba(4,10,7,.75);border:1.5px solid rgba(127,224,172,.25);border-radius:13px;padding:15px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:19px;color:#8FA89A">${sentence}</div>
             <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
               ${chipLabels.slice(0, n).map((c, i) =>
