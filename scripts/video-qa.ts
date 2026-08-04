@@ -239,7 +239,6 @@ async function referenceExtract(): Promise<string> {
   try {
     const outDir = path2.join(process.cwd(), "qa-out", "frames");
     fs2.mkdirSync(outDir, { recursive: true });
-    const probe = execFileSync(ff, ["-i", src, "-f", "null", "-"], { stdio: ["ignore", "ignore", "pipe"] }).toString();
     execFileSync(ff, ["-y", "-i", src, "-vf", "fps=1,scale=540:-2", "-q:v", "4", path2.join(outDir, "ref-%03d.jpg")], { stdio: "ignore" });
     execFileSync(ff, ["-y", "-t", "2", "-i", src, "-vf", "fps=4,scale=400:-2", "-q:v", "5", path2.join(outDir, "ref-open-%02d.jpg")], { stdio: "ignore" });
     const n = fs2.readdirSync(outDir).filter((f: string) => f.startsWith("ref-")).length;
