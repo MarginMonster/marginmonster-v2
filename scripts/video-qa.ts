@@ -490,8 +490,8 @@ async function heroCut(): Promise<string> {
     // B) PASTE + EXTRACT — the store-link extractor, the studio's most
     // magical real feature: paste a product URL, the photo and title pull
     // themselves out of the store. Then the press detonates.
-    const sentence = "Amber — Hand-Poured Soy Candle";
-    const pasteUrl = "mystore.com/products/amber-soy-candle";
+    const sentence = "Golden Hour — Small Batch Candle";
+    const pasteUrl = "mystore.com/products/golden-hour-candle";
     // states: 0 empty field · 1 URL pasted (highlight) · 2 reading spinner ·
     // 3 extracted card (thumb + title materialize) · 4 press
     const studioFrame = (state: number, k: number) =>
