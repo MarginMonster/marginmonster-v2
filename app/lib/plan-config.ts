@@ -55,7 +55,7 @@ export const PLAN_TIERS: PlanTier[] = [
   {
     key: "STUDIO",
     name: "Studio",
-    price: 59,
+    price: 39,
     tagline: "Every generator unlocked: AI presenters, cinematic videos, cartoon styles and your own Anthem.",
     highlight: true,
     monthlyTokens: 900,
@@ -73,7 +73,7 @@ export const PLAN_TIERS: PlanTier[] = [
   {
     key: "ANTHEM",
     name: "Anthem",
-    price: 99,
+    price: 69,
     tagline: "Everything in Studio at nearly double the volume — built for stores that post every day.",
     monthlyTokens: 1600,
     blogQuota: 60,

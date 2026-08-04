@@ -87,6 +87,24 @@ export default function Index() {
           <p className="lz-pow-note">{(t.powered || LANDING_I18N.en.powered!).note}</p>
         </section>
 
+        {/* Auto-posting strip — the pipeline doesn't stop at "here's your
+            ad": it posts it. Same visual language as the AI strip above so
+            the two read as one trust system. */}
+        <section className="lz-autopost" aria-label="Automatic posting to social platforms">
+          <span className="lz-eyebrow">{(t.autopost || LANDING_I18N.en.autopost!).eyebrow}</span>
+          <div className="lz-pow-row">
+            <span className="lz-pow"><img src="/ai-logos/tiktok.svg" alt="TikTok logo" /><b>TikTok</b></span>
+            <span className="lz-pow"><img src="/ai-logos/instagram.svg" alt="Instagram logo" /><b>Instagram</b></span>
+            <span className="lz-pow"><img src="/ai-logos/facebook.svg" alt="Facebook logo" /><b>Facebook</b></span>
+          </div>
+          <ul className="lz-ap-points">
+            {(t.autopost || LANDING_I18N.en.autopost!).points.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+          <p className="lz-pow-note">{(t.autopost || LANDING_I18N.en.autopost!).note}</p>
+        </section>
+
         <section className="lz-feats">
           {t.features.map((f) => (
             <div className="lz-card" key={f.title}>
@@ -281,6 +299,11 @@ html,body{margin:0;padding:0}
 /* The AI trust strip. Quiet by design: wordmarks sit muted until hover so
    the strip reads as infrastructure, not advertising for someone else. */
 .lz-powered{max-width:900px;margin:44px auto 0;padding:0 26px;text-align:center;}
+.lz-autopost{max-width:900px;margin:40px auto 0;padding:0 26px;text-align:center;}
+.lz-ap-points{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 10px;margin:16px 0 0;padding:0;}
+.lz-ap-points li{font-size:12.5px;font-weight:700;color:var(--ink2,#3d4340);border:1px solid var(--line,#e4e1d5);
+  border-radius:999px;padding:7px 13px;background:rgba(255,255,255,.6);}
+.lz-ap-points li::before{content:"✓";margin-right:7px;color:#1f7a4d;font-weight:900;}
 .lz-pow-row{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 34px;margin:18px 0 14px;}
 .lz-pow{display:inline-flex;flex-direction:column;align-items:center;gap:4px;opacity:.62;filter:grayscale(1);transition:opacity .2s,filter .2s;}
 .lz-pow:hover{opacity:1;filter:none;}

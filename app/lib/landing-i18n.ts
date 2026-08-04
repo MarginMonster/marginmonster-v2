@@ -36,6 +36,7 @@ export interface LandingCopy {
    *  never translated; only the framing copy is. Optional so older language
    *  packs fall back to English until translated. */
   powered?: { eyebrow: string; note: string };
+  autopost?: { eyebrow: string; note: string; points: string[] };
 }
 
 const EN: LandingCopy = {
@@ -135,6 +136,7 @@ const EN: LandingCopy = {
   },
   footer: { copy: "AI marketing autopilot for your store." },
   powered: { eyebrow: "Powered by frontier AI", note: "We don't borrow a big studio's AI stack — we run one. Every ad is built and quality-checked by frontier models, then approved by you before it ships." },
+  autopost: { eyebrow: "Made here. Posted everywhere.", note: "Link your socials once and every approved piece can publish itself — AI caption, per-platform hashtags, and the AI-disclosure tag Meta now requires, handled automatically.", points: ["One-tap posting to TikTok, Instagram & Facebook", "Big-studio output at a budget price — plans from $19/mo", "AI-disclosure compliant captions, so ads don't get rejected"] },
 };
 
 const ES: LandingCopy = {
@@ -234,6 +236,7 @@ const ES: LandingCopy = {
   },
   footer: { copy: "Piloto automático de marketing con IA para tu tienda." },
   powered: { eyebrow: "Impulsado por IA de frontera", note: "No tomamos prestado el stack de IA de un gran estudio: somos uno. Cada anuncio se crea y verifica con modelos de frontera, y tú lo apruebas antes de publicarse." },
+  autopost: { eyebrow: "Creado aquí. Publicado en todas partes.", note: "Conecta tus redes una vez y cada pieza aprobada puede publicarse sola: texto con IA, hashtags por plataforma y la etiqueta de divulgación de IA que Meta exige.", points: ["Publicación con un toque en TikTok, Instagram y Facebook", "Calidad de gran estudio a precio económico — planes desde $19/mes", "Textos conformes con la divulgación de IA, sin anuncios rechazados"] },
 };
 
 const FR: LandingCopy = {
@@ -333,6 +336,7 @@ const FR: LandingCopy = {
   },
   footer: { copy: "Le pilote automatique marketing IA de votre boutique." },
   powered: { eyebrow: "Propulsé par une IA de pointe", note: "Nous n'empruntons pas la stack IA d'un grand studio — nous en sommes un. Chaque publicité est créée et contrôlée par des modèles de pointe, puis validée par vous avant diffusion." },
+  autopost: { eyebrow: "Créé ici. Publié partout.", note: "Connectez vos réseaux une fois : chaque création approuvée peut se publier seule — légende IA, hashtags par plateforme et mention de divulgation IA exigée par Meta.", points: ["Publication en un geste sur TikTok, Instagram et Facebook", "Qualité grand studio à petit prix — dès 19 $/mois", "Légendes conformes à la divulgation IA, zéro pub rejetée"] },
 };
 
 const DE: LandingCopy = {
@@ -432,6 +436,7 @@ const DE: LandingCopy = {
   },
   footer: { copy: "KI-Marketing-Autopilot für deinen Shop." },
   powered: { eyebrow: "Angetrieben von Frontier-KI", note: "Wir leihen uns keinen Studio-KI-Stack — wir sind das Studio. Jede Anzeige wird von Frontier-Modellen erstellt und geprüft, und geht erst nach deiner Freigabe live." },
+  autopost: { eyebrow: "Hier erstellt. Überall gepostet.", note: "Einmal verbinden — jedes freigegebene Stück postet sich selbst: KI-Caption, Hashtags pro Plattform und die von Meta geforderte KI-Kennzeichnung inklusive.", points: ["Ein-Tipp-Posting auf TikTok, Instagram & Facebook", "Studio-Qualität zum Budget-Preis — Pläne ab 19 $/Monat", "KI-Kennzeichnung automatisch — keine abgelehnten Anzeigen"] },
 };
 
 const ZH: LandingCopy = {
@@ -531,6 +536,7 @@ const ZH: LandingCopy = {
   },
   footer: { copy: "你店铺的 AI 营销自动驾驶。" },
   powered: { eyebrow: "由前沿 AI 驱动", note: "我们不是在借用大工作室的 AI——我们就是那个工作室。每条广告由前沿模型生成并质检，发布前由你亲自审核。" },
+  autopost: { eyebrow: "在这里创作，发布到所有平台", note: "只需绑定一次社交账号，每条通过审核的内容都能自动发布——AI 文案、平台专属话题标签，以及 Meta 要求的 AI 声明标签，全部自动处理。", points: ["一键发布到 TikTok、Instagram 和 Facebook", "大工作室品质，预算价格——每月 $19 起", "AI 声明合规文案，广告不再被拒"] },
 };
 
 export const LANDING_I18N: Record<LangKey, LandingCopy> = { en: EN, es: ES, fr: FR, de: DE, zh: ZH };

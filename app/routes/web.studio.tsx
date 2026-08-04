@@ -25,11 +25,11 @@ import { SIZE_CHOICES } from "../lib/product-scale";
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
-  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 59 },
-  { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 59 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 59 },
-  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 59 },
-  { key: "commercial", name: "Commercial", cover: "/ad-templates/phcover.jpg?v=1", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 59 },
+  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
+  { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
+  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
+  { key: "commercial", name: "Commercial", cover: "/ad-templates/phcover.jpg?v=1", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
 ] as const;
 
 const CARTOON_STYLES = [
