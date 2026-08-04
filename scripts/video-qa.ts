@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -105,11 +105,12 @@ async function main() {
   const kf = await keyframeCheck();
   const ph = await presenterHoldCheck();
   const bl = await brandLab();
+  const rx = await referenceExtract();
   const hc = await heroCut();
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, bl, hc, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, rx, hc, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -218,6 +219,36 @@ async function presenterHoldCheck(): Promise<string> {
     return [`### Presenter image ads — shot-planner A/B`, ``, ...out].join("\n\n");
   }
   return presenterHoldOnce();
+}
+
+/* ---------- Reference extract: watch a user-supplied recording ----------
+ *
+ * The sandbox can't decode h264, CI can. QA_EXTRACT=1 probes
+ * qa-in/reference.mp4 and publishes one frame per second (plus a dense
+ * first-two-seconds strip for pacing) so the recording can be studied
+ * frame by frame. No AI spend. */
+async function referenceExtract(): Promise<string> {
+  if (!process.env.QA_EXTRACT) return "";
+  const head = "### Reference recording — extracted frames";
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+  const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+  const src = path2.join(process.cwd(), "qa-in", "reference.mp4");
+  if (!fs2.existsSync(src)) return `${head}\n\nSKIPPED — qa-in/reference.mp4 not in the checkout.`;
+  try {
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const probe = execFileSync(ff, ["-i", src, "-f", "null", "-"], { stdio: ["ignore", "ignore", "pipe"] }).toString();
+    execFileSync(ff, ["-y", "-i", src, "-vf", "fps=1,scale=540:-2", "-q:v", "4", path2.join(outDir, "ref-%03d.jpg")], { stdio: "ignore" });
+    execFileSync(ff, ["-y", "-t", "2", "-i", src, "-vf", "fps=4,scale=400:-2", "-q:v", "5", path2.join(outDir, "ref-open-%02d.jpg")], { stdio: "ignore" });
+    const n = fs2.readdirSync(outDir).filter((f: string) => f.startsWith("ref-")).length;
+    return [head, ``, `${n} frames published (1fps + 4fps opening strip).`].join("\n");
+  } catch (e) {
+    // ffmpeg writes duration info to stderr even on the null run — a throw
+    // here still usually leaves extracted frames behind; report honestly.
+    return `${head}\n\nPartial — ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`;
+  }
 }
 
 /* ---------- Hero Cut: the product-truth super ad ----------
