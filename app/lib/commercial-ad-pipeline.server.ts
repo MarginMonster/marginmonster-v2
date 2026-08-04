@@ -313,6 +313,27 @@ export async function assembleCommercial(opts: {
   }
 }
 
+/** One motion clip on the chosen engine, with a safety-filter fallback: a
+ *  premium engine (Veo) can flag a perfectly ordinary beat as "sensitive"
+ *  (E005) — a sweaty athlete is enough. One beat on the default engine
+ *  beats a dead render. Exported for the QA harness. */
+export async function renderMotionClip(
+  engineKey: string | undefined,
+  opts: { startImage: string; prompt: string; negativePrompt?: string },
+  tag: string
+): Promise<string> {
+  try {
+    const { id } = await animateCreate(engineKey, opts);
+    return await repPoll(id, 8 * 60_000, tag);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!engineKey || engineKey === "kling" || !/sensitive|E005/i.test(msg)) throw e;
+    console.log(`[commercial] ${tag} flagged by ${engineKey}'s safety filter — retrying on the default engine`);
+    const fb = await animateCreate(undefined, opts);
+    return await repPoll(fb.id, 8 * 60_000, `${tag}-fallback`);
+  }
+}
+
 /** Motion gate: sample three frames from a rendered clip and ask a vision
  *  judge for the artifacts stills can never show — rubbery anatomy, props
  *  floating unsupported, a label melted mid-motion. The keyframe gate
@@ -420,13 +441,11 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   let clipUrls: string[] = params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : [];
   if (clipUrls.length < plan.beats.length) {
     for (let i = clipUrls.length; i < plan.beats.length; i++) {
-      const { id } = await animateCreate(params.videoEngine, animOpts(i));
-      let clip = await repPoll(id, 8 * 60_000, `commercial-beat-${i + 1}`);
+      let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`);
       const gate = await motionGate(clip, serviceMode);
       if (!gate.ok) {
         console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
-        const retry = await animateCreate(params.videoEngine, animOpts(i));
-        clip = await repPoll(retry.id, 8 * 60_000, `commercial-beat-${i + 1}-reroll`);
+        clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
       }
       clipUrls.push(clip);
       await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
