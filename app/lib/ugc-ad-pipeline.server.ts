@@ -145,7 +145,9 @@ function animateModelFor(engineKey: string | undefined): string {
 }
 
 function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string }): Record<string, unknown> {
-  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage };
+  // 9:16 explicitly: Veo defaults to 16:9 landscape, and a landscape clip
+  // cover-cropped into our vertical assembler loses two-thirds of the frame.
+  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: "9:16" };
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
   return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur", duration: 10, cfg_scale: 0.5 };

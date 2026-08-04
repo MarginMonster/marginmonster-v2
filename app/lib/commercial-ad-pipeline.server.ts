@@ -110,6 +110,10 @@ export async function planCommercial(
     narration: String(b.narration || "").slice(0, 140),
   }));
   j.tagline = String(j.tagline || productTitle).slice(0, 60);
+  // A tagline pinned in the direction is a hard override, not a suggestion —
+  // the writer kept "improving" pinned lines into its own copy.
+  const pin = direction?.match(/tagline must be exactly:\s*(.+?)\s*$/i);
+  if (pin) j.tagline = pin[1].slice(0, 60);
   return j;
 }
 
@@ -162,7 +166,9 @@ export async function sceneKeyframe(productImageUrl: string | undefined, scene: 
   if (refs.length === 0) {
     return falQueueImage(t2iModel(), {
       prompt: `${scene} ${CINE_STYLE}`,
-      aspect_ratio: "3:4",
+      // 9:16 native — the clip, the assembler and the feed are all 9:16;
+      // any other shape here gets cover-cropped and loses the composition.
+      aspect_ratio: "9:16",
       ...(res ? { resolution: res } : {}),
       num_images: 1,
     }, "scene t2i");
@@ -178,7 +184,7 @@ export async function sceneKeyframe(productImageUrl: string | undefined, scene: 
   return falQueueImage(editModel(), {
     prompt: `${scene}${continuity}${fidelity} ${CINE_STYLE}`,
     image_urls: refs,
-    image_size: "portrait_4_3",
+    image_size: "portrait_16_9",
     ...(res ? { resolution: res } : {}),
     num_images: 1,
   }, "scene compose");
@@ -299,9 +305,11 @@ export async function assembleCommercial(opts: {
     // amputate the cut (-shortest once cost us beats 3-5 and the packshot).
     const list = path.join(tmp, "list.txt");
     fs.writeFileSync(list, norm.map((n) => `file '${n}'`).join("\n"));
+    // Bars slimmed to 6.5%: with 9:16-native sources every pixel is real
+    // composition now — the old 10.5% bars ate a fifth of the context.
     const graded =
-      "drawbox=x=0:y=0:w=iw:h=ih*0.105:color=black:t=fill," +
-      "drawbox=x=0:y=ih*0.895:w=iw:h=ih*0.105:color=black:t=fill," +
+      "drawbox=x=0:y=0:w=iw:h=ih*0.065:color=black:t=fill," +
+      "drawbox=x=0:y=ih*0.935:w=iw:h=ih*0.065:color=black:t=fill," +
       "eq=contrast=1.06:saturation=1.12:brightness=-0.012,format=yuv420p";
     const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
     if (voPath) args.push("-i", voPath);
