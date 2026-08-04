@@ -336,6 +336,7 @@ async function runJob(
           productTitle: payload.productTitle as string,
           productDescription: payload.productDescription as string | undefined,
           productImageUrl: payload.productImageUrl as string | undefined,
+          serviceMode: payload.serviceMode === true,
           direction: payload.customPrompt as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
@@ -344,6 +345,7 @@ async function runJob(
             keyframeUrls: payload.ckCommercialKeyframes as string | undefined,
             clipUrls: payload.ckCommercialClips as string | undefined,
             audioUrl: payload.ckCommercialAudio as string | undefined,
+            endcardUrl: payload.ckCommercialEndcard as string | undefined,
           },
         });
       } else if (payload.contentType === "jingle") {

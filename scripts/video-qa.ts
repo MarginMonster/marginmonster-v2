@@ -222,21 +222,29 @@ async function presenterHoldCheck(): Promise<string> {
  * the finished mp4 so the result can actually be watched. */
 async function commercialCheck(): Promise<string> {
   if (!process.env.QA_COMMERCIAL) return "";
-  const head = "### Commercial (in-house cinematic) — full render";
-  const prod = await resolveProduct();
-  if (!prod) return `${head}\n\nSKIPPED — need a product.`;
+  // QA_COMMERCIAL="service" exercises the service-mode path: no product
+  // photo, transformation-story beats, branded end-card finale.
+  const svc = process.env.QA_COMMERCIAL === "service";
+  const head = svc
+    ? "### Commercial (in-house cinematic) — SERVICE MODE full render"
+    : "### Commercial (in-house cinematic) — full render";
+  const prod = svc ? null : await resolveProduct();
+  if (!svc && !prod) return `${head}\n\nSKIPPED — need a product.`;
+  const title = svc
+    ? (process.env.QA_COMMERCIAL_TITLE || "EasyMode — studio-quality product ads in one tap")
+    : prod!.title;
   const fs2 = require("node:fs") as typeof import("node:fs");
   const path2 = require("node:path") as typeof import("node:path");
   const os2 = require("node:os") as typeof import("node:os");
   try {
-    const { planCommercial, sceneKeyframe, assembleCommercial } = await import("../app/lib/commercial-ad-pipeline.server");
+    const { planCommercial, sceneKeyframe, assembleCommercial, commercialEndCard } = await import("../app/lib/commercial-ad-pipeline.server");
     const { animateCreate, repPoll, repCreate, download, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
     const t0 = Date.now();
-    const plan = await planCommercial(prod.title, undefined, process.env.QA_COMMERCIAL_DIRECTION || undefined);
+    const plan = await planCommercial(title, undefined, process.env.QA_COMMERCIAL_DIRECTION || undefined, svc);
     console.log(`[commercial] plan: ${plan.beats.map((b) => b.scene.slice(0, 60)).join(" | ")} · tagline "${plan.tagline}"`);
     const keyframes: string[] = [];
     for (let i = 0; i < plan.beats.length; i++) {
-      const url = await sceneKeyframe(prod.url, plan.beats[i].scene, keyframes[i - 1]);
+      const url = await sceneKeyframe(svc ? undefined : prod!.url, plan.beats[i].scene, keyframes[i - 1]);
       keyframes.push(url);
       await saveFrame(url, `commercial-beat${i + 1}-keyframe.jpg`);
       console.log(`[commercial] beat ${i + 1} keyframe ready`);
@@ -245,7 +253,7 @@ async function commercialCheck(): Promise<string> {
     for (let i = 0; i < plan.beats.length; i++) {
       const { id } = await animateCreate(undefined, {
         startImage: keyframes[i],
-        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics, the product keeps its exact printed artwork and lettering. No morphing, no text.`,
+        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${svc ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
         negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
       });
       clips.push(await repPoll(id, 8 * 60_000, `qa-commercial-beat-${i + 1}`));
@@ -265,7 +273,9 @@ async function commercialCheck(): Promise<string> {
     const voPath = path2.join(tmp, "vo.mp3");
     fs2.writeFileSync(voPath, await downloadBuffer(voUrl));
     const rawImg = path2.join(tmp, "prod.raw"); const jpg = path2.join(tmp, "prod.jpg");
-    await download(prod.url, rawImg);
+    const packshotUrl = svc ? await commercialEndCard(title, plan.tagline) : prod!.url;
+    if (svc) await saveFrame(packshotUrl, "commercial-endcard.jpg");
+    await download(packshotUrl, rawImg);
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
     const ff = (require("ffmpeg-static") as string) || "ffmpeg";
     execFileSync(ff, ["-y", "-i", rawImg, "-vf", "scale='min(2000,iw)':-2", "-q:v", "3", jpg], { stdio: "ignore" });
@@ -279,7 +289,7 @@ async function commercialCheck(): Promise<string> {
     }
     const mb = (fs2.statSync(outPath).size / 1e6).toFixed(1);
     return [head, ``, `| | |`, `|---|---|`, `| rendered | yes — commercial-final.mp4 (${mb}MB) on the qa-frames branch |`,
-      `| beats | ${plan.beats.length} + real-photo packshot |`, `| tagline | ${plan.tagline} |`,
+      `| beats | ${plan.beats.length} + ${svc ? "branded end-card" : "real-photo packshot"} |`, `| tagline | ${plan.tagline} |`,
       `| wall time | ${Math.round((Date.now() - t0) / 60_000)} min |`,
       `| narration | ${plan.beats.map((b) => b.narration).join(" / ")} |`].join("\n");
   } catch (e) {

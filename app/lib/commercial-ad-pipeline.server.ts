@@ -1,9 +1,12 @@
 /* Commercial (Cinematic) — built on OUR stack, no third-party ad product.
  *
- * The format: a multi-scene filmic story ad — 3 short cinematic beats with
+ * The format: a multi-scene filmic story ad — 5 short cinematic beats with
  * the merchant's product living inside the scenes, a letterboxed grade, a
  * commercial voice-over, and a packshot finale cut from the merchant's REAL
  * photo (Ken Burns), so the closing frame can never lie about the product.
+ * Service mode (nothing physical to photograph) tells the same-protagonist
+ * TRANSFORMATION story — before, discovery, after — and closes on a branded
+ * end-card in the packshot slot instead of a product photo.
  *
  * Every stage is a piece we already run in production:
  *   shot list  — sonnet (the shot-planner thinking, extended to scenes)
@@ -64,24 +67,33 @@ export interface CommercialPlan {
   tagline: string;
 }
 
-/** Three beats + tagline. Exported for the QA harness. */
+/** Five beats + tagline. Exported for the QA harness. Service mode swaps the
+ *  product-in-every-scene brief for a transformation story — the offer has
+ *  nothing to photograph, so the beats sell the OUTCOME instead. */
 export async function planCommercial(
   productTitle: string,
   productDescription?: string,
-  direction?: string
+  direction?: string,
+  serviceMode?: boolean
 ): Promise<CommercialPlan> {
   const raw = await anthropicText(
     [
-      `You are directing a 15-second cinematic TV-style commercial for: "${productTitle}".`,
-      productDescription ? `Product: ${productDescription.slice(0, 400)}` : "",
+      serviceMode
+        ? `You are directing a 15-second cinematic TV-style commercial for a service / offer: "${productTitle}". There is nothing physical to photograph — the ad sells the OUTCOME of the offer.`
+        : `You are directing a 15-second cinematic TV-style commercial for: "${productTitle}".`,
+      productDescription ? `${serviceMode ? "Offer" : "Product"}: ${productDescription.slice(0, 400)}` : "",
       direction ? `The merchant's creative direction (FOLLOW IT): ${direction.slice(0, 300)}` : "",
       ``,
-      `Write exactly 5 beats that tell ONE continuous story with rising energy — setup, want, turn, payoff, celebration — the way big-budget spots do. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world evolves scene to scene, and the PRODUCT appears naturally in each. Photorealistic live-action only — no cartoons, no text overlays in-scene.`,
+      serviceMode
+        ? `Write exactly 5 beats that tell ONE continuous transformation story with rising energy — the before (life with the problem), the discovery, the first win, the after (life visibly changed), the celebration. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world around them transforms scene to scene, and every scene SHOWS the offer's result in the protagonist's life — NEVER invent a physical product, box, bottle, package or logo. Photorealistic live-action only — no cartoons, no text overlays in-scene.`
+        : `Write exactly 5 beats that tell ONE continuous story with rising energy — setup, want, turn, payoff, celebration — the way big-budget spots do. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world evolves scene to scene, and the PRODUCT appears naturally in each. Photorealistic live-action only — no cartoons, no text overlays in-scene.`,
       `For each beat give:`,
-      `scene: one sentence, concrete and filmable — who/where/light/mood, and where the product sits in frame.`,
+      serviceMode
+        ? `scene: one sentence, concrete and filmable — who/where/light/mood, and how the offer's result shows on screen.`
+        : `scene: one sentence, concrete and filmable — who/where/light/mood, and where the product sits in frame.`,
       `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
       `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
-      `Then tagline: 3-6 punchy words for the closing product shot.`,
+      serviceMode ? `Then tagline: 3-6 punchy words for the closing brand card.` : `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,
     ].filter(Boolean).join("\n"),
@@ -100,27 +112,18 @@ export async function planCommercial(
   return j;
 }
 
-/** One product-faithful scene keyframe: the real product photo is the
- *  reference, the beat's scene is the world built around it. Same engine,
- *  same call-time model resolution as the presenter compose. */
-export async function sceneKeyframe(productImageUrl: string, scene: string, prevFrameUrl?: string): Promise<string> {
-  const model = process.env.COMPOSE_MODEL?.trim() || "fal-ai/nano-banana-pro/edit";
+/** Submit an image job to the fal queue and poll it to a URL. Shared by the
+ *  scene keyframes and the service end-card — one queue discipline, one
+ *  timeout, everywhere. */
+async function falQueueImage(model: string, body: Record<string, unknown>, tag: string): Promise<string> {
   const submit = await fetch(`https://queue.fal.run/${model}`, {
     method: "POST",
     headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt:
-        `${scene}${prevFrameUrl ? " SAME protagonist as the previous frame (the last reference image) — same face, hair and wardrobe, the same story continuing." : ""} The product from the first reference image appears in the scene EXACTLY as it really is — same shape, colours, printed artwork and lettering, at its true real-world size. ` +
-        `Cinematic film still: anamorphic feel, shallow depth of field, motivated practical light, rich filmic colour grade. Photorealistic, no text overlays, no watermarks.`,
-      image_urls: prevFrameUrl ? [productImageUrl, prevFrameUrl] : [productImageUrl],
-      image_size: "portrait_4_3",
-      ...(process.env.COMPOSE_RESOLUTION?.trim() ? { resolution: process.env.COMPOSE_RESOLUTION.trim() } : {}),
-      num_images: 1,
-    }),
+    body: JSON.stringify(body),
   });
-  if (!submit.ok) throw new Error(`scene compose submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
+  if (!submit.ok) throw new Error(`${tag} submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
   const q = (await submit.json()) as { status_url?: string; response_url?: string };
-  if (!q.status_url || !q.response_url) throw new Error("scene compose: no queue urls");
+  if (!q.status_url || !q.response_url) throw new Error(`${tag}: no queue urls`);
   for (let i = 0; i < 90; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
@@ -129,17 +132,80 @@ export async function sceneKeyframe(productImageUrl: string, scene: string, prev
       const r = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
       const rj = (await r.json()) as { images?: { url?: string }[] };
       const url = rj.images?.[0]?.url;
-      if (!url) throw new Error("scene compose: completed without an image");
+      if (!url) throw new Error(`${tag}: completed without an image`);
       return url;
     }
-    if (sj.status === "FAILED") throw new Error("scene compose: FAILED");
+    if (sj.status === "FAILED") throw new Error(`${tag}: FAILED`);
   }
-  throw new Error("scene compose: timed out after 3 minutes");
+  throw new Error(`${tag}: timed out after 3 minutes`);
+}
+
+const editModel = () => process.env.COMPOSE_MODEL?.trim() || "fal-ai/nano-banana-pro/edit";
+/** The same engine minus its /edit suffix — the text-to-image sibling, for
+ *  frames that have no reference at all (a service ad's opening beat). */
+const t2iModel = () => editModel().replace(/\/edit$/, "");
+
+const CINE_STYLE =
+  "Cinematic film still: anamorphic feel, shallow depth of field, motivated practical light, rich filmic colour grade. Photorealistic, no text overlays, no watermarks.";
+
+/** One scene keyframe. Product mode: the real product photo is the first
+ *  reference and the beat's scene is built around it, product-faithful by
+ *  construction. Service mode (no product URL): there is nothing physical to
+ *  reference — the opening beat is text-to-image on the same engine, and
+ *  later beats carry the protagonist via the previous frame alone. */
+export async function sceneKeyframe(productImageUrl: string | undefined, scene: string, prevFrameUrl?: string): Promise<string> {
+  const refs = [productImageUrl, prevFrameUrl].filter((u): u is string => !!u);
+  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  if (refs.length === 0) {
+    return falQueueImage(t2iModel(), {
+      prompt: `${scene} ${CINE_STYLE}`,
+      aspect_ratio: "3:4",
+      ...(res ? { resolution: res } : {}),
+      num_images: 1,
+    }, "scene t2i");
+  }
+  const continuity = prevFrameUrl
+    ? productImageUrl
+      ? " SAME protagonist as the previous frame (the last reference image) — same face, hair and wardrobe, the same story continuing."
+      : " SAME protagonist as the reference image — same face, hair and wardrobe, the same story continuing."
+    : "";
+  const fidelity = productImageUrl
+    ? " The product from the first reference image appears in the scene EXACTLY as it really is — same shape, colours, printed artwork and lettering, at its true real-world size."
+    : "";
+  return falQueueImage(editModel(), {
+    prompt: `${scene}${continuity}${fidelity} ${CINE_STYLE}`,
+    image_urls: refs,
+    image_size: "portrait_4_3",
+    ...(res ? { resolution: res } : {}),
+    num_images: 1,
+  }, "scene compose");
+}
+
+/** Service-mode finale. A service ad has no truthful product photo to close
+ *  on, so the packshot's job — end on something REAL — falls to a branded
+ *  end-card: the tagline large, the offer name beneath, brand colours when
+ *  the profile knows them. Exported for the QA harness. */
+export async function commercialEndCard(offerTitle: string, tagline: string, visualJson?: string | null): Promise<string> {
+  let palette = "a deep charcoal background with warm golden accents";
+  try {
+    const v = JSON.parse(visualJson || "{}") as { primaryColor?: string; accentColor?: string };
+    if (v.primaryColor) palette = `a ${v.primaryColor} background with ${v.accentColor ? `${v.accentColor} accents` : "elegant contrasting accents"}`;
+  } catch { /* keep the generic palette */ }
+  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  return falQueueImage(t2iModel(), {
+    prompt:
+      `Minimal premium brand end-card for a TV commercial, portrait orientation: the tagline "${tagline}" in large elegant cinematic typography, centred, with "${offerTitle}" in smaller refined type beneath it, on ${palette}. Subtle vignette, faint filmic grain, generous empty space. ` +
+      `The ONLY text in the image is exactly "${tagline}" and "${offerTitle}", spelled letter-for-letter — no other words, no logos, no watermarks, no people, no objects.`,
+    aspect_ratio: "3:4",
+    ...(res ? { resolution: res } : {}),
+    num_images: 1,
+  }, "end-card");
 }
 
 /** Deterministic assembly. Exported for the QA harness (no DB, pure files).
  *  clips are normalized to 720x1280 cover, concatenated, letterboxed and
- *  graded; the packshot is a Ken Burns push-in on the REAL product photo. */
+ *  graded; the packshot is a Ken Burns push-in on the REAL product photo —
+ *  or, for a service ad, on the branded end-card (same slot, same move). */
 export async function assembleCommercial(opts: {
   clipPaths: string[];
   voPath?: string;
@@ -197,6 +263,9 @@ export interface CommercialAdParams {
   productTitle: string;
   productDescription?: string;
   productImageUrl?: string;
+  /** Intangible offer — no product photo exists; sell the outcome and close
+   *  on a branded end-card instead of the real-photo packshot. */
+  serviceMode?: boolean;
   direction?: string;
   origin?: string;
   jobId?: string;
@@ -205,13 +274,15 @@ export interface CommercialAdParams {
     keyframeUrls?: string;
     clipUrls?: string;
     audioUrl?: string;
+    endcardUrl?: string;
   };
 }
 
 /** Full commercial. Checkpoints every paid artifact (plan is cheap but the
  *  keyframes, clips and TTS are money) so a queue restart re-attaches. */
 export async function generateCommercialAd(params: CommercialAdParams): Promise<string> {
-  if (!params.productImageUrl) throw new Error("Commercial needs a product image");
+  const serviceMode = params.serviceMode === true;
+  if (!params.productImageUrl && !serviceMode) throw new Error("Commercial needs a product image");
   const ckpt = (patch: Record<string, unknown>) =>
     params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
 
@@ -220,7 +291,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   if (params.resume?.plan) {
     plan = JSON.parse(params.resume.plan) as CommercialPlan;
   } else {
-    plan = await planCommercial(params.productTitle, params.productDescription, params.direction);
+    plan = await planCommercial(params.productTitle, params.productDescription, params.direction, serviceMode);
     await ckpt({ ckCommercialPlan: JSON.stringify(plan) });
   }
 
@@ -239,7 +310,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     for (let i = clipUrls.length; i < plan.beats.length; i++) {
       const { id } = await animateCreate(undefined, {
         startImage: keyframeUrls[i],
-        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics, the product keeps its exact printed artwork and lettering. No morphing, no text.`,
+        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${serviceMode ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
         negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
       });
       clipUrls.push(await repPoll(id, 8 * 60_000, `commercial-beat-${i + 1}`));
@@ -262,7 +333,19 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     await ckpt({ ckCommercialAudio: audioUrl });
   }
 
-  // 5) ASSEMBLY
+  // 5) FINALE FRAME — product mode closes on the REAL photo; service mode
+  // has no truthful photo, so it closes on a generated branded end-card
+  // (checkpointed: it's a paid render like the keyframes).
+  let packshotUrl = params.productImageUrl || "";
+  if (serviceMode && !params.productImageUrl) {
+    packshotUrl = params.resume?.endcardUrl || "";
+    if (!packshotUrl) {
+      packshotUrl = await commercialEndCard(params.productTitle, plan.tagline, params.brandProfile?.visualJson);
+      await ckpt({ ckCommercialEndcard: packshotUrl });
+    }
+  }
+
+  // 6) ASSEMBLY
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "commx-"));
   try {
     const clipPaths: string[] = [];
@@ -273,11 +356,11 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     }
     const voPath = path.join(tmp, "vo.mp3");
     fs.writeFileSync(voPath, await downloadBuffer(audioUrl));
-    // The packshot uses the REAL photo — fetch and re-encode to a plain JPEG
-    // so AVIF/WebP originals can't break the image2 loop (the b-roll lesson).
+    // Re-encode the finale image to a plain JPEG so AVIF/WebP originals
+    // can't break the image2 loop (the b-roll lesson).
     const rawImg = path.join(tmp, "product.raw");
     const jpg = path.join(tmp, "product.jpg");
-    await download(params.productImageUrl, rawImg);
+    await download(packshotUrl, rawImg);
     const bin = ffmpegBin();
     if (!bin) throw new Error("no ffmpeg binary");
     await runFfmpeg(bin, ["-y", "-i", rawImg, "-vf", "scale='min(2000,iw)':-2", "-q:v", "3", jpg]);
@@ -309,6 +392,8 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
           direction: params.direction || null,
           origin: params.origin || null,
           productImageUrl: params.productImageUrl || null,
+          serviceMode,
+          endcardUrl: serviceMode ? packshotUrl : null,
           beats: plan.beats,
         }),
       },
