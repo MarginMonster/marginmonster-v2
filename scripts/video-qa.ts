@@ -236,7 +236,7 @@ async function commercialCheck(): Promise<string> {
     console.log(`[commercial] plan: ${plan.beats.map((b) => b.scene.slice(0, 60)).join(" | ")} · tagline "${plan.tagline}"`);
     const keyframes: string[] = [];
     for (let i = 0; i < plan.beats.length; i++) {
-      const url = await sceneKeyframe(prod.url, plan.beats[i].scene);
+      const url = await sceneKeyframe(prod.url, plan.beats[i].scene, keyframes[i - 1]);
       keyframes.push(url);
       await saveFrame(url, `commercial-beat${i + 1}-keyframe.jpg`);
       console.log(`[commercial] beat ${i + 1} keyframe ready`);

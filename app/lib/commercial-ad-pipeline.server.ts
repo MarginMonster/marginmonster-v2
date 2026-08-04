@@ -76,14 +76,14 @@ export async function planCommercial(
       productDescription ? `Product: ${productDescription.slice(0, 400)}` : "",
       direction ? `The merchant's creative direction (FOLLOW IT): ${direction.slice(0, 300)}` : "",
       ``,
-      `Write exactly 3 beats that tell one tiny story with rising energy — the way big-budget spots do (a moment of longing, a turn, a payoff). The PRODUCT must appear naturally inside each scene. Photorealistic live-action scenes only — no cartoons, no text overlays in-scene.`,
+      `Write exactly 5 beats that tell ONE continuous story with rising energy — setup, want, turn, payoff, celebration — the way big-budget spots do. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world evolves scene to scene, and the PRODUCT appears naturally in each. Photorealistic live-action only — no cartoons, no text overlays in-scene.`,
       `For each beat give:`,
       `scene: one sentence, concrete and filmable — who/where/light/mood, and where the product sits in frame.`,
       `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
       `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
       `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
-      `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...3 total],"tagline":"..."}`,
+      `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,
     ].filter(Boolean).join("\n"),
     { maxTokens: 700, model: "claude-sonnet-5" }
   );
@@ -91,7 +91,7 @@ export async function planCommercial(
   if (!m) throw new Error("commercial plan: no JSON");
   const j = JSON.parse(m[0]) as CommercialPlan;
   if (!Array.isArray(j.beats) || j.beats.length < 3) throw new Error("commercial plan: fewer than 3 beats");
-  j.beats = j.beats.slice(0, 3).map((b) => ({
+  j.beats = j.beats.slice(0, 5).map((b) => ({
     scene: String(b.scene || "").slice(0, 300),
     motion: String(b.motion || "slow cinematic push-in").slice(0, 120),
     narration: String(b.narration || "").slice(0, 140),
@@ -103,16 +103,16 @@ export async function planCommercial(
 /** One product-faithful scene keyframe: the real product photo is the
  *  reference, the beat's scene is the world built around it. Same engine,
  *  same call-time model resolution as the presenter compose. */
-export async function sceneKeyframe(productImageUrl: string, scene: string): Promise<string> {
+export async function sceneKeyframe(productImageUrl: string, scene: string, prevFrameUrl?: string): Promise<string> {
   const model = process.env.COMPOSE_MODEL?.trim() || "fal-ai/nano-banana-pro/edit";
   const submit = await fetch(`https://queue.fal.run/${model}`, {
     method: "POST",
     headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt:
-        `${scene} The product from the reference image appears in the scene EXACTLY as it really is — same shape, colours, printed artwork and lettering, at its true real-world size. ` +
+        `${scene}${prevFrameUrl ? " SAME protagonist as the previous frame (the last reference image) — same face, hair and wardrobe, the same story continuing." : ""} The product from the first reference image appears in the scene EXACTLY as it really is — same shape, colours, printed artwork and lettering, at its true real-world size. ` +
         `Cinematic film still: anamorphic feel, shallow depth of field, motivated practical light, rich filmic colour grade. Photorealistic, no text overlays, no watermarks.`,
-      image_urls: [productImageUrl],
+      image_urls: prevFrameUrl ? [productImageUrl, prevFrameUrl] : [productImageUrl],
       image_size: "portrait_4_3",
       ...(process.env.COMPOSE_RESOLUTION?.trim() ? { resolution: process.env.COMPOSE_RESOLUTION.trim() } : {}),
       num_images: 1,
@@ -156,19 +156,19 @@ export async function assembleCommercial(opts: {
     for (let i = 0; i < opts.clipPaths.length; i++) {
       const n = path.join(tmp, `n${i}.mp4`);
       await runFfmpeg(bin, ["-y", "-i", opts.clipPaths[i],
-        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=4.6:d=0.35,format=yuv420p",
         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", n]);
       norm.push(n);
     }
     // 2) Packshot: Ken Burns push-in on the real product photo — the one
     // frame of the ad that is guaranteed truthful, same trick as cutaway.
-    const packSec = opts.packshotSec ?? 2.5;
+    const packSec = opts.packshotSec ?? 4;
     const pack = path.join(tmp, "pack.mp4");
     const frames = Math.round(packSec * 30);
     await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.productJpegPath,
       "-vf",
       `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
-      `zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,format=yuv420p`,
+      `fade=t=in:st=0:d=0.4,zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,format=yuv420p`,
       "-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack]);
     norm.push(pack);
     // 3) Concat + letterbox + grade (+ VO when present). drawbox bars give
@@ -228,7 +228,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   let keyframeUrls: string[] = params.resume?.keyframeUrls ? JSON.parse(params.resume.keyframeUrls) : [];
   if (keyframeUrls.length < plan.beats.length) {
     for (let i = keyframeUrls.length; i < plan.beats.length; i++) {
-      keyframeUrls.push(await sceneKeyframe(params.productImageUrl, plan.beats[i].scene));
+      keyframeUrls.push(await sceneKeyframe(params.productImageUrl, plan.beats[i].scene, keyframeUrls[i - 1]));
       await ckpt({ ckCommercialKeyframes: JSON.stringify(keyframeUrls) });
     }
   }
