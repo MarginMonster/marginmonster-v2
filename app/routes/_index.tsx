@@ -136,7 +136,7 @@ export default function Index() {
           <h2>{t.show.h2}</h2>
           <p className="lz-show-sub">{t.show.sub}</p>
           <div className="lz-show-grid">
-            <figure className="lz-show-card lz-show-video" key="commercial">
+            <figure className="lz-show-card" key="commercial">
               <video className="lz-show-vid" src="/showcase/commercial.mp4" poster="/showcase/commercial-cover.jpg" autoPlay muted loop playsInline aria-label="EasyMode-generated commercial" />
               <figcaption><b>Commercial</b><span>A cinematic story ad — script, scenes &amp; voice by EasyMode</span></figcaption>
             </figure>
@@ -144,7 +144,10 @@ export default function Index() {
               "/style-tiles/avatarcover.jpg?v=4",
               "/style-tiles/cover.jpg?v=4",
               "/style-tiles/anthemcover.jpg?v=4",
-              "/ad-templates/preview-colorblock.jpg?v=10",
+              "/ad-templates/format-magazine.jpg?v=1",
+              "/ad-templates/phcover.jpg?v=1",
+              "/ad-templates/format-review.jpg?v=1",
+              "/ad-templates/format-tweet.jpg?v=1",
             ].map((src, i) => (
               <figure className="lz-show-card" key={src}>
                 <span className="lz-show-img" style={{ backgroundImage: `url(${src})` }} />
@@ -314,7 +317,7 @@ html,body{margin:0;padding:0}
 .lz-arr{transition:transform .15s}
 .lz-cta:hover .lz-arr{transform:translateX(3px)}
 .lz-note{font-size:12.5px;color:var(--ink2);opacity:.85}
-.lz-show-vid{width:100%;aspect-ratio:9/16;object-fit:cover;display:block;border-radius:inherit;}
+.lz-show-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
 .lz-feats{position:relative;}
 .lz-show{position:relative;}
 .lz-rose-feats{position:absolute;top:-70px;right:-120px;transform:scale(.75);opacity:.5;pointer-events:none;}
@@ -364,13 +367,13 @@ html,body{margin:0;padding:0}
 .lz-show,.lz-price,.lz-faq{max-width:1000px;margin:72px auto 0;padding:0 26px;text-align:center;}
 .lz-show h2,.lz-price h2,.lz-faq h2{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:10px 0 8px;color:var(--ink);text-wrap:balance;}
 .lz-show-sub{font-size:15.5px;color:var(--ink2);margin:0 auto 28px;max-width:56ch;line-height:1.55;}
-.lz-show-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;}
-.lz-show-card{margin:0;background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:18px;overflow:hidden;box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);transition:transform .12s,box-shadow .12s;}
+.lz-show-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;}
+.lz-show-card{position:relative;margin:0;aspect-ratio:3/4;background:#0F1512;border:1px solid #D7DCCB;border-radius:18px;overflow:hidden;box-shadow:0 3px 12px rgba(20,32,26,.06);transition:transform .12s,box-shadow .12s;}
 .lz-show-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(12,122,70,.14);}
-.lz-show-img{display:block;height:150px;background-size:cover;background-position:center 22%;}
-.lz-show-card figcaption{padding:12px 14px;text-align:left;}
-.lz-show-card b{display:block;font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);}
-.lz-show-card span:not(.lz-show-img){font-size:12px;color:var(--ink2);}
+.lz-show-img{position:absolute;inset:0;display:block;background-size:cover;background-position:center 20%;}
+.lz-show-card figcaption{position:absolute;left:0;right:0;bottom:0;padding:30px 12px 11px;text-align:left;background:linear-gradient(180deg,rgba(8,12,10,0),rgba(8,12,10,.55) 40%,rgba(8,12,10,.86));}
+.lz-show-card b{display:block;font-family:Poppins,sans-serif;font-size:13.5px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);}
+.lz-show-card span:not(.lz-show-img){font-size:11.5px;color:rgba(255,255,255,.88);line-height:1.4;display:block;text-shadow:0 1px 2px rgba(0,0,0,.4);}
 .lz-price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;text-align:left;margin-top:26px;}
 .lz-price-card{position:relative;background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:20px;padding:26px 24px;
   box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);display:flex;flex-direction:column;}

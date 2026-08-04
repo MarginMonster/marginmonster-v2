@@ -69,6 +69,9 @@ const EN: LandingCopy = {
       { label: "Cartoon Avatar", sub: "8 viral styles, your presenter" },
       { label: "Anthem", sub: "Your avatar sings the ad" },
       { label: "Image ads", sub: "Famous formats, your product" },
+      { label: "Product Highlight", sub: "Cinematic motion, no presenter" },
+      { label: "Social Proof", sub: "Review cards, written for you" },
+      { label: "Viral Post", sub: "Feed-native — doesn't look like an ad" },
     ],
   },
   price: {
@@ -169,6 +172,9 @@ const ES: LandingCopy = {
       { label: "Avatar Cartoon", sub: "8 estilos virales, tu presentador" },
       { label: "Anthem", sub: "Tu avatar canta el anuncio" },
       { label: "Anuncios de imagen", sub: "Formatos famosos, tu producto" },
+      { label: "Product Highlight", sub: "Movimiento de cine, sin presentador" },
+      { label: "Prueba social", sub: "Reseñas y citas, escritas por ti" },
+      { label: "Post viral", sub: "Nativo del feed — no parece anuncio" },
     ],
   },
   price: {
@@ -269,6 +275,9 @@ const FR: LandingCopy = {
       { label: "Avatar Cartoon", sub: "8 styles viraux, votre présentateur" },
       { label: "Anthem", sub: "Votre avatar chante la pub" },
       { label: "Visuels publicitaires", sub: "Formats célèbres, votre produit" },
+      { label: "Product Highlight", sub: "Mouvement cinéma, sans présentateur" },
+      { label: "Preuve sociale", sub: "Cartes d'avis, écrites pour vous" },
+      { label: "Post viral", sub: "Natif du feed — ne ressemble pas à une pub" },
     ],
   },
   price: {
@@ -369,6 +378,9 @@ const DE: LandingCopy = {
       { label: "Cartoon Avatar", sub: "8 virale Styles, dein Presenter" },
       { label: "Anthem", sub: "Dein Avatar singt die Werbung" },
       { label: "Werbebilder", sub: "Berühmte Formate, dein Produkt" },
+      { label: "Product Highlight", sub: "Kino-Bewegung, ohne Presenter" },
+      { label: "Social Proof", sub: "Bewertungskarten, automatisch getextet" },
+      { label: "Viraler Post", sub: "Feed-nativ — wirkt nicht wie Werbung" },
     ],
   },
   price: {
@@ -469,6 +481,9 @@ const ZH: LandingCopy = {
       { label: "卡通头像", sub: "8 种病毒风格，你的主播" },
       { label: "Anthem", sub: "你的头像唱出广告" },
       { label: "广告图", sub: "经典版式，你的产品" },
+      { label: "产品大片", sub: "电影级运镜，无需主播" },
+      { label: "口碑卡片", sub: "评价与引述，自动生成" },
+      { label: "爆款帖子", sub: "融入信息流，不像广告" },
     ],
   },
   price: {
