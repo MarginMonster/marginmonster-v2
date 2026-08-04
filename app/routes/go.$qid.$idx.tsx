@@ -51,6 +51,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   } catch (e) {
     console.error("[go] click redirect failed:", e);
   }
-  // unknown quest → the app's marketing page beats a 404 for a curious shopper
-  return redirect("https://apps.shopify.com", 302);
+  // unknown quest → OUR front door beats a 404 for a curious shopper. (This
+  // used to send them to the Shopify App Store — a dead end for the web
+  // product's merchants, whose stores may not be Shopify at all.)
+  return redirect("https://easymodeapp.com", 302);
 };
