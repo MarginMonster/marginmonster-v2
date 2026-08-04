@@ -449,18 +449,12 @@ async function heroCut(): Promise<string> {
     const stage = `background:radial-gradient(130% 100% at 50% 32%, #0E1F16 0%, #07110C 58%, #040A07 100%)`;
     const disp0 = `font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:-.035em`;
     const headline = `<div style="position:absolute;left:0;right:0;top:62px;text-align:center;${disp0};font-size:31px;color:#F4F1E6;text-shadow:0 0 34px rgba(18,168,94,.35)">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>`;
-    // The hero photo is an UNBRANDED merchant product (portfolio pack shot):
-    // local when this run generated it, qa-frames when a re-cut runs alone.
-    const curl0 = (url: string, out: string) => {
-      try { execFileSync("curl", ["-sf", "--max-time", "20", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 5000; } catch { return false; }
-    };
-    let packShot = path2.join(process.cwd(), "qa-out", "frames", "port-s1.jpg");
-    if (!fs2.existsSync(packShot)) {
-      const t = path2.join(tmp, "port-s1.jpg");
-      packShot = curl0("https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/port-s1.jpg", t)
-        ? t
-        : path2.join(process.cwd(), "public", "showcase", "surge-pack.jpg");
-    }
+    // The opener + extracted-card thumb is the merchant's own PHONE SNAP
+    // (port-s0): a casual photo goes in, the grid of real content comes out.
+    // qa-in/portfolio holds the approved art in-repo, immune to qa-frames
+    // force-pushes; a same-run render in qa-out still wins.
+    let packShot = path2.join(process.cwd(), "qa-out", "frames", "port-s0.jpg");
+    if (!fs2.existsSync(packShot)) packShot = path2.join(process.cwd(), "qa-in", "portfolio", "port-s0.jpg");
     const flashPng = path2.join(tmp, "flash.png");
     shoot(`<div style="width:720px;height:1280px;background:#EFFFF4"></div>`, flashPng);
     // 2-frame impact flash between acts — the hype-edit stitch.
@@ -496,8 +490,8 @@ async function heroCut(): Promise<string> {
     // B) PASTE + EXTRACT — the store-link extractor, the studio's most
     // magical real feature: paste a product URL, the photo and title pull
     // themselves out of the store. Then the press detonates.
-    const sentence = "Small-Batch Coffee — Whole Bean";
-    const pasteUrl = "mystore.com/products/small-batch-coffee";
+    const sentence = "Amber — Hand-Poured Soy Candle";
+    const pasteUrl = "mystore.com/products/amber-soy-candle";
     // states: 0 empty field · 1 URL pasted (highlight) · 2 reading spinner ·
     // 3 extracted card (thumb + title materialize) · 4 press
     const studioFrame = (state: number, k: number) =>
@@ -585,6 +579,9 @@ async function heroCut(): Promise<string> {
     const grab = (name: string, ext: string, video: boolean) => {
       const local = path2.join(framesDir, `${name}.${ext}`);
       if (fs2.existsSync(local)) { avail.set(name, { src: local, video }); return; }
+      // approved stills live in-repo, immune to qa-frames force-pushes
+      const kept = path2.join(process.cwd(), "qa-in", "portfolio", `${name}.${ext}`);
+      if (fs2.existsSync(kept)) { avail.set(name, { src: kept, video }); return; }
       const t = path2.join(tmp, `${name}.${ext}`);
       if (curl(`${RAW}/${name}.${ext}`, t)) avail.set(name, { src: t, video });
     };
@@ -595,8 +592,8 @@ async function heroCut(): Promise<string> {
       const p = path2.join(tmp, `${name}.jpg`);
       if (curl(`https://easymodeapp.com/${u}`, p)) avail.set(name, { src: p, video: false });
     }
-    // coffee (the typed product) leads, then the wall widens to everything
-    const wish = ["port-c1", "port-s1", "fmt-review", "port-c2", "port-t1", "port-c4", "port-c3", "fmt-tweet", "port-c5", "port-t2", "port-s2", "port-c6"];
+    // the candle (the typed product) leads, then the wall widens to everything
+    const wish = ["port-c3", "port-s1", "fmt-review", "port-c1", "port-t1", "port-c4", "port-c2", "fmt-tweet", "port-c5", "port-t2", "port-s2", "port-c6"];
     const tilesV = wish.map((w) => avail.get(w)).filter(Boolean) as { src: string; video: boolean }[];
     if (!tilesV.length) throw new Error("hero grid: no tiles available — run portfolio first");
     const rows = Math.ceil(tilesV.length / 3);
