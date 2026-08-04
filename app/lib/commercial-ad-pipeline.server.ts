@@ -293,10 +293,18 @@ export async function assembleCommercial(opts: {
     const mLen = (opts.montage?.imagePaths.length || 0) * mSecEach;
     if (opts.montage && afterClip >= 0) {
       const segs: string[] = [];
+      const mFrames = Math.max(2, Math.round(mSecEach * 30));
       for (let k = 0; k < opts.montage.imagePaths.length; k++) {
         const m = path.join(tmp, `m${k}.mp4`);
-        await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(mSecEach), "-i", opts.montage.imagePaths[k],
-          "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        // Punch-zoom inside every still (alternating in/out) — a static
+        // frame held for half a second reads as a slideshow, not a cut.
+        const zoom = k % 2 === 0
+          ? `1+${(0.14 / mFrames).toFixed(5)}*on`
+          : `1.14-${(0.14 / mFrames).toFixed(5)}*on`;
+        await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(mSecEach + 0.1), "-i", opts.montage.imagePaths[k],
+          "-vf",
+          `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
+          `zoompan=z='${zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,format=yuv420p`,
           "-t", String(mSecEach), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", m]);
         segs.push(m);
       }

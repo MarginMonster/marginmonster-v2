@@ -305,8 +305,11 @@ function renderOverlayPng(html: string, w: number, h: number, out: string): stri
   return fs2.existsSync(out) ? out : undefined;
 }
 
+// Bare bold type, hard layered shadow, no box — the pill-slab look read as
+// template. Feed-native caption style: white Poppins, tight, high contrast.
 const captionPill = (text: string) =>
-  `<div style="background:rgba(10,61,38,.88);color:#F4F1E6;font-weight:800;font-size:30px;line-height:1.25;padding:14px 26px;border-radius:18px;max-width:640px;text-align:center;border:1.5px solid rgba(127,224,172,.35)">${text}</div>`;
+  `<div style="color:#fff;font-weight:800;font-size:33px;line-height:1.22;max-width:620px;text-align:center;letter-spacing:.005em;` +
+  `text-shadow:0 2px 3px rgba(0,0,0,.9),0 0 18px rgba(0,0,0,.55),0 6px 22px rgba(0,0,0,.5)">${text}</div>`;
 
 async function commercialCheck(): Promise<string> {
   if (!process.env.QA_COMMERCIAL) return "";
@@ -409,8 +412,8 @@ async function commercialCheck(): Promise<string> {
       renderOverlayPng(captionPill(b.narration), 700, 150, path2.join(tmp, `cap${i}.png`)));
     const montageCaptionPath = renderOverlayPng(captionPill("Every one of these: made by EasyMode. One tap each."), 700, 150, path2.join(tmp, "capm.png"));
     const watermarkPath = renderOverlayPng(
-      `<div style="color:#F4F1E6;font-weight:800;font-size:26px;text-shadow:0 1px 6px rgba(0,0,0,.55)">Easy<span style="color:#E7C879">Mode</span></div>`,
-      190, 46, path2.join(tmp, "wm.png"));
+      `<div style="color:#fff;font-weight:800;font-size:23px;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.6)">Easy<span style="color:#E7C879">Mode</span></div>`,
+      170, 42, path2.join(tmp, "wm.png"));
     // Flex montage from committed real renders, spliced after beat 3 (the
     // typing moment) — chaos beats cut fast, payoff beats hold.
     const flexDir = path2.join(process.cwd(), "public", "showcase", "flex");
