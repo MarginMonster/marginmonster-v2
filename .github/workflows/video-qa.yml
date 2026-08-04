@@ -68,6 +68,10 @@ on:
         description: 'A/B the shot planner (intelligent prompting) against the generic prompt'
         required: false
         default: ""
+      commercial:
+        description: 'Render one full in-house cinematic Commercial (~$2, needs FAL+Replicate keys)'
+        required: false
+        default: ""
       health_only:
         description: 'Just diagnose the API keys (fingerprint + auth + billing) and stop — no renders, no AI spend'
         required: false
@@ -92,7 +96,9 @@ jobs:
     runs-on: ubuntu-latest
     # A ten-product sweep is ~10 × (6 parallel composes + pastes + vision QA)
     # ≈ 25 minutes of wall time; 20 was sized for the single-product sweep.
-    timeout-minutes: 45
+    # The planner A/B (18 4K renders) ran headlong into 45 and got clipped at
+  # the finish line; commercial renders add ~20 min of kling wall time.
+  timeout-minutes: 75
     steps:
       # Key diagnosis WITHOUT exposing the keys: console-style fingerprint
       # (prefix + last 4 — how console.anthropic.com displays them), auth
@@ -166,6 +172,7 @@ jobs:
           QA_PRODUCT_URLS: ${{ inputs.product_urls }}
           COMPOSE_RESOLUTION: ${{ inputs.compose_resolution }}
           QA_PLANNER_AB: ${{ inputs.planner_ab }}
+          QA_COMMERCIAL: ${{ inputs.commercial }}
         run: node video-qa.cjs
 
       # Publish the actual frames back through git. The replicate.delivery

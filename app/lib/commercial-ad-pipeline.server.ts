@@ -1,0 +1,320 @@
+/* Commercial (Cinematic) — built on OUR stack, no third-party ad product.
+ *
+ * The format: a multi-scene filmic story ad — 3 short cinematic beats with
+ * the merchant's product living inside the scenes, a letterboxed grade, a
+ * commercial voice-over, and a packshot finale cut from the merchant's REAL
+ * photo (Ken Burns), so the closing frame can never lie about the product.
+ *
+ * Every stage is a piece we already run in production:
+ *   shot list  — sonnet (the shot-planner thinking, extended to scenes)
+ *   keyframes  — the compose engine with the real product as reference,
+ *                one per beat, product-faithful by construction
+ *   motion     — kling image-to-video (animateCreate/repPoll, cartoon's path)
+ *   voice      — minimax TTS (cartoon's path, commercial-cast voice)
+ *   assembly   — ffmpeg: normalize, concat, letterbox, grade, VO, packshot
+ *
+ * COGS ≈ 3 keyframes + 3 clips + TTS ≈ $1.50–2.50 per 15s spot — comparable
+ * to renting a third-party generator, on keys we already hold, with our
+ * fidelity thinking in the loop instead of theirs.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { spawn } from "node:child_process";
+import { db } from "../db.server";
+import { anthropicText } from "./anthropic.server";
+import { mirrorRender } from "./object-storage.server";
+import {
+  checkpointJob,
+  download,
+  downloadBuffer,
+  repCreate,
+  repPoll,
+  animateCreate,
+} from "./ugc-ad-pipeline.server";
+import type { BrandProfile } from "@prisma/client";
+
+function ffmpegBin(): string | null {
+  for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) if (fs.existsSync(p)) return p;
+  try { const m = require("ffmpeg-static") as string | { default?: string }; const b = typeof m === "string" ? m : m?.default; if (b && fs.existsSync(b)) return b; } catch { /* fall through */ }
+  return null;
+}
+
+function runFfmpeg(bin: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", (d) => { err += String(d); if (err.length > 8000) err = err.slice(-8000); });
+    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${err.slice(-400)}`))));
+    p.on("error", reject);
+  });
+}
+
+export interface CommercialBeat {
+  /** Cinematic scene description — the compose prompt for this beat. */
+  scene: string;
+  /** Motion direction for the animator. */
+  motion: string;
+  /** The narration line spoken over this beat. */
+  narration: string;
+}
+
+export interface CommercialPlan {
+  beats: CommercialBeat[];
+  tagline: string;
+}
+
+/** Three beats + tagline. Exported for the QA harness. */
+export async function planCommercial(
+  productTitle: string,
+  productDescription?: string,
+  direction?: string
+): Promise<CommercialPlan> {
+  const raw = await anthropicText(
+    [
+      `You are directing a 15-second cinematic TV-style commercial for: "${productTitle}".`,
+      productDescription ? `Product: ${productDescription.slice(0, 400)}` : "",
+      direction ? `The merchant's creative direction (FOLLOW IT): ${direction.slice(0, 300)}` : "",
+      ``,
+      `Write exactly 3 beats that tell one tiny story with rising energy — the way big-budget spots do (a moment of longing, a turn, a payoff). The PRODUCT must appear naturally inside each scene. Photorealistic live-action scenes only — no cartoons, no text overlays in-scene.`,
+      `For each beat give:`,
+      `scene: one sentence, concrete and filmable — who/where/light/mood, and where the product sits in frame.`,
+      `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
+      `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
+      `Then tagline: 3-6 punchy words for the closing product shot.`,
+      ``,
+      `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...3 total],"tagline":"..."}`,
+    ].filter(Boolean).join("\n"),
+    { maxTokens: 700, model: "claude-sonnet-5" }
+  );
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error("commercial plan: no JSON");
+  const j = JSON.parse(m[0]) as CommercialPlan;
+  if (!Array.isArray(j.beats) || j.beats.length < 3) throw new Error("commercial plan: fewer than 3 beats");
+  j.beats = j.beats.slice(0, 3).map((b) => ({
+    scene: String(b.scene || "").slice(0, 300),
+    motion: String(b.motion || "slow cinematic push-in").slice(0, 120),
+    narration: String(b.narration || "").slice(0, 140),
+  }));
+  j.tagline = String(j.tagline || productTitle).slice(0, 60);
+  return j;
+}
+
+/** One product-faithful scene keyframe: the real product photo is the
+ *  reference, the beat's scene is the world built around it. Same engine,
+ *  same call-time model resolution as the presenter compose. */
+export async function sceneKeyframe(productImageUrl: string, scene: string): Promise<string> {
+  const model = process.env.COMPOSE_MODEL?.trim() || "fal-ai/nano-banana-pro/edit";
+  const submit = await fetch(`https://queue.fal.run/${model}`, {
+    method: "POST",
+    headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt:
+        `${scene} The product from the reference image appears in the scene EXACTLY as it really is — same shape, colours, printed artwork and lettering, at its true real-world size. ` +
+        `Cinematic film still: anamorphic feel, shallow depth of field, motivated practical light, rich filmic colour grade. Photorealistic, no text overlays, no watermarks.`,
+      image_urls: [productImageUrl],
+      image_size: "portrait_4_3",
+      ...(process.env.COMPOSE_RESOLUTION?.trim() ? { resolution: process.env.COMPOSE_RESOLUTION.trim() } : {}),
+      num_images: 1,
+    }),
+  });
+  if (!submit.ok) throw new Error(`scene compose submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
+  const q = (await submit.json()) as { status_url?: string; response_url?: string };
+  if (!q.status_url || !q.response_url) throw new Error("scene compose: no queue urls");
+  for (let i = 0; i < 90; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+    const sj = (await s.json()) as { status?: string };
+    if (sj.status === "COMPLETED") {
+      const r = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      const rj = (await r.json()) as { images?: { url?: string }[] };
+      const url = rj.images?.[0]?.url;
+      if (!url) throw new Error("scene compose: completed without an image");
+      return url;
+    }
+    if (sj.status === "FAILED") throw new Error("scene compose: FAILED");
+  }
+  throw new Error("scene compose: timed out after 3 minutes");
+}
+
+/** Deterministic assembly. Exported for the QA harness (no DB, pure files).
+ *  clips are normalized to 720x1280 cover, concatenated, letterboxed and
+ *  graded; the packshot is a Ken Burns push-in on the REAL product photo. */
+export async function assembleCommercial(opts: {
+  clipPaths: string[];
+  voPath?: string;
+  productJpegPath: string;
+  outPath: string;
+  packshotSec?: number;
+}): Promise<void> {
+  const bin = ffmpegBin();
+  if (!bin) throw new Error("no ffmpeg binary");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "comm-"));
+  try {
+    // 1) Normalize every clip: cover-crop to 720x1280, 30fps, silent.
+    const norm: string[] = [];
+    for (let i = 0; i < opts.clipPaths.length; i++) {
+      const n = path.join(tmp, `n${i}.mp4`);
+      await runFfmpeg(bin, ["-y", "-i", opts.clipPaths[i],
+        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", n]);
+      norm.push(n);
+    }
+    // 2) Packshot: Ken Burns push-in on the real product photo — the one
+    // frame of the ad that is guaranteed truthful, same trick as cutaway.
+    const packSec = opts.packshotSec ?? 2.5;
+    const pack = path.join(tmp, "pack.mp4");
+    const frames = Math.round(packSec * 30);
+    await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.productJpegPath,
+      "-vf",
+      `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
+      `zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,format=yuv420p`,
+      "-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack]);
+    norm.push(pack);
+    // 3) Concat + letterbox + grade (+ VO when present). drawbox bars give
+    // the cinema crop; a light eq pass gives the grade — both filters exist
+    // in every ffmpeg build we ship (drawtext does not, so no burned text).
+    const list = path.join(tmp, "list.txt");
+    fs.writeFileSync(list, norm.map((n) => `file '${n}'`).join("\n"));
+    const graded =
+      "drawbox=x=0:y=0:w=iw:h=ih*0.105:color=black:t=fill," +
+      "drawbox=x=0:y=ih*0.895:w=iw:h=ih*0.105:color=black:t=fill," +
+      "eq=contrast=1.06:saturation=1.12:brightness=-0.012,format=yuv420p";
+    const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
+    if (opts.voPath) args.push("-i", opts.voPath);
+    args.push("-vf", graded, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20");
+    if (opts.voPath) args.push("-map", "0:v", "-map", "1:a", "-c:a", "aac", "-shortest");
+    args.push(opts.outPath);
+    await runFfmpeg(bin, args);
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}
+
+export interface CommercialAdParams {
+  shopId: string;
+  brandProfile: BrandProfile;
+  productTitle: string;
+  productDescription?: string;
+  productImageUrl?: string;
+  direction?: string;
+  origin?: string;
+  jobId?: string;
+  resume?: {
+    plan?: string;
+    keyframeUrls?: string;
+    clipUrls?: string;
+    audioUrl?: string;
+  };
+}
+
+/** Full commercial. Checkpoints every paid artifact (plan is cheap but the
+ *  keyframes, clips and TTS are money) so a queue restart re-attaches. */
+export async function generateCommercialAd(params: CommercialAdParams): Promise<string> {
+  if (!params.productImageUrl) throw new Error("Commercial needs a product image");
+  const ckpt = (patch: Record<string, unknown>) =>
+    params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
+
+  // 1) SHOT LIST
+  let plan: CommercialPlan;
+  if (params.resume?.plan) {
+    plan = JSON.parse(params.resume.plan) as CommercialPlan;
+  } else {
+    plan = await planCommercial(params.productTitle, params.productDescription, params.direction);
+    await ckpt({ ckCommercialPlan: JSON.stringify(plan) });
+  }
+
+  // 2) KEYFRAMES — product-faithful scene stills, one per beat.
+  let keyframeUrls: string[] = params.resume?.keyframeUrls ? JSON.parse(params.resume.keyframeUrls) : [];
+  if (keyframeUrls.length < plan.beats.length) {
+    for (let i = keyframeUrls.length; i < plan.beats.length; i++) {
+      keyframeUrls.push(await sceneKeyframe(params.productImageUrl, plan.beats[i].scene));
+      await ckpt({ ckCommercialKeyframes: JSON.stringify(keyframeUrls) });
+    }
+  }
+
+  // 3) MOTION — kling per beat, ~5s each.
+  let clipUrls: string[] = params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : [];
+  if (clipUrls.length < plan.beats.length) {
+    for (let i = clipUrls.length; i < plan.beats.length; i++) {
+      const { id } = await animateCreate(undefined, {
+        startImage: keyframeUrls[i],
+        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics, the product keeps its exact printed artwork and lettering. No morphing, no text.`,
+        negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
+      });
+      clipUrls.push(await repPoll(id, 8 * 60_000, `commercial-beat-${i + 1}`));
+      await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
+    }
+  }
+
+  // 4) VOICE — one continuous read of the three narration lines.
+  let audioUrl = params.resume?.audioUrl || "";
+  if (!audioUrl) {
+    const read = plan.beats.map((b) => b.narration).join(" ... ") + ` ... ${plan.tagline}.`;
+    const id = await repCreate("minimax/speech-02-hd", {
+      text: read,
+      voice_id: "English_Trustworth_Man",
+      emotion: "neutral",
+      english_normalization: true,
+      language_boost: "English",
+    });
+    audioUrl = await repPoll(id, 3 * 60_000, "commercial-vo");
+    await ckpt({ ckCommercialAudio: audioUrl });
+  }
+
+  // 5) ASSEMBLY
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "commx-"));
+  try {
+    const clipPaths: string[] = [];
+    for (let i = 0; i < clipUrls.length; i++) {
+      const p = path.join(tmp, `clip${i}.mp4`);
+      await download(clipUrls[i], p);
+      clipPaths.push(p);
+    }
+    const voPath = path.join(tmp, "vo.mp3");
+    fs.writeFileSync(voPath, await downloadBuffer(audioUrl));
+    // The packshot uses the REAL photo — fetch and re-encode to a plain JPEG
+    // so AVIF/WebP originals can't break the image2 loop (the b-roll lesson).
+    const rawImg = path.join(tmp, "product.raw");
+    const jpg = path.join(tmp, "product.jpg");
+    await download(params.productImageUrl, rawImg);
+    const bin = ffmpegBin();
+    if (!bin) throw new Error("no ffmpeg binary");
+    await runFfmpeg(bin, ["-y", "-i", rawImg, "-vf", "scale='min(2000,iw)':-2", "-q:v", "3", jpg]);
+
+    const rendersDir = path.join(process.cwd(), "data", "renders");
+    fs.mkdirSync(rendersDir, { recursive: true });
+    const fileName = `commercial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const outPath = path.join(rendersDir, fileName);
+    await assembleCommercial({ clipPaths, voPath, productJpegPath: jpg, outPath });
+    try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
+
+    const asset = await db.asset.create({
+      data: {
+        shopId: params.shopId,
+        type: "VIDEO_AD",
+        status: "PENDING",
+        title: `Commercial — ${params.productTitle}`,
+        bodyJson: JSON.stringify({
+          style: "COMMERCIAL",
+          engine: "easymode-cinematic",
+          videoUrl: `/renders/${fileName}`,
+          script: plan.beats.map((b) => b.narration).join(" "),
+          tagline: plan.tagline,
+          keyframeUrls,
+        }),
+        metaJson: JSON.stringify({
+          style: "COMMERCIAL",
+          productTitle: params.productTitle,
+          direction: params.direction || null,
+          origin: params.origin || null,
+          productImageUrl: params.productImageUrl || null,
+          beats: plan.beats,
+        }),
+      },
+    });
+    return asset.id;
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}

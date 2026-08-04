@@ -326,24 +326,24 @@ async function runJob(
           },
         });
       } else if (payload.contentType === "commercial") {
-        // COMMERCIAL → cinematic multi-scene story ad with a packshot
-        // finale, rendered by Creatify. Lazy import, same as the others.
-        const { generateCommercialAd } = await import("./creatify-ad-pipeline.server");
+        // COMMERCIAL → cinematic multi-scene story ad with a real-photo
+        // packshot finale, on OUR stack (shot list → scene keyframes →
+        // kling → VO → letterboxed assembly). Lazy import, same as the rest.
+        const { generateCommercialAd } = await import("./commercial-ad-pipeline.server");
         forgedAssetId = await generateCommercialAd({
           shopId,
           brandProfile: shop.brandProfile,
           productTitle: payload.productTitle as string,
           productDescription: payload.productDescription as string | undefined,
           productImageUrl: payload.productImageUrl as string | undefined,
-          productPageUrl: payload.productPageUrl as string | undefined,
           direction: payload.customPrompt as string | undefined,
-          lengthSec: payload.lengthSec != null ? Number(payload.lengthSec) : undefined,
-          aspectRatio: payload.aspectRatio as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
-            creatifyLinkId: payload.ckCreatifyLinkId as string | undefined,
-            creatifyVideoId: payload.ckCreatifyVideoId as string | undefined,
+            plan: payload.ckCommercialPlan as string | undefined,
+            keyframeUrls: payload.ckCommercialKeyframes as string | undefined,
+            clipUrls: payload.ckCommercialClips as string | undefined,
+            audioUrl: payload.ckCommercialAudio as string | undefined,
           },
         });
       } else if (payload.contentType === "jingle") {

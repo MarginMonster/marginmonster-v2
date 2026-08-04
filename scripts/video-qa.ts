@@ -100,9 +100,10 @@ async function main() {
 
   const kf = await keyframeCheck();
   const ph = await presenterHoldCheck();
+  const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -211,6 +212,79 @@ async function presenterHoldCheck(): Promise<string> {
     return [`### Presenter image ads — shot-planner A/B`, ``, ...out].join("\n\n");
   }
   return presenterHoldOnce();
+}
+
+/* ---------- Commercial: the full in-house cinematic pipeline ----------
+ *
+ * Spends real money (~$1.50-2.50: 3 keyframes + 3 kling clips + TTS), so it
+ * runs only when QA_COMMERCIAL is set. Exercises the same exported stages
+ * production runs, minus the DB write, and publishes the beat keyframes AND
+ * the finished mp4 so the result can actually be watched. */
+async function commercialCheck(): Promise<string> {
+  if (!process.env.QA_COMMERCIAL) return "";
+  const head = "### Commercial (in-house cinematic) — full render";
+  const prod = await resolveProduct();
+  if (!prod) return `${head}\n\nSKIPPED — need a product.`;
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  const os2 = require("node:os") as typeof import("node:os");
+  try {
+    const { planCommercial, sceneKeyframe, assembleCommercial } = await import("../app/lib/commercial-ad-pipeline.server");
+    const { animateCreate, repPoll, repCreate, download, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+    const t0 = Date.now();
+    const plan = await planCommercial(prod.title, undefined, process.env.QA_COMMERCIAL_DIRECTION || undefined);
+    console.log(`[commercial] plan: ${plan.beats.map((b) => b.scene.slice(0, 60)).join(" | ")} · tagline "${plan.tagline}"`);
+    const keyframes: string[] = [];
+    for (let i = 0; i < plan.beats.length; i++) {
+      const url = await sceneKeyframe(prod.url, plan.beats[i].scene);
+      keyframes.push(url);
+      await saveFrame(url, `commercial-beat${i + 1}-keyframe.jpg`);
+      console.log(`[commercial] beat ${i + 1} keyframe ready`);
+    }
+    const clips: string[] = [];
+    for (let i = 0; i < plan.beats.length; i++) {
+      const { id } = await animateCreate(undefined, {
+        startImage: keyframes[i],
+        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics, the product keeps its exact printed artwork and lettering. No morphing, no text.`,
+        negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
+      });
+      clips.push(await repPoll(id, 8 * 60_000, `qa-commercial-beat-${i + 1}`));
+      console.log(`[commercial] beat ${i + 1} animated`);
+    }
+    const voId = await repCreate("minimax/speech-02-hd", {
+      text: plan.beats.map((b) => b.narration).join(" ... ") + ` ... ${plan.tagline}.`,
+      voice_id: "English_Trustworth_Man",
+      emotion: "neutral",
+      english_normalization: true,
+      language_boost: "English",
+    });
+    const voUrl = await repPoll(voId, 3 * 60_000, "qa-commercial-vo");
+    const tmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), "qa-comm-"));
+    const clipPaths: string[] = [];
+    for (let i = 0; i < clips.length; i++) { const p = path2.join(tmp, `c${i}.mp4`); await download(clips[i], p); clipPaths.push(p); }
+    const voPath = path2.join(tmp, "vo.mp3");
+    fs2.writeFileSync(voPath, await downloadBuffer(voUrl));
+    const rawImg = path2.join(tmp, "prod.raw"); const jpg = path2.join(tmp, "prod.jpg");
+    await download(prod.url, rawImg);
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+    execFileSync(ff, ["-y", "-i", rawImg, "-vf", "scale='min(2000,iw)':-2", "-q:v", "3", jpg], { stdio: "ignore" });
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const outPath = path2.join(outDir, "commercial-final.mp4");
+    await assembleCommercial({ clipPaths, voPath, productJpegPath: jpg, outPath });
+    // Pull one graded frame per beat from the finished cut for the report.
+    for (const [name, t] of [["commercial-final-beat1.jpg", "1.5"], ["commercial-final-beat2.jpg", "7"], ["commercial-final-packshot.jpg", "16"]] as const) {
+      try { execFileSync(ff, ["-y", "-ss", t, "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
+    }
+    const mb = (fs2.statSync(outPath).size / 1e6).toFixed(1);
+    return [head, ``, `| | |`, `|---|---|`, `| rendered | yes — commercial-final.mp4 (${mb}MB) on the qa-frames branch |`,
+      `| beats | ${plan.beats.length} + real-photo packshot |`, `| tagline | ${plan.tagline} |`,
+      `| wall time | ${Math.round((Date.now() - t0) / 60_000)} min |`,
+      `| narration | ${plan.beats.map((b) => b.narration).join(" / ")} |`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+  }
 }
 
 /* ---------- cutaway assembly: the deterministic b-roll graph ----------
