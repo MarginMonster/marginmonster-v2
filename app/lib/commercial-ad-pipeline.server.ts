@@ -82,7 +82,7 @@ export async function planCommercial(
         ? `You are directing a 15-second cinematic TV-style commercial for a service / offer: "${productTitle}". There is nothing physical to photograph — the ad sells the OUTCOME of the offer.`
         : `You are directing a 15-second cinematic TV-style commercial for: "${productTitle}".`,
       productDescription ? `${serviceMode ? "Offer" : "Product"}: ${productDescription.slice(0, 400)}` : "",
-      direction ? `The merchant's creative direction (FOLLOW IT): ${direction.slice(0, 300)}` : "",
+      direction ? `The merchant's creative direction (FOLLOW IT): ${direction.slice(0, 600)}` : "",
       ``,
       serviceMode
         ? `Write exactly 5 beats that tell ONE continuous transformation story with rising energy — the before (life with the problem), the discovery, the first win, the after (life visibly changed), the celebration. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world around them transforms scene to scene, and every scene SHOWS the offer's result in the protagonist's life — NEVER invent a physical product, box, bottle, package or logo. Photorealistic live-action only — no cartoons, no text overlays in-scene.`
