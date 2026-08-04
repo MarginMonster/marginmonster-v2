@@ -251,8 +251,10 @@ async function heroCut(): Promise<string> {
     </style></head><body>${html}</body></html>`;
     const f = out.replace(/\.png$/, ".html");
     fs2.writeFileSync(f, page);
+    // Transparent default background — without it every "transparent" label
+    // bakes a white slab that ships straight into the overlay.
     execFileSync(chrome!, ["--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
-      "--window-size=720,1280", `--screenshot=${out}`, `file://${f}`], { stdio: "ignore" });
+      "--default-background-color=00000000", "--window-size=720,1280", `--screenshot=${out}`, `file://${f}`], { stdio: "ignore" });
   };
   const still = (img: string, sec: number, out: string, zoomIn = true, label?: string) => {
     const fr = Math.max(2, Math.round(sec * 30));
@@ -286,7 +288,7 @@ async function heroCut(): Promise<string> {
     // B) TYPING — the REAL studio prompt, one frame per keystroke.
     const sentence = "my citrus sports drink";
     const studioFrame = (text: string, caret: boolean, pressed: boolean) =>
-      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:56px 34px 0">
+      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:290px 34px 0">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px">
           <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px">
           <div style="font-size:24px;color:#14201A">Easy<span style="color:#B08526">Mode</span><span style="font-size:15px;color:#4A554E;margin-left:10px;font-weight:800">Studio</span></div>
