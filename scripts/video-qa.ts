@@ -353,13 +353,22 @@ async function commercialCheck(): Promise<string> {
     for (let i = 0; i < clips.length; i++) { const p = path2.join(tmp, `c${i}.mp4`); await download(clips[i], p); clipPaths.push(p); }
     const voPaths: string[] = [];
     for (let i = 0; i < voUrls.length; i++) { const p = path2.join(tmp, `vo${i}.mp3`); fs2.writeFileSync(p, await downloadBuffer(voUrls[i])); voPaths.push(p); }
-    const rawImg = path2.join(tmp, "prod.raw"); const jpg = path2.join(tmp, "prod.jpg");
-    const packshotUrl = svc ? await commercialEndCard(title, plan.tagline) : prod!.url;
-    if (svc) await saveFrame(packshotUrl, "commercial-endcard.jpg");
-    await download(packshotUrl, rawImg);
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
     const ff = (require("ffmpeg-static") as string) || "ffmpeg";
-    execFileSync(ff, ["-y", "-i", rawImg, "-vf", "scale='min(2000,iw)':-2", "-q:v", "3", jpg], { stdio: "ignore" });
+    // Our own service-mode spots close on the DESIGNED brand card (real
+    // wordmark, real guilloché rosettes, spun by ffmpeg) when the assets
+    // are in the repo; the generated card is the fallback.
+    const brandBase = path2.join(process.cwd(), "public", "showcase", "endcard-base.png");
+    const brandRose = path2.join(process.cwd(), "public", "showcase", "endcard-rosette.png");
+    const useBrandCard = svc && fs2.existsSync(brandBase);
+    let jpg: string | undefined;
+    if (!useBrandCard) {
+      const rawImg = path2.join(tmp, "prod.raw"); jpg = path2.join(tmp, "prod.jpg");
+      const packshotUrl = svc ? await commercialEndCard(title, plan.tagline) : prod!.url;
+      if (svc) await saveFrame(packshotUrl, "commercial-endcard.jpg");
+      await download(packshotUrl, rawImg);
+      execFileSync(ff, ["-y", "-i", rawImg, "-vf", "scale='min(2000,iw)':-2", "-q:v", "3", jpg], { stdio: "ignore" });
+    }
     const outDir = path2.join(process.cwd(), "qa-out", "frames");
     fs2.mkdirSync(outDir, { recursive: true });
     const outPath = path2.join(outDir, "commercial-final.mp4");
@@ -368,6 +377,7 @@ async function commercialCheck(): Promise<string> {
       narrationPaths: voPaths.slice(0, clipPaths.length),
       taglinePath: voPaths[clipPaths.length],
       productJpegPath: jpg,
+      endCard: useBrandCard ? { basePath: brandBase, rosettePath: fs2.existsSync(brandRose) ? brandRose : undefined } : undefined,
       outPath,
     });
     // Pull one graded frame per beat from the finished cut for the report.

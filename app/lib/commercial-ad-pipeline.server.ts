@@ -240,7 +240,11 @@ export async function assembleCommercial(opts: {
   narrationPaths?: string[];
   /** Spoken tagline, placed over the packshot. */
   taglinePath?: string;
-  productJpegPath: string;
+  productJpegPath?: string;
+  /** Deterministic brand close-out: a designed base card plus a transparent
+   *  rosette PNG spun live by ffmpeg — no AI-generated finale at all. When
+   *  present this replaces the Ken Burns packshot. */
+  endCard?: { basePath: string; rosettePath?: string };
   outPath: string;
   packshotSec?: number;
   /** Seconds kept from each clip. The animator returns 10s takes; the fades
@@ -263,21 +267,47 @@ export async function assembleCommercial(opts: {
         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", n]);
       norm.push(n);
     }
-    // 2) Packshot: Ken Burns push-in on the real product photo — the one
+    // 2) Finale segment. Brand end-card mode: the designed card with live
+    // spinning guilloché rosettes (one clockwise top-right, one counter
+    // bottom-left; the baked centre rosette stays still behind the text).
+    // Product mode: Ken Burns push-in on the real product photo — the one
     // frame of the ad that is guaranteed truthful, same trick as cutaway.
     const packSec = opts.packshotSec ?? 4;
     const pack = path.join(tmp, "pack.mp4");
     const frames = Math.round(packSec * 30);
-    // fade must come AFTER zoompan: zoompan expands input frame 0 across the
-    // whole packshot, and a pre-zoom fade-in makes frame 0 pure black — which
-    // is 4 seconds of zoomed black, the bug that ate every packshot so far.
-    await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.productJpegPath,
-      "-vf",
-      `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
-      `zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,` +
-      `fade=t=in:st=0:d=0.4,fade=t=out:st=${(packSec - 0.5).toFixed(2)}:d=0.5,format=yuv420p`,
-      "-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack]);
-    norm.push(pack);
+    if (opts.endCard) {
+      const args = ["-y",
+        "-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.endCard.basePath];
+      if (opts.endCard.rosettePath) {
+        args.push("-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.endCard.rosettePath,
+          "-filter_complex",
+          "[0:v]scale=720:1280[bg];" +
+          "[1:v]format=rgba,scale=460:460,split[ra][rb];" +
+          "[ra]rotate=t*0.35:c=none:ow=hypot(iw\\,ih):oh=ow[r1];" +
+          "[rb]rotate=-t*0.28:c=none:ow=hypot(iw\\,ih):oh=ow[r2];" +
+          "[bg][r1]overlay=x=W-w*0.72:y=-h*0.28[b1];" +
+          "[b1][r2]overlay=x=-w*0.28:y=H-h*0.72[b2];" +
+          `[b2]fade=t=in:st=0:d=0.4,fade=t=out:st=${(packSec - 0.5).toFixed(2)}:d=0.5,format=yuv420p[v]`,
+          "-map", "[v]");
+      } else {
+        args.push("-vf", `scale=720:1280,fade=t=in:st=0:d=0.4,fade=t=out:st=${(packSec - 0.5).toFixed(2)}:d=0.5,format=yuv420p`);
+      }
+      args.push("-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack);
+      await runFfmpeg(bin, args);
+      norm.push(pack);
+    } else {
+      if (!opts.productJpegPath) throw new Error("assembleCommercial: need productJpegPath or endCard");
+      // fade must come AFTER zoompan: zoompan expands input frame 0 across the
+      // whole packshot, and a pre-zoom fade-in makes frame 0 pure black — which
+      // is 4 seconds of zoomed black, the bug that ate every packshot so far.
+      await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(packSec + 0.2), "-i", opts.productJpegPath,
+        "-vf",
+        `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
+        `zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,` +
+        `fade=t=in:st=0:d=0.4,fade=t=out:st=${(packSec - 0.5).toFixed(2)}:d=0.5,format=yuv420p`,
+        "-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack]);
+      norm.push(pack);
+    }
     // 3) The voice track. Per-beat narrations are each delayed to their own
     // scene and mixed — the line about a beat plays OVER that beat. A single
     // premixed voPath (legacy) is laid from the start as before.
