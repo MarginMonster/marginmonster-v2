@@ -375,7 +375,8 @@ async function heroCut(): Promise<string> {
     const pushSeg = (p: string, len: number) => { segs.push(p); segLens.push(len); };
     // DARK CINEMA STAGE — everything floats spotlit on black-green.
     const stage = `background:radial-gradient(130% 100% at 50% 32%, #0E1F16 0%, #07110C 58%, #040A07 100%)`;
-    const headline = `<div style="position:absolute;left:0;right:0;top:60px;text-align:center;font-weight:800;font-size:34px;color:#F4F1E6;letter-spacing:-.01em;text-shadow:0 0 34px rgba(18,168,94,.35)">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>`;
+    const disp0 = `font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:-.035em`;
+    const headline = `<div style="position:absolute;left:0;right:0;top:62px;text-align:center;${disp0};font-size:31px;color:#F4F1E6;text-shadow:0 0 34px rgba(18,168,94,.35)">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>`;
     // The hero photo is an UNBRANDED merchant product (portfolio pack shot):
     // local when this run generated it, qa-frames when a re-cut runs alone.
     const curl0 = (url: string, out: string) => {
@@ -410,44 +411,55 @@ async function heroCut(): Promise<string> {
       pushSeg(s, 0.12 + holdSec);
     };
 
-    // A) SLAM OPEN — the input as a hero object on the dark stage.
-    smash(`<div style="display:flex;flex-direction:column;align-items:center;gap:38px">
-      <img src="file://${packShot}" style="width:400px;border-radius:22px;box-shadow:0 30px 90px rgba(0,0,0,.7),0 0 60px rgba(18,168,94,.25)">
-      <div style="font-weight:800;font-size:56px;color:#F4F1E6;letter-spacing:-.01em">One <span style="color:#E7C879">photo.</span></div>
-    </div>`, 0.85, "slam");
+    // Display type: tight neutral grotesk — Poppins' roundness reads cheap
+    // at billboard sizes; it stays on the wordmark only.
+    const disp = disp0;
+
+    // A) SLAM OPEN — the product alone, no words. Let the object talk.
+    smash(`<div style="display:flex;flex-direction:column;align-items:center">
+      <img src="file://${packShot}" style="width:430px;border-radius:24px;box-shadow:0 30px 90px rgba(0,0,0,.7),0 0 60px rgba(18,168,94,.25)">
+    </div>`, 0.8, "slam");
     flashSeg(1);
 
-    // B) TYPING — the REAL studio prompt as a spotlit 3D object: the card
-    // floats tilted on the dark stage, drifts as the camera pushes in, the
-    // type ACCELERATES, and the press detonates into a flash.
-    const sentence = "my small-batch coffee";
-    const studioFrame = (text: string, caret: boolean, pressed: boolean, k: number) =>
+    // B) PASTE + EXTRACT — the store-link extractor, the studio's most
+    // magical real feature: paste a product URL, the photo and title pull
+    // themselves out of the store. Then the press detonates.
+    const sentence = "Small-Batch Coffee — Whole Bean";
+    const pasteUrl = "mystore.com/products/small-batch-coffee";
+    // states: 0 empty field · 1 URL pasted (highlight) · 2 reading spinner ·
+    // 3 extracted card (thumb + title materialize) · 4 press
+    const studioFrame = (state: number, k: number) =>
       `<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center;overflow:hidden">${headline}
-        <div style="width:640px;transform:perspective(1300px) rotateX(7deg) rotateY(${(-7 + k * 0.28).toFixed(2)}deg) scale(${(1 + k * 0.006).toFixed(3)})">
+        <div style="width:640px;transform:perspective(1300px) rotateX(7deg) rotateY(${(-6 + k * 1.1).toFixed(2)}deg) scale(${(1 + k * 0.014).toFixed(3)})">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:22px">
             <img src="file://${crest}" style="width:42px;height:42px;border-radius:10px;box-shadow:0 0 24px rgba(18,168,94,.5)">
             <div style="font-size:25px;color:#F4F1E6">Easy<span style="color:#E7C879">Mode</span><span style="font-size:15px;color:#7FE0AC;margin-left:10px;font-weight:800">Studio</span></div>
           </div>
           <div style="background:linear-gradient(168deg,#10231A,#0B1A12);border:1px solid rgba(127,224,172,.28);border-radius:20px;box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 70px rgba(18,168,94,.16);padding:28px 26px;position:relative;overflow:hidden">
             <div style="position:absolute;right:-40px;top:-40px;width:240px;height:240px;background:url(file://${rosette}) center/contain no-repeat;opacity:.12;filter:brightness(3)"></div>
-            <div style="font-size:16px;color:#7FE0AC;margin-bottom:12px;font-weight:800;letter-spacing:.04em">WHAT ARE YOU SELLING?</div>
-            <div style="background:rgba(4,10,7,.75);border:1.5px solid ${caret || text ? "#12A85E" : "rgba(127,224,172,.25)"};border-radius:13px;padding:18px 16px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:22px;color:#F4F1E6;min-height:64px;${caret || text ? "box-shadow:0 0 26px rgba(18,168,94,.28);" : ""}">${text}${caret ? `<span style="display:inline-block;width:3px;height:25px;background:#7FE0AC;vertical-align:-4px;margin-left:2px"></span>` : ""}</div>
-            <div style="margin-top:22px;display:flex;justify-content:flex-end">
-              <div style="font-size:18px;font-weight:800;color:#fff;background:linear-gradient(160deg,#12A85E,#0C7A46);padding:16px 32px;border-radius:13px;box-shadow:0 5px 0 #06301D,0 0 34px rgba(18,168,94,.4)${pressed ? ";transform:translateY(4px) scale(.97);box-shadow:0 1px 0 #06301D,0 0 60px rgba(127,224,172,.8);filter:brightness(1.3)" : ""}">Generate &rarr;</div>
+            <div style="font-size:15px;color:#7FE0AC;margin-bottom:12px;font-weight:800;letter-spacing:.06em;${disp}">PASTE YOUR PRODUCT LINK</div>
+            <div style="background:rgba(4,10,7,.75);border:1.5px solid ${state >= 1 ? "#12A85E" : "rgba(127,224,172,.25)"};border-radius:13px;padding:17px 16px;font-family:Arial,sans-serif;font-weight:600;font-size:19px;color:${state >= 1 ? "#F4F1E6" : "#5d6a61"};${state === 1 ? "box-shadow:0 0 26px rgba(18,168,94,.35);background:rgba(18,168,94,.14);" : ""}">${state >= 1 ? pasteUrl : "https://…"}</div>
+            ${state === 2 ? `<div style="margin-top:16px;display:flex;align-items:center;gap:11px;font-size:17px;font-weight:700;color:#E7C879;${disp}">
+                <span style="display:inline-block;width:14px;height:14px;border-radius:50%;border:3px solid rgba(231,200,121,.3);border-top-color:#E7C879"></span>Reading your store…</div>` : ""}
+            ${state >= 3 ? `<div style="margin-top:16px;display:flex;align-items:center;gap:14px;background:rgba(18,168,94,.1);border:1px solid rgba(127,224,172,.4);border-radius:13px;padding:12px 14px">
+                <img src="file://${packShot}" style="width:58px;height:58px;object-fit:cover;border-radius:9px">
+                <div><div style="font-size:18px;font-weight:700;color:#F4F1E6;${disp}">${sentence}</div>
+                <div style="font-size:13px;color:#7FE0AC;font-weight:700;margin-top:3px">&#10003; photo &amp; title pulled from your store</div></div></div>` : ""}
+            <div style="margin-top:20px;display:flex;justify-content:flex-end">
+              <div style="font-size:18px;font-weight:800;color:#fff;background:linear-gradient(160deg,#12A85E,#0C7A46);padding:16px 32px;border-radius:13px;box-shadow:0 5px 0 #06301D,0 0 34px rgba(18,168,94,.4)${state === 4 ? ";transform:translateY(4px) scale(.97);box-shadow:0 1px 0 #06301D,0 0 60px rgba(127,224,172,.8);filter:brightness(1.3)" : ""}">Generate &rarr;</div>
             </div>
           </div>
         </div>
       </div>`;
     const typedFrames: { png: string; dur: number }[] = [];
-    for (let k = 0; k <= sentence.length; k++) {
-      const p = path2.join(tmp, `type${String(k).padStart(3, "0")}.png`);
-      shoot(studioFrame(sentence.slice(0, k), true, false, k), p);
-      // accelerating type: starts deliberate, ends machine-gun
-      typedFrames.push({ png: p, dur: k === 0 ? 0.35 : Math.max(0.028, 0.11 - k * 0.004) });
-    }
+    ([[0, 0.4], [1, 0.55], [2, 0.75], [3, 0.9]] as const).forEach(([st, dur], k) => {
+      const p = path2.join(tmp, `paste${st}.png`);
+      shoot(studioFrame(st, k), p);
+      typedFrames.push({ png: p, dur });
+    });
     const pressPng = path2.join(tmp, "press.png");
-    shoot(studioFrame(sentence, false, true, sentence.length), pressPng);
-    typedFrames.push({ png: pressPng, dur: 0.34 });
+    shoot(studioFrame(4, 4), pressPng);
+    typedFrames.push({ png: pressPng, dur: 0.32 });
     const typeList = path2.join(tmp, "type.txt");
     fs2.writeFileSync(typeList, typedFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${pressPng}'`);
     const segB = path2.join(tmp, "segB.mp4");
@@ -542,7 +554,7 @@ async function heroCut(): Promise<string> {
     const gridBase = path2.join(tmp, "gridbase.png");
     shoot(`<div style="position:relative;width:720px;height:1280px;${stage}">${headline}</div>`, gridBase);
     const capPng = renderOverlayPng(
-      `<div style="color:#F4F1E6;font-weight:800;font-size:27px;text-align:center;text-shadow:0 2px 8px rgba(0,0,0,.8)">Whatever you sell. <span style="color:#7FE0AC">One tap each.</span></div>`,
+      `<div style="color:#F4F1E6;font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:-.03em;font-size:27px;text-align:center;text-shadow:0 2px 8px rgba(0,0,0,.8)">Whatever you sell. <span style="color:#7FE0AC">One tap each.</span></div>`,
       700, 60, path2.join(tmp, "cap.png"));
     const gArgs = ["-y", "-loop", "1", "-framerate", "30", "-t", String(gridLen), "-i", gridBase];
     tileMp4s.forEach((p) => gArgs.push("-i", p));
@@ -572,7 +584,7 @@ async function heroCut(): Promise<string> {
     {
       const logos = ["tiktok", "instagram", "facebook"].map((n) => path2.join(process.cwd(), "public", "ai-logos", `${n}.svg`)).filter((p) => fs2.existsSync(p));
       smash(`<div style="display:flex;flex-direction:column;align-items:center;gap:42px">${roseDiv}
-        <div style="position:relative;color:#F4F1E6;font-weight:800;font-size:58px;line-height:1.12;text-align:center;text-shadow:0 0 40px rgba(18,168,94,.4)">Then it <span style="color:#E7C879">posts them</span><br>for you.</div>
+        <div style="position:relative;color:#F4F1E6;${disp};font-size:56px;line-height:1.1;text-align:center;text-shadow:0 0 40px rgba(18,168,94,.4)">Posts them <span style="color:#E7C879">for you.</span></div>
         <div style="position:relative;display:flex;gap:36px;align-items:center">${logos.map((l) => `<img src="file://${l}" style="width:68px;height:68px;filter:drop-shadow(0 6px 16px rgba(0,0,0,.6))">`).join("")}</div>
       </div>`, 1.5, "post");
     }
@@ -599,9 +611,9 @@ async function heroCut(): Promise<string> {
     // everything (the silence was the basement).
     const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
     const lines: [string, number][] = [
-      ["One photo. One sentence.", 0.25],
-      ["It checks every frame.", startOf(4) + 0.1],
-      ["Then it posts them. Everywhere.", startOf(8) + 0.15],
+      ["Paste your product.", startOf(2) + 0.4],
+      ["It writes. It films. It checks.", startOf(4) + 0.1],
+      ["Whatever you sell.", startOf(6) + 1.9],
       ["EasyMode. Marketing on easy mode.", startOf(9) + 0.5],
     ];
     let musicPath: string | undefined;
@@ -619,7 +631,9 @@ async function heroCut(): Promise<string> {
     }
     const voFiles: string[] = [];
     await Promise.all(lines.map(async ([text], i) => {
-      const id = await repCreate("minimax/speech-02-hd", { text, voice_id: "English_Trustworth_Man", emotion: "neutral", english_normalization: true, language_boost: "English" });
+      // magnetic_voiced_man: the deep trailer read — Trustworth was the
+      // infomercial "presenter" tone that kept feeling off.
+      const id = await repCreate("minimax/speech-02-hd", { text, voice_id: "English_magnetic_voiced_man", emotion: "neutral", english_normalization: true, language_boost: "English" });
       const url = await repPoll(id, 3 * 60_000, `hero-vo-${i + 1}`);
       const p = path2.join(tmp, `vo${i}.mp3`);
       fs2.writeFileSync(p, await downloadBuffer(url));
