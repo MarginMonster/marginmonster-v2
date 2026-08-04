@@ -87,6 +87,7 @@ export async function planCommercial(
       serviceMode
         ? `Write exactly 5 beats that tell ONE continuous transformation story with rising energy — the before (life with the problem), the discovery, the first win, the after (life visibly changed), the celebration. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world around them transforms scene to scene, and every scene SHOWS the offer's result in the protagonist's life — NEVER invent a physical product, box, bottle, package or logo. Photorealistic live-action only — no cartoons, no text overlays in-scene.`
         : `Write exactly 5 beats that tell ONE continuous story with rising energy — setup, want, turn, payoff, celebration — the way big-budget spots do. ONE protagonist carries through EVERY beat (same person, same wardrobe), the world evolves scene to scene, and the PRODUCT appears naturally in each. Photorealistic live-action only — no cartoons, no text overlays in-scene.`,
+      `REALISM RULE: the product is used EXACTLY the way a real customer uses it — a drink gets drunk, a tool gets used, a garment gets worn. NOTHING theatrical: no spraying or pouring it on anyone, no throwing it, no holding it up to the light, no gazing at it in wonder. If the moment would look ridiculous in real life, do not write it.`,
       `For each beat give:`,
       serviceMode
         ? `scene: one sentence, concrete and filmable — who/where/light/mood, and how the offer's result shows on screen.`
