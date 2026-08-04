@@ -100,10 +100,11 @@ async function main() {
 
   const kf = await keyframeCheck();
   const ph = await presenterHoldCheck();
+  const bl = await brandLab();
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -212,6 +213,62 @@ async function presenterHoldCheck(): Promise<string> {
     return [`### Presenter image ads — shot-planner A/B`, ``, ...out].join("\n\n");
   }
   return presenterHoldOnce();
+}
+
+/* ---------- Brand Lab: EasyMode hero products + commercial cut scenes ----
+ *
+ * The approval gate before a commercial spends real money. Images only
+ * (~$1.50): forge branded pack-shot candidates, then plan the spot and
+ * render its five cut scenes as chained keyframes — everything lands on
+ * qa-frames for a human verdict BEFORE any kling/VO dollars move.
+ * QA_BRAND_LAB=1 enables. */
+async function brandLab(): Promise<string> {
+  if (!process.env.QA_BRAND_LAB) return "";
+  const head = "### Brand Lab — EasyMode hero products + cut scenes";
+  try {
+    const { brandImage, planCommercial, sceneKeyframe } = await import("../app/lib/commercial-ad-pipeline.server");
+    const t0 = Date.now();
+    const packs: Array<[string, string]> = [
+      ["brand-sport-green.jpg",
+        `Professional studio product photograph of a premium sports drink: a sleek 500ml sports bottle with a grip waist and black flip-top cap, vivid green-to-black label. The wordmark "EASYMODE" in bold athletic capitals with a small white lightning bolt, and beneath it the flavor line "CITRUS SURGE" in smaller clean type. Fine condensation droplets, white seamless studio background, soft key light, crisp e-commerce hero shot. The ONLY text anywhere is exactly "EASYMODE" and "CITRUS SURGE", spelled letter-for-letter — no other words, no watermarks.`],
+      ["brand-sport-white.jpg",
+        `Professional studio product photograph of a premium electrolyte sports drink: a frosted clear bottle with a white sport cap, clean matte-white label with electric green accents. The wordmark "EASYMODE" in bold modern capitals and beneath it the flavor line "BERRY VOLT" in smaller type. Light condensation, white seamless studio background, bright airy light, crisp e-commerce hero shot. The ONLY text anywhere is exactly "EASYMODE" and "BERRY VOLT", spelled letter-for-letter — no other words, no watermarks.`],
+      ["brand-coffee-can.jpg",
+        `Professional studio product photograph of a premium canned cold brew coffee: a matte black 330ml slim can with a warm sunrise-gradient band across the middle. The wordmark "EASYMODE ROAST" in clean bold capitals and beneath it "DAYBREAK BLEND" in smaller elegant type. Soft dramatic side light, dark seamless studio background, crisp e-commerce hero shot. The ONLY text anywhere is exactly "EASYMODE ROAST" and "DAYBREAK BLEND", spelled letter-for-letter — no other words, no watermarks.`],
+    ];
+    const packUrls: Record<string, string> = {};
+    for (const [name, prompt] of packs) {
+      const url = await brandImage(prompt);
+      packUrls[name] = url;
+      await saveFrame(url, name);
+      console.log(`[brand] ${name} ready`);
+    }
+    // Cut scenes: the sports drink is the hero. Same planner + keyframe chain
+    // production uses, so what gets approved is what the pipeline will do.
+    const heroUrl = packUrls["brand-sport-green.jpg"];
+    const direction = process.env.QA_BRAND_DIRECTION ||
+      "An athlete's pre-dawn city workout: the grind, hitting the wall, cracking open the EasyMode bottle, the second wind, a sunrise finish-line celebration. Electric, sweaty, real.";
+    const plan = await planCommercial(
+      "EasyMode Citrus Surge - electrolyte sports drink",
+      "Electrolyte sports drink by EasyMode. Bold green bottle, citrus flavor.",
+      direction
+    );
+    const frames: string[] = [];
+    for (let i = 0; i < plan.beats.length; i++) {
+      const u = await sceneKeyframe(heroUrl, plan.beats[i].scene, frames[i - 1]);
+      frames.push(u);
+      await saveFrame(u, `sport-scene${i + 1}.jpg`);
+      console.log(`[brand] scene ${i + 1} ready`);
+    }
+    return [head, ``,
+      `| beat | scene | narration |`, `|---|---|---|`,
+      ...plan.beats.map((b, i) => `| ${i + 1} | ${b.scene.replace(/\|/g, "/")} | ${b.narration.replace(/\|/g, "/")} |`),
+      ``,
+      `tagline: **${plan.tagline}** — 3 pack shots + 5 cut scenes on the qa-frames branch · ${Math.round((Date.now() - t0) / 60_000)} min`,
+      `No video was rendered — this is the approval gate.`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+  }
 }
 
 /* ---------- Commercial: the full in-house cinematic pipeline ----------

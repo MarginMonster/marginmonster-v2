@@ -181,6 +181,19 @@ export async function sceneKeyframe(productImageUrl: string | undefined, scene: 
   }, "scene compose");
 }
 
+/** A single branded product image on the text-to-image sibling of the
+ *  compose engine — pack shots, brand stills. Exported for the QA harness'
+ *  Brand Lab (forging EasyMode hero products before a commercial spends). */
+export async function brandImage(prompt: string): Promise<string> {
+  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  return falQueueImage(t2iModel(), {
+    prompt,
+    aspect_ratio: "3:4",
+    ...(res ? { resolution: res } : {}),
+    num_images: 1,
+  }, "brand image");
+}
+
 /** Service-mode finale. A service ad has no truthful product photo to close
  *  on, so the packshot's job — end on something REAL — falls to a branded
  *  end-card: the tagline large, the offer name beneath, brand colours when
