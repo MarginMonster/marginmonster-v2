@@ -124,7 +124,9 @@ async function falQueueImage(model: string, body: Record<string, unknown>, tag: 
   if (!submit.ok) throw new Error(`${tag} submit ${submit.status}: ${(await submit.text()).slice(0, 160)}`);
   const q = (await submit.json()) as { status_url?: string; response_url?: string };
   if (!q.status_url || !q.response_url) throw new Error(`${tag}: no queue urls`);
-  for (let i = 0; i < 90; i++) {
+  // 5 minutes: the fal queue under load has sat past the old 3-minute cap
+  // and killed an otherwise-healthy render mid-sequence.
+  for (let i = 0; i < 150; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
     const sj = (await s.json()) as { status?: string };
@@ -137,7 +139,7 @@ async function falQueueImage(model: string, body: Record<string, unknown>, tag: 
     }
     if (sj.status === "FAILED") throw new Error(`${tag}: FAILED`);
   }
-  throw new Error(`${tag}: timed out after 3 minutes`);
+  throw new Error(`${tag}: timed out after 5 minutes`);
 }
 
 const editModel = () => process.env.COMPOSE_MODEL?.trim() || "fal-ai/nano-banana-pro/edit";
