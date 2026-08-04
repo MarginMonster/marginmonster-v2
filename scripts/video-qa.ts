@@ -284,9 +284,13 @@ async function portfolioAssets(): Promise<string> {
     ];
     const STILLS: [string, string][] = [
       // s0 is the INPUT — a merchant's own phone snap, deliberately casual.
-      ["port-s0", `Casual smartphone photo a small business owner took of their product: a matte kraft coffee bag with a simple minimal cream label reading "COFFEE", standing upright on a wooden kitchen counter near a window, soft natural morning light, slightly imperfect casual angle, realistic phone-camera look. NOT a studio shot. The ONLY text anywhere is exactly "COFFEE".`],
-      ["port-s1", `Studio packshot of a kraft paper coffee bag with a simple minimal cream label reading "COFFEE", standing UPRIGHT with the label facing the camera, white seamless background, soft key light, e-commerce hero shot. The ONLY text anywhere is exactly "COFFEE".`],
-      ["port-s2", "Luxury studio packshot of a frosted glass serum dropper bottle with a blank label on a dark stone surface, dramatic side light. No text anywhere."],
+      // The kraft coffee bag kept rendering ugly, so: two candidate products
+      // (candle / serum), each as phone-snap + studio pair. The winner gets
+      // promoted to port-s0/port-s1.
+      ["port-s0-candle", `Casual smartphone photo a small business owner took of their product: a hand-poured soy candle in an amber glass jar with a small minimal cream label reading "AMBER", sitting on a wooden kitchen counter near a window, soft natural morning light, slightly imperfect casual angle, realistic phone-camera look. NOT a studio shot. The ONLY text anywhere is exactly "AMBER".`],
+      ["port-s1-candle", `Premium studio packshot of a lit hand-poured soy candle in an amber glass jar with a small minimal cream label reading "AMBER", warm glow, on a soft neutral backdrop, e-commerce hero shot. The ONLY text anywhere is exactly "AMBER".`],
+      ["port-s0-serum", `Casual smartphone photo a small business owner took of their product: a frosted glass serum dropper bottle with a blank minimal label, standing on a white bathroom shelf near a window, soft natural light, slightly imperfect casual angle, realistic phone-camera look. NOT a studio shot. No text anywhere.`],
+      ["port-s1-serum", "Luxury studio packshot of a frosted glass serum dropper bottle with a blank label on a dark stone surface, dramatic side light, e-commerce hero shot. No text anywhere."],
     ];
     const engine = process.env.QA_COMMERCIAL_ENGINE?.trim() || "veo";
     // QA_PORTFOLIO=stills regenerates only the still assets — the clips are
