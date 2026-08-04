@@ -208,21 +208,34 @@ export async function commercialEndCard(offerTitle: string, tagline: string, vis
  *  or, for a service ad, on the branded end-card (same slot, same move). */
 export async function assembleCommercial(opts: {
   clipPaths: string[];
+  /** Legacy: one premixed VO file laid over the whole cut. */
   voPath?: string;
+  /** One narration file per clip — each is placed AT its beat (adelay mix),
+   *  so the line about a scene plays over that scene, not wherever a single
+   *  fast read happens to land. Preferred over voPath. */
+  narrationPaths?: string[];
+  /** Spoken tagline, placed over the packshot. */
+  taglinePath?: string;
   productJpegPath: string;
   outPath: string;
   packshotSec?: number;
+  /** Seconds kept from each clip. The animator returns 10s takes; the fades
+   *  are cut for 5 — anything longer used to play out as black. */
+  clipSec?: number;
 }): Promise<void> {
   const bin = ffmpegBin();
   if (!bin) throw new Error("no ffmpeg binary");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "comm-"));
   try {
-    // 1) Normalize every clip: cover-crop to 720x1280, 30fps, silent.
+    const clipSec = opts.clipSec ?? 5;
+    // 1) Normalize every clip: trim to clipSec (the animator returns longer
+    // takes and the fade-out marks the cut), cover-crop to 720x1280, 30fps.
     const norm: string[] = [];
     for (let i = 0; i < opts.clipPaths.length; i++) {
       const n = path.join(tmp, `n${i}.mp4`);
-      await runFfmpeg(bin, ["-y", "-i", opts.clipPaths[i],
-        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=4.6:d=0.35,format=yuv420p",
+      await runFfmpeg(bin, ["-y", "-t", String(clipSec), "-i", opts.clipPaths[i],
+        "-vf", `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=${(clipSec - 0.4).toFixed(2)}:d=0.35,format=yuv420p`,
+        "-t", String(clipSec),
         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", n]);
       norm.push(n);
     }
@@ -237,9 +250,31 @@ export async function assembleCommercial(opts: {
       `fade=t=in:st=0:d=0.4,zoompan=z='min(zoom+0.0018,1.13)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,format=yuv420p`,
       "-t", String(packSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", pack]);
     norm.push(pack);
-    // 3) Concat + letterbox + grade (+ VO when present). drawbox bars give
+    // 3) The voice track. Per-beat narrations are each delayed to their own
+    // scene and mixed — the line about a beat plays OVER that beat. A single
+    // premixed voPath (legacy) is laid from the start as before.
+    const totalSec = opts.clipPaths.length * clipSec + packSec;
+    let voPath = opts.voPath;
+    if (opts.narrationPaths?.length) {
+      const pieces = [...opts.narrationPaths];
+      if (opts.taglinePath) pieces.push(opts.taglinePath);
+      const mixed = path.join(tmp, "vo-mix.wav");
+      const inputs = pieces.flatMap((p) => ["-i", p]);
+      const delays = pieces.map((_, i) => {
+        const ms = i < opts.narrationPaths!.length
+          ? Math.round((i * clipSec + 0.4) * 1000)          // line i over beat i
+          : Math.round((opts.narrationPaths!.length * clipSec + 0.5) * 1000); // tagline over packshot
+        return `[${i}:a]adelay=${ms}:all=1[a${i}]`;
+      });
+      const graph = `${delays.join(";")};${pieces.map((_, i) => `[a${i}]`).join("")}amix=inputs=${pieces.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`;
+      await runFfmpeg(bin, ["-y", ...inputs, "-filter_complex", graph, "-map", "[aout]", "-t", String(totalSec), mixed]);
+      voPath = mixed;
+    }
+    // 4) Concat + letterbox + grade (+ VO when present). drawbox bars give
     // the cinema crop; a light eq pass gives the grade — both filters exist
     // in every ffmpeg build we ship (drawtext does not, so no burned text).
+    // The output runs the FULL visual length — a short voice read must never
+    // amputate the cut (-shortest once cost us beats 3-5 and the packshot).
     const list = path.join(tmp, "list.txt");
     fs.writeFileSync(list, norm.map((n) => `file '${n}'`).join("\n"));
     const graded =
@@ -247,10 +282,10 @@ export async function assembleCommercial(opts: {
       "drawbox=x=0:y=ih*0.895:w=iw:h=ih*0.105:color=black:t=fill," +
       "eq=contrast=1.06:saturation=1.12:brightness=-0.012,format=yuv420p";
     const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
-    if (opts.voPath) args.push("-i", opts.voPath);
+    if (voPath) args.push("-i", voPath);
     args.push("-vf", graded, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20");
-    if (opts.voPath) args.push("-map", "0:v", "-map", "1:a", "-c:a", "aac", "-shortest");
-    args.push(opts.outPath);
+    if (voPath) args.push("-map", "0:v", "-map", "1:a", "-c:a", "aac");
+    args.push("-t", String(totalSec), opts.outPath);
     await runFfmpeg(bin, args);
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
@@ -318,19 +353,26 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     }
   }
 
-  // 4) VOICE — one continuous read of the three narration lines.
-  let audioUrl = params.resume?.audioUrl || "";
-  if (!audioUrl) {
-    const read = plan.beats.map((b) => b.narration).join(" ... ") + ` ... ${plan.tagline}.`;
-    const id = await repCreate("minimax/speech-02-hd", {
-      text: read,
-      voice_id: "English_Trustworth_Man",
-      emotion: "neutral",
-      english_normalization: true,
-      language_boost: "English",
-    });
-    audioUrl = await repPoll(id, 3 * 60_000, "commercial-vo");
-    await ckpt({ ckCommercialAudio: audioUrl });
+  // 4) VOICE — one TTS read PER LINE (plus the tagline), so assembly can
+  // place each line over its own beat. A single fast read used to finish at
+  // ~16s and, with -shortest, take the back half of the ad down with it.
+  const voLines = [...plan.beats.map((b) => b.narration || plan.tagline), `${plan.tagline}.`];
+  let audioUrls: string[] = [];
+  if (params.resume?.audioUrl?.trim().startsWith("[")) {
+    audioUrls = JSON.parse(params.resume.audioUrl) as string[];
+  } // a legacy single-URL checkpoint is a differently-paced read — re-synthesize
+  if (audioUrls.length < voLines.length) {
+    for (let i = audioUrls.length; i < voLines.length; i++) {
+      const id = await repCreate("minimax/speech-02-hd", {
+        text: voLines[i],
+        voice_id: "English_Trustworth_Man",
+        emotion: "neutral",
+        english_normalization: true,
+        language_boost: "English",
+      });
+      audioUrls.push(await repPoll(id, 3 * 60_000, `commercial-vo-${i + 1}`));
+      await ckpt({ ckCommercialAudio: JSON.stringify(audioUrls) });
+    }
   }
 
   // 5) FINALE FRAME — product mode closes on the REAL photo; service mode
@@ -354,8 +396,12 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
       await download(clipUrls[i], p);
       clipPaths.push(p);
     }
-    const voPath = path.join(tmp, "vo.mp3");
-    fs.writeFileSync(voPath, await downloadBuffer(audioUrl));
+    const voPaths: string[] = [];
+    for (let i = 0; i < audioUrls.length; i++) {
+      const p = path.join(tmp, `vo${i}.mp3`);
+      fs.writeFileSync(p, await downloadBuffer(audioUrls[i]));
+      voPaths.push(p);
+    }
     // Re-encode the finale image to a plain JPEG so AVIF/WebP originals
     // can't break the image2 loop (the b-roll lesson).
     const rawImg = path.join(tmp, "product.raw");
@@ -369,7 +415,13 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     fs.mkdirSync(rendersDir, { recursive: true });
     const fileName = `commercial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const outPath = path.join(rendersDir, fileName);
-    await assembleCommercial({ clipPaths, voPath, productJpegPath: jpg, outPath });
+    await assembleCommercial({
+      clipPaths,
+      narrationPaths: voPaths.slice(0, clipPaths.length),
+      taglinePath: voPaths[clipPaths.length],
+      productJpegPath: jpg,
+      outPath,
+    });
     try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
     const asset = await db.asset.create({

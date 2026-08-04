@@ -259,19 +259,24 @@ async function commercialCheck(): Promise<string> {
       clips.push(await repPoll(id, 8 * 60_000, `qa-commercial-beat-${i + 1}`));
       console.log(`[commercial] beat ${i + 1} animated`);
     }
-    const voId = await repCreate("minimax/speech-02-hd", {
-      text: plan.beats.map((b) => b.narration).join(" ... ") + ` ... ${plan.tagline}.`,
-      voice_id: "English_Trustworth_Man",
-      emotion: "neutral",
-      english_normalization: true,
-      language_boost: "English",
-    });
-    const voUrl = await repPoll(voId, 3 * 60_000, "qa-commercial-vo");
+    // Per-line VO, same as production: each line lands on its own beat.
+    const voLines = [...plan.beats.map((b) => b.narration || plan.tagline), `${plan.tagline}.`];
+    const voUrls: string[] = [];
+    for (let i = 0; i < voLines.length; i++) {
+      const voId = await repCreate("minimax/speech-02-hd", {
+        text: voLines[i],
+        voice_id: "English_Trustworth_Man",
+        emotion: "neutral",
+        english_normalization: true,
+        language_boost: "English",
+      });
+      voUrls.push(await repPoll(voId, 3 * 60_000, `qa-commercial-vo-${i + 1}`));
+    }
     const tmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), "qa-comm-"));
     const clipPaths: string[] = [];
     for (let i = 0; i < clips.length; i++) { const p = path2.join(tmp, `c${i}.mp4`); await download(clips[i], p); clipPaths.push(p); }
-    const voPath = path2.join(tmp, "vo.mp3");
-    fs2.writeFileSync(voPath, await downloadBuffer(voUrl));
+    const voPaths: string[] = [];
+    for (let i = 0; i < voUrls.length; i++) { const p = path2.join(tmp, `vo${i}.mp3`); fs2.writeFileSync(p, await downloadBuffer(voUrls[i])); voPaths.push(p); }
     const rawImg = path2.join(tmp, "prod.raw"); const jpg = path2.join(tmp, "prod.jpg");
     const packshotUrl = svc ? await commercialEndCard(title, plan.tagline) : prod!.url;
     if (svc) await saveFrame(packshotUrl, "commercial-endcard.jpg");
@@ -282,9 +287,16 @@ async function commercialCheck(): Promise<string> {
     const outDir = path2.join(process.cwd(), "qa-out", "frames");
     fs2.mkdirSync(outDir, { recursive: true });
     const outPath = path2.join(outDir, "commercial-final.mp4");
-    await assembleCommercial({ clipPaths, voPath, productJpegPath: jpg, outPath });
+    await assembleCommercial({
+      clipPaths,
+      narrationPaths: voPaths.slice(0, clipPaths.length),
+      taglinePath: voPaths[clipPaths.length],
+      productJpegPath: jpg,
+      outPath,
+    });
     // Pull one graded frame per beat from the finished cut for the report.
-    for (const [name, t] of [["commercial-final-beat1.jpg", "1.5"], ["commercial-final-beat2.jpg", "7"], ["commercial-final-packshot.jpg", "16"]] as const) {
+    // 5 beats × 5s + 4s packshot: mid-beat samples land at 2.5+5i, packshot ~27.
+    for (const [name, t] of [["commercial-final-beat1.jpg", "2.5"], ["commercial-final-beat2.jpg", "7.5"], ["commercial-final-beat3.jpg", "12.5"], ["commercial-final-beat4.jpg", "17.5"], ["commercial-final-beat5.jpg", "22.5"], ["commercial-final-packshot.jpg", "27"]] as const) {
       try { execFileSync(ff, ["-y", "-ss", t, "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
     }
     const mb = (fs2.statSync(outPath).size / 1e6).toFixed(1);
