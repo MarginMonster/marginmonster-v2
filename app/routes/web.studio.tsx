@@ -957,6 +957,14 @@ export default function WebStudio() {
                   <>
                     <div className="ws-autobox">✨ <b>EasyMode decides</b> the scene &amp; script from your brand voice. Tap <b>Advanced</b> to direct it yourself — or drop a quick direction below.</div>
                     <input className="wb-in" value={direction} maxLength={300} placeholder="cozy autumn morning energy, focus on the aroma" onChange={(e) => setDirection(e.target.value)} />
+                    {/* Blank boxes freeze people. Three tappable directions
+                        show the register and prove a single sentence is
+                        enough — tap to fill, tap again to clear. */}
+                    <div className="ws-chips" style={{ marginTop: 8 }}>
+                      {["golden-hour rooftop, confident and premium", "fast + funny, lead with the price", "cozy at home, make it feel like a gift"].map((ex) => (
+                        <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}>✨ {ex}</button>
+                      ))}
+                    </div>
                   </>
                 ) : (
                   <div className="ws-3w">
