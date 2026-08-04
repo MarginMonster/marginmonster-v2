@@ -205,11 +205,13 @@ export async function commercialEndCard(offerTitle: string, tagline: string, vis
     if (v.primaryColor) palette = `a ${v.primaryColor} background with ${v.accentColor ? `${v.accentColor} accents` : "elegant contrasting accents"}`;
   } catch { /* keep the generic palette */ }
   const res = process.env.COMPOSE_RESOLUTION?.trim();
+  // 9:16 native — the packshot slot cover-crops to 9:16, and a 3:4 card
+  // loses the edges of its own tagline to that crop.
   return falQueueImage(t2iModel(), {
     prompt:
-      `Minimal premium brand end-card for a TV commercial, portrait orientation: the tagline "${tagline}" in large elegant cinematic typography, centred, with "${offerTitle}" in smaller refined type beneath it, on ${palette}. Subtle vignette, faint filmic grain, generous empty space. ` +
+      `Minimal premium brand end-card for a TV commercial, tall vertical 9:16 format: the tagline "${tagline}" in large elegant cinematic typography, centred with wide safe margins, with "${offerTitle}" in smaller refined type beneath it, on ${palette}. Subtle vignette, faint filmic grain, generous empty space. ` +
       `The ONLY text in the image is exactly "${tagline}" and "${offerTitle}", spelled letter-for-letter — no other words, no logos, no watermarks, no people, no objects.`,
-    aspect_ratio: "3:4",
+    aspect_ratio: "9:16",
     ...(res ? { resolution: res } : {}),
     num_images: 1,
   }, "end-card");
