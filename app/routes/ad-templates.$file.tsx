@@ -6,7 +6,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
-import { adTemplateFile, BOTTLE_VARIANTS, bottlePreviewFile, ensureAdTemplate, ensureAllAdTemplates, ensureAllFormatPreviews, ensureBottlePreview, ensureFormatPreview, ensurePhCover, formatPreviewFile, phCoverFile, statueFile } from "../lib/image-generation.server";
+import { adTemplateFile, BOTTLE_VARIANTS, bottlePreviewFile, ctCoverFile, ensureAdTemplate, ensureAllAdTemplates, ensureAllFormatPreviews, ensureBottlePreview, ensureCtCover, ensureFormatPreview, ensurePhCover, formatPreviewFile, phCoverFile, statueFile } from "../lib/image-generation.server";
 import { AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 
@@ -64,6 +64,24 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   // The Product Highlight cover — a cinematic hero shot of the EASYMODE
   // bottle, self-forged like everything else. Old static art serves while
   // it cooks (no-store so the upgrade appears the moment it lands).
+  // Preset content-type covers (UGC Review / Unboxing / Satisfying Close-Up)
+  // — self-forge like phcover; the Product Highlight art stands in meanwhile.
+  const cc = (params.file || "").match(/^ctcover-(review|unboxing|asmr)\.jpg$/);
+  if (cc) {
+    const real = ctCoverFile(cc[1]);
+    if (real) {
+      return new Response(new Uint8Array(fs.readFileSync(real)), {
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
+      });
+    }
+    ensureCtCover(cc[1]);
+    const stand = phCoverFile() || path.join(process.cwd(), "public", "content-types", "ph.png");
+    if (!fs.existsSync(stand)) return new Response("Not ready", { status: 404 });
+    return new Response(new Uint8Array(fs.readFileSync(stand)), {
+      headers: { "Content-Type": stand.endsWith(".png") ? "image/png" : "image/jpeg", "Cache-Control": "no-store" },
+    });
+  }
+
   if (params.file === "phcover.jpg") {
     const real = phCoverFile();
     if (real) {

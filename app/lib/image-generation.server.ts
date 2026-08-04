@@ -2120,9 +2120,55 @@ export function ensurePhCover(): void {
   })();
 }
 
+/* Covers for the three PRESET content types in the Studio picker (UGC
+ * Review / Unboxing / Satisfying Close-Up). Composited from the canonical
+ * statue bottle — same reference as every other tile — so the picker reads
+ * as one brand. Self-forge once, same lifecycle as phcover. */
+const CT_COVER_VERSION: Record<string, number> = { review: 1, unboxing: 1, asmr: 1 };
+// KEEP IN SYNC with the COVERS list in scripts/video-qa.ts (QA_FLANKS) — the
+// harness renders approval previews from these exact prompts.
+const CT_COVER_PROMPTS: Record<string, string> = {
+  review: "Selfie-style UGC frame: a young woman creator filming herself on her phone in a cozy bedroom lit by a warm ring-light glow, holding the bottle from the reference image up to the lens, mid-review expression, authentic social-feed energy, slightly casual framing.",
+  unboxing: "First-impressions unboxing moment: hands lifting the bottle from the reference image out of an open kraft shipping box with crinkled tissue paper, on a warm wooden desk in soft daylight, close and personal framing, genuine excitement in the scene.",
+  asmr: "Extreme macro close-up of the bottle from the reference image, condensation droplets rolling down the plastic, dark glossy background, one dramatic beam of light carving the silhouette — oddly satisfying, mesmerizing product photography.",
+};
+const ctCoverInFlight = new Set<string>();
+
+export function ctCoverFile(key: string): string | null {
+  if (!CT_COVER_VERSION[key]) return null;
+  const p = path.join(AD_TEMPLATE_DIR, `ctcover-${key}-v${CT_COVER_VERSION[key]}.jpg`);
+  return fs.existsSync(p) ? p : null;
+}
+
+export function ensureCtCover(key: string): void {
+  if (!CT_COVER_PROMPTS[key] || ctCoverFile(key) || ctCoverInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!statueFile() || !base) return; // wait for the statue; the next request retries
+  ctCoverInFlight.add(key);
+  (async () => {
+    try {
+      const url = await repRun("google/nano-banana", {
+        prompt: CT_COVER_PROMPTS[key],
+        image_input: [`${base}/ad-templates/statue.png`],
+        output_format: "jpg",
+      });
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      fs.mkdirSync(AD_TEMPLATE_DIR, { recursive: true });
+      fs.writeFileSync(path.join(AD_TEMPLATE_DIR, `ctcover-${key}-v${CT_COVER_VERSION[key]}.jpg`), Buffer.from(await res.arrayBuffer()));
+      artLog("ad-templates", `ctcover-${key}: content-type cover forged OK`);
+    } catch (e) {
+      artLog("ad-templates", `ctcover-${key}: FAILED — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+    } finally {
+      ctCoverInFlight.delete(key);
+    }
+  })();
+}
+
 export async function ensureAllAdTemplates(): Promise<void> {
   if (await merchantBusy()) return;
   ensurePhCover();
+  for (const k of Object.keys(CT_COVER_VERSION)) ensureCtCover(k);
   const { AD_TEMPLATES } = await import("./ad-templates");
   // One template per tick — see ensureAllFormatPreviews for why.
   for (const t of AD_TEMPLATES) {

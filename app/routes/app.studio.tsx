@@ -25,7 +25,18 @@ const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string;
 // else, then the screen shifts in place to that style's picker. All four are
 // live pipelines: avatar (UGC), highlight (cinematic), cartoon (illustrated
 // keyframe + kling), jingle (sung ad).
-type CType = "avatar" | "highlight" | "cartoon" | "jingle" | "commercial";
+type CType = "avatar" | "highlight" | "cartoon" | "jingle" | "commercial" | "review" | "unboxing" | "asmr";
+
+// The three PRESET types ride the avatar/highlight pipelines with a baked-in
+// creative direction — translated at submit so the queue, the capability
+// gate and the pipelines never learn new keys. (web.studio.tsx mirrors this.)
+const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: string }> = {
+  review: { base: "avatar", direction: "Film it like a real customer review shot on a phone for social: casual selfie framing, natural light, honest conversational tone — a viral organic review, not a polished ad." },
+  unboxing: { base: "avatar", direction: "An excited first-impressions unboxing: they open the package on camera, lift the product out, react genuinely, and show it close to the lens." },
+  asmr: { base: "highlight", direction: "An oddly-satisfying ASMR-style macro edit: extreme close-ups, slow luxurious motion, rich textures, droplets and light play — a mesmerizing loop that stops the scroll." },
+};
+// What a preset key renders AS — everything downstream keys off the base.
+const baseOf = (ct: string | null | undefined) => (ct && CT_PRESETS[ct] ? CT_PRESETS[ct].base : ct);
 // Covers carry ?v= so replacing the art actually reaches browsers that
 // cached the old file under the same name.
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
@@ -34,6 +45,9 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", live: true },
   { key: "commercial", name: "Commercial", icon: "🎥", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", live: true },
+  { key: "review", name: "UGC Review", icon: "🤳", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's honest phone-shot review — social-feed real", live: true },
+  { key: "unboxing", name: "Unboxing", icon: "📦", cover: "/ad-templates/ctcover-unboxing.jpg?v=1", sub: "The box opens on camera — first impressions, real reactions", live: true },
+  { key: "asmr", name: "Satisfying Close-Up", icon: "🌊", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", live: true },
 ];
 
 // Cartoon sub-styles — the VIRAL formats people already share, named
@@ -195,7 +209,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Content type routes the pipeline: avatar → UGC, highlight → showcase,
     // cartoon → presenter+product redrawn in style, jingle → sung ad (no
     // presenter).
-    const contentType = ((form.get("contentType") as string) || "").trim();
+    let contentType = ((form.get("contentType") as string) || "").trim();
+    // Preset translation: the picker key becomes its base pipeline type and
+    // its baked-in direction rides ahead of whatever the merchant typed.
+    const ctPreset = CT_PRESETS[contentType];
+    const videoDirection = ctPreset ? [ctPreset.direction, direction].filter(Boolean).join(" ") : direction;
+    if (ctPreset) contentType = ctPreset.base;
     try { assertCapability(shop.activePlan, videoCapabilityFor(contentType)); }
     catch (e) { return json({ error: (e as Error).message }); }
     const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
@@ -216,7 +235,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try { await spendTokens(shop.id, charged); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: direction, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -371,7 +390,7 @@ export default function Studio() {
   // avatar clutter on arrival.
   const [imageMode, setImageMode] = useState<null | "product" | "presenter">(null);
   useEffect(() => {
-    if (contentType === "avatar" || contentType === "cartoon" || contentType === "jingle" || (tab === "image" && imageMode === "presenter")) setAvatarId((a) => a ?? defaultAvatar);
+    if (baseOf(contentType) === "avatar" || contentType === "cartoon" || contentType === "jingle" || (tab === "image" && imageMode === "presenter")) setAvatarId((a) => a ?? defaultAvatar);
   }, [contentType, defaultAvatar, tab, imageMode]);
   // The config below the type step appears once a type (and, for cartoon, a
   // style — and for images, a mode) is chosen.
@@ -379,8 +398,8 @@ export default function Studio() {
     tab === "blog" ||
     (tab === "image" && imageMode !== null) ||
     (tab === "video" && (
-      contentType === "avatar" ||
-      contentType === "highlight" ||
+      baseOf(contentType) === "avatar" ||
+      baseOf(contentType) === "highlight" ||
       contentType === "commercial" ||
       contentType === "jingle" ||
       (contentType === "cartoon" && !!cartoonStyle)));
@@ -451,7 +470,7 @@ export default function Studio() {
       // Presenter rides along for Avatar AI, Cartoon Avatar and Anthem (the
       // character presents or SINGS) — highlight never carries one, even if a
       // pick lingers in shared state.
-      if ((contentType === "avatar" || contentType === "cartoon" || contentType === "jingle") && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear && contentType === "avatar") fields.wear = "1"; }
+      if ((baseOf(contentType) === "avatar" || contentType === "cartoon" || contentType === "jingle") && avatarId) { fields.avatarId = avatarId; fields.avatarVariant = nextVariant(); if (wear && contentType === "avatar") fields.wear = "1"; }
     } else {
       fields.direction = direction.trim();
       if (tab === "image") {
@@ -559,8 +578,11 @@ export default function Studio() {
           {tab === "video" && contentType && (
             <>
               <button type="button" className="cs-back" onClick={() => setContentType(null)}>‹ Content type</button>
-              {contentType === "avatar" && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={false} brandFaceId={brandFaceId} />}
+              {baseOf(contentType) === "avatar" && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={false} brandFaceId={brandFaceId} />}
               {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
+              {contentType === "review" && <p className="cfg-note cs-ctnote">🤳 <b>UGC Review</b> — your presenter films it like a real customer review: phone-shot, casual, straight to camera. The kind of post people actually trust.</p>}
+              {contentType === "unboxing" && <p className="cfg-note cs-ctnote">📦 <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
+              {contentType === "asmr" && <p className="cfg-note cs-ctnote">🌊 <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
               {contentType === "cartoon" && (
                 <>
                   {/* Presenter FIRST — the style tiles render AS the chosen
@@ -656,8 +678,8 @@ export default function Studio() {
               )}
             </>
           )}
-          {(((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter"))) && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
-          {(((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter"))) && avatarId && avatarId !== brandFaceId && (
+          {(((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter"))) && avatarId && <p className="cfg-note">Their outfit rotates each time, so your content never looks stale.</p>}
+          {(((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter"))) && avatarId && avatarId !== brandFaceId && (
             <button type="button" className="cs-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>★ Make {cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face</button>
           )}
 
@@ -690,7 +712,7 @@ export default function Studio() {
                 <button type="button" className={!service ? "sel" : ""} onClick={() => setServiceOverride(false)}>📦 Physical product</button>
                 <button type="button" className={service ? "sel" : ""} onClick={() => setServiceOverride(true)}>✨ Service / offer</button>
               </div>
-              {service && <p className="cs-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || contentType === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
+              {service && <p className="cs-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
             </>
           )}
 
@@ -780,7 +802,7 @@ export default function Studio() {
 
           <div className="smp-tok"><div className="tt">This {meta.noun}</div><div className="tb"><b>{meta.cost}</b><span>tokens</span></div></div>
 
-          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && contentType === "avatar" && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (tab === "image" && imageMode === "presenter" && !avatarId)} onClick={generate}>
+          <button type="button" className="smp-cta go" disabled={busy || !product || (tab === "video" && baseOf(contentType) === "avatar" && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (tab === "image" && imageMode === "presenter" && !avatarId)} onClick={generate}>
             {busy ? "Sending to the studio…" : `${meta.verb} ${meta.noun} — ${costLabel}`}
           </button>
           <p className="smp-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Choose a subscription plan to generate."}</p>

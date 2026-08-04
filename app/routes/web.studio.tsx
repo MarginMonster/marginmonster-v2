@@ -30,7 +30,21 @@ const CONTENT_TYPES = [
   { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
   { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
+  { key: "review", name: "UGC Review", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's honest phone-shot review — social-feed real", cap: "video", tier: "Studio", price: 39 },
+  { key: "unboxing", name: "Unboxing", cover: "/ad-templates/ctcover-unboxing.jpg?v=1", sub: "The box opens on camera — first impressions, real reactions", cap: "video", tier: "Studio", price: 39 },
+  { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
 ] as const;
+
+// The three PRESET types ride the avatar/highlight pipelines with a baked-in
+// creative direction — translated at submit so the queue, the capability
+// gate and the pipelines never learn new keys.
+const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: string }> = {
+  review: { base: "avatar", direction: "Film it like a real customer review shot on a phone for social: casual selfie framing, natural light, honest conversational tone — a viral organic review, not a polished ad." },
+  unboxing: { base: "avatar", direction: "An excited first-impressions unboxing: they open the package on camera, lift the product out, react genuinely, and show it close to the lens." },
+  asmr: { base: "highlight", direction: "An oddly-satisfying ASMR-style macro edit: extreme close-ups, slow luxurious motion, rich textures, droplets and light play — a mesmerizing loop that stops the scroll." },
+};
+// What a preset key renders AS — everything downstream keys off the base.
+const baseOf = (ct: string | null | undefined) => (ct && CT_PRESETS[ct] ? CT_PRESETS[ct].base : ct);
 
 const CARTOON_STYLES = [
   { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
@@ -211,7 +225,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     if (intent === "video") {
-      const contentType = ((form.get("contentType") as string) || "").trim() || undefined;
+      let contentType = ((form.get("contentType") as string) || "").trim() || undefined;
+      // Preset translation: the picker key becomes its base pipeline type and
+      // its baked-in direction rides ahead of whatever the merchant typed.
+      const preset = contentType ? CT_PRESETS[contentType] : undefined;
+      const videoDirection = preset ? [preset.direction, direction].filter(Boolean).join(" ") : direction;
+      if (preset) contentType = preset.base;
       const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
       const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
@@ -236,7 +255,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await spendTokens(shop.id, charged);
       // Services: the presenter explains the offer to camera — nothing to hold.
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
-        productTitle, productImageUrl, customPrompt: direction, productDescription: direction,
+        productTitle, productImageUrl, customPrompt: videoDirection, productDescription: direction,
         style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
         contentType, cartoonStyle,
         avatarId, avatarVariant,
@@ -539,7 +558,7 @@ export default function WebStudio() {
   const noun = tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : d.costs.blog;
   const cost = baseCost + engineFee;
-  const needsPresenter = tab === "video" ? contentType === "avatar" : tab === "image" && imageMode === "presenter";
+  const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
   const cfgReady = tab === "blog" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
   const showService = tab === "video" || (tab === "image" && imageMode === "product");
@@ -650,7 +669,7 @@ export default function WebStudio() {
             )}
             {/* Presenter FIRST — the style tiles below render as the chosen
               * presenter, so picking them in this order explains the art. */}
-            {(contentType === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={contentType !== "avatar"} brandFaceId={d.brandFaceId} />}
+            {(baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
             {contentType === "cartoon" && !avatarId && <p className="ws-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
             {showCartoonGrid && (
@@ -682,6 +701,9 @@ export default function WebStudio() {
             )}
             {contentType === "highlight" && <p className="ws-note">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
             {contentType === "commercial" && <p className="ws-note">🎥 <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
+            {contentType === "review" && <p className="ws-note">🤳 <b>UGC Review</b> — your presenter films it like a real customer review: phone-shot, casual, straight to camera. The kind of post people actually trust.</p>}
+            {contentType === "unboxing" && <p className="ws-note">📦 <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
+            {contentType === "asmr" && <p className="ws-note">🌊 <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {(contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">
@@ -781,7 +803,7 @@ export default function WebStudio() {
         )}
 
         {/* Outfit rotation + Brand Face crowning, wherever a presenter stars. */}
-        {((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter")) && avatarId && (
+        {((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && avatarId && (
           <>
             <p className="ws-note">Their outfit rotates each time, so your content never looks stale.</p>
             {avatarId !== d.brandFaceId && (
@@ -923,7 +945,7 @@ export default function WebStudio() {
                   <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}>📦 Physical product</button>
                   <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}>✨ Service / offer</button>
                 </div>
-                {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || contentType === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
+                {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
               </>
             )}
 
@@ -1063,7 +1085,7 @@ export default function WebStudio() {
 }
 
 function needsPresenterField(ct: CType | null): boolean {
-  return ct === "avatar" || ct === "cartoon" || ct === "jingle";
+  return ct === "avatar" || ct === "cartoon" || ct === "jingle" || ct === "review" || ct === "unboxing";
 }
 
 /* Route-local styles — GStyle palette (paper #F4F1E6, card #FDFCF7, ink
