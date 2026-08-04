@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -106,11 +106,12 @@ async function main() {
   const ph = await presenterHoldCheck();
   const bl = await brandLab();
   const rx = await referenceExtract();
+  const pf = await portfolioAssets();
   const hc = await heroCut();
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, bl, rx, hc, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, rx, pf, hc, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -250,6 +251,70 @@ async function referenceExtract(): Promise<string> {
   }
 }
 
+/* ---------- Portfolio: unbranded merchant products for the hero grid ----
+ *
+ * No fake EasyMode products — the grid shows what real merchants make:
+ * different products, different formats, all genuinely generated. 6
+ * hyper-real Veo clips + 2 toon clips + 2 pack shots (~$8), published to
+ * qa-out/frames as port-* for the hero assembler (same run or later).
+ * QA_PORTFOLIO=1 enables. */
+async function portfolioAssets(): Promise<string> {
+  if (!process.env.QA_PORTFOLIO) return "";
+  const head = "### Portfolio — unbranded merchant assets";
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  try {
+    const { sceneKeyframe, renderMotionClip, motionGate } = await import("../app/lib/commercial-ad-pipeline.server");
+    const { download } = await import("../app/lib/ugc-ad-pipeline.server");
+    const t0 = Date.now();
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const CLIPS: [string, string, string][] = [
+      ["port-c1", "Slow pour of steaming coffee from a gooseneck kettle into a ceramic mug on a rustic wooden counter, morning window light, an unbranded kraft coffee bag beside it.", "steam rising, slow cinematic push-in"],
+      ["port-c2", "A woman dabs serum from a frosted glass dropper bottle onto her cheek in a bright minimal bathroom, soft daylight, dewy skin close-up.", "gentle close-up, slow push"],
+      ["port-c3", "A lit artisan candle in an amber glass jar on a windowsill at dusk, flame flickering, cozy warm bokeh behind.", "flame flickers, slow drift sideways"],
+      ["port-c4", "White sneakers mid-stride splashing through a shallow puddle on a city street at golden hour, kinetic energy.", "tracking the stride, dynamic motion"],
+      ["port-c5", "A commuter wearing matte black over-ear headphones on a night train, city lights streaking past the window, warm interior light.", "lights streak past, subtle sway"],
+      ["port-c6", "A vibrant green smoothie being poured into a glass jar on a bright kitchen counter, fresh fruit scattered around.", "pour completes, slight rotation"],
+    ];
+    const TOONS: [string, string, string][] = [
+      ["port-t1", "Cheerful 3D-animated-film style barista character holding up a steaming coffee cup, big expressive eyes, warm cozy cafe background, glossy big-studio animation look.", "she smiles wider and raises the cup"],
+      ["port-t2", "Anime style young woman holding an unbranded water bottle on a sunrise hilltop, wind in her hair, painterly sky, soft cel shading.", "hair and grass move in the wind"],
+    ];
+    const STILLS: [string, string][] = [
+      ["port-s1", "Studio packshot of an unbranded kraft paper coffee bag with a blank label, white seamless background, soft key light, e-commerce hero shot. No text anywhere."],
+      ["port-s2", "Luxury studio packshot of a frosted glass serum dropper bottle with a blank label on a dark stone surface, dramatic side light. No text anywhere."],
+    ];
+    const engine = process.env.QA_COMMERCIAL_ENGINE?.trim() || "veo";
+    const made: string[] = [];
+    await Promise.all([
+      ...CLIPS.map(([name, scene, motion]) => (async () => {
+        const kf = await sceneKeyframe(undefined, scene);
+        let clip = await renderMotionClip(engine, { startImage: kf, prompt: `${motion}. Cinematic live-action, natural physics. No morphing, no text.`, negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion" }, name);
+        const gate = await motionGate(clip, true);
+        if (!gate.ok) clip = await renderMotionClip(engine, { startImage: kf, prompt: `${motion}. Cinematic live-action, natural physics. No morphing, no text.` }, `${name}-reroll`);
+        await download(clip, path2.join(outDir, `${name}.mp4`));
+        made.push(name);
+      })()),
+      ...TOONS.map(([name, scene, motion]) => (async () => {
+        const kf = await sceneKeyframe(undefined, scene);
+        const clip = await renderMotionClip(undefined, { startImage: kf, prompt: `${motion}. Smooth animated-film motion, character stays on model. No text.`, negativePrompt: "live action, photorealism, warping, text" }, name);
+        await download(clip, path2.join(outDir, `${name}.mp4`));
+        made.push(name);
+      })()),
+      ...STILLS.map(([name, prompt]) => (async () => {
+        const { brandImage } = await import("../app/lib/commercial-ad-pipeline.server");
+        const url = await brandImage(prompt);
+        await saveFrame(url, `${name}.jpg`);
+        made.push(name);
+      })()),
+    ]);
+    return [head, ``, `${made.length}/10 assets made (${made.sort().join(", ")}) · ${Math.round((Date.now() - t0) / 60_000)} min`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+  }
+}
+
 /* ---------- Hero Cut: the product-truth super ad ----------
  *
  * No AI-generated footage at all. The ad IS the product working: kinetic
@@ -311,7 +376,18 @@ async function heroCut(): Promise<string> {
     // DARK CINEMA STAGE — everything floats spotlit on black-green.
     const stage = `background:radial-gradient(130% 100% at 50% 32%, #0E1F16 0%, #07110C 58%, #040A07 100%)`;
     const headline = `<div style="position:absolute;left:0;right:0;top:60px;text-align:center;font-weight:800;font-size:34px;color:#F4F1E6;letter-spacing:-.01em;text-shadow:0 0 34px rgba(18,168,94,.35)">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>`;
-    const packShot = path2.join(process.cwd(), "public", "showcase", "surge-pack.jpg");
+    // The hero photo is an UNBRANDED merchant product (portfolio pack shot):
+    // local when this run generated it, qa-frames when a re-cut runs alone.
+    const curl0 = (url: string, out: string) => {
+      try { execFileSync("curl", ["-sf", "--max-time", "20", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 5000; } catch { return false; }
+    };
+    let packShot = path2.join(process.cwd(), "qa-out", "frames", "port-s1.jpg");
+    if (!fs2.existsSync(packShot)) {
+      const t = path2.join(tmp, "port-s1.jpg");
+      packShot = curl0("https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/port-s1.jpg", t)
+        ? t
+        : path2.join(process.cwd(), "public", "showcase", "surge-pack.jpg");
+    }
     const flashPng = path2.join(tmp, "flash.png");
     shoot(`<div style="width:720px;height:1280px;background:#EFFFF4"></div>`, flashPng);
     // 2-frame impact flash between acts — the hype-edit stitch.
@@ -344,7 +420,7 @@ async function heroCut(): Promise<string> {
     // B) TYPING — the REAL studio prompt as a spotlit 3D object: the card
     // floats tilted on the dark stage, drifts as the camera pushes in, the
     // type ACCELERATES, and the press detonates into a flash.
-    const sentence = "my citrus sports drink";
+    const sentence = "my small-batch coffee";
     const studioFrame = (text: string, caret: boolean, pressed: boolean, k: number) =>
       `<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center;overflow:hidden">${headline}
         <div style="width:640px;transform:perspective(1300px) rotateX(7deg) rotateY(${(-7 + k * 0.28).toFixed(2)}deg) scale(${(1 + k * 0.006).toFixed(3)})">
@@ -414,50 +490,82 @@ async function heroCut(): Promise<string> {
     pushSeg(segT, thinkFrames.reduce((a, f) => a + f.dur, 0));
     flashSeg(3);
 
-    // G) GRID FILL — real outputs popping into a wall, hyper-real dominant
-    // with a sprinkle of toons and stills. Volume reads as power.
+    // G) GRID FILL — LIVE video tiles composited in real time. Every tile
+    // moves: portfolio clips play, pack shots and cards get Ken Burns.
     const curl = (url: string, out: string) => {
       try { execFileSync("curl", ["-sf", "--max-time", "20", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 5000; } catch { return false; }
     };
-    const flexDir = path2.join(process.cwd(), "public", "showcase", "flex");
-    const tiles: string[] = [];
-    // hyper-real backbone
-    for (const f of ["01-surge-wall.jpg", "07-night-run.jpg", "02-surge-finish.jpg", "05-ramune-sip.jpg", "08-relax.jpg", "06-take47.jpg"]) {
-      const p = path2.join(flexDir, f); if (fs2.existsSync(p)) tiles.push(p);
+    const framesDir = path2.join(process.cwd(), "qa-out", "frames");
+    const RAW = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+    const avail = new Map<string, { src: string; video: boolean }>();
+    const grab = (name: string, ext: string, video: boolean) => {
+      const local = path2.join(framesDir, `${name}.${ext}`);
+      if (fs2.existsSync(local)) { avail.set(name, { src: local, video }); return; }
+      const t = path2.join(tmp, `${name}.${ext}`);
+      if (curl(`${RAW}/${name}.${ext}`, t)) avail.set(name, { src: t, video });
+    };
+    for (let i = 1; i <= 6; i++) grab(`port-c${i}`, "mp4", true);
+    for (const t of ["port-t1", "port-t2"]) grab(t, "mp4", true);
+    for (const s of ["port-s1", "port-s2"]) grab(s, "jpg", false);
+    for (const [u, name] of [["ad-templates/format-review.jpg", "fmt-review"], ["ad-templates/format-tweet.jpg", "fmt-tweet"]] as const) {
+      const p = path2.join(tmp, `${name}.jpg`);
+      if (curl(`https://easymodeapp.com/${u}`, p)) avail.set(name, { src: p, video: false });
     }
-    const cover = path2.join(process.cwd(), "public", "showcase", "commercial-cover.jpg");
-    if (fs2.existsSync(cover)) tiles.push(cover);
-    // sprinkle: toons + stills (live prod art; skip silently when offline)
-    for (const u of ["style-tiles/cover.jpg", "style-tiles/dreamanime.jpg", "ad-templates/format-review.jpg"]) {
-      const p = path2.join(tmp, u.replace(/\//g, "_"));
-      if (curl(`https://easymodeapp.com/${u}`, p)) tiles.push(p);
+    // coffee (the typed product) leads, then the wall widens to everything
+    const wish = ["port-c1", "port-s1", "fmt-review", "port-c2", "port-t1", "port-c4", "port-c3", "fmt-tweet", "port-c5", "port-t2", "port-s2", "port-c6"];
+    const tilesV = wish.map((w) => avail.get(w)).filter(Boolean) as { src: string; video: boolean }[];
+    if (!tilesV.length) throw new Error("hero grid: no tiles available — run portfolio first");
+    const rows = Math.ceil(tilesV.length / 3);
+    const tw = rows >= 4 ? 184 : 214;
+    const th = rows >= 4 ? 246 : 286;
+    const x0 = Math.round((720 - 3 * tw - 2 * 12) / 2);
+    const y0 = 165;
+    const pops = tilesV.map((_, i) => 0.05 + i * 0.14);
+    const capT = pops[pops.length - 1] + 0.35;
+    const gridLen = capT + 1.7;
+    // per-tile normalized mp4s at exact cell size
+    const tileMp4s: string[] = [];
+    tilesV.forEach((t, i) => {
+      const out = path2.join(tmp, `tile${i}.mp4`);
+      if (t.video) {
+        execFileSync(ff, ["-y", "-stream_loop", "-1", "-t", String(gridLen + 0.3), "-i", t.src,
+          "-vf", `scale=${tw}:${th}:force_original_aspect_ratio=increase,crop=${tw}:${th},fps=30,format=yuv420p`,
+          "-t", String(gridLen), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", out], { stdio: "ignore" });
+      } else {
+        const fr = Math.round(gridLen * 30);
+        execFileSync(ff, ["-y", "-loop", "1", "-framerate", "30", "-t", String(gridLen + 0.3), "-i", t.src,
+          "-vf", `scale=${tw * 3}:${th * 3}:force_original_aspect_ratio=increase,crop=${tw * 3}:${th * 3},zoompan=z='1+${(0.12 / fr).toFixed(6)}*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${tw}x${th}:fps=30,format=yuv420p`,
+          "-t", String(gridLen), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", out], { stdio: "ignore" });
+      }
+      tileMp4s.push(out);
+    });
+    const gridBase = path2.join(tmp, "gridbase.png");
+    shoot(`<div style="position:relative;width:720px;height:1280px;${stage}">${headline}</div>`, gridBase);
+    const capPng = renderOverlayPng(
+      `<div style="color:#F4F1E6;font-weight:800;font-size:27px;text-align:center;text-shadow:0 2px 8px rgba(0,0,0,.8)">Whatever you sell. <span style="color:#7FE0AC">One tap each.</span></div>`,
+      700, 60, path2.join(tmp, "cap.png"));
+    const gArgs = ["-y", "-loop", "1", "-framerate", "30", "-t", String(gridLen), "-i", gridBase];
+    tileMp4s.forEach((p) => gArgs.push("-i", p));
+    if (capPng) gArgs.push("-loop", "1", "-framerate", "30", "-t", String(gridLen), "-i", capPng);
+    const gParts: string[] = [];
+    let gcur = "0:v";
+    tileMp4s.forEach((_, i) => {
+      const x = x0 + (i % 3) * (tw + 12);
+      const y = y0 + Math.floor(i / 3) * (th + 12);
+      gParts.push(`[${i + 1}:v]setpts=PTS-STARTPTS[gt${i}]`);
+      gParts.push(`[${gcur}][gt${i}]overlay=x=${x}:y=${y}:enable='gte(t,${pops[i].toFixed(2)})'[gv${i}]`);
+      gcur = `gv${i}`;
+    });
+    if (capPng) {
+      gParts.push(`[${tileMp4s.length + 1}:v]format=rgba[gcap]`);
+      gParts.push(`[${gcur}][gcap]overlay=x=(W-w)/2:y=${y0 + rows * (th + 12) + 14}:enable='gte(t,${capT.toFixed(2)})'[gvc]`);
+      gcur = "gvc";
     }
-    tiles.push(packShot);
-    const can = path2.join(process.cwd(), "public", "showcase", "daybreak-can.jpg");
-    if (fs2.existsSync(can)) tiles.push(can);
-    // pop order mixes the sprinkle through the middle instead of clumping
-    const order = tiles.length >= 12 ? [0, 10, 1, 7, 2, 9, 3, 8, 4, 11, 5, 6] : tiles.map((_, i) => i);
-    const gridFrame = (k: number) =>
-      `<div style="position:relative;width:720px;height:1280px;${stage};padding:150px 26px 0">${headline}
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-          ${order.slice(0, Math.min(k, tiles.length)).map((ti, i) =>
-            `<div style="aspect-ratio:3/4;border-radius:14px;overflow:hidden;border:1px solid rgba(127,224,172,.22);box-shadow:0 14px 34px rgba(0,0,0,.6)${i === Math.min(k, tiles.length) - 1 ? ",0 0 40px rgba(18,168,94,.45);transform:scale(1.07)" : ""};">
-               <img src="file://${tiles[ti]}" style="width:100%;height:100%;object-fit:cover"></div>`).join("")}
-        </div>
-        ${k >= tiles.length ? `<div style="text-align:center;margin-top:28px;font-weight:800;font-size:26px;color:#F4F1E6">Every one: made by EasyMode. <span style="color:#7FE0AC">One tap each.</span></div>` : ""}
-      </div>`;
-    const gridFrames: { png: string; dur: number }[] = [];
-    for (let k = 1; k <= tiles.length; k++) {
-      const p = path2.join(tmp, `grid${String(k).padStart(2, "0")}.png`);
-      shoot(gridFrame(k), p);
-      gridFrames.push({ png: p, dur: k === tiles.length ? 1.35 : 0.13 });
-    }
-    const gridList = path2.join(tmp, "grid.txt");
-    fs2.writeFileSync(gridList, gridFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${gridFrames[gridFrames.length - 1].png}'`);
+    gParts.push(`[${gcur}]format=yuv420p[gout]`);
     const segG = path2.join(tmp, "segG.mp4");
-    execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", gridList,
-      "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segG], { stdio: "ignore" });
-    pushSeg(segG, gridFrames.reduce((a, f) => a + f.dur, 0));
+    execFileSync(ff, [...gArgs, "-filter_complex", gParts.join(";"), "-map", "[gout]",
+      "-t", String(gridLen), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segG], { stdio: "ignore" });
+    pushSeg(segG, gridLen);
 
     // P) AUTOPOST — smash card, the flex the reference can't make.
     flashSeg(4);
@@ -545,7 +653,7 @@ async function heroCut(): Promise<string> {
       return `[va${i}]`;
     });
     if (musicPath) {
-      fparts.push(`[${1 + voFiles.length}:a]volume=0.4,atrim=0:${totalSec},afade=t=out:st=${(totalSec - 1.5).toFixed(2)}:d=1.5[mus]`);
+      fparts.push(`[${1 + voFiles.length}:a]volume=0.22,atrim=0:${totalSec},afade=t=out:st=${(totalSec - 1.5).toFixed(2)}:d=1.5[mus]`);
       aIns.push("[mus]");
     }
     fparts.push(`${aIns.join("")}amix=inputs=${aIns.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`);
@@ -567,7 +675,7 @@ async function heroCut(): Promise<string> {
     }
     return [head, ``, `| | |`, `|---|---|`,
       `| length | ${totalSec.toFixed(1)}s |`,
-      `| grid tiles | ${tiles.length} (hyper-real backbone + toon/still sprinkle) |`,
+      `| grid tiles | ${tilesV.length} LIVE (${tilesV.filter((t) => t.video).length} video, ${tilesV.filter((t) => !t.video).length} Ken Burns) |`,
       `| AI footage | none — Chromium + ffmpeg + real outputs |`,
       `| wall time | ${Math.round((Date.now() - t0) / 60_000)} min |`].join("\n");
   } catch (e) {
