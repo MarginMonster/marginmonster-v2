@@ -308,77 +308,95 @@ async function heroCut(): Promise<string> {
 
     const segLens: number[] = [];
     const pushSeg = (p: string, len: number) => { segs.push(p); segLens.push(len); };
-    const headline = `<div style="position:absolute;left:0;right:0;top:64px;text-align:center;font-weight:800;font-size:33px;color:#14201A;letter-spacing:-.01em">Studio-quality ads. <span style="color:#0C7A46">In minutes.</span></div>`;
+    // DARK CINEMA STAGE — everything floats spotlit on black-green.
+    const stage = `background:radial-gradient(130% 100% at 50% 32%, #0E1F16 0%, #07110C 58%, #040A07 100%)`;
+    const headline = `<div style="position:absolute;left:0;right:0;top:60px;text-align:center;font-weight:800;font-size:34px;color:#F4F1E6;letter-spacing:-.01em;text-shadow:0 0 34px rgba(18,168,94,.35)">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>`;
     const packShot = path2.join(process.cwd(), "public", "showcase", "surge-pack.jpg");
+    const flashPng = path2.join(tmp, "flash.png");
+    shoot(`<div style="width:720px;height:1280px;background:#EFFFF4"></div>`, flashPng);
+    // 2-frame impact flash between acts — the hype-edit stitch.
+    const flashSeg = (n: number) => {
+      const s = path2.join(tmp, `flash${n}.mp4`);
+      execFileSync(ff, ["-y", "-loop", "1", "-framerate", "30", "-t", "0.08", "-i", flashPng,
+        "-vf", "scale=720:1280,format=yuv420p", "-t", "0.07", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", s], { stdio: "ignore" });
+      pushSeg(s, 0.07);
+    };
+    // Smash title card: two frames (overshoot → settle) + hold.
+    const smash = (html: string, holdSec: number, name: string) => {
+      const f1 = path2.join(tmp, `${name}a.png`); const f2 = path2.join(tmp, `${name}b.png`);
+      shoot(`<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center"><div style="transform:scale(1.14)">${html}</div></div>`, f1);
+      shoot(`<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center">${html}</div>`, f2);
+      const list = path2.join(tmp, `${name}.txt`);
+      fs2.writeFileSync(list, `file '${f1}'\nduration 0.12\nfile '${f2}'\nduration ${holdSec}\nfile '${f2}'`);
+      const s = path2.join(tmp, `${name}.mp4`);
+      execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", list,
+        "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", s], { stdio: "ignore" });
+      pushSeg(s, 0.12 + holdSec);
+    };
 
-    // A) PRODUCT DROP — the merchant's input, nothing else. "You give us this."
-    {
-      const p = path2.join(tmp, "drop.png");
-      shoot(`<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px">
-        <img src="file://${packShot}" style="width:430px;border-radius:22px;box-shadow:0 22px 60px rgba(20,32,26,.28)">
-        <div style="font-weight:800;font-size:30px;color:#4A554E">Your product photo.</div></div>`, p);
-      still(p, 1.6, path2.join(tmp, "segA.mp4"), true);
-      pushSeg(path2.join(tmp, "segA.mp4"), 1.6);
-    }
+    // A) SLAM OPEN — the input as a hero object on the dark stage.
+    smash(`<div style="display:flex;flex-direction:column;align-items:center;gap:38px">
+      <img src="file://${packShot}" style="width:400px;border-radius:22px;box-shadow:0 30px 90px rgba(0,0,0,.7),0 0 60px rgba(18,168,94,.25)">
+      <div style="font-weight:800;font-size:56px;color:#F4F1E6;letter-spacing:-.01em">One <span style="color:#E7C879">photo.</span></div>
+    </div>`, 0.85, "slam");
+    flashSeg(1);
 
-    // B) TYPING — the REAL studio prompt, one frame per keystroke.
+    // B) TYPING — the REAL studio prompt as a spotlit 3D object: the card
+    // floats tilted on the dark stage, drifts as the camera pushes in, the
+    // type ACCELERATES, and the press detonates into a flash.
     const sentence = "my citrus sports drink";
-    const studioFrame = (text: string, caret: boolean, pressed: boolean) =>
-      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:290px 34px 0">${headline}
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px">
-          <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px">
-          <div style="font-size:24px;color:#14201A">Easy<span style="color:#B08526">Mode</span><span style="font-size:15px;color:#4A554E;margin-left:10px;font-weight:800">Studio</span></div>
-        </div>
-        <div style="background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid #E1DECD;border-radius:18px;box-shadow:0 3px 12px rgba(20,32,26,.07);padding:26px 24px;position:relative;overflow:hidden">
-          <div style="position:absolute;right:-40px;top:-40px;width:220px;height:220px;background:url(file://${rosette}) center/contain no-repeat;opacity:.14"></div>
-          <div style="font-size:16px;color:#4A554E;margin-bottom:12px">What are you selling?</div>
-          <div style="background:#fff;border:1.5px solid ${caret || text ? "#0C7A46" : "#E1DECD"};border-radius:12px;padding:18px 16px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:21px;color:#14201A;min-height:62px">${text}${caret ? `<span style="display:inline-block;width:2.5px;height:24px;background:#0C7A46;vertical-align:-4px;margin-left:2px"></span>` : ""}</div>
-          <div style="margin-top:22px;display:flex;justify-content:flex-end">
-            <div style="font-size:17px;color:#fff;background:linear-gradient(160deg,#12A85E,#0C7A46);padding:15px 30px;border-radius:12px;box-shadow:0 4px 0 #0A3D26${pressed ? ";transform:translateY(3px) scale(.98);box-shadow:0 1px 0 #0A3D26;filter:brightness(1.15)" : ""}">Generate &rarr;</div>
+    const studioFrame = (text: string, caret: boolean, pressed: boolean, k: number) =>
+      `<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center;overflow:hidden">${headline}
+        <div style="width:640px;transform:perspective(1300px) rotateX(7deg) rotateY(${(-7 + k * 0.28).toFixed(2)}deg) scale(${(1 + k * 0.006).toFixed(3)})">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:22px">
+            <img src="file://${crest}" style="width:42px;height:42px;border-radius:10px;box-shadow:0 0 24px rgba(18,168,94,.5)">
+            <div style="font-size:25px;color:#F4F1E6">Easy<span style="color:#E7C879">Mode</span><span style="font-size:15px;color:#7FE0AC;margin-left:10px;font-weight:800">Studio</span></div>
+          </div>
+          <div style="background:linear-gradient(168deg,#10231A,#0B1A12);border:1px solid rgba(127,224,172,.28);border-radius:20px;box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 70px rgba(18,168,94,.16);padding:28px 26px;position:relative;overflow:hidden">
+            <div style="position:absolute;right:-40px;top:-40px;width:240px;height:240px;background:url(file://${rosette}) center/contain no-repeat;opacity:.12;filter:brightness(3)"></div>
+            <div style="font-size:16px;color:#7FE0AC;margin-bottom:12px;font-weight:800;letter-spacing:.04em">WHAT ARE YOU SELLING?</div>
+            <div style="background:rgba(4,10,7,.75);border:1.5px solid ${caret || text ? "#12A85E" : "rgba(127,224,172,.25)"};border-radius:13px;padding:18px 16px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:22px;color:#F4F1E6;min-height:64px;${caret || text ? "box-shadow:0 0 26px rgba(18,168,94,.28);" : ""}">${text}${caret ? `<span style="display:inline-block;width:3px;height:25px;background:#7FE0AC;vertical-align:-4px;margin-left:2px"></span>` : ""}</div>
+            <div style="margin-top:22px;display:flex;justify-content:flex-end">
+              <div style="font-size:18px;font-weight:800;color:#fff;background:linear-gradient(160deg,#12A85E,#0C7A46);padding:16px 32px;border-radius:13px;box-shadow:0 5px 0 #06301D,0 0 34px rgba(18,168,94,.4)${pressed ? ";transform:translateY(4px) scale(.97);box-shadow:0 1px 0 #06301D,0 0 60px rgba(127,224,172,.8);filter:brightness(1.3)" : ""}">Generate &rarr;</div>
+            </div>
           </div>
         </div>
-        <div style="margin-top:26px;text-align:center;font-size:15px;color:#4A554E;opacity:.75">one sentence. that&rsquo;s the whole job.</div>
       </div>`;
     const typedFrames: { png: string; dur: number }[] = [];
     for (let k = 0; k <= sentence.length; k++) {
       const p = path2.join(tmp, `type${String(k).padStart(3, "0")}.png`);
-      shoot(studioFrame(sentence.slice(0, k), true, false), p);
-      typedFrames.push({ png: p, dur: k === 0 ? 0.5 : 0.07 });
-    }
-    for (let b = 0; b < 4; b++) {
-      const p = path2.join(tmp, `hold${b}.png`);
-      shoot(studioFrame(sentence, b % 2 === 0, false), p);
-      typedFrames.push({ png: p, dur: 0.3 });
+      shoot(studioFrame(sentence.slice(0, k), true, false, k), p);
+      // accelerating type: starts deliberate, ends machine-gun
+      typedFrames.push({ png: p, dur: k === 0 ? 0.35 : Math.max(0.028, 0.11 - k * 0.004) });
     }
     const pressPng = path2.join(tmp, "press.png");
-    shoot(studioFrame(sentence, false, true), pressPng);
-    typedFrames.push({ png: pressPng, dur: 0.45 });
+    shoot(studioFrame(sentence, false, true, sentence.length), pressPng);
+    typedFrames.push({ png: pressPng, dur: 0.34 });
     const typeList = path2.join(tmp, "type.txt");
     fs2.writeFileSync(typeList, typedFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${pressPng}'`);
     const segB = path2.join(tmp, "segB.mp4");
     execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", typeList,
       "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segB], { stdio: "ignore" });
     pushSeg(segB, typedFrames.reduce((a, f) => a + f.dur, 0));
+    flashSeg(2);
 
     // T) THINKING — the agentic states, honestly named. "Checking every
     // frame" is the fidelity gate, stated as product.
     const chipLabels = ["Writing the ad…", "Placing your product…", "Checking every frame…"];
     const thinkFrame = (n: number) =>
-      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:290px 34px 0">${headline}
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px">
-          <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px">
-          <div style="font-size:24px;color:#14201A">Easy<span style="color:#B08526">Mode</span><span style="font-size:15px;color:#4A554E;margin-left:10px;font-weight:800">Studio</span></div>
-        </div>
-        <div style="background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid #E1DECD;border-radius:18px;box-shadow:0 3px 12px rgba(20,32,26,.07);padding:26px 24px;position:relative;overflow:hidden">
-          <div style="position:absolute;right:-40px;top:-40px;width:220px;height:220px;background:url(file://${rosette}) center/contain no-repeat;opacity:.14"></div>
-          <div style="background:#fff;border:1.5px solid #E1DECD;border-radius:12px;padding:16px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:19px;color:#8a938c">${sentence}</div>
-          <div style="margin-top:22px;display:flex;flex-direction:column;gap:13px">
-            ${chipLabels.slice(0, n).map((c, i) =>
-              `<div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #E1DECD;border-radius:12px;padding:14px 16px;font-size:18px;color:#14201A">
-                 ${i < n - 1
-                   ? `<span style="color:#0C7A46;font-size:20px">&#10003;</span>`
-                   : `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;border:3px solid #CBE8D6;border-top-color:#0C7A46"></span>`}
-                 ${c}</div>`).join("")}
+      `<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center;overflow:hidden">${headline}
+        <div style="width:640px;transform:perspective(1300px) rotateX(6deg) rotateY(${(-2 + n * 1.4).toFixed(1)}deg) scale(${(1.02 + n * 0.015).toFixed(3)})">
+          <div style="background:linear-gradient(168deg,#10231A,#0B1A12);border:1px solid rgba(127,224,172,.28);border-radius:20px;box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 70px rgba(18,168,94,.16);padding:26px 24px;position:relative;overflow:hidden">
+            <div style="position:absolute;right:-40px;top:-40px;width:240px;height:240px;background:url(file://${rosette}) center/contain no-repeat;opacity:.12;filter:brightness(3)"></div>
+            <div style="background:rgba(4,10,7,.75);border:1.5px solid rgba(127,224,172,.25);border-radius:13px;padding:15px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:19px;color:#8FA89A">${sentence}</div>
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
+              ${chipLabels.slice(0, n).map((c, i) =>
+                `<div style="display:flex;align-items:center;gap:12px;background:rgba(4,10,7,.6);border:1px solid ${i < n - 1 ? "rgba(127,224,172,.45)" : "rgba(231,200,121,.55)"};border-radius:13px;padding:15px 16px;font-size:19px;font-weight:800;color:#F4F1E6;${i === n - 1 ? "box-shadow:0 0 30px rgba(231,200,121,.18);" : ""}">
+                   ${i < n - 1
+                     ? `<span style="color:#7FE0AC;font-size:21px">&#10003;</span>`
+                     : `<span style="display:inline-block;width:15px;height:15px;border-radius:50%;border:3px solid rgba(231,200,121,.3);border-top-color:#E7C879"></span>`}
+                   ${c}</div>`).join("")}
+            </div>
           </div>
         </div>
       </div>`;
@@ -386,7 +404,7 @@ async function heroCut(): Promise<string> {
     for (let n = 1; n <= 3; n++) {
       const p = path2.join(tmp, `think${n}.png`);
       shoot(thinkFrame(n), p);
-      thinkFrames.push({ png: p, dur: n === 3 ? 1.5 : 1.05 });
+      thinkFrames.push({ png: p, dur: n === 3 ? 0.85 : 0.5 });
     }
     const thinkList = path2.join(tmp, "think.txt");
     fs2.writeFileSync(thinkList, thinkFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${thinkFrames[2].png}'`);
@@ -394,6 +412,7 @@ async function heroCut(): Promise<string> {
     execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", thinkList,
       "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segT], { stdio: "ignore" });
     pushSeg(segT, thinkFrames.reduce((a, f) => a + f.dur, 0));
+    flashSeg(3);
 
     // G) GRID FILL — real outputs popping into a wall, hyper-real dominant
     // with a sprinkle of toons and stills. Volume reads as power.
@@ -419,19 +438,19 @@ async function heroCut(): Promise<string> {
     // pop order mixes the sprinkle through the middle instead of clumping
     const order = tiles.length >= 12 ? [0, 10, 1, 7, 2, 9, 3, 8, 4, 11, 5, 6] : tiles.map((_, i) => i);
     const gridFrame = (k: number) =>
-      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:150px 26px 0">${headline}
+      `<div style="position:relative;width:720px;height:1280px;${stage};padding:150px 26px 0">${headline}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
           ${order.slice(0, Math.min(k, tiles.length)).map((ti, i) =>
-            `<div style="aspect-ratio:3/4;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(20,32,26,.16);${i === Math.min(k, tiles.length) - 1 ? "transform:scale(1.05);" : ""}">
+            `<div style="aspect-ratio:3/4;border-radius:14px;overflow:hidden;border:1px solid rgba(127,224,172,.22);box-shadow:0 14px 34px rgba(0,0,0,.6)${i === Math.min(k, tiles.length) - 1 ? ",0 0 40px rgba(18,168,94,.45);transform:scale(1.07)" : ""};">
                <img src="file://${tiles[ti]}" style="width:100%;height:100%;object-fit:cover"></div>`).join("")}
         </div>
-        ${k >= tiles.length ? `<div style="text-align:center;margin-top:26px;font-weight:800;font-size:24px;color:#4A554E">Every one: made by EasyMode. <span style="color:#0C7A46">One tap each.</span></div>` : ""}
+        ${k >= tiles.length ? `<div style="text-align:center;margin-top:28px;font-weight:800;font-size:26px;color:#F4F1E6">Every one: made by EasyMode. <span style="color:#7FE0AC">One tap each.</span></div>` : ""}
       </div>`;
     const gridFrames: { png: string; dur: number }[] = [];
     for (let k = 1; k <= tiles.length; k++) {
       const p = path2.join(tmp, `grid${String(k).padStart(2, "0")}.png`);
       shoot(gridFrame(k), p);
-      gridFrames.push({ png: p, dur: k === tiles.length ? 1.6 : 0.26 });
+      gridFrames.push({ png: p, dur: k === tiles.length ? 1.35 : 0.13 });
     }
     const gridList = path2.join(tmp, "grid.txt");
     fs2.writeFileSync(gridList, gridFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${gridFrames[gridFrames.length - 1].png}'`);
@@ -440,16 +459,14 @@ async function heroCut(): Promise<string> {
       "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segG], { stdio: "ignore" });
     pushSeg(segG, gridFrames.reduce((a, f) => a + f.dur, 0));
 
-    // P) AUTOPOST — the flex the reference can't make.
+    // P) AUTOPOST — smash card, the flex the reference can't make.
+    flashSeg(4);
     {
       const logos = ["tiktok", "instagram", "facebook"].map((n) => path2.join(process.cwd(), "public", "ai-logos", `${n}.svg`)).filter((p) => fs2.existsSync(p));
-      const p = path2.join(tmp, "post.png");
-      shoot(`<div style="position:relative;width:720px;height:1280px;${green};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:44px">${roseDiv}
-        <div style="position:relative;color:#F4F1E6;font-weight:800;font-size:52px;line-height:1.15;text-align:center">Then it <span style="color:#E7C879">posts them</span><br>for you.</div>
-        <div style="position:relative;display:flex;gap:34px;align-items:center">${logos.map((l) => `<img src="file://${l}" style="width:64px;height:64px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))">`).join("")}</div>
-      </div>`, p);
-      still(p, 2.1, path2.join(tmp, "segP.mp4"), true);
-      pushSeg(path2.join(tmp, "segP.mp4"), 2.1);
+      smash(`<div style="display:flex;flex-direction:column;align-items:center;gap:42px">${roseDiv}
+        <div style="position:relative;color:#F4F1E6;font-weight:800;font-size:58px;line-height:1.12;text-align:center;text-shadow:0 0 40px rgba(18,168,94,.4)">Then it <span style="color:#E7C879">posts them</span><br>for you.</div>
+        <div style="position:relative;display:flex;gap:36px;align-items:center">${logos.map((l) => `<img src="file://${l}" style="width:68px;height:68px;filter:drop-shadow(0 6px 16px rgba(0,0,0,.6))">`).join("")}</div>
+      </div>`, 1.5, "post");
     }
 
     // D) CLOSE — the gstyle card with live-spun rosettes.
@@ -465,18 +482,33 @@ async function heroCut(): Promise<string> {
       "-map", "[v]", "-t", "4", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segD], { stdio: "ignore" });
     pushSeg(segD, 4);
 
-    // Absolute segment starts: A drop, B typing, T thinking, G grid, P post, D close.
+    // Segment order: 0 slam, 1 flash, 2 typing, 3 flash, 4 think, 5 flash,
+    // 6 grid, 7 flash, 8 post, 9 close.
     const startOf = (i: number) => segLens.slice(0, i).reduce((a, b) => a + b, 0);
     const totalSec = segLens.reduce((a, b) => a + b, 0);
 
-    // VOICE — four lines, one per act.
+    // VOICE — three tight lines + tagline, and a MUSIC bed driving under
+    // everything (the silence was the basement).
     const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
     const lines: [string, number][] = [
-      ["Give it one photo.", 0.3],
-      ["It writes, films, and checks every frame.", startOf(2) + 0.2],
-      ["Then it posts them. Everywhere.", startOf(4) + 0.15],
-      ["EasyMode. Marketing on easy mode.", startOf(5) + 0.5],
+      ["One photo. One sentence.", 0.25],
+      ["It checks every frame.", startOf(4) + 0.1],
+      ["Then it posts them. Everywhere.", startOf(8) + 0.15],
+      ["EasyMode. Marketing on easy mode.", startOf(9) + 0.5],
     ];
+    let musicPath: string | undefined;
+    try {
+      const mid = await repCreate("minimax/music-1.5", {
+        lyrics: "##\nEasy mode!\n##",
+        prompt: "high-energy cinematic electronic trailer, driving percussion, fast, epic build, modern tech launch, powerful and expensive",
+      });
+      const murl = await repPoll(mid, 4 * 60_000, "hero-music");
+      musicPath = path2.join(tmp, "music.mp3");
+      fs2.writeFileSync(musicPath, await downloadBuffer(murl));
+    } catch (e) {
+      console.log(`[hero] music bed failed (${(e instanceof Error ? e.message : String(e)).slice(0, 120)}) — shipping without`);
+      musicPath = undefined;
+    }
     const voFiles: string[] = [];
     await Promise.all(lines.map(async ([text], i) => {
       const id = await repCreate("minimax/speech-02-hd", { text, voice_id: "English_Trustworth_Man", emotion: "neutral", english_normalization: true, language_boost: "English" });
@@ -497,33 +529,38 @@ async function heroCut(): Promise<string> {
     const outPath = path2.join(outDir, "hero-cut.mp4");
     const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
     voFiles.forEach((p) => args.push("-i", p));
+    if (musicPath) args.push("-i", musicPath);
     if (wm) args.push("-loop", "1", "-framerate", "30", "-t", String(totalSec), "-i", wm);
     const fparts: string[] = [];
     let vcur = "0:v";
     if (wm) {
-      const wmIdx = 1 + voFiles.length;
+      const wmIdx = 1 + voFiles.length + (musicPath ? 1 : 0);
       fparts.push(`[${wmIdx}:v]format=rgba[wmk]`);
-      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${startOf(3).toFixed(2)},${startOf(4).toFixed(2)})'[vw]`);
+      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${startOf(6).toFixed(2)},${startOf(8).toFixed(2)})'[vw]`);
       vcur = "vw";
     }
-    fparts.push(`[${vcur}]eq=contrast=1.03:saturation=1.06,format=yuv420p[vout]`);
-    const amixIns = voFiles.map((_, i) => {
+    fparts.push(`[${vcur}]eq=contrast=1.05:saturation=1.08,format=yuv420p[vout]`);
+    const aIns: string[] = voFiles.map((_, i) => {
       fparts.push(`[${i + 1}:a]adelay=${Math.round(lines[i][1] * 1000)}:all=1[va${i}]`);
       return `[va${i}]`;
-    }).join("");
-    fparts.push(`${amixIns}amix=inputs=${voFiles.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`);
+    });
+    if (musicPath) {
+      fparts.push(`[${1 + voFiles.length}:a]volume=0.4,atrim=0:${totalSec},afade=t=out:st=${(totalSec - 1.5).toFixed(2)}:d=1.5[mus]`);
+      aIns.push("[mus]");
+    }
+    fparts.push(`${aIns.join("")}amix=inputs=${aIns.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`);
     args.push("-filter_complex", fparts.join(";"), "-map", "[vout]", "-map", "[aout]",
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-t", String(totalSec), outPath);
     execFileSync(ff, args, { stdio: "ignore" });
-    // Report frames: one per segment family.
+    // Report frames: one per act (order: 0 slam,1 fl,2 type,3 fl,4 think,5 fl,6 grid,7 fl,8 post,9 close).
     const grabs: [string, number][] = [
-      ["hero-drop.jpg", 0.8],
-      ["hero-typing.jpg", startOf(1) + 2],
-      ["hero-think.jpg", startOf(2) + 2.4],
-      ["hero-gridfill.jpg", startOf(3) + 1.6],
-      ["hero-gridfull.jpg", startOf(4) - 1],
-      ["hero-post.jpg", startOf(4) + 1],
-      ["hero-close.jpg", startOf(5) + 2],
+      ["hero-drop.jpg", 0.5],
+      ["hero-typing.jpg", startOf(2) + 1.2],
+      ["hero-think.jpg", startOf(4) + 1.4],
+      ["hero-gridfill.jpg", startOf(6) + 0.8],
+      ["hero-gridfull.jpg", startOf(7) - 0.6],
+      ["hero-post.jpg", startOf(8) + 0.7],
+      ["hero-close.jpg", startOf(9) + 2],
     ];
     for (const [name, t] of grabs) {
       try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
