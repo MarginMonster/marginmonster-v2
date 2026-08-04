@@ -306,19 +306,25 @@ async function heroCut(): Promise<string> {
     const green = `background:radial-gradient(120% 90% at 50% 40%, #0C6A3F 0%, #0A3D26 55%, #072A1A 100%)`;
     const roseDiv = `<div style="position:absolute;left:50%;top:46%;width:900px;height:900px;transform:translate(-50%,-50%);opacity:.1;background:url(file://${rosette}) center/contain no-repeat;filter:brightness(3)"></div>`;
 
-    // A) HOOK — two kinetic-type cards on the brand field.
-    for (const [i, line] of [["1", "Your whole store&rsquo;s<br>marketing."], ["2", "Running<br><span style='color:#E7C879'>itself.</span>"]] as const) {
-      const p = path2.join(tmp, `hook${i}.png`);
-      shoot(`<div style="position:relative;width:720px;height:1280px;${green};display:flex;align-items:center;justify-content:center">${roseDiv}
-        <div style="position:relative;color:#F4F1E6;font-weight:800;font-size:64px;line-height:1.12;text-align:center;letter-spacing:-.01em">${line}</div></div>`, p);
-      still(p, 1.3, path2.join(tmp, `segA${i}.mp4`), i === "1");
-      segs.push(path2.join(tmp, `segA${i}.mp4`));
+    const segLens: number[] = [];
+    const pushSeg = (p: string, len: number) => { segs.push(p); segLens.push(len); };
+    const headline = `<div style="position:absolute;left:0;right:0;top:64px;text-align:center;font-weight:800;font-size:33px;color:#14201A;letter-spacing:-.01em">Studio-quality ads. <span style="color:#0C7A46">In minutes.</span></div>`;
+    const packShot = path2.join(process.cwd(), "public", "showcase", "surge-pack.jpg");
+
+    // A) PRODUCT DROP — the merchant's input, nothing else. "You give us this."
+    {
+      const p = path2.join(tmp, "drop.png");
+      shoot(`<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px">
+        <img src="file://${packShot}" style="width:430px;border-radius:22px;box-shadow:0 22px 60px rgba(20,32,26,.28)">
+        <div style="font-weight:800;font-size:30px;color:#4A554E">Your product photo.</div></div>`, p);
+      still(p, 1.6, path2.join(tmp, "segA.mp4"), true);
+      pushSeg(path2.join(tmp, "segA.mp4"), 1.6);
     }
 
     // B) TYPING — the REAL studio prompt, one frame per keystroke.
     const sentence = "my citrus sports drink";
     const studioFrame = (text: string, caret: boolean, pressed: boolean) =>
-      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:290px 34px 0">
+      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:290px 34px 0">${headline}
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px">
           <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px">
           <div style="font-size:24px;color:#14201A">Easy<span style="color:#B08526">Mode</span><span style="font-size:15px;color:#4A554E;margin-left:10px;font-weight:800">Studio</span></div>
@@ -352,48 +358,98 @@ async function heroCut(): Promise<string> {
     const segB = path2.join(tmp, "segB.mp4");
     execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", typeList,
       "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segB], { stdio: "ignore" });
-    segs.push(segB);
+    pushSeg(segB, typedFrames.reduce((a, f) => a + f.dur, 0));
 
-    // C) CASCADE — genuine outputs only: paid clips off qa-frames, committed
-    // renders, live prod format cards. Each stamped with its format label.
-    const label = (text: string, out: string) => {
-      shoot(`<div style="position:absolute;left:0;top:0;width:720px;height:1280px"><div style="position:absolute;left:0;bottom:0;display:inline-flex;align-items:center;gap:9px">
-        <div style="color:#fff;font-weight:800;font-size:24px;text-shadow:0 2px 3px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.5)">${text}</div>
-        <div style="color:#7FE0AC;font-weight:800;font-size:19px;text-shadow:0 2px 3px rgba(0,0,0,.9)">&middot; 1 tap</div></div></div>`, out);
-      // Chrome writes full-canvas; crop to the corner strip so overlay math stays simple.
-      const cropped = out.replace(/\.png$/, "-c.png");
-      execFileSync(ff, ["-y", "-i", out, "-vf", "crop=440:70:0:1210", cropped], { stdio: "ignore" });
-      return cropped;
-    };
-    type CItem = { kind: "clip" | "still"; src: string; text: string };
-    const items: CItem[] = [];
+    // T) THINKING — the agentic states, honestly named. "Checking every
+    // frame" is the fidelity gate, stated as product.
+    const chipLabels = ["Writing the ad…", "Placing your product…", "Checking every frame…"];
+    const thinkFrame = (n: number) =>
+      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:290px 34px 0">${headline}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px">
+          <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px">
+          <div style="font-size:24px;color:#14201A">Easy<span style="color:#B08526">Mode</span><span style="font-size:15px;color:#4A554E;margin-left:10px;font-weight:800">Studio</span></div>
+        </div>
+        <div style="background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid #E1DECD;border-radius:18px;box-shadow:0 3px 12px rgba(20,32,26,.07);padding:26px 24px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:-40px;top:-40px;width:220px;height:220px;background:url(file://${rosette}) center/contain no-repeat;opacity:.14"></div>
+          <div style="background:#fff;border:1.5px solid #E1DECD;border-radius:12px;padding:16px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:19px;color:#8a938c">${sentence}</div>
+          <div style="margin-top:22px;display:flex;flex-direction:column;gap:13px">
+            ${chipLabels.slice(0, n).map((c, i) =>
+              `<div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #E1DECD;border-radius:12px;padding:14px 16px;font-size:18px;color:#14201A">
+                 ${i < n - 1
+                   ? `<span style="color:#0C7A46;font-size:20px">&#10003;</span>`
+                   : `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;border:3px solid #CBE8D6;border-top-color:#0C7A46"></span>`}
+                 ${c}</div>`).join("")}
+          </div>
+        </div>
+      </div>`;
+    const thinkFrames: { png: string; dur: number }[] = [];
+    for (let n = 1; n <= 3; n++) {
+      const p = path2.join(tmp, `think${n}.png`);
+      shoot(thinkFrame(n), p);
+      thinkFrames.push({ png: p, dur: n === 3 ? 1.5 : 1.05 });
+    }
+    const thinkList = path2.join(tmp, "think.txt");
+    fs2.writeFileSync(thinkList, thinkFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${thinkFrames[2].png}'`);
+    const segT = path2.join(tmp, "segT.mp4");
+    execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", thinkList,
+      "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segT], { stdio: "ignore" });
+    pushSeg(segT, thinkFrames.reduce((a, f) => a + f.dur, 0));
+
+    // G) GRID FILL — real outputs popping into a wall, hyper-real dominant
+    // with a sprinkle of toons and stills. Volume reads as power.
     const curl = (url: string, out: string) => {
       try { execFileSync("curl", ["-sf", "--max-time", "20", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 5000; } catch { return false; }
     };
-    for (let i = 1; i <= 3; i++) {
-      const c = path2.join(tmp, `qclip${i}.mp4`);
-      if (curl(`https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/clip${i}.mp4`, c)) items.push({ kind: "clip", src: c, text: "Commercial" });
-    }
     const flexDir = path2.join(process.cwd(), "public", "showcase", "flex");
-    const flexPick: [string, string][] = [["03-surge-pack.jpg", "Pack shot"], ["02-surge-finish.jpg", "Commercial"], ["04-daybreak-can.jpg", "Pack shot"], ["01-surge-wall.jpg", "Commercial"]];
-    for (const [f, t] of flexPick) { const p = path2.join(flexDir, f); if (fs2.existsSync(p)) items.push({ kind: "still", src: p, text: t }); }
-    const prodPick: [string, string][] = [["ad-templates/format-review.jpg", "Social proof"], ["ad-templates/format-tweet.jpg", "Viral post"], ["ad-templates/format-magazine.jpg", "Cover story"], ["style-tiles/cover.jpg", "Cartoon"]];
-    for (const [u, t] of prodPick) {
-      const p = path2.join(tmp, u.replace(/\//g, "_"));
-      if (curl(`https://easymodeapp.com/${u}`, p)) items.push({ kind: "still", src: p, text: t });
+    const tiles: string[] = [];
+    // hyper-real backbone
+    for (const f of ["01-surge-wall.jpg", "07-night-run.jpg", "02-surge-finish.jpg", "05-ramune-sip.jpg", "08-relax.jpg", "06-take47.jpg"]) {
+      const p = path2.join(flexDir, f); if (fs2.existsSync(p)) tiles.push(p);
     }
-    let ci = 0;
-    for (const it of items.slice(0, 9)) {
-      const lp = label(it.text, path2.join(tmp, `lab${ci}.png`));
-      const seg = path2.join(tmp, `segC${ci}.mp4`);
-      if (it.kind === "clip") {
-        execFileSync(ff, ["-y", "-ss", "1", "-t", "1.5", "-i", it.src, "-loop", "1", "-framerate", "30", "-t", "1.5", "-i", lp,
-          "-filter_complex", "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[b];[b][1:v]overlay=x=28:y=H-h-64,format=yuv420p[v]",
-          "-map", "[v]", "-t", "1.5", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", seg], { stdio: "ignore" });
-      } else {
-        still(it.src, 0.75, seg, ci % 2 === 0, lp);
-      }
-      segs.push(seg); ci++;
+    const cover = path2.join(process.cwd(), "public", "showcase", "commercial-cover.jpg");
+    if (fs2.existsSync(cover)) tiles.push(cover);
+    // sprinkle: toons + stills (live prod art; skip silently when offline)
+    for (const u of ["style-tiles/cover.jpg", "style-tiles/dreamanime.jpg", "ad-templates/format-review.jpg"]) {
+      const p = path2.join(tmp, u.replace(/\//g, "_"));
+      if (curl(`https://easymodeapp.com/${u}`, p)) tiles.push(p);
+    }
+    tiles.push(packShot);
+    const can = path2.join(process.cwd(), "public", "showcase", "daybreak-can.jpg");
+    if (fs2.existsSync(can)) tiles.push(can);
+    // pop order mixes the sprinkle through the middle instead of clumping
+    const order = tiles.length >= 12 ? [0, 10, 1, 7, 2, 9, 3, 8, 4, 11, 5, 6] : tiles.map((_, i) => i);
+    const gridFrame = (k: number) =>
+      `<div style="position:relative;width:720px;height:1280px;background:#F4F1E6;padding:150px 26px 0">${headline}
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          ${order.slice(0, Math.min(k, tiles.length)).map((ti, i) =>
+            `<div style="aspect-ratio:3/4;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(20,32,26,.16);${i === Math.min(k, tiles.length) - 1 ? "transform:scale(1.05);" : ""}">
+               <img src="file://${tiles[ti]}" style="width:100%;height:100%;object-fit:cover"></div>`).join("")}
+        </div>
+        ${k >= tiles.length ? `<div style="text-align:center;margin-top:26px;font-weight:800;font-size:24px;color:#4A554E">Every one: made by EasyMode. <span style="color:#0C7A46">One tap each.</span></div>` : ""}
+      </div>`;
+    const gridFrames: { png: string; dur: number }[] = [];
+    for (let k = 1; k <= tiles.length; k++) {
+      const p = path2.join(tmp, `grid${String(k).padStart(2, "0")}.png`);
+      shoot(gridFrame(k), p);
+      gridFrames.push({ png: p, dur: k === tiles.length ? 1.6 : 0.26 });
+    }
+    const gridList = path2.join(tmp, "grid.txt");
+    fs2.writeFileSync(gridList, gridFrames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${gridFrames[gridFrames.length - 1].png}'`);
+    const segG = path2.join(tmp, "segG.mp4");
+    execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", gridList,
+      "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segG], { stdio: "ignore" });
+    pushSeg(segG, gridFrames.reduce((a, f) => a + f.dur, 0));
+
+    // P) AUTOPOST — the flex the reference can't make.
+    {
+      const logos = ["tiktok", "instagram", "facebook"].map((n) => path2.join(process.cwd(), "public", "ai-logos", `${n}.svg`)).filter((p) => fs2.existsSync(p));
+      const p = path2.join(tmp, "post.png");
+      shoot(`<div style="position:relative;width:720px;height:1280px;${green};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:44px">${roseDiv}
+        <div style="position:relative;color:#F4F1E6;font-weight:800;font-size:52px;line-height:1.15;text-align:center">Then it <span style="color:#E7C879">posts them</span><br>for you.</div>
+        <div style="position:relative;display:flex;gap:34px;align-items:center">${logos.map((l) => `<img src="file://${l}" style="width:64px;height:64px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))">`).join("")}</div>
+      </div>`, p);
+      still(p, 2.1, path2.join(tmp, "segP.mp4"), true);
+      pushSeg(path2.join(tmp, "segP.mp4"), 2.1);
     }
 
     // D) CLOSE — the gstyle card with live-spun rosettes.
@@ -407,23 +463,20 @@ async function heroCut(): Promise<string> {
       "[bg][r1]overlay=x=W-w*0.72:y=-h*0.28[b1];[b1][r2]overlay=x=-w*0.28:y=H-h*0.72[b2];" +
       "[b2]fade=t=in:st=0:d=0.4,fade=t=out:st=3.6:d=0.5,format=yuv420p[v]",
       "-map", "[v]", "-t", "4", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segD], { stdio: "ignore" });
-    segs.push(segD);
+    pushSeg(segD, 4);
 
-    // VOICE — three lines, placed at hook / cascade / close.
-    const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
-    const cascadeStart = 2.6 + typedFrames.reduce((a, f) => a + f.dur, 0);
-    const cascadeLen = segs.length >= 4 ? 0 : 0; // computed below from files
-    const lines: [string, number][] = [
-      ["Meet your new marketing team.", 0.3],
-      ["Real ads. Real posts. One tap each.", cascadeStart + 0.3],
-      ["EasyMode. Marketing on easy mode.", 0], // start set after total known
-    ];
-    // total video length
-    const segLens: number[] = [1.3, 1.3, typedFrames.reduce((a, f) => a + f.dur, 0)];
-    for (let k = 0; k < ci; k++) segLens.push(items[k].kind === "clip" ? 1.5 : 0.75);
-    segLens.push(4);
+    // Absolute segment starts: A drop, B typing, T thinking, G grid, P post, D close.
+    const startOf = (i: number) => segLens.slice(0, i).reduce((a, b) => a + b, 0);
     const totalSec = segLens.reduce((a, b) => a + b, 0);
-    lines[2][1] = totalSec - 3.6;
+
+    // VOICE — four lines, one per act.
+    const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+    const lines: [string, number][] = [
+      ["Give it one photo.", 0.3],
+      ["It writes, films, and checks every frame.", startOf(2) + 0.2],
+      ["Then it posts them. Everywhere.", startOf(4) + 0.15],
+      ["EasyMode. Marketing on easy mode.", startOf(5) + 0.5],
+    ];
     const voFiles: string[] = [];
     await Promise.all(lines.map(async ([text], i) => {
       const id = await repCreate("minimax/speech-02-hd", { text, voice_id: "English_Trustworth_Man", emotion: "neutral", english_normalization: true, language_boost: "English" });
@@ -450,7 +503,7 @@ async function heroCut(): Promise<string> {
     if (wm) {
       const wmIdx = 1 + voFiles.length;
       fparts.push(`[${wmIdx}:v]format=rgba[wmk]`);
-      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${(cascadeStart).toFixed(2)},${(totalSec - 4).toFixed(2)})'[vw]`);
+      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${startOf(3).toFixed(2)},${startOf(4).toFixed(2)})'[vw]`);
       vcur = "vw";
     }
     fparts.push(`[${vcur}]eq=contrast=1.03:saturation=1.06,format=yuv420p[vout]`);
@@ -463,13 +516,21 @@ async function heroCut(): Promise<string> {
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-t", String(totalSec), outPath);
     execFileSync(ff, args, { stdio: "ignore" });
     // Report frames: one per segment family.
-    const grabs: [string, number][] = [["hero-hook.jpg", 1.9], ["hero-typing.jpg", 4.4], ["hero-cascade.jpg", cascadeStart + 1], ["hero-close.jpg", totalSec - 2]];
+    const grabs: [string, number][] = [
+      ["hero-drop.jpg", 0.8],
+      ["hero-typing.jpg", startOf(1) + 2],
+      ["hero-think.jpg", startOf(2) + 2.4],
+      ["hero-gridfill.jpg", startOf(3) + 1.6],
+      ["hero-gridfull.jpg", startOf(4) - 1],
+      ["hero-post.jpg", startOf(4) + 1],
+      ["hero-close.jpg", startOf(5) + 2],
+    ];
     for (const [name, t] of grabs) {
       try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
     }
     return [head, ``, `| | |`, `|---|---|`,
       `| length | ${totalSec.toFixed(1)}s |`,
-      `| cascade items | ${ci} (${items.slice(0, 9).map((i) => i.text).join(", ")}) |`,
+      `| grid tiles | ${tiles.length} (hyper-real backbone + toon/still sprinkle) |`,
       `| AI footage | none — Chromium + ffmpeg + real outputs |`,
       `| wall time | ${Math.round((Date.now() - t0) / 60_000)} min |`].join("\n");
   } catch (e) {
