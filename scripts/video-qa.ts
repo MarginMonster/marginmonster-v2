@@ -281,6 +281,33 @@ async function brandLab(): Promise<string> {
  * runs only when QA_COMMERCIAL is set. Exercises the same exported stages
  * production runs, minus the DB write, and publishes the beat keyframes AND
  * the finished mp4 so the result can actually be watched. */
+/** Render a transparent overlay PNG (caption pill / watermark) with the
+ *  system Chrome — brand type as graphics, since our ffmpeg lacks drawtext.
+ *  Returns undefined when no Chrome exists (overlays just skip). */
+function renderOverlayPng(html: string, w: number, h: number, out: string): string | undefined {
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+  const chrome = [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"]
+    .find((c) => c && fs2.existsSync(c));
+  if (!chrome) return undefined;
+  const font = path2.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  const page = `<!doctype html><html><head><style>
+    @font-face{font-family:P;src:url(file://${font});font-weight:800}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{width:${w}px;height:${h}px;background:transparent;display:flex;align-items:center;justify-content:center;font-family:P,sans-serif}
+  </style></head><body>${html}</body></html>`;
+  const tmpHtml = out.replace(/\.png$/, ".html");
+  fs2.writeFileSync(tmpHtml, page);
+  execFileSync(chrome, ["--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+    "--default-background-color=00000000", `--window-size=${w},${h}`, `--screenshot=${out}`, `file://${tmpHtml}`],
+  { stdio: "ignore" });
+  return fs2.existsSync(out) ? out : undefined;
+}
+
+const captionPill = (text: string) =>
+  `<div style="background:rgba(10,61,38,.88);color:#F4F1E6;font-weight:800;font-size:30px;line-height:1.25;padding:14px 26px;border-radius:18px;max-width:640px;text-align:center;border:1.5px solid rgba(127,224,172,.35)">${text}</div>`;
+
 async function commercialCheck(): Promise<string> {
   if (!process.env.QA_COMMERCIAL) return "";
   // QA_COMMERCIAL="service" exercises the service-mode path: no product
@@ -371,18 +398,42 @@ async function commercialCheck(): Promise<string> {
     }
     const outDir = path2.join(process.cwd(), "qa-out", "frames");
     fs2.mkdirSync(outDir, { recursive: true });
+    // Publish the RAW paid clips too — re-edits become free re-assemblies.
+    for (let i = 0; i < clipPaths.length; i++) {
+      try { fs2.copyFileSync(clipPaths[i], path2.join(outDir, `clip${i + 1}.mp4`)); } catch { /* best-effort */ }
+    }
     const outPath = path2.join(outDir, "commercial-final.mp4");
+    // Sound-off layer: caption pill per narration line, a montage caption,
+    // and a small wordmark — all Chrome-rendered brand type.
+    const captionPaths = plan.beats.map((b, i) =>
+      renderOverlayPng(captionPill(b.narration), 700, 150, path2.join(tmp, `cap${i}.png`)));
+    const montageCaptionPath = renderOverlayPng(captionPill("Every one of these: made by EasyMode. One tap each."), 700, 150, path2.join(tmp, "capm.png"));
+    const watermarkPath = renderOverlayPng(
+      `<div style="color:#F4F1E6;font-weight:800;font-size:26px;text-shadow:0 1px 6px rgba(0,0,0,.55)">Easy<span style="color:#E7C879">Mode</span></div>`,
+      190, 46, path2.join(tmp, "wm.png"));
+    // Flex montage from committed real renders, spliced after beat 3 (the
+    // typing moment) — chaos beats cut fast, payoff beats hold.
+    const flexDir = path2.join(process.cwd(), "public", "showcase", "flex");
+    const flex = fs2.existsSync(flexDir)
+      ? fs2.readdirSync(flexDir).filter((f: string) => f.endsWith(".jpg")).sort().map((f: string) => path2.join(flexDir, f))
+      : [];
     await assembleCommercial({
       clipPaths,
+      clipSecs: [4, 4, 5, 5, 5].slice(0, clipPaths.length),
       narrationPaths: voPaths.slice(0, clipPaths.length),
       taglinePath: voPaths[clipPaths.length],
       productJpegPath: jpg,
       endCard: useBrandCard ? { basePath: brandBase, rosettePath: fs2.existsSync(brandRose) ? brandRose : undefined } : undefined,
+      montage: flex.length ? { imagePaths: flex, afterClip: 2 } : undefined,
+      captionPaths,
+      montageCaptionPath,
+      watermarkPath,
+      watermarkFrom: 4,
       outPath,
     });
     // Pull one graded frame per beat from the finished cut for the report.
-    // 5 beats × 5s + 4s packshot: mid-beat samples land at 2.5+5i, packshot ~27.
-    for (const [name, t] of [["commercial-final-beat1.jpg", "2.5"], ["commercial-final-beat2.jpg", "7.5"], ["commercial-final-beat3.jpg", "12.5"], ["commercial-final-beat4.jpg", "17.5"], ["commercial-final-beat5.jpg", "22.5"], ["commercial-final-packshot.jpg", "27"]] as const) {
+    // Timeline: beats 4+4+5, montage 4s, beats 5+5, finale 4s (≈31s total).
+    for (const [name, t] of [["commercial-final-beat1.jpg", "2"], ["commercial-final-beat2.jpg", "6"], ["commercial-final-beat3.jpg", "10.5"], ["commercial-final-montage.jpg", "15"], ["commercial-final-beat4.jpg", "19.5"], ["commercial-final-beat5.jpg", "24.5"], ["commercial-final-packshot.jpg", "29"]] as const) {
       try { execFileSync(ff, ["-y", "-ss", t, "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
     }
     const mb = (fs2.statSync(outPath).size / 1e6).toFixed(1);

@@ -250,23 +250,69 @@ export async function assembleCommercial(opts: {
   /** Seconds kept from each clip. The animator returns 10s takes; the fades
    *  are cut for 5 — anything longer used to play out as black. */
   clipSec?: number;
+  /** Per-beat lengths (overrides clipSec) — chaos cuts fast, payoffs hold. */
+  clipSecs?: number[];
+  /** Flex montage: hard 0.5s cuts of REAL renders spliced in after a beat —
+   *  the "everything you just saw was made here" proof segment. */
+  montage?: { imagePaths: string[]; afterClip: number; secEach?: number };
+  /** Sound-off layer: one transparent caption PNG per beat, slid + faded in
+   *  over its own beat window (our ffmpeg has no drawtext — text ships as
+   *  graphics, which also means brand type instead of subtitle type). */
+  captionPaths?: (string | undefined)[];
+  /** Caption shown across the montage window. */
+  montageCaptionPath?: string;
+  /** Small brand mark pinned top-right from watermarkFrom (default: after
+   *  the first beat) to the end of the live footage. */
+  watermarkPath?: string;
+  watermarkFrom?: number;
 }): Promise<void> {
   const bin = ffmpegBin();
   if (!bin) throw new Error("no ffmpeg binary");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "comm-"));
   try {
-    const clipSec = opts.clipSec ?? 5;
-    // 1) Normalize every clip: trim to clipSec (the animator returns longer
-    // takes and the fade-out marks the cut), cover-crop to 720x1280, 30fps.
+    // 1) Normalize every clip: trim to its beat length (the animator returns
+    // longer takes and the fade-out marks the cut), cover-crop, 30fps.
+    const clipSecs = opts.clipPaths.map((_, i) => opts.clipSecs?.[i] ?? opts.clipSec ?? 5);
     const norm: string[] = [];
     for (let i = 0; i < opts.clipPaths.length; i++) {
+      const sec = clipSecs[i];
       const n = path.join(tmp, `n${i}.mp4`);
-      await runFfmpeg(bin, ["-y", "-t", String(clipSec), "-i", opts.clipPaths[i],
-        "-vf", `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=${(clipSec - 0.4).toFixed(2)}:d=0.35,format=yuv420p`,
-        "-t", String(clipSec),
+      await runFfmpeg(bin, ["-y", "-t", String(sec), "-i", opts.clipPaths[i],
+        "-vf", `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=${(sec - 0.4).toFixed(2)}:d=0.35,format=yuv420p`,
+        "-t", String(sec),
         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", n]);
       norm.push(n);
     }
+    // 1b) Flex montage: each real-render still becomes a hard-cut segment
+    // (no fades — the speed IS the flex), spliced in after its beat.
+    const mSecEach = opts.montage?.secEach ?? 0.5;
+    const afterClip = opts.montage?.imagePaths.length
+      ? Math.min(Math.max(opts.montage.afterClip, 0), opts.clipPaths.length - 1)
+      : -1;
+    const mLen = (opts.montage?.imagePaths.length || 0) * mSecEach;
+    if (opts.montage && afterClip >= 0) {
+      const segs: string[] = [];
+      for (let k = 0; k < opts.montage.imagePaths.length; k++) {
+        const m = path.join(tmp, `m${k}.mp4`);
+        await runFfmpeg(bin, ["-y", "-loop", "1", "-framerate", "30", "-t", String(mSecEach), "-i", opts.montage.imagePaths[k],
+          "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+          "-t", String(mSecEach), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", m]);
+        segs.push(m);
+      }
+      norm.splice(afterClip + 1, 0, ...segs);
+    }
+    // Absolute timeline: where each beat starts once the montage is spliced.
+    const clipStart: number[] = [];
+    {
+      let acc = 0;
+      for (let i = 0; i < opts.clipPaths.length; i++) {
+        if (afterClip >= 0 && i === afterClip + 1) acc += mLen;
+        clipStart.push(acc);
+        acc += clipSecs[i];
+      }
+    }
+    const montageStart = afterClip >= 0 ? clipStart[afterClip] + clipSecs[afterClip] : 0;
+    const visualLen = clipSecs.reduce((a, b) => a + b, 0) + mLen;
     // 2) Finale segment. Brand end-card mode: the designed card with live
     // spinning guilloché rosettes (one clockwise top-right, one counter
     // bottom-left; the baked centre rosette stays still behind the text).
@@ -309,9 +355,9 @@ export async function assembleCommercial(opts: {
       norm.push(pack);
     }
     // 3) The voice track. Per-beat narrations are each delayed to their own
-    // scene and mixed — the line about a beat plays OVER that beat. A single
+    // scene's ABSOLUTE start (montage shift included) and mixed. A single
     // premixed voPath (legacy) is laid from the start as before.
-    const totalSec = opts.clipPaths.length * clipSec + packSec;
+    const totalSec = visualLen + packSec;
     let voPath = opts.voPath;
     if (opts.narrationPaths?.length) {
       const pieces = [...opts.narrationPaths];
@@ -320,19 +366,18 @@ export async function assembleCommercial(opts: {
       const inputs = pieces.flatMap((p) => ["-i", p]);
       const delays = pieces.map((_, i) => {
         const ms = i < opts.narrationPaths!.length
-          ? Math.round((i * clipSec + 0.4) * 1000)          // line i over beat i
-          : Math.round((opts.narrationPaths!.length * clipSec + 0.5) * 1000); // tagline over packshot
+          ? Math.round((clipStart[i] + 0.4) * 1000)   // line i over beat i
+          : Math.round((visualLen + 0.5) * 1000);     // tagline over the finale
         return `[${i}:a]adelay=${ms}:all=1[a${i}]`;
       });
       const graph = `${delays.join(";")};${pieces.map((_, i) => `[a${i}]`).join("")}amix=inputs=${pieces.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`;
       await runFfmpeg(bin, ["-y", ...inputs, "-filter_complex", graph, "-map", "[aout]", "-t", String(totalSec), mixed]);
       voPath = mixed;
     }
-    // 4) Concat + letterbox + grade (+ VO when present). drawbox bars give
-    // the cinema crop; a light eq pass gives the grade — both filters exist
-    // in every ffmpeg build we ship (drawtext does not, so no burned text).
-    // The output runs the FULL visual length — a short voice read must never
-    // amputate the cut (-shortest once cost us beats 3-5 and the packshot).
+    // 4) Concat + letterbox + grade + the sound-off layer (captions and the
+    // watermark composited as timed overlays — each caption slides up 44px
+    // and alpha-fades over its own beat window) + VO. The output runs the
+    // FULL visual length — a short voice read must never amputate the cut.
     const list = path.join(tmp, "list.txt");
     fs.writeFileSync(list, norm.map((n) => `file '${n}'`).join("\n"));
     // Bars slimmed to 6.5%: with 9:16-native sources every pixel is real
@@ -340,12 +385,38 @@ export async function assembleCommercial(opts: {
     const graded =
       "drawbox=x=0:y=0:w=iw:h=ih*0.065:color=black:t=fill," +
       "drawbox=x=0:y=ih*0.935:w=iw:h=ih*0.065:color=black:t=fill," +
-      "eq=contrast=1.06:saturation=1.12:brightness=-0.012,format=yuv420p";
+      "eq=contrast=1.06:saturation=1.12:brightness=-0.012";
+    const overlays: { path: string; start: number; end: number; slide: boolean }[] = [];
+    (opts.captionPaths || []).forEach((p, i) => {
+      if (p && i < opts.clipPaths.length) overlays.push({ path: p, start: clipStart[i] + 0.35, end: clipStart[i] + clipSecs[i] - 0.2, slide: true });
+    });
+    if (opts.montageCaptionPath && afterClip >= 0) overlays.push({ path: opts.montageCaptionPath, start: montageStart + 0.1, end: montageStart + mLen - 0.1, slide: true });
+    if (opts.watermarkPath) overlays.push({ path: opts.watermarkPath, start: opts.watermarkFrom ?? clipSecs[0], end: visualLen, slide: false });
     const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
     if (voPath) args.push("-i", voPath);
-    args.push("-vf", graded, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20");
-    if (voPath) args.push("-map", "0:v", "-map", "1:a", "-c:a", "aac");
-    args.push("-t", String(totalSec), opts.outPath);
+    if (overlays.length) {
+      overlays.forEach((o) => args.push("-loop", "1", "-framerate", "30", "-t", String(totalSec), "-i", o.path));
+      const voOff = voPath ? 1 : 0;
+      const parts: string[] = [`[0:v]${graded}[v0]`];
+      let cur = "v0";
+      overlays.forEach((o, k) => {
+        const idx = 1 + voOff + k;
+        const st = o.start.toFixed(2);
+        const en = o.end.toFixed(2);
+        parts.push(`[${idx}:v]format=rgba,fade=t=in:st=${st}:d=0.25:alpha=1,fade=t=out:st=${(o.end - 0.25).toFixed(2)}:d=0.25:alpha=1[o${k}]`);
+        const x = o.slide ? "(W-w)/2" : "W-w-24";
+        const y = o.slide ? `H-h-118-min((t-${st})*260\\,44)` : "104";
+        parts.push(`[${cur}][o${k}]overlay=x=${x}:y=${y}:enable='between(t,${st},${en})'[v${k + 1}]`);
+        cur = `v${k + 1}`;
+      });
+      parts.push(`[${cur}]format=yuv420p[vout]`);
+      args.push("-filter_complex", parts.join(";"), "-map", "[vout]");
+      if (voPath) args.push("-map", "1:a", "-c:a", "aac");
+    } else {
+      args.push("-vf", `${graded},format=yuv420p`);
+      if (voPath) args.push("-map", "0:v", "-map", "1:a", "-c:a", "aac");
+    }
+    args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-t", String(totalSec), opts.outPath);
     await runFfmpeg(bin, args);
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
