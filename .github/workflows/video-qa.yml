@@ -80,6 +80,10 @@ on:
         description: 'Creative direction the commercial shot list must follow (e.g. an approved storyboard)'
         required: false
         default: ""
+      commercial_engine:
+        description: 'Motion engine for the commercial clips: kling (default), seedance, hailuo, or veo (premium)'
+        required: false
+        default: ""
       health_only:
         description: 'Just diagnose the API keys (fingerprint + auth + billing) and stop — no renders, no AI spend'
         required: false
@@ -182,6 +186,7 @@ jobs:
           QA_PLANNER_AB: ${{ inputs.planner_ab }}
           QA_COMMERCIAL: ${{ inputs.commercial }}
           QA_COMMERCIAL_DIRECTION: ${{ inputs.commercial_direction }}
+          QA_COMMERCIAL_ENGINE: ${{ inputs.commercial_engine }}
           QA_BRAND_LAB: ${{ inputs.brand_lab }}
         run: node video-qa.cjs
 

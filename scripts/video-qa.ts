@@ -294,8 +294,9 @@ async function commercialCheck(): Promise<string> {
   const path2 = require("node:path") as typeof import("node:path");
   const os2 = require("node:os") as typeof import("node:os");
   try {
-    const { planCommercial, sceneKeyframe, assembleCommercial, commercialEndCard } = await import("../app/lib/commercial-ad-pipeline.server");
+    const { planCommercial, sceneKeyframe, assembleCommercial, commercialEndCard, motionGate } = await import("../app/lib/commercial-ad-pipeline.server");
     const { animateCreate, repPoll, repCreate, download, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+    const engine = process.env.QA_COMMERCIAL_ENGINE?.trim() || undefined;
     const t0 = Date.now();
     const plan = await planCommercial(title, undefined, process.env.QA_COMMERCIAL_DIRECTION || undefined, svc);
     console.log(`[commercial] plan: ${plan.beats.map((b) => b.scene.slice(0, 60)).join(" | ")} · tagline "${plan.tagline}"`);
@@ -308,13 +309,21 @@ async function commercialCheck(): Promise<string> {
     }
     const clips: string[] = [];
     for (let i = 0; i < plan.beats.length; i++) {
-      const { id } = await animateCreate(undefined, {
+      const opts = {
         startImage: keyframes[i],
         prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${svc ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
         negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
-      });
-      clips.push(await repPoll(id, 8 * 60_000, `qa-commercial-beat-${i + 1}`));
-      console.log(`[commercial] beat ${i + 1} animated`);
+      };
+      const { id, model } = await animateCreate(engine, opts);
+      let clip = await repPoll(id, 8 * 60_000, `qa-commercial-beat-${i + 1}`);
+      const gate = await motionGate(clip, svc);
+      if (!gate.ok) {
+        console.log(`[commercial] beat ${i + 1} FAILED motion gate (${gate.why}) — re-rolling once`);
+        const retry = await animateCreate(engine, opts);
+        clip = await repPoll(retry.id, 8 * 60_000, `qa-commercial-beat-${i + 1}-reroll`);
+      }
+      clips.push(clip);
+      console.log(`[commercial] beat ${i + 1} animated on ${model}${gate.ok ? "" : " (re-rolled)"}`);
     }
     // Per-line VO, same as production: each line lands on its own beat.
     const voLines = [...plan.beats.map((b) => b.narration || plan.tagline), `${plan.tagline}.`];

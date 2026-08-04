@@ -337,6 +337,7 @@ async function runJob(
           productDescription: payload.productDescription as string | undefined,
           productImageUrl: payload.productImageUrl as string | undefined,
           serviceMode: payload.serviceMode === true,
+          videoEngine: payload.videoEngine as string | undefined,
           direction: payload.customPrompt as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,

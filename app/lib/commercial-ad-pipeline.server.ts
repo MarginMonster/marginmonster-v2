@@ -311,6 +311,52 @@ export async function assembleCommercial(opts: {
   }
 }
 
+/** Motion gate: sample three frames from a rendered clip and ask a vision
+ *  judge for the artifacts stills can never show — rubbery anatomy, props
+ *  floating unsupported, a label melted mid-motion. The keyframe gate
+ *  passes beautiful frames; this is what catches the slop BETWEEN them.
+ *  Fail-open on judge/tooling outage: a paid clip must not die because
+ *  the judge did. Exported for the QA harness. */
+export async function motionGate(clipUrl: string, serviceMode: boolean): Promise<{ ok: boolean; why: string }> {
+  const bin = ffmpegBin();
+  if (!bin) return { ok: true, why: "no ffmpeg" };
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mgate-"));
+  try {
+    const clip = path.join(tmp, "c.mp4");
+    await download(clipUrl, clip);
+    const frames: string[] = [];
+    for (const t of ["1", "2.5", "4"]) {
+      const f = path.join(tmp, `f${t.replace(".", "_")}.jpg`);
+      try {
+        await runFfmpeg(bin, ["-y", "-ss", t, "-i", clip, "-frames:v", "1", "-vf", "scale=720:-2", "-q:v", "5", f]);
+        frames.push(`data:image/jpeg;base64,${fs.readFileSync(f).toString("base64")}`);
+      } catch { /* clip shorter than the sample point — judge what exists */ }
+    }
+    if (!frames.length) return { ok: true, why: "no frames extracted" };
+    const { anthropicVision } = await import("./anthropic.server");
+    const raw = await anthropicVision(
+      [
+        "These are frames sampled from ONE AI-generated video clip for a commercial.",
+        "Fail it ONLY for glaring motion artifacts a viewer would laugh at:",
+        "- warped or rubbery anatomy: extra/missing limbs, joints bent wrong, a melted face",
+        "- an object floating unsupported in mid-air, or passing through something solid",
+        serviceMode ? "" : "- the hero product's shape or label melted into an unreadable smear",
+        "Cinematic motion blur, soft focus and stylization are all FINE — judge physics, not polish.",
+        'Reply ONLY JSON: {"ok":true|false,"why":"<8 words>"}',
+      ].filter(Boolean).join("\n"),
+      frames
+    );
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return { ok: true, why: "judge reply unreadable" };
+    const j = JSON.parse(m[0]) as { ok?: boolean; why?: string };
+    return { ok: j.ok !== false, why: String(j.why || "").slice(0, 120) };
+  } catch (e) {
+    return { ok: true, why: `gate error: ${(e instanceof Error ? e.message : String(e)).slice(0, 80)}` };
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}
+
 export interface CommercialAdParams {
   shopId: string;
   brandProfile: BrandProfile;
@@ -320,6 +366,9 @@ export interface CommercialAdParams {
   /** Intangible offer — no product photo exists; sell the outcome and close
    *  on a branded end-card instead of the real-photo packshot. */
   serviceMode?: boolean;
+  /** Engine key for the motion stage ("kling"|"seedance"|"hailuo"|"veo") —
+   *  the studio's picker choice. Undefined = the default animator. */
+  videoEngine?: string;
   direction?: string;
   origin?: string;
   jobId?: string;
@@ -358,16 +407,26 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     }
   }
 
-  // 3) MOTION — kling per beat, ~5s each.
+  // 3) MOTION — one clip per beat on the chosen engine, each clip judged by
+  // the motion gate; a clip that fails physics gets ONE re-roll (the second
+  // take ships either way — unbounded re-rolls would be an open wallet).
+  const animOpts = (i: number) => ({
+    startImage: keyframeUrls[i],
+    prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${serviceMode ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
+    negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
+  });
   let clipUrls: string[] = params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : [];
   if (clipUrls.length < plan.beats.length) {
     for (let i = clipUrls.length; i < plan.beats.length; i++) {
-      const { id } = await animateCreate(undefined, {
-        startImage: keyframeUrls[i],
-        prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${serviceMode ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
-        negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
-      });
-      clipUrls.push(await repPoll(id, 8 * 60_000, `commercial-beat-${i + 1}`));
+      const { id } = await animateCreate(params.videoEngine, animOpts(i));
+      let clip = await repPoll(id, 8 * 60_000, `commercial-beat-${i + 1}`);
+      const gate = await motionGate(clip, serviceMode);
+      if (!gate.ok) {
+        console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
+        const retry = await animateCreate(params.videoEngine, animOpts(i));
+        clip = await repPoll(retry.id, 8 * 60_000, `commercial-beat-${i + 1}-reroll`);
+      }
+      clipUrls.push(clip);
       await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
     }
   }
