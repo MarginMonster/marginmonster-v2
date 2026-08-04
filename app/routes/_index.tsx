@@ -119,7 +119,7 @@ export default function Index() {
           <p className="lz-pow-note">{(t.autopost || LANDING_I18N.en.autopost!).note}</p>
         </section>
 
-        <section className="lz-feats">
+        <section className="lz-feats"><span className="lz-rose lz-rose-feats" aria-hidden="true" />
           {t.features.map((f) => (
             <div className="lz-card" key={f.title}>
               <div className="lz-ic">{f.icon}</div>
@@ -131,7 +131,7 @@ export default function Index() {
 
         {/* Real output — these are the SAME live renders the app serves its
             pickers from (they self-forge on this server; no mock art). */}
-        <section className="lz-show">
+        <section className="lz-show"><span className="lz-rose lz-rose-show" aria-hidden="true" />
           <span className="lz-eyebrow">{t.show.eyebrow}</span>
           <h2>{t.show.h2}</h2>
           <p className="lz-show-sub">{t.show.sub}</p>
@@ -315,6 +315,12 @@ html,body{margin:0;padding:0}
 .lz-cta:hover .lz-arr{transform:translateX(3px)}
 .lz-note{font-size:12.5px;color:var(--ink2);opacity:.85}
 .lz-show-vid{width:100%;aspect-ratio:9/16;object-fit:cover;display:block;border-radius:inherit;}
+.lz-feats{position:relative;}
+.lz-show{position:relative;}
+.lz-rose-feats{position:absolute;top:-70px;right:-120px;transform:scale(.75);opacity:.5;pointer-events:none;}
+.lz-rose-show{position:absolute;bottom:-60px;left:-130px;transform:scale(.7);opacity:.5;pointer-events:none;}
+.lz-card{display:flex;flex-direction:column;min-height:200px;}
+.lz-card .lz-ic{font-size:30px;width:56px;height:56px;display:grid;place-items:center;}
 .lz-heroshow{margin:40px auto 0;max-width:340px;position:relative;}
 .lz-herovid{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:22px;display:block;
   border:1px solid rgba(20,60,40,.18);box-shadow:0 24px 60px -18px rgba(15,55,35,.38),0 4px 14px rgba(15,55,35,.14);background:#0c120e;}

@@ -56,6 +56,9 @@ const EN: LandingCopy = {
     { icon: "✍️", title: "SEO articles on autopilot", body: "Buyer-intent articles written and published for you, pulling in free Google traffic month after month." },
     { icon: "📣", title: "Auto-posted for you", body: "Every drop goes out to TikTok, Instagram & Facebook on a schedule — captions and hashtags written to travel." },
     { icon: "🪄", title: "One-tap autopilot", body: "Pick a goal. EasyMode builds a full month of content, launches it, and scales what works." },
+    { icon: "🎥", title: "Cinematic Commercials", body: "A multi-scene story ad with a voice-over and a packshot finale — big-budget TV energy, built from one product photo." },
+    { icon: "🛡️", title: "Product-true, guaranteed", body: "Every ad is quality-checked against your real product photo — wrong artwork, wrong text or wrong size never ships." },
+    { icon: "⚡", title: "Click tracking + Boost", body: "Every post carries a tracked link — see which piece earns clicks, then boost the winner in two taps." },
   ],
   show: {
     eyebrow: "Straight from the studio",
