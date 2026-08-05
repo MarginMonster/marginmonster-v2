@@ -906,6 +906,38 @@ async function brandLab(): Promise<string> {
 async function mascotLab(): Promise<string> {
   if (!process.env.QA_MASCOT) return "";
   const head = "### Mascot Lab — the Magic Monster, cleaned for EasyMode";
+  // QA_MASCOT=voice — clone the founder's Zeely voice for the monster:
+  // extract the audio track from the committed recording, clone it on
+  // MiniMax (same Replicate account the TTS runs on), publish the mp3 and
+  // the returned voice id for the harness to hardcode.
+  if (process.env.QA_MASCOT === "voice") {
+    try {
+      const fs2 = require("node:fs") as typeof import("node:fs");
+      const path2 = require("node:path") as typeof import("node:path");
+      const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+      const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+      const { repCreate, repPoll } = await import("../app/lib/ugc-ad-pipeline.server");
+      const src = path2.join(process.cwd(), "qa-in", "mascot", "zeely-voice.mov");
+      const outDir = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDir, { recursive: true });
+      const mp3 = path2.join(outDir, "zeely-voice.mp3");
+      execFileSync(ff, ["-y", "-i", src, "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-t", "120", mp3], { stdio: "ignore" });
+      // Energy study: pull frames so the reference performance can be READ
+      // (expressions, gesture intensity, pacing) — the mascot's direction.
+      try {
+        execFileSync(ff, ["-y", "-i", src, "-vf", "fps=1/2,scale=540:-2", "-frames:v", "10", "-q:v", "4",
+          path2.join(outDir, "zeely-e%d.jpg")], { stdio: "ignore" });
+      } catch { /* frames are best-effort */ }
+      const dataUri = "data:audio/mp3;base64," + fs2.readFileSync(mp3).toString("base64");
+      const id = await repCreate("minimax/voice-cloning", { voice_file: dataUri });
+      const out = await repPoll(id, 5 * 60_000, "voice-clone");
+      const rendered = typeof out === "string" ? out : JSON.stringify(out);
+      fs2.writeFileSync(path2.join(outDir, "zeely-voice-id.txt"), rendered);
+      return `${head}\n\nVoice cloned → \`${rendered}\` (also on qa-frames as zeely-voice-id.txt)`;
+    } catch (e) {
+      return `${head}\n\nVOICE CLONE FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   try {
     const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
     const t0 = Date.now();
