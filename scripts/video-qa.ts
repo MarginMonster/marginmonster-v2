@@ -490,37 +490,69 @@ async function heroCut(): Promise<string> {
     let hostAudioPath: string | undefined;
     let hostSec = 4.6;
     if (monsterHost) {
-      // TRUE lip-sync: TTS the line in HIS voice first, then omni-human
-      // animates the portrait speaking that exact mp3 — the same chain
-      // merchant presenter ads use. The Veo attempt guessed mouth motion
-      // and it showed.
+      // ZEELY-GRADE HOST — the bust-shot avatar looked robotic next to the
+      // reference. Now: (1) forge a flex-mode keyframe (shirtless, runes
+      // blazing, in a real shop), (2) Veo performs it full-body with real
+      // energy, (3) fal sync-lipsync retargets the mouth on that MOVING
+      // footage to his cloned voice. Motion AND sync, not either-or.
       const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
-      const { submitAvatar, pollAvatar } = await import("../app/lib/fal-video.server");
+      const { brandStill, renderMotionClip } = await import("../app/lib/commercial-ad-pipeline.server");
       const hostLine = "This ad? Made by EasyMode. Me? I was ALSO made by EasyMode.";
       const raw = path2.join(tmp, "host-raw.mp4");
       hostAudioPath = path2.join(tmp, "host-vo.mp3");
       const outDirM = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDirM, { recursive: true });
-      const keptClip = path2.join(outDirM, "host2-raw.mp4");
-      const keptVo = path2.join(outDirM, "host2-vo.mp3");
+      const keptClip = path2.join(outDirM, "host3-raw.mp4");
+      const keptVo = path2.join(outDirM, "host3-vo.mp3");
       const curlHost = (url: string, out: string, min: number) => {
         try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
       const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+      const falQueueVideo = async (model: string, body: Record<string, unknown>, tag: string): Promise<string> => {
+        const sub = await fetch(`https://queue.fal.run/${model}`, {
+          method: "POST", headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!sub.ok) throw new Error(`${tag} submit ${sub.status}: ${(await sub.text()).slice(0, 200)}`);
+        const j = (await sub.json()) as { status_url?: string; response_url?: string };
+        for (let i = 0; i < 160; i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const s = await fetch(j.status_url!, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+          if (!s.ok) continue;
+          const sj = (await s.json()) as { status?: string };
+          if (sj.status === "COMPLETED") break;
+          if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`${tag} failed in queue`);
+        }
+        const r = await fetch(j.response_url!, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+        const rj = (await r.json()) as { video?: { url?: string }; video_url?: string; url?: string };
+        const url = rj.video?.url || rj.video_url || rj.url;
+        if (!url) throw new Error(`${tag}: no video url in response`);
+        return url;
+      };
       const haveCache =
-        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host2-raw.mp4`, raw, 100_000)) &&
-        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host2-vo.mp3`, hostAudioPath, 5_000));
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host3-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host3-vo.mp3`, hostAudioPath, 5_000));
       if (!haveCache) {
-        // The founder's cloned Zeely voice (R8_95CETMBJ) — turbo is the
-        // model the clone was made against.
+        // 0) His voice (cloned from the Zeely recording).
         const ttsId = await repCreate("minimax/speech-02-turbo", {
           text: hostLine, voice_id: "R8_95CETMBJ", english_normalization: true,
         });
         const voUrl = await repPoll(ttsId, 3 * 60_000, "hero-host-vo");
         fs2.writeFileSync(hostAudioPath, await downloadBuffer(voUrl));
-        const portrait = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_1.jpg";
-        const clipUrl = await pollAvatar(await submitAvatar(portrait, voUrl));
-        fs2.writeFileSync(raw, await downloadBuffer(clipUrl));
+        // 1) Flex-mode keyframe: the energy of the reference recording.
+        const flexKey = await brandStill(
+          `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same face. He stands FULL BODY, shirtless with softly GLOWING golden rune tattoos blazing across his muscular torso and arms, dark trousers, mid double-bicep flex with a huge confident grin, in a cozy warmly-lit modern shop interior with softly blurred shelves behind him. Photorealistic, energetic, cinematic vertical framing. No text anywhere.`,
+          [`${RAWQ}/zeely-e4.jpg`, "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/7f370a482573208be369a80cac7e40f9a268bd08/qa-in/mascot/mm-cut-casual.jpg"],
+          true);
+        // 2) Veo performs it — real full-body energy, mouth accuracy ignored.
+        const motionUrl = await renderMotionClip("veo", {
+          startImage: flexKey,
+          prompt: "The ogre showman talks excitedly straight to camera while flexing — big expressive gestures, pumps a bicep, leans in with a grin, high showman energy, steady handheld feel. He stays facing the camera the whole time.",
+          negativePrompt: "text, captions, subtitles, logos, watermark",
+        }, "hero-host-motion");
+        // 3) Retarget the mouth on the MOVING footage to his cloned voice.
+        const syncedUrl = await falQueueVideo("fal-ai/sync-lipsync", { video_url: motionUrl, audio_url: voUrl }, "hero-host-sync");
+        fs2.writeFileSync(raw, await downloadBuffer(syncedUrl));
         fs2.copyFileSync(raw, keptClip);
         fs2.copyFileSync(hostAudioPath, keptVo);
       }
@@ -532,16 +564,23 @@ async function heroCut(): Promise<string> {
         const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(String((e as { stderr?: Buffer }).stderr || ""));
         if (m) hostSec = Math.min(8, Math.max(3, +m[1] * 3600 + +m[2] * 60 + +m[3] + 0.15));
       }
-      // Publish the raw take too — a re-cut must not re-spend the Veo call.
-      const outDir0 = path2.join(process.cwd(), "qa-out", "frames");
-      fs2.mkdirSync(outDir0, { recursive: true });
-      fs2.copyFileSync(raw, path2.join(outDir0, "host2-raw.mp4"));
       const segM = path2.join(tmp, "segM.mp4");
-      // Veo pads the 3:4 portrait into 9:16 with baked black bars — crop the
-      // 3:4 content region back out, then zoom-fill the vertical frame.
-      execFileSync(ff, ["-y", "-i", raw,
-        "-vf", "crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
-        "-t", String(hostSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
+      // Zeely-style spoken-word caption pills over the host's beats.
+      const pillPng = (txt: string, out: string) => shoot(
+        `<div style="display:flex;justify-content:center;align-items:center;width:720px;height:130px">
+           <div style="background:rgba(0,0,0,.58);color:#fff;font-family:Arial,Helvetica,sans-serif;font-weight:800;letter-spacing:-.02em;font-size:30px;padding:13px 24px;border-radius:15px">${txt}</div>
+         </div>`, out);
+      const pA = path2.join(tmp, "pillA.png"); const pB = path2.join(tmp, "pillB.png");
+      pillPng(`THIS AD? <span style="color:#7FE0AC">MADE BY EASYMODE</span>`, pA);
+      pillPng(`ME? <span style="color:#E7C879">ALSO MADE BY EASYMODE</span> 💪`, pB);
+      const mid = (hostSec / 2).toFixed(2);
+      execFileSync(ff, ["-y", "-i", raw, "-i", pA, "-i", pB,
+        "-filter_complex",
+        "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[v0];" +
+        `[v0][1:v]overlay=(W-w)/2:H-250:enable='between(t,0.25,${mid})'[v1];` +
+        `[v1][2:v]overlay=(W-w)/2:H-250:enable='between(t,${mid},${hostSec.toFixed(2)})'[v2];` +
+        "[v2]format=yuv420p[v]",
+        "-map", "[v]", "-t", String(hostSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
       pushSeg(segM, hostSec);
       flashSeg(0);
     }
