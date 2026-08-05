@@ -237,8 +237,15 @@ async function referenceExtract(): Promise<string> {
   const path2 = require("node:path") as typeof import("node:path");
   const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
   const ff = (require("ffmpeg-static") as string) || "ffmpeg";
-  const src = path2.join(process.cwd(), "qa-in", "reference.mp4");
-  if (!fs2.existsSync(src)) return `${head}\n\nSKIPPED — qa-in/reference.mp4 not in the checkout.`;
+  let src = path2.join(process.cwd(), "qa-in", "reference.mp4");
+  if (process.env.QA_EXTRACT !== "1" && process.env.QA_EXTRACT) {
+    // QA_EXTRACT=<name> pulls that file from qa-frames instead — frame-level
+    // review of a published take from the sandbox that cannot decode video.
+    src = path2.join(process.cwd(), "qa-in", "fetched.mp4");
+    execFileSync("curl", ["-sf", "--max-time", "60", "-o", src,
+      `https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/${process.env.QA_EXTRACT}`], { stdio: "ignore" });
+  }
+  if (!fs2.existsSync(src)) return `${head}\n\nSKIPPED — no source recording found.`;
   try {
     const outDir = path2.join(process.cwd(), "qa-out", "frames");
     fs2.mkdirSync(outDir, { recursive: true });
