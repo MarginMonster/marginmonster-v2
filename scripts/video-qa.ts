@@ -865,7 +865,14 @@ async function mascotLab(): Promise<string> {
     const runesMode = process.env.QA_MASCOT === "runes";
     const RUNES = `His bare muscular arms and forearms are covered in softly GLOWING golden rune tattoos — thin luminous magical symbols emitting a warm gold light, exactly like the markings on the cartoon character in the last reference image.`;
     const FULL = `Show his FULL BODY head to toe — complete legs and bare ogre feet drawn naturally in the same style, wearing simple dark shorts matching the reference's waist wrap.`;
-    const cands: Array<[string, string, string | string[], boolean]> = runesMode
+    // QA_MASCOT=tint — the brand-green skin experiment, two strengths.
+    const tintMode = process.env.QA_MASCOT === "tint";
+    const cands: Array<[string, string, string | string[], boolean]> = tintMode
+      ? [
+        ["mascot-tint-emerald.jpg", `${KEEPR} His skin is now a rich emerald green (like #12A85E) all over. He wears a soft dark short-sleeved cotton tee. ${RUNES} ${HALF}`, [...MMR, MM], true],
+        ["mascot-tint-olive.jpg", `${KEEPR} His skin has a subtly greener olive tone than the reference — a gentle shift toward emerald, still warm and golden. He wears a soft dark short-sleeved cotton tee. ${RUNES} ${HALF}`, [...MMR, MM], true],
+      ]
+      : runesMode
       ? [
         ["mascot-ugc-0.jpg", `${KEEPR} He wears a relaxed casual outfit: a soft dark short-sleeved cotton tee. ${RUNES} ${HALF}`, [...MMR, MM], true],
         ["mascot-ugc-2.jpg", `${KEEPR} He wears sporty athletic wear: a fitted dark-green short-sleeved training top. ${RUNES} ${HALF}`, [...MMR, MM], true],
