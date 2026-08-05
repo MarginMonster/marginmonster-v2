@@ -123,6 +123,7 @@ model Shop {
   questlines         Questline[]
   tokenPurchases     TokenPurchase[]
   presenterShots     PresenterShot[]
+  customAvatars      CustomAvatar[]
   /// The storefront this shop's catalogue was mirrored from (web accounts).
   storeUrl           String?
   catalog            CatalogProduct[]
@@ -149,6 +150,26 @@ model PresenterShot {
   createdAt   DateTime @default(now())
 
   @@unique([shopId, cacheKey])
+}
+
+/// A merchant's own presenter — "Turn your brand mascot into a marketing
+/// tool." Forged once from an uploaded reference (the same brandStill chain
+/// that made the Magic Monster), stored on the renders disk, visible ONLY in
+/// this shop's Studio. ids are exposed as "cav<id>" to the pickers.
+model CustomAvatar {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  desc      String // prompt descriptor injected into generation, like Avatar.desc
+  gender    String   @default("m") // drives voice selection
+  energy    String   @default("warm")
+  status    String   @default("forging") // forging | ready | failed
+  error     String?
+  files     String   @default("[]") // JSON: renders-disk filenames, wardrobe order 0-3
+  refFile   String? // uploaded reference image on the renders disk
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TokenPurchase {
