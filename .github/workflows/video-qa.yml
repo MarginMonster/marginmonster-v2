@@ -246,6 +246,8 @@ jobs:
           fi
           mkdir -p frames && cp /tmp/pub/* frames/
           git add -A frames
-          git commit -q -m "QA frames from run ${GITHUB_RUN_ID}"
+          # A rerun can produce byte-identical frames — an empty commit is
+          # not a failure.
+          git commit -q -m "QA frames from run ${GITHUB_RUN_ID}" || echo "no new frames"
           git push -f origin qa-frames
           echo "published $(ls /tmp/pub | wc -l) new frames to the qa-frames branch ($(ls frames | wc -l) total)"
