@@ -605,7 +605,7 @@ async function heroCut(): Promise<string> {
       const mid = (hostSec / 2).toFixed(2);
       execFileSync(ff, ["-y", "-i", raw, "-i", pA, "-i", pB,
         "-filter_complex",
-        "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30[v0];" +
+        "[0:v]crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=760:1352:force_original_aspect_ratio=increase,crop=720:1280:(in_w-720)/2:(in_h-1280)/2+sin(t/1.7)*5,fps=30[v0];" +
         `[v0][1:v]overlay=(W-w)/2:H-250:enable='between(t,0.25,${mid})'[v1];` +
         `[v1][2:v]overlay=(W-w)/2:H-250:enable='between(t,${mid},${hostSec.toFixed(2)})'[v2];` +
         "[v2]format=yuv420p[v]",
@@ -619,7 +619,7 @@ async function heroCut(): Promise<string> {
       }
       outroSegPath = path2.join(tmp, "segMo.mp4");
       execFileSync(ff, ["-y", "-i", outroRawPath!,
-        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        "-vf", "crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=760:1352:force_original_aspect_ratio=increase,crop=720:1280:(in_w-720)/2:(in_h-1280)/2+sin(t/1.7)*5,fps=30,format=yuv420p",
         "-t", String(outroSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", outroSegPath], { stdio: "ignore" });
     }
 
@@ -833,8 +833,8 @@ async function heroCut(): Promise<string> {
     let musicPath: string | undefined;
     try {
       const mid = await repCreate("minimax/music-1.5", {
-        lyrics: "##\nEasy mode!\n##",
-        prompt: "high-energy cinematic electronic trailer, driving percussion, fast, epic build, modern tech launch, powerful and expensive",
+        lyrics: "##\n(instrumental)\n##",
+        prompt: "dark confident modern trap instrumental, heavy 808 bass, crisp hi-hat rolls, sparse and expensive, premium sneaker-ad energy, no vocals",
       });
       const murl = await repPoll(mid, 4 * 60_000, "hero-music");
       musicPath = path2.join(tmp, "music.mp3");
