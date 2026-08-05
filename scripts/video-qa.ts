@@ -933,8 +933,12 @@ async function mascotLab(): Promise<string> {
       // looped file fits a data URI comfortably.
       const looped = path2.join(outDir, "zeely-looped.mp3");
       execFileSync(ff, ["-y", "-stream_loop", "3", "-i", mp3, "-acodec", "copy", looped], { stdio: "ignore" });
-      const dataUri = "data:audio/mp3;base64," + fs2.readFileSync(looped).toString("base64");
-      const id = await repCreate("minimax/voice-cloning", { voice_file: dataUri });
+      // MiniMax validates the FILE EXTENSION — a data URI has none
+      // ("invalid file ext for voice clone"), so the clone reads the looped
+      // mp3 the previous run published at a real .mp3 URL.
+      const id = await repCreate("minimax/voice-cloning", {
+        voice_file: "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/zeely-looped.mp3",
+      });
       const out = await repPoll(id, 5 * 60_000, "voice-clone");
       const rendered = typeof out === "string" ? out : JSON.stringify(out);
       fs2.writeFileSync(path2.join(outDir, "zeely-voice-id.txt"), rendered);
