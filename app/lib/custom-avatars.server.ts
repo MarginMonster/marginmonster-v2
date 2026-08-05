@@ -94,7 +94,8 @@ export async function forgeCustomAvatar(customAvatarId: string): Promise<void> {
   if (!row) throw new Error(`custom avatar ${customAvatarId} not found`);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   if (!row.refFile || !base) throw new Error("forge needs a reference image and SHOPIFY_APP_URL");
-  const refUrl = `${base}/renders/${row.refFile}`;
+  // references are merchant uploads: data/renders/uploads, served at /uploads
+  const refUrl = `${base}/uploads/${row.refFile}`;
   const KEEP = `The reference image shows a brand character or spokesperson. Recreate the EXACT same character — identical face, colours, features and style — as a clean professional presenter photo.`;
   const HALF = `Half-body presenter framing (waist up, facing camera, arms relaxed and visible), soft even studio light on a plain warm neutral backdrop, sharp focus. No text anywhere.`;
   try {

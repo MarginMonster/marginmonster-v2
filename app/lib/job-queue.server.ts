@@ -529,6 +529,14 @@ async function runJob(
     }
 
 
+    case "FORGE_CUSTOM_AVATAR": {
+      // "Turn your brand mascot into a marketing tool" — four wardrobe
+      // portraits forged from the merchant's uploaded reference.
+      const { forgeCustomAvatar } = await import("./custom-avatars.server");
+      await forgeCustomAvatar(payload.customAvatarId as string);
+      break;
+    }
+
     case "LAUNCH_CAMPAIGN": {
       await launchCampaign({
         assetId: payload.assetId as string,

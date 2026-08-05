@@ -488,19 +488,35 @@ async function heroCut(): Promise<string> {
     const monsterHost = process.env.QA_HERO === "monster";
     const off = monsterHost ? 2 : 0;
     if (monsterHost) {
-      const { renderMotionClip } = await import("../app/lib/commercial-ad-pipeline.server");
       const { downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
-      const portrait = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_1.jpg";
-      const clipUrl = await renderMotionClip("veo", {
-        startImage: portrait,
-        prompt: "The photorealistic ogre gentleman in the tuxedo talks directly to the camera like a confident show host — mouth moving as he speaks, subtle hand gestures, a knowing grin at the end. Steady medium shot, he stays centred, warm studio light.",
-        negativePrompt: "text, captions, subtitles, logos, watermark",
-      }, "hero-host");
       const raw = path2.join(tmp, "host-raw.mp4");
-      fs2.writeFileSync(raw, await downloadBuffer(clipUrl));
+      // Reuse a published take when one exists — the Veo call is the only
+      // real spend in a monster re-cut.
+      const kept = path2.join(process.cwd(), "qa-out", "frames", "host-raw.mp4");
+      const curlHost = (url: string, out: string) => {
+        try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 100_000; } catch { return false; }
+      };
+      if (fs2.existsSync(kept)) {
+        fs2.copyFileSync(kept, raw);
+      } else if (!curlHost("https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/host-raw.mp4", raw)) {
+        const { renderMotionClip } = await import("../app/lib/commercial-ad-pipeline.server");
+        const portrait = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_1.jpg";
+        const clipUrl = await renderMotionClip("veo", {
+          startImage: portrait,
+          prompt: "The photorealistic ogre gentleman in the tuxedo talks directly to the camera like a confident show host — mouth moving as he speaks, subtle hand gestures, a knowing grin at the end. Steady medium shot, he stays centred, warm studio light.",
+          negativePrompt: "text, captions, subtitles, logos, watermark",
+        }, "hero-host");
+        fs2.writeFileSync(raw, await downloadBuffer(clipUrl));
+      }
+      // Publish the raw take too — a re-cut must not re-spend the Veo call.
+      const outDir0 = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDir0, { recursive: true });
+      fs2.copyFileSync(raw, path2.join(outDir0, "host-raw.mp4"));
       const segM = path2.join(tmp, "segM.mp4");
+      // Veo pads the 3:4 portrait into 9:16 with baked black bars — crop the
+      // 3:4 content region back out, then zoom-fill the vertical frame.
       execFileSync(ff, ["-y", "-i", raw,
-        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        "-vf", "crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
         "-t", "4.6", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
       pushSeg(segM, 4.6);
       flashSeg(0);

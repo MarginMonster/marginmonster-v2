@@ -78,7 +78,13 @@ const decodeEntities = (s: string) => s
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
-  const cast = [...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
+  const { customCastFor } = await import("../lib/custom-avatars.server");
+  const custom = await customCastFor(shop.id);
+  const cast = [
+    ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
+    ...[...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
+  ];
+  const forgingAvatars = custom.filter((c) => c.status !== "ready").map((c) => ({ name: c.name, status: c.status }));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // The merchant's own catalogue, mirrored by the importer. Present = the
   // Studio can offer a picker instead of asking for a link every single time.
@@ -111,6 +117,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     caps: [...capabilitiesFor(shop.activePlan)] as string[],
     cast,
     brandFaceId,
+    forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
     costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog },
   });
@@ -167,6 +174,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {
       return json({ importError: e instanceof Error ? e.message : "Couldn't import from that URL." });
     }
+  }
+
+  // "Turn your brand mascot into a marketing tool" — forge a private
+  // presenter from an uploaded reference. Queued: four renders take ~90s.
+  if (intent === "forgeAvatar") {
+    if (!shop.activePlan?.active) return json({ avatarError: "Pick a plan first — the forge runs on tokens." });
+    const name = ((form.get("avatarName") as string) || "").trim().slice(0, 40);
+    if (!name) return json({ avatarError: "Give your presenter a name." });
+    const gender = form.get("avatarGender") === "f" ? "f" : "m";
+    const ref = form.get("avatarPhoto");
+    if (!ref || typeof ref === "string" || ref.size === 0) return json({ avatarError: "Upload a photo of your mascot or spokesperson." });
+    if (!/^image\//.test(ref.type)) return json({ avatarError: "That file isn't an image — use a JPG, PNG or WebP." });
+    if (ref.size > 8 * 1024 * 1024) return json({ avatarError: "Image too large — keep it under 8 MB." });
+    const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+    const ext = ref.type === "image/png" ? "png" : ref.type === "image/webp" ? "webp" : "jpg";
+    const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
+    fsMod.mkdirSync(dir, { recursive: true });
+    const fileName = `${shop.id.toLowerCase().replace(/[^a-z0-9]/g, "")}-mascot-${crypto.randomBytes(8).toString("hex")}.${ext}`;
+    fsMod.writeFileSync(pathMod.join(dir, fileName), Buffer.from(await ref.arrayBuffer()));
+    const row = await db.customAvatar.create({
+      data: {
+        shopId: shop.id, name, gender,
+        desc: ((form.get("avatarDesc") as string) || "").trim().slice(0, 200) || `${name}, the brand's own presenter character`,
+        refFile: fileName,
+      },
+    });
+    await enqueueJob(shop.id, "FORGE_CUSTOM_AVATAR", { customAvatarId: row.id });
+    return json({ avatarQueued: name });
   }
 
   if (!shop.brandProfile) return json({ error: "Set your brand voice on the Dashboard first." });
