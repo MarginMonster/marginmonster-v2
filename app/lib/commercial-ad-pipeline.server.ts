@@ -209,12 +209,12 @@ export async function brandImage(prompt: string): Promise<string> {
 /** Square brand still — plain t2i, or a faithful EDIT of a reference image
  *  when one is given (recolours, wardrobe swaps, prop changes that keep the
  *  character). Exported for the QA harness' Mascot Lab. */
-export async function brandStill(prompt: string, refUrl?: string): Promise<string> {
+export async function brandStill(prompt: string, refUrl?: string, portrait = false): Promise<string> {
   const res = process.env.COMPOSE_RESOLUTION?.trim();
   if (!refUrl) {
     return falQueueImage(t2iModel(), {
       prompt,
-      aspect_ratio: "1:1",
+      aspect_ratio: portrait ? "3:4" : "1:1",
       ...(res ? { resolution: res } : {}),
       num_images: 1,
     }, "brand still");
@@ -222,7 +222,7 @@ export async function brandStill(prompt: string, refUrl?: string): Promise<strin
   return falQueueImage(editModel(), {
     prompt,
     image_urls: [refUrl],
-    image_size: "square_hd",
+    image_size: portrait ? "portrait_4_3" : "square_hd",
     ...(res ? { resolution: res } : {}),
     num_images: 1,
   }, "brand still edit");

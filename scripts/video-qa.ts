@@ -841,16 +841,44 @@ async function mascotLab(): Promise<string> {
     const MM = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/072b31816ed84806e1c9e4608b983e635662c97d/qa-in/mascot/magic-monster.jpeg";
     const KEEP = `Keep the EXACT same character and painterly cartoon style: bald golden-green ogre, chunky black rectangular glasses, friendly smile with two small tusks, muscular torso covered in softly glowing golden rune tattoos.`;
     const STRIP = `Remove the clipboard, the badge circle and ALL text and lettering completely.`;
-    const cands: Array<[string, string]> = [
-      ["mascot-mm-clean.jpg",
-        `${STRIP} ${KEEP} He stands waist-up in a confident double-bicep flex, both arms fully visible and naturally drawn. Isolated on a pure white background. No text anywhere.`],
-      ["mascot-mm-coin.jpg",
-        `${STRIP} ${KEEP} He proudly holds up a large round gold coin embossed with the letter "E" in one hand, the other hand giving a thumbs-up. Isolated on a pure white background. The ONLY text anywhere is the letter "E" on the coin.`],
-      ["mascot-mm-point.jpg",
-        `${STRIP} ${KEEP} He grins and points directly at the viewer with one hand, the other fist resting on his hip. Isolated on a pure white background. No text anywhere.`],
-    ];
-    const done = await Promise.all(cands.map(async ([name, prompt]) => {
-      const url = await brandStill(prompt, MM);
+    // The hyper-real Zeely presenter (a TikTok screenshot — the prompts
+    // strip the app chrome). SHA-pinned like the badge art.
+    const MMR = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/070e27dbdb8e305a1bca3ad0c4d646f385a6d6ca/qa-in/mascot/magic-monster-real.png";
+    const KEEPR = `Recreate this photorealistic ogre character EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly face — as a clean professional UGC presenter photo. Remove ALL app interface elements, captions, buttons, icons and text overlays completely.`;
+    const HALF = `Half-body presenter framing (waist up, facing camera, arms relaxed and visible), soft even studio light on a plain warm neutral backdrop, photorealistic, sharp focus. No text anywhere.`;
+    // QA_MASCOT=ads renders the advocate set: Holo-style cartoon AD SCENES
+    // (full body, floating UI, NO text — hooks are composited
+    // deterministically afterwards) + hyper-real UGC avatar candidates in
+    // the four cast outfits (public/avatars format). Anything else renders
+    // the clean cartoon pose candidates.
+    const adMode = process.env.QA_MASCOT === "ads";
+    const FULL = `Show his FULL BODY head to toe — complete legs and bare ogre feet drawn naturally in the same style, wearing simple dark shorts matching the reference's waist wrap.`;
+    const cands: Array<[string, string, string, boolean]> = adMode
+      ? [
+        ["mascot-ad-desk.jpg",
+          `${STRIP} ${KEEP} ${FULL} Cinematic vertical brand-advocate scene: the ogre sits cross-legged like a friendly guide on top of a sleek desk with a glowing soft-green surface, his whole body visible, in a cozy dim home studio at night, warm bokeh background. Around him float translucent holographic UI cards: small product-ad thumbnails, a video tile with a play button, a colour palette strip — all abstract, all glowing softly green and gold. He gestures proudly at one floating card. Premium tech-ad look, soft rim light. NO text, NO letters, NO words anywhere in the image.`,
+          MM, true],
+        ["mascot-ad-phone.jpg",
+          `${STRIP} ${KEEP} ${FULL} Cinematic vertical brand-advocate scene: the ogre stands full height leaning one elbow on a giant smartphone (as tall as he is) standing upright on a clean studio floor, deep green background with soft gold light streaks. The phone screen glows with an abstract grid of small colourful ad thumbnails — abstract shapes only. He gives a confident thumbs-up. Premium tech-ad look. NO text, NO letters, NO words anywhere in the image.`,
+          MM, true],
+        ["mascot-ugc-0.jpg", `${KEEPR} He wears a relaxed casual outfit: a soft dark cotton tee. ${HALF}`, MMR, true],
+        ["mascot-ugc-1.jpg", `${KEEPR} He wears his smart tailored black tuxedo with a white shirt and black bow tie, exactly as in the reference. ${HALF}`, MMR, true],
+        ["mascot-ugc-2.jpg", `${KEEPR} He wears sporty athletic wear: a fitted dark-green training top. ${HALF}`, MMR, true],
+        ["mascot-ugc-3.jpg", `${KEEPR} He wears trendy streetwear: a dark hoodie under an open denim jacket. ${HALF}`, MMR, true],
+      ]
+      : [
+        ["mascot-mm-clean.jpg",
+          `${STRIP} ${KEEP} He stands waist-up in a confident double-bicep flex, both arms fully visible and naturally drawn. Isolated on a pure white background. No text anywhere.`,
+          MM, false],
+        ["mascot-mm-coin.jpg",
+          `${STRIP} ${KEEP} He proudly holds up a large round gold coin embossed with the letter "E" in one hand, the other hand giving a thumbs-up. Isolated on a pure white background. The ONLY text anywhere is the letter "E" on the coin.`,
+          MM, false],
+        ["mascot-mm-point.jpg",
+          `${STRIP} ${KEEP} He grins and points directly at the viewer with one hand, the other fist resting on his hip. Isolated on a pure white background. No text anywhere.`,
+          MM, false],
+      ];
+    const done = await Promise.all(cands.map(async ([name, prompt, ref, portrait]) => {
+      const url = await brandStill(prompt, ref, portrait);
       await saveFrame(url, name);
       console.log(`[mascot] ${name} ready`);
       return name;
