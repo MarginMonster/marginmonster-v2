@@ -9,7 +9,7 @@ import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemaining, tokensRemainingLive, spendTokens, refundTokens } from "../lib/tokens.server";
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
-import { AVATARS, avatarImg } from "../lib/avatars";
+import { AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
 import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, resolveTierKey } from "../lib/plan-config";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -78,7 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // FULL Studio cast — the campaign picker carries every presenter, same as
   // the Content Studio (it's a horizontal scroller, so the row scales).
-  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
+  const cast = [...privateCastFor(session.shop), ...AVATARS].map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
 
   return json({
     hasPlan: !!plan?.active,

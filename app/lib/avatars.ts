@@ -65,8 +65,38 @@ export const AVATARS: Avatar[] = [
   ...ALL_AVATARS.filter((a) => !DESIGNED_VOICES.has(a.id)),
 ];
 
+/* ---- Private cast ----
+ * Presenters visible ONLY to the accounts listed as owners — the founder's
+ * Magic Monster brand advocate lives here, not in the public cast. An owner
+ * entry is matched (case-insensitively) against the viewer's web account
+ * email or Shopify shop domain, whichever surface they're on. Portraits use
+ * the same public/avatars/{id}_{variant}.jpg convention. */
+export const PRIVATE_AVATARS: Array<Avatar & { owners: string[] }> = [
+  {
+    id: "monster",
+    name: "Magic Monster",
+    vibe: "Brand advocate",
+    desc: "a photorealistic friendly muscular golden-green ogre gentleman with a bald head, large pointed ears, chunky black rectangular glasses and a warm confident grin",
+    gender: "m",
+    ageBand: "mid",
+    energy: "hype",
+    owners: ["slyshoffner@gmail.com"],
+  },
+];
+
+/** The private presenters this identity owns (web email or shop domain). */
+export function privateCastFor(identity?: string | null): Avatar[] {
+  const id = (identity || "").trim().toLowerCase();
+  if (!id) return [];
+  return PRIVATE_AVATARS
+    .filter((a) => a.owners.some((o) => o.toLowerCase() === id))
+    .map(({ owners: _owners, ...a }) => a);
+}
+
+/* Lookups include the private cast — generation pipelines resolve by id
+ * after the picker has already enforced visibility. */
 export const AVATAR_BY_ID: Record<string, Avatar> = Object.fromEntries(
-  AVATARS.map((a) => [a.id, a])
+  [...AVATARS, ...PRIVATE_AVATARS.map(({ owners: _owners, ...a }) => a)].map((a) => [a.id, a])
 );
 
 /* Wardrobe — 4 outfit variants per avatar. `desc` feeds both the portrait

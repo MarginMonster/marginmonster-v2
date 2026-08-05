@@ -843,11 +843,14 @@ async function mascotLab(): Promise<string> {
     const STRIP = `Remove the clipboard, the badge circle and ALL text and lettering completely.`;
     // The hyper-real Zeely presenter (a TikTok screenshot — the prompts
     // strip the app chrome). SHA-pinned like the badge art.
+    // UI-free crops — the raw Zeely shots are TikTok screenshots, and the
+    // engine faithfully reproduced the app chrome no matter what the prompt
+    // said. Cropping the references deterministically fixed it.
     const MMR = [
-      "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/106180fcd0a5b37cea3483bda828db9cb077f1a8/qa-in/mascot/magic-monster-casual.png",
-      "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/070e27dbdb8e305a1bca3ad0c4d646f385a6d6ca/qa-in/mascot/magic-monster-real.png",
+      "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/7f370a482573208be369a80cac7e40f9a268bd08/qa-in/mascot/mm-cut-casual.jpg",
+      "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/7f370a482573208be369a80cac7e40f9a268bd08/qa-in/mascot/mm-cut-tux.jpg",
     ];
-    const KEEPR = `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly expressive face — as a clean professional UGC presenter photo. Remove ALL app interface elements, captions, buttons, icons and text overlays completely.`;
+    const KEEPR = `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly expressive face — as a clean professional UGC presenter photo, nothing else from the reference photos.`;
     const HALF = `Half-body presenter framing (waist up, facing camera, arms relaxed and visible), soft even studio light on a plain warm neutral backdrop, photorealistic, sharp focus. No text anywhere.`;
     // QA_MASCOT=ads renders the advocate set: Holo-style cartoon AD SCENES
     // (full body, floating UI, NO text — hooks are composited

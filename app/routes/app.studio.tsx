@@ -9,7 +9,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens } from "../lib/tokens.server";
 import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
-import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
+import { AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge } from "../lib/video-engines";
@@ -107,7 +107,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }));
   } catch { /* fall through */ }
 
-  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
+  const cast = [...privateCastFor(session.shop), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
   const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 
   // Capabilities drive the locked-card UI. The action re-checks server-side —

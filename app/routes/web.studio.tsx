@@ -15,7 +15,7 @@ import { planTrialing, spendTokens, tokensRemainingLive } from "../lib/tokens.se
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
-import { AVATARS, avatarImg, DESIGNED_VOICES } from "../lib/avatars";
+import { AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
@@ -77,8 +77,8 @@ const decodeEntities = (s: string) => s
   .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { shop } = await requireWebIdentity(request);
-  const cast = AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
+  const { account, shop } = await requireWebIdentity(request);
+  const cast = [...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // The merchant's own catalogue, mirrored by the importer. Present = the
   // Studio can offer a picker instead of asking for a link every single time.
