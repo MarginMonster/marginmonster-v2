@@ -501,19 +501,20 @@ async function heroCut(): Promise<string> {
       hostAudioPath = path2.join(tmp, "host-vo.mp3");
       const outDirM = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDirM, { recursive: true });
-      const keptClip = path2.join(outDirM, "host-raw.mp4");
-      const keptVo = path2.join(outDirM, "host-vo.mp3");
+      const keptClip = path2.join(outDirM, "host2-raw.mp4");
+      const keptVo = path2.join(outDirM, "host2-vo.mp3");
       const curlHost = (url: string, out: string, min: number) => {
         try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
       const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
       const haveCache =
-        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host-raw.mp4`, raw, 100_000)) &&
-        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host-vo.mp3`, hostAudioPath, 5_000));
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host2-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host2-vo.mp3`, hostAudioPath, 5_000));
       if (!haveCache) {
-        const ttsId = await repCreate("minimax/speech-02-hd", {
-          text: hostLine, voice_id: "English_ManWithDeepVoice", pitch: -2, speed: 0.96,
-          emotion: "happy", english_normalization: true, language_boost: "English",
+        // The founder's cloned Zeely voice (R8_95CETMBJ) — turbo is the
+        // model the clone was made against.
+        const ttsId = await repCreate("minimax/speech-02-turbo", {
+          text: hostLine, voice_id: "R8_95CETMBJ", english_normalization: true,
         });
         const voUrl = await repPoll(ttsId, 3 * 60_000, "hero-host-vo");
         fs2.writeFileSync(hostAudioPath, await downloadBuffer(voUrl));
@@ -534,7 +535,7 @@ async function heroCut(): Promise<string> {
       // Publish the raw take too — a re-cut must not re-spend the Veo call.
       const outDir0 = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDir0, { recursive: true });
-      fs2.copyFileSync(raw, path2.join(outDir0, "host-raw.mp4"));
+      fs2.copyFileSync(raw, path2.join(outDir0, "host2-raw.mp4"));
       const segM = path2.join(tmp, "segM.mp4");
       // Veo pads the 3:4 portrait into 9:16 with baked black bars — crop the
       // 3:4 content region back out, then zoom-fill the vertical frame.
@@ -768,8 +769,8 @@ async function heroCut(): Promise<string> {
       // magnetic_voiced_man: the deep trailer read — Trustworth was the
       // infomercial "presenter" tone that kept feeling off. Monster mode:
       // the HOST narrates his own ad, same deep-pitched voice as his clip.
-      const id = await repCreate("minimax/speech-02-hd", monsterHost
-        ? { text, voice_id: "English_ManWithDeepVoice", pitch: -2, speed: 0.96, emotion: "happy", english_normalization: true, language_boost: "English" }
+      const id = await repCreate(monsterHost ? "minimax/speech-02-turbo" : "minimax/speech-02-hd", monsterHost
+        ? { text, voice_id: "R8_95CETMBJ", english_normalization: true }
         : { text, voice_id: "English_magnetic_voiced_man", emotion: "neutral", english_normalization: true, language_boost: "English" });
       const url = await repPoll(id, 3 * 60_000, `hero-vo-${i + 1}`);
       const p = path2.join(tmp, `vo${i}.mp3`);
