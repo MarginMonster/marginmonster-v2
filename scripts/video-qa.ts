@@ -843,8 +843,11 @@ async function mascotLab(): Promise<string> {
     const STRIP = `Remove the clipboard, the badge circle and ALL text and lettering completely.`;
     // The hyper-real Zeely presenter (a TikTok screenshot — the prompts
     // strip the app chrome). SHA-pinned like the badge art.
-    const MMR = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/070e27dbdb8e305a1bca3ad0c4d646f385a6d6ca/qa-in/mascot/magic-monster-real.png";
-    const KEEPR = `Recreate this photorealistic ogre character EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly face — as a clean professional UGC presenter photo. Remove ALL app interface elements, captions, buttons, icons and text overlays completely.`;
+    const MMR = [
+      "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/106180fcd0a5b37cea3483bda828db9cb077f1a8/qa-in/mascot/magic-monster-casual.png",
+      "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/070e27dbdb8e305a1bca3ad0c4d646f385a6d6ca/qa-in/mascot/magic-monster-real.png",
+    ];
+    const KEEPR = `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly expressive face — as a clean professional UGC presenter photo. Remove ALL app interface elements, captions, buttons, icons and text overlays completely.`;
     const HALF = `Half-body presenter framing (waist up, facing camera, arms relaxed and visible), soft even studio light on a plain warm neutral backdrop, photorealistic, sharp focus. No text anywhere.`;
     // QA_MASCOT=ads renders the advocate set: Holo-style cartoon AD SCENES
     // (full body, floating UI, NO text — hooks are composited
@@ -853,7 +856,7 @@ async function mascotLab(): Promise<string> {
     // the clean cartoon pose candidates.
     const adMode = process.env.QA_MASCOT === "ads";
     const FULL = `Show his FULL BODY head to toe — complete legs and bare ogre feet drawn naturally in the same style, wearing simple dark shorts matching the reference's waist wrap.`;
-    const cands: Array<[string, string, string, boolean]> = adMode
+    const cands: Array<[string, string, string | string[], boolean]> = adMode
       ? [
         ["mascot-ad-desk.jpg",
           `${STRIP} ${KEEP} ${FULL} Cinematic vertical brand-advocate scene: the ogre sits cross-legged like a friendly guide on top of a sleek desk with a glowing soft-green surface, his whole body visible, in a cozy dim home studio at night, warm bokeh background. Around him float translucent holographic UI cards: small product-ad thumbnails, a video tile with a play button, a colour palette strip — all abstract, all glowing softly green and gold. He gestures proudly at one floating card. Premium tech-ad look, soft rim light. NO text, NO letters, NO words anywhere in the image.`,
