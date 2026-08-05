@@ -496,6 +496,10 @@ async function heroCut(): Promise<string> {
     const off = monsterHost ? 2 : 0;
     let hostAudioPath: string | undefined;
     let hostSec = 4.6;
+    let outroRawPath: string | undefined;
+    let outroAudioPath: string | undefined;
+    let outroSegPath: string | undefined;
+    let outroSec = 4.2;
     if (monsterHost) {
       // ZEELY-GRADE HOST — the bust-shot avatar looked robotic next to the
       // reference. Now: (1) forge a flex-mode keyframe (shirtless, runes
@@ -509,8 +513,8 @@ async function heroCut(): Promise<string> {
       hostAudioPath = path2.join(tmp, "host-vo.mp3");
       const outDirM = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDirM, { recursive: true });
-      const keptClip = path2.join(outDirM, "host3-raw.mp4");
-      const keptVo = path2.join(outDirM, "host3-vo.mp3");
+      const keptClip = path2.join(outDirM, "host4-raw.mp4");
+      const keptVo = path2.join(outDirM, "host4-vo.mp3");
       const curlHost = (url: string, out: string, min: number) => {
         try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
@@ -536,32 +540,50 @@ async function heroCut(): Promise<string> {
         if (!url) throw new Error(`${tag}: no video url in response`);
         return url;
       };
+      void falQueueVideo; void renderMotionClip;
+      const { submitAvatar, pollAvatar } = await import("../app/lib/fal-video.server");
+      const outroLine = "EasyMode. Marketing on easy mode. Take it from the monster it made.";
+      outroRawPath = path2.join(tmp, "outro-raw.mp4");
+      outroAudioPath = path2.join(tmp, "outro-vo.mp3");
+      const keptOutro = path2.join(outDirM, "host4-outro.mp4");
+      const keptOutroVo = path2.join(outDirM, "host4-outro-vo.mp3");
+      const keptTee = path2.join(outDirM, "monster-tee.jpg");
       const haveCache =
-        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host3-raw.mp4`, raw, 100_000)) &&
-        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host3-vo.mp3`, hostAudioPath, 5_000));
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host4-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host4-vo.mp3`, hostAudioPath, 5_000)) &&
+        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host4-outro.mp4`, outroRawPath, 100_000)) &&
+        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host4-outro-vo.mp3`, outroAudioPath, 5_000));
       if (!haveCache) {
-        // 0) His voice (cloned from the Zeely recording).
-        const ttsId = await repCreate("minimax/speech-02-turbo", {
-          text: hostLine, voice_id: "R8_95CETMBJ", english_normalization: true,
-        });
-        const voUrl = await repPoll(ttsId, 3 * 60_000, "hero-host-vo");
+        // 0) His EasyMode-tee presenter portrait (forged once, then cached).
+        let teeUrl = "";
+        if (fs2.existsSync(keptTee) || curlHost(`${RAWQ}/monster-tee.jpg`, keptTee, 20_000)) {
+          teeUrl = `${RAWQ}/monster-tee.jpg`;
+        } else {
+          teeUrl = await brandStill(
+            `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly face. Half-body presenter framing, facing camera, arms relaxed: he wears a fitted dark-green t-shirt with the word "EASYMODE" printed in bold white capitals across the chest, his muscular arms showing softly glowing golden rune tattoos. Soft even studio light, plain warm neutral backdrop, photorealistic. The ONLY text anywhere is exactly "EASYMODE" on the shirt.`,
+            ["https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/7f370a482573208be369a80cac7e40f9a268bd08/qa-in/mascot/mm-cut-casual.jpg", `${RAWQ}/zeely-e4.jpg`],
+            true);
+          try { execFileSync("curl", ["-sf", "-o", keptTee, teeUrl], { stdio: "ignore" }); } catch { /* cache is best-effort */ }
+        }
+        // 1) Both lines in his cloned Zeely voice.
+        const tts = async (text: string) => {
+          const id0 = await repCreate("minimax/speech-02-turbo", { text, voice_id: "R8_95CETMBJ", english_normalization: true });
+          return repPoll(id0, 3 * 60_000, "hero-host-vo");
+        };
+        const [voUrl, outroVoUrl] = await Promise.all([tts(hostLine), tts(outroLine)]);
         fs2.writeFileSync(hostAudioPath, await downloadBuffer(voUrl));
-        // 1) Flex-mode keyframe: the energy of the reference recording.
-        const flexKey = await brandStill(
-          `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same face. He stands FULL BODY, shirtless with softly GLOWING golden rune tattoos blazing across his muscular torso and arms, dark trousers, mid double-bicep flex with a huge confident grin, in a cozy warmly-lit modern shop interior with softly blurred shelves behind him. Photorealistic, energetic, cinematic vertical framing. No text anywhere.`,
-          [`${RAWQ}/zeely-e4.jpg`, "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/7f370a482573208be369a80cac7e40f9a268bd08/qa-in/mascot/mm-cut-casual.jpg"],
-          true);
-        // 2) Veo performs it — real full-body energy, mouth accuracy ignored.
-        const motionUrl = await renderMotionClip("veo", {
-          startImage: flexKey,
-          prompt: "The ogre showman talks excitedly straight to camera while flexing — big expressive gestures, pumps a bicep, leans in with a grin, high showman energy, steady handheld feel. He stays facing the camera the whole time.",
-          negativePrompt: "text, captions, subtitles, logos, watermark",
-        }, "hero-host-motion");
-        // 3) Retarget the mouth on the MOVING footage to his cloned voice.
-        const syncedUrl = await falQueueVideo("fal-ai/sync-lipsync", { video_url: motionUrl, audio_url: voUrl }, "hero-host-sync");
-        fs2.writeFileSync(raw, await downloadBuffer(syncedUrl));
+        fs2.writeFileSync(outroAudioPath, await downloadBuffer(outroVoUrl));
+        // 2) The NORMAL pipeline's engine — the one merchant videos use.
+        const [introUrl, outroUrl] = await Promise.all([
+          submitAvatar(teeUrl, voUrl).then(pollAvatar),
+          submitAvatar(teeUrl, outroVoUrl).then(pollAvatar),
+        ]);
+        fs2.writeFileSync(raw, await downloadBuffer(introUrl));
+        fs2.writeFileSync(outroRawPath, await downloadBuffer(outroUrl));
         fs2.copyFileSync(raw, keptClip);
         fs2.copyFileSync(hostAudioPath, keptVo);
+        fs2.copyFileSync(outroRawPath, keptOutro);
+        fs2.copyFileSync(outroAudioPath, keptOutroVo);
       }
       // The clip runs as long as the speech — keep it all plus a beat.
       try {
@@ -590,6 +612,15 @@ async function heroCut(): Promise<string> {
         "-map", "[v]", "-t", String(hostSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
       pushSeg(segM, hostSec);
       flashSeg(0);
+      // OUTRO — his sign-off take, spliced back in before the close.
+      try { execFileSync(ff, ["-i", outroRawPath!], { stdio: ["ignore", "ignore", "pipe"] }); } catch (e) {
+        const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(String((e as { stderr?: Buffer }).stderr || ""));
+        if (m) outroSec = Math.min(9, Math.max(3, +m[1] * 3600 + +m[2] * 60 + +m[3] + 0.1));
+      }
+      outroSegPath = path2.join(tmp, "segMo.mp4");
+      execFileSync(ff, ["-y", "-i", outroRawPath!,
+        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        "-t", String(outroSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", outroSegPath], { stdio: "ignore" });
     }
 
     // A) SLAM OPEN — the product alone, no words. Let the object talk.
@@ -767,7 +798,9 @@ async function heroCut(): Promise<string> {
       </div>`, 1.5, "post");
     }
 
-    // D) CLOSE — the gstyle card with live-spun rosettes.
+    // D) CLOSE — in monster mode his sign-off take lands first, then the
+    // gstyle card.
+    if (outroSegPath) pushSeg(outroSegPath, outroSec);
     const base = path2.join(process.cwd(), "public", "showcase", "endcard-base.png");
     const rose = path2.join(process.cwd(), "public", "showcase", "endcard-rosette.png");
     const segD = path2.join(tmp, "segD.mp4");
@@ -795,7 +828,7 @@ async function heroCut(): Promise<string> {
       ["Paste your product.", startOf(2 + off) + 0.4],
       ["It writes. It films. It checks.", startOf(4 + off) + 0.1],
       ["Whatever you sell.", startOf(6 + off) + 1.9],
-      [monsterHost ? "EasyMode. Marketing on easy mode. Take it from the monster it made." : "EasyMode. Marketing on easy mode.", startOf(9 + off) + 0.5],
+      ...(monsterHost ? [] : [["EasyMode. Marketing on easy mode.", startOf(9) + 0.5] as [string, number]]),
     ];
     let musicPath: string | undefined;
     try {
@@ -823,8 +856,9 @@ async function heroCut(): Promise<string> {
       fs2.writeFileSync(p, await downloadBuffer(url));
       voFiles[i] = p;
     }));
-    // The lip-synced host take's own audio, laid at the head of the cut.
+    // The talking takes' own audio: intro at the head, outro at its splice.
     if (hostAudioPath) { voFiles.push(hostAudioPath); lines.push(["", 0.05]); }
+    if (outroAudioPath && outroSegPath) { voFiles.push(outroAudioPath); lines.push(["", startOf(9 + off) + 0.1]); }
 
     // FINAL — concat, watermark from the cascade onward, VO mix.
     const wm = renderOverlayPng(
@@ -869,7 +903,8 @@ async function heroCut(): Promise<string> {
       ["hero-gridfill.jpg", startOf(6 + off) + 0.8],
       ["hero-gridfull.jpg", startOf(7 + off) - 0.6],
       ["hero-post.jpg", startOf(8 + off) + 0.7],
-      ["hero-close.jpg", startOf(9 + off) + 2],
+      ...(monsterHost ? [["hero-outro.jpg", startOf(9 + off) + 0.5] as [string, number]] : []),
+      ["hero-close.jpg", startOf(9 + off + (monsterHost ? 1 : 0)) + 2],
     ];
     for (const [name, t] of grabs) {
       try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
