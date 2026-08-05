@@ -482,6 +482,30 @@ async function heroCut(): Promise<string> {
     // at billboard sizes; it stays on the wordmark only.
     const disp = disp0;
 
+    // M) HOST — QA_HERO=monster opens with the Magic Monster on camera:
+    // the mascot IS EasyMode output, and the narrator is him. One Veo clip
+    // from his tux portrait; every act index below shifts by `off`.
+    const monsterHost = process.env.QA_HERO === "monster";
+    const off = monsterHost ? 2 : 0;
+    if (monsterHost) {
+      const { renderMotionClip } = await import("../app/lib/commercial-ad-pipeline.server");
+      const { downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      const portrait = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_1.jpg";
+      const clipUrl = await renderMotionClip("veo", {
+        startImage: portrait,
+        prompt: "The photorealistic ogre gentleman in the tuxedo talks directly to the camera like a confident show host — mouth moving as he speaks, subtle hand gestures, a knowing grin at the end. Steady medium shot, he stays centred, warm studio light.",
+        negativePrompt: "text, captions, subtitles, logos, watermark",
+      }, "hero-host");
+      const raw = path2.join(tmp, "host-raw.mp4");
+      fs2.writeFileSync(raw, await downloadBuffer(clipUrl));
+      const segM = path2.join(tmp, "segM.mp4");
+      execFileSync(ff, ["-y", "-i", raw,
+        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
+        "-t", "4.6", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
+      pushSeg(segM, 4.6);
+      flashSeg(0);
+    }
+
     // A) SLAM OPEN — the product alone, no words. Let the object talk.
     smash(`<div style="display:flex;flex-direction:column;align-items:center">
       <img src="file://${packShot}" style="width:430px;border-radius:24px;box-shadow:0 30px 90px rgba(0,0,0,.7),0 0 60px rgba(18,168,94,.25)">
@@ -670,19 +694,21 @@ async function heroCut(): Promise<string> {
       "-map", "[v]", "-t", "4", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segD], { stdio: "ignore" });
     pushSeg(segD, 4);
 
-    // Segment order: 0 slam, 1 flash, 2 typing, 3 flash, 4 think, 5 flash,
-    // 6 grid, 7 flash, 8 post, 9 close.
+    // Segment order (+off when the host act leads): 0 slam, 1 flash,
+    // 2 typing, 3 flash, 4 think, 5 flash, 6 grid, 7 flash, 8 post, 9 close.
     const startOf = (i: number) => segLens.slice(0, i).reduce((a, b) => a + b, 0);
     const totalSec = segLens.reduce((a, b) => a + b, 0);
 
-    // VOICE — three tight lines + tagline, and a MUSIC bed driving under
-    // everything (the silence was the basement).
+    // VOICE — tight lines + tagline, and a MUSIC bed driving under
+    // everything (the silence was the basement). In monster mode the
+    // narrator IS the host: his flex opens, his tag closes.
     const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
     const lines: [string, number][] = [
-      ["Paste your product.", startOf(2) + 0.4],
-      ["It writes. It films. It checks.", startOf(4) + 0.1],
-      ["Whatever you sell.", startOf(6) + 1.9],
-      ["EasyMode. Marketing on easy mode.", startOf(9) + 0.5],
+      ...(monsterHost ? [["This ad? Made by EasyMode. Me? Also made by EasyMode.", 0.3] as [string, number]] : []),
+      ["Paste your product.", startOf(2 + off) + 0.4],
+      ["It writes. It films. It checks.", startOf(4 + off) + 0.1],
+      ["Whatever you sell.", startOf(6 + off) + 1.9],
+      [monsterHost ? "EasyMode. Marketing on easy mode. Take it from the monster it made." : "EasyMode. Marketing on easy mode.", startOf(9 + off) + 0.5],
     ];
     let musicPath: string | undefined;
     try {
@@ -726,7 +752,7 @@ async function heroCut(): Promise<string> {
     if (wm) {
       const wmIdx = 1 + voFiles.length + (musicPath ? 1 : 0);
       fparts.push(`[${wmIdx}:v]format=rgba[wmk]`);
-      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${startOf(6).toFixed(2)},${startOf(8).toFixed(2)})'[vw]`);
+      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${startOf(6 + off).toFixed(2)},${startOf(8 + off).toFixed(2)})'[vw]`);
       vcur = "vw";
     }
     fparts.push(`[${vcur}]eq=contrast=1.05:saturation=1.08,format=yuv420p[vout]`);
@@ -744,13 +770,14 @@ async function heroCut(): Promise<string> {
     execFileSync(ff, args, { stdio: "ignore" });
     // Report frames: one per act (order: 0 slam,1 fl,2 type,3 fl,4 think,5 fl,6 grid,7 fl,8 post,9 close).
     const grabs: [string, number][] = [
-      ["hero-drop.jpg", 0.5],
-      ["hero-typing.jpg", startOf(2) + 1.2],
-      ["hero-think.jpg", startOf(4) + 1.4],
-      ["hero-gridfill.jpg", startOf(6) + 0.8],
-      ["hero-gridfull.jpg", startOf(7) - 0.6],
-      ["hero-post.jpg", startOf(8) + 0.7],
-      ["hero-close.jpg", startOf(9) + 2],
+      ...(monsterHost ? [["hero-host.jpg", 0.6] as [string, number]] : []),
+      ["hero-drop.jpg", startOf(0 + off) + 0.5],
+      ["hero-typing.jpg", startOf(2 + off) + 1.2],
+      ["hero-think.jpg", startOf(4 + off) + 1.4],
+      ["hero-gridfill.jpg", startOf(6 + off) + 0.8],
+      ["hero-gridfull.jpg", startOf(7 + off) - 0.6],
+      ["hero-post.jpg", startOf(8 + off) + 0.7],
+      ["hero-close.jpg", startOf(9 + off) + 2],
     ];
     for (const [name, t] of grabs) {
       try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
