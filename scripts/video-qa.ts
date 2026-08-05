@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS || process.env.QA_MASCOT);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -105,6 +105,7 @@ async function main() {
   const kf = await keyframeCheck();
   const ph = await presenterHoldCheck();
   const bl = await brandLab();
+  const ml = await mascotLab();
   const rx = await referenceExtract();
   const pf = await portfolioAssets();
   const fl = await flankClips();
@@ -112,7 +113,7 @@ async function main() {
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, bl, rx, pf, fl, hc, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, ml, rx, pf, fl, hc, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -817,6 +818,46 @@ async function brandLab(): Promise<string> {
       ``,
       `tagline: **${plan.tagline}** — 3 pack shots + 5 cut scenes on the qa-frames branch · ${Math.round((Date.now() - t0) / 60_000)} min`,
       `No video was rendered — this is the approval gate.`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+  }
+}
+
+/* ---------- Mascot Lab: the Magic Monster, made EasyMode's ----------
+ *
+ * The mascot is the Magic Monster from the founder's other business
+ * (qa-in/mascot/magic-monster.jpeg): a jacked golden-green ogre with
+ * chunky glasses, small tusks and glowing rune tattoos. The lab strips
+ * the badge (clipboard, wordmarks, ring) and re-poses him clean.
+ * Three poses, stills only (~$0.60) — the approval gate.
+ * QA_MASCOT=1 enables. */
+async function mascotLab(): Promise<string> {
+  if (!process.env.QA_MASCOT) return "";
+  const head = "### Mascot Lab — the Magic Monster, cleaned for EasyMode";
+  try {
+    const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+    const t0 = Date.now();
+    // SHA-pinned so the URL never breaks or drifts from the approved art.
+    const MM = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/072b31816ed84806e1c9e4608b983e635662c97d/qa-in/mascot/magic-monster.jpeg";
+    const KEEP = `Keep the EXACT same character and painterly cartoon style: bald golden-green ogre, chunky black rectangular glasses, friendly smile with two small tusks, muscular torso covered in softly glowing golden rune tattoos.`;
+    const STRIP = `Remove the clipboard, the badge circle and ALL text and lettering completely.`;
+    const cands: Array<[string, string]> = [
+      ["mascot-mm-clean.jpg",
+        `${STRIP} ${KEEP} He stands waist-up in a confident double-bicep flex, both arms fully visible and naturally drawn. Isolated on a pure white background. No text anywhere.`],
+      ["mascot-mm-coin.jpg",
+        `${STRIP} ${KEEP} He proudly holds up a large round gold coin embossed with the letter "E" in one hand, the other hand giving a thumbs-up. Isolated on a pure white background. The ONLY text anywhere is the letter "E" on the coin.`],
+      ["mascot-mm-point.jpg",
+        `${STRIP} ${KEEP} He grins and points directly at the viewer with one hand, the other fist resting on his hip. Isolated on a pure white background. No text anywhere.`],
+    ];
+    const done = await Promise.all(cands.map(async ([name, prompt]) => {
+      const url = await brandStill(prompt, MM);
+      await saveFrame(url, name);
+      console.log(`[mascot] ${name} ready`);
+      return name;
+    }));
+    return [head, ``,
+      `${done.length} poses on the qa-frames branch · ${Math.round((Date.now() - t0) / 60_000)} min`,
+      `Stills only — the approval gate before the mascot touches anything.`].join("\n");
   } catch (e) {
     return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
   }

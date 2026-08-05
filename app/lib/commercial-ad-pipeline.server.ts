@@ -206,6 +206,28 @@ export async function brandImage(prompt: string): Promise<string> {
   }, "brand image");
 }
 
+/** Square brand still — plain t2i, or a faithful EDIT of a reference image
+ *  when one is given (recolours, wardrobe swaps, prop changes that keep the
+ *  character). Exported for the QA harness' Mascot Lab. */
+export async function brandStill(prompt: string, refUrl?: string): Promise<string> {
+  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  if (!refUrl) {
+    return falQueueImage(t2iModel(), {
+      prompt,
+      aspect_ratio: "1:1",
+      ...(res ? { resolution: res } : {}),
+      num_images: 1,
+    }, "brand still");
+  }
+  return falQueueImage(editModel(), {
+    prompt,
+    image_urls: [refUrl],
+    image_size: "square_hd",
+    ...(res ? { resolution: res } : {}),
+    num_images: 1,
+  }, "brand still edit");
+}
+
 /** Service-mode finale. A service ad has no truthful product photo to close
  *  on, so the packshot's job — end on something REAL — falls to a branded
  *  end-card: the tagline large, the offer name beneath, brand colours when
