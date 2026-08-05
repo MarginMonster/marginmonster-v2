@@ -487,26 +487,49 @@ async function heroCut(): Promise<string> {
     // from his tux portrait; every act index below shifts by `off`.
     const monsterHost = process.env.QA_HERO === "monster";
     const off = monsterHost ? 2 : 0;
+    let hostAudioPath: string | undefined;
+    let hostSec = 4.6;
     if (monsterHost) {
-      const { downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      // TRUE lip-sync: TTS the line in HIS voice first, then omni-human
+      // animates the portrait speaking that exact mp3 — the same chain
+      // merchant presenter ads use. The Veo attempt guessed mouth motion
+      // and it showed.
+      const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      const { submitAvatar, pollAvatar } = await import("../app/lib/fal-video.server");
+      const hostLine = "This ad? Made by EasyMode. Me? I was ALSO made by EasyMode.";
       const raw = path2.join(tmp, "host-raw.mp4");
-      // Reuse a published take when one exists — the Veo call is the only
-      // real spend in a monster re-cut.
-      const kept = path2.join(process.cwd(), "qa-out", "frames", "host-raw.mp4");
-      const curlHost = (url: string, out: string) => {
-        try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > 100_000; } catch { return false; }
+      hostAudioPath = path2.join(tmp, "host-vo.mp3");
+      const outDirM = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDirM, { recursive: true });
+      const keptClip = path2.join(outDirM, "host-raw.mp4");
+      const keptVo = path2.join(outDirM, "host-vo.mp3");
+      const curlHost = (url: string, out: string, min: number) => {
+        try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
-      if (fs2.existsSync(kept)) {
-        fs2.copyFileSync(kept, raw);
-      } else if (!curlHost("https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/host-raw.mp4", raw)) {
-        const { renderMotionClip } = await import("../app/lib/commercial-ad-pipeline.server");
+      const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+      const haveCache =
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host-vo.mp3`, hostAudioPath, 5_000));
+      if (!haveCache) {
+        const ttsId = await repCreate("minimax/speech-02-hd", {
+          text: hostLine, voice_id: "English_ManWithDeepVoice", pitch: -2, speed: 0.96,
+          emotion: "happy", english_normalization: true, language_boost: "English",
+        });
+        const voUrl = await repPoll(ttsId, 3 * 60_000, "hero-host-vo");
+        fs2.writeFileSync(hostAudioPath, await downloadBuffer(voUrl));
         const portrait = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_1.jpg";
-        const clipUrl = await renderMotionClip("veo", {
-          startImage: portrait,
-          prompt: "The photorealistic ogre gentleman in the tuxedo talks directly to the camera like a confident show host — mouth moving as he speaks, subtle hand gestures, a knowing grin at the end. Steady medium shot, he stays centred, warm studio light.",
-          negativePrompt: "text, captions, subtitles, logos, watermark",
-        }, "hero-host");
+        const clipUrl = await pollAvatar(await submitAvatar(portrait, voUrl));
         fs2.writeFileSync(raw, await downloadBuffer(clipUrl));
+        fs2.copyFileSync(raw, keptClip);
+        fs2.copyFileSync(hostAudioPath, keptVo);
+      }
+      // The clip runs as long as the speech — keep it all plus a beat.
+      try {
+        const probe = execFileSync(ff, ["-i", raw], { stdio: ["ignore", "ignore", "pipe"] }).toString();
+        void probe;
+      } catch (e) {
+        const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(String((e as { stderr?: Buffer }).stderr || ""));
+        if (m) hostSec = Math.min(8, Math.max(3, +m[1] * 3600 + +m[2] * 60 + +m[3] + 0.15));
       }
       // Publish the raw take too — a re-cut must not re-spend the Veo call.
       const outDir0 = path2.join(process.cwd(), "qa-out", "frames");
@@ -517,8 +540,8 @@ async function heroCut(): Promise<string> {
       // 3:4 content region back out, then zoom-fill the vertical frame.
       execFileSync(ff, ["-y", "-i", raw,
         "-vf", "crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p",
-        "-t", "4.6", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
-      pushSeg(segM, 4.6);
+        "-t", String(hostSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
+      pushSeg(segM, hostSec);
       flashSeg(0);
     }
 
@@ -719,8 +742,9 @@ async function heroCut(): Promise<string> {
     // everything (the silence was the basement). In monster mode the
     // narrator IS the host: his flex opens, his tag closes.
     const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+    // In monster mode the host line is BAKED lip-synced audio (mixed below),
+    // and the narrator becomes his deep voice throughout.
     const lines: [string, number][] = [
-      ...(monsterHost ? [["This ad? Made by EasyMode. Me? Also made by EasyMode.", 0.3] as [string, number]] : []),
       ["Paste your product.", startOf(2 + off) + 0.4],
       ["It writes. It films. It checks.", startOf(4 + off) + 0.1],
       ["Whatever you sell.", startOf(6 + off) + 1.9],
@@ -742,13 +766,18 @@ async function heroCut(): Promise<string> {
     const voFiles: string[] = [];
     await Promise.all(lines.map(async ([text], i) => {
       // magnetic_voiced_man: the deep trailer read — Trustworth was the
-      // infomercial "presenter" tone that kept feeling off.
-      const id = await repCreate("minimax/speech-02-hd", { text, voice_id: "English_magnetic_voiced_man", emotion: "neutral", english_normalization: true, language_boost: "English" });
+      // infomercial "presenter" tone that kept feeling off. Monster mode:
+      // the HOST narrates his own ad, same deep-pitched voice as his clip.
+      const id = await repCreate("minimax/speech-02-hd", monsterHost
+        ? { text, voice_id: "English_ManWithDeepVoice", pitch: -2, speed: 0.96, emotion: "happy", english_normalization: true, language_boost: "English" }
+        : { text, voice_id: "English_magnetic_voiced_man", emotion: "neutral", english_normalization: true, language_boost: "English" });
       const url = await repPoll(id, 3 * 60_000, `hero-vo-${i + 1}`);
       const p = path2.join(tmp, `vo${i}.mp3`);
       fs2.writeFileSync(p, await downloadBuffer(url));
       voFiles[i] = p;
     }));
+    // The lip-synced host take's own audio, laid at the head of the cut.
+    if (hostAudioPath) { voFiles.push(hostAudioPath); lines.push(["", 0.05]); }
 
     // FINAL — concat, watermark from the cascade onward, VO mix.
     const wm = renderOverlayPng(

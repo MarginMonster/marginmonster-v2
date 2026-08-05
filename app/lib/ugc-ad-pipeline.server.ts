@@ -684,10 +684,11 @@ export function resolvePortraitFile(id: string, variant: number): string {
 }
 
 export async function generateUgcAd(params: UgcAdParams): Promise<string> {
-  const avatar = AVATAR_BY_ID[params.avatarId];
-  if (!avatar) throw new Error(`[ugc] unknown avatar ${params.avatarId}`);
+  // resolvePresenter covers the public cast AND this shop's private/custom
+  // presenters ("cav..." ids) — the avatar-maker seam.
+  const { resolvePresenter } = await import("./custom-avatars.server");
   const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
-  const portraitFile = resolvePortraitFile(avatar.id, variant);
+  const { avatar, portraitFile, portraitPublicPath } = await resolvePresenter(params.shopId, params.avatarId, variant);
   // inline bytes: omni-human never has to fetch our server or another
   // provider's expiring URL (both have flaked in production)
   const portraitDataUri =
@@ -695,7 +696,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // hosted URL for partner-routed engines: fal forwards to HeyGen's servers,
   // which fetch inputs by URL — data URIs get rejected there
   const portraitPublicUrl = process.env.SHOPIFY_APP_URL
-    ? `${process.env.SHOPIFY_APP_URL.replace(/\/$/, "")}/avatars/${path.basename(portraitFile)}`
+    ? `${process.env.SHOPIFY_APP_URL.replace(/\/$/, "")}${portraitPublicPath}`
     : "";
 
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
