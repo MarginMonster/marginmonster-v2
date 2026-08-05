@@ -1,0 +1,1 @@
+{"model":"speech-02-turbo","preview":"https://replicate.delivery/xezq/kUE44X04nFoCKxOrfUU3COEM0JCOpp6Qb7DAFTIiD5TiTLgLA/tmp_6fjbqzp.mp3","voice_id":"R8_95CETMBJ"}
