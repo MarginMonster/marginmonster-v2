@@ -928,8 +928,11 @@ async function mascotLab(): Promise<string> {
         execFileSync(ff, ["-y", "-i", src, "-vf", "fps=1/2,scale=540:-2", "-frames:v", "10", "-q:v", "4",
           path2.join(outDir, "zeely-e%d.jpg")], { stdio: "ignore" });
       } catch { /* frames are best-effort */ }
-      const dataUri = "data:audio/mp3;base64," + fs2.readFileSync(mp3).toString("base64");
-      const id = await repCreate("minimax/voice-cloning", { voice_file: dataUri });
+      // The extracted mp3 is published to qa-frames by the previous voice
+      // run — a hosted URL, because a ~5MB base64 data URI in the create
+      // payload is over Replicate's request limit.
+      const hosted = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/zeely-voice.mp3";
+      const id = await repCreate("minimax/voice-cloning", { voice_file: hosted });
       const out = await repPoll(id, 5 * 60_000, "voice-clone");
       const rendered = typeof out === "string" ? out : JSON.stringify(out);
       fs2.writeFileSync(path2.join(outDir, "zeely-voice-id.txt"), rendered);
