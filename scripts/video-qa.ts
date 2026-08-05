@@ -858,8 +858,19 @@ async function mascotLab(): Promise<string> {
     // the four cast outfits (public/avatars format). Anything else renders
     // the clean cartoon pose candidates.
     const adMode = process.env.QA_MASCOT === "ads";
+    // QA_MASCOT=runes re-rolls ONLY the short-sleeve outfits with his
+    // signature glowing golden rune tattoos on the bare arms (the cartoon
+    // badge art rides along as the rune-pattern reference). The approved
+    // tux + street renders live in qa-in/mascot/keep/ and are not touched.
+    const runesMode = process.env.QA_MASCOT === "runes";
+    const RUNES = `His bare muscular arms and forearms are covered in softly GLOWING golden rune tattoos — thin luminous magical symbols emitting a warm gold light, exactly like the markings on the cartoon character in the last reference image.`;
     const FULL = `Show his FULL BODY head to toe — complete legs and bare ogre feet drawn naturally in the same style, wearing simple dark shorts matching the reference's waist wrap.`;
-    const cands: Array<[string, string, string | string[], boolean]> = adMode
+    const cands: Array<[string, string, string | string[], boolean]> = runesMode
+      ? [
+        ["mascot-ugc-0.jpg", `${KEEPR} He wears a relaxed casual outfit: a soft dark short-sleeved cotton tee. ${RUNES} ${HALF}`, [...MMR, MM], true],
+        ["mascot-ugc-2.jpg", `${KEEPR} He wears sporty athletic wear: a fitted dark-green short-sleeved training top. ${RUNES} ${HALF}`, [...MMR, MM], true],
+      ]
+      : adMode
       ? [
         ["mascot-ad-desk.jpg",
           `${STRIP} ${KEEP} ${FULL} Cinematic vertical brand-advocate scene: the ogre sits cross-legged like a friendly guide on top of a sleek desk with a glowing soft-green surface, his whole body visible, in a cozy dim home studio at night, warm bokeh background. Around him float translucent holographic UI cards: small product-ad thumbnails, a video tile with a play button, a colour palette strip — all abstract, all glowing softly green and gold. He gestures proudly at one floating card. Premium tech-ad look, soft rim light. NO text, NO letters, NO words anywhere in the image.`,
