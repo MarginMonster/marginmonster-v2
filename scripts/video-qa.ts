@@ -1199,6 +1199,48 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nBEAT RE-ROLL FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=motion — Phase 4: the five silent action clips, each animated
+  // from the exact approved keyframe. No speech anywhere: the hero plays
+  // muted, so captions carry the message and the engine never has to fake a
+  // mouth — which is what made every talking version read as slop.
+  if (process.env.QA_MASCOT === "motion") {
+    try {
+      const { renderMotionClip } = await import("../app/lib/commercial-ad-pipeline.server");
+      const { downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      const fs2 = require("node:fs") as typeof import("node:fs");
+      const path2 = require("node:path") as typeof import("node:path");
+      const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+      const outDir = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDir, { recursive: true });
+      const NEG = "text, captions, subtitles, watermark, extra fingers, deformed hands, morphing product label";
+      const shots: Array<[string, string, string]> = [
+        ["mo1-crack", `${RAWQ}/beat1b-crack.jpg`,
+          "He cracks the can open with his thumb — the tab pops, a wisp of vapour escapes, he gives a small satisfied nod. His hands stay the same golden-olive as his face. Steady shot, he stays centred."],
+        ["mo2-drink", `${RAWQ}/beat2b-drink.jpg`,
+          "He takes a swig from the can, lowers it, and raises his eyebrows in genuine approval with a small nod. Natural relaxed motion, steady shot."],
+        ["mo3-throw", `${RAWQ}/beat3b-throw.jpg`,
+          "He throws the can straight at the camera — it tumbles rapidly toward the lens, filling the frame and passing out of shot, while his hand follows through open and empty. Fast, energetic, one continuous motion."],
+        ["mo4-bite", `${RAWQ}/beat4b-bite.jpg`,
+          "He bites into the chocolate bar, chews once, and gives an approving eyebrow raise and nod. Natural relaxed motion, steady shot."],
+        ["mo5-salute", `${RAWQ}/beat5b-salute.jpg`,
+          "He lifts the can a little higher toward the camera in a confident salute, tilts his head and grins. Small controlled motion, he stays centred."],
+      ];
+      const done = await Promise.all(shots.map(async ([name, startImage, prompt]) => {
+        try {
+          const url = await renderMotionClip("veo", { startImage, prompt, negativePrompt: NEG }, name);
+          fs2.writeFileSync(path2.join(outDir, `${name}.mp4`), await downloadBuffer(url));
+          console.log(`[motion] ${name} ready`);
+          return name;
+        } catch (e) {
+          console.log(`[motion] ${name} FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+          return `${name} (failed)`;
+        }
+      }));
+      return `${head}\n\nAction clips: ${done.join(", ")} on qa-frames.`;
+    } catch (e) {
+      return `${head}\n\nMOTION FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
