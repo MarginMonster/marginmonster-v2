@@ -341,7 +341,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({});
 };
 
-type Tab = "video" | "image" | "blog";
+type Tab = "video" | "image" | "blog" | "import";
 type CType = (typeof CONTENT_TYPES)[number]["key"];
 type CastItem = { id: string; name: string; img: string; designed: boolean };
 
@@ -488,6 +488,13 @@ function TabIcon({ kind }: { kind: Tab }) {
           <path d="M2.2 7.6h15.6" {...p} />
         </>
       )}
+      {kind === "import" && (
+        <>
+          <path d="M3 7.4 4.6 3.6h10.8L17 7.4Z" {...p} />
+          <path d="M4.2 7.4v8.2a1.2 1.2 0 0 0 1.2 1.2h9.2a1.2 1.2 0 0 0 1.2-1.2V7.4" {...p} />
+          <path d="M10 9.4v4.2m0 0 1.7-1.7M10 13.6l-1.7-1.7" {...p} />
+        </>
+      )}
       {kind === "image" && (
         <>
           <rect x="2.4" y="3.8" width="15.2" height="12.4" rx="2.4" {...p} />
@@ -516,7 +523,7 @@ export default function WebStudio() {
 
   // Deep-link support: arrive with ?tab= and ?product= pre-filled.
   const [searchParams] = useSearchParams();
-  const initTab = (["video", "image", "blog"] as const).find((t) => t === searchParams.get("tab"));
+  const initTab = (["video", "image", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<Tab>(initTab || "video");
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   const [imageUrl, setImageUrl] = useState("");
@@ -557,6 +564,9 @@ export default function WebStudio() {
   const [productSize, setProductSize] = useState("");
   const [showConnect, setShowConnect] = useState(false);
   const [storeInput, setStoreInput] = useState("");
+  const [avatarName, setAvatarName] = useState("");
+  const [avatarGender, setAvatarGender] = useState("m");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [urlInput, setUrlInput] = useState("");
   // Last-used product memory — offer a one-tap refill next visit.
   const [lastProd, setLastProd] = useState<{ title: string; image: string } | null>(null);
@@ -655,7 +665,7 @@ export default function WebStudio() {
       {err && <div className="wb-err">Couldn&apos;t generate: {err}</div>}
 
       <div className="ws-tabs">
-        {([["video", "Video"], ["image", "Image"], ["blog", "Article"]] as [Tab, string][]).map(([k, label]) => (
+        {([["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]] as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{label}
           </button>
@@ -663,6 +673,80 @@ export default function WebStudio() {
       </div>
 
       <Form method="post" encType="multipart/form-data" className="wb-card ws-card" onSubmit={onFormSubmit}>
+        {/* ---- IMPORT: the setup tab. Bring the whole store in, and forge
+             a presenter from your own logo or mascot. Both are queued jobs,
+             so this tab is about kicking them off and watching them land. ---- */}
+        {tab === "import" && (
+          <div className="ws-import-tab">
+            <div className="ws-lbl">Bring your store in</div>
+            {d.catalog.length > 0 ? (
+              <p className="ws-offernote">
+                <b>{d.catalogCount} product{d.catalogCount === 1 ? "" : "s"}</b> imported. Pick one from the grid
+                whenever you make something — no more hunting down links. Re-run this any time your catalogue changes.
+              </p>
+            ) : (
+              <p className="ws-offernote">
+                Paste your store address once and we pull your products in — photos, titles and links. After that
+                you choose from a grid instead of pasting a link every time, and the product page rides along to
+                the post so shoppers land on the buy page.
+              </p>
+            )}
+            <div className="ws-import">
+              <input className="wb-in" type="url" value={storeInput} placeholder="yourstore.com"
+                onChange={(e) => setStoreInput(e.target.value)} />
+              <button type="button" className="wb-btn" disabled={busy || d.catalogSyncing || !storeInput.trim()}
+                onClick={() => submit({ intent: "importCatalog", storeUrl: storeInput.trim() }, { method: "post" })}>
+                {d.catalog.length > 0 ? "Re-import" : "Pull my products in"}
+              </button>
+            </div>
+            {actionData && "catalogError" in actionData && actionData.catalogError
+              ? <div className="wb-err">{String(actionData.catalogError)}</div> : null}
+            {actionData && "catalogQueued" in actionData && actionData.catalogQueued
+              ? <p className="ws-offernote">Import queued — your products will appear here shortly.</p> : null}
+            {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
+
+            <div className="ws-lbl" style={{ marginTop: 26 }}>
+              <span>Turn your brand mascot into a marketing tool</span>
+            </div>
+            <p className="ws-offernote">
+              Upload your logo, mascot or spokesperson and we forge them into a presenter — four outfits, ready to
+              star in your videos. Yours alone: nobody else&rsquo;s Studio can cast them.
+            </p>
+            {d.forgingAvatars.length > 0 && (
+              <p className="ws-offernote">
+                {d.forgingAvatars.map((f) => `${f.name} — ${f.status === "failed" ? "failed, try another photo" : "forging…"}`).join(" · ")}
+              </p>
+            )}
+            <div className="ws-import ws-avatarforge">
+              <input className="wb-in" name="avatarName" placeholder="Presenter name (e.g. your mascot)"
+                value={avatarName} onChange={(e) => setAvatarName(e.target.value)} />
+              <input className="wb-in" type="file" accept="image/*"
+                onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} />
+              <button type="button" className="wb-btn" disabled={busy || !avatarName.trim() || !avatarFile}
+                onClick={() => {
+                  const fd = new FormData();
+                  fd.set("intent", "forgeAvatar");
+                  fd.set("avatarName", avatarName.trim());
+                  fd.set("avatarGender", avatarGender);
+                  if (avatarFile) fd.set("avatarPhoto", avatarFile);
+                  submit(fd, { method: "post", encType: "multipart/form-data" });
+                }}>
+                Forge my presenter
+              </button>
+            </div>
+            <div className="ws-seg" style={{ marginTop: 10 }}>
+              {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
+                <button type="button" key={g} className={avatarGender === g ? "sel" : ""}
+                  onClick={() => setAvatarGender(g)}>{label}</button>
+              ))}
+            </div>
+            {actionData && "avatarError" in actionData && actionData.avatarError
+              ? <div className="wb-err">{String(actionData.avatarError)}</div> : null}
+            {actionData && "avatarQueued" in actionData && actionData.avatarQueued
+              ? <p className="ws-offernote">{String(actionData.avatarQueued)} is being forged — it takes a minute or two, then they appear in your presenter row.</p> : null}
+          </div>
+        )}
+
         {/* ---- VIDEO: pick your content type (big live-render tiles) ---- */}
         {tab === "video" && !contentType && (
           <>
@@ -1153,6 +1237,11 @@ const WS_STYLE = `
 .ws-chip.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4}
 .ws-lastchip{display:block;margin:0 0 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .ws-import{display:flex;gap:8px;margin-bottom:8px}
+/* Import tab: the setup surface — pull the catalogue in, forge a presenter. */
+.ws-import-tab{padding:2px 0 6px}
+.ws-import-tab .ws-import{flex-wrap:wrap}
+.ws-import-tab .ws-import .wb-in{flex:1 1 220px;min-width:0}
+.ws-avatarforge input[type=file]{padding:9px 10px;font-size:13px}
 .ws-import input{flex:1;min-width:0}
 .ws-impbtn{padding:9px 18px;font-size:13px;flex:0 0 auto}
 .ws-addurl{border:0;background:none;color:#0C7A46;font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:auto}
