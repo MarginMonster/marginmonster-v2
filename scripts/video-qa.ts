@@ -992,6 +992,29 @@ async function mascotLab(): Promise<string> {
   // extract the audio track from the committed recording, clone it on
   // MiniMax (same Replicate account the TTS runs on), publish the mp3 and
   // the returned voice id for the harness to hardcode.
+  // QA_MASCOT=frame — pull ONE full-resolution frame out of the founder's
+  // recording and crop the phone UI off it. This real photograph becomes the
+  // presenter portrait's base: a synthesized portrait rendered plastic, and
+  // no video-side tuning fixes a plastic source frame.
+  if (process.env.QA_MASCOT === "frame") {
+    try {
+      const fs2 = require("node:fs") as typeof import("node:fs");
+      const path2 = require("node:path") as typeof import("node:path");
+      const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+      const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+      const src = path2.join(process.cwd(), "qa-in", "mascot", "zeely-voice.mov");
+      const outDir = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDir, { recursive: true });
+      // t=4s is the take where he faces camera with both hands up. The crop
+      // drops the right-hand action rail and the caption band.
+      execFileSync(ff, ["-y", "-ss", "4.0", "-i", src, "-frames:v", "1",
+        "-vf", "crop=1100:1470:0:330", "-q:v", "2", path2.join(outDir, "zeely-base.jpg")], { stdio: "ignore" });
+      const kb = Math.round(fs2.statSync(path2.join(outDir, "zeely-base.jpg")).size / 1024);
+      return `${head}\n\nBase frame extracted → zeely-base.jpg (${kb} KB, 1100x1470) on qa-frames.`;
+    } catch (e) {
+      return `${head}\n\nFRAME EXTRACT FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   if (process.env.QA_MASCOT === "voice") {
     try {
       const fs2 = require("node:fs") as typeof import("node:fs");
