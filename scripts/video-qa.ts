@@ -1559,11 +1559,9 @@ async function mascotLab(): Promise<string> {
       const P = "He cracks open the green soda can with his thumb, takes a sip, and gives a satisfied nod to camera. Natural human motion, steady handheld shot, warm shop interior.";
       const NEG = "morphing, distortion, extra fingers, deformed hands, warping label, text, watermark";
       const ENGINES: Array<[string, string, Record<string, unknown>]> = [
-        ["eng-kling25", "kwaivgi/kling-v2.5-turbo-pro", { start_image: IMG, prompt: P, negative_prompt: NEG, duration: 5 }],
-        ["eng-kling21", "kwaivgi/kling-v2.1-master", { start_image: IMG, prompt: P, negative_prompt: NEG, duration: 5 }],
-        ["eng-veo3", "google/veo-3", { image: IMG, prompt: P, aspect_ratio: "9:16" }],
-        ["eng-hailuo", "minimax/hailuo-02", { first_frame_image: IMG, prompt: P, duration: 6 }],
-        ["eng-seedance", "bytedance/seedance-1-pro", { image: IMG, prompt: P, duration: 5, resolution: "1080p" }],
+        ["eng2-kling26", "kwaivgi/kling-v2.6-pro", { start_image: IMG, prompt: P, negative_prompt: NEG, duration: 5 }],
+        ["eng2-wan25", "wan-video/wan-2.5-i2v", { image: IMG, prompt: P, duration: 5, resolution: "1080p" }],
+        ["eng2-veo31", "google/veo-3.1-fast", { image: IMG, prompt: P, aspect_ratio: "9:16" }],
       ];
       const done = await Promise.all(ENGINES.map(async ([name, model, input]) => {
         try {

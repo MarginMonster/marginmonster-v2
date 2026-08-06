@@ -132,11 +132,18 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
  * One adapter, per-model input mapping, and a HARD RULE: a premium engine
  * that rejects for any reason (schema drift, capacity, region) falls back to
  * the default engine instead of failing a paid generation. */
-export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v1.6-standard";
+/* Kling 2.5 Turbo Pro. The default sat on kling-v1.6-standard for months —
+ * kling shipped 2.0, 2.1, 2.5 and 2.6 in that time, and every merchant video
+ * kept rendering on the old standard tier. A same-keyframe bake-off across
+ * kling 2.5/2.1, full Veo 3, hailuo-02 and seedance made the gap obvious. */
+export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v2.5-turbo-pro";
 
 function animateModelFor(engineKey: string | undefined): string {
   switch (engineKey) {
     case "veo": return "google/veo-3-fast";
+    case "kling26": return "kwaivgi/kling-v2.6-pro";
+    case "kling21": return "kwaivgi/kling-v2.1-master";
+    case "kling16": return "kwaivgi/kling-v1.6-standard";
     case "seedance": return "bytedance/seedance-1-pro";
     case "hailuo": return "minimax/hailuo-02";
     case "kling":
@@ -150,7 +157,10 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
   if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: "9:16" };
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
-  return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur", duration: 10, cfg_scale: 0.5 };
+  const neg = opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur";
+  // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it.
+  if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 5 };
+  return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 10, cfg_scale: 0.5 };
 }
 
 /** Start an image-to-video prediction on the chosen engine; falls back to the
