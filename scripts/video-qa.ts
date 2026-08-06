@@ -1028,6 +1028,41 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nFRAME EXTRACT FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
+  // (~$0.45, no video spend). The avatar engine animates whatever still it
+  // is handed, so the portrait IS the quality ceiling: a plastic portrait
+  // produced a plastic performance, twice. Three strategies, one verdict.
+  if (process.env.QA_MASCOT === "portrait") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const BASE = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/3d9cc10aa1ea829e7ef0db285050f941485f8e98/qa-in/mascot/zeely-base2.jpg";
+      const PHOTO = `It must read as an unretouched real photograph shot on an 85mm lens: visible skin pores and texture, natural specular highlights, subtle sensor grain, no beauty smoothing, no CGI or 3D-render look.`;
+      const KEEPFACE = `Do NOT alter his face in any way — same wrinkles, same skin texture, same glasses, ears and expression, pixel for pixel.`;
+      const cands: Array<[string, string, string | undefined]> = [
+        // 1. Lightest possible edit: wardrobe only, everything else frozen.
+        ["port-a-shirt-only.jpg",
+          `Edit this photograph: dress him in a fitted dark-green crew-neck t-shirt with "EASYMODE" printed in bold white capitals centred across his chest, fully visible. ${KEEPFACE} Leave his pose, both hands, the box he holds, the background and the lighting exactly as they are. ${PHOTO} The ONLY text anywhere is exactly "EASYMODE".`,
+          BASE],
+        // 2. Full brand-safe edit — the blank box the last attempt botched.
+        ["port-b-full.jpg",
+          `Edit this photograph three ways. 1) Dress him in a fitted dark-green crew-neck t-shirt with "EASYMODE" in bold white capitals centred across his chest, fully visible. 2) Replace the box in his hands with a COMPLETELY BLANK solid matte-white closed box — no window, no transparent panel, no printing, no visible contents whatsoever — held exactly the same way. 3) Blur the background into a soft creamy out-of-focus warm retail interior with no legible packaging or lettering. ${KEEPFACE} ${PHOTO} The ONLY text anywhere is exactly "EASYMODE".`,
+          BASE],
+        // 3. Clean-room synthesis with hard photographic direction.
+        ["port-c-synth.jpg",
+          `Photorealistic half-body presenter photograph of a friendly muscular ogre shopkeeper: bald golden-green head, large pointed ears, chunky black rectangular glasses, warm confident grin, glowing golden rune tattoos on his forearms. He wears a fitted dark-green crew-neck t-shirt with "EASYMODE" in bold white capitals centred across the chest. Both hands are raised in a natural mid-gesture as if talking. Softly blurred warm shop interior behind him. ${PHOTO} The ONLY text anywhere is exactly "EASYMODE".`,
+          undefined],
+      ];
+      const done = await Promise.all(cands.map(async ([name, prompt, ref]) => {
+        const url = await brandStill(prompt, ref, true);
+        await saveFrame(url, name);
+        console.log(`[mascot] ${name} ready`);
+        return name;
+      }));
+      return `${head}\n\nPortrait bake-off: ${done.join(", ")} on qa-frames. No video spend.`;
+    } catch (e) {
+      return `${head}\n\nPORTRAIT BAKE-OFF FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   if (process.env.QA_MASCOT === "voice") {
     try {
       const fs2 = require("node:fs") as typeof import("node:fs");
