@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS || process.env.QA_MASCOT || process.env.QA_SILENT);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS || process.env.QA_MASCOT);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -405,7 +405,7 @@ async function flankClips(): Promise<string> {
  * Deterministic Chromium + ffmpeg; the only AI spend is three TTS lines.
  * QA_HERO=1 enables. */
 async function heroCut(): Promise<string> {
-  if (!process.env.QA_HERO) return "";
+  if (!process.env.QA_HERO || process.env.QA_HERO === "silent") return "";
   const head = "### Hero Cut — the product-truth super ad";
   const fs2 = require("node:fs") as typeof import("node:fs");
   const path2 = require("node:path") as typeof import("node:path");
@@ -957,9 +957,9 @@ async function heroCut(): Promise<string> {
  * approved or a frame Chromium drew. The can is thrown by animating the
  * approved pack shot at the lens, which is exact instead of hoped for.
  * The hero plays muted on the landing page, so captions carry the message.
- * QA_SILENT=1 enables. */
+ * QA_HERO=silent enables (the input list is at GitHub's 25-input cap). */
 async function silentCut(): Promise<string> {
-  if (!process.env.QA_SILENT) return "";
+  if (process.env.QA_HERO !== "silent") return "";
   const head = "### Silent Cut — the mascot ad, no generated video";
   const fs2 = require("node:fs") as typeof import("node:fs");
   const path2 = require("node:path") as typeof import("node:path");
