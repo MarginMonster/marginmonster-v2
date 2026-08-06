@@ -867,12 +867,14 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // composed "presenter holding the product" frame makes the whole ad an
   // in-hand demo. Studio passes an approved frame; campaign drips auto-compose
   // (checkpointed — restarts never re-spend). Failure → plain portrait.
-  // THE CUTAWAY FORMAT — how Arcads-class shops actually build these: the
-  // presenter performs to camera from the PLAIN portrait (no generative
-  // product-in-hand roll, so no chance of a wrong product in anyone's hands),
-  // and the product gets its own moving b-roll beats cut deterministically
-  // from the merchant's REAL photo, narration running underneath. The one
-  // risky generative step in the video pipeline is simply gone.
+  // THE CUTAWAY FORMAT — the product gets its own moving b-roll beats cut
+  // deterministically from the merchant's REAL photo, narration running
+  // underneath. Cutaways used to ALSO suppress the product-in-hand compose,
+  // on the theory that the compose was the pipeline's one risky generative
+  // step. It is not any more: the compose engine holds product fidelity
+  // reliably, and a presenter talking about something they are not holding
+  // reads as stock footage. So we now do BOTH — the presenter performs
+  // holding the real product, and the b-roll beats still cut in.
   //
   // A Studio-approved composed frame is human-gated, so it is always
   // respected; apparel still needs the presenter wearing the item; services
@@ -887,7 +889,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   let animSourceDataUri = portraitDataUri; // what omni/kling get inline
   {
     let composedUrl = params.composedFrameUrl || resume.composedUrl || "";
-    if (!composedUrl && !cutawayMode && !params.serviceMode && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
+    // Compose regardless of cutaway mode: hands hold the product, b-roll
+    // still flashes to it. Apparel (wear) and services keep their own paths,
+    // and any compose failure falls through to the plain portrait untouched.
+    if (!composedUrl && !params.serviceMode && params.holdProduct && params.productImageUrl && portraitPublicUrl) {
       try {
         const { composeHoldingFrames } = await import("./fal-image.server");
         // A cutout carries no scale, so tell the composer how big this
