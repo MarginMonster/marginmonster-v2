@@ -1077,6 +1077,37 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nPACK SHOTS FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=wardrobe — Phase 2: the canonical character plate. Every
+  // action keyframe downstream is built from ONE approved portrait, which
+  // is how he stays the same monster from shot to shot.
+  if (process.env.QA_MASCOT === "wardrobe") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+      const REFS = [
+        `${RAWQ}/suit-green-b.jpg`,
+        "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_2.jpg",
+      ];
+      const WHO = `Both reference images show the SAME character. Recreate him EXACTLY — same bald golden-olive head, same large pointed ears, same chunky black rectangular glasses, same face and wrinkles, same friendly expression.`;
+      const FIT = `He wears a casual forest-green long-sleeve t-shirt with "EASYMODE" printed across the chest in bold white capitals outlined in black. The sleeves are pushed up to his elbows, so his bare forearms show their softly GLOWING golden rune tattoos.`;
+      const PHOTO = `Unretouched real photograph on an 85mm lens: visible skin pores and texture, natural specular highlights, subtle sensor grain, no beauty smoothing, no CGI or 3D look.`;
+      const cands: Array<[string, string]> = [
+        ["fit-a-wide.jpg",
+          `${WHO} ${FIT} Three-quarter body standing shot, facing camera, both hands relaxed and clearly visible at his sides, plenty of room around him. Soft even studio light, plain warm neutral backdrop. ${PHOTO} The ONLY text anywhere is exactly "EASYMODE".`],
+        ["fit-b-close.jpg",
+          `${WHO} ${FIT} Half-body shot, facing camera, one hand raised in a small natural gesture, both hands visible. Soft even studio light, plain warm neutral backdrop. ${PHOTO} The ONLY text anywhere is exactly "EASYMODE".`],
+      ];
+      const done = await Promise.all(cands.map(async ([name, prompt]) => {
+        const url = await brandStill(prompt, REFS, true);
+        await saveFrame(url, name);
+        console.log(`[wardrobe] ${name} ready`);
+        return name;
+      }));
+      return `${head}\n\nCharacter plates: ${done.join(", ")} on qa-frames. Stills only.`;
+    } catch (e) {
+      return `${head}\n\nWARDROBE FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
