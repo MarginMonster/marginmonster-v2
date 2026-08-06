@@ -1581,6 +1581,69 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nENGINE BAKE-OFF FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=fal — kling 2.6 pro is not published on Replicate but IS on
+  // fal, which is the provider Zeely most likely reaches it through. Same
+  // keyframe, same prompt as the Replicate rounds, so all three rounds are
+  // directly comparable.
+  if (process.env.QA_MASCOT === "fal") {
+    if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
+    try {
+      const fs2 = require("node:fs") as typeof import("node:fs");
+      const path2 = require("node:path") as typeof import("node:path");
+      const { downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      const outDir = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDir, { recursive: true });
+      const IMG = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/beat1b-crack.jpg";
+      const P = "He cracks open the green soda can with his thumb, takes a sip, and gives a satisfied nod to camera. Natural human motion, steady handheld shot, warm shop interior.";
+      const NEG = "morphing, distortion, extra fingers, deformed hands, warping label, text, watermark";
+      const falVideo = async (model: string, body: Record<string, unknown>, tag: string): Promise<string> => {
+        const sub = await fetch(`https://queue.fal.run/${model}`, {
+          method: "POST",
+          headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!sub.ok) throw new Error(`submit ${sub.status}: ${(await sub.text()).slice(0, 160)}`);
+        const q = (await sub.json()) as { status_url?: string; response_url?: string };
+        for (let i = 0; i < 150; i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const st = await fetch(q.status_url!, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+          if (!st.ok) continue;
+          const sj = (await st.json()) as { status?: string };
+          if (sj.status === "COMPLETED") break;
+          if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error("failed in queue");
+        }
+        const r = await fetch(q.response_url!, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+        const rj = (await r.json()) as { video?: { url?: string }; video_url?: string };
+        const url = rj.video?.url || rj.video_url;
+        if (!url) throw new Error(`no video url (${JSON.stringify(rj).slice(0, 140)})`);
+        void tag;
+        return url;
+      };
+      const ENGINES: Array<[string, string, Record<string, unknown>]> = [
+        ["fal-kling26", "fal-ai/kling-video/v2.6/pro/image-to-video",
+          { prompt: P, image_url: IMG, duration: "5", negative_prompt: NEG }],
+        ["fal-kling25", "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+          { prompt: P, image_url: IMG, duration: "5", negative_prompt: NEG }],
+        ["fal-veo31", "fal-ai/veo3.1/fast/image-to-video",
+          { prompt: P, image_url: IMG, aspect_ratio: "9:16", duration: "8s" }],
+      ];
+      const done = await Promise.all(ENGINES.map(async ([name, model, body]) => {
+        try {
+          const url = await falVideo(model, body, name);
+          fs2.writeFileSync(path2.join(outDir, `${name}.mp4`), await downloadBuffer(url));
+          console.log(`[fal] ${name} (${model}) OK`);
+          return `${name} ✓`;
+        } catch (e) {
+          const msg = (e instanceof Error ? e.message : String(e)).slice(0, 130);
+          console.log(`[fal] ${name} (${model}) FAILED — ${msg}`);
+          return `${name} ✗ (${msg})`;
+        }
+      }));
+      return `${head}\n\nfal engine round:\n\n${done.map((d) => `- ${d}`).join("\n")}`;
+    } catch (e) {
+      return `${head}\n\nFAL ROUND FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
