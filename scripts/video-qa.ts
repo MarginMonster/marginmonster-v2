@@ -452,7 +452,25 @@ async function heroCut(): Promise<string> {
     const roseDiv = `<div style="position:absolute;left:50%;top:46%;width:900px;height:900px;transform:translate(-50%,-50%);opacity:.1;background:url(file://${rosette}) center/contain no-repeat;filter:brightness(3)"></div>`;
 
     const segLens: number[] = [];
-    const pushSeg = (p: string, len: number) => { segs.push(p); segLens.push(len); };
+    // Acts are addressed by NAME, not by index: cross-dissolves removed the
+    // flash segments and hand-renumbering every reference is how timings rot.
+    const mark: Record<string, number> = {};
+    const at = (k: string) => { mark[k] = segs.length; };
+    const pushSeg = (p: string, len: number, cine?: 1 | -1) => {
+      segs.push(cine ? cineMove(p, len, cine, `cm${segs.length}`) : p);
+      segLens.push(len);
+    };
+    // CINEMA CAMERA — nothing in a real ad sits perfectly still. Every card
+    // gets a slow push in or pull out. Rendered at 2x then downsampled:
+    // zoompan snaps to whole pixels, which stutters visibly at 720p.
+    const cineMove = (src: string, sec: number, dir: 1 | -1, name: string): string => {
+      const out = path2.join(tmp, `${name}.mp4`);
+      const z = dir > 0 ? "min(1+0.00055*in,1.13)" : "max(1.13-0.00055*in,1)";
+      execFileSync(ff, ["-y", "-i", src, "-vf",
+        `fps=30,scale=1440:2560,zoompan=z='${z}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1440x2560:fps=30,scale=720:1280,format=yuv420p`,
+        "-t", String(sec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", out], { stdio: "ignore" });
+      return out;
+    };
     // DARK CINEMA STAGE — everything floats spotlit on black-green.
     const stage = `background:radial-gradient(130% 100% at 50% 32%, #0E1F16 0%, #07110C 58%, #040A07 100%)`;
     const disp0 = `font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:-.035em`;
@@ -463,15 +481,10 @@ async function heroCut(): Promise<string> {
     // force-pushes; a same-run render in qa-out still wins.
     let packShot = path2.join(process.cwd(), "qa-out", "frames", "port-s0.jpg");
     if (!fs2.existsSync(packShot)) packShot = path2.join(process.cwd(), "qa-in", "portfolio", "port-s0.jpg");
-    const flashPng = path2.join(tmp, "flash.png");
-    shoot(`<div style="width:720px;height:1280px;background:#EFFFF4"></div>`, flashPng);
-    // 2-frame impact flash between acts — the hype-edit stitch.
-    const flashSeg = (n: number) => {
-      const s = path2.join(tmp, `flash${n}.mp4`);
-      execFileSync(ff, ["-y", "-loop", "1", "-framerate", "30", "-t", "0.08", "-i", flashPng,
-        "-vf", "scale=720:1280,format=yuv420p", "-t", "0.07", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", s], { stdio: "ignore" });
-      pushSeg(s, 0.07);
-    };
+    // The 2-frame white flash stitch was a hype-edit tell. Acts now
+    // cross-dissolve into one another at assembly (xfade), so this is a
+    // no-op kept only so the act sequence below still reads in order.
+    const flashSeg = (_n: number) => { /* replaced by cross-dissolves */ };
     // Smash title card: two frames (overshoot → settle) + hold.
     const smash = (html: string, holdSec: number, name: string) => {
       const f1 = path2.join(tmp, `${name}a.png`); const f2 = path2.join(tmp, `${name}b.png`);
@@ -482,7 +495,7 @@ async function heroCut(): Promise<string> {
       const s = path2.join(tmp, `${name}.mp4`);
       execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", list,
         "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", s], { stdio: "ignore" });
-      pushSeg(s, 0.12 + holdSec);
+      at(name); pushSeg(s, 0.12 + holdSec, 1);
     };
 
     // Display type: tight neutral grotesk — Poppins' roundness reads cheap
@@ -490,10 +503,9 @@ async function heroCut(): Promise<string> {
     const disp = disp0;
 
     // M) HOST — QA_HERO=monster opens with the Magic Monster on camera:
-    // the mascot IS EasyMode output, and the narrator is him. One Veo clip
-    // from his tux portrait; every act index below shifts by `off`.
+    // the mascot IS EasyMode output, and the narrator is him. Acts are
+    // addressed by name (mark/on), so adding his takes shifts nothing.
     const monsterHost = process.env.QA_HERO === "monster";
-    const off = monsterHost ? 2 : 0;
     let hostAudioPath: string | undefined;
     let hostSec = 4.6;
     let outroRawPath: string | undefined;
@@ -606,8 +618,7 @@ async function heroCut(): Promise<string> {
         `[v1][2:v]overlay=(W-w)/2:H-250:enable='between(t,${mid},${hostSec.toFixed(2)})'[v2];` +
         "[v2]format=yuv420p[v]",
         "-map", "[v]", "-t", String(hostSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segM], { stdio: "ignore" });
-      pushSeg(segM, hostSec);
-      flashSeg(0);
+      at("host"); pushSeg(segM, hostSec);
       // OUTRO — his sign-off take, spliced back in before the close.
       try { execFileSync(ff, ["-i", outroRawPath!], { stdio: ["ignore", "ignore", "pipe"] }); } catch (e) {
         const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(String((e as { stderr?: Buffer }).stderr || ""));
@@ -623,7 +634,6 @@ async function heroCut(): Promise<string> {
     smash(`<div style="display:flex;flex-direction:column;align-items:center">
       <img src="file://${packShot}" style="width:430px;border-radius:24px;box-shadow:0 30px 90px rgba(0,0,0,.7),0 0 60px rgba(18,168,94,.25)">
     </div>`, 0.8, "slam");
-    flashSeg(1);
 
     // B) PASTE + EXTRACT — the store-link extractor, the studio's most
     // magical real feature: paste a product URL, the photo and title pull
@@ -668,8 +678,7 @@ async function heroCut(): Promise<string> {
     const segB = path2.join(tmp, "segB.mp4");
     execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", typeList,
       "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segB], { stdio: "ignore" });
-    pushSeg(segB, typedFrames.reduce((a, f) => a + f.dur, 0));
-    flashSeg(2);
+    at("typing"); pushSeg(segB, typedFrames.reduce((a, f) => a + f.dur, 0), 1);
 
     // T) THINKING — the agentic states, honestly named. "Checking every
     // frame" is the fidelity gate, stated as product.
@@ -701,8 +710,7 @@ async function heroCut(): Promise<string> {
     const segT = path2.join(tmp, "segT.mp4");
     execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", thinkList,
       "-vf", "fps=30,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segT], { stdio: "ignore" });
-    pushSeg(segT, thinkFrames.reduce((a, f) => a + f.dur, 0));
-    flashSeg(3);
+    at("think"); pushSeg(segT, thinkFrames.reduce((a, f) => a + f.dur, 0), -1);
 
     // G) GRID FILL — LIVE video tiles composited in real time. Every tile
     // moves: portfolio clips play, pack shots and cards get Ken Burns.
@@ -782,7 +790,7 @@ async function heroCut(): Promise<string> {
     const segG = path2.join(tmp, "segG.mp4");
     execFileSync(ff, [...gArgs, "-filter_complex", gParts.join(";"), "-map", "[gout]",
       "-t", String(gridLen), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segG], { stdio: "ignore" });
-    pushSeg(segG, gridLen);
+    at("grid"); pushSeg(segG, gridLen, -1);
 
     // P) AUTOPOST — smash card, the flex the reference can't make.
     flashSeg(4);
@@ -796,7 +804,7 @@ async function heroCut(): Promise<string> {
 
     // D) CLOSE — in monster mode his sign-off take lands first, then the
     // gstyle card.
-    if (outroSegPath) pushSeg(outroSegPath, outroSec);
+    if (outroSegPath) { at("outro"); pushSeg(outroSegPath, outroSec); }
     const base = path2.join(process.cwd(), "public", "showcase", "endcard-base.png");
     const rose = path2.join(process.cwd(), "public", "showcase", "endcard-rosette.png");
     const segD = path2.join(tmp, "segD.mp4");
@@ -807,12 +815,17 @@ async function heroCut(): Promise<string> {
       "[bg][r1]overlay=x=W-w*0.72:y=-h*0.28[b1];[b1][r2]overlay=x=-w*0.28:y=H-h*0.72[b2];" +
       "[b2]fade=t=in:st=0:d=0.4,fade=t=out:st=3.6:d=0.5,format=yuv420p[v]",
       "-map", "[v]", "-t", "4", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", segD], { stdio: "ignore" });
-    pushSeg(segD, 4);
+    at("close"); pushSeg(segD, 4, 1);
 
-    // Segment order (+off when the host act leads): 0 slam, 1 flash,
-    // 2 typing, 3 flash, 4 think, 5 flash, 6 grid, 7 flash, 8 post, 9 close.
-    const startOf = (i: number) => segLens.slice(0, i).reduce((a, b) => a + b, 0);
-    const totalSec = segLens.reduce((a, b) => a + b, 0);
+    // Acts in order: [host] slam, typing, think, grid, post, [outro], close —
+    // each cross-dissolving into the next.
+    // Cross-dissolve length. Each transition overlaps two acts, so the cut
+    // is XD shorter per boundary and every act starts that much earlier.
+    const XD = 0.28;
+    const startAt = (i: number) => segLens.slice(0, i).reduce((a, b) => a + b, 0) - XD * i;
+    const endAt = (i: number) => startAt(i) + segLens[i];
+    const on = (k: string) => startAt(mark[k] ?? 0);
+    const totalSec = segLens.reduce((a, b) => a + b, 0) - XD * Math.max(0, segLens.length - 1);
 
     // VOICE — tight lines + tagline, and a MUSIC bed driving under
     // everything (the silence was the basement). In monster mode the
@@ -821,10 +834,10 @@ async function heroCut(): Promise<string> {
     // In monster mode the host line is BAKED lip-synced audio (mixed below),
     // and the narrator becomes his deep voice throughout.
     const lines: [string, number][] = [
-      ["Paste your product.", startOf(2 + off) + 0.4],
-      ["It writes. It films. It checks.", startOf(4 + off) + 0.1],
-      ["Whatever you sell.", startOf(6 + off) + 1.9],
-      ...(monsterHost ? [] : [["EasyMode. Marketing on easy mode.", startOf(9) + 0.5] as [string, number]]),
+      ["Paste your product.", on("typing") + 0.4],
+      ["It writes. It films. It checks.", on("think") + 0.1],
+      ["Whatever you sell.", on("grid") + 1.9],
+      ...(monsterHost ? [] : [["EasyMode. Marketing on easy mode.", on("close") + 0.5] as [string, number]]),
     ];
     let musicPath: string | undefined;
     try {
@@ -854,36 +867,51 @@ async function heroCut(): Promise<string> {
     }));
     // The talking takes' own audio: intro at the head, outro at its splice.
     if (hostAudioPath) { voFiles.push(hostAudioPath); lines.push(["", 0.05]); }
-    if (outroAudioPath && outroSegPath) { voFiles.push(outroAudioPath); lines.push(["", startOf(9 + off) + 0.1]); }
+    if (outroAudioPath && outroSegPath) { voFiles.push(outroAudioPath); lines.push(["", on("outro") + 0.1]); }
 
     // FINAL — concat, watermark from the cascade onward, VO mix.
     const wm = renderOverlayPng(
       `<div style="color:#fff;font-weight:800;font-size:23px;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.6)">Easy<span style="color:#E7C879">Mode</span></div>`,
       170, 42, path2.join(tmp, "wm.png"));
-    const list = path2.join(tmp, "list.txt");
-    fs2.writeFileSync(list, segs.map((s) => `file '${s}'`).join("\n"));
     const outDir = path2.join(process.cwd(), "qa-out", "frames");
     fs2.mkdirSync(outDir, { recursive: true });
     const outPath = path2.join(outDir, "hero-cut.mp4");
-    const args = ["-y", "-f", "concat", "-safe", "0", "-i", list];
+    // Every act is its own input so they can CROSS-DISSOLVE instead of being
+    // butt-joined by the concat demuxer. Hard cuts on flat cards were the
+    // "not cinema" tell.
+    const args = ["-y"];
+    segs.forEach((sp) => args.push("-i", sp));
     voFiles.forEach((p) => args.push("-i", p));
     if (musicPath) args.push("-i", musicPath);
     if (wm) args.push("-loop", "1", "-framerate", "30", "-t", String(totalSec), "-i", wm);
+    const voBase = segs.length;
+    const musIdx = voBase + voFiles.length;
+    const wmIdx = musIdx + (musicPath ? 1 : 0);
     const fparts: string[] = [];
+    // xfade chains pairwise; boundary k starts exactly where act k begins.
     let vcur = "0:v";
+    for (let i = 1; i < segs.length; i++) {
+      const lbl = `xf${i}`;
+      fparts.push(`[${vcur}][${i}:v]xfade=transition=fade:duration=${XD}:offset=${startAt(i).toFixed(3)}[${lbl}]`);
+      vcur = lbl;
+    }
     if (wm) {
-      const wmIdx = 1 + voFiles.length + (musicPath ? 1 : 0);
       fparts.push(`[${wmIdx}:v]format=rgba[wmk]`);
-      fparts.push(`[0:v][wmk]overlay=x=W-w-24:y=104:enable='between(t,${startOf(6 + off).toFixed(2)},${startOf(8 + off).toFixed(2)})'[vw]`);
+      fparts.push(`[${vcur}][wmk]overlay=x=W-w-24:y=104:enable='between(t,${on("grid").toFixed(2)},${on("post").toFixed(2)})'[vw]`);
       vcur = "vw";
     }
-    fparts.push(`[${vcur}]eq=contrast=1.05:saturation=1.08,format=yuv420p[vout]`);
+    // FILM GRADE — cooled shadows, warm highlights, vignette and a little
+    // grain. Deterministic, and the difference between "clean render" and
+    // "shot on something".
+    fparts.push(`[${vcur}]eq=contrast=1.07:saturation=1.05:gamma=0.99,` +
+      `colorbalance=rs=-0.02:gs=0.02:bs=0.02:rh=0.03:gh=0.01:bh=-0.02,` +
+      `vignette=angle=PI/4.6,noise=alls=4:allf=t,format=yuv420p[vout]`);
     const aIns: string[] = voFiles.map((_, i) => {
-      fparts.push(`[${i + 1}:a]adelay=${Math.round(lines[i][1] * 1000)}:all=1[va${i}]`);
+      fparts.push(`[${voBase + i}:a]adelay=${Math.round(lines[i][1] * 1000)}:all=1[va${i}]`);
       return `[va${i}]`;
     });
     if (musicPath) {
-      fparts.push(`[${1 + voFiles.length}:a]volume=0.22,atrim=0:${totalSec},afade=t=out:st=${(totalSec - 1.5).toFixed(2)}:d=1.5[mus]`);
+      fparts.push(`[${musIdx}:a]volume=0.22,atrim=0:${totalSec},afade=t=out:st=${(totalSec - 1.5).toFixed(2)}:d=1.5[mus]`);
       aIns.push("[mus]");
     }
     fparts.push(`${aIns.join("")}amix=inputs=${aIns.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`);
@@ -893,14 +921,14 @@ async function heroCut(): Promise<string> {
     // Report frames: one per act (order: 0 slam,1 fl,2 type,3 fl,4 think,5 fl,6 grid,7 fl,8 post,9 close).
     const grabs: [string, number][] = [
       ...(monsterHost ? [["hero-host.jpg", 0.6] as [string, number]] : []),
-      ["hero-drop.jpg", startOf(0 + off) + 0.5],
-      ["hero-typing.jpg", startOf(2 + off) + 1.2],
-      ["hero-think.jpg", startOf(4 + off) + 1.4],
-      ["hero-gridfill.jpg", startOf(6 + off) + 0.8],
-      ["hero-gridfull.jpg", startOf(7 + off) - 0.6],
-      ["hero-post.jpg", startOf(8 + off) + 0.7],
-      ...(monsterHost ? [["hero-outro.jpg", startOf(9 + off) + 0.5] as [string, number]] : []),
-      ["hero-close.jpg", startOf(9 + off + (monsterHost ? 1 : 0)) + 2],
+      ["hero-drop.jpg", on("slam") + 0.5],
+      ["hero-typing.jpg", on("typing") + 1.2],
+      ["hero-think.jpg", on("think") + 1.4],
+      ["hero-gridfill.jpg", on("grid") + 0.8],
+      ["hero-gridfull.jpg", endAt(mark.grid) - 0.6],
+      ["hero-post.jpg", on("post") + 0.7],
+      ...(monsterHost ? [["hero-outro.jpg", on("outro") + 0.5] as [string, number]] : []),
+      ["hero-close.jpg", on("close") + 2],
     ];
     for (const [name, t] of grabs) {
       try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, name)], { stdio: "ignore" }); } catch { /* best-effort */ }
