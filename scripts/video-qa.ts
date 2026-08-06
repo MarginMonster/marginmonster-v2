@@ -1063,6 +1063,22 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nPORTRAIT BAKE-OFF FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=portraitfix — B won the bake-off (real face survived, brand
+  // correct, blank box) but dropped his signature glowing runes and cooled
+  // his skin tone. One more surgical pass on B itself, ~$0.15.
+  if (process.env.QA_MASCOT === "portraitfix") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const B = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/port-b-full.jpg";
+      const url = await brandStill(
+        `Edit this photograph two ways. 1) Add his signature softly GLOWING golden rune tattoos along both bare forearms — thin luminous magical symbols emitting a warm gold light. 2) Warm his skin very slightly back toward its natural golden-olive tone. Change NOTHING else: identical face, wrinkles, skin pores, glasses, ears, expression, pose, hands, the blank white box, the shirt and its "EASYMODE" lettering, and the blurred background. It must still read as the same unretouched real photograph shot on an 85mm lens — visible skin texture, natural grain, no smoothing, no CGI look. The ONLY text anywhere is exactly "EASYMODE".`,
+        B, true);
+      await saveFrame(url, "monster-hero.jpg");
+      return `${head}\n\nFinal presenter portrait → monster-hero.jpg on qa-frames.`;
+    } catch (e) {
+      return `${head}\n\nPORTRAIT FIX FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   if (process.env.QA_MASCOT === "voice") {
     try {
       const fs2 = require("node:fs") as typeof import("node:fs");
