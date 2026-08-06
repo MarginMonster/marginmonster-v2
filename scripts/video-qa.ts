@@ -513,8 +513,8 @@ async function heroCut(): Promise<string> {
       hostAudioPath = path2.join(tmp, "host-vo.mp3");
       const outDirM = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDirM, { recursive: true });
-      const keptClip = path2.join(outDirM, "host4-raw.mp4");
-      const keptVo = path2.join(outDirM, "host4-vo.mp3");
+      const keptClip = path2.join(outDirM, "host5-raw.mp4");
+      const keptVo = path2.join(outDirM, "host5-vo.mp3");
       const curlHost = (url: string, out: string, min: number) => {
         try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
@@ -545,23 +545,26 @@ async function heroCut(): Promise<string> {
       const outroLine = "EasyMode. Marketing on easy mode. Take it from the monster it made.";
       outroRawPath = path2.join(tmp, "outro-raw.mp4");
       outroAudioPath = path2.join(tmp, "outro-vo.mp3");
-      const keptOutro = path2.join(outDirM, "host4-outro.mp4");
-      const keptOutroVo = path2.join(outDirM, "host4-outro-vo.mp3");
-      const keptTee = path2.join(outDirM, "monster-tee.jpg");
+      const keptOutro = path2.join(outDirM, "host5-outro.mp4");
+      const keptOutroVo = path2.join(outDirM, "host5-outro-vo.mp3");
+      const keptTee = path2.join(outDirM, "monster-real.jpg");
       const haveCache =
-        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host4-raw.mp4`, raw, 100_000)) &&
-        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host4-vo.mp3`, hostAudioPath, 5_000)) &&
-        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host4-outro.mp4`, outroRawPath, 100_000)) &&
-        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host4-outro-vo.mp3`, outroAudioPath, 5_000));
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host5-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host5-vo.mp3`, hostAudioPath, 5_000)) &&
+        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host5-outro.mp4`, outroRawPath, 100_000)) &&
+        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host5-outro-vo.mp3`, outroAudioPath, 5_000));
       if (!haveCache) {
         // 0) His EasyMode-tee presenter portrait (forged once, then cached).
         let teeUrl = "";
-        if (fs2.existsSync(keptTee) || curlHost(`${RAWQ}/monster-tee.jpg`, keptTee, 20_000)) {
-          teeUrl = `${RAWQ}/monster-tee.jpg`;
+        if (fs2.existsSync(keptTee) || curlHost(`${RAWQ}/monster-real.jpg`, keptTee, 20_000)) {
+          teeUrl = `${RAWQ}/monster-real.jpg`;
         } else {
+          // A REAL photograph of him is the base — only the wardrobe and the
+          // third-party packaging change. Everything that carries realism
+          // (face, skin, tattoos, hands, store, light) is held fixed.
           teeUrl = await brandStill(
-            `Both reference images show the SAME photorealistic ogre character. Recreate him EXACTLY — same bald golden-green head, pointed ears, chunky black rectangular glasses, same friendly face. Half-body presenter framing, facing camera, arms relaxed: he wears a fitted dark-green t-shirt with the word "EASYMODE" printed in bold white capitals across the chest, his muscular arms showing softly glowing golden rune tattoos. Soft even studio light, plain warm neutral backdrop, photorealistic. The ONLY text anywhere is exactly "EASYMODE" on the shirt.`,
-            ["https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/7f370a482573208be369a80cac7e40f9a268bd08/qa-in/mascot/mm-cut-casual.jpg", `${RAWQ}/zeely-e4.jpg`],
+            `Change ONLY two things in this photograph. 1) Dress him in a fitted dark-green t-shirt with the word "EASYMODE" printed in bold white capitals across the chest. 2) Replace the branded card box in his hands with a plain unbranded matte white product box of the same size, held the same way. Keep EVERYTHING else pixel-identical: his exact face, skin texture and pores, glasses, ears, glowing golden rune tattoos on his arms, his pose and hands, the shop background, and the original photographic lighting and grain. Real photograph, not an illustration, no smoothing or retouching of the face. The ONLY text anywhere is exactly "EASYMODE" on the shirt.`,
+            [`${RAWQ}/zeely-base.jpg`],
             true);
           try { execFileSync("curl", ["-sf", "-o", keptTee, teeUrl], { stdio: "ignore" }); } catch { /* cache is best-effort */ }
         }
@@ -605,7 +608,7 @@ async function heroCut(): Promise<string> {
       const mid = (hostSec / 2).toFixed(2);
       execFileSync(ff, ["-y", "-i", raw, "-i", pA, "-i", pB,
         "-filter_complex",
-        "[0:v]crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=760:1352:force_original_aspect_ratio=increase,crop=720:1280:(in_w-720)/2:(in_h-1280)/2+sin(t/1.7)*5,fps=30[v0];" +
+        "[0:v]scale=760:1352:force_original_aspect_ratio=increase,crop=720:1280:(in_w-720)/2:(in_h-1280)/2+sin(t/1.7)*5,fps=30[v0];" +
         `[v0][1:v]overlay=(W-w)/2:H-250:enable='between(t,0.25,${mid})'[v1];` +
         `[v1][2:v]overlay=(W-w)/2:H-250:enable='between(t,${mid},${hostSec.toFixed(2)})'[v2];` +
         "[v2]format=yuv420p[v]",
@@ -619,7 +622,7 @@ async function heroCut(): Promise<string> {
       }
       outroSegPath = path2.join(tmp, "segMo.mp4");
       execFileSync(ff, ["-y", "-i", outroRawPath!,
-        "-vf", "crop=iw:min(ih\\,iw*4/3):0:(ih-min(ih\\,iw*4/3))/2,scale=760:1352:force_original_aspect_ratio=increase,crop=720:1280:(in_w-720)/2:(in_h-1280)/2+sin(t/1.7)*5,fps=30,format=yuv420p",
+        "-vf", "scale=760:1352:force_original_aspect_ratio=increase,crop=720:1280:(in_w-720)/2:(in_h-1280)/2+sin(t/1.7)*5,fps=30,format=yuv420p",
         "-t", String(outroSec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", outroSegPath], { stdio: "ignore" });
     }
 
@@ -1005,12 +1008,20 @@ async function mascotLab(): Promise<string> {
       const src = path2.join(process.cwd(), "qa-in", "mascot", "zeely-voice.mov");
       const outDir = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDir, { recursive: true });
-      // t=4s is the take where he faces camera with both hands up. The crop
-      // drops the right-hand action rail and the caption band.
-      execFileSync(ff, ["-y", "-ss", "4.0", "-i", src, "-frames:v", "1",
-        "-vf", "crop=1100:1470:0:330", "-q:v", "2", path2.join(outDir, "zeely-base.jpg")], { stdio: "ignore" });
-      const kb = Math.round(fs2.statSync(path2.join(outDir, "zeely-base.jpg")).size / 1024);
-      return `${head}\n\nBase frame extracted → zeely-base.jpg (${kb} KB, 1100x1470) on qa-frames.`;
+      // Publish FULL uncropped candidates — the phone-UI crop is measured
+      // off these, not guessed (a guessed crop decapitated him once).
+      const shots: string[] = [];
+      for (const t of ["3.0", "4.0", "5.0", "6.0"]) {
+        const name = `zeely-full-${t.replace(".", "_")}.jpg`;
+        execFileSync(ff, ["-y", "-ss", t, "-i", src, "-frames:v", "1", "-q:v", "2",
+          path2.join(outDir, name)], { stdio: "ignore" });
+        shots.push(name);
+      }
+      const probe = (() => {
+        try { execFileSync(ff, ["-i", src], { stdio: ["ignore", "ignore", "pipe"] }); return ""; }
+        catch (e) { return /, (\d{2,5}x\d{2,5})/.exec(String((e as { stderr?: Buffer }).stderr || ""))?.[1] || "?"; }
+      })();
+      return `${head}\n\nSource is ${probe}. Full frames published: ${shots.join(", ")}.`;
     } catch (e) {
       return `${head}\n\nFRAME EXTRACT FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
