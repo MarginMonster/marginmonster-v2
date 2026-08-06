@@ -1047,6 +1047,36 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nFRAME EXTRACT FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=goods — Phase 1 of the silent-mascot ad: the two in-fiction
+  // EasyMode brands as standalone pack shots, two takes each. Rendered
+  // BEFORE they reach his hand: lettering warps badly when a product is
+  // generated inside a busy scene, and these same shots double as grid
+  // tiles later, so the type has to be right first.
+  if (process.env.QA_MASCOT === "goods") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const PHOTO = `Professional studio product photograph, sharp macro detail, soft studio key light with a gentle falloff, subtle reflection beneath, clean seamless background, real photograph — no illustration, no CGI look.`;
+      const cands: Array<[string, string]> = [
+        ["good-soda-1.jpg",
+          `${PHOTO} A cold 355ml aluminium soda can standing upright, condensation beading on the metal. The can is a vivid emerald green with the brand name "GREEN DRAGON" printed large across it in bold red capitals. Deep neutral background. The ONLY text anywhere is exactly "GREEN DRAGON", spelled letter for letter.`],
+        ["good-soda-2.jpg",
+          `${PHOTO} A cold slim aluminium soda can at a slight three-quarter angle, frosty with condensation. Glossy emerald-green body, the brand name "GREEN DRAGON" in bold red capitals stacked across the middle with a small red dragon silhouette beneath it. Bright clean background. The ONLY text anywhere is exactly "GREEN DRAGON", spelled letter for letter.`],
+        ["good-bar-1.jpg",
+          `${PHOTO} A chocolate bar in a sealed bright cobalt-blue foil wrapper lying flat with a slight tilt, the brand name "ALMONDCHOCO" printed large across it in clean bold white capitals. Deep neutral background. The ONLY text anywhere is exactly "ALMONDCHOCO", spelled letter for letter.`],
+        ["good-bar-2.jpg",
+          `${PHOTO} A chocolate bar standing upright in a bright cobalt-blue wrapper, "ALMONDCHOCO" in bold white capitals across the front with a small white almond icon beneath, one square of chocolate resting against its base. Bright clean background. The ONLY text anywhere is exactly "ALMONDCHOCO", spelled letter for letter.`],
+      ];
+      const done = await Promise.all(cands.map(async ([name, prompt]) => {
+        const url = await brandStill(prompt, undefined, true);
+        await saveFrame(url, name);
+        console.log(`[goods] ${name} ready`);
+        return name;
+      }));
+      return `${head}\n\nPack shots: ${done.join(", ")} on qa-frames. Stills only.`;
+    } catch (e) {
+      return `${head}\n\nPACK SHOTS FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
