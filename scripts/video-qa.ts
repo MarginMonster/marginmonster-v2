@@ -1152,6 +1152,53 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nBEAT KEYFRAMES FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=beats2 — re-roll of the three weak beats. The first pass read
+  // composited: the shirt print sat dead flat with no fold distortion, and
+  // the can was tack-sharp with no shop light on the metal and no contact
+  // shadow. INTEGRATE is the fix — it forces the print onto the fabric and
+  // the product into the scene's own light.
+  if (process.env.QA_MASCOT === "beats2") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+      const HIM = `${RAWQ}/fit-a-wide.jpg`;
+      const CAN = `${RAWQ}/good-soda-2.jpg`;
+      const WHO = `The first reference image is the character: recreate him EXACTLY — same bald golden-olive head, pointed ears, chunky black rectangular glasses, same face and wrinkles, same forest-green long-sleeve "EASYMODE" t-shirt with sleeves pushed to the elbow and glowing golden rune tattoos on his bare forearms.`;
+      const CANREF = `The second reference image is the product: the emerald-green "GREEN DRAGON" soda can with red lettering and the small red dragon mark, reproduced exactly as it really is.`;
+      const SKIN = `CRITICAL — his HANDS AND FINGERS are the same golden-olive complexion as his face and forearms, continuous unbroken skin tone from face to fingertips with the same texture and colour. His hands are NOT normal pink human skin.`;
+      const INTEGRATE = `CRITICAL — nothing may look pasted in. The "EASYMODE" print is screen-printed INTO the jersey: it curves with his chest, distorts across every fold and wrinkle, catches the same light and falls into the same shadow as the fabric around it, with a slightly worn ink texture — never a flat crisp sticker. The can is a real object in this room: the warm shop lighting wraps it, the room reflects softly in the aluminium, his fingers press into it with real contact shadows and slight skin compression, and it shares the photograph's exact depth of field, grain and colour temperature. Keep the can label clearly readable and unobstructed.`;
+      const SET = `Warm modern shop interior softly out of focus behind him. Cinematic vertical framing, waist-up.`;
+      const PHOTO = `Unretouched real photograph on an 85mm lens: visible skin pores, natural highlights, subtle grain, no smoothing, no CGI look.`;
+      const cands: Array<[string, string]> = [
+        ["beat1b-crack.jpg",
+          `${WHO} ${CANREF} He holds the can out to his side at chest height, turned so the "GREEN DRAGON" label faces camera and his chest lettering stays fully visible, thumb hooked under the tab about to crack it, looking at it with anticipation. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat1c-crack.jpg",
+          `${WHO} ${CANREF} Low three-quarter angle: he cracks the can open, tab lifting, a fine mist of spray catching the light, his eyes down on it, the can held clear of his body so both the label and his chest lettering read. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat2b-drink.jpg",
+          `${WHO} ${CANREF} He has just taken a swig and is lowering the can away from his mouth off to one side, head coming back down, eyebrows raised in genuine approval, the label turned toward camera and his chest lettering unobstructed. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat2c-drink.jpg",
+          `${WHO} ${CANREF} Slight profile: mid-swig with the can tipped up to his lips, throat working, one eye glancing at the camera, the label facing the lens. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat3b-throw.jpg",
+          `${WHO} ${CANREF} He has just thrown the can straight at the camera — his throwing arm is extended toward the lens with the hand OPEN and EMPTY after the release, and the can is airborne in the upper foreground, close to the lens, tumbling and motion-blurred, clearly separated from his hand. His chest lettering reads clearly. Dynamic, energetic. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat4b-bite.jpg",
+          `${WHO} The second reference image is the product: the cobalt-blue "ALMONDCHOCO" chocolate bar with white lettering, reproduced exactly as it really is. He holds the bar, wrapper peeled halfway, raising it for a bite with a grin, held clear of his chest so his shirt lettering reads. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat5b-salute.jpg",
+          `${WHO} ${CANREF} He raises the can toward camera in a confident salute, chin up, knowing grin, label facing the lens and his chest lettering fully visible. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+        ["beat3c-throw.jpg",
+          `${WHO} ${CANREF} Caught mid-throw from a low angle: his arm whips forward, the can leaving his fingertips toward the camera with a motion-blur trail behind it, his body rotating into the throw, a grin on his face. ${SKIN} ${INTEGRATE} ${SET} ${PHOTO}`],
+      ];
+      const BAR = `${RAWQ}/good-bar-2.jpg`;
+      const done = await Promise.all(cands.map(async ([name, prompt]) => {
+        const url = await brandStill(prompt, [HIM, name.startsWith("beat4") ? BAR : CAN], true);
+        await saveFrame(url, name);
+        console.log(`[beats2] ${name} ready`);
+        return name;
+      }));
+      return `${head}\n\nRe-rolls: ${done.join(", ")} on qa-frames. Stills only.`;
+    } catch (e) {
+      return `${head}\n\nBEAT RE-ROLL FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
