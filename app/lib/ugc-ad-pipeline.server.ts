@@ -411,6 +411,41 @@ function hasAudioStream(file: string): boolean {
   return !!(out.stdout || "").trim();
 }
 
+/** Find the real picture inside a padded frame. HeyGen letterboxes a portrait
+ *  that is not natively 9:16 with WHITE bars, and our fill-crop preserved them
+ *  — merchants got finished ads with white bands top and bottom. cropdetect
+ *  over the first couple of seconds finds the content box on ANY engine's
+ *  padding (white, black, whatever) instead of hard-coding one aspect.
+ *  Returns a crop filter, or null when the frame is already full-bleed. */
+function detectContentCrop(file: string): string | null {
+  try {
+    const out = spawnSync(ffmpegBin(), [
+      "-hide_banner", "-t", "2", "-i", file,
+      // limit=250 catches near-white bars as well as black ones; round=2 keeps
+      // the box even so the later scale stays clean.
+      "-vf", "cropdetect=limit=250:round=2:reset=0", "-f", "null", "-",
+    ], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+    const hits = [...String(out.stderr || "").matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+    const last = hits[hits.length - 1];
+    if (!last) return null;
+    const [w, h, x, y] = last.slice(1, 5).map(Number);
+    if (!w || !h) return null;
+    const probe = spawnSync(ffprobeBin(), ["-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file], { encoding: "utf8" });
+    const [fw, fh] = String(probe.stdout || "").trim().split("x").map(Number);
+    if (!fw || !fh) return null;
+    // Only act on real letterboxing, and never crop away more than a third of
+    // the frame — a dark scene can fool cropdetect into eating the picture.
+    const trimmed = (fh - h) / fh;
+    if (trimmed < 0.04 || trimmed > 0.34 || w < fw * 0.9) return null;
+    console.log(`[ugc:assemble] letterbox detected — cropping ${fw}x${fh} to ${w}x${h}`);
+    return `crop=${w}:${h}:${x}:${y}`;
+  } catch (e) {
+    console.error("[ugc:assemble] cropdetect failed (keeping full frame):", e instanceof Error ? e.message.slice(0, 120) : e);
+    return null;
+  }
+}
+
 export function ffprobeDuration(file: string): number {
   const out = spawnSync(ffprobeBin(), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
     encoding: "utf8",
@@ -599,6 +634,9 @@ export async function assemble(opts: {
     else console.error(`[ugc:assemble] product image re-encode failed — using original: ${(conv.stderr || "").slice(-200)}`);
   }
 
+  // Strip any letterbox the talking engine baked in before we fill the canvas.
+  const letterbox = detectContentCrop(opts.talkingPath);
+
   /** One encode pass. captionText === "" builds ZERO drawtext filters — that's
    *  the recovery pass below, and the reason the caption filters are built here
    *  rather than once up front. */
@@ -611,7 +649,7 @@ export async function assemble(opts: {
 
     const filters: string[] = [];
     let vLabel = "[v0]";
-    let base = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30`;
+    let base = `[0:v]${letterbox ? `${letterbox},` : ""}scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30`;
     if (truncated) base += `,tpad=stop_mode=clone:stop_duration=${(audioDur - talkingDur + 0.1).toFixed(2)}`;
     filters.push(`${base}[v0]`);
 
