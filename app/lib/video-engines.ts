@@ -3,8 +3,8 @@
  * that covers their higher per-second cost. Pure data: safe on client+server.
  *
  * The server adapter (animateCreate in ugc-ad-pipeline.server.ts) maps keys
- * to Replicate models and ALWAYS falls back to our default engine on any
- * rejection, so an engine choice can never kill a paid generation. */
+ * to fal or Replicate models and ALWAYS falls back to our default engine on
+ * any rejection, so an engine choice can never kill a paid generation. */
 
 export interface VideoEngine {
   key: string;
@@ -15,11 +15,13 @@ export interface VideoEngine {
 }
 
 export const VIDEO_ENGINES: VideoEngine[] = [
-  { key: "auto", name: "Auto", blurb: "EasyMode picks — fast, consistent, included", surcharge: 0 },
-  { key: "kling", name: "Kling", blurb: "Rock-solid motion & product fidelity", surcharge: 0 },
+  { key: "auto", name: "Auto", blurb: "EasyMode picks — Kling 2.6 Pro, included", surcharge: 0 },
+  { key: "kling", name: "Kling 2.6 Pro", blurb: "Best all-round motion & product fidelity", surcharge: 0 },
+  { key: "kling25fal", name: "Kling 2.5 Turbo", blurb: "Fast and dependable — the safe pick", surcharge: 0 },
   { key: "hailuo", name: "Hailuo 2", blurb: "Cinematic lighting, lush color", surcharge: 25 },
   { key: "seedance", name: "Seedance 1 Pro", blurb: "Punchy, dynamic, TikTok-native energy", surcharge: 25 },
-  { key: "veo", name: "Veo 3 Fast", blurb: "Google's flagship — premium realism", surcharge: 75 },
+  { key: "veo31", name: "Veo 3.1 Fast", blurb: "Google's latest — premium realism", surcharge: 75 },
+  { key: "veo", name: "Veo 3 Fast", blurb: "Google's previous generation", surcharge: 75 },
 ];
 
 export const VIDEO_ENGINE_BY_KEY: Record<string, VideoEngine> = Object.fromEntries(
