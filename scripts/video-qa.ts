@@ -36,7 +36,7 @@ async function main() {
   const styles = Object.keys(CARTOON_RECIPES) as CartoonStyleKey[];
   // A commercial/brand-lab dispatch is a RENDER run — the script sweep is
   // six minutes of noise in front of it. Sweep only when nothing else asked.
-  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS || process.env.QA_MASCOT);
+  const renderOnly = !!(process.env.QA_COMMERCIAL || process.env.QA_BRAND_LAB || process.env.QA_HERO || process.env.QA_EXTRACT || process.env.QA_PORTFOLIO || process.env.QA_FLANKS || process.env.QA_MASCOT || process.env.QA_SILENT);
   if (renderOnly) console.log(`[vqa] render dispatch — skipping the script sweep\n`);
   else console.log(`[vqa] ${styles.length} styles × ${PRODUCTS.length} products × ${REPEATS} = ${styles.length * PRODUCTS.length * REPEATS} scripts\n`);
 
@@ -110,10 +110,11 @@ async function main() {
   const pf = await portfolioAssets();
   const fl = await flankClips();
   const hc = await heroCut();
+  const sc = await silentCut();
   const cm = await commercialCheck();
   const ca = await cutawayAssembleCheck();
 
-  const all = [md, kf, ph, bl, ml, rx, pf, fl, hc, cm, ca].filter(Boolean).join("\n\n");
+  const all = [md, kf, ph, bl, ml, rx, pf, fl, hc, sc, cm, ca].filter(Boolean).join("\n\n");
   if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, all + "\n");
   console.log(`\n${all}\n`);
   if (leaked > 0) process.exit(1);
@@ -942,6 +943,306 @@ async function heroCut(): Promise<string> {
     return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
   } finally {
     try { fs2.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}
+
+/* ---------- Silent Cut: the mascot ad with ZERO generated video ----------
+ *
+ * Five engines were tried for generated motion of this character — Veo
+ * talking, omni-human, HeyGen avatar, a lipsync retarget, and Veo silent
+ * action — and all five produced footage that read as slop. The stills,
+ * meanwhile, landed on the first or second try every single time.
+ *
+ * So: no generated video. Every frame here is either a still the founder
+ * approved or a frame Chromium drew. The can is thrown by animating the
+ * approved pack shot at the lens, which is exact instead of hoped for.
+ * The hero plays muted on the landing page, so captions carry the message.
+ * QA_SILENT=1 enables. */
+async function silentCut(): Promise<string> {
+  if (!process.env.QA_SILENT) return "";
+  const head = "### Silent Cut — the mascot ad, no generated video";
+  const fs2 = require("node:fs") as typeof import("node:fs");
+  const path2 = require("node:path") as typeof import("node:path");
+  const os2 = require("node:os") as typeof import("node:os");
+  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+  const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+  const chrome = [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"]
+    .find((c) => c && fs2.existsSync(c));
+  if (!chrome) return `${head}\n\nSKIPPED — no Chrome on this runner.`;
+  const tmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), "silent-"));
+  const t0 = Date.now();
+  try {
+    const font = path2.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    const rosette = path2.join(process.cwd(), "public", "gstyle-rosette.svg");
+    const crest = path2.join(process.cwd(), "public", "easymode-head.png");
+    const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+    const grab = (name: string): string => {
+      const local = path2.join(process.cwd(), "qa-out", "frames", name);
+      if (fs2.existsSync(local)) return local;
+      const dst = path2.join(tmp, name);
+      execFileSync("curl", ["-sf", "--max-time", "40", "-o", dst, `${RAWQ}/${name}`], { stdio: "ignore" });
+      if (!fs2.existsSync(dst) || fs2.statSync(dst).size < 5000) throw new Error(`missing asset ${name}`);
+      return dst;
+    };
+    const A = {
+      crack: grab("beat1b-crack.jpg"), drink: grab("beat2b-drink.jpg"),
+      throw: grab("beat3b-throw.jpg"), bite: grab("beat4b-bite.jpg"),
+      salute: grab("beat5b-salute.jpg"),
+      can: grab("good-soda-2.jpg"), bar: grab("good-bar-2.jpg"),
+      canDark: grab("good-soda-1.jpg"), barDark: grab("good-bar-1.jpg"),
+    };
+    // The can, keyed off its white sweep so it can fly over anything.
+    const canPng = path2.join(tmp, "can.png");
+    execFileSync(ff, ["-y", "-i", A.can, "-vf",
+      "colorkey=0xF4F4F4:0.34:0.06,format=rgba", "-frames:v", "1", canPng], { stdio: "ignore" });
+
+    const stage = "background:radial-gradient(130% 100% at 50% 32%, #0E1F16 0%, #07110C 58%, #040A07 100%)";
+    const disp = "font-family:Arial,Helvetica,sans-serif;font-weight:800;letter-spacing:-.035em";
+    const shoot = (html: string, out: string) => {
+      const page = `<!doctype html><html><head><style>
+        @font-face{font-family:P;src:url(file://${font});font-weight:800}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{width:720px;height:1280px;overflow:hidden;font-family:P,sans-serif}
+      </style></head><body>${html}</body></html>`;
+      const f = out.replace(/\.png$/, ".html");
+      fs2.writeFileSync(f, page);
+      execFileSync(chrome!, ["--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+        "--default-background-color=00000000", "--window-size=720,1280", `--screenshot=${out}`, `file://${f}`], { stdio: "ignore" });
+    };
+    // Frame-sequence encoder: the whole cut is built from these.
+    let sn = 0;
+    const segs: string[] = []; const lens: number[] = [];
+    const seqSeg = (frames: { png: string; dur: number }[], name: string): void => {
+      const list = path2.join(tmp, `${name}.txt`);
+      fs2.writeFileSync(list, frames.map((f) => `file '${f.png}'\nduration ${f.dur}`).join("\n") + `\nfile '${frames[frames.length - 1].png}'`);
+      const out = path2.join(tmp, `${name}.mp4`);
+      execFileSync(ff, ["-y", "-f", "concat", "-safe", "0", "-i", list, "-vf",
+        "fps=30,scale=720:1280,format=yuv420p", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", out], { stdio: "ignore" });
+      segs.push(out); lens.push(frames.reduce((a, f) => a + f.dur, 0));
+    };
+    // Ken Burns on an approved still, with an optional caption baked in.
+    const stillSeg = (img: string, sec: number, zoomIn: boolean, caption: string | null, name: string): void => {
+      const capPng = path2.join(tmp, `${name}-cap.png`);
+      if (caption) {
+        shoot(`<div style="position:absolute;left:0;right:0;bottom:96px;display:flex;justify-content:center">
+          <div style="${disp};font-size:38px;line-height:1.15;color:#fff;text-align:center;max-width:600px;
+            text-shadow:0 3px 18px rgba(0,0,0,.85),0 1px 3px rgba(0,0,0,.9)">${caption}</div></div>`, capPng);
+      }
+      const fr = Math.max(2, Math.round(sec * 30));
+      const z = zoomIn ? `1+${(0.13 / fr).toFixed(5)}*on` : `1.13-${(0.13 / fr).toFixed(5)}*on`;
+      const chain = `scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30`;
+      const out = path2.join(tmp, `${name}.mp4`);
+      const args = ["-y", "-loop", "1", "-framerate", "30", "-t", String(sec + 0.15), "-i", img];
+      if (caption) {
+        args.push("-loop", "1", "-framerate", "30", "-t", String(sec + 0.15), "-i", capPng,
+          "-filter_complex", `[0:v]${chain}[b];[b][1:v]overlay=0:0,format=yuv420p[v]`, "-map", "[v]");
+      } else {
+        args.push("-vf", `${chain},format=yuv420p`);
+      }
+      args.push("-t", String(sec), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", out);
+      execFileSync(ff, args, { stdio: "ignore" });
+      segs.push(out); lens.push(sec);
+    };
+
+    /* 1-2. THE MONSTER — approved stills, slow camera. */
+    stillSeg(A.crack, 1.9, true, "Every product in this ad&hellip;", `s${sn++}`);
+    stillSeg(A.drink, 1.7, false, "&hellip;was made by EasyMode.", `s${sn++}`);
+
+    /* 3. THE THROW — the can leaves the still and flies at the lens. This
+       is the beat generated video kept fumbling; drawn, it is exact. */
+    {
+      const fr: { png: string; dur: number }[] = [];
+      const N = 16;
+      for (let i = 0; i < N; i++) {
+        const t = i / (N - 1);
+        const sc = (0.42 + Math.pow(t, 2.1) * 5.6).toFixed(3);
+        const rot = (-10 + t * 46).toFixed(1);
+        const blur = (t * 9).toFixed(1);
+        const y = (52 - t * 34).toFixed(0);
+        const p = path2.join(tmp, `fly${i}.png`);
+        shoot(`<div style="position:relative;width:720px;height:1280px;overflow:hidden">
+            <img src="file://${A.throw}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(${(1.02 + t * 0.12).toFixed(3)});width:720px;height:1280px;object-fit:cover;filter:blur(${(t * 3).toFixed(1)}px) brightness(${(1 - t * 0.25).toFixed(2)})">
+            <img src="file://${canPng}" style="position:absolute;left:50%;top:${y}%;transform:translate(-50%,-50%) scale(${sc}) rotate(${rot}deg);width:300px;filter:blur(${blur}px) drop-shadow(0 30px 60px rgba(0,0,0,.6))">
+          </div>`, p);
+        fr.push({ png: p, dur: 0.038 });
+      }
+      const wht = path2.join(tmp, "wht.png");
+      shoot(`<div style="width:720px;height:1280px;background:#EAFFF3"></div>`, wht);
+      fr.push({ png: wht, dur: 0.05 });
+      seqSeg(fr, `s${sn++}`);
+    }
+
+    /* 4. THE CATCH — the can lands in the studio field, the prompt types
+       itself, Generate presses. Every pixel drawn by Chrome. */
+    {
+      const PROMPT = "Make converting ads for my brand";
+      const card = (canTop: number, canScale: number, typed: number, glow: boolean, press: boolean) => `
+        <div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <div style="position:absolute;left:0;right:0;top:58px;text-align:center;${disp};font-size:30px;color:#F4F1E6">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>
+          <div style="width:620px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+              <img src="file://${crest}" style="width:40px;height:40px;border-radius:10px;box-shadow:0 0 24px rgba(18,168,94,.5)">
+              <div style="font-size:24px;color:#F4F1E6">Easy<span style="color:#E7C879">Mode</span><span style="font-size:14px;color:#7FE0AC;margin-left:10px;font-weight:800">Studio</span></div>
+            </div>
+            <div style="background:linear-gradient(168deg,#10231A,#0B1A12);border:1px solid rgba(127,224,172,${glow ? ".75" : ".28"});border-radius:20px;box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 ${glow ? "90px rgba(18,168,94,.5)" : "70px rgba(18,168,94,.16)"};padding:26px 24px;position:relative">
+              <div style="font-size:14px;color:#7FE0AC;margin-bottom:12px;font-weight:800;letter-spacing:.06em;${disp}">TELL EASYMODE WHAT YOU WANT</div>
+              <div style="display:flex;align-items:center;gap:14px;background:rgba(4,10,7,.75);border:1.5px solid ${typed > 0 ? "#12A85E" : "rgba(127,224,172,.25)"};border-radius:13px;padding:14px 16px;min-height:74px">
+                ${canScale > 0 ? `<img src="file://${canPng}" style="width:${(46 * canScale).toFixed(0)}px;border-radius:8px;flex:none">` : ""}
+                <div style="font-family:Arial,sans-serif;font-weight:600;font-size:20px;color:#F4F1E6;text-align:left">${PROMPT.slice(0, typed)}<span style="opacity:${typed < PROMPT.length ? 1 : 0};color:#7FE0AC">|</span></div>
+              </div>
+              <div style="margin-top:18px;display:flex;justify-content:flex-end">
+                <div style="font-size:18px;font-weight:800;color:#fff;background:linear-gradient(160deg,#12A85E,#0C7A46);padding:15px 30px;border-radius:13px;box-shadow:${press ? "0 1px 0 #06301D,0 0 60px rgba(127,224,172,.85)" : "0 5px 0 #06301D,0 0 34px rgba(18,168,94,.4)"}${press ? ";transform:translateY(4px) scale(.97);filter:brightness(1.3)" : ""}">Generate &rarr;</div>
+              </div>
+            </div>
+          </div>
+          ${canTop < 100 ? `<img src="file://${canPng}" style="position:absolute;left:50%;top:${canTop}%;transform:translate(-50%,-50%) scale(${(2.6 - canTop / 42).toFixed(2)}) rotate(${(30 - canTop * 0.3).toFixed(0)}deg);width:300px;filter:blur(${Math.max(0, (60 - canTop) / 14).toFixed(1)}px)">` : ""}
+        </div>`;
+      const fr: { png: string; dur: number }[] = [];
+      const push = (html: string, dur: number) => {
+        const p = path2.join(tmp, `ui${fr.length}.png`); shoot(html, p); fr.push({ png: p, dur });
+      };
+      // can drops into the field
+      [18, 34, 46].forEach((top) => push(card(top, 0, 0, false, false), 0.05));
+      push(card(120, 1.9, 0, true, false), 0.07);   // impact
+      push(card(120, 1.0, 0, false, false), 0.22);  // settled thumbnail
+      // the prompt types itself
+      const P = "Make converting ads for my brand";
+      for (let n = 2; n <= P.length; n += 2) push(card(120, 1.0, n, false, false), 0.045);
+      push(card(120, 1.0, P.length, false, false), 0.35);
+      push(card(120, 1.0, P.length, false, true), 0.3);
+      seqSeg(fr, `s${sn++}`);
+    }
+
+    /* 5. THINKING — three honest states, fast. */
+    {
+      const chips = ["Writing the ads&hellip;", "Placing your product&hellip;", "Checking every frame&hellip;"];
+      const fr: { png: string; dur: number }[] = [];
+      for (let n = 1; n <= 3; n++) {
+        const p = path2.join(tmp, `th${n}.png`);
+        shoot(`<div style="position:relative;width:720px;height:1280px;${stage};display:flex;align-items:center;justify-content:center">
+          <div style="width:600px;display:flex;flex-direction:column;gap:12px">
+            ${chips.slice(0, n).map((c, i) => `<div style="display:flex;align-items:center;gap:12px;background:rgba(4,10,7,.6);border:1px solid ${i < n - 1 ? "rgba(127,224,172,.45)" : "rgba(231,200,121,.6)"};border-radius:14px;padding:16px 18px;font-size:21px;font-weight:800;color:#F4F1E6;${disp}">
+              <span style="color:${i < n - 1 ? "#7FE0AC" : "#E7C879"};font-size:22px">${i < n - 1 ? "&#10003;" : "&#9679;"}</span>${c}</div>`).join("")}
+          </div></div>`, p);
+        fr.push({ png: p, dur: 0.42 });
+      }
+      seqSeg(fr, `s${sn++}`);
+    }
+
+    /* 6. THE BLOOM — his brands' whole content library, drawn as real ad
+       cards from the approved pack shots. */
+    {
+      const tile = (inner: string) => `<div style="background:#0B1A12;border-radius:14px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.6);position:relative">${inner}</div>`;
+      const shot = (img: string, h: number) => `<img src="file://${img}" style="width:100%;height:${h}px;object-fit:cover;display:block">`;
+      const cards = [
+        tile(shot(A.canDark, 250)),
+        tile(`${shot(A.can, 168)}<div style="padding:10px 12px"><div style="color:#E7C879;font-size:15px">&#9733;&#9733;&#9733;&#9733;&#9733;</div><div style="color:#F4F1E6;font-size:14px;line-height:1.25;margin-top:4px">"Tastes like a 3pm cheat code."</div></div>`),
+        tile(`<div style="padding:16px 14px;background:linear-gradient(150deg,#12A85E,#07311F);height:250px;display:flex;flex-direction:column;justify-content:space-between"><div style="color:#fff;${disp};font-size:26px;line-height:1.05">SUMMER<br>DROP</div>${shot(A.can, 120)}</div>`),
+        tile(shot(A.barDark, 250)),
+        tile(`${shot(A.bar, 170)}<div style="padding:10px 12px;color:#F4F1E6;font-size:14px">New: ALMONDCHOCO &mdash; out now</div>`),
+        tile(`<div style="padding:16px 14px;background:linear-gradient(150deg,#1D4ED8,#0A1C46);height:250px;display:flex;flex-direction:column;justify-content:space-between"><div style="color:#fff;${disp};font-size:24px;line-height:1.05">SNACK<br>SMARTER</div>${shot(A.bar, 118)}</div>`),
+        tile(`<div style="height:250px;background:#F4F1E6;padding:12px"><div style="color:#111;font-size:13px;font-weight:700">@greendragon</div><div style="margin-top:8px">${shot(A.can, 150)}</div><div style="color:#444;font-size:12px;margin-top:8px">restocked. finally.</div></div>`),
+        tile(shot(A.can, 250)),
+        tile(shot(A.bar, 250)),
+      ];
+      const fr: { png: string; dur: number }[] = [];
+      for (let n = 1; n <= cards.length; n++) {
+        const p = path2.join(tmp, `gr${n}.png`);
+        shoot(`<div style="position:relative;width:720px;height:1280px;${stage};padding:120px 26px 150px">
+          <div style="position:absolute;left:0;right:0;top:58px;text-align:center;${disp};font-size:30px;color:#F4F1E6">Studio-quality ads. <span style="color:#7FE0AC">In minutes.</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+            ${cards.map((c, i) => `<div style="opacity:${i < n ? 1 : 0};transform:scale(${i < n ? 1 : 0.86})">${c}</div>`).join("")}
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:74px;text-align:center;${disp};font-size:34px;color:#fff;text-shadow:0 3px 18px rgba(0,0,0,.85)">The label. The photos. The ads.</div>
+        </div>`, p);
+        fr.push({ png: p, dur: n === cards.length ? 1.5 : 0.17 });
+      }
+      seqSeg(fr, `s${sn++}`);
+    }
+
+    /* 7-8. SECOND PRODUCT + AUTOPOST. */
+    stillSeg(A.bite, 1.6, true, "Any product. Seconds.", `s${sn++}`);
+    {
+      const logos = ["tiktok", "instagram", "facebook"]
+        .map((n) => path2.join(process.cwd(), "public", "ai-logos", `${n}.svg`)).filter((p) => fs2.existsSync(p));
+      const fr: { png: string; dur: number }[] = [];
+      [1.06, 1.0].forEach((s, i) => {
+        const p = path2.join(tmp, `ap${i}.png`);
+        shoot(`<div style="position:relative;width:720px;height:1280px;${stage};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px">
+          <div style="position:absolute;left:50%;top:46%;width:900px;height:900px;transform:translate(-50%,-50%) scale(${s});opacity:.1;background:url(file://${rosette}) center/contain no-repeat;filter:brightness(3)"></div>
+          <div style="position:relative;${disp};font-size:52px;color:#F4F1E6;text-align:center;transform:scale(${s})">Posts them <span style="color:#E7C879">for you.</span></div>
+          <div style="position:relative;display:flex;gap:34px">${logos.map((l) => `<img src="file://${l}" style="width:64px;height:64px">`).join("")}</div>
+        </div>`, p);
+        fr.push({ png: p, dur: i === 0 ? 0.12 : 1.5 });
+      });
+      seqSeg(fr, `s${sn++}`);
+    }
+    stillSeg(A.salute, 1.9, true, null, `s${sn++}`);
+
+    /* 9. CLOSE — the gstyle card with live-spun rosettes. */
+    {
+      const base = path2.join(process.cwd(), "public", "showcase", "endcard-base.png");
+      const rose = path2.join(process.cwd(), "public", "showcase", "endcard-rosette.png");
+      const out = path2.join(tmp, `s${sn++}.mp4`);
+      execFileSync(ff, ["-y", "-loop", "1", "-framerate", "30", "-t", "3.6", "-i", base,
+        "-loop", "1", "-framerate", "30", "-t", "3.6", "-i", rose, "-filter_complex",
+        "[0:v]scale=720:1280[bg];[1:v]format=rgba,scale=460:460,split[ra][rb];" +
+        "[ra]rotate=t*0.35:c=none:ow=hypot(iw\\,ih):oh=ow[r1];[rb]rotate=-t*0.28:c=none:ow=hypot(iw\\,ih):oh=ow[r2];" +
+        "[bg][r1]overlay=x=W-w*0.72:y=-h*0.28[b1];[b1][r2]overlay=x=-w*0.28:y=H-h*0.72[b2];" +
+        "[b2]fade=t=in:st=0:d=0.35,fade=t=out:st=3.0:d=0.5,format=yuv420p[v]",
+        "-map", "[v]", "-t", "3.5", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", out], { stdio: "ignore" });
+      segs.push(out); lens.push(3.5);
+    }
+
+    /* ASSEMBLY — cross-dissolves, film grade, trap bed. */
+    const XD = 0.26;
+    const startOf = (i: number) => lens.slice(0, i).reduce((a, b) => a + b, 0) - XD * i;
+    const total = lens.reduce((a, b) => a + b, 0) - XD * (lens.length - 1);
+    let musicPath: string | undefined;
+    try {
+      const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      const mid = await repCreate("minimax/music-1.5", {
+        lyrics: "##\n(instrumental)\n##",
+        prompt: "dark confident modern trap instrumental, heavy 808 bass, crisp hi-hat rolls, sparse and expensive, premium sneaker-ad energy, no vocals",
+      });
+      const murl = await repPoll(mid, 4 * 60_000, "silent-music");
+      musicPath = path2.join(tmp, "music.mp3");
+      fs2.writeFileSync(musicPath, await downloadBuffer(murl));
+    } catch (e) {
+      console.log(`[silent] music failed (${(e instanceof Error ? e.message : String(e)).slice(0, 100)}) — shipping silent`);
+    }
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const outPath = path2.join(outDir, "silent-cut.mp4");
+    const args = ["-y"];
+    segs.forEach((s) => args.push("-i", s));
+    if (musicPath) args.push("-i", musicPath);
+    const fp: string[] = [];
+    let v = "0:v";
+    for (let i = 1; i < segs.length; i++) {
+      fp.push(`[${v}][${i}:v]xfade=transition=fade:duration=${XD}:offset=${startOf(i).toFixed(3)}[xf${i}]`);
+      v = `xf${i}`;
+    }
+    fp.push(`[${v}]eq=contrast=1.06:saturation=1.05:gamma=0.99,colorbalance=rs=-0.02:gs=0.015:bs=0.012:rh=0.025:gh=0.008:bh=-0.015,vignette=angle=PI/4.6,noise=alls=4:allf=t,format=yuv420p[vout]`);
+    args.push("-filter_complex", fp.join(";"), "-map", "[vout]");
+    if (musicPath) {
+      args.push("-map", `${segs.length}:a`, "-af", `volume=0.5,afade=t=out:st=${(total - 1.4).toFixed(2)}:d=1.4`, "-c:a", "aac");
+    }
+    args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-t", String(total), outPath);
+    execFileSync(ff, args, { stdio: "ignore" });
+    for (const [nm, t] of [["sc-throw.jpg", startOf(2) + 0.4], ["sc-type.jpg", startOf(3) + 1.6],
+      ["sc-grid.jpg", startOf(5) + 2.4], ["sc-close.jpg", startOf(8) + 1.2]] as [string, number][]) {
+      try { execFileSync(ff, ["-y", "-ss", String(t), "-i", outPath, "-frames:v", "1", "-q:v", "3", path2.join(outDir, nm)], { stdio: "ignore" }); } catch { /* best effort */ }
+    }
+    return [head, ``, `| | |`, `|---|---|`,
+      `| length | ${total.toFixed(1)}s |`,
+      `| segments | ${segs.length}, cross-dissolved |`,
+      `| generated video | **none** |`,
+      `| wall time | ${Math.round((Date.now() - t0) / 60_000)} min |`].join("\n");
+  } catch (e) {
+    return `${head}\n\nFAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 400)}`;
+  } finally {
+    try { fs2.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
 }
 

@@ -108,6 +108,10 @@ on:
         description: 'Forge EasyMode mascot candidates as stills (~$0.60, images only — the approval gate)'
         required: false
         default: ""
+      silent:
+        description: 'Build the silent mascot cut — approved stills + Chromium only, no generated video'
+        required: false
+        default: ""
       health_only:
         description: 'Just diagnose the API keys (fingerprint + auth + billing) and stop — no renders, no AI spend'
         required: false
@@ -218,6 +222,7 @@ jobs:
           QA_FLANKS: ${{ inputs.flanks }}
           QA_BRAND_LAB: ${{ inputs.brand_lab }}
           QA_MASCOT: ${{ inputs.mascot }}
+          QA_SILENT: ${{ inputs.silent }}
         run: node video-qa.cjs
 
       # Publish the actual frames back through git. The replicate.delivery
