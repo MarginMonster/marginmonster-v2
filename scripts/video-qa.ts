@@ -1542,6 +1542,47 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nMOTION FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=engines — the engine bake-off that should have run first.
+  // Our motion has been going to google/veo-3-FAST and, as the fallback,
+  // kling-v1.6-STANDARD: the budget tier of a cinematic text-to-video model,
+  // and a kling two generations old. Competitors doing avatar-holds-product
+  // are on current flagship image-to-video. Same approved keyframe, same
+  // prompt, every engine, side by side — evidence instead of opinion.
+  if (process.env.QA_MASCOT === "engines") {
+    try {
+      const { repCreate, repPoll, downloadBuffer } = await import("../app/lib/ugc-ad-pipeline.server");
+      const fs2 = require("node:fs") as typeof import("node:fs");
+      const path2 = require("node:path") as typeof import("node:path");
+      const outDir = path2.join(process.cwd(), "qa-out", "frames");
+      fs2.mkdirSync(outDir, { recursive: true });
+      const IMG = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames/beat1b-crack.jpg";
+      const P = "He cracks open the green soda can with his thumb, takes a sip, and gives a satisfied nod to camera. Natural human motion, steady handheld shot, warm shop interior.";
+      const NEG = "morphing, distortion, extra fingers, deformed hands, warping label, text, watermark";
+      const ENGINES: Array<[string, string, Record<string, unknown>]> = [
+        ["eng-kling25", "kwaivgi/kling-v2.5-turbo-pro", { start_image: IMG, prompt: P, negative_prompt: NEG, duration: 5 }],
+        ["eng-kling21", "kwaivgi/kling-v2.1-master", { start_image: IMG, prompt: P, negative_prompt: NEG, duration: 5 }],
+        ["eng-veo3", "google/veo-3", { image: IMG, prompt: P, aspect_ratio: "9:16" }],
+        ["eng-hailuo", "minimax/hailuo-02", { first_frame_image: IMG, prompt: P, duration: 6 }],
+        ["eng-seedance", "bytedance/seedance-1-pro", { image: IMG, prompt: P, duration: 5, resolution: "1080p" }],
+      ];
+      const done = await Promise.all(ENGINES.map(async ([name, model, input]) => {
+        try {
+          const id = await repCreate(model, input);
+          const url = await repPoll(id, 9 * 60_000, name);
+          fs2.writeFileSync(path2.join(outDir, `${name}.mp4`), await downloadBuffer(url));
+          console.log(`[engines] ${name} (${model}) OK`);
+          return `${name} ✓`;
+        } catch (e) {
+          const msg = (e instanceof Error ? e.message : String(e)).slice(0, 120);
+          console.log(`[engines] ${name} (${model}) FAILED — ${msg}`);
+          return `${name} ✗ (${msg})`;
+        }
+      }));
+      return `${head}\n\nEngine bake-off, same keyframe and prompt:\n\n${done.map((d) => `- ${d}`).join("\n")}`;
+    } catch (e) {
+      return `${head}\n\nENGINE BAKE-OFF FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
