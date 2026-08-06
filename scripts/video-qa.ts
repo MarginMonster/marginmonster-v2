@@ -559,12 +559,14 @@ async function heroCut(): Promise<string> {
         if (fs2.existsSync(keptTee) || curlHost(`${RAWQ}/monster-real.jpg`, keptTee, 20_000)) {
           teeUrl = `${RAWQ}/monster-real.jpg`;
         } else {
-          // A REAL photograph of him is the base — only the wardrobe and the
-          // third-party packaging change. Everything that carries realism
-          // (face, skin, tattoos, hands, store, light) is held fixed.
+          // A REAL photograph of him is the base — a synthesized portrait
+          // rendered plastic and the engine animated the plastic. Only the
+          // wardrobe, the third-party packaging and the (branded) background
+          // change; his face, skin and light — what carries realism — are
+          // held fixed.
           teeUrl = await brandStill(
-            `Change ONLY two things in this photograph. 1) Dress him in a fitted dark-green t-shirt with the word "EASYMODE" printed in bold white capitals across the chest. 2) Replace the branded card box in his hands with a plain unbranded matte white product box of the same size, held the same way. Keep EVERYTHING else pixel-identical: his exact face, skin texture and pores, glasses, ears, glowing golden rune tattoos on his arms, his pose and hands, the shop background, and the original photographic lighting and grain. Real photograph, not an illustration, no smoothing or retouching of the face. The ONLY text anywhere is exactly "EASYMODE" on the shirt.`,
-            [`${RAWQ}/zeely-base.jpg`],
+            `Edit this photograph. Change ONLY three things. 1) Dress him in a fitted dark-green t-shirt with the word "EASYMODE" printed in bold white capitals across the chest. 2) Replace the branded card box in his hands with a plain unbranded matte white product box of the same size, held exactly the same way. 3) Throw the background completely out of focus — a soft creamy shallow-depth-of-field blur of a warm modern retail interior, so no packaging or lettering behind him is legible. Keep EVERYTHING else pixel-identical: his exact face, skin texture and pores, glasses, ears, glowing golden rune tattoos, his pose and both hands, and the original photographic lighting and camera grain. It must still look like the SAME real photograph — no illustration, no CGI look, no smoothing or beauty retouching of his face. The ONLY text anywhere is exactly "EASYMODE" on the shirt.`,
+            ["https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/94e938443d3527550b9872fb2c3105a5217cbd3e/qa-in/mascot/zeely-base.jpg"],
             true);
           try { execFileSync("curl", ["-sf", "-o", keptTee, teeUrl], { stdio: "ignore" }); } catch { /* cache is best-effort */ }
         }
