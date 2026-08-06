@@ -513,8 +513,8 @@ async function heroCut(): Promise<string> {
       hostAudioPath = path2.join(tmp, "host-vo.mp3");
       const outDirM = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDirM, { recursive: true });
-      const keptClip = path2.join(outDirM, "host6-raw.mp4");
-      const keptVo = path2.join(outDirM, "host6-vo.mp3");
+      const keptClip = path2.join(outDirM, "host7-raw.mp4");
+      const keptVo = path2.join(outDirM, "host7-vo.mp3");
       const curlHost = (url: string, out: string, min: number) => {
         try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
@@ -545,20 +545,22 @@ async function heroCut(): Promise<string> {
       const outroLine = "EasyMode. Marketing on easy mode. Take it from the monster it made.";
       outroRawPath = path2.join(tmp, "outro-raw.mp4");
       outroAudioPath = path2.join(tmp, "outro-vo.mp3");
-      const keptOutro = path2.join(outDirM, "host6-outro.mp4");
-      const keptOutroVo = path2.join(outDirM, "host6-outro-vo.mp3");
-      const keptTee = path2.join(outDirM, "monster-real.jpg");
+      const keptOutro = path2.join(outDirM, "host7-outro.mp4");
+      const keptOutroVo = path2.join(outDirM, "host7-outro-vo.mp3");
       const haveCache =
-        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host6-raw.mp4`, raw, 100_000)) &&
-        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host6-vo.mp3`, hostAudioPath, 5_000)) &&
-        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host6-outro.mp4`, outroRawPath, 100_000)) &&
-        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host6-outro-vo.mp3`, outroAudioPath, 5_000));
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host7-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host7-vo.mp3`, hostAudioPath, 5_000)) &&
+        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host7-outro.mp4`, outroRawPath, 100_000)) &&
+        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host7-outro-vo.mp3`, outroAudioPath, 5_000));
       if (!haveCache) {
         // 0) His APPROVED cast portrait — the same monster_2 the Studio casts
         // him from (green tee, glowing arm runes, warm studio backdrop).
         // Chasing a branded shirt on a real-photo base produced worse
         // portraits than the one already sitting in public/avatars.
-        let teeUrl = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_2.jpg";
+        // Approved host portrait: his cast tuxedo shot recoloured to brand
+        // green, hands raised into frame — the engine can only gesture with
+        // hands it can see, and arms-down portraits gave four stiff takes.
+        const teeUrl = `${RAWQ}/suit-green-b.jpg`;
         // 1) Both lines in his cloned Zeely voice.
         const tts = async (text: string) => {
           const id0 = await repCreate("minimax/speech-02-turbo", { text, voice_id: "R8_95CETMBJ", english_normalization: true });
