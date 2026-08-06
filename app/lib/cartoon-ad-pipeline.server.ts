@@ -28,6 +28,7 @@ import {
   assemble,
   checkpointJob,
   animateCreate,
+  animatePoll,
   download,
   downloadBuffer,
   repCreate,
@@ -98,7 +99,8 @@ export async function resumablePrediction(o: {
 }): Promise<string> {
   if (o.priorId) {
     try {
-      const url = await repPoll(o.priorId, o.maxMs, `${o.stage}(resumed)`);
+      // animatePoll: a checkpointed id may be from either provider.
+      const url = await animatePoll(o.priorId, o.maxMs, `${o.stage}(resumed)`);
       if (await checkpointUrlAlive(url)) return url;
       console.log(`[${o.stage}] re-attached prediction's output URL already expired — rendering a fresh one`);
     } catch (e) {
@@ -696,7 +698,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // prediction (omni-human pattern) instead of buying a second render.
   if (!animUrl && resume.klingPredictionId) {
     try {
-      animUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "cartoon-animate(resumed)");
+      animUrl = await animatePoll(resume.klingPredictionId, 12 * 60_000, "cartoon-animate(resumed)");
       await ckpt({ ckAnimUrl: animUrl });
     } catch { /* old prediction died — fall through to a fresh one */ }
   }
@@ -725,7 +727,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       negativePrompt: "talking, speaking, mouth opening, lip movement, photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
     });
     await ckpt({ ckKlingId: animId });
-    animUrl = await repPoll(animId, 12 * 60_000, "cartoon-animate");
+    animUrl = await animatePoll(animId, 12 * 60_000, "cartoon-animate");
     await ckpt({ ckAnimUrl: animUrl });
   }
 

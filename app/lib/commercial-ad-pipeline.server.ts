@@ -34,6 +34,7 @@ import {
   repCreate,
   repPoll,
   animateCreate,
+  animatePoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 
@@ -468,13 +469,13 @@ export async function renderMotionClip(
 ): Promise<string> {
   try {
     const { id } = await animateCreate(engineKey, opts);
-    return await repPoll(id, 8 * 60_000, tag);
+    return await animatePoll(id, 8 * 60_000, tag);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!engineKey || engineKey === "kling" || !/sensitive|E005/i.test(msg)) throw e;
     console.log(`[commercial] ${tag} flagged by ${engineKey}'s safety filter — retrying on the default engine`);
     const fb = await animateCreate(undefined, opts);
-    return await repPoll(fb.id, 8 * 60_000, `${tag}-fallback`);
+    return await animatePoll(fb.id, 8 * 60_000, `${tag}-fallback`);
   }
 }
 

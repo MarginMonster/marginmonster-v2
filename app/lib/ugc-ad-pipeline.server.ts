@@ -132,11 +132,29 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
  * One adapter, per-model input mapping, and a HARD RULE: a premium engine
  * that rejects for any reason (schema drift, capacity, region) falls back to
  * the default engine instead of failing a paid generation. */
-/* Kling 2.5 Turbo Pro. The default sat on kling-v1.6-standard for months —
- * kling shipped 2.0, 2.1, 2.5 and 2.6 in that time, and every merchant video
- * kept rendering on the old standard tier. A same-keyframe bake-off across
- * kling 2.5/2.1, full Veo 3, hailuo-02 and seedance made the gap obvious. */
+/* The default sat on kling-v1.6-standard for months while kling shipped 2.0,
+ * 2.1, 2.5 and 2.6 — every merchant video rendered on a two-generation-old
+ * standard tier. A same-keyframe bake-off across eight engines on both
+ * providers put kling 2.6 pro clearly ahead, and it is published on fal but
+ * NOT on Replicate. So the default is fal-backed with the best Replicate
+ * engine as the fallback: no key, no fal, or a fal reject still renders. */
+export const DEFAULT_FAL_ANIMATE_MODEL = "fal-ai/kling-video/v2.6/pro/image-to-video";
 export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v2.5-turbo-pro";
+
+/** fal-hosted engines, keyed the same way as the Replicate ones. */
+function falAnimateModelFor(engineKey: string | undefined): string | null {
+  switch (engineKey) {
+    case undefined: case "": case "kling": case "kling26": return DEFAULT_FAL_ANIMATE_MODEL;
+    case "kling25fal": return "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
+    case "veo31": return "fal-ai/veo3.1/fast/image-to-video";
+    default: return null; // an explicitly-named Replicate engine
+  }
+}
+
+/** A prediction id that carries its provider, so resume can re-attach to the
+ *  right one instead of polling Replicate for a fal request. */
+const FAL_ID = "fal|";
+export function isFalAnimateId(id: string): boolean { return id.startsWith(FAL_ID); }
 
 function animateModelFor(engineKey: string | undefined): string {
   switch (engineKey) {
@@ -170,6 +188,17 @@ export async function animateCreate(
   engineKey: string | undefined,
   opts: { startImage: string; prompt: string; negativePrompt?: string }
 ): Promise<{ id: string; model: string }> {
+  // fal first when the engine lives there (kling 2.6 pro is fal-only).
+  const falModel = falAnimateModelFor(engineKey);
+  if (falModel && falEnabled()) {
+    try {
+      const { falVideoSubmit } = await import("./fal-video.server");
+      const rid = await falVideoSubmit(falModel, opts);
+      return { id: `${FAL_ID}${falModel}|${rid}`, model: falModel };
+    } catch (e) {
+      console.error(`[animate] ${falModel} rejected — falling back to Replicate:`, e instanceof Error ? e.message.slice(0, 160) : e);
+    }
+  }
   const model = animateModelFor(engineKey);
   try {
     return { id: await repCreate(model, animateInputFor(model, opts)), model };
@@ -187,6 +216,18 @@ export async function animateCreate(
  *  "timed out" on a prediction that had actually succeeded. Only this many
  *  CONSECUTIVE unreadable polls count as a real outage; one good poll resets it. */
 const POLL_MAX_CONSECUTIVE_FAILURES = 10;
+
+/** Poll an animate prediction from EITHER provider. Every caller of
+ *  animateCreate must use this instead of repPoll — a fal request id polled
+ *  against Replicate 404s forever and burns the whole budget. */
+export async function animatePoll(id: string, maxMs: number, stage: string): Promise<string> {
+  if (isFalAnimateId(id)) {
+    const [, model, rid] = id.split("|");
+    const { falVideoPoll } = await import("./fal-video.server");
+    return falVideoPoll(model, rid, maxMs);
+  }
+  return repPoll(id, maxMs, stage);
+}
 
 export async function repPoll(id: string, maxMs: number, stage: string): Promise<string> {
   const start = Date.now();
@@ -904,7 +945,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     if (!talkingUrl && useCheckpoints && resume.klingPredictionId) {
       engine = "kling-voiceover";
       try {
-        talkingUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "kling-fallback(resumed)");
+        talkingUrl = await animatePoll(resume.klingPredictionId, 12 * 60_000, "kling-fallback(resumed)");
       } catch { engine = "omni-human"; /* dead → fresh chain below */ }
     }
     // RE-ATTACH #3 — a submitted fal/HeyGen render (~$1.50) survives a restart.
@@ -977,7 +1018,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         cfg_scale: 0.5,
       });
       await ckpt({ ckKlingId: klingId }); // DISTINCT from ckOmniId — silent clip
-      talkingUrl = await repPoll(klingId, 12 * 60_000, "kling-fallback");
+      talkingUrl = await animatePoll(klingId, 12 * 60_000, "kling-fallback");
     }
     await ckpt({ ckTalkingUrl: talkingUrl, ckEngine: engine });
     return { url: talkingUrl, engine };

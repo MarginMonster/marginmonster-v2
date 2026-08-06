@@ -7,7 +7,7 @@
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
-import { animateCreate, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll } from "./ugc-ad-pipeline.server";
+import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll } from "./ugc-ad-pipeline.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
 
@@ -141,7 +141,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // RE-ATTACH first: a prediction a previous attempt created is already billed.
   if (params.resume?.predictionId) {
     try {
-      videoUrl = await repPoll(params.resume.predictionId, VIDEO_POLL_MS, "video(resumed)");
+      videoUrl = await animatePoll(params.resume.predictionId, VIDEO_POLL_MS, "video(resumed)");
     } catch (e) {
       console.error("[video] resumed prediction unusable — starting a fresh one:", e instanceof Error ? e.message.slice(0, 200) : e);
     }
@@ -167,17 +167,19 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     await ckpt({ ckVideoPredId: predictionId });
 
     try {
-      videoUrl = await repPoll(predictionId, VIDEO_POLL_MS, "video");
+      videoUrl = await animatePoll(predictionId, VIDEO_POLL_MS, "video");
     } catch (e) {
       // animateCreate only falls back when the premium engine rejects at CREATE
       // time; a premium engine that accepts and then fails at inference used to
       // surface here and kill the job. Give it the same one-shot fallback to the
       // default engine that a create-time rejection gets.
       if (!seedImage || ranModel === DEFAULT_ANIMATE_MODEL) throw e;
+      // "kling25" forces the Replicate path: retrying the default would go
+      // straight back to the fal engine that just failed at inference.
       console.error(`[video] ${ranModel} failed at inference — retrying on ${DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
-      const retry = await animateCreate(undefined, { startImage: seedImage, prompt });
+      const retry = await animateCreate("kling25", { startImage: seedImage, prompt });
       await ckpt({ ckVideoPredId: retry.id });
-      videoUrl = await repPoll(retry.id, VIDEO_POLL_MS, "video(default-engine)");
+      videoUrl = await animatePoll(retry.id, VIDEO_POLL_MS, "video(default-engine)");
     }
   }
   if (!videoUrl) throw new Error("Replicate video timed out");

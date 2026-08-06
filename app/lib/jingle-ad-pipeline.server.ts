@@ -18,6 +18,7 @@ import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
 import {
   animateCreate,
+  animatePoll,
   assemble,
   checkpointJob,
   download,
@@ -478,7 +479,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   let animUrl = resume.animUrl || "";
   if (!talkingUrl && !animUrl && resume.klingPredictionId) {
     try {
-      animUrl = await repPoll(resume.klingPredictionId, 12 * 60_000, "jingle-animate(resumed)");
+      animUrl = await animatePoll(resume.klingPredictionId, 12 * 60_000, "jingle-animate(resumed)");
       await ckpt({ ckAnimUrl: animUrl });
     } catch { /* old prediction died — fall through to a fresh one */ }
   }
@@ -496,7 +497,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       negativePrompt: "morphing, distortion, extra objects, people appearing, text, watermark, blur, style change",
     });
     await ckpt({ ckKlingId: animId });
-    animUrl = await repPoll(animId, 12 * 60_000, "jingle-animate");
+    animUrl = await animatePoll(animId, 12 * 60_000, "jingle-animate");
     await ckpt({ ckAnimUrl: animUrl });
   }
 

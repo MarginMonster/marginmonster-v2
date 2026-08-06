@@ -152,3 +152,59 @@ export async function animateAvatar(
   if (onSubmit) await onSubmit(h);
   return pollAvatar(h);
 }
+
+/* ---- Generic fal image-to-video ------------------------------------------
+ * Kling's current tiers (2.6 pro especially) are published on fal but not on
+ * Replicate, and a same-keyframe bake-off across eight engines put 2.6 pro
+ * clearly ahead for the job this product actually does: a real character
+ * holding a real product and moving like a person. Submit/poll are split so a
+ * prediction can be checkpointed and re-attached instead of re-bought. */
+
+/** Submit an image-to-video job. Returns the request id; poll it with
+ *  falVideoPoll(model, id). */
+export async function falVideoSubmit(
+  model: string,
+  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number }
+): Promise<string> {
+  if (!falEnabled()) throw new Error("FAL_KEY not set");
+  const body: Record<string, unknown> = /veo/.test(model)
+    ? { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16" }
+    : {
+        prompt: opts.prompt,
+        image_url: opts.startImage,
+        duration: String(opts.durationSec ?? 5),
+        negative_prompt: opts.negativePrompt
+          || "object disappearing, product vanishing, flickering, morphing, distortion, extra fingers, deformed hands, text, watermark",
+      };
+  const res = await fetch(`https://queue.fal.run/${model}`, {
+    method: "POST", headers: headers(), body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`fal video submit ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j = (await res.json()) as { request_id?: string };
+  if (!j.request_id) throw new Error("fal video: no request id");
+  return j.request_id;
+}
+
+/** Wait on a fal image-to-video job and return the output URL. Safe on a
+ *  re-attach — fal keeps completed results. */
+export async function falVideoPoll(model: string, requestId: string, maxMs = 12 * 60_000): Promise<string> {
+  if (!falEnabled()) throw new Error("FAL_KEY not set");
+  const app = model.split("/").slice(0, 2).join("/");
+  const statusUrl = `https://queue.fal.run/${app}/requests/${requestId}/status`;
+  const responseUrl = `https://queue.fal.run/${app}/requests/${requestId}`;
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const s = await fetch(statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+    if (!s.ok) continue; // a bad poll is not a failed prediction
+    const sj = (await s.json()) as { status?: string };
+    if (sj.status === "COMPLETED") break;
+    if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`fal video ${requestId}: failed in queue`);
+  }
+  const r = await fetch(responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+  if (!r.ok) throw new Error(`fal video result ${r.status}`);
+  const rj = (await r.json()) as { video?: { url?: string }; video_url?: string };
+  const url = rj.video?.url || rj.video_url;
+  if (!url) throw new Error("fal video: no output url");
+  return url;
+}
