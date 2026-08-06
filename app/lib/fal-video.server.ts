@@ -21,7 +21,14 @@ function headers(): Record<string, string> {
  *  voices (ttv-voice-*): they live on the fal MiniMax account and do not
  *  resolve on Replicate's. Returns a hosted mp3 url. Tries the full schema,
  *  then a minimal variant (fal has 422'd on audio_setting before). */
-export async function falTts(text: string, voiceId: string, speed = 1): Promise<string> {
+export interface TtsDelivery {
+  /** MiniMax-native semitones, kept within ±3 upstream so reads stay natural. */
+  pitch?: number;
+  /** "happy" | "neutral" | … — drives the whole character of the read. */
+  emotion?: string;
+}
+
+export async function falTts(text: string, voiceId: string, speed = 1, delivery: TtsDelivery = {}): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
   // A designed voice is the presenter's IDENTITY — losing it to one transient
   // 429/5xx makes the avatar sound like a different person, which is exactly
@@ -32,7 +39,7 @@ export async function falTts(text: string, voiceId: string, speed = 1): Promise<
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) await new Promise((r) => setTimeout(r, attempt * 4000));
     try {
-      return await falTtsOnce(text, voiceId, speed);
+      return await falTtsOnce(text, voiceId, speed, delivery);
     } catch (e) {
       lastErr = (e as Error).message;
       // a genuinely unknown voice_id will never succeed — don't burn 3 tries
@@ -43,14 +50,32 @@ export async function falTts(text: string, voiceId: string, speed = 1): Promise<
   throw new Error(`fal tts failed after retries: ${lastErr}`);
 }
 
-async function falTtsOnce(text: string, voiceId: string, speed: number): Promise<string> {
+async function falTtsOnce(text: string, voiceId: string, speed: number, delivery: TtsDelivery): Promise<string> {
+  // The Replicate path has always sent emotion, pitch, english_normalization and
+  // language_boost. This path sent voice_id/speed/vol and nothing else, so the
+  // PREMIUM designed voices — the ones we paid to author and auditioned WITH a
+  // delivery signature — shipped flat and un-normalized, while every cheap stock
+  // voice got the expressive treatment. Exactly backwards. MiniMax nests these
+  // inside voice_setting; fal has 422'd on extra fields before, so each variant
+  // below drops one more rung and the retry loop above walks down them.
+  const full = {
+    voice_id: voiceId,
+    speed,
+    vol: 1,
+    ...(delivery.pitch ? { pitch: delivery.pitch } : {}),
+    ...(delivery.emotion ? { emotion: delivery.emotion } : {}),
+    english_normalization: true,
+  };
   const variants: Record<string, unknown>[] = [
     {
       text,
-      voice_setting: { voice_id: voiceId, speed, vol: 1 },
+      voice_setting: full,
       audio_setting: { sample_rate: "32000", bitrate: "128000", format: "mp3", channel: "1" },
+      language_boost: "English",
       output_format: "url",
     },
+    { text, voice_setting: full, output_format: "url" },
+    // last resort: the old bare payload — a flat read still beats a dead take
     { text, voice_setting: { voice_id: voiceId, speed, vol: 1 }, output_format: "url" },
   ];
   let lastErr = "";

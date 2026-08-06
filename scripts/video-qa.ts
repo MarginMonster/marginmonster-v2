@@ -1694,7 +1694,7 @@ async function mascotLab(): Promise<string> {
     const { falTts } = await import("../app/lib/fal-video.server");
     const { pickVoice, repCreate, repPoll, download } = await import("../app/lib/ugc-ad-pipeline.server");
     const { AVATAR_BY_ID } = await import("../app/lib/avatars");
-    const CAST = require("../app/lib/avatar-voices.json") as Record<string, { voice: string; speed?: number }>;
+    const CAST = require("../app/lib/avatar-voices.json") as Record<string, { voice: string; speed?: number; pitch?: number }>;
     // a real ad read, not a test phrase — cadence is half of why a voice lands
     const LINE = "Okay so I finally tried this and I get the hype now. Two weeks in and I'm not going back.";
     const WHO = (process.env.QA_VOICES || "tunde,desmond,marquis,cole").split(",").map((s) => s.trim()).filter(Boolean);
@@ -1703,28 +1703,43 @@ async function mascotLab(): Promise<string> {
       const avatar = (AVATAR_BY_ID as Record<string, any>)[id];
       const designed = CAST[id]?.voice || "";
       const stock = avatar ? pickVoice(avatar) : "English_Trustworth_Man";
-      let a = "—", b = "—";
+      const emotion = avatar?.energy === "calm" ? "neutral" : "happy";
+      let a = "—", flat = "—", b = "—";
       if (designed.startsWith("ttv-")) {
+        // A — the designed voice WITH its full delivery signature (the fix)
         try {
-          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1);
+          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1, { pitch: CAST[id]?.pitch, emotion });
           await download(url, path2.join(outDir, `voice-${id}-designed.mp3`));
-          a = `[designed](frames/voice-${id}-designed.mp3)`;
+          a = `[with signature](frames/voice-${id}-designed.mp3)`;
         } catch (e) { a = `❌ ${(e as Error).message.slice(0, 70)}`; }
-      } else a = `not designed (\`${designed}\`)`;
+        // FLAT — the same voice as production has actually been shipping it:
+        // no emotion, no pitch, no english normalization
+        try {
+          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1, {});
+          await download(url, path2.join(outDir, `voice-${id}-flat.mp3`));
+          flat = `[flat — what shipped](frames/voice-${id}-flat.mp3)`;
+        } catch (e) { flat = `❌ ${(e as Error).message.slice(0, 70)}`; }
+      } else { a = `not designed (\`${designed}\`)`; flat = "—"; }
       try {
         const tid = await repCreate("minimax/speech-02-turbo", { text: LINE, voice_id: stock });
         const url = await repPoll(tid, 3 * 60_000, "tts");
         await download(url, path2.join(outDir, `voice-${id}-fallback.mp3`));
         b = `[fallback: ${stock}](frames/voice-${id}-fallback.mp3)`;
       } catch (e) { b = `❌ ${(e as Error).message.slice(0, 70)}`; }
-      rows.push(`| ${id} | ${a} | ${b} |`);
+      rows.push(`| ${id} | ${a} | ${flat} | ${b} |`);
     }
     return [head, ``,
-      `Same line, both voices. **A** is the premium designed voice we cast.`,
-      `**B** is the stock voice the pipeline silently substitutes when the`,
-      `designed one fails. Whichever one sounds like the recent videos tells us`,
-      `which bug we actually have.`, ``,
-      `| presenter | A — designed | B — silent fallback |`, `|---|---|---|`,
+      `Same line, three reads, so the ear can settle which bug we have.`, ``,
+      `- **A — with signature**: the designed voice spoken with its pitch,`,
+      `  emotion and english normalization. This is the fix.`,
+      `- **FLAT — what shipped**: the same designed voice with none of that,`,
+      `  which is what production has actually been sending to fal all along.`,
+      `- **B — silent fallback**: the generic stock voice the pipeline`,
+      `  substitutes when fal fails outright.`, ``,
+      `If the recent videos sound like FLAT, the delivery signature was the bug.`,
+      `If they sound like B, takes were downgrading. If they sound like A, the`,
+      `designed voice itself is wrong for him and needs re-designing.`, ``,
+      `| presenter | A — with signature | FLAT — what shipped | B — silent fallback |`, `|---|---|---|---|`,
       ...rows,
     ].join("\n");
   }

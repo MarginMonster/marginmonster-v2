@@ -866,7 +866,12 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // scored stock voice on Replicate so a take never dies over casting.
     if (delivery.voice.startsWith("ttv-")) {
       try {
-        return await falTts(script, delivery.voice, delivery.speed);
+        // the FULL cast signature — a designed voice read flat is a different
+        // performance from the one we auditioned and approved
+        return await falTts(script, delivery.voice, delivery.speed, {
+          pitch: delivery.pitch,
+          emotion: delivery.emotion,
+        });
       } catch (e) {
         const stock = pickVoice(avatar);
         downgrade((e as Error).message, stock);
