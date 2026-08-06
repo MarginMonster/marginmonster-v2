@@ -38,6 +38,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
+  // Premium-voice health, RUN FROM PRODUCTION. CI proved all 21 designed
+  // (ttv-voice-*) voices resolve under the CI FAL_KEY — but designed voices are
+  // scoped to the fal ACCOUNT that created them, so if prod holds a different
+  // key every premium presenter silently downgrades to a generic stock read.
+  // This speaks two words through each designed voice with the key prod is
+  // actually running, which settles it. Doubles as the keepalive the ledger
+  // always wanted: an unused designed voice is reaped by fal.
+  if (url.searchParams.get("mode") === "voicehealth") {
+    const { falTts, falEnabled } = await import("../lib/fal-video.server");
+    if (!falEnabled()) return json({ error: "FAL_KEY not set in this environment" }, { status: 500 });
+    const ledger = (await import("../lib/voice-design-ledger.json")).default as {
+      designed: Record<string, { voiceId: string }>;
+    };
+    const rows: { avatar: string; voiceId: string; alive: boolean; error?: string }[] = [];
+    for (const [avatarId, entry] of Object.entries(ledger.designed)) {
+      try {
+        await falTts("Voice check.", entry.voiceId, 1);
+        rows.push({ avatar: avatarId, voiceId: entry.voiceId, alive: true });
+      } catch (e) {
+        rows.push({ avatar: avatarId, voiceId: entry.voiceId, alive: false, error: (e as Error).message.slice(0, 240) });
+      }
+    }
+    const dead = rows.filter((r) => !r.alive);
+    return json({ checked: rows.length, alive: rows.length - dead.length, dead: dead.length, rows });
+  }
+
+  // Did the premium voice actually SPEAK? Recent avatar takes with the voice we
+  // cast vs the voice that came out — voiceFellBack marks a silent downgrade.
+  if (url.searchParams.get("mode") === "voicetakes") {
+    const takes = await db.asset.findMany({
+      where: { type: "VIDEO_AD" },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, title: true, createdAt: true, bodyJson: true, metaJson: true },
+    });
+    return json({
+      takes: takes.map((t) => {
+        const body = (() => { try { return JSON.parse(t.bodyJson || "{}"); } catch { return {}; } })();
+        const meta = (() => { try { return JSON.parse(t.metaJson || "{}"); } catch { return {}; } })();
+        return {
+          id: t.id, at: t.createdAt, avatar: meta.avatarId || null,
+          cast: body.voiceCast ?? body.voiceDelivery?.voice ?? null,
+          spoke: body.voiceId ?? null,
+          fellBack: body.voiceFellBack ?? null, // null = take predates this tracking
+          why: body.voiceFallbackReason ?? null,
+        };
+      }),
+    });
+  }
+
   // Memory truth: what limit is this container ACTUALLY running under, and
   // how close to the ceiling are we? (cgroup v2 first, v1 fallback)
   if (url.searchParams.get("mode") === "mem") {

@@ -1679,6 +1679,55 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nVOICE CHECK FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=voiceab — the decisive listening test. The health check proved
+  // every designed voice RESOLVES, so "Tunde sounds like a wiener" is one of
+  // exactly two things: the take downgraded to the scored stock voice without
+  // saying so, or the designed voice itself is simply a bad take and needs to
+  // be re-designed. Those sound completely different, so play both on the same
+  // ad line and the ear settles it in ten seconds.
+  if (process.env.QA_MASCOT === "voiceab") {
+    if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
+    const fs2 = require("node:fs") as typeof import("node:fs");
+    const path2 = require("node:path") as typeof import("node:path");
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const { falTts } = await import("../app/lib/fal-video.server");
+    const { pickVoice, repCreate, repPoll, download } = await import("../app/lib/ugc-ad-pipeline.server");
+    const { AVATAR_BY_ID } = await import("../app/lib/avatars");
+    const CAST = require("../app/lib/avatar-voices.json") as Record<string, { voice: string; speed?: number }>;
+    // a real ad read, not a test phrase — cadence is half of why a voice lands
+    const LINE = "Okay so I finally tried this and I get the hype now. Two weeks in and I'm not going back.";
+    const WHO = (process.env.QA_VOICES || "tunde,desmond,marquis,cole").split(",").map((s) => s.trim()).filter(Boolean);
+    const rows: string[] = [];
+    for (const id of WHO) {
+      const avatar = (AVATAR_BY_ID as Record<string, any>)[id];
+      const designed = CAST[id]?.voice || "";
+      const stock = avatar ? pickVoice(avatar) : "English_Trustworth_Man";
+      let a = "—", b = "—";
+      if (designed.startsWith("ttv-")) {
+        try {
+          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1);
+          await download(url, path2.join(outDir, `voice-${id}-designed.mp3`));
+          a = `[designed](frames/voice-${id}-designed.mp3)`;
+        } catch (e) { a = `❌ ${(e as Error).message.slice(0, 70)}`; }
+      } else a = `not designed (\`${designed}\`)`;
+      try {
+        const tid = await repCreate("minimax/speech-02-turbo", { text: LINE, voice_id: stock });
+        const url = await repPoll(tid, 3 * 60_000, "tts");
+        await download(url, path2.join(outDir, `voice-${id}-fallback.mp3`));
+        b = `[fallback: ${stock}](frames/voice-${id}-fallback.mp3)`;
+      } catch (e) { b = `❌ ${(e as Error).message.slice(0, 70)}`; }
+      rows.push(`| ${id} | ${a} | ${b} |`);
+    }
+    return [head, ``,
+      `Same line, both voices. **A** is the premium designed voice we cast.`,
+      `**B** is the stock voice the pipeline silently substitutes when the`,
+      `designed one fails. Whichever one sounds like the recent videos tells us`,
+      `which bug we actually have.`, ``,
+      `| presenter | A — designed | B — silent fallback |`, `|---|---|---|`,
+      ...rows,
+    ].join("\n");
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait

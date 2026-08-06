@@ -846,6 +846,20 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // emotion): every avatar is a distinct, fitting speaker. Same mp3 feeds every
   // engine (fal/HeyGen lip-sync, omni-human, kling voiceover) — lifts all takes.
   const delivery = castFor(avatar);
+  // WHICH VOICE ACTUALLY SPOKE. The asset used to record delivery.voice — the
+  // voice we INTENDED — so after a silent fallback the data said "premium
+  // designed voice" while the ad played a generic stock read. That made the
+  // "why does this presenter sound wrong?" bug undiagnosable from the record.
+  // These three track the truth and ride out to the asset below.
+  let spokenVoice = delivery.voice;
+  let voiceFellBack = false;
+  let voiceFallbackReason = "";
+  const downgrade = (reason: string, to: string) => {
+    voiceFellBack = true;
+    voiceFallbackReason = reason.slice(0, 200);
+    spokenVoice = to;
+    console.error(`[ugc:tts] VOICE DOWNGRADE — ${avatar.id} lost ${delivery.voice} → ${to}: ${voiceFallbackReason}`);
+  };
   const freshTts = async (): Promise<string> => {
     // designed voices (ttv-voice-*) live on the fal MiniMax account — they can
     // ONLY be spoken there. On any fal failure, fall through to the legacy
@@ -854,8 +868,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       try {
         return await falTts(script, delivery.voice, delivery.speed);
       } catch (e) {
-        console.log("[ugc:tts] designed voice failed, falling back to stock:", (e as Error).message);
         const stock = pickVoice(avatar);
+        downgrade((e as Error).message, stock);
         const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: stock });
         return await repPoll(ttsId, 3 * 60_000, "tts");
       }
@@ -876,8 +890,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       // Use the SCORED STOCK voice, not delivery.voice: the commonest hd failure
       // is an unknown/unavailable voice_id, and re-sending the same id to turbo
       // reproduced it exactly (same failure, twice the latency, take still dead).
-      console.log("[ugc:tts] hd+delivery failed, falling back to turbo:", (e as Error).message);
       const stock = pickVoice(avatar);
+      downgrade((e as Error).message, stock);
       const ttsId = await repCreate("minimax/speech-02-turbo", {
         text: script,
         voice_id: stock,
@@ -889,6 +903,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   let audioHostedUrl = resume.audioUrl || ""; // hosted mp3 (Replicate CDN) — what fal/HeyGen fetches
   if (resume.audioUrl) {
     try { audioBuf = await downloadBuffer(resume.audioUrl); } catch { audioBuf = null; }
+    // resumed audio was rendered in an earlier attempt — we cannot know from
+    // here whether that attempt downgraded, so don't claim the designed voice
+    if (audioBuf) spokenVoice = `${delivery.voice}?resumed`;
   }
   if (!audioBuf || audioBuf.length < 10_000) {
     audioHostedUrl = await freshTts();
@@ -1137,7 +1154,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           engine,
           heldProduct, // the presenter is holding the product in-frame
           cutaway: cutawayMode, // plain-portrait A-roll + Ken Burns product beats
-          voiceId: delivery.voice, // which voice spoke — curation data
+          voiceId: spokenVoice, // which voice ACTUALLY spoke — curation data
+          voiceCast: delivery.voice, // which voice we intended to cast
+          voiceFellBack, // true = premium designed voice was lost on this take
+          voiceFallbackReason: voiceFallbackReason || undefined,
           voiceDelivery: delivery, // full cast signature: pitch/speed/emotion
           videoUrl: `/renders/${fileName}`,
           prompt: script,

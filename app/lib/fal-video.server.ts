@@ -23,6 +23,27 @@ function headers(): Record<string, string> {
  *  then a minimal variant (fal has 422'd on audio_setting before). */
 export async function falTts(text: string, voiceId: string, speed = 1): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
+  // A designed voice is the presenter's IDENTITY — losing it to one transient
+  // 429/5xx makes the avatar sound like a different person, which is exactly
+  // how "Tunde sounds like a wiener" happens. Both schema variants used to fire
+  // in the same instant, so a rate-limit took them both and the pipeline
+  // silently downgraded to a generic stock read. Retry with backoff first.
+  let lastErr = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, attempt * 4000));
+    try {
+      return await falTtsOnce(text, voiceId, speed);
+    } catch (e) {
+      lastErr = (e as Error).message;
+      // a genuinely unknown voice_id will never succeed — don't burn 3 tries
+      if (/not found|invalid voice|does not exist/i.test(lastErr)) break;
+      console.log(`[fal:tts] attempt ${attempt + 1} failed for ${voiceId}: ${lastErr.slice(0, 160)}`);
+    }
+  }
+  throw new Error(`fal tts failed after retries: ${lastErr}`);
+}
+
+async function falTtsOnce(text: string, voiceId: string, speed: number): Promise<string> {
   const variants: Record<string, unknown>[] = [
     {
       text,
