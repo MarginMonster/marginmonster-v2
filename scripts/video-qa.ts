@@ -513,8 +513,8 @@ async function heroCut(): Promise<string> {
       hostAudioPath = path2.join(tmp, "host-vo.mp3");
       const outDirM = path2.join(process.cwd(), "qa-out", "frames");
       fs2.mkdirSync(outDirM, { recursive: true });
-      const keptClip = path2.join(outDirM, "host5-raw.mp4");
-      const keptVo = path2.join(outDirM, "host5-vo.mp3");
+      const keptClip = path2.join(outDirM, "host6-raw.mp4");
+      const keptVo = path2.join(outDirM, "host6-vo.mp3");
       const curlHost = (url: string, out: string, min: number) => {
         try { execFileSync("curl", ["-sf", "--max-time", "30", "-o", out, url], { stdio: "ignore" }); return fs2.existsSync(out) && fs2.statSync(out).size > min; } catch { return false; }
       };
@@ -545,31 +545,20 @@ async function heroCut(): Promise<string> {
       const outroLine = "EasyMode. Marketing on easy mode. Take it from the monster it made.";
       outroRawPath = path2.join(tmp, "outro-raw.mp4");
       outroAudioPath = path2.join(tmp, "outro-vo.mp3");
-      const keptOutro = path2.join(outDirM, "host5-outro.mp4");
-      const keptOutroVo = path2.join(outDirM, "host5-outro-vo.mp3");
+      const keptOutro = path2.join(outDirM, "host6-outro.mp4");
+      const keptOutroVo = path2.join(outDirM, "host6-outro-vo.mp3");
       const keptTee = path2.join(outDirM, "monster-real.jpg");
       const haveCache =
-        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host5-raw.mp4`, raw, 100_000)) &&
-        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host5-vo.mp3`, hostAudioPath, 5_000)) &&
-        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host5-outro.mp4`, outroRawPath, 100_000)) &&
-        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host5-outro-vo.mp3`, outroAudioPath, 5_000));
+        (fs2.existsSync(keptClip) ? (fs2.copyFileSync(keptClip, raw), true) : curlHost(`${RAWQ}/host6-raw.mp4`, raw, 100_000)) &&
+        (fs2.existsSync(keptVo) ? (fs2.copyFileSync(keptVo, hostAudioPath), true) : curlHost(`${RAWQ}/host6-vo.mp3`, hostAudioPath, 5_000)) &&
+        (fs2.existsSync(keptOutro) ? (fs2.copyFileSync(keptOutro, outroRawPath), true) : curlHost(`${RAWQ}/host6-outro.mp4`, outroRawPath, 100_000)) &&
+        (fs2.existsSync(keptOutroVo) ? (fs2.copyFileSync(keptOutroVo, outroAudioPath), true) : curlHost(`${RAWQ}/host6-outro-vo.mp3`, outroAudioPath, 5_000));
       if (!haveCache) {
-        // 0) His EasyMode-tee presenter portrait (forged once, then cached).
-        let teeUrl = "";
-        if (fs2.existsSync(keptTee) || curlHost(`${RAWQ}/monster-real.jpg`, keptTee, 20_000)) {
-          teeUrl = `${RAWQ}/monster-real.jpg`;
-        } else {
-          // A REAL photograph of him is the base — a synthesized portrait
-          // rendered plastic and the engine animated the plastic. Only the
-          // wardrobe, the third-party packaging and the (branded) background
-          // change; his face, skin and light — what carries realism — are
-          // held fixed.
-          teeUrl = await brandStill(
-            `Edit this photograph. Change ONLY three things. 1) Dress him in a fitted dark-green t-shirt with the word "EASYMODE" printed in bold white capitals across the chest. 2) Replace the branded card box in his hands with a plain unbranded matte white product box of the same size, held exactly the same way. 3) Throw the background completely out of focus — a soft creamy shallow-depth-of-field blur of a warm modern retail interior, so no packaging or lettering behind him is legible. Keep EVERYTHING else pixel-identical: his exact face, skin texture and pores, glasses, ears, glowing golden rune tattoos, his pose and both hands, and the original photographic lighting and camera grain. It must still look like the SAME real photograph — no illustration, no CGI look, no smoothing or beauty retouching of his face. The ONLY text anywhere is exactly "EASYMODE" on the shirt.`,
-            ["https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/94e938443d3527550b9872fb2c3105a5217cbd3e/qa-in/mascot/zeely-base.jpg"],
-            true);
-          try { execFileSync("curl", ["-sf", "-o", keptTee, teeUrl], { stdio: "ignore" }); } catch { /* cache is best-effort */ }
-        }
+        // 0) His APPROVED cast portrait — the same monster_2 the Studio casts
+        // him from (green tee, glowing arm runes, warm studio backdrop).
+        // Chasing a branded shirt on a real-photo base produced worse
+        // portraits than the one already sitting in public/avatars.
+        let teeUrl = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_2.jpg";
         // 1) Both lines in his cloned Zeely voice.
         const tts = async (text: string) => {
           const id0 = await repCreate("minimax/speech-02-turbo", { text, voice_id: "R8_95CETMBJ", english_normalization: true });
@@ -1077,6 +1066,32 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nFinal presenter portrait → monster-hero.jpg on qa-frames.`;
     } catch (e) {
       return `${head}\n\nPORTRAIT FIX FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
+  // QA_MASCOT=suit — his approved tuxedo cast portrait, recoloured to brand
+  // green. Variant B additionally lifts his hands into frame: the avatar
+  // engine can only gesture with hands it can see, and every take so far
+  // had them hanging out of shot.
+  if (process.env.QA_MASCOT === "suit") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const TUX = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/ab43c6dc881b329925b3b8088e896f3c6cdd7cfd/public/avatars/monster_1.jpg";
+      const KEEP = `Do NOT change his face in any way — identical skin texture and wrinkles, identical glasses, ears and expression. Keep the same warm neutral studio backdrop and the same photographic lighting and grain. It must read as the same unretouched photograph: visible skin pores, natural highlights, no smoothing, no CGI look.`;
+      const cands: Array<[string, string]> = [
+        ["suit-green-a.jpg",
+          `Edit this photograph: recolour his tuxedo jacket and bow tie to a deep rich emerald green, keeping the crisp white dress shirt. Same cut, same fit, same fabric sheen and shadows. ${KEEP} No text anywhere.`],
+        ["suit-green-b.jpg",
+          `Edit this photograph two ways. 1) Recolour his tuxedo jacket and bow tie to a deep rich emerald green, keeping the crisp white dress shirt — same cut, fit, fabric sheen and shadows. 2) Raise both of his hands up into the frame in a natural, open mid-gesture, as if he is talking and explaining something to the camera — hands fully visible, relaxed and correctly formed. ${KEEP} No text anywhere.`],
+      ];
+      const done = await Promise.all(cands.map(async ([name, prompt]) => {
+        const url = await brandStill(prompt, TUX, true);
+        await saveFrame(url, name);
+        console.log(`[mascot] ${name} ready`);
+        return name;
+      }));
+      return `${head}\n\nGreen-suit candidates: ${done.join(", ")} on qa-frames. No video spend.`;
+    } catch (e) {
+      return `${head}\n\nSUIT RECOLOUR FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
   if (process.env.QA_MASCOT === "voice") {
