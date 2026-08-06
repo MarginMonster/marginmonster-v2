@@ -1644,6 +1644,41 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nFAL ROUND FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=voices — health check on the 21 hand-designed premium voices.
+  // castFor hands these ttv- ids to falTts, and on ANY failure the pipeline
+  // quietly substitutes a scored stock voice: the merchant hears a stranger
+  // and nothing surfaces. MiniMax expires designed voices that go unused and
+  // the ledger's "keepalive" flag was never implemented, so this proves which
+  // ones still resolve. One short line each, pennies.
+  if (process.env.QA_MASCOT === "voices") {
+    if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
+    try {
+      const { falTts } = await import("../app/lib/fal-video.server");
+      const LEDGER = require("../app/lib/voice-design-ledger.json") as { designed: Record<string, { voiceId: string }> };
+      const CAST = require("../app/lib/avatar-voices.json") as Record<string, { voice: string; speed?: number }>;
+      const ids = Object.keys(LEDGER.designed || {});
+      const rows = await Promise.all(ids.map(async (id) => {
+        const voice = CAST[id]?.voice || LEDGER.designed[id]?.voiceId;
+        if (!voice || !voice.startsWith("ttv-")) return `| ${id} | — | **not wired** (cast has \`${voice || "nothing"}\`) |`;
+        try {
+          await falTts("Hey, quick test of my voice.", voice, CAST[id]?.speed ?? 1);
+          return `| ${id} | \`${voice.slice(0, 26)}…\` | ✅ alive |`;
+        } catch (e) {
+          return `| ${id} | \`${voice.slice(0, 26)}…\` | ❌ ${(e instanceof Error ? e.message : String(e)).slice(0, 90)} |`;
+        }
+      }));
+      const dead = rows.filter((r) => r.includes("❌")).length;
+      const unwired = rows.filter((r) => r.includes("not wired")).length;
+      return [head, ``,
+        `| presenter | designed voice | status |`, `|---|---|---|`,
+        ...rows, ``,
+        `**${ids.length - dead - unwired}/${ids.length} premium voices alive.** ${dead} dead, ${unwired} unwired.`,
+        dead ? `Dead voices fall back SILENTLY to a stock voice — that is why a presenter can sound like a stranger.` : ``,
+      ].filter(Boolean).join("\n");
+    } catch (e) {
+      return `${head}\n\nVOICE CHECK FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
