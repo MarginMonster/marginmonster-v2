@@ -1108,6 +1108,50 @@ async function mascotLab(): Promise<string> {
       return `${head}\n\nWARDROBE FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
     }
   }
+  // QA_MASCOT=beats — Phase 3: the five action keyframes. Each is the exact
+  // first frame of a Veo clip, built from the approved character plate plus
+  // the approved pack shots, so the monster and his products stay identical
+  // across every shot instead of drifting.
+  if (process.env.QA_MASCOT === "beats") {
+    try {
+      const { brandStill } = await import("../app/lib/commercial-ad-pipeline.server");
+      const RAWQ = "https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/qa-frames/frames";
+      const HIM = `${RAWQ}/fit-a-wide.jpg`;
+      const CAN = `${RAWQ}/good-soda-2.jpg`;
+      const BAR = `${RAWQ}/good-bar-2.jpg`;
+      const WHO = `The first reference image is the character: recreate him EXACTLY — same bald golden-olive head, pointed ears, chunky black rectangular glasses, same face and wrinkles, same forest-green long-sleeve "EASYMODE" t-shirt with sleeves pushed to the elbow and glowing golden rune tattoos on his bare forearms.`;
+      const CANREF = `The second reference image is the product: the emerald-green "GREEN DRAGON" soda can with red lettering, reproduced exactly as it really is — same colours, same lettering, same proportions, held at its true real-world size.`;
+      const BARREF = `The second reference image is the product: the cobalt-blue "ALMONDCHOCO" chocolate bar with white lettering, reproduced exactly as it really is — same colours, same lettering, same proportions, held at its true real-world size.`;
+      const SET = `Warm modern shop interior softly out of focus behind him. Cinematic vertical framing, waist-up, plenty of headroom.`;
+      const PHOTO = `Unretouched real photograph on an 85mm lens: visible skin pores, natural highlights, subtle grain, no smoothing, no CGI look.`;
+      const cands: Array<[string, string, string[]]> = [
+        ["beat1-crack.jpg",
+          `${WHO} ${CANREF} He holds the can up at chest height in one hand, thumb on the tab, just about to crack it open, looking down at it with anticipation. ${SET} ${PHOTO} The ONLY text anywhere is exactly "GREEN DRAGON" on the can.`,
+          [HIM, CAN]],
+        ["beat2-drink.jpg",
+          `${WHO} ${CANREF} He has just taken a swig and is lowering the can from his mouth, head tipping back down, eyebrows raised in genuine approval. ${SET} ${PHOTO} The ONLY text anywhere is exactly "GREEN DRAGON" on the can.`,
+          [HIM, CAN]],
+        ["beat3-throw.jpg",
+          `${WHO} ${CANREF} Mid-throw: his arm is extended toward the camera having just tossed the can, the can flying toward the lens slightly blurred with motion, his eyes following it. Dynamic energetic pose. ${SET} ${PHOTO} The ONLY text anywhere is exactly "GREEN DRAGON" on the can.`,
+          [HIM, CAN]],
+        ["beat4-bite.jpg",
+          `${WHO} ${BARREF} He holds the chocolate bar, wrapper peeled halfway down, raising it to his mouth for a bite, grinning. ${SET} ${PHOTO} The ONLY text anywhere is exactly "ALMONDCHOCO" on the wrapper.`,
+          [HIM, BAR]],
+        ["beat5-salute.jpg",
+          `${WHO} ${CANREF} He raises the can toward the camera in a small confident salute, chin up, a knowing grin. ${SET} ${PHOTO} The ONLY text anywhere is exactly "GREEN DRAGON" on the can.`,
+          [HIM, CAN]],
+      ];
+      const done = await Promise.all(cands.map(async ([name, prompt, refs]) => {
+        const url = await brandStill(prompt, refs, true);
+        await saveFrame(url, name);
+        console.log(`[beats] ${name} ready`);
+        return name;
+      }));
+      return `${head}\n\nAction keyframes: ${done.join(", ")} on qa-frames. Stills only — no motion spend yet.`;
+    } catch (e) {
+      return `${head}\n\nBEAT KEYFRAMES FAILED — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`;
+    }
+  }
   // QA_MASCOT=portrait — the presenter-portrait bake-off, stills only
   // (~$0.45, no video spend). The avatar engine animates whatever still it
   // is handed, so the portrait IS the quality ceiling: a plastic portrait
