@@ -3354,6 +3354,14 @@ body[data-page="campaigns"] { background: radial-gradient(90% 40% at 50% -4%, #F
 .cs-ok b { font-size:14px; font-weight:800; color:#0A3D26; }
 .cs-ok a { font-size:13px; font-weight:800; color:#0A6B3E; text-decoration:none; }
 .cs-lblrow { display:flex; align-items:center; justify-content:space-between; }
+/* Presenter search — typing a name beats scrubbing a hundred faces sideways.
+   Shared by the Studio picker and the campaign picker. */
+.cs-search { position:relative; margin:6px 8px 2px; }
+.cs-search-in { width:100%; box-sizing:border-box; padding:9px 30px 9px 12px; border-radius:11px; border:1px solid #E4DFCF; background:#FDFCF7; color:#14201A; font:inherit; font-size:13px; }
+.cs-search-in:focus { outline:none; border-color:#12A85E; box-shadow:0 0 0 1px #12A85E; }
+.cs-search-in::-webkit-search-cancel-button { display:none; }
+.cs-search-x { position:absolute; top:50%; right:8px; transform:translateY(-50%); width:20px; height:20px; border-radius:50%; border:0; background:#F4F1E6; color:#4A554E; font-size:10px; line-height:1; cursor:pointer; display:grid; place-items:center; padding:0; }
+.cs-nohit { margin:8px 8px 2px; font-size:12.5px; color:#4A554E; }
 .cs-viewall { border:0; background:none; font-family:inherit; font-size:11.5px; font-weight:800; color:#0A6B3E; cursor:pointer; padding:0; letter-spacing:0; text-transform:none; }
 .cs-castgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(68px,1fr)); gap:13px 12px; max-height:340px; overflow-y:auto; padding:11px 8px 6px; -webkit-overflow-scrolling:touch; }
 .cs-castgrid .cast { width:100%; }

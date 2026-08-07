@@ -107,7 +107,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }));
   } catch { /* fall through */ }
 
-  const cast = [...privateCastFor(session.shop), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) }));
+  // Forged presenters lead the cast. They're created from the web Studio's
+  // Import tab, but they belong to the SHOP — so they have to show up here too,
+  // or a merchant forges their mascot and then can't find them on this side.
+  const { customCastFor } = await import("../lib/custom-avatars.server");
+  const forged = shop ? await customCastFor(shop.id) : [];
+  const cast = [
+    ...forged.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
+    ...[...privateCastFor(session.shop), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
+  ];
   const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 
   // Capabilities drive the locked-card UI. The action re-checks server-side —
@@ -292,10 +300,20 @@ function PresenterPicker({ cast, value, onChange, allowNone, brandFaceId }: { ca
 
   // Brand Face leads the cast.
   const ordered = brandFaceId ? [...cast.filter((c) => c.id === brandFaceId), ...cast.filter((c) => c.id !== brandFaceId)] : cast;
+  // Type a name instead of scrubbing a hundred faces sideways. The CAST
+  // presenter always survives the filter — losing sight of your own selection
+  // mid-search is worse than one extra tile.
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const matches = needle
+    ? ordered.filter((c) => c.name.toLowerCase().includes(needle) || c.id === value)
+    : ordered;
   const PREVIEW = 8;
   const selIdx = value ? ordered.findIndex((c) => c.id === value) : -1;
   const preview = ordered.slice(0, PREVIEW);
   if (selIdx >= PREVIEW) preview.push(ordered[selIdx]);
+  // A search is a request to see the matches — not the 8-tile teaser.
+  const searching = needle.length > 0;
 
   const None = allowNone ? (
     <button type="button" className={`cast${value === null ? " sel" : ""}`} onClick={() => onChange(null)}>
@@ -321,9 +339,17 @@ function PresenterPicker({ cast, value, onChange, allowNone, brandFaceId }: { ca
     <>
       <div className="cfg-lbl cs-lblrow">
         <span>Presenter {allowNone && <span className="cs-opt">— or none</span>}</span>
-        <button type="button" className="cs-viewall" onClick={() => setOpen((o) => !o)}>{open ? "Show less" : `View all ${cast.length}`}</button>
+        {!searching && <button type="button" className="cs-viewall" onClick={() => setOpen((o) => !o)}>{open ? "Show less" : `View all ${cast.length}`}</button>}
       </div>
-      {open ? (
+      <div className="cs-search">
+        <input className="cs-search-in" type="search" value={q} placeholder={`Search ${cast.length} presenters by name…`}
+          onChange={(e) => setQ(e.target.value)} aria-label="Search presenters by name" />
+        {searching && <button type="button" className="cs-search-x" onClick={() => setQ("")} aria-label="Clear search">✕</button>}
+      </div>
+      {searching && matches.length === 0 && <p className="cs-nohit">No presenter called “{q.trim()}”.</p>}
+      {searching ? (
+        <div className="cs-castgrid">{matches.map(Tile)}</div>
+      ) : open ? (
         <div className="cs-castgrid">{None}{ordered.map(Tile)}</div>
       ) : (
         <div className="cfg-cast">{None}{preview.map(Tile)}<button type="button" className="cast cs-moretile" onClick={() => setOpen(true)}><span className="ca-img cs-none">＋</span><span className="ca-nm">All</span></button></div>

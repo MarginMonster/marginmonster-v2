@@ -167,6 +167,13 @@ export default function NewPlan() {
   const [archKey, setArchKey] = useState(archs[1]?.key ?? archs[0]?.key ?? "SOCIAL_STEADY");
   const arch = archs.find((a) => a.key === archKey) ?? archs[0];
   const [avatarId, setAvatarId] = useState<string | null>(defaultAvatar);
+  // Type a name instead of scrubbing the whole cast sideways. The cast
+  // presenter always survives the filter, so a search can't hide your pick.
+  const [castQ, setCastQ] = useState("");
+  const castNeedle = castQ.trim().toLowerCase();
+  const castShown = castNeedle
+    ? cast.filter((c) => c.name.toLowerCase().includes(castNeedle) || c.id === avatarId)
+    : cast;
   const [picked, setPicked] = useState<number[]>(products.length ? products.slice(0, Math.min(5, products.length)).map((_, i) => i) : []);
   const primary = linked[0];
   const extras = linked.slice(1);
@@ -243,8 +250,14 @@ export default function NewPlan() {
             <div className="smp-step">2 · Make it yours</div>
             <div className="smp-cfg">
               <div className="cfg-lbl">Presenter — who stars all month</div>
-              <div className="cfg-cast">
-                {cast.map((c) => (
+              <div className="cs-search">
+                <input className="cs-search-in" type="search" value={castQ} placeholder={`Search ${cast.length} presenters by name…`}
+                  onChange={(e) => setCastQ(e.target.value)} aria-label="Search presenters by name" />
+                {castNeedle && <button type="button" className="cs-search-x" onClick={() => setCastQ("")} aria-label="Clear search">✕</button>}
+              </div>
+              {castNeedle && castShown.length === 0 && <p className="cs-nohit">No presenter called “{castQ.trim()}”.</p>}
+              <div className={castNeedle ? "cs-castgrid" : "cfg-cast"}>
+                {castShown.map((c) => (
                   <button type="button" key={c.id} className={`cast${c.id === avatarId ? " sel" : ""}`} onClick={() => setAvatarId(c.id)}>
                     <span className="ca-img" style={{ backgroundImage: `url(${c.img})` }}>{c.id === avatarId && <span className="ca-chk">✓</span>}</span>
                     <span className="ca-nm">{c.name}</span>

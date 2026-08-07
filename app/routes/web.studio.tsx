@@ -84,7 +84,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
     ...[...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
   ];
-  const forgingAvatars = custom.filter((c) => c.status !== "ready").map((c) => ({ name: c.name, status: c.status }));
+  const forgingAvatars = custom
+    .filter((c) => c.status !== "ready")
+    .map((c) => ({ name: c.name, status: c.status, startedAt: c.createdAt.toISOString() }));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // The merchant's own catalogue, mirrored by the importer. Present = the
   // Studio can offer a picker instead of asking for a link every single time.
@@ -349,6 +351,66 @@ type CastItem = { id: string; name: string; img: string; designed: boolean };
  * see a NEW component type on every render and remount the strip — which
  * reset the horizontal scroll to the first presenter on every click. Any
  * new inputs come in as explicit props. */
+/** The forge takes a minute or two of silence, and a line of text reading
+ *  "forging…" makes that look like nothing is happening. So show the shape of
+ *  what's coming: four placeholder character cards — one per outfit — shimmering
+ *  in the same tile geometry the presenter row uses, with a real elapsed clock.
+ *  When the job lands, these swap for the actual faces. */
+function ForgingPresenter({ name, status, startedAt }: { name: string; status: string; startedAt: string }) {
+  const revalidator = useRevalidator();
+  const [elapsed, setElapsed] = useState(0);
+  const failed = status === "failed";
+
+  // Count from the job's REAL start, so a reload mid-forge shows "1m 40s".
+  useEffect(() => {
+    if (failed) return;
+    const base = new Date(startedAt).getTime();
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - base) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [startedAt, failed]);
+
+  // Poll until the forge lands. 6s matches the catalogue importer.
+  useEffect(() => {
+    if (failed) return;
+    const id = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 6000);
+    return () => clearInterval(id);
+  }, [revalidator, failed]);
+
+  if (failed) {
+    return (
+      <div className="ws-forge ws-forge-bad" role="status">
+        <b>{name} couldn&rsquo;t be forged.</b>
+        <span>The reference photo didn&rsquo;t give us enough to work with — try a clearer, front-facing image.</span>
+      </div>
+    );
+  }
+  const mm = Math.floor(elapsed / 60);
+  const ss = elapsed % 60;
+  return (
+    <div className="ws-forge" role="status" aria-live="polite">
+      <div className="ws-forge-hd">
+        <span className="ws-forge-spin" aria-hidden="true" />
+        <div>
+          <b>Forging {name}…</b>
+          <span>Four outfits, {mm > 0 ? `${mm}m ${ss}s` : `${ss}s`} elapsed — usually a minute or two. You can keep working.</span>
+        </div>
+      </div>
+      <div className="ws-forge-row">
+        {["Casual", "Smart", "Branded", "Outdoor"].map((o, i) => (
+          <div className="ws-forge-card" key={o} style={{ animationDelay: `${i * 0.18}s` }}>
+            <span className="ws-forge-img" aria-hidden="true" />
+            <span className="ws-forge-nm">{o}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
   cast: CastItem[];
   avatarId: string | null;
@@ -374,17 +436,31 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
 
   // Brand Face leads the cast.
   const ordered = brandFaceId ? [...cast.filter((c) => c.id === brandFaceId), ...cast.filter((c) => c.id !== brandFaceId)] : cast;
+  // Type a name instead of scrubbing a hundred faces sideways. Filtering never
+  // drops the CAST presenter — losing sight of your own selection mid-search is
+  // worse than one extra tile.
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? ordered.filter((c) => c.name.toLowerCase().includes(needle) || c.id === avatarId)
+    : ordered;
 
   return (
     <>
       <div className="ws-lbl">Presenter{optional ? <span className="ws-opt">optional</span> : null}</div>
+      <div className="ws-castsearch">
+        <input className="wb-in" type="search" value={q} placeholder={`Search ${cast.length} presenters by name…`}
+          onChange={(e) => setQ(e.target.value)} aria-label="Search presenters by name" />
+        {needle && <button type="button" className="ws-cs-clr" onClick={() => setQ("")} aria-label="Clear search">✕</button>}
+      </div>
+      {needle && shown.length === 0 && <p className="ws-offernote">No presenter called “{q.trim()}”.</p>}
       <div className="ws-cast">
-        {optional && (
+        {optional && !needle && (
           <button type="button" className={`ws-face${avatarId === null ? " sel" : ""}`} onClick={() => setAvatarId(null)}>
             <span className="ws-face-img none">✕</span><span>None</span>
           </button>
         )}
-        {ordered.map((c) => {
+        {shown.map((c) => {
           const bf = c.id === brandFaceId;
           return (
             <div key={c.id} className={`ws-face${avatarId === c.id ? " sel" : ""}${bf ? " bf" : ""}`}>
@@ -712,11 +788,6 @@ export default function WebStudio() {
               Upload your logo, mascot or spokesperson and we forge them into a presenter — four outfits, ready to
               star in your videos. Yours alone: nobody else&rsquo;s Studio can cast them.
             </p>
-            {d.forgingAvatars.length > 0 && (
-              <p className="ws-offernote">
-                {d.forgingAvatars.map((f) => `${f.name} — ${f.status === "failed" ? "failed, try another photo" : "forging…"}`).join(" · ")}
-              </p>
-            )}
             <div className="ws-import ws-avatarforge">
               <input className="wb-in" name="avatarName" placeholder="Presenter name (e.g. your mascot)"
                 value={avatarName} onChange={(e) => setAvatarName(e.target.value)} />
@@ -742,8 +813,11 @@ export default function WebStudio() {
             </div>
             {actionData && "avatarError" in actionData && actionData.avatarError
               ? <div className="wb-err">{String(actionData.avatarError)}</div> : null}
-            {actionData && "avatarQueued" in actionData && actionData.avatarQueued
-              ? <p className="ws-offernote">{String(actionData.avatarQueued)} is being forged — it takes a minute or two, then they appear in your presenter row.</p> : null}
+            {/* The buffer sits at the BOTTOM, under the form, so the moment you
+                hit Forge there is something visibly working. */}
+            {d.forgingAvatars.map((f) => (
+              <ForgingPresenter key={f.name + f.startedAt} name={f.name} status={f.status} startedAt={f.startedAt} />
+            ))}
           </div>
         )}
 
@@ -1211,6 +1285,32 @@ function needsPresenterField(ct: CType | null): boolean {
  * #14201A, green #12A85E, gold #B08526/#E7C879), extending the ws-* look
  * that lives in the /web layout. */
 const WS_STYLE = `
+/* Search above the presenter row — typing a name beats scrubbing 100 faces. */
+.ws-castsearch{position:relative;margin:0 0 8px}
+.ws-castsearch .wb-in{width:100%;padding-right:34px}
+.ws-cs-clr{position:absolute;top:50%;right:8px;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;border:0;background:var(--paper,#F4F1E6);color:var(--ink2,#4A554E);font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+/* Forging buffer — the shape of what's coming, so the wait looks like work. */
+.ws-forge{margin:14px 0 4px;padding:13px 14px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
+.ws-forge-hd{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
+.ws-forge-hd b{display:block;font-size:13.5px;color:var(--ink,#14201A)}
+.ws-forge-hd span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:2px}
+.ws-forge-spin{flex:0 0 auto;width:16px;height:16px;margin-top:2px;border-radius:50%;border:2px solid rgba(18,168,94,.25);border-top-color:#12A85E;animation:wsforgespin .8s linear infinite}
+@keyframes wsforgespin{to{transform:rotate(360deg)}}
+.ws-forge-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.ws-forge-card{animation:wsforgepulse 1.5s ease-in-out infinite;text-align:center}
+@keyframes wsforgepulse{0%,100%{opacity:.45}50%{opacity:1}}
+.ws-forge-img{display:block;width:100%;aspect-ratio:3/4;border-radius:11px;border:1px dashed var(--line,#E4DFCF);
+  background:linear-gradient(100deg,rgba(18,168,94,.05) 30%,rgba(18,168,94,.16) 50%,rgba(18,168,94,.05) 70%) 0 0/280% 100%;
+  animation:wsforgeshim 1.5s linear infinite}
+@keyframes wsforgeshim{to{background-position:-280% 0}}
+.ws-forge-nm{display:block;margin-top:5px;font-size:10.5px;font-weight:700;color:var(--ink2,#4A554E)}
+.ws-forge-bad{border-color:#D9A2A2;background:#FDF4F4}
+.ws-forge-bad b{display:block;font-size:13.5px;color:#8C2F2F}
+.ws-forge-bad span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:3px}
+@media (prefers-reduced-motion:reduce){
+  .ws-forge-spin,.ws-forge-card,.ws-forge-img{animation:none}
+  .ws-forge-card{opacity:.7}
+}
 .ws-face{position:relative}
 .ws-face-pick{display:block;width:100%;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:center}
 .ws-samp{position:absolute;top:46px;right:0;width:24px;height:24px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font-size:11px;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(20,32,26,.14);z-index:2;padding:0}

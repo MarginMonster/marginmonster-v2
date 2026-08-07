@@ -51,11 +51,13 @@ const fileList = (r: { files: string }): string[] => {
 /** This shop's ready custom presenters, Avatar-shaped for the pickers, plus
  *  the /renders portrait URL the tile shows. Forging rows come back too so
  *  the Studio can show progress. */
-export async function customCastFor(shopId: string): Promise<Array<Avatar & { img: string; status: string }>> {
+export async function customCastFor(shopId: string): Promise<Array<Avatar & { img: string; status: string; createdAt: Date }>> {
   const rows = await db.customAvatar.findMany({ where: { shopId }, orderBy: { createdAt: "desc" } });
   return rows.map((r) => {
     const files = fileList(r);
-    return { ...toAvatar(r), img: files[0] ? `/renders/${files[0]}` : "", status: r.status };
+    // createdAt rides along so the forging placeholder can count from the REAL
+    // start — a reload mid-forge should say "1m 40s", not restart at zero.
+    return { ...toAvatar(r), img: files[0] ? `/renders/${files[0]}` : "", status: r.status, createdAt: r.createdAt };
   });
 }
 
