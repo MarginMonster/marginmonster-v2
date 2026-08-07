@@ -1,0 +1,67 @@
+name: Premium voice keepalive
+
+# Our 21 hand-designed presenter voices (ttv-voice-*) cost $3 each to author
+# and are the difference between a presenter who sounds like a person and one
+# who sounds like a text-to-speech demo. fal/MiniMax REAPS a designed voice
+# that goes unspoken, and the voice-design ledger has carried a `keepalive:
+# true` flag since the day they were made that nothing ever acted on — the
+# flag was a note to ourselves, not a mechanism.
+#
+# When a voice is reaped the pipeline does not break, which is the dangerous
+# part: it silently substitutes a generic scored stock voice and the merchant
+# just hears a stranger. That is the exact failure mode behind "Tunde sounds
+# like a wiener", and it can recur at any time on any of the 21.
+#
+# So: speak one short line through every designed voice, twice a week. Resets
+# the reaper clock and reports anything that has died while we still have the
+# ledger entry to re-design from. ~21 TTS calls, about two cents a run.
+
+on:
+  schedule:
+    # Mondays and Thursdays at 06:10 UTC — a 3-4 day gap, comfortably inside
+    # the reaper window with room for a failed run to be caught by the next.
+    - cron: "10 6 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+      - name: Bundle
+        run: |
+          npx esbuild scripts/video-qa.ts \
+            --bundle --platform=node --format=cjs --target=node20 \
+            --external:@prisma/client --external:ffmpeg-static --external:ffprobe-static --external:sharp \
+            --outfile=video-qa.cjs
+      - name: Speak every designed voice
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN || secrets.REPLICATE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_API_KEY }}
+          QA_MASCOT: voices
+        run: |
+          node video-qa.cjs | tee /tmp/voices.md
+          # The report is a markdown table; surface it on the run summary so a
+          # dead voice is visible without opening logs.
+          cat /tmp/voices.md >> "$GITHUB_STEP_SUMMARY"
+          # Fail loudly if any voice has been reaped — a silent green run here
+          # would reproduce the very bug this workflow exists to prevent.
+          if grep -q "❌" /tmp/voices.md; then
+            echo "::error::A designed voice is DEAD — presenters using it are silently falling back to a stock voice. Re-design from app/lib/voice-design-ledger.json."
+            exit 1
+          fi

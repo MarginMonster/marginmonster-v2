@@ -1,5 +1,5 @@
 {
- "note": "MiniMax designed voices via fal (temp route api.voicedesign). $3/voice + preview pennies. A designed voice must complete one TTS within 7 days or fal deletes it (keepalive:true = locked permanent). voiceId goes into avatar-voices.json when the avatar switches to designed.",
+ "note": "MiniMax designed voices via fal (temp route api.voicedesign). $3/voice + preview pennies. A designed voice must complete one TTS within 7 days or fal deletes it. voiceId goes into avatar-voices.json when the avatar switches to designed. NOTE: the keepalive:true flags below were only ever a note to ourselves — nothing ever acted on them. The real mechanism is .github/workflows/voice-keepalive.yml, which speaks every voice here twice a week and fails loudly if one has been reaped. A reaped voice does not break the pipeline; it silently downgrades that presenter to a generic stock voice, which is far worse.",
  "designed": {
   "rosa": {
    "voiceId": "ttv-voice-2026072007523226-Tjt5ZLMA",
