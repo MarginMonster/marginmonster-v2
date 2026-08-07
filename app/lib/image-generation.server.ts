@@ -2359,8 +2359,13 @@ export async function generateImageAd(
         const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
         const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
-        const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
-        const scaleHint = scaleFromChoice(productSize) || (await inferProductScale(productTitle, stylePrompt));
+        const { resolveProductScale } = await import("./product-scale.server");
+        const scaleHint = await resolveProductScale({
+          productTitle,
+          productDescription: stylePrompt,
+          productImageUrl,
+          productSize,
+        });
 
         // THE SHOT LIBRARY. The presenter × product composite is the one
         // genuinely risky generative step in this pipeline, so it runs ONCE:
@@ -2437,27 +2442,36 @@ export async function generateImageAd(
               fs.writeFileSync(path.join(dir, fileName), buf);
               try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
               if (freezeReason !== undefined) {
-                // Freeze the CLEAN composite (pre text-overlay) so every
-                // reuse can carry its own headline and CTA.
+                // Freeze the CLEAN composite — presenter stills ship untyped
+                // now, and a frozen shot must stay reusable if that changes.
                 await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName, gateReason: freezeReason });
                 artLog("image-ad", "presenter shot library: froze this gate-passed shot — future ads for this pair are instant");
               }
             }
             localUrl = `/renders/${fileName}`;
-            // Overlay headline + CTA (best-effort) so the presenter still is a real ad.
-            try {
-              const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
-              // Retry once: a single flaky copy call was the difference
-              // between a presenter still that carries our poster headline
-              // and one that ships bare. "Sometimes" is not a standard.
-              let copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
-              if (!copy) copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
-              if (!copy) artLog("image-ad", "presenter still: ad copy failed twice — shipping without the poster overlay");
-              if (copy) {
-                const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
-                if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
-              }
-            } catch (e) { console.error("[image-ad] presenter overlay skipped:", e instanceof Error ? e.message : e); }
+            // NO POSTER TEXT ON A PRESENTER SHOT. The overlay uses a poster
+            // layout that sets the headline across the TOP of the canvas —
+            // which on a product-only still is empty sky, and on a presenter
+            // still is their FACE. Every "with presenter" ad shipped with a
+            // headline stamped over the presenter's forehead.
+            //
+            // Moving the type lower doesn't save it either: the middle is the
+            // product and the bottom is their hands. A presenter holding the
+            // product IS the ad — that's the whole premise of the format — so
+            // it ships clean and the merchant writes their own caption.
+            // Product-only stills (below) keep the poster treatment.
+            //
+            // PRESENTER_AD_TEXT=1 puts the overlay back.
+            if (process.env.PRESENTER_AD_TEXT === "1") {
+              try {
+                const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+                const copy = await adCopy(productTitle, voiceTone, stylePrompt, false, contentLang);
+                if (copy) {
+                  const adName = await overlayAdText(dir, fileName, copy.headline, copy.cta, copy.sub);
+                  if (adName) { localUrl = `/renders/${adName}`; try { await mirrorRender(adName, fs.readFileSync(path.join(dir, adName))); } catch { /* non-fatal */ } }
+                }
+              } catch (e) { console.error("[image-ad] presenter overlay skipped:", e instanceof Error ? e.message : e); }
+            }
           } catch (e) { console.error("[image-ad] presenter still persist failed:", e); }
           // No durable copy → don't mint a card that dies in an hour; the
           // ladder below still delivers a real (product) ad for this job.

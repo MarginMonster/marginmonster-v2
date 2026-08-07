@@ -976,8 +976,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         const { composeHoldingFrames } = await import("./fal-image.server");
         // A cutout carries no scale, so tell the composer how big this
         // actually is — otherwise a 12-box case comes out palm-sized.
-        const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
-        const hint = scaleFromChoice(params.productSize) || (await inferProductScale(params.productTitle, params.productDescription));
+        const { resolveProductScale } = await import("./product-scale.server");
+        const hint = await resolveProductScale({
+          productTitle: params.productTitle,
+          productDescription: params.productDescription,
+          productImageUrl: params.productImageUrl,
+          productSize: params.productSize,
+        });
         const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene, hint?.phrase);
         composedUrl = frames[0] || "";
         if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });

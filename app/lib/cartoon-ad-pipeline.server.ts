@@ -529,8 +529,13 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
             // Without a scale hint the composer guesses, and a 12-piece case
             // guesses small — the same "too small even on Large" the UGC path
             // had. The merchant's choice wins over inference.
-            const { inferProductScale, scaleFromChoice } = await import("./product-scale.server");
-            const hint = scaleFromChoice(params.productSize) || (await inferProductScale(params.productTitle, params.productDescription));
+            const { resolveProductScale } = await import("./product-scale.server");
+            const hint = await resolveProductScale({
+              productTitle: params.productTitle,
+              productDescription: params.productDescription,
+              productImageUrl: params.productImageUrl,
+              productSize: params.productSize,
+            });
             const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase);
             composedUrl = frames[0] || "";
             if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
