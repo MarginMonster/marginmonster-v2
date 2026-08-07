@@ -1692,6 +1692,57 @@ async function mascotLab(): Promise<string> {
   // saying so, or the designed voice itself is simply a bad take and needs to
   // be re-designed. Those sound completely different, so play both on the same
   // ad line and the ear settles it in ten seconds.
+  // QA_MASCOT=takevoice — a REAL presenter take, voice and all. Everything the
+  // merchant hears comes from the same code the pipeline runs: castFor picks
+  // the signature, falTts speaks it, HeyGen lip-syncs it. The full pipeline
+  // can't run here (it needs Postgres for the shop lookup and asset write), but
+  // nothing in that DB work touches how the take SOUNDS, so this is a faithful
+  // reproduction of the audible result.
+  //
+  // Prints the voice that actually spoke, so "did the paid voice appear" is
+  // answered by the run itself rather than by anyone's ear.
+  if (process.env.QA_MASCOT === "takevoice") {
+    if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
+    const fs2 = require("node:fs") as typeof import("node:fs");
+    const path2 = require("node:path") as typeof import("node:path");
+    const outDir = path2.join(process.cwd(), "qa-out", "frames");
+    fs2.mkdirSync(outDir, { recursive: true });
+    const { falTts, submitAvatar, pollAvatar } = await import("../app/lib/fal-video.server");
+    const { castFor, download } = await import("../app/lib/ugc-ad-pipeline.server");
+    const { AVATAR_BY_ID } = await import("../app/lib/avatars");
+    const who = process.env.QA_VOICES || "tunde";
+    const avatar = (AVATAR_BY_ID as Record<string, any>)[who];
+    if (!avatar) return `${head}\n\nNo presenter "${who}".`;
+    const delivery = castFor(avatar);
+    const SHA = process.env.GITHUB_SHA || "main";
+    const portrait = `https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/${SHA}/public/avatars/${who}_0.jpg`;
+    const LINE = "Okay so I finally tried this and I get the hype now. Two weeks in and I'm not going back.";
+    const lines: string[] = [head, ``,
+      `Presenter **${who}** — ${avatar.name}, ${avatar.vibe}`,
+      `Cast voice: \`${delivery.voice}\` (pitch ${delivery.pitch}, speed ${delivery.speed}, emotion ${delivery.emotion})`,
+      `Paid designed voice: ${delivery.voice.startsWith("ttv-") ? "**yes**" : "no — this presenter is on a stock voice"}`, ``];
+    let audioUrl = "";
+    try {
+      audioUrl = await falTts(LINE, delivery.voice, delivery.speed, { pitch: delivery.pitch, emotion: delivery.emotion });
+      await download(audioUrl, path2.join(outDir, `take-${who}-voice.mp3`));
+      lines.push(`✅ **The paid voice spoke.** No substitution — strict mode would have thrown instead.`);
+      lines.push(`Audio: [take-${who}-voice.mp3](frames/take-${who}-voice.mp3)`);
+    } catch (e) {
+      // this is the strict-mode outcome: in production this take would now FAIL
+      // and refund rather than ship a stranger
+      return [...lines, ``, `❌ **The paid voice could not speak** — ${(e as Error).message.slice(0, 240)}`, ``,
+        `In production this take now FAILS and refunds instead of substituting a stock voice.`].join("\n");
+    }
+    try {
+      const h = await submitAvatar(portrait, audioUrl);
+      const clip = await pollAvatar(h);
+      await download(clip, path2.join(outDir, `take-${who}.mp4`));
+      lines.push(``, `Video: [take-${who}.mp4](frames/take-${who}.mp4) — portrait + that exact audio through HeyGen Avatar 4.`);
+    } catch (e) {
+      lines.push(``, `Lip-sync failed (the AUDIO above is still the real thing): ${(e as Error).message.slice(0, 200)}`);
+    }
+    return lines.join("\n");
+  }
   if (process.env.QA_MASCOT === "voiceab") {
     if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
     const fs2 = require("node:fs") as typeof import("node:fs");
