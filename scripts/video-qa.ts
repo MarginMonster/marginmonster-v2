@@ -1658,8 +1658,15 @@ async function mascotLab(): Promise<string> {
       const CAST = require("../app/lib/avatar-voices.json") as Record<string, { voice: string; speed?: number }>;
       const ids = Object.keys(LEDGER.designed || {});
       const rows = await Promise.all(ids.map(async (id) => {
-        const voice = CAST[id]?.voice || LEDGER.designed[id]?.voiceId;
+        const paid = LEDGER.designed[id]?.voiceId;
+        const voice = CAST[id]?.voice || paid;
         if (!voice || !voice.startsWith("ttv-")) return `| ${id} | — | **not wired** (cast has \`${voice || "nothing"}\`) |`;
+        // DRIFT: the cast points at a different voice than the one we paid to
+        // design for this presenter. The take would sound fine and be wrong —
+        // a paid asset silently orphaned. Caught here or never.
+        if (paid && voice !== paid) {
+          return `| ${id} | \`${voice.slice(0, 26)}…\` | ❌ **drift** — ledger paid for \`${paid.slice(0, 26)}…\` |`;
+        }
         try {
           await falTts("Hey, quick test of my voice.", voice, CAST[id]?.speed ?? 1);
           return `| ${id} | \`${voice.slice(0, 26)}…\` | ✅ alive |`;

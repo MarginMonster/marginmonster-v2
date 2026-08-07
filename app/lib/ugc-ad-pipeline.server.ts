@@ -862,8 +862,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   };
   const freshTts = async (): Promise<string> => {
     // designed voices (ttv-voice-*) live on the fal MiniMax account — they can
-    // ONLY be spoken there. On any fal failure, fall through to the legacy
-    // scored stock voice on Replicate so a take never dies over casting.
+    // ONLY be spoken there.
     if (delivery.voice.startsWith("ttv-")) {
       try {
         // the FULL cast signature — a designed voice read flat is a different
@@ -873,8 +872,28 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           emotion: delivery.emotion,
         });
       } catch (e) {
+        // A DESIGNED VOICE IS PAID-FOR AND IS NOT SUBSTITUTABLE. This used to
+        // drop to a generic scored stock voice so "a take never dies over
+        // casting" — but that trade was wrong. Shipping a stranger in a paid
+        // presenter's place is worse than shipping nothing: the merchant can't
+        // tell it happened, and neither could we.
+        //
+        // Throwing is SAFE and is the better failure. falTts has already
+        // retried 3× with backoff; the worker gives the job 3 attempts, so the
+        // voice gets ~9 chances. Only if it still can't speak does the job go
+        // terminal — and terminal failure REFUNDS the tokens (refundPrepaidOnce
+        // in job-queue.server.ts). So the merchant gets their paid voice or
+        // their money back, never a substitute.
+        //
+        // UGC_VOICE_STRICT=0 restores the old substitute-and-continue behaviour
+        // if an extended fal outage ever makes shipping something preferable.
+        const why = (e as Error).message;
+        if (process.env.UGC_VOICE_STRICT !== "0") {
+          console.error(`[ugc:tts] REFUSING to substitute ${avatar.id}'s paid voice ${delivery.voice}: ${why}`);
+          throw new Error(`[ugc:tts] designed voice ${delivery.voice} (${avatar.id}) could not speak and will not be substituted: ${why}`);
+        }
         const stock = pickVoice(avatar);
-        downgrade((e as Error).message, stock);
+        downgrade(why, stock);
         const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: stock });
         return await repPoll(ttsId, 3 * 60_000, "tts");
       }

@@ -62,6 +62,10 @@ jobs:
           # Fail loudly if any voice has been reaped — a silent green run here
           # would reproduce the very bug this workflow exists to prevent.
           if grep -q "❌" /tmp/voices.md; then
-            echo "::error::A designed voice is DEAD — presenters using it are silently falling back to a stock voice. Re-design from app/lib/voice-design-ledger.json."
+            echo "::error::A paid designed voice is DEAD or has DRIFTED off its presenter. Takes using it now fail rather than substituting (UGC_VOICE_STRICT), so this is blocking real generations. Re-design or re-wire from app/lib/voice-design-ledger.json."
+            exit 1
+          fi
+          if grep -q "not wired" /tmp/voices.md; then
+            echo "::error::A voice in the ledger is not wired to any presenter — that is a paid asset nobody is using."
             exit 1
           fi
