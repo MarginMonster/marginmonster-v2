@@ -1701,6 +1701,57 @@ async function mascotLab(): Promise<string> {
   //
   // Prints the voice that actually spoke, so "did the paid voice appear" is
   // answered by the run itself rather than by anyone's ear.
+  // QA_MASCOT=scale — regenerate a holding shot and show its scale working.
+  // Prints what the PHOTO says vs what the TITLE says, which is the whole
+  // point: a "CASE (20Box)" listing photographed as one box makes those two
+  // numbers disagree, and the composite has to follow the photo.
+  if (process.env.QA_MASCOT === "scale") {
+    if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
+    const prod = await resolveProduct();
+    if (!prod) return `${head}\n\nSKIPPED — need QA_PRODUCT_URL or QA_STORE_URL.`;
+    const path3 = require("node:path") as typeof import("node:path");
+    const fs3 = require("node:fs") as typeof import("node:fs");
+    const outDir = path3.join(process.cwd(), "qa-out", "frames");
+    fs3.mkdirSync(outDir, { recursive: true });
+    const { scaleFromPhoto, inferProductScale, resolveProductScale } = await import("../app/lib/product-scale.server");
+    const { download } = await import("../app/lib/ugc-ad-pipeline.server");
+
+    // Both sources, separately, so the disagreement is visible.
+    const [photo, text] = await Promise.all([
+      scaleFromPhoto(prod.url, prod.title),
+      inferProductScale(prod.title),
+    ]);
+    const used = await resolveProductScale({ productTitle: prod.title, productImageUrl: prod.url });
+    const lines = [head, ``,
+      `**${prod.title}**`, ``,
+      `| source | longest dimension | class |`, `|---|---|---|`,
+      `| photo (what gets composed) | ${photo ? photo.cm + "cm" : "—"} | ${photo?.sizeClass ?? "—"} |`,
+      `| title/description | ${text ? text.cm + "cm" : "—"} | ${text?.sizeClass ?? "—"} |`,
+      `| **used for the render** | **${used ? used.cm + "cm" : "—"}** | ${used?.sizeClass ?? "—"} |`, ``];
+    if (photo && text) {
+      const ratio = Math.max(photo.cm, text.cm) / Math.min(photo.cm, text.cm);
+      lines.push(ratio >= 2
+        ? `⚠️ They disagree ${ratio.toFixed(1)}x — the classic case-vs-unit split. Following the photo.`
+        : `They agree within ${ratio.toFixed(1)}x.`, ``);
+    }
+    if (used) lines.push("```", used.phrase, "```", ``);
+
+    // Now actually compose it, so the number can be judged by eye.
+    const PORTRAITS = (process.env.QA_PORTRAITS || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const SHA = process.env.GITHUB_SHA || "main";
+    const portrait = PORTRAITS[0] || `https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/${SHA}/public/avatars/amara_0.jpg`;
+    try {
+      const { composeHoldingFrames } = await import("../app/lib/fal-image.server");
+      const frames = await composeHoldingFrames(portrait, prod.url, prod.title, 1, "hold", undefined, used?.phrase);
+      if (frames[0]) {
+        await download(frames[0], path3.join(outDir, "scale-after.jpg"));
+        lines.push(`Regenerated: [scale-after.jpg](frames/scale-after.jpg) — source photo is [00-source-product.jpg](frames/00-source-product.jpg).`);
+      } else lines.push(`Compose returned nothing.`);
+    } catch (e) {
+      lines.push(`Compose failed: ${(e as Error).message.slice(0, 200)}`);
+    }
+    return lines.join("\n");
+  }
   if (process.env.QA_MASCOT === "takevoice") {
     if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
     const fs2 = require("node:fs") as typeof import("node:fs");
