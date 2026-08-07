@@ -115,6 +115,18 @@ export async function submitCompose(
       ? `Held ${plan?.gripDetail || "naturally"}${plan?.sizeAnchor ? ` — ${plan.sizeAnchor}` : ""}. Product facing the camera and clearly visible, below the chin so their face stays visible. `
       : `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. `;
   const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis: a hand-sized item stays small in the hand.${sizing}`;
+  // RELIGHT, don't paste. The reference is a white-background pack shot lit
+  // flat and evenly by a studio. "Keep it exactly as it is" faithfully
+  // preserves THAT lighting — so a flat, tack-sharp, shadowless object lands
+  // in a room with soft directional window light and shallow depth of field,
+  // and reads as cut out with scissors. A merchant called it cheesy, and they
+  // were right; it is the tell that separates a composite from a photograph.
+  //
+  // Identity and lighting are different things, so say so: the artwork is
+  // locked, the LIGHT is the room's. One sentence, describing the photograph
+  // we want rather than listing defects to avoid — the prompt above is short
+  // on purpose and every clause added for a defect diluted the rest.
+  const relight = ` The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
   // their top instead of being clutched on a hanger.
@@ -164,7 +176,7 @@ export async function submitCompose(
     `The exact person from the first image standing behind ${s ? "a surface in the setting described below" : "a kitchen counter or table"}, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
     `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
-    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${textRule} ` +
+    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${relight}${textRule} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
     `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}. NOT a selfie, no arm reaching toward the lens. ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
@@ -177,7 +189,7 @@ export async function submitCompose(
       : mode === "wear"
       ? `The exact person from the first image WEARING the ${productTitle || "item"} from the second image — ` +
         `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
-        `${integrity}${noSourceText} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
+        `${integrity}${relight}${noSourceText} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
         `Waist-up vertical portrait with a little clear headroom above the head, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
       // SHORT ON PURPOSE.
       //
@@ -199,7 +211,7 @@ export async function submitCompose(
       // not a check on whether it worked.
       : `The person from the first image holding the ${productTitle || "product"} from the second image — the COMPLETE item exactly as pictured, with every unit, box and panel it has, not one piece of it. ` +
         holdClause +
-        `${integrity}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
+        `${integrity}${relight}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `Photographed by someone standing in front of them, not a selfie. ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
