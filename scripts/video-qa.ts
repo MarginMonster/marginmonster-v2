@@ -1705,6 +1705,80 @@ async function mascotLab(): Promise<string> {
   // Prints what the PHOTO says vs what the TITLE says, which is the whole
   // point: a "CASE (20Box)" listing photographed as one box makes those two
   // numbers disagree, and the composite has to follow the photo.
+  // QA_MASCOT=stack — the wholesale listing shot: one retail unit standing on
+  // top of the sealed case it ships in, so a buyer sees at a glance what they
+  // are buying and what's inside it.
+  //
+  // Both inputs are REAL phone photos with real backgrounds, which is a
+  // different problem from the presenter compose: there is no white pack shot
+  // to relight, but the two frames were shot in different light, from
+  // different angles, at different distances. Everything that makes a
+  // composite look composited lives in that gap, so the prompt is almost
+  // entirely about reconciling the two cameras.
+  if (process.env.QA_MASCOT === "stack") {
+    if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
+    const fs4 = require("node:fs") as typeof import("node:fs");
+    const path4 = require("node:path") as typeof import("node:path");
+    const outDir = path4.join(process.cwd(), "qa-out", "frames");
+    fs4.mkdirSync(outDir, { recursive: true });
+    const { download } = await import("../app/lib/ugc-ad-pipeline.server");
+    const { composeModel, isFalQueueUrl } = await import("../app/lib/fal-image.server");
+    const SHA = process.env.GITHUB_SHA || "main";
+    const RAW = `https://raw.githubusercontent.com/MarginMonster/marginmonster-v2/${SHA}/qa-in/stack`;
+
+    const prompt = [
+      // WHAT THE PICTURE IS. Stated first and concretely — the model places a
+      // scene far better than it follows a list of adjustments.
+      `A single sealed retail booster box standing upright on top of the closed brown cardboard shipping case, photographed together as one real product photo.`,
+      `The first image is the case: keep it exactly as it is — same brown corrugated cardboard, same printed black lettering and logos, same packing tape, same surroundings, same camera angle.`,
+      `The second image is the booster box: keep its artwork exactly — the green holographic foil, the Pokemon character art, every logo and every line of printed text, letter for letter.`,
+      // SCALE. The single thing that made the last one wrong. Give the ratio
+      // as a fact, not an adjective.
+      `TRUE SIZE: the booster box is small next to the case. The case is roughly 40cm across; the booster box is roughly 20cm tall and 11cm wide — about HALF the length of the case's top face. It must sit well inside the top surface with clear cardboard visible around it on every side, never filling or overhanging the case.`,
+      // PERSPECTIVE. Two handheld phone photos never share a camera; this is
+      // the tell that reads as "pasted" even when the lighting is right.
+      `Both are seen from the SAME camera — the case's own slightly-above viewpoint. The booster box is turned to face that camera and stands square and flat on the case's top surface, its base fully in contact with the cardboard, tilted in perspective to match the case's own top face rather than standing straight up in the frame.`,
+      // LIGHTING. The clause that fixed the presenter composite, restated for
+      // two real photographs instead of a pack shot.
+      `The booster box is really sitting there, not pasted on: lit by the same overhead warehouse light as the case, casting its own soft contact shadow onto the cardboard directly beneath and slightly behind it, its green foil picking up that light with a natural sheen and bouncing a faint green tint onto the cardboard beside it, at the same focus and the same photographic grain as the case.`,
+      `A real unretouched phone photograph of stock in a warehouse. No text overlay, no added graphics, no studio backdrop.`,
+    ].join(" ");
+
+    const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
+      method: "POST",
+      headers: { Authorization: `Key ${process.env.FAL_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        image_urls: [`${RAW}/case.jpg`, `${RAW}/box.jpg`],
+        num_images: 2, // two takes — perspective is the coin-flip here
+        output_format: "jpeg",
+      }),
+    });
+    if (!submit.ok) return `${head}\n\nSubmit failed ${submit.status}: ${(await submit.text()).slice(0, 300)}`;
+    const q = (await submit.json()) as { status_url?: string; response_url?: string };
+    if (!q.status_url || !q.response_url || !isFalQueueUrl(q.status_url)) return `${head}\n\nNo queue urls back.`;
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      if (!s.ok) continue;
+      const sj = (await s.json()) as { status?: string };
+      if (sj.status === "COMPLETED") break;
+      if (sj.status === "FAILED" || sj.status === "ERROR") return `${head}\n\nRender ${sj.status}.`;
+    }
+    const res = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+    if (!res.ok) return `${head}\n\nResult ${res.status}: ${(await res.text()).slice(0, 200)}`;
+    const rj = (await res.json()) as { images?: { url?: string }[] };
+    const urls = (rj.images || []).map((x) => x?.url).filter(Boolean) as string[];
+    if (!urls.length) return `${head}\n\nNo images returned.`;
+    const names: string[] = [];
+    for (let i = 0; i < urls.length; i++) {
+      const n = `stack-${i + 1}.jpg`;
+      await download(urls[i], path4.join(outDir, n));
+      names.push(`[${n}](frames/${n})`);
+    }
+    return [head, ``, `Booster box stacked on its case — ${urls.length} take(s).`, ``, names.join(" · "), ``,
+      "```", prompt, "```"].join("\n");
+  }
   if (process.env.QA_MASCOT === "scale") {
     if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
     const prod = await resolveProduct();
