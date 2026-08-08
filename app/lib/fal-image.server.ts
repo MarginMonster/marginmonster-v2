@@ -97,7 +97,12 @@ export async function submitCompose(
   // sweep: the model INVENTS letters it cannot resolve ("Cog Neodles"). A
   // real photograph solves this with optics — fine print smaller than the
   // lens can resolve goes soft, it doesn't go wrong. Ask for exactly that.
-  const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.${plan?.textElements?.length ? ` The packaging clearly shows: ${plan.textElements.join(", ")}.` : ""}`;
+  // MIRRORING is a separate failure from invention and needs saying separately.
+  // The composer will happily flip the product to suit its composition, which
+  // preserves every glyph perfectly and still produces packaging no human can
+  // read — worse than garbling, because it survives a glance and fails a
+  // customer. Latin text usually gets caught by eye; CJK reliably did not.
+  const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo, reading in the same direction — never mirrored, flipped or reversed. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.${plan?.textElements?.length ? ` The packaging clearly shows: ${plan.textElements.join(", ")}.` : ""}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
   const s = (scene || "").trim().slice(0, 220);

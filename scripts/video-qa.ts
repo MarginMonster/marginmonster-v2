@@ -1729,18 +1729,26 @@ async function mascotLab(): Promise<string> {
     const prompt = [
       // WHAT THE PICTURE IS. Stated first and concretely — the model places a
       // scene far better than it follows a list of adjustments.
-      `A single sealed retail booster box standing upright on top of the closed brown cardboard shipping case, photographed together as one real product photo.`,
-      `The first image is the case: keep it exactly as it is — same brown corrugated cardboard, same printed black lettering and logos, same packing tape, same surroundings, same camera angle.`,
+      `A single sealed retail booster box lying FLAT on top of the closed brown cardboard shipping case, photographed together as one real product photo.`,
+      // BOTH references get their lettering locked. The first run only locked
+      // the box and said "keep the case as it is" — so the composer redrew the
+      // carton's Chinese printing into approximate glyphs. Whatever carries
+      // text has to be named.
+      `The first image is the case: keep it exactly as it is — same brown corrugated cardboard, same packing tape, same surroundings, same camera angle, and its printed black Chinese lettering and logos copied letter-for-letter, unchanged and not redrawn.`,
       `The second image is the booster box: keep its artwork exactly — the green holographic foil, the Pokemon character art, every logo and every line of printed text, letter for letter.`,
-      // SCALE. The single thing that made the last one wrong. Give the ratio
-      // as a fact, not an adjective.
-      `TRUE SIZE: the booster box is small next to the case. The case is roughly 40cm across; the booster box is roughly 20cm tall and 11cm wide — about HALF the length of the case's top face. It must sit well inside the top surface with clear cardboard visible around it on every side, never filling or overhanging the case.`,
-      // PERSPECTIVE. Two handheld phone photos never share a camera; this is
-      // the tell that reads as "pasted" even when the lighting is right.
-      `Both are seen from the SAME camera — the case's own slightly-above viewpoint. The booster box is turned to face that camera and stands square and flat on the case's top surface, its base fully in contact with the cardboard, tilted in perspective to match the case's own top face rather than standing straight up in the frame.`,
+      // MIRRORING. The first run flipped the box art, which reads as gibberish
+      // to anyone who reads Chinese while looking fine to everyone else.
+      `All lettering on BOTH the case and the booster box reads in its original direction — never mirrored, flipped or reversed.`,
+      // SCALE. A ratio, not an adjective — the thing that fixed the giant box.
+      `TRUE SIZE: the booster box is small next to the case. The case is roughly 40cm across; the booster box is roughly 20cm long and 11cm wide — about a THIRD of the length of the case's top face. It sits well inside the top surface with plenty of bare cardboard around it, never filling or overhanging the case.`,
+      // PLACEMENT. Explicit, because "on top of" defaults to dead centre.
+      `It rests in the LOWER-LEFT area of the case's top face, near the front-left corner but fully on the cardboard, with the rest of the top surface open and empty.`,
+      // POSE + PERSPECTIVE. Two handheld phone photos never share a camera;
+      // this is the tell that survives correct lighting.
+      `The box lies FLAT on its largest face, front artwork facing up toward the camera, its whole underside in contact with the cardboard — not standing, not propped, not leaning. Both objects are seen from the SAME camera, the case's own slightly-above viewpoint, so the box's rectangle sits in the same perspective as the case's top face.`,
       // LIGHTING. The clause that fixed the presenter composite, restated for
       // two real photographs instead of a pack shot.
-      `The booster box is really sitting there, not pasted on: lit by the same overhead warehouse light as the case, casting its own soft contact shadow onto the cardboard directly beneath and slightly behind it, its green foil picking up that light with a natural sheen and bouncing a faint green tint onto the cardboard beside it, at the same focus and the same photographic grain as the case.`,
+      `The booster box is really lying there, not pasted on: lit by the same overhead warehouse light as the case, casting a tight soft contact shadow along its edges where it meets the cardboard, its green foil picking up that light with a natural sheen and bouncing a faint green tint onto the cardboard beside it, at the same focus and the same photographic grain as the case.`,
       `A real unretouched phone photograph of stock in a warehouse. No text overlay, no added graphics, no studio backdrop.`,
     ].join(" ");
 
