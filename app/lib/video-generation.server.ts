@@ -152,14 +152,27 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     // multi-engine adapter, which falls back to the default engine on rejection.
     let predictionId: string;
     let ranModel: string;
-    if (params.videoEngine && seedImage) {
+    // ANY seed frame goes through the engine adapter — including "Auto".
+    //
+    // This used to read `params.videoEngine && seedImage`, and "Auto"
+    // normalizes to undefined, so the DEFAULT choice fell through to the
+    // legacy minimax/video-01 path while only an explicit non-auto pick got
+    // the modern engines. Exactly backwards: Product Highlight and Satisfying
+    // Close-Up sat on a superseded model for every merchant who never touched
+    // the picker, and they silently missed the Kling 2.6 upgrade that lifted
+    // every other content type.
+    //
+    // animateCreate already treats undefined as "the default engine", so
+    // passing it through is all this needs.
+    if (seedImage) {
       const created = await animateCreate(params.videoEngine, { startImage: seedImage, prompt });
       predictionId = created.id;
       ranModel = created.model;
     } else {
-      const input: Record<string, unknown> = { prompt, prompt_optimizer: true };
-      if (seedImage) input.first_frame_image = seedImage;
-      predictionId = await repCreate(VIDEO_MODEL, input);
+      // No seed frame — service mode with no photo, or an avatar path with no
+      // portrait. The image-to-video engines have nothing to start from, so
+      // this stays on the text-to-video model.
+      predictionId = await repCreate(VIDEO_MODEL, { prompt, prompt_optimizer: true });
       ranModel = VIDEO_MODEL;
     }
     // Checkpoint BEFORE polling — the render is live and billing from here, so

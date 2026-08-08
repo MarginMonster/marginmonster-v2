@@ -126,6 +126,17 @@ export async function submitCompose(
   // locked, the LIGHT is the room's. One sentence, describing the photograph
   // we want rather than listing defects to avoid — the prompt above is short
   // on purpose and every clause added for a defect diluted the rest.
+  // CAMERA POSITION, stated positively. "Not a selfie" was losing, and the
+  // reason is that the prompt fights itself: "candid smartphone UGC style" is
+  // selfie-coded vocabulary, so a bare negation has to out-argue the phrase
+  // sitting next to it. Diffusion models are also weak at negation generally —
+  // naming the thing to avoid keeps it in mind.
+  //
+  // So describe where the camera actually IS. A concrete spatial fact ("a
+  // couple of steps back, chest height, both arms free") is something the
+  // model can place; "not a selfie" is something it has to infer the
+  // opposite of.
+  const camera = ` Shot by a second person standing a couple of steps back, camera at chest height: both of the subject's arms are free and visible, neither one reaching toward the lens.`;
   const relight = ` The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
@@ -154,7 +165,7 @@ export async function submitCompose(
     `Frame the shot from the top of the head down to the hips, with the head in the TOP THIRD of the picture. The box is held low, at the bottom of the ribcage, so the whole middle of the chest is visible empty between the chin and the top of the box. The presenter's face is entirely unobstructed — eyes, nose, mouth and chin all clearly visible with space to spare. ` +
     `Exactly ONE box in the whole image.${sizing} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-    `The photo is taken BY SOMEONE ELSE standing in front of them — NOT a selfie, no arm reaching toward the lens. ` +
+    `${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
   // SHOWCASE — the shot creators actually post for anything bigger than a
@@ -178,7 +189,7 @@ export async function submitCompose(
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
     `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${relight}${textRule} ` +
     `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-    `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}. NOT a selfie, no arm reaching toward the lens. ` +
+    `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}.${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
   const prompt =
@@ -212,7 +223,7 @@ export async function submitCompose(
       : `The person from the first image holding the ${productTitle || "product"} from the second image — the COMPLETE item exactly as pictured, with every unit, box and panel it has, not one piece of it. ` +
         holdClause +
         `${integrity}${relight}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
-        `Photographed by someone standing in front of them, not a selfie. ` +
+        `${camera.trim()} ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
   const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
     method: "POST",
