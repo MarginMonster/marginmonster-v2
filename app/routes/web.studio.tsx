@@ -38,6 +38,18 @@ const CONTENT_TYPES = [
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
 // creative direction — translated at submit so the queue, the capability
 // gate and the pipelines never learn new keys.
+/* BURST — make several at once instead of tapping generate over and over.
+ * Generation is a numbers game: you pick the one you like out of a handful,
+ * you don't get it first try. Caps differ because the money does — an image
+ * is 5 tokens, a video is 60+, so a ten-video burst would empty most wallets
+ * on a single tap. Shared by the picker UI and the action that charges. */
+const MAX_BURST = { image: 10, video: 3 } as const;
+const BURST_STEPS = { image: [1, 3, 5, 10], video: [1, 2, 3] } as const;
+function burstCount(form: FormData, max: number): number {
+  const n = parseInt((form.get("burst") as string) || "1", 10);
+  return Number.isFinite(n) ? Math.max(1, Math.min(max, n)) : 1;
+}
+
 const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: string }> = {
   review: { base: "avatar", direction: "Film it like a real customer review shot on a phone for social: casual selfie framing, natural light, honest conversational tone — a viral organic review, not a polished ad." },
   unboxing: { base: "avatar", direction: "An excited first-impressions unboxing: they open the package on camera, lift the product out, react genuinely, and show it close to the lens." },
@@ -288,21 +300,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // those was billing for an engine that never ran.
       const engineDrivesRender = !avatarId;
       const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
-      const charged = TOKEN_COST.video + engineSurcharge(effectiveEngine);
-      await spendTokens(shop.id, charged);
-      // Services: the presenter explains the offer to camera — nothing to hold.
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
-        productTitle, productImageUrl, customPrompt: videoDirection, productDescription: direction,
-        style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
-        contentType, cartoonStyle,
-        avatarId, avatarVariant,
-        holdProduct: !!avatarId && !service,
-        productSize: ((form.get("productSize") as string) || "").trim() || undefined,
-        wearProduct: !!avatarId && wear && !service,
-        serviceMode: service, scene,
-        videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true, initiator: "web",
-      });
-      return json({ ok: true, queued: "video" });
+      const each = TOKEN_COST.video + engineSurcharge(effectiveEngine);
+      // Video bursts cap lower than image bursts — one video is 60+ tokens, so
+      // a ten-pack would empty most wallets on a single tap. Three is enough
+      // to pick from without being a decision the merchant regrets.
+      const n = burstCount(form, MAX_BURST.video);
+      await spendTokens(shop.id, each * n);
+      for (let i = 0; i < n; i++) {
+        // Services: the presenter explains the offer to camera — nothing to hold.
+        await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
+          productTitle, productImageUrl, customPrompt: videoDirection, productDescription: direction,
+          style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
+          contentType, cartoonStyle,
+          avatarId, avatarVariant,
+          holdProduct: !!avatarId && !service,
+          productSize: ((form.get("productSize") as string) || "").trim() || undefined,
+          wearProduct: !!avatarId && wear && !service,
+          serviceMode: service, scene,
+          videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, prePaid: true, initiator: "web",
+        });
+      }
+      return json({ ok: true, queued: "video", count: n });
     }
     if (intent === "image") {
       assertCapability(shop.activePlan, "image");
@@ -315,21 +333,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const templateKey = AD_TEMPLATE_BY_KEY[rawTemplate] ? rawTemplate : undefined;
       const rawFormat = ((form.get("formatKey") as string) || "").trim();
       const formatKey = AD_FORMAT_BY_KEY[rawFormat] ? rawFormat : undefined;
-      await spendTokens(shop.id, TOKEN_COST.image);
-      // Services skip the presenter-hold and product photo → outcome scene.
-      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
-        productTitle, productImageUrl, stylePrompt: direction,
-        styleMode: direction ? "scene" : "backdrop",
-        templateKey: avatarId || service ? undefined : templateKey,
-        formatKey: avatarId || service ? undefined : formatKey,
-        // Only a merchant-declared promotion ever puts an offer on an ad.
-        merchantOffer: ((form.get("merchantOffer") as string) || "").trim().slice(0, 40) || undefined,
-        productSize: ((form.get("productSize") as string) || "").trim() || undefined,
-        avatarId: service ? undefined : avatarId, avatarVariant,
-        wear: !!avatarId && wear && !service,
-        serviceMode: service, scene, prePaid: true,
-      });
-      return json({ ok: true, queued: "image" });
+      const n = burstCount(form, MAX_BURST.image);
+      // Charge the WHOLE burst in one call. spendTokens throws a plain
+      // "needs X, you have Y" before anything is queued, so a burst the
+      // merchant can't afford costs them nothing and says so — far better
+      // than queueing four and failing the fifth mid-run.
+      await spendTokens(shop.id, TOKEN_COST.image * n);
+      // A burst exists to give the merchant a SPREAD to choose from, so when
+      // they haven't pinned a template or format, walk the format list instead
+      // of rendering the same composition n times. Pin one and every shot in
+      // the burst honours it — the variation then comes from the render.
+      const spread = !templateKey && !formatKey && !avatarId && !service
+        ? AD_FORMATS.slice(0, n).map((f) => f.key)
+        : [];
+      for (let i = 0; i < n; i++) {
+        // Services skip the presenter-hold and product photo → outcome scene.
+        await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+          productTitle, productImageUrl, stylePrompt: direction,
+          styleMode: direction ? "scene" : "backdrop",
+          templateKey: avatarId || service ? undefined : templateKey,
+          formatKey: avatarId || service ? undefined : (spread[i] || formatKey),
+          // Only a merchant-declared promotion ever puts an offer on an ad.
+          merchantOffer: ((form.get("merchantOffer") as string) || "").trim().slice(0, 40) || undefined,
+          productSize: ((form.get("productSize") as string) || "").trim() || undefined,
+          avatarId: service ? undefined : avatarId, avatarVariant,
+          wear: !!avatarId && wear && !service,
+          serviceMode: service, scene, prePaid: true,
+        });
+      }
+      return json({ ok: true, queued: "image", count: n });
     }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
@@ -608,6 +640,9 @@ export default function WebStudio() {
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
   const [imageMode, setImageMode] = useState<"product" | "presenter" | null>(null);
+  // How many to make in one go. Kept in one place across tabs so the choice
+  // survives switching, but re-clamped below — video caps lower than image.
+  const [burst, setBurst] = useState(1);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [formatKey, setFormatKey] = useState<string | null>(null);
   const [allFormats, setAllFormats] = useState(false);
@@ -651,6 +686,7 @@ export default function WebStudio() {
   }, []);
 
   const queued = actionData && "queued" in actionData ? (actionData as { queued: string }).queued : null;
+  const queuedCount = (actionData as { count?: number } | null)?.count ?? 1;
   useEffect(() => {
     if (actionData && "queued" in actionData) {
       setShowDone(true);
@@ -675,6 +711,10 @@ export default function WebStudio() {
   // quoting a surcharge here would quote a fee we don't take.
   const engineApplies = tab === "video" && !avatarId;
   const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
+  // Re-clamp on every render rather than in an effect: switching from a ×10
+  // image burst to the video tab must not quote — or charge — ten videos.
+  const burstMax = tab === "video" ? MAX_BURST.video : tab === "image" ? MAX_BURST.image : 1;
+  if (burst > burstMax) setBurst(burstMax);
   const verb = tab === "blog" ? "Write" : "Generate";
   const noun = tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : d.costs.blog;
@@ -1244,9 +1284,37 @@ export default function WebStudio() {
             {(actionData as { trialEnded?: string } | null)?.trialEnded && (
               <div className="wb-ok" style={{ marginTop: 8 }}>{(actionData as { trialEnded?: string }).trialEnded}</div>
             )}
+            {/* BURST — you pick the one you like out of a handful; you don't
+                get it first try. Blog has no burst: nobody wants five near
+                identical articles, and each one is a page not a thumbnail. */}
+            {tab !== "blog" && (
+              <div className="ws-burst">
+                <span className="ws-burst-lbl">How many</span>
+                <div className="ws-burst-steps">
+                  {(tab === "video" ? BURST_STEPS.video : BURST_STEPS.image).map((n) => (
+                    <button type="button" key={n} className={burst === n ? "sel" : ""}
+                      onClick={() => setBurst(n)} aria-pressed={burst === n}>
+                      {n === 1 ? "Just one" : `×${n}`}
+                    </button>
+                  ))}
+                </div>
+                {burst > 1 && (
+                  <p className="ws-burst-note">
+                    {tab === "image" && !templateKey && !formatKey && imageMode !== "presenter" && !service
+                      ? `${burst} different ad layouts at once — pick your favourite from the Archive.`
+                      : `${burst} takes at once — same setup, pick the best one.`}
+                  </p>
+                )}
+              </div>
+            )}
+            <input type="hidden" name="burst" value={burst} />
             <div style={{ marginTop: 10 }}>
               <button className="wb-btn" name="intent" value={tab} disabled={ctaDisabled}>
-                {busy ? "Sending to the studio…" : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`}
+                {busy
+                  ? "Sending to the studio…"
+                  : burst > 1
+                    ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens`
+                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`}
               </button>
               <p className="ws-wallet">{d.hasPlan ? `Wallet: ${d.tokens.toLocaleString()} tokens` : "Choose a plan to generate."}</p>
             </div>
@@ -1266,8 +1334,8 @@ export default function WebStudio() {
               <span className="ws-flex-word">Easy<b>Mode</b></span>
               <span className="ws-flex-rule" />
             </div>
-            <b className="ws-mh">Your {queued} is being made</b>
-            <p className="ws-mp">It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</p>
+            <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued} is being made`}</b>
+            <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>Archive</b> over the next few minutes — pick the one you like best and bin the rest.</> : <>It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
             <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}`}>View Archive ›</Link>
             <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
           </div>
@@ -1337,6 +1405,13 @@ const WS_STYLE = `
 .ws-chip.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4}
 .ws-lastchip{display:block;margin:0 0 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .ws-import{display:flex;gap:8px;margin-bottom:8px}
+/* Burst — make several at once rather than tapping generate over and over. */
+.ws-burst{margin-top:14px;padding:11px 13px;border-radius:13px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
+.ws-burst-lbl{display:block;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2,#4A554E);margin-bottom:7px}
+.ws-burst-steps{display:flex;gap:7px;flex-wrap:wrap}
+.ws-burst-steps button{padding:7px 14px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.ws-burst-steps button.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
+.ws-burst-note{margin:8px 0 0;font-size:12px;color:var(--ink2,#4A554E)}
 /* Import tab: the setup surface — pull the catalogue in, forge a presenter. */
 .ws-import-tab{padding:2px 0 6px}
 .ws-import-tab .ws-import{flex-wrap:wrap}
