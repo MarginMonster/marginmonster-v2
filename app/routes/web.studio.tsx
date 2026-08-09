@@ -45,6 +45,16 @@ const CONTENT_TYPES = [
  * on a single tap. Shared by the picker UI and the action that charges. */
 const MAX_BURST = { image: 10, video: 3 } as const;
 const BURST_STEPS = { image: [1, 3, 5, 10], video: [1, 2, 3] } as const;
+/** Stagger a burst across the queue instead of dropping ten jobs in at once.
+ *  Every item is a full pipeline making several provider calls, and ten of
+ *  them starting together is how a compose gets rate-limited into falling
+ *  back to a plain product still — which is what a merchant reported. 25s
+ *  apart costs the merchant nothing they'd notice and keeps each render on
+ *  the good path. The first one runs immediately. */
+function burstRunAt(i: number): Date | undefined {
+  return i === 0 ? undefined : new Date(Date.now() + i * 25_000);
+}
+
 function burstCount(form: FormData, max: number): number {
   const n = parseInt((form.get("burst") as string) || "1", 10);
   return Number.isFinite(n) ? Math.max(1, Math.min(max, n)) : 1;
@@ -318,7 +328,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           wearProduct: !!avatarId && wear && !service,
           serviceMode: service, scene,
           videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, prePaid: true, initiator: "web",
-        });
+        }, burstRunAt(i));
       }
       return json({ ok: true, queued: "video", count: n });
     }
@@ -349,6 +359,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       for (let i = 0; i < n; i++) {
         // Services skip the presenter-hold and product photo → outcome scene.
         await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+          // A burst wants OPTIONS, so every item composes fresh instead of
+          // being handed the Shot Library's one frozen composite.
+          freshShot: n > 1,
           productTitle, productImageUrl, stylePrompt: direction,
           styleMode: direction ? "scene" : "backdrop",
           templateKey: avatarId || service ? undefined : templateKey,
@@ -359,7 +372,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           avatarId: service ? undefined : avatarId, avatarVariant,
           wear: !!avatarId && wear && !service,
           serviceMode: service, scene, prePaid: true,
-        });
+        }, burstRunAt(i));
       }
       return json({ ok: true, queued: "image", count: n });
     }

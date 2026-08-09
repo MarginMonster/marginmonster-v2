@@ -504,6 +504,107 @@ export async function swapQuestlineItem(
 /** Abandon: refund tokens for slots whose content hasn't been generated yet
  *  (SCHEDULED with a still-pending job), cancel those jobs, delete the quest.
  *  Forged content stays in the library. */
+/** SCHEDULE WHAT THEY ALREADY MADE — a campaign built from Archive assets.
+ *
+ *  Every other campaign path pays to CREATE content and then posts it. But
+ *  merchants accumulate a library: bursts they picked one winner from,
+ *  last month's drops, things made and never posted. Making them re-buy that
+ *  content to get it on a schedule is charging twice for the same asset.
+ *
+ *  The plumbing already supports it. The auto-poster keys off a slot being
+ *  READY with an assetId — it never asks how the asset got there. So this
+ *  writes slots that are READY from birth, and no generation job is ever
+ *  queued. Cost is zero tokens, which is the entire point.
+ *
+ *  Spacing is even across the window rather than every-day-then-nothing: a
+ *  feed that goes quiet after week one is the problem campaigns exist to
+ *  solve, so 12 assets over 30 days posts every ~2.5 days, not 12 days
+ *  straight. */
+export async function scheduleExistingAssets(
+  shopId: string,
+  params: {
+    assetIds: string[];
+    /** How many days to spread them across. */
+    days: number;
+    /** Local HH:MM to post at. */
+    time?: string;
+    name?: string;
+    platforms?: string[];
+  }
+): Promise<{ ok: true; id: string; scheduled: number } | { ok: false; error: string }> {
+  const ids = [...new Set((params.assetIds || []).filter(Boolean))].slice(0, 60);
+  if (!ids.length) return { ok: false, error: "Pick at least one thing from your Archive." };
+  const days = Math.max(1, Math.min(90, Math.round(params.days || 30)));
+  const time = /^\d{2}:\d{2}$/.test(params.time || "") ? (params.time as string) : "12:00";
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) return { ok: false, error: "Shop not found." };
+
+  // Only this shop's own postable assets — never trust ids off the wire.
+  const assets = await db.asset.findMany({
+    where: { shopId, id: { in: ids }, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } },
+    select: { id: true, type: true, title: true, bodyJson: true, metaJson: true },
+  });
+  if (!assets.length) return { ok: false, error: "None of those are postable — pick videos, images or articles." };
+  // Keep the merchant's chosen order; findMany doesn't preserve it.
+  const byId = new Map(assets.map((a) => [a.id, a]));
+  const ordered = ids.map((i) => byId.get(i)).filter(Boolean) as typeof assets;
+
+  const typeOf = (t: string): ObjectiveType => (t === "VIDEO_AD" ? "video" : t === "IMAGE_AD" ? "image" : "blog");
+  const start = new Date();
+  const step = ordered.length > 1 ? (days - 1) / (ordered.length - 1) : 0;
+
+  const counts: Record<string, number> = {};
+  const slots: QuestSlot[] = ordered.map((a, i) => {
+    const type = typeOf(a.type);
+    const dayOffset = Math.round(i * step);
+    const when = new Date(start.getTime() + dayOffset * 86400000);
+    const meta = (() => { try { return JSON.parse(a.metaJson || "{}"); } catch { return {}; } })() as Record<string, unknown>;
+    const body = (() => { try { return JSON.parse(a.bodyJson || "{}"); } catch { return {}; } })() as Record<string, unknown>;
+    counts[type] = (counts[type] || 0) + 1;
+    return {
+      idx: i,
+      day: dayOffset + 1,
+      date: when.toISOString().slice(0, 10),
+      time,
+      type,
+      spot: spotName(type, counts[type] - 1),
+      productTitle: (meta.productTitle as string) || a.title || "",
+      productImageUrl: (meta.productImageUrl as string) || (body.imageUrl as string) || null,
+      productUrl: (meta.productUrl as string) || null,
+      // READY FROM BIRTH. This is the whole mechanism — the poster publishes
+      // it on the date below and nothing ever generates.
+      status: "READY",
+      assetId: a.id,
+    };
+  });
+
+  const q = await db.questline.create({
+    data: {
+      shopId,
+      template: "REPOST",
+      name: (params.name || "").trim().slice(0, 60) || "From my Archive",
+      status: "ACTIVE",
+      avatarId: shop.brandAvatarId,
+      avatarVariant: shop.brandAvatarVariant ?? 0,
+      reviewMode: "SET_AND_FORGET", // the merchant already reviewed this content
+      productTitle: slots[0]?.productTitle || "",
+      productImageUrl: slots[0]?.productImageUrl || null,
+      objectivesJson: "[]",
+      scheduleJson: JSON.stringify({
+        slots,
+        weeksAwarded: [],
+        ...(params.platforms?.length ? { platforms: params.platforms } : {}),
+      } satisfies QuestSchedule),
+      durationDays: days,
+      tokenCost: 0, // nothing was generated, so nothing is refundable
+      xpReward: 0,
+      progress: 0,
+    },
+  });
+  return { ok: true, id: q.id, scheduled: slots.length };
+}
+
 export async function abandonQuestline(shopId: string, questlineId: string): Promise<{ ok: boolean; refunded: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q) return { ok: false, refunded: 0 };

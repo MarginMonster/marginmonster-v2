@@ -2348,7 +2348,19 @@ export async function generateImageAd(
    *  offer on an ad — see formatCopy. */
   merchantOffer?: string,
   /** Merchant's explicit size class; beats the inferred one. */
-  productSize?: string
+  productSize?: string,
+  /** Skip the Presenter Shot Library for this render.
+   *
+   *  The library exists so a repeat ad for the same presenter x product is
+   *  instant and free — it freezes one gate-passed composite and reuses it
+   *  forever. Correct for a repeat, wrong for a BURST: the cache key is
+   *  (avatar, variant, product photo, layout), which is identical across every
+   *  item in a burst, so the first one composed and the other nine handed back
+   *  the same frozen bytes. Ten renders, one picture.
+   *
+   *  A burst is a request for OPTIONS, so it composes fresh every time — and
+   *  it leaves the library alone rather than churning the same key ten times. */
+  freshShot?: boolean
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -2381,7 +2393,7 @@ export async function generateImageAd(
           await import("./presenter-shots.server");
         const layout = presenterLayout(scaleHint?.sizeClass, wear);
         const shotKey = presenterShotKey(avatarId, avatarVariant || 0, productImageUrl, layout);
-        const cachedShot = shotLibraryEnabled() ? await findPresenterShot(shopId, shotKey) : null;
+        const cachedShot = shotLibraryEnabled() && !freshShot ? await findPresenterShot(shopId, shotKey) : null;
 
         let buf: Buffer | null = null;
         let fileName = "";
@@ -2449,7 +2461,7 @@ export async function generateImageAd(
               if (freezeReason !== undefined) {
                 // Freeze the CLEAN composite — presenter stills ship untyped
                 // now, and a frozen shot must stay reusable if that changes.
-                await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName, gateReason: freezeReason });
+                if (!freshShot) await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName, gateReason: freezeReason });
                 artLog("image-ad", "presenter shot library: froze this gate-passed shot — future ads for this pair are instant");
               }
             }
