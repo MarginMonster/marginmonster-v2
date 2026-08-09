@@ -19,6 +19,13 @@ export type Avatar = {
   gender: Gender; // explicit — drives voice selection (no more coin-flip)
   ageBand: AgeBand; // so the voice's age fits the face
   energy: Energy; // so the voice's character fits the persona
+  /** What has to stay true BELOW the face when this presenter is composed
+   *  into a new shot. The compose prompt locks "same face, same hairstyle,
+   *  same outfit" — which is everything a human presenter needs, and not
+   *  enough for a character: a golden-green ogre kept coming back with
+   *  ordinary human hands on the product, because nothing ever said his skin
+   *  continues past his chin. Blank for the human cast. */
+  continuity?: string;
 };
 
 /* Derive persona traits from the desc + vibe (the cast is authored with clear
@@ -80,6 +87,7 @@ export const PRIVATE_AVATARS: Array<Avatar & { owners: string[] }> = [
     gender: "m",
     ageBand: "mid",
     energy: "hype",
+    continuity: "His hands, fingers, forearms, neck and ears are the SAME golden-green skin as his face — the same colour and the same texture, never human flesh tone. Any part of him touching or holding the product is that same golden-green.",
     // The founder's EasyMode account and their personal address — both, because
     // which one they happen to be signed into is not something the picker
     // should have an opinion about.

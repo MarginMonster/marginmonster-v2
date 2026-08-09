@@ -35,6 +35,7 @@ import {
   repPoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
+import { AVATAR_BY_ID } from "./avatars";
 import { langDirective } from "./content-lang";
 import { withBrandFallback } from "./ad-copy-retry.server";
 
@@ -536,7 +537,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
               productImageUrl: params.productImageUrl,
               productSize: params.productSize,
             });
-            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase);
+            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase, AVATAR_BY_ID[params.avatarId || ""]?.continuity);
             composedUrl = frames[0] || "";
             if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
           } catch (e) {

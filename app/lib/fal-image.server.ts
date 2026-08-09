@@ -34,12 +34,13 @@ export async function composeHoldingFrames(
   numImages = 1,
   mode: "hold" | "wear" = "hold",
   scene?: string,
-  scaleHint?: string
+  scaleHint?: string,
+  continuity?: string
 ): Promise<string[]> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
 
   // Worker-context path (campaign drips): no request deadline, poll up to 2 min.
-  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene, scaleHint);
+  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene, scaleHint, undefined, undefined, continuity);
   for (let i = 0; i < 48; i++) {
     await new Promise((r) => setTimeout(r, 2500));
     const p = await pollCompose(q.statusUrl, q.responseUrl);
@@ -76,7 +77,13 @@ export async function submitCompose(
   /** Shot plan from looking at the actual product (image-generation's
    *  planShot). Swaps the generic box-shaped grip/size clauses for ones that
    *  fit THIS object — same prompt length, better description. */
-  plan?: { gripDetail?: string; sizeAnchor?: string; textElements?: string[] }
+  plan?: { gripDetail?: string; sizeAnchor?: string; textElements?: string[] },
+  /** What must stay true BELOW this presenter's face (avatars.ts `continuity`).
+   *  "Same face, same hairstyle, same outfit" is everything a human presenter
+   *  needs and not enough for a character — a golden-green ogre came back
+   *  holding products with ordinary human hands, because nothing said his skin
+   *  continues past his chin. Empty for the human cast. */
+  continuity?: string
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
   // Product-integrity guard — the #1 compose failure is the product getting
@@ -164,6 +171,7 @@ export async function submitCompose(
   // couple of steps back, chest height, both arms free") is something the
   // model can place; "not a selfie" is something it has to infer the
   // opposite of.
+  const persona = continuity ? ` ${continuity.trim()}` : "";
   const camera = ` Shot by a second person standing a couple of steps back, camera at chest height: both of the subject's arms are free and visible, neither one reaching toward the lens.`;
   const relight = ` The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
   // Apparel → the presenter WEARS the garment (models it); everything else is
@@ -192,7 +200,7 @@ export async function submitCompose(
     `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
     `Frame the shot from the top of the head down to the hips, with the head in the TOP THIRD of the picture. The box is held low, at the bottom of the ribcage, so the whole middle of the chest is visible empty between the chin and the top of the box. The presenter's face is entirely unobstructed — eyes, nose, mouth and chin all clearly visible with space to spare. ` +
     `Exactly ONE box in the whole image.${sizing} ` +
-    `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
+    `Exact same person — same face, same hairstyle, same outfit.${persona} ${bg} ` +
     `${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
@@ -216,7 +224,7 @@ export async function submitCompose(
     `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
     `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${relight}${textRule} ` +
-    `Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
+    `Exact same person — same face, same hairstyle, same outfit.${persona} ${bg} ` +
     `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}.${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
@@ -228,7 +236,7 @@ export async function submitCompose(
       : mode === "wear"
       ? `The exact person from the first image WEARING the ${productTitle || "item"} from the second image — ` +
         `worn naturally on their body the way it is meant to be worn, realistic fit, drape and placement, replacing any conflicting garment. ` +
-        `${integrity}${relight}${noSourceText} Same exact person: same face, same hairstyle, same skin tone. ${bg} ` +
+        `${integrity}${relight}${noSourceText} Same exact person: same face, same hairstyle, same skin tone.${persona} ${bg} ` +
         `Waist-up vertical portrait with a little clear headroom above the head, candid smartphone UGC style, photorealistic, natural skin texture, no distortion.`
       // SHORT ON PURPOSE.
       //

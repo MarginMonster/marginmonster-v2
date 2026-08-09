@@ -1236,6 +1236,10 @@ export async function runPresenterHold(opts: {
   /** Real longest dimension in cm (product-scale) — powers the gate's
    *  absolute head-height scale check. */
   cm?: number;
+  /** avatars.ts `continuity` — what stays true below this presenter's face.
+   *  Human presenters need nothing; a character does, or the composer gives
+   *  them ordinary human hands on the product. */
+  continuity?: string;
 }): Promise<PresenterHoldResult> {
   // LAYOUT. A hand-sized item gets held; anything bigger gets set down in
   // front of the presenter, which is how creators actually shoot it and the
@@ -1258,7 +1262,7 @@ export async function runPresenterHold(opts: {
     mode: "hold" | "wear" | "blank" | "showcase" = opts.wear ? "wear" : "hold",
     aspect?: number
   ): Promise<string | undefined> => {
-    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect, plan || undefined);
+    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect, plan || undefined, opts.continuity);
     // 3 minutes, not 90 seconds: a 4K compose regularly outlives the old
     // window, and an expired poll reads as "compose returned nothing" — the
     // render finishes anyway, billed, and thrown away.
@@ -2391,6 +2395,7 @@ export async function generateImageAd(
           const held = await runPresenterHold({
             portraitUrl, productImageUrl, productTitle, wear, scene,
             scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass, cm: scaleHint?.cm,
+            continuity: (await import("./avatars")).AVATAR_BY_ID[avatarId]?.continuity,
           });
           if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
           // A presenter holding something that merely RESEMBLES the product is

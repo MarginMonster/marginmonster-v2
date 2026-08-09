@@ -983,7 +983,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           productImageUrl: params.productImageUrl,
           productSize: params.productSize,
         });
-        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene, hint?.phrase);
+        const frames = await composeHoldingFrames(portraitPublicUrl, params.productImageUrl, params.productTitle, 1, params.wearProduct ? "wear" : "hold", params.scene, hint?.phrase, avatar.continuity);
         composedUrl = frames[0] || "";
         if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
       } catch (e) {
