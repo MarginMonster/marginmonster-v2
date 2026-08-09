@@ -1,0 +1,542 @@
+/* Campaigns on the WEB app — a month of content created and posted for the
+ * merchant, hands off.
+ *
+ * Deliberately NOT a port of app.campaigns.tsx. That page reads products
+ * straight out of the Shopify Admin API, which is exactly the assumption
+ * EasyMode does not get to make: this side has to work for a Wix store, a
+ * BigCommerce store or a plain website. So the product source here is the
+ * imported catalogue (CatalogProduct), which the Import tab fills from any
+ * storefront link.
+ *
+ * Everything below the route is shared with the embedded app — acceptQuestline,
+ * parseSchedule, abandonQuestline all key off shopId, not a Shopify session. */
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { Link, useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
+import { useState } from "react";
+import { db } from "../db.server";
+import { requireWebIdentity } from "../lib/web-auth.server";
+import { AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
+import { parseSchedule } from "../lib/questlines";
+import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
+import { acceptQuestline, abandonQuestline } from "../lib/questlines.server";
+import { linkedFromCache } from "../lib/social-provider.server";
+import { tokensRemainingLive } from "../lib/tokens.server";
+import { capabilitiesFor } from "../lib/capabilities.server";
+
+/* The four plans, in the order a merchant should read them: cheapest and
+ * safest first, so the ladder sells itself instead of the biggest number
+ * doing the talking. Mix and cost come from SOCIAL_PLAN_DEFS — token maths
+ * has exactly one source of truth. */
+const PLAN_ORDER = ["SOCIAL_FOUND", "SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMPIRE"];
+const PLAN_PITCH: Record<string, { badge: string; pitch: string; worth: string }> = {
+  SOCIAL_FOUND: { badge: "SEO", pitch: "Articles targeting what your buyers actually search, plus a steady feed of image posts. The cheapest customers you will ever get.", worth: "≈ $2,000 of agency SEO content" },
+  SOCIAL_STEADY: { badge: "Balanced", pitch: "A post nearly every day across video, image and article, so your feed never goes quiet and buyers never forget you.", worth: "≈ a $1,500/mo retainer" },
+  SOCIAL_VIRAL: { badge: "Video-heavy", pitch: "Presenter-led videos twice a week on top of a wall of image posts. You only need one of them to hit.", worth: "≈ $1,200 in UGC video alone" },
+  SOCIAL_EMPIRE: { badge: "Max", pitch: "The whole machine. Drops every single day across every platform — some brands post, yours is simply always there.", worth: "≈ a $4,000/mo growth agency" },
+};
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+const STATUS_LABEL: Record<string, string> = {
+  SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready", POSTED: "Posted", FAILED: "Needs a retry",
+};
+
+function monthGrid(year: number, month0: number): number[][] {
+  const first = new Date(Date.UTC(year, month0, 1)).getUTCDay();
+  const days = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate();
+  const cells: number[] = [];
+  for (let i = 0; i < first; i++) cells.push(0);
+  for (let d = 1; d <= days; d++) cells.push(d);
+  while (cells.length % 7) cells.push(0);
+  const weeks: number[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+function fmtWhen(dateStr: string, timeStr: string): string {
+  const [, m, d] = dateStr.split("-").map(Number);
+  const h = parseInt((timeStr || "12:00").slice(0, 2), 10);
+  const mm = (timeStr || "12:00").slice(3, 5);
+  const ap = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${MON[(m || 1) - 1]} ${d} · ${mm === "00" ? `${h12}${ap}` : `${h12}:${mm}${ap}`}`;
+}
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { account, shop } = await requireWebIdentity(request);
+  const full = await db.shop.findUnique({
+    where: { id: shop.id },
+    include: { activePlan: true, questlines: { orderBy: { createdAt: "desc" }, take: 20 } },
+  });
+
+  const url = new URL(request.url);
+  const now = new Date();
+  let year = now.getUTCFullYear();
+  let month0 = now.getUTCMonth();
+  const ym = /^(\d{4})-(\d{2})$/.exec(url.searchParams.get("ym") || "");
+  if (ym) {
+    const yy = parseInt(ym[1], 10);
+    const mm = parseInt(ym[2], 10) - 1;
+    if (yy >= 2000 && yy <= 2100 && mm >= 0 && mm <= 11) { year = yy; month0 = mm; }
+  }
+  const todayDay = now.getUTCFullYear() === year && now.getUTCMonth() === month0 ? now.getUTCDate() : 0;
+  const ymStr = (y: number, m0: number) => `${y}-${String(m0 + 1).padStart(2, "0")}`;
+
+  const todayStr = now.toISOString().slice(0, 10);
+  const dropMap: Record<number, { video: number; image: number; blog: number }> = {};
+  const campaigns: {
+    id: string; name: string; status: string; image: string | null;
+    posted: number; total: number; next: string | null;
+    upcoming: { when: string; type: string; product: string; status: string }[];
+  }[] = [];
+
+  for (const q of full?.questlines ?? []) {
+    if (q.status === "COMPLETE") continue;
+    const slots = parseSchedule(q.scheduleJson).slots;
+    let posted = 0;
+    let next: { date: string; time: string } | null = null;
+    for (const s of slots) {
+      if (s.status === "POSTED") posted++;
+      const [y, m, d] = s.date.split("-").map(Number);
+      if (y === year && m - 1 === month0 && (s.type === "video" || s.type === "image" || s.type === "blog")) {
+        const cell = (dropMap[d] = dropMap[d] || { video: 0, image: 0, blog: 0 });
+        cell[s.type]++;
+      }
+      if ((s.status === "SCHEDULED" || s.status === "READY" || s.status === "FORGING") && s.date >= todayStr) {
+        if (!next || s.date < next.date || (s.date === next.date && s.time < next.time)) next = { date: s.date, time: s.time };
+      }
+    }
+    if (q.template === "MANUAL") continue; // one-off container, not a campaign
+    const upcoming = slots
+      .filter((s) => (s.type === "video" || s.type === "image" || s.type === "blog") && s.date >= todayStr)
+      .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
+      .slice(0, 6)
+      .map((s) => ({ when: fmtWhen(s.date, s.time), type: s.type, product: s.productTitle || "", status: s.status }));
+    campaigns.push({
+      id: q.id, name: q.name, status: q.status, image: q.productImageUrl,
+      posted, total: slots.length,
+      next: next ? fmtWhen(next.date, next.time) : null,
+      upcoming,
+    });
+  }
+
+  const allowance = tokensRemainingLive(full?.activePlan);
+  const caps = [...capabilitiesFor(full?.activePlan)] as string[];
+  const hasVideo = caps.includes("video");
+  const plans = PLAN_ORDER.map((key) => {
+    const def = SOCIAL_PLAN_DEFS.find((d) => d.key === key)!;
+    const mix = { video: 0, image: 0, blog: 0 };
+    for (const o of def.objectives) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
+    const cost = questlineTokenCost(def);
+    const videoLocked = mix.video > 0 && !hasVideo;
+    return {
+      key, name: def.name, icon: def.icon, cadence: def.cadence, bagSize: def.bagSize,
+      ...PLAN_PITCH[key], mix, cost, drops: mix.video + mix.image + mix.blog,
+      videoLocked, affordable: !videoLocked && allowance >= cost,
+    };
+  });
+
+  const custom = await (async () => {
+    const { customCastFor } = await import("../lib/custom-avatars.server");
+    return customCastFor(shop.id);
+  })();
+  const cast = [
+    ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img })),
+    ...[...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) })),
+  ];
+
+  const catalog = await db.catalogProduct.findMany({
+    where: { shopId: shop.id },
+    orderBy: { position: "asc" },
+    take: 200,
+    select: { title: true, url: true, imageUrl: true },
+  });
+
+  return json({
+    plans,
+    campaigns,
+    cast,
+    catalog,
+    brandFaceId: full?.brandAvatarId && cast.some((c) => c.id === full.brandAvatarId) ? full.brandAvatarId : null,
+    linked: full ? linkedFromCache(full.socialsJson) : [],
+    hasPlan: !!full?.activePlan?.active,
+    tokens: allowance,
+    weeks: monthGrid(year, month0),
+    monthLabel: `${MONTHS[month0]} ${year}`,
+    todayDay,
+    dropMap,
+    prevYm: ymStr(month0 === 0 ? year - 1 : year, month0 === 0 ? 11 : month0 - 1),
+    nextYm: ymStr(month0 === 11 ? year + 1 : year, month0 === 11 ? 0 : month0 + 1),
+  });
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop } = await requireWebIdentity(request);
+  const form = await request.formData();
+  const intent = form.get("intent") as string;
+
+  if (intent === "launch") {
+    let bag: { title: string; image: string | null; url?: string | null }[] = [];
+    try { bag = JSON.parse((form.get("products") as string) || "[]"); } catch { /* empty */ }
+    if (!bag.length) return json({ error: "Pick at least one product for the campaign to feature." });
+    const res = await acceptQuestline({
+      shopId: shop.id,
+      templateKey: (form.get("plan") as string) || "",
+      avatarId: ((form.get("avatarId") as string) || "").trim() || null,
+      avatarVariant: 0,
+      reviewMode: (form.get("reviewMode") as "REVIEW_FIRST" | "SET_AND_FORGET") || "REVIEW_FIRST",
+      bag,
+      platforms: (() => { try { return JSON.parse((form.get("platforms") as string) || "[]"); } catch { return []; } })(),
+    });
+    return json(res.ok ? { launched: true } : { error: res.error });
+  }
+  if (intent === "pauseToggle") {
+    const id = (form.get("campaignId") as string) || "";
+    const q = await db.questline.findFirst({ where: { id, shopId: shop.id } });
+    if (q && q.status !== "COMPLETE") {
+      await db.questline.update({ where: { id }, data: { status: q.status === "ACTIVE" ? "PAUSED" : "ACTIVE" } });
+    }
+    return json({ ok: true });
+  }
+  if (intent === "stop") {
+    const res = await abandonQuestline(shop.id, (form.get("campaignId") as string) || "");
+    return json({ stopped: true, refunded: res.refunded });
+  }
+  return json({ ok: true });
+};
+
+export default function WebCampaigns() {
+  const d = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const submit = useSubmit();
+  const nav = useNavigation();
+  const busy = nav.state !== "idle";
+
+  const [planKey, setPlanKey] = useState(d.plans[1]?.key || d.plans[0]?.key || "");
+  const plan = d.plans.find((p) => p.key === planKey) || d.plans[0];
+  const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
+  const [castQ, setCastQ] = useState("");
+  const [picked, setPicked] = useState<number[]>(d.catalog.length ? [0] : []);
+  const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("REVIEW_FIRST");
+  const [showLaunch, setShowLaunch] = useState(d.campaigns.length === 0);
+
+  const needle = castQ.trim().toLowerCase();
+  const castShown = needle
+    ? d.cast.filter((c) => c.name.toLowerCase().includes(needle) || c.id === avatarId)
+    : d.cast;
+
+  const cap = plan?.bagSize ?? 6;
+  const toggleProduct = (i: number) =>
+    setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length >= cap ? p : [...p, i]));
+
+  const launch = () => {
+    if (!plan) return;
+    submit(
+      {
+        intent: "launch",
+        plan: plan.key,
+        avatarId: avatarId ?? "",
+        reviewMode,
+        platforms: JSON.stringify(d.linked),
+        products: JSON.stringify(picked.map((i) => d.catalog[i]).filter(Boolean).map((p) => ({ title: p.title, image: p.imageUrl, url: p.url }))),
+      },
+      { method: "post" }
+    );
+  };
+
+  return (
+    <div className="wc">
+      <style>{WC_STYLE}</style>
+
+      <div className="wc-head">
+        <div>
+          <h1>Campaigns</h1>
+          <p>A month of content, created and posted for you. Pick a plan once — it runs itself from there.</p>
+        </div>
+        {d.campaigns.length > 0 && (
+          <button type="button" className="wb-btn wc-newbtn" onClick={() => setShowLaunch((s) => !s)}>
+            {showLaunch ? "Close" : "New campaign"}
+          </button>
+        )}
+      </div>
+
+      {actionData && "error" in actionData && actionData.error
+        ? <div className="wb-err">{String(actionData.error)}</div> : null}
+      {actionData && "launched" in actionData && actionData.launched
+        ? <p className="wc-ok">Campaign is live — the first drops are being created now.</p> : null}
+
+      {/* ---- running campaigns ---- */}
+      {d.campaigns.length > 0 && (
+        <section className="wc-sec">
+          <div className="wc-lbl">Running</div>
+          <div className="wc-cards">
+            {d.campaigns.map((c) => (
+              <div className={`wc-card${c.status === "PAUSED" ? " paused" : ""}`} key={c.id}>
+                <div className="wc-card-top">
+                  <span className="wc-card-img" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined} />
+                  <div className="wc-card-id">
+                    <b>{c.name}</b>
+                    <span>{c.status === "PAUSED" ? "Paused" : c.next ? `Next drop ${c.next}` : "All drops posted"}</span>
+                  </div>
+                </div>
+                <div className="wc-bar" role="img" aria-label={`${c.posted} of ${c.total} posted`}>
+                  <span style={{ width: `${c.total ? Math.round((c.posted / c.total) * 100) : 0}%` }} />
+                </div>
+                <div className="wc-prog">{c.posted} of {c.total} posted</div>
+                {c.upcoming.length > 0 && (
+                  <ul className="wc-next">
+                    {c.upcoming.map((u, i) => (
+                      <li key={i}>
+                        <span className={`wc-dot t-${u.type}`} />
+                        <span className="wc-when">{u.when}</span>
+                        <span className="wc-what">{u.product || u.type}</span>
+                        <span className="wc-st">{STATUS_LABEL[u.status] || u.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="wc-card-acts">
+                  <button type="button" disabled={busy}
+                    onClick={() => submit({ intent: "pauseToggle", campaignId: c.id }, { method: "post" })}>
+                    {c.status === "PAUSED" ? "Resume" : "Pause"}
+                  </button>
+                  <button type="button" className="danger" disabled={busy}
+                    onClick={() => { if (confirm(`Stop "${c.name}"? Unposted drops are cancelled and their tokens refunded.`)) submit({ intent: "stop", campaignId: c.id }, { method: "post" }); }}>
+                    Stop
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ---- the month ---- */}
+      <section className="wc-sec">
+        <div className="wc-lbl wc-lblrow">
+          <span>{d.monthLabel}</span>
+          <span className="wc-mnav">
+            <Link to={`?ym=${d.prevYm}`} aria-label="Previous month">‹</Link>
+            <Link to={`?ym=${d.nextYm}`} aria-label="Next month">›</Link>
+          </span>
+        </div>
+        <div className="wc-cal">
+          {DOW.map((x, i) => <div className="wc-dow" key={i}>{x}</div>)}
+          {d.weeks.flat().map((day, i) => {
+            const cell = day ? d.dropMap[day] : null;
+            const n = cell ? cell.video + cell.image + cell.blog : 0;
+            return (
+              <div className={`wc-day${day === 0 ? " blank" : ""}${day === d.todayDay ? " today" : ""}`} key={i}>
+                {day > 0 && <span className="wc-dnum">{day}</span>}
+                {n > 0 && (
+                  <span className="wc-pips">
+                    {cell!.video > 0 && <i className="t-video" title={`${cell!.video} video`} />}
+                    {cell!.image > 0 && <i className="t-image" title={`${cell!.image} image`} />}
+                    {cell!.blog > 0 && <i className="t-blog" title={`${cell!.blog} article`} />}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="wc-key">
+          <span><i className="t-video" /> Video</span>
+          <span><i className="t-image" /> Image</span>
+          <span><i className="t-blog" /> Article</span>
+        </div>
+      </section>
+
+      {/* ---- launch a new one ---- */}
+      {showLaunch && (
+        <section className="wc-sec">
+          <div className="wc-lbl">Start a campaign</div>
+
+          <div className="wc-plans">
+            {d.plans.map((p) => (
+              <button type="button" key={p.key} className={`wc-plan${p.key === planKey ? " sel" : ""}${p.videoLocked ? " locked" : ""}`}
+                onClick={() => setPlanKey(p.key)} aria-pressed={p.key === planKey}>
+                <span className="wc-plan-top">
+                  <span className="wc-plan-ic" aria-hidden="true">{p.icon}</span>
+                  <span className="wc-badge">{p.badge}</span>
+                </span>
+                <b>{p.name}</b>
+                <span className="wc-plan-mix">
+                  {p.mix.video > 0 && <em>{p.mix.video} video</em>}
+                  {p.mix.image > 0 && <em>{p.mix.image} image</em>}
+                  {p.mix.blog > 0 && <em>{p.mix.blog} article</em>}
+                </span>
+                <span className="wc-plan-pitch">{p.pitch}</span>
+                <span className="wc-plan-foot">
+                  <span>{p.drops} drops · {p.cadence}</span>
+                  <span className={p.videoLocked ? "bad" : p.affordable ? "ok" : "warn"}>
+                    {p.videoLocked
+                      ? "Video unlocks on the Studio plan"
+                      : p.affordable
+                        ? `${p.cost.toLocaleString()} of your ${d.tokens.toLocaleString()} tokens`
+                        : `${p.cost.toLocaleString()} tokens — top up to run this`}
+                  </span>
+                </span>
+                <span className="wc-worth">{p.worth}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* presenter */}
+          <div className="wc-lbl sm">Who stars in it</div>
+          <div className="ws-castsearch">
+            <input className="wb-in" type="search" value={castQ} placeholder={`Search ${d.cast.length} presenters by name…`}
+              onChange={(e) => setCastQ(e.target.value)} aria-label="Search presenters by name" />
+            {needle && <button type="button" className="ws-cs-clr" onClick={() => setCastQ("")} aria-label="Clear search">✕</button>}
+          </div>
+          {needle && castShown.length === 0 && <p className="wc-hint">No presenter called “{castQ.trim()}”.</p>}
+          <div className="wc-cast">
+            {castShown.map((c) => (
+              <button type="button" key={c.id} className={`wc-face${avatarId === c.id ? " sel" : ""}`}
+                onClick={() => setAvatarId(c.id)} aria-pressed={avatarId === c.id}>
+                <span className="wc-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
+                <span>{c.id === d.brandFaceId ? "★ Brand face" : c.name}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* products */}
+          <div className="wc-lbl sm">What it features <span className="wc-cap">{picked.length} of {cap}</span></div>
+          {d.catalog.length === 0 ? (
+            <p className="wc-hint">
+              No products imported yet — <Link to="/web/studio?tab=import">pull your store in</Link> and they will appear here.
+            </p>
+          ) : (
+            <div className="wc-prods">
+              {d.catalog.map((p, i) => (
+                <button type="button" key={i} title={p.title}
+                  className={`wc-prod${picked.includes(i) ? " sel" : ""}`}
+                  onClick={() => toggleProduct(i)} aria-pressed={picked.includes(i)}>
+                  <span className="wc-prod-img" style={p.imageUrl ? { backgroundImage: `url(${p.imageUrl})` } : undefined}>
+                    {picked.includes(i) && <b>✓</b>}
+                  </span>
+                  <span className="wc-prod-nm">{p.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* review mode */}
+          <div className="wc-lbl sm">Before it posts</div>
+          <div className="ws-seg">
+            <button type="button" className={reviewMode === "REVIEW_FIRST" ? "sel" : ""} onClick={() => setReviewMode("REVIEW_FIRST")}>
+              Let me approve each drop
+            </button>
+            <button type="button" className={reviewMode === "SET_AND_FORGET" ? "sel" : ""} onClick={() => setReviewMode("SET_AND_FORGET")}>
+              Post automatically
+            </button>
+          </div>
+          <p className="wc-hint">
+            {d.linked.length
+              ? `Posting to ${d.linked.join(", ")}.`
+              : <>No accounts connected yet — drops will be saved to your Archive. <Link to="/web/connect">Connect auto-posting</Link>.</>}
+          </p>
+
+          <button type="button" className="wb-btn wc-go" disabled={busy || !picked.length || !plan || plan.videoLocked} onClick={launch}>
+            {busy ? "Starting…" : `Start ${plan?.name || "campaign"}`}
+          </button>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const WC_STYLE = `
+.wc{max-width:1080px;margin:0 auto;padding:4px 0 40px}
+.wc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.wc-head h1{font-family:Poppins,sans-serif;font-size:26px;font-weight:800;margin:0 0 4px;color:var(--ink,#14201A)}
+.wc-head p{margin:0;font-size:13.5px;color:var(--ink2,#4A554E);max-width:56ch}
+.wc-newbtn{flex:0 0 auto;padding:9px 18px;font-size:13px}
+.wc-ok{margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#F0FAF4;border:1px solid #12A85E;color:#0C7A46;font-size:13.5px;font-weight:600}
+.wc-sec{margin:0 0 30px}
+.wc-lbl{font-family:Poppins,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2,#4A554E);margin:0 0 10px}
+.wc-lbl.sm{margin-top:22px}
+.wc-lblrow{display:flex;align-items:center;justify-content:space-between}
+.wc-cap{font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink3,#8A938D)}
+.wc-mnav{display:flex;gap:6px}
+.wc-mnav a{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;border:1px solid var(--line,#E4DFCF);color:var(--ink,#14201A);text-decoration:none;font-size:15px;line-height:1}
+.wc-mnav a:hover{border-color:#12A85E;color:#0C7A46}
+.wc-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:8px 0 0}
+
+/* running campaigns */
+.wc-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.wc-card{border:1px solid var(--line,#E4DFCF);border-radius:16px;background:var(--card,#FDFCF7);padding:14px}
+.wc-card.paused{opacity:.72}
+.wc-card-top{display:flex;gap:11px;align-items:center;margin-bottom:11px}
+.wc-card-img{flex:0 0 auto;width:42px;height:42px;border-radius:10px;background:var(--paper,#F4F1E6) center/cover no-repeat;border:1px solid var(--line,#E4DFCF)}
+.wc-card-id b{display:block;font-size:14px;color:var(--ink,#14201A)}
+.wc-card-id span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:2px}
+.wc-bar{height:5px;border-radius:999px;background:var(--paper,#F4F1E6);overflow:hidden}
+.wc-bar span{display:block;height:100%;background:#12A85E;border-radius:999px}
+.wc-prog{font-size:11.5px;color:var(--ink2,#4A554E);margin:5px 0 0;font-variant-numeric:tabular-nums}
+.wc-next{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:5px}
+.wc-next li{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink2,#4A554E)}
+.wc-dot{flex:0 0 auto;width:7px;height:7px;border-radius:50%}
+.wc-when{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--ink,#14201A);font-weight:600}
+.wc-what{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wc-st{flex:0 0 auto;font-size:10.5px;color:var(--ink3,#8A938D)}
+.wc-card-acts{display:flex;gap:8px;margin-top:13px}
+.wc-card-acts button{flex:1;padding:7px 10px;border-radius:10px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink,#14201A);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.wc-card-acts button:hover{border-color:#12A85E}
+.wc-card-acts button.danger{color:#A33232}
+.wc-card-acts button.danger:hover{border-color:#A33232}
+
+/* calendar */
+.wc-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.wc-dow{text-align:center;font-size:10.5px;font-weight:800;color:var(--ink3,#8A938D);padding-bottom:3px}
+.wc-day{position:relative;aspect-ratio:1;border:1px solid var(--line,#E4DFCF);border-radius:9px;background:var(--card,#FDFCF7);padding:5px;display:flex;flex-direction:column;justify-content:space-between}
+.wc-day.blank{border-color:transparent;background:none}
+.wc-day.today{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E}
+.wc-dnum{font-size:11px;font-weight:700;color:var(--ink2,#4A554E);font-variant-numeric:tabular-nums}
+.wc-pips{display:flex;gap:3px;flex-wrap:wrap}
+.wc-pips i,.wc-key i,.wc-dot{display:inline-block}
+.wc-pips i{width:6px;height:6px;border-radius:50%}
+.t-video{background:#12A85E}.t-image{background:#B08526}.t-blog{background:#3B7EA1}
+.wc-key{display:flex;gap:14px;margin-top:9px;font-size:11.5px;color:var(--ink2,#4A554E)}
+.wc-key i{width:7px;height:7px;border-radius:50%;margin-right:5px}
+
+/* plan picker */
+.wc-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.wc-plan{display:flex;flex-direction:column;gap:7px;text-align:left;padding:14px;border-radius:16px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font:inherit;color:var(--ink,#14201A)}
+.wc-plan.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F7FCF9}
+.wc-plan.locked{opacity:.72}
+.wc-plan-top{display:flex;align-items:center;justify-content:space-between}
+.wc-plan-ic{font-size:20px}
+.wc-badge{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#7E5E13;background:#FFFBEF;border:1px solid #E7C879;border-radius:999px;padding:2px 8px}
+.wc-plan b{font-family:Poppins,sans-serif;font-size:15px}
+.wc-plan-mix{display:flex;flex-wrap:wrap;gap:5px}
+.wc-plan-mix em{font-style:normal;font-size:11px;font-weight:700;color:var(--ink2,#4A554E);background:var(--paper,#F4F1E6);border-radius:999px;padding:2px 8px}
+.wc-plan-pitch{font-size:12.5px;color:var(--ink2,#4A554E);line-height:1.5}
+.wc-plan-foot{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--ink2,#4A554E);margin-top:2px}
+.wc-plan-foot .ok{color:#0C7A46;font-weight:700}
+.wc-plan-foot .warn{color:#7E5E13;font-weight:700}
+.wc-plan-foot .bad{color:#A33232;font-weight:700}
+.wc-worth{font-size:11px;color:var(--ink3,#8A938D);border-top:1px solid var(--line,#E4DFCF);padding-top:7px}
+
+/* cast + products */
+.wc-cast{display:flex;gap:11px;overflow-x:auto;padding:2px 2px 8px}
+.wc-face{flex:0 0 auto;width:66px;border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:center;color:var(--ink,#14201A)}
+.wc-face-img{position:relative;display:block;width:66px;height:88px;border-radius:11px;background:var(--paper,#F4F1E6) center/cover no-repeat;border:1px solid var(--line,#E4DFCF)}
+.wc-face.sel .wc-face-img{border-color:#12A85E;box-shadow:0 0 0 2px rgba(18,168,94,.35)}
+.wc-face-img b{position:absolute;inset:auto 4px 4px auto;width:18px;height:18px;border-radius:50%;background:#12A85E;color:#fff;font-size:11px;display:grid;place-items:center}
+.wc-face span{display:block;font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wc-prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:11px;max-height:300px;overflow-y:auto;padding:2px}
+.wc-prod{border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:center;color:var(--ink,#14201A)}
+.wc-prod-img{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:11px;background:var(--paper,#F4F1E6) center/cover no-repeat;border:1px solid var(--line,#E4DFCF)}
+.wc-prod.sel .wc-prod-img{border-color:#12A85E;box-shadow:0 0 0 2px rgba(18,168,94,.35)}
+.wc-prod-img b{position:absolute;inset:auto 4px 4px auto;width:18px;height:18px;border-radius:50%;background:#12A85E;color:#fff;font-size:11px;display:grid;place-items:center}
+.wc-prod-nm{display:block;font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wc-go{margin-top:18px;padding:12px 26px;font-size:14px}
+
+@media (max-width:640px){
+  .wc-head h1{font-size:22px}
+  .wc-cal{gap:3px}
+  .wc-day{border-radius:7px;padding:3px}
+  .wc-dnum{font-size:10px}
+}
+`;
