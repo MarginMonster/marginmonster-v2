@@ -114,7 +114,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const forged = shop ? await customCastFor(shop.id) : [];
   const cast = [
     ...forged.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
-    ...[...privateCastFor(session.shop), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
+    ...[...privateCastFor(session.shop, shop?.id), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
   ];
   const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 

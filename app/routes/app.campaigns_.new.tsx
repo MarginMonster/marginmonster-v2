@@ -78,7 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // FULL Studio cast — the campaign picker carries every presenter, same as
   // the Content Studio (it's a horizontal scroller, so the row scales).
-  const cast = [...privateCastFor(session.shop), ...AVATARS].map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
+  const cast = [...privateCastFor(session.shop, shop?.id), ...AVATARS].map((a) => ({ id: a.id, name: a.name, vibe: a.vibe, img: avatarImg(a.id, 0) }));
 
   return json({
     hasPlan: !!plan?.active,

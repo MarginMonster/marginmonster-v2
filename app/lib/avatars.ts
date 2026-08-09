@@ -84,12 +84,31 @@ export const PRIVATE_AVATARS: Array<Avatar & { owners: string[] }> = [
   },
 ];
 
-/** The private presenters this identity owns (web email or shop domain). */
-export function privateCastFor(identity?: string | null): Avatar[] {
-  const id = (identity || "").trim().toLowerCase();
-  if (!id) return [];
+/** The private presenters these identities own.
+ *
+ *  Takes SEVERAL identities on purpose — a person is their web account email,
+ *  their shop id and their store domain, and which one a given route happens
+ *  to hold is an implementation detail the caller shouldn't have to think
+ *  about. The single-identity version failed silently and invisibly: sign up
+ *  with a different address than the one hardcoded below and your own private
+ *  avatar just isn't in the picker, with nothing to explain why.
+ *
+ *  PRIVATE_AVATAR_OWNERS (comma-separated) extends the list from the
+ *  environment, so adding an owner is a config change rather than a deploy —
+ *  a hardcoded email in source is a bad place to keep something a merchant
+ *  can change in their account settings. */
+export function privateCastFor(...identities: (string | null | undefined)[]): Avatar[] {
+  const envOwners = (process.env.PRIVATE_AVATAR_OWNERS || "")
+    .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const mine = identities
+    .map((i) => (i || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (!mine.length) return [];
   return PRIVATE_AVATARS
-    .filter((a) => a.owners.some((o) => o.toLowerCase() === id))
+    .filter((a) => {
+      const owners = [...a.owners.map((o) => o.toLowerCase()), ...envOwners];
+      return owners.some((o) => mine.includes(o));
+    })
     .map(({ owners: _owners, ...a }) => a);
 }
 

@@ -143,7 +143,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   })();
   const cast = [
     ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img })),
-    ...[...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) })),
+    ...[...privateCastFor(account.email, shop.id, shop.domain), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) })),
   ];
 
   const catalog = await db.catalogProduct.findMany({

@@ -82,7 +82,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const custom = await customCastFor(shop.id);
   const cast = [
     ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
-    ...[...privateCastFor(account.email), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
+    ...[...privateCastFor(account.email, shop.id, shop.domain), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
   ];
   const forgingAvatars = custom
     .filter((c) => c.status !== "ready")
