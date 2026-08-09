@@ -105,8 +105,31 @@ export async function submitCompose(
   const textRule = ` Copy all packaging lettering letter-for-letter from the reference photo, reading in the same direction — never mirrored, flipped or reversed. Any print too small to reproduce cleanly must appear softly out of focus, the way fine print looks in a real photograph — never invented, scrambled or rearranged letters.${plan?.textElements?.length ? ` The packaging clearly shows: ${plan.textElements.join(", ")}.` : ""}`;
   // Scene: when the merchant gives a setting/action, put the presenter IN it
   // (drops the "same background" lock); otherwise keep their original backdrop.
-  const s = (scene || "").trim().slice(0, 220);
-  const bg = s ? `Setting: ${s}, with natural matching lighting.` : `Keep the same background and lighting as the first image.`;
+  //
+  // BUT ONLY IF IT IS ACTUALLY A SETTING. Any non-empty direction used to take
+  // over the shot, and merchants type notes as often as scenes: "make it pop",
+  // "brighter", "more premium". Those produced `Setting: make it pop, with
+  // natural matching lighting.` — nonsense as a location — AND stood our
+  // staging down, so the quality floor switched itself off for the requests
+  // least able to replace it.
+  //
+  // A note is still worth honouring; it just isn't a place. Scene-like
+  // direction directs the shot; everything else rides along as a style note
+  // with the staging left standing. Deliberately a dumb deterministic check —
+  // an LLM call here would add latency and a failure mode to every compose.
+  const raw = (scene || "").trim().slice(0, 220);
+  const looksLikeScene = (t: string): boolean => {
+    if (!t) return false;
+    const words = t.split(/\s+/).length;
+    // a place or an action, the two things that relocate a shot
+    if (/\b(in|at|on|inside|outside|beside|behind|near|by the|next to|during|while|mid-)\b/i.test(t)) return true;
+    if (/\b(kitchen|bathroom|bedroom|office|gym|studio|street|beach|park|garden|counter|desk|table|car|shop|store|cafe|window|outdoors|indoors)\b/i.test(t)) return true;
+    // long enough to be describing rather than adjusting
+    return words >= 8;
+  };
+  const s = looksLikeScene(raw) ? raw : "";
+  const styleNote = !s && raw ? ` Overall look the merchant asked for: ${raw}.` : "";
+  const bg = s ? `Setting: ${s}, with natural matching lighting.` : `Keep the same background and lighting as the first image.${styleNote}`;
   // WHO DIRECTS THE SHOT. When the merchant typed direction (scene), they are
   // the director: our staging clauses step aside so "mid-workout at the gym"
   // is not fought by "held at chest height below the chin". Only the FACTS
