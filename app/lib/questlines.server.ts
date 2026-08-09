@@ -32,13 +32,24 @@ const POST_TIME: Record<ObjectiveType, string> = {
 /** Lay the quest's deliverables across the monthly segment: front-load
  *  slightly (first drop on day 2), space evenly, interleave types so the
  *  calendar feels varied, round-robin backpack items for even coverage. */
-export function buildSchedule(templateKey: string, bag: BagItem[], start: Date): QuestSlot[] {
+export function buildSchedule(
+  templateKey: string,
+  bag: BagItem[],
+  start: Date,
+  /** Content types this surface cannot actually deliver. The web app can't
+   *  publish articles — there is no Online Store blog behind a
+   *  web-<id>.easymode.app shop — so scheduling one would park a slot that
+   *  retries every five minutes and never posts. Dropping it beats shipping
+   *  a drop that can't land. */
+  excludeTypes: ObjectiveType[] = []
+): QuestSlot[] {
   const def = QUESTLINE_BY_KEY[templateKey];
   if (!def) return [];
   // Expand content objectives (posts mirror content, they don't get own slots)
   const pieces: ObjectiveType[] = [];
   for (const o of def.objectives) {
     if (o.type === "post") continue;
+    if (excludeTypes.includes(o.type)) continue;
     for (let i = 0; i < o.target; i++) pieces.push(o.type);
   }
   // Interleave types: sort by fractional position within their own type count
@@ -91,6 +102,11 @@ export async function acceptQuestline(params: {
   reviewMode: "REVIEW_FIRST" | "SET_AND_FORGET";
   bag: BagItem[];
   platforms?: string[]; // Social Media Plans: post this plan ONLY to these accounts
+  /** Content types the calling surface can't deliver — see buildSchedule.
+   *  Excluded types are dropped from the schedule, the objectives AND the
+   *  price: charging a month of articles to a shop that can never publish one
+   *  would be taking money for nothing. */
+  excludeTypes?: ObjectiveType[];
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const def = QUESTLINE_BY_KEY[params.templateKey];
   if (!def) return { ok: false, error: "Unknown questline." };
@@ -110,17 +126,25 @@ export async function acceptQuestline(params: {
     return { ok: false, error: "This plan includes videos, which unlock on the Studio plan ($59/mo). Run Get Found on Starter, or upgrade to launch this one." };
   }
 
-  const cost = questlineCostFor(def, shop.activePlan.type); // top-tier price break applies here
+  const excluded = params.excludeTypes || [];
+  const usable = def.objectives.filter((o) => !excluded.includes(o.type));
+  if (!usable.some((o) => o.target > 0)) {
+    return { ok: false, error: "Nothing in this plan can be posted to your connected accounts." };
+  }
+  // Price the plan we are ACTUALLY going to run, not the one on the shelf.
+  const cost = excluded.length
+    ? questlineCostFor({ ...def, objectives: usable }, shop.activePlan.type)
+    : questlineCostFor(def, shop.activePlan.type); // top-tier price break applies here
   try {
     await spendTokens(params.shopId, cost); // the whole month, reserved upfront
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
   }
 
-  const objectives: Objective[] = def.objectives.map((o, i) => ({
+  const objectives: Objective[] = usable.map((o, i) => ({
     key: `${o.type}-${i}`, label: o.label, type: o.type, target: o.target, done: 0,
   }));
-  const slots = buildSchedule(def.key, bag, new Date());
+  const slots = buildSchedule(def.key, bag, new Date(), excluded);
   const schedule: QuestSchedule = { slots, weeksAwarded: [], ...(params.platforms?.length ? { platforms: params.platforms } : {}) };
 
   const q = await db.questline.create({

@@ -28,10 +28,15 @@ import { capabilitiesFor } from "../lib/capabilities.server";
  * safest first, so the ladder sells itself instead of the biggest number
  * doing the talking. Mix and cost come from SOCIAL_PLAN_DEFS — token maths
  * has exactly one source of truth. */
-const PLAN_ORDER = ["SOCIAL_FOUND", "SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMPIRE"];
+/* "Get Found" is missing on purpose. It is 14 SEO articles plus 20 image
+ * posts, and articles cannot auto-publish from the web app — there is no
+ * Online Store blog behind a web-<id>.easymode.app shop. Stripped of its
+ * articles it is not the plan its name sells, so it belongs to the embedded
+ * app until the web side has a real publishing destination. */
+const PLAN_ORDER = ["SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMPIRE"];
 const PLAN_PITCH: Record<string, { badge: string; pitch: string; worth: string }> = {
   SOCIAL_FOUND: { badge: "SEO", pitch: "Articles targeting what your buyers actually search, plus a steady feed of image posts. The cheapest customers you will ever get.", worth: "≈ $2,000 of agency SEO content" },
-  SOCIAL_STEADY: { badge: "Balanced", pitch: "A post nearly every day across video, image and article, so your feed never goes quiet and buyers never forget you.", worth: "≈ a $1,500/mo retainer" },
+  SOCIAL_STEADY: { badge: "Balanced", pitch: "A post nearly every day across video and image, so your feed never goes quiet and buyers never forget you.", worth: "≈ a $1,500/mo retainer" },
   SOCIAL_VIRAL: { badge: "Video-heavy", pitch: "Presenter-led videos twice a week on top of a wall of image posts. You only need one of them to hit.", worth: "≈ $1,200 in UGC video alone" },
   SOCIAL_EMPIRE: { badge: "Max", pitch: "The whole machine. Drops every single day across every platform — some brands post, yours is simply always there.", worth: "≈ a $4,000/mo growth agency" },
 };
@@ -39,6 +44,18 @@ const PLAN_PITCH: Record<string, { badge: string; pitch: string; worth: string }
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
+const pad = (n: number) => String(n).padStart(2, "0");
+/** "2 Video" / "Image" — a count only when it earns one. Labels beat dots:
+ *  a merchant scanning the month wants to know WHAT lands, not just that
+ *  something does. */
+function typeLines(day: { video: number; image: number }): string[] {
+  const out: string[] = [];
+  if (day.video) out.push(`${day.video > 1 ? day.video + " " : ""}Video`);
+  if (day.image) out.push(`${day.image > 1 ? day.image + " " : ""}Image`);
+  return out;
+}
+
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready", POSTED: "Posted", FAILED: "Needs a retry",
 };
@@ -84,7 +101,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const ymStr = (y: number, m0: number) => `${y}-${String(m0 + 1).padStart(2, "0")}`;
 
   const todayStr = now.toISOString().slice(0, 10);
-  const dropMap: Record<number, { video: number; image: number; blog: number }> = {};
+  const dropMap: Record<number, { video: number; image: number }> = {};
   const campaigns: {
     id: string; name: string; status: string; image: string | null;
     posted: number; total: number; next: string | null;
@@ -99,8 +116,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     for (const s of slots) {
       if (s.status === "POSTED") posted++;
       const [y, m, d] = s.date.split("-").map(Number);
-      if (y === year && m - 1 === month0 && (s.type === "video" || s.type === "image" || s.type === "blog")) {
-        const cell = (dropMap[d] = dropMap[d] || { video: 0, image: 0, blog: 0 });
+      if (y === year && m - 1 === month0 && (s.type === "video" || s.type === "image")) {
+        const cell = (dropMap[d] = dropMap[d] || { video: 0, image: 0 });
         cell[s.type]++;
       }
       if ((s.status === "SCHEDULED" || s.status === "READY" || s.status === "FORGING") && s.date >= todayStr) {
@@ -126,13 +143,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const hasVideo = caps.includes("video");
   const plans = PLAN_ORDER.map((key) => {
     const def = SOCIAL_PLAN_DEFS.find((d) => d.key === key)!;
-    const mix = { video: 0, image: 0, blog: 0 };
-    for (const o of def.objectives) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
-    const cost = questlineTokenCost(def);
+    // Web plans post to social only, so articles are dropped from the mix,
+    // the drop count AND the price. Quoting a month of articles we can't
+    // deliver would be charging for nothing.
+    const postable = def.objectives.filter((o) => o.type !== "blog");
+    const mix = { video: 0, image: 0 };
+    for (const o of postable) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
+    const cost = questlineTokenCost({ ...def, objectives: postable });
     const videoLocked = mix.video > 0 && !hasVideo;
     return {
       key, name: def.name, icon: def.icon, cadence: def.cadence, bagSize: def.bagSize,
-      ...PLAN_PITCH[key], mix, cost, drops: mix.video + mix.image + mix.blog,
+      ...PLAN_PITCH[key], mix, cost, drops: mix.video + mix.image,
       videoLocked, affordable: !videoLocked && allowance >= cost,
     };
   });
@@ -194,7 +215,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     select: { title: true, url: true, imageUrl: true },
   });
 
+  const total = Object.values(dropMap).reduce((a, v) => a + v.video + v.image, 0);
+  // When does coverage run out? The last scheduled drop across live campaigns
+  // — the day after it is when the feed goes quiet, which is worth marking.
+  const allDates = (full?.questlines ?? [])
+    .filter((q) => q.status === "ACTIVE")
+    .flatMap((q) => parseSchedule(q.scheduleJson).slots.map((sl) => sl.date));
+  const lastDropDate = allDates.length ? allDates.reduce((a, b) => (a > b ? a : b)) : null;
+
   return json({
+    total,
+    lastDropDate,
+    year,
+    month0,
+    todayStr,
     plans,
     campaigns,
     cast,
@@ -230,6 +264,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       reviewMode: (form.get("reviewMode") as "REVIEW_FIRST" | "SET_AND_FORGET") || "REVIEW_FIRST",
       bag,
       platforms: (() => { try { return JSON.parse((form.get("platforms") as string) || "[]"); } catch { return []; } })(),
+      // Articles can't publish from the web app — there is no Online Store
+      // blog behind a web-<id>.easymode.app shop. Excluded from the schedule
+      // AND from the price.
+      excludeTypes: ["blog"],
     });
     return json(res.ok ? { launched: true } : { error: res.error });
   }
@@ -284,6 +322,13 @@ export default function WebCampaigns() {
   const [pickedAssets, setPickedAssets] = useState<string[]>([]);
   const [spreadDays, setSpreadDays] = useState(30);
   const [postTime, setPostTime] = useState("12:00");
+
+  // The soonest unposted drop across every running campaign — the single most
+  // useful fact on this page, and the one the month grid can't tell you.
+  const nextUp = d.campaigns
+    .filter((c) => c.status === "ACTIVE")
+    .flatMap((c) => c.upcoming)
+    .find(Boolean);
 
   const needle = castQ.trim().toLowerCase();
   const castShown = needle
@@ -395,36 +440,75 @@ export default function WebCampaigns() {
 
       {/* ---- the month ---- */}
       <section className="wc-sec">
-        <div className="wc-lbl wc-lblrow">
-          <span>{d.monthLabel}</span>
-          <span className="wc-mnav">
-            <Link to={`?ym=${d.prevYm}`} aria-label="Previous month">‹</Link>
-            <Link to={`?ym=${d.nextYm}`} aria-label="Next month">›</Link>
-          </span>
-        </div>
-        <div className="wc-cal">
-          {DOW.map((x, i) => <div className="wc-dow" key={i}>{x}</div>)}
-          {d.weeks.flat().map((day, i) => {
-            const cell = day ? d.dropMap[day] : null;
-            const n = cell ? cell.video + cell.image + cell.blog : 0;
-            return (
-              <div className={`wc-day${day === 0 ? " blank" : ""}${day === d.todayDay ? " today" : ""}`} key={i}>
-                {day > 0 && <span className="wc-dnum">{day}</span>}
-                {n > 0 && (
-                  <span className="wc-pips">
-                    {cell!.video > 0 && <i className="t-video" title={`${cell!.video} video`} />}
-                    {cell!.image > 0 && <i className="t-image" title={`${cell!.image} image`} />}
-                    {cell!.blog > 0 && <i className="t-blog" title={`${cell!.blog} article`} />}
-                  </span>
-                )}
+        <div className="wc-slab">
+          {/* The GStyle rosettes. Two of them, counter-rotating at a crawl —
+              they read as instrumentation rather than decoration, which is the
+              point: this panel is a schedule, not a poster. */}
+          <img className="wc-rose a" src="/gstyle-rosette-green.svg" alt="" aria-hidden="true" />
+          <img className="wc-rose b" src="/gstyle-rosette.svg" alt="" aria-hidden="true" />
+          <div className="wc-slab-frame" aria-hidden="true" />
+          <div className="wc-slab-in">
+            <div className="wc-slab-hd">
+              <div className="wc-page">
+                <Link className="wc-nav" to={`?ym=${d.prevYm}`} aria-label="Previous month" prefetch="intent">‹</Link>
+                <span className="wc-mo">{d.monthLabel}</span>
+                <Link className="wc-nav" to={`?ym=${d.nextYm}`} aria-label="Next month" prefetch="intent">›</Link>
               </div>
-            );
-          })}
+              <span className="wc-ct">{d.total} {d.total === 1 ? "DROP" : "DROPS"}</span>
+            </div>
+
+            <div className="wc-grid">
+              {DOW.map((x, i) => <div className="wc-dow" key={i}>{x}</div>)}
+              {d.weeks.flat().map((day, i) => {
+                if (day === 0) return <div className="wc-dy empty" key={i} />;
+                const cell = d.dropMap[day];
+                const n = cell ? cell.video + cell.image : 0;
+                const cellDate = `${d.year}-${pad(d.month0 + 1)}-${pad(day)}`;
+                const past = cellDate < d.todayStr;
+                const isToday = cellDate === d.todayStr;
+                const endHere = !!d.lastDropDate && cellDate === d.lastDropDate;
+                return (
+                  <div
+                    className={`wc-dy${n ? " drop" : ""}${past ? " past" : ""}${isToday ? " today" : ""}${endHere ? " endday" : ""}`}
+                    key={i}
+                    title={n ? `${day}: ${typeLines(cell!).join(" · ")}` : undefined}
+                  >
+                    <span className="wc-dn">{day}</span>
+                    {n > 0 ? (
+                      <div className="wc-types">
+                        {typeLines(cell!).map((t, j) => <span className="wc-t" key={j}>{t}</span>)}
+                        {endHere && <span className="wc-endtag">ENDS</span>}
+                      </div>
+                    ) : past ? (
+                      <span className="wc-x" aria-hidden="true">✕</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* What the app doesn't show: the very next thing that happens.
+                A month grid answers "how busy", not "what's next" — and
+                "what's next" is the question a merchant actually opens this
+                page to ask. */}
+            {nextUp && (
+              <div className="wc-next-up">
+                <span className="wc-pulse" aria-hidden="true" />
+                <span>Next drop <b>{nextUp.when}</b>{nextUp.product ? <> · {nextUp.product}</> : null}</span>
+              </div>
+            )}
+
+            <div className="wc-posts">
+              <span className="wc-plabel">Auto-posts to</span>
+              {d.linked.length
+                ? d.linked.map((p) => <span className="wc-pchip" key={p}>{PLAT_LABEL[p] || p}</span>)
+                : <Link className="wc-pchip off" to="/web/connect">Connect an account</Link>}
+            </div>
+          </div>
         </div>
         <div className="wc-key">
           <span><i className="t-video" /> Video</span>
           <span><i className="t-image" /> Image</span>
-          <span><i className="t-blog" /> Article</span>
         </div>
       </section>
 
@@ -519,7 +603,6 @@ export default function WebCampaigns() {
                 <span className="wc-plan-mix">
                   {p.mix.video > 0 && <em>{p.mix.video} video</em>}
                   {p.mix.image > 0 && <em>{p.mix.image} image</em>}
-                  {p.mix.blog > 0 && <em>{p.mix.blog} article</em>}
                 </span>
                 <span className="wc-plan-pitch">{p.pitch}</span>
                 <span className="wc-plan-foot">
@@ -615,9 +698,6 @@ const WC_STYLE = `
 .wc-lbl.sm{margin-top:22px}
 .wc-lblrow{display:flex;align-items:center;justify-content:space-between}
 .wc-cap{font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink3,#8A938D)}
-.wc-mnav{display:flex;gap:6px}
-.wc-mnav a{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;border:1px solid var(--line,#E4DFCF);color:var(--ink,#14201A);text-decoration:none;font-size:15px;line-height:1}
-.wc-mnav a:hover{border-color:#12A85E;color:#0C7A46}
 .wc-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:8px 0 0}
 
 /* running campaigns */
@@ -643,19 +723,64 @@ const WC_STYLE = `
 .wc-card-acts button.danger{color:#A33232}
 .wc-card-acts button.danger:hover{border-color:#A33232}
 
-/* calendar */
-.wc-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
-.wc-dow{text-align:center;font-size:10.5px;font-weight:800;color:var(--ink3,#8A938D);padding-bottom:3px}
-.wc-day{position:relative;aspect-ratio:1;border:1px solid var(--line,#E4DFCF);border-radius:9px;background:var(--card,#FDFCF7);padding:5px;display:flex;flex-direction:column;justify-content:space-between}
-.wc-day.blank{border-color:transparent;background:none}
-.wc-day.today{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E}
-.wc-dnum{font-size:11px;font-weight:700;color:var(--ink2,#4A554E);font-variant-numeric:tabular-nums}
-.wc-pips{display:flex;gap:3px;flex-wrap:wrap}
-.wc-pips i,.wc-key i,.wc-dot{display:inline-block}
-.wc-pips i{width:6px;height:6px;border-radius:50%}
-.t-video{background:#12A85E}.t-image{background:#B08526}.t-blog{background:#3B7EA1}
-.wc-key{display:flex;gap:14px;margin-top:9px;font-size:11.5px;color:var(--ink2,#4A554E)}
-.wc-key i{width:7px;height:7px;border-radius:50%;margin-right:5px}
+/* THE MONTH SLAB.
+   The embedded app renders this on a dark slab and it is the best-looking
+   surface in the product, so the web app matches its structure rather than
+   inventing a lesser one — then goes past it: counter-rotating GStyle
+   rosettes instead of a static texture, a live next-drop line the app has no
+   equivalent for, and day cells that name what lands instead of dotting it. */
+.wc-slab{position:relative;border-radius:24px;overflow:hidden;padding:20px 14px 18px;background:#060B08;
+  box-shadow:0 26px 64px rgba(6,20,12,.4),0 4px 14px rgba(0,0,0,.3)}
+.wc-rose{position:absolute;pointer-events:none;opacity:.16;filter:saturate(1.2)}
+.wc-rose.a{width:420px;top:-150px;right:-140px;animation:wcspin 150s linear infinite}
+.wc-rose.b{width:320px;bottom:-130px;left:-110px;opacity:.09;animation:wcspin 210s linear infinite reverse}
+@keyframes wcspin{to{transform:rotate(360deg)}}
+.wc-slab-frame{position:absolute;inset:9px;border-radius:17px;border:1px solid rgba(231,200,121,.22);pointer-events:none}
+.wc-slab-in{position:relative;z-index:1}
+.wc-slab-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 6px 14px}
+.wc-page{display:flex;align-items:center;gap:10px}
+.wc-nav{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;text-decoration:none;
+  border:1px solid rgba(231,200,121,.3);color:#E7C879;font-size:16px;line-height:1}
+.wc-nav:hover,.wc-nav:focus-visible{background:rgba(231,200,121,.12);color:#F6E4AE}
+.wc-mo{font-family:Poppins,sans-serif;font-size:14.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#F3F1E6}
+.wc-ct{font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.12em;color:#E7C879;
+  border:1px solid rgba(231,200,121,.3);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.wc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.wc-dow{text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(243,241,230,.42);padding-bottom:4px}
+.wc-dy{position:relative;min-height:62px;border-radius:11px;padding:5px 4px;
+  border:1px solid rgba(243,241,230,.10);background:rgba(243,241,230,.035);
+  display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.wc-dy.empty{border-color:transparent;background:none}
+.wc-dn{font-size:10.5px;font-weight:700;color:rgba(243,241,230,.5);font-variant-numeric:tabular-nums;line-height:1}
+.wc-dy.drop{border-color:rgba(18,168,94,.5);background:linear-gradient(180deg,rgba(18,168,94,.18),rgba(18,168,94,.06))}
+.wc-dy.drop .wc-dn{color:#EAF7EF}
+.wc-dy.today{border-color:#E7C879;box-shadow:0 0 0 1px #E7C879,0 0 18px rgba(231,200,121,.25)}
+.wc-dy.past{opacity:.42}
+.wc-dy.endday{border-color:rgba(231,200,121,.6)}
+.wc-types{display:flex;flex-direction:column;gap:2px}
+.wc-t{font-size:9.5px;font-weight:700;letter-spacing:.02em;color:#CFEBD9;background:rgba(18,168,94,.28);
+  border-radius:5px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wc-endtag{font-size:8.5px;font-weight:800;letter-spacing:.08em;color:#0A0F0C;background:#E7C879;border-radius:4px;padding:1px 4px}
+.wc-x{font-size:11px;color:rgba(243,241,230,.2);margin-top:auto;align-self:center}
+/* The line the app doesn't have. */
+.wc-next-up{display:flex;align-items:center;gap:9px;margin:14px 6px 0;padding:9px 12px;border-radius:12px;
+  background:rgba(18,168,94,.12);border:1px solid rgba(18,168,94,.32);font-size:12.5px;color:#DCEFE3}
+.wc-next-up b{color:#fff}
+.wc-pulse{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:#12A85E;box-shadow:0 0 0 0 rgba(18,168,94,.7);animation:wcpulse 2.2s ease-out infinite}
+@keyframes wcpulse{70%{box-shadow:0 0 0 9px rgba(18,168,94,0)}100%{box-shadow:0 0 0 0 rgba(18,168,94,0)}}
+.wc-posts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 6px 0}
+.wc-plabel{font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:rgba(243,241,230,.45)}
+.wc-pchip{font-size:11px;font-weight:700;color:#F3F1E6;background:rgba(243,241,230,.09);
+  border:1px solid rgba(243,241,230,.16);border-radius:999px;padding:3px 10px;text-decoration:none}
+.wc-pchip.off{color:#E7C879;border-color:rgba(231,200,121,.4)}
+.wc-key{display:flex;gap:14px;margin-top:11px;font-size:11.5px;color:var(--ink2,#4A554E)}
+.wc-key i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.t-video{background:#12A85E}.t-image{background:#B08526}
+/* legacy campaigns may still carry article slots in their upcoming list */
+.t-blog{background:#3B7EA1}
+@media (prefers-reduced-motion:reduce){
+  .wc-rose,.wc-pulse{animation:none}
+}
 
 /* plan picker */
 .wc-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
@@ -709,8 +834,11 @@ const WC_STYLE = `
 
 @media (max-width:640px){
   .wc-head h1{font-size:22px}
-  .wc-cal{gap:3px}
-  .wc-day{border-radius:7px;padding:3px}
-  .wc-dnum{font-size:10px}
+  .wc-slab{padding:16px 10px 14px;border-radius:20px}
+  .wc-grid{gap:3px}
+  .wc-dy{min-height:52px;border-radius:8px;padding:4px 3px}
+  .wc-t{font-size:8.5px;padding:1px 3px}
+  .wc-rose.a{width:280px;top:-100px;right:-90px}
+  .wc-rose.b{width:220px;bottom:-90px;left:-70px}
 }
 `;
