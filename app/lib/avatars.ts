@@ -80,7 +80,10 @@ export const PRIVATE_AVATARS: Array<Avatar & { owners: string[] }> = [
     gender: "m",
     ageBand: "mid",
     energy: "hype",
-    owners: ["slyshoffner@gmail.com"],
+    // The founder's EasyMode account and their personal address — both, because
+    // which one they happen to be signed into is not something the picker
+    // should have an opinion about.
+    owners: ["magicmonstermarket@gmail.com", "slyshoffner@gmail.com"],
   },
 ];
 
