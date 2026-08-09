@@ -146,6 +146,47 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ...[...privateCastFor(account.email, shop.id, shop.domain), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) })),
   ];
 
+  // THE ARCHIVE, as campaign material. Merchants accumulate a library — the
+  // nine bursts they didn't pick, last month's drops, things made and never
+  // posted. Scheduling that costs nothing to generate, so it deserves to be
+  // a first-class way to start a campaign rather than a reason to re-buy.
+  //
+  // Anything already sitting in a slot is filtered out: double-booking one
+  // asset across two campaigns posts it twice and looks like a bug to the
+  // merchant's followers.
+  const scheduledAssetIds = new Set<string>();
+  for (const q of full?.questlines ?? []) {
+    if (q.status === "COMPLETE") continue;
+    for (const s of parseSchedule(q.scheduleJson).slots) if (s.assetId) scheduledAssetIds.add(s.assetId);
+  }
+  const archive = (
+    await db.asset.findMany({
+      // VIDEO + IMAGE only. Articles publish through publishBlogAsset, which
+      // needs a Shopify admin session for the store's Online Store blog — a
+      // web-app shop has no such destination, so a scheduled article would sit
+      // READY forever, retried every five minutes, never posting. Offering it
+      // would be selling a button that does nothing.
+      where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } },
+      orderBy: { createdAt: "desc" },
+      take: 120,
+      select: { id: true, type: true, title: true, bodyJson: true, createdAt: true },
+    })
+  )
+    .filter((a) => !scheduledAssetIds.has(a.id))
+    .map((a) => {
+      const body = (() => { try { return JSON.parse(a.bodyJson || "{}"); } catch { return {}; } })() as
+        { videoUrl?: string; imageUrl?: string };
+      return {
+        id: a.id,
+        kind: a.type === "VIDEO_AD" ? "video" : "image",
+        title: a.title || "Untitled",
+        media: body.imageUrl || body.videoUrl || null,
+        isVideo: a.type === "VIDEO_AD",
+      };
+    })
+    // A render whose file vanished can't be posted, so it isn't offered.
+    .filter((a) => !!a.media);
+
   const catalog = await db.catalogProduct.findMany({
     where: { shopId: shop.id },
     orderBy: { position: "asc" },
@@ -158,6 +199,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     campaigns,
     cast,
     catalog,
+    archive,
     brandFaceId: full?.brandAvatarId && cast.some((c) => c.id === full.brandAvatarId) ? full.brandAvatarId : null,
     linked: full ? linkedFromCache(full.socialsJson) : [],
     hasPlan: !!full?.activePlan?.active,
@@ -191,6 +233,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     return json(res.ok ? { launched: true } : { error: res.error });
   }
+  if (intent === "repost") {
+    let assetIds: string[] = [];
+    try { assetIds = JSON.parse((form.get("assetIds") as string) || "[]"); } catch { /* empty */ }
+    const { scheduleExistingAssets } = await import("../lib/questlines.server");
+    const res = await scheduleExistingAssets(shop.id, {
+      assetIds,
+      days: parseInt((form.get("days") as string) || "30", 10),
+      time: (form.get("time") as string) || "12:00",
+      name: (form.get("name") as string) || "",
+      platforms: (() => { try { return JSON.parse((form.get("platforms") as string) || "[]"); } catch { return []; } })(),
+    });
+    return res.ok
+      ? json({ launched: true, reposted: res.scheduled })
+      : json({ error: res.error });
+  }
   if (intent === "pauseToggle") {
     const id = (form.get("campaignId") as string) || "";
     const q = await db.questline.findFirst({ where: { id, shopId: shop.id } });
@@ -220,6 +277,13 @@ export default function WebCampaigns() {
   const [picked, setPicked] = useState<number[]>(d.catalog.length ? [0] : []);
   const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("REVIEW_FIRST");
   const [showLaunch, setShowLaunch] = useState(d.campaigns.length === 0);
+  // Two ways to start: pay to make a month of content, or schedule the month
+  // you already made. The second costs nothing, so it leads when there's a
+  // library to schedule.
+  const [mode, setMode] = useState<"new" | "archive">("new");
+  const [pickedAssets, setPickedAssets] = useState<string[]>([]);
+  const [spreadDays, setSpreadDays] = useState(30);
+  const [postTime, setPostTime] = useState("12:00");
 
   const needle = castQ.trim().toLowerCase();
   const castShown = needle
@@ -229,6 +293,19 @@ export default function WebCampaigns() {
   const cap = plan?.bagSize ?? 6;
   const toggleProduct = (i: number) =>
     setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length >= cap ? p : [...p, i]));
+
+  const repost = () => {
+    submit(
+      {
+        intent: "repost",
+        assetIds: JSON.stringify(pickedAssets),
+        days: String(spreadDays),
+        time: postTime,
+        platforms: JSON.stringify(d.linked),
+      },
+      { method: "post" }
+    );
+  };
 
   const launch = () => {
     if (!plan) return;
@@ -264,7 +341,11 @@ export default function WebCampaigns() {
       {actionData && "error" in actionData && actionData.error
         ? <div className="wb-err">{String(actionData.error)}</div> : null}
       {actionData && "launched" in actionData && actionData.launched
-        ? <p className="wc-ok">Campaign is live — the first drops are being created now.</p> : null}
+        ? <p className="wc-ok">
+            {"reposted" in actionData && actionData.reposted
+              ? `Scheduled ${actionData.reposted} post${actionData.reposted === 1 ? "" : "s"} from your Archive — no tokens spent.`
+              : "Campaign is live — the first drops are being created now."}
+          </p> : null}
 
       {/* ---- running campaigns ---- */}
       {d.campaigns.length > 0 && (
@@ -352,6 +433,80 @@ export default function WebCampaigns() {
         <section className="wc-sec">
           <div className="wc-lbl">Start a campaign</div>
 
+          <div className="wc-modes">
+            <button type="button" className={mode === "new" ? "sel" : ""} onClick={() => setMode("new")} aria-pressed={mode === "new"}>
+              <b>Make a month of content</b>
+              <span>We create everything and post it. Costs tokens.</span>
+            </button>
+            <button type="button" className={mode === "archive" ? "sel" : ""} onClick={() => setMode("archive")} aria-pressed={mode === "archive"}>
+              <b>Schedule what I&rsquo;ve already made</b>
+              <span>{d.archive.length} piece{d.archive.length === 1 ? "" : "s"} in your Archive · <em>free</em></span>
+            </button>
+          </div>
+
+          {mode === "archive" ? (
+            <>
+              {d.archive.length === 0 ? (
+                <p className="wc-hint">
+                  Nothing unscheduled in your Archive yet — anything you make in the{" "}
+                  <Link to="/web/studio">Studio</Link> shows up here to schedule for free.
+                </p>
+              ) : (
+                <>
+                  <div className="wc-lbl sm">
+                    Pick what to post <span className="wc-cap">{pickedAssets.length} selected</span>
+                    <button type="button" className="wc-selall"
+                      onClick={() => setPickedAssets(pickedAssets.length === d.archive.length ? [] : d.archive.map((a) => a.id))}>
+                      {pickedAssets.length === d.archive.length ? "Clear all" : "Select all"}
+                    </button>
+                  </div>
+                  <div className="wc-arch">
+                    {d.archive.map((a) => {
+                      const on = pickedAssets.includes(a.id);
+                      return (
+                        <button type="button" key={a.id} title={a.title}
+                          className={`wc-asset${on ? " sel" : ""}`}
+                          aria-pressed={on}
+                          onClick={() => setPickedAssets((p) => (on ? p.filter((x) => x !== a.id) : [...p, a.id]))}>
+                          <span className="wc-asset-img" style={a.media ? { backgroundImage: `url(${a.media})` } : undefined}>
+                            {a.isVideo && <i className="wc-asset-play" aria-hidden="true">▶</i>}
+                            {on && <b>✓</b>}
+                          </span>
+                          <span className="wc-asset-nm">{a.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="wc-lbl sm">Spread them over</div>
+                  <div className="ws-seg">
+                    {[7, 14, 30, 60].map((dd) => (
+                      <button type="button" key={dd} className={spreadDays === dd ? "sel" : ""} onClick={() => setSpreadDays(dd)}>
+                        {dd} days
+                      </button>
+                    ))}
+                  </div>
+                  {pickedAssets.length > 1 && (
+                    <p className="wc-hint">
+                      Evenly spaced — about one post every{" "}
+                      {Math.max(1, Math.round(spreadDays / (pickedAssets.length - 1)))} day
+                      {Math.max(1, Math.round(spreadDays / (pickedAssets.length - 1))) === 1 ? "" : "s"}, at{" "}
+                      <input className="wc-time" type="time" value={postTime} onChange={(e) => setPostTime(e.target.value || "12:00")} aria-label="Post time" />.
+                    </p>
+                  )}
+                  <p className="wc-hint">
+                    {d.linked.length
+                      ? `Posting to ${d.linked.join(", ")}.`
+                      : <>No accounts connected — <Link to="/web/connect">connect auto-posting</Link> first, or these will sit waiting.</>}
+                  </p>
+                  <button type="button" className="wb-btn wc-go" disabled={busy || pickedAssets.length === 0} onClick={repost}>
+                    {busy ? "Scheduling…" : `Schedule ${pickedAssets.length || ""} post${pickedAssets.length === 1 ? "" : "s"} — free`}
+                  </button>
+                </>
+              )}
+            </>
+          ) : (
+          <>
           <div className="wc-plans">
             {d.plans.map((p) => (
               <button type="button" key={p.key} className={`wc-plan${p.key === planKey ? " sel" : ""}${p.videoLocked ? " locked" : ""}`}
@@ -440,6 +595,8 @@ export default function WebCampaigns() {
           <button type="button" className="wb-btn wc-go" disabled={busy || !picked.length || !plan || plan.videoLocked} onClick={launch}>
             {busy ? "Starting…" : `Start ${plan?.name || "campaign"}`}
           </button>
+          </>
+          )}
         </section>
       )}
     </div>
@@ -532,6 +689,24 @@ const WC_STYLE = `
 .wc-prod-img b{position:absolute;inset:auto 4px 4px auto;width:18px;height:18px;border-radius:50%;background:#12A85E;color:#fff;font-size:11px;display:grid;place-items:center}
 .wc-prod-nm{display:block;font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wc-go{margin-top:18px;padding:12px 26px;font-size:14px}
+/* Two ways in: pay to make a month, or schedule the month you already made. */
+.wc-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px;margin-bottom:20px}
+.wc-modes button{text-align:left;padding:13px 15px;border-radius:14px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font:inherit;color:var(--ink,#14201A)}
+.wc-modes button.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F7FCF9}
+.wc-modes b{display:block;font-family:Poppins,sans-serif;font-size:14px}
+.wc-modes span{display:block;font-size:12.5px;color:var(--ink2,#4A554E);margin-top:3px}
+.wc-modes em{font-style:normal;font-weight:800;color:#0C7A46}
+.wc-selall{margin-left:auto;border:0;background:none;color:#0C7A46;font:inherit;font-size:11.5px;font-weight:800;letter-spacing:0;text-transform:none;cursor:pointer;padding:0}
+.wc-lbl.sm{display:flex;align-items:center;gap:8px}
+.wc-arch{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:11px;max-height:340px;overflow-y:auto;padding:2px}
+.wc-asset{border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:center;color:var(--ink,#14201A)}
+.wc-asset-img{position:relative;display:block;width:100%;aspect-ratio:3/4;border-radius:11px;background:var(--paper,#F4F1E6) center/cover no-repeat;border:1px solid var(--line,#E4DFCF);overflow:hidden}
+.wc-asset.sel .wc-asset-img{border-color:#12A85E;box-shadow:0 0 0 2px rgba(18,168,94,.35)}
+.wc-asset-img b{position:absolute;inset:auto 4px 4px auto;width:18px;height:18px;border-radius:50%;background:#12A85E;color:#fff;font-size:11px;display:grid;place-items:center;font-style:normal}
+.wc-asset-play,.wc-asset-doc{position:absolute;inset:0;display:grid;place-items:center;font-size:20px;font-style:normal;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.wc-asset-doc{color:var(--ink2,#4A554E);text-shadow:none}
+.wc-asset-nm{display:block;font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wc-time{font:inherit;font-size:12.5px;padding:2px 6px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink,#14201A)}
 
 @media (max-width:640px){
   .wc-head h1{font-size:22px}
