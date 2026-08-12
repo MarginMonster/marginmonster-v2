@@ -17,6 +17,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!process.env.PURGE_KEY || url.searchParams.get("key") !== process.env.PURGE_KEY) {
     return json({ error: "not found" }, { status: 404 });
   }
+  /** Every merchant-data mode names its shop. A debug endpoint that reads
+   *  across tenants is a liability the moment its key leaks, and none of these
+   *  modes actually need the fleet — you are always debugging one merchant. */
+  type Scoped =
+    | { target: { id: string; domain: string }; error?: undefined }
+    | { error: string; status: number; target?: undefined };
+  const scopedShop = async (): Promise<Scoped> => {
+    const who = (url.searchParams.get("shop") || "").trim();
+    if (!who) return { error: "Name a shop: &shop=<domain or shop id>. This endpoint never reads across shops.", status: 400 };
+    const target = await db.shop.findFirst({
+      where: { OR: [{ id: who }, { domain: who }] },
+      select: { id: true, domain: true },
+    });
+    return target ? { target } : { error: `No shop matching "${who}".`, status: 404 };
+  };
+
   // Billing forensics — the last failed billing.request (status/headers/body/
   // session snapshot) captured in memory by recordBillingFailure.
   if (url.searchParams.get("mode") === "billing") {
@@ -67,13 +83,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Did the premium voice actually SPEAK? Recent avatar takes with the voice we
   // cast vs the voice that came out — voiceFellBack marks a silent downgrade.
   if (url.searchParams.get("mode") === "voicetakes") {
+    // ONE SHOP AT A TIME, always. This query used to select every VIDEO_AD in
+    // the database — the only fleet-wide read in the app. It was dormant
+    // (PURGE_KEY is unset in production, so the route 404s), but a debug
+    // endpoint that can dump every merchant's takes the moment a key is set is
+    // a liability, not a tool. Naming the shop costs the operator one query
+    // param and removes the whole failure mode.
+    const sc = await scopedShop();
+    if (!sc.target) return json({ error: sc.error }, { status: sc.status });
     const takes = await db.asset.findMany({
-      where: { type: "VIDEO_AD" },
+      where: { shopId: sc.target.id, type: "VIDEO_AD" },
       orderBy: { createdAt: "desc" },
       take: 40,
       select: { id: true, title: true, createdAt: true, bodyJson: true, metaJson: true },
     });
     return json({
+      shop: sc.target.domain,
       takes: takes.map((t) => {
         const body = (() => { try { return JSON.parse(t.bodyJson || "{}"); } catch { return {}; } })();
         const meta = (() => { try { return JSON.parse(t.metaJson || "{}"); } catch { return {}; } })();
@@ -128,13 +153,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Recent finished takes with the engine that produced them (heygen-fal vs
   // omni-human vs kling-voiceover) — verifies the premium engine engaged.
   if (url.searchParams.get("mode") === "takes") {
+    const sc = await scopedShop();
+    if (!sc.target) return json({ error: sc.error }, { status: sc.status });
     const assets = await db.asset.findMany({
-      where: { type: "VIDEO_AD" },
+      where: { shopId: sc.target.id, type: "VIDEO_AD" },
       orderBy: { createdAt: "desc" },
       take: 8,
       select: { createdAt: true, title: true, bodyJson: true },
     });
     return json({
+      shop: sc.target.domain,
       takes: assets.map((a) => {
         let engine = "?", hasUrl = false, fileExists = false, heldProduct = false;
         try {
@@ -151,11 +179,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  // Job-state dump — why are videos "rendering forever"? No shop needed.
+  // Job-state dump — why are videos "rendering forever"?
   if (url.searchParams.get("mode") === "jobs") {
+    const sc = await scopedShop();
+    if (!sc.target) return json({ error: sc.error }, { status: sc.status });
     const now = Date.now();
     const jobs = await db.job.findMany({
-      where: { type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST", "FORGE_COMPANION"] } },
+      where: { shopId: sc.target.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST", "FORGE_COMPANION"] } },
       orderBy: { updatedAt: "desc" },
       take: 25,
     });
