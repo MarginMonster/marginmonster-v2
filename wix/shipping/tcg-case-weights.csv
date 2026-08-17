@@ -1,0 +1,267 @@
+﻿row,product_name,wix_product_id,status,family,units_per_case,current_kg_on_site,in_supplier_sheet,FILL_unit_weight_g,pkg_factor,calc_case_weight_kg,FILL_dimensions_cm,FILL_source_url,FILL_notes
+1,2024 Sonny Angel Christmas Series Sealed Set (6 per set),27f8d248-51a6-4363-80bc-b23c030938e7,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+2,2025 Advent Calendar Series (13 dolls per set),3167e410-fce9-44b1-802d-ae46db2e0b6a,live,,13,,,,1.2,0.91,,,family assumed
+3,"2025 Pokémon TCG Dream Drawing 151 Series Pack (12 pcs, Ages 8–13)",372d54c0-5ee9-4947-98b1-ae4897c6065b,live,TcgMisc,12,,,,1.2,2.28,,,mixed group
+4,2026 Mid-Autumn Festival Gift Box,2f61170c-72c6-4f59-9297-cb85f9d0f6f4,draft,GiftETB,,1.06,Y,,1.1,8.75,,,from ShuXiu supplier sheet
+5,2026 Pokémon Chinese Exclusive Dream Drawing Vol.3 Eevee Figurine Case (9per),46d4ca44-34e4-43e6-8d05-96e7641738c8,live,TcgMisc,9,,,,1.2,1.71,,,mixed group
+6,2026 Sonny Angel Happy Bag,beb3e36f-68ca-4ced-9edc-d13583de5df9,live,SonnyAngel,1,,,33,1.5,0.05,,,PUBLISHED figure 32-34g sonnyangelusa.com
+7,30th Anniversary First Partner Illustration Vol.2 (8 box),da1b91ee-86bb-427c-b08d-3b1310f09c92,draft,,8,2.24,Y,,1.2,4.23,,,from ShuXiu supplier sheet
+8,30th Anniversary First Partner Illustration Vol.3 (8 box),70971e6a-c5f3-48c6-a235-baa36212151a,draft,,8,2.24,Y,,1.2,4.23,,,from ShuXiu supplier sheet
+9,Anime Cat Ear Plush Keychain Case (6 Toys) – Hot Deal,26303bbf-a0e5-4b40-8d02-18ec3f4f02c0,live,PlushKC,6,,,,1.4,0.36,,,no published specs found
+10,"Baby Molly Winter Fit Check Blind Box (6 pcs, 15–30cm)",5156351a-7beb-4611-925e-1f6324d75506,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+11,Batch Order Bundle,d63e073e-eb04-4514-bb5a-152d41ce160c,draft,,,,,,1.2,,,,no family assigned
+12,Blokees CVS Pokémon 1:18 Action Figure Model Kit Case (6 per Case),8477645d-2c01-4930-94db-17dc6d12349f,live,Blokees,6,,,300,1.06,1.91,,,PUBLISHED package 0.3kg bigbadtoystore.com
+13,Blokees Defenders Vol. 6 Model Figures (12 pcs Sealed Case),b857d39e-a289-452d-ace0-09f2277dca44,live,Blokees,12,,,300,1.06,3.82,,,PUBLISHED package 0.3kg bigbadtoystore.com
+14,Blokees Galaxy S Series Model Figures (9 pcs Sealed Case),ff5341e4-c79c-4f98-bb14-f27c02af8424,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+15,Blokees Kamen Rider Blind Box Set (9 pcs) – Comic-Con Pick,cb33707d-3c7e-4218-8be6-0ef989d63bc3,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+16,Blokees Kamen Rider Galaxy Blind Box Set (9 pcs) – Comic-Con Pick,2165e716-8f90-4d37-b024-fccbf22d326a,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+17,Blokees Kamen Rider Galaxy Blind Box Set (9 pcs) – Comic-Con Pick,fb5b1c41-16cd-4a15-88b4-8884e39555b6,draft,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+18,Blokees Kamen Rider Galaxy V2 Blind Box Model Figures (9 pcs Set),027cb989-928e-4888-a72f-56510469b823,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+19,Blokees Kamen Rider Galaxy V3 Blind Box Model Figures (9 pcs Set),014bee5e-bb95-40b9-9493-a7b9c214ebbc,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+20,Blokees Kamen Rider Galaxy Version V-1 Blind box Model Figures Sealed Cases(9pc,816e9501-efab-4e02-9f7e-85380348da85,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+21,Blokees Kamen Rider Shining Edition Vol. 1 Blind Box Figures (6 pcs Case),1cef9a14-1ff0-4155-9485-3e2f7a1e934c,live,Blokees,6,,,300,1.06,1.91,,,PUBLISHED package 0.3kg bigbadtoystore.com
+22,Blokees Kamen Rider Star V5 Blind Box Action Figures (9 pcs Set),84c21a9d-1018-4a2f-b774-544daf151792,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+23,Blokees Kamen Rider Starlight V3 Blind Box Figures (9 pcs Set),6ed94c0f-4935-4f53-96e6-8462a8d7defe,live,Blokees,9,,,300,1.06,2.86,,,PUBLISHED package 0.3kg bigbadtoystore.com
+24,Blokees Transformers Defenders Star Edition V3 Model Figures (12 pcs Set),5e4e727f-8c1b-4ee2-9ad4-74c13197edfe,live,Blokees,12,,,300,1.06,3.82,,,PUBLISHED package 0.3kg bigbadtoystore.com
+25,Blokees Transformers Defenders Vol. 4 Model Figures (12 pcs Sealed Case),73add92a-9a0d-46bf-b193-93ef1e798adf,live,Blokees,12,,,300,1.06,3.82,,,PUBLISHED package 0.3kg bigbadtoystore.com
+26,Blokees Transformers Model Set (12 pcs) – Comic-Con Pick,2ce97705-8399-4102-af49-47828a5f28eb,live,Blokees,12,,,300,1.06,3.82,,,PUBLISHED package 0.3kg bigbadtoystore.com
+27,CASE (20 Boosters) Simplified Chinese Pokemon TCG: Gem Pack Vol. 6 (CBB6C),0742281f-60ee-40e6-97ef-f61a05dd36da,live,BoosterCase,20,,Y,,1.15,2.88,,,from ShuXiu supplier sheet
+28,CASE (20Box) Pokemon Stellar Glass TCG Chinese CSV9C Slim Booster Boxes,834edcfe-c65a-4c04-8909-15b57592a261,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+29,CASE (20Box) Pokemon TCG Chinese Black Crystal Blazing CSV5C Booster Boxes Slims,1b0059f0-759e-440d-9437-4b4c04fd6834,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+30,CASE (20Box) Pokemon TCG Chinese Blade Awakening CSV7C Booster Boxes Slims,40730386-aca5-46be-8580-758b9828854c,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+31,CASE (20Box) Pokemon TCG Chinese Brilliant Fantasy CSV8C Slim Booster Boxes,6210bd6e-6bf5-46a7-96d8-bfb78b6a0246,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+32,CASE (20Box) Pokemon TCG Chinese Final Flame Dance CS4.5 Booster Boxes Slims,04a1e10f-d20b-41fc-b33f-f6b57526b2b5,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+33,CASE (20Box) Pokemon TCG Chinese Mystic & Void CSV6C Booster Boxes Slims,3fb6d937-9f6a-41e3-aeb7-906f685148ed,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+34,CASE (20Box) Pokemon TCG Chinese Reward Round CSV4C Booster Boxes Slims,ba0d8650-0c03-4caf-9a96-93fe180fe778,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+35,CASE (20Box) Pokemon TCG Chinese Scorching Skies CS3.5 Booster Boxes Slim Packs,65b89048-e9b4-438a-8a51-bf42c446562b,live,BoosterCase,20,,,,1.15,3.21,,,STANDARD box ~350g / SLIM box ~145g - check title
+36,CASE X12 2026 Pokémon TCG S-Chinese Dragon Boat Festival Collector's Gift Boxes,6a7f93af-dbcb-4a48-9781-be061266177c,live,GiftETB,12,,Y,,1.1,8.75,,,from ShuXiu supplier sheet
+37,Cases Eaki Sakamoto Days Anime Cat Paradise Party Series Box(6 dolls),c2147777-d53e-4443-bfff-cc2521a13683,live,PlushKC,6,,,,1.4,0.36,,,no published specs found
+38,Charizard TCG Blind Box Series 2 (12 pcs Set),422e4884-2d48-4235-a18c-649b29457f57,live,TcgMisc,12,,,,1.2,2.28,,,mixed group
+39,Chasing Glory Together — Jumbo Booster Box (20 box),1d162e3d-efc0-4865-a958-bc4146ac383e,draft,BoosterCase,20,5,Y,,1.15,7.98,,,STANDARD box ~350g / SLIM box ~145g - check title
+40,Collect 151 Gathering — Case of 20,548bff8a-965e-4f41-a794-97f82fc125a7,draft,,20,5,Y,,1.2,2.88,,,from ShuXiu supplier sheet
+41,Collect 151 Journey — Case of 20,d600c821-81e2-4860-8c62-25b6e0f20336,draft,,20,5,Y,,1.2,2.88,,,from ShuXiu supplier sheet
+42,Collect 151 Spring Festival Gift Box,ec1b14c3-93fc-4789-aba9-f8aa50b06ac0,draft,GiftETB,,1.06,Y,,1.1,8.75,,,from ShuXiu supplier sheet
+43,Dragon's Return — Rayquaza Advance Gift Box,ccd218c6-7c07-494d-a106-eca3a6ff2b16,draft,GiftETB,,1.06,Y,,1.1,8.75,,,from ShuXiu supplier sheet
+44,Dragon's Return — Ultra Necrozma Gift Box,5255d7e2-f6d0-4ce3-9b2c-462facd3f937,draft,GiftETB,,1.06,Y,,1.1,8.75,,,from ShuXiu supplier sheet
+45,Dream Painting Figure Vol. 2 (Aquatic),23c7baf9-3162-4e09-be07-f2286771e1b2,draft,,,1.31,Y,,1.2,2.29,,,from ShuXiu supplier sheet
+46,EAKI Jujutsu Kaisen Cat Ear Plush Keychain Set (6 pcs Case),1a6d7202-318c-44cf-af89-966f37b9b484,live,PlushKC,6,,,,1.4,0.36,,,no published specs found
+47,EAKI Sakamoto Days Cat Paradise Plush Keychain Blind Box (6 pcs Case),6630fd21-5442-47d7-a8fc-e42d8f9bb43d,live,PlushKC,6,,,,1.4,0.36,,,no published specs found
+48,ETB & Booster Case bundle,403f4302-5c95-4684-8c20-70883771fe0d,draft,BoosterCase,,,,,1.15,0.4,,,unit count assumed from family
+49,"Flareon Eevee TCG Collector Gift Box (S-Chinese, 14+)",ea3bf591-4f66-4b16-a59e-6dede63cafcc,live,GiftETB,1,,,,1.1,0.75,,,varies by product
+50,Funism Eevee Adventure Series V2 (9 per set),9e26a980-fec0-49bb-a743-3d1c21efb83b,live,Funism,9,,,,1.4,1.42,,,no published specs found
+51,Funism Eevee Relaxing Bar Series (9 per set),4bfe3ffa-ac65-4412-8177-aead5c83d5d6,live,Funism,9,,,,1.4,1.42,,,no published specs found
+52,Funism Pikachu and Friends Series (8 per set),b68e4ce4-c6b9-4132-8336-88645e221159,live,Funism,8,,,,1.4,1.27,,,no published specs found
+53,Funism Pokémon 30th Anniversary Mini Encounter first partner suitcase set (9per),bda04ddc-cd9e-4a8e-9ae7-ffbd027e4303,live,Funism,9,,Y,,1.4,4.23,,,from ShuXiu supplier sheet
+54,Funism Pokémon hippers Series (8 per set),bea506bc-e5bc-45d2-b5b6-de076ba25942,live,Hippers,8,,,33,1.5,0.4,,,same figure class as Sonny Angel
+55,Funism palmsize wonders V1 (12 per set),cdefbb4f-0057-4f7f-a233-87006aa7bf25,live,Funism,12,,,,1.4,1.9,,,no published specs found
+56,Funism palmsize wonders V2 (16 per set),95086b34-8b73-40f4-99c5-9277dbdd0a60,live,Funism,16,,,,1.4,2.53,,,no published specs found
+57,Funism palmsize wonders v3 (12 per set),2f9a38cd-3ae0-416a-bc45-2b4a80292b71,live,Funism,12,,,,1.4,1.9,,,no published specs found
+58,Gem Pack Vol. 1 — Case of 20,e75120e6-f0db-4e78-b202-1e164e06d32b,draft,,20,5,Y,,1.2,2.88,,,from ShuXiu supplier sheet
+59,Grumpipi V2 Whispers to Dreamland Blind Box Dolls (6 pcs Case),a558f7b9-815c-4e5c-bbbf-1392810246ad,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+60,HELLO KITTY AND FRIENDS HIPPERS Series Sealed Set (12 per set),670b9c8e-d56a-40a0-95ec-2467f928cf31,live,Hippers,12,,,33,1.5,0.59,,,same figure class as Sonny Angel
+61,HIPPERS CHiiKAWA Series Sealed Set (12 per set),f018051a-1388-4e96-ba27-c0dd706b8b46,live,Hippers,12,,,33,1.5,0.59,,,same figure class as Sonny Angel
+62,Holly Box Pokemon Sleeping Eeveelution Series (9 per set),4d59ff96-c88a-412a-93d3-990f8c32bb0e,live,TcgMisc,9,,,,1.2,1.71,,,mixed group
+63,Holly Box Pokemon — Wider Range,ba15467f-5b04-4f2d-86d3-803562b14452,draft,TcgMisc,1,1.31,,,1.2,0.19,,,mixed group
+64,Holly Box Sleeping Eevee Evolutions Plush (9 pcs Blind Box Case),f6d2010d-8266-41ce-b1bb-743ee1d9e81f,live,,9,,,,1.2,1.39,,,family assumed
+65,Jolteon TCG Collector Gift Box exclusive big box (S-Chinese),e06ca49e-7b4c-4b0f-b348-2454324bdfd5,live,GiftETB,1,,,,1.1,0.75,,,varies by product
+66,Kuromi School Life Plush Keychain Blind Box (6 pcs Case),9aa17a21-5f39-47b3-806b-bcd065b2ae32,live,TopToy,6,,,,1.4,0.84,,,no published specs found
+67,"Lovely Pokemon Langbowang Figures (12 pcs Case, Sealed)",1be6113b-3b00-405e-bfd6-2c2e18200220,live,TcgMisc,12,,,,1.2,2.28,,,mixed group
+68,"MaiLe Jujutsu Kaisen Blind Box Figures (12 pcs Case, Japanese Exclusive)",248093df-83fa-4556-8129-deabe6da8d70,live,,12,,,,1.2,1.85,,,family assumed
+69,Maymei Bear Cookies Collectible Set (8 pcs Case),e3a7654b-dd14-4fd6-8a3e-7cfa29434fb4,live,TopToy,8,,,,1.4,1.12,,,no published specs found
+70,Mofusand HIPPERS DECORATIVE MINI FIGURE V1 Sealed Set (12 per set),83053a53-0b0e-477e-a6e5-63babad0e925,live,Hippers,12,,,33,1.5,0.59,,,same figure class as Sonny Angel
+71,Mofusand HIPPERS V2 DECORATIVE MINI FIGURE Series Sealed Set (12 per Case),5e6092cd-b891-4c1f-805c-723b1b7e21a0,live,Hippers,12,,,33,1.5,0.59,,,same figure class as Sonny Angel
+72,Monchichi Hippers Series Sealed Set (12 per set),fab063d8-2e4e-4ba8-a587-2b34f1619927,live,Hippers,12,,,33,1.5,0.59,,,same figure class as Sonny Angel
+73,Nine Colors Gathering — Eevee Jumbo Box,94e89b46-79b4-4562-8974-82972ec8ebf5,draft,,1,5,Y,,1.2,8.56,,,from ShuXiu supplier sheet
+74,Nommi Sitting Zoo Blind Box Set (6 pcs) –,3f4324ba-342b-4129-a0d0-af5ec0c731fe,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+75,Nommi Sitting Zoo Collection Plush Blind Box (6 pcs Case),d2c5013b-f974-4641-8dbf-f8c9b633c6e3,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+76,POP MART Authentic Big Into Energy Series V3 Sealed Cases (6 Blind box) FREE SHI,96eb9ff9-c8ff-4d88-a47e-3ba036a0194c,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+77,POP MART Baby Molly Winter Fit Check Series Sealed Cases,74daa040-7b15-439c-95ac-249d200cd8f9,live,PopMart,,,,,1.4,0.92,,,unit count assumed from family
+78,POP MART Hirono Road Journal Series Blind Box (6 pcs Case),4dc3416d-e448-42d0-8155-22c8b1b9ec5a,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+79,POP MART Labubu A-M Vinyl Plush Pendant Case (14 pcs),f7fac3f2-b7bf-46f3-a5f6-b5e4868e502f,live,PopMart,14,,,,1.4,2.16,,,only individual box dims found 7x5x5cm
+80,POP MART Labubu Macaron V1 Case (6 pcs) – Wholesale,f84a3d83-b5a6-4942-b661-7bbf104029c2,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+81,POP MART Labubu Vinyl Plush Pendant Blind Box (14 pcs),7fd966b5-80e0-48ce-9d4f-485da00cf81f,live,PopMart,14,,,,1.4,2.16,,,only individual box dims found 7x5x5cm
+82,POP MART SkullPanda Blind Box Case (12 pcs) –,0f76fba0-d6d5-4917-9999-678a2018a01d,live,PopMart,12,,,,1.4,1.85,,,only individual box dims found 7x5x5cm
+83,POP MART V2 Have a Seat Labubu Sealed Cases Authentic,bfd28c0b-5e89-4940-80a5-5ce3e525bc16,live,PopMart,,,,,1.4,0.92,,,unit count assumed from family
+84,POP MART Why So Serious Plush Blind Box Case (8 pcs),0f1dfb18-15a3-4a7d-b6bb-3b7a5375109a,live,PopMart,8,,,,1.4,1.23,,,only individual box dims found 7x5x5cm
+85,POPMART Hirono Road Journal Series Sealed Cases(6 Blind Box dolls),1a6a6496-9183-477c-b5ac-01e5fb6ba235,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+86,Pokemon 151 Dream Drawing Series Card Display Cases (12 per set),6de33e4e-1286-4d43-b98a-c2b018870db2,draft,TcgMisc,12,,,,1.2,2.28,,,mixed group
+87,Pokemon 151 Dream Drawing V2 Series Card Display Cases (12 per set),0a474021-8e05-40a7-8962-f4e0d1854a1e,live,TcgMisc,12,,,,1.2,2.28,,,mixed group
+88,Pokemon Aromatherapy Car Air Freshener (6 pcs Sealed Case),1bbc2f23-c3ff-4fde-b6a8-6f05f584cef8,live,TcgMisc,6,,,,1.2,1.14,,,mixed group
+89,Pokemon Natural Wilderness Figures (6 pcs Sealed Case),27318744-89c8-4bf0-953c-ef48649545b8,live,TcgMisc,6,,,,1.2,1.14,,,mixed group
+90,Pokemon Natural Wildnerness Series (6 per set),4c159b5a-b959-45fa-8d6e-bad7513a8c49,live,TcgMisc,6,,,,1.2,1.14,,,mixed group
+91,Pokemon TCG Chinese start deck 100's sealed case (10 Decks per case),d171e443-d556-40d9-941f-14917314ca5d,live,TcgMisc,10,,Y,,1.2,1.27,,,from ShuXiu supplier sheet
+92,Pokemon nuzzle cheeks cans Card Display plush series (6 per set),e8fb72a9-7c72-41af-8eb2-f9e300d0f5c0,live,TcgMisc,6,,,,1.2,1.14,,,mixed group
+93,"Pokémon Adventure Building Block Set (Season 1, 8 pcs Case)",ed447dfd-35b6-47ca-b83c-31f3e39fec42,live,TcgMisc,,,,,1.2,1.14,,,unit count assumed from family
+94,"Pokémon Gengar TCG Card Display Blind Box Series 3 (12 pcs Case, S-Chinese)",ac73b4d2-4e29-4736-90b5-cc15a17143de,live,TcgMisc,12,,,,1.2,2.28,,,mixed group
+95,Pokémon S-Chinese Gem 2 Eeveelution Binder Set of 4 (Four Card Binders TCG),278ffef7-a0f0-4645-a6a9-a90034a364b7,live,GiftETB,4,,,,1.1,2.99,,,varies by product
+96,RE-MENT Pokemon Gemstone Collection V3 (6 per set),492013f9-0a1f-447c-a8fd-b55743af4541,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+97,RE-MENT Pokemon Nighty Night Collection (6 per set),e00662d7-3b9e-423e-97f4-718e538893ab,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+98,Re-Ment Pokémon Romantic Series Figurines (6 per set),402dcdfa-7908-4647-b081-a39ac84db88c,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+99,Re-ment Pokemon Little Stories from the Forest (6 per set),672e1529-c764-4b7d-b44f-6688f6bcbd2e,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+100,ReMent Pikachu Terrarium Collection Part 14 (6 pcs Box Set),079f1524-4085-434f-aa88-f38e07726a63,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+101,ReMent Pokemon Ovaltique Egg Carving Collection (6 pcs Set),3ea5ca7e-3ebd-41ed-be40-ae2a688907c1,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+102,ReMent Pokemon Starrium Dreaming Moonlit Night (6 pcs Box Set),8633aa37-f904-451e-9865-1590d3112572,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+103,"ReMent Pokémon Bonsai V3 Figure Set (6 pcs Case, Ages 7–12)",7adfdad0-4989-485a-9200-d56a0d2bf3aa,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+104,"ReMent Pokémon Funwari Yurarin Swing Figure Set (6-Pack, Ages 7–12)",e686c213-3e3b-4bcd-970d-db7daf467c9b,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+105,"ReMent Pokémon Gemstone Collection ""Shiny Miracle"" (6 pcs Case, Resin)",5dc1ca07-3af6-45bd-a156-88ac295b7169,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+106,"ReMent Pokémon Little Tale Forest Part 2 Set (6 pcs Case, Resin)",578003dc-f6b5-4149-b208-7df9a51db54a,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+107,ReMent Pokémon Nighty Night Collection Night Light (Single Pack),c77c40e3-7464-4cea-a606-20260effe264,live,ReMent,1,,,,1.2,0.12,,,"box 6x7x11.5cm published, no weight found"
+108,ReMent Pokémon Romantic Collection PVC (6 pcs Sealed Case),2dbdc848-e39b-42a3-803b-0b59bc6eb33e,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+109,"ReMent Pokémon Romantic Collection Set (6 pcs Case, Plastic)",4b699a49-9622-458a-b5ec-94f91f651240,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+110,"ReMent Pokémon Swing Vignette V2 Set (6 pcs Case, Resin, Ages 7–12)",77e5fb3d-8b3b-4295-97e6-e4da3316cbc5,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+111,"ReMent Pokémon Wanomado Box Set (6 pcs Case, Japan Original)",be127896-14a6-42b5-816b-8c77ec2f8a3d,live,ReMent,6,,,,1.2,0.71,,,"box 6x7x11.5cm published, no weight found"
+112,"S-Chinese Pokémon TCG Eevee Card Holder Case (8 blind box, 2 Booster Packs/Box)",09298bb6-133c-436c-9ff3-76c75ce7af1b,live,BoosterCase,8,,,,1.15,3.19,,,STANDARD box ~350g / SLIM box ~145g - check title
+113,SMISKI Birthday Series (12 per set),0374d1c9-e89d-4916-a449-879fbc3ff875,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+114,SMISKI HIPPERS Series Sealed Set (12 per set),d5399de0-602d-456d-9286-80f4137aff34,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+115,SMISKI Weekend Series Blind Box Sealed Set (12 per set),7236de50-341d-4ccc-8e3c-4e8ed29e86c4,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+116,SONNY ANGEL STRAWBERRY LOVE SERIES Sealed Set(6 per set),79447e93-3e27-4b5b-8452-0eb0b55e24c9,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+117,Sealed CASE S-Chinese Gem Series Vol. 2 Booster (20 Booster Boxes),4df8c8d7-43fe-478b-b8fe-1b51dee3845d,live,BoosterCase,20,,Y,,1.15,2.88,,,from ShuXiu supplier sheet
+118,Sealed CASE S-Chinese Gem Series Vol. 3 Booster (20 Booster Boxes),e388d8ed-033c-40ed-a280-8ce4a64f7982,live,BoosterCase,20,,Y,,1.15,2.88,,,from ShuXiu supplier sheet
+119,Sealed CASE S-Chinese Gem Series Vol. 4 Booster (20 Booster Boxes),9e337f77-9fc7-49c6-bf6d-df2849495e7a,live,BoosterCase,20,,Y,,1.15,2.88,,,from ShuXiu supplier sheet
+120,Sealed CASE S-Chinese Gem Series Vol. 5 Booster (20 Booster Boxes),9b91f294-c1c2-44c4-94bc-16478a5ac528,live,BoosterCase,20,,Y,,1.15,2.88,,,from ShuXiu supplier sheet
+121,Simplified Chinese Pokémon S & V Battle Set  Gift Box Lillie (ETB),1dd16ae2-da25-4be2-a9b4-be00b045d1cd,live,GiftETB,1,,,,1.1,0.75,,,varies by product
+122,Simplified Chinese Pokémon S & V Battle Set  Gift Box N (ETB),7de8e499-4eac-4b05-9794-9ca04f9674d2,live,GiftETB,1,,,,1.1,0.75,,,varies by product
+123,SkullPanda x My Little Pony Blind Box Case (6 pcs),01d74b94-1a08-4fac-8ce9-21273df55d72,live,PopMart,6,,,,1.4,0.92,,,only individual box dims found 7x5x5cm
+124,"Skullpanda Feast Begins Blind Box (12 pcs Case, POP MART)",179c0d92-1165-496b-b6c3-ede7865b1829,live,PopMart,12,,,,1.4,1.85,,,only individual box dims found 7x5x5cm
+125,"Sleeping Pokemon Casual Time Plush Set (6 pcs, Ages)",a59701c1-a7a5-40f7-9525-7a330dfdede0,live,TcgMisc,6,,,,1.2,1.14,,,mixed group
+126,Sleepless Grumpipi V2 Whispers to Dreamland Sealed cases Bulk 6 blind box dolls),ab2945f7-6427-422e-acb5-db056b844431,live,PopMart,,,,,1.4,0.92,,,unit count assumed from family
+127,Smiski Bath Series Sealed Set (12 per set),de065f23-008d-490b-b1b0-e1cd8aa6ceb2,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+128,Smiski Bed Series Sealed Set (12 per set),70f78eea-01d8-4b60-8d1a-3237cc92337f,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+129,Smiski Cheer Series Sealed Set (12 per set),8ca23975-1c45-449c-86bc-9ad6125f8a50,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+130,Smiski Dressing series Sealed Set (12 per set),e48e7b02-3b61-4063-8da0-95344d067119,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+131,Smiski Exercising Series Sealed Set (12 per set),8d481dcb-9a81-4b5f-a95d-16b7813dc3a6,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+132,Smiski Exercising Series Sealed Set (12 per set),be050ed1-0eaf-40e9-9018-61240b9a97d6,draft,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+133,Smiski Living Series Sealed Set (12 per set),64c37e10-4ecf-4be3-8fc6-88fdae4921e4,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+134,Smiski Moving Series Sealed Set (12 per set),9ef514c1-94e0-4eb8-a56e-dd193162596b,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+135,Smiski Strap Accessories Key Chains Glow in the Dark V1 (24 per set),b9606c28-a4af-42e4-a748-93bc5174393b,live,SmiskiStrap,24,,,33,1.5,1.19,,,assumed same as Smiski figure
+136,Smiski Strap Accessories Key Chains Glow in the Dark V2 (24 per set),d8e749c2-0242-463d-a1ef-2a047e55a98e,live,SmiskiStrap,24,,,33,1.5,1.19,,,assumed same as Smiski figure
+137,Smiski Strap Accessories Key Chains Glow in the Dark V3 (24),7ad723e2-cf81-49de-9079-bf7b83bc77dd,live,SmiskiStrap,24,,,33,1.5,1.19,,,assumed same as Smiski figure
+138,Smiski Toilet Series Sealed Set (12 per set),5e45252b-42b3-4f9a-a65b-95ede4f62ce3,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+139,Smiski Work Series Sealed Set (12 per set),a8f6de89-9db8-4f67-b09a-efd2b0075687,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+140,Smiski Yoga Series Sealed Set (12 per set),bba292a7-1fcf-483a-bd11-e37804643254,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+141,Smiski museum series Sealed Set (12 per set),6360b2b5-6002-4200-9b2a-787485630f07,live,Smiski,12,,,33,1.5,0.59,,,"Dreams Inc, same figure class as Sonny Angel"
+142,Sonny Angel Animal Hippers DECOPATIVE MINI FIGURES Sealed Set (12 per set),579d6f27-0170-41ea-8ba8-972b3e09252e,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+143,Sonny Angel Birthday Gift Bear Series Sealed Set (6 per set),775cc763-78bb-4eef-afa7-6e17d2d3f38d,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+144,Sonny Angel Birthday Gift Series Sealed Set (12 per set),878f5f1e-8d12-496a-ab34-dfa96c1233c4,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+145,Sonny Angel Cherry Blossom Series Sealed Set (6 per set),3011a46c-5da0-477a-8010-54eda58ac7d3,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+146,Sonny Angel Dog Time Series Sealed Set (9 per set),e3ecd15a-9a26-4b00-ab97-d16d627934aa,live,SonnyAngel,9,,,33,1.5,0.45,,,PUBLISHED figure 32-34g sonnyangelusa.com
+147,Sonny Angel Flower Gift Series Sealed Set (6 per set),a08a6fa6-5a96-4e20-9fba-b6d02bafd8ae,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+148,Sonny Angel Flower Series Sealed Set (12 per set),a0fd09d3-d73c-470b-af25-39ef57db2e5a,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+149,Sonny Angel Fruit HIPPERS DECORATIVE Harvest MINI FIGURE Set (12 per set),2a3f63d7-0b06-4c20-acbe-82e1949a1518,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+150,Sonny Angel Fruit Series Sealed Set (12 per set),e733b9ed-769e-41a5-ade6-6454473dc5a8,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+151,Sonny Angel Hippers Cherry Blossom Series Sealed Set (12 per set),f71a150d-763f-435c-9a1c-08445338c7a9,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+152,Sonny Angel Hippers Dreaming Series Sealed Set (12 per set),34fe71c0-c41a-498d-9a43-86a8605882ab,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+153,Sonny Angel I LOVE RAINY DAY Series (6 per set),bbe38252-00ae-4dfd-8408-b4324751b4fe,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+154,Sonny Angel Kiss Kiss Keychain Series Sealed (6 per set),0083096f-385b-4829-ae90-09feaba146b0,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+155,Sonny Angel Marine Series Sealed Set (12 per set),b9d93a44-95db-4485-8af1-355b99b3f017,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+156,Sonny Angel Mini Figure charm CANDY STORE SERIES (6 per set),f358011b-1b29-4c53-8cd3-c9da901e2a38,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+157,Sonny Angel Pumpkin Patch Series Sealed Set (6 per set),af86f2d2-910b-4719-ba3b-514781f37871,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+158,Sonny Angel Santa's Little Helper Series Sealed Set (6 per set),632e99b1-7d61-4158-b2dd-15a18353a638,live,SonnyAngel,6,,,33,1.5,0.3,,,PUBLISHED figure 32-34g sonnyangelusa.com
+159,Sonny Angel Vegetable Series Sealed Set (12 per set),9c90a1b9-10e7-4e7a-89b7-fe58e1234f47,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+160,Sonny Angel Ver. 4 Animal Series Sealed Set (12 per set),8dd1fc11-020c-499d-a439-adecdd800399,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+161,Sonny Angel Ver.1 Animal Series Sealed Set (12 per set),97deb2b1-e014-484e-94fc-12fc93347030,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+162,Sonny Angel Ver.2 Animal Series Sealed Set (12 per set),c2737181-6509-4615-bfd6-18d19b43f201,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+163,Sonny Angel Ver.3 Animal Series Sealed Set (12 per set),f9c689f3-0961-42a0-a407-017ca08936a1,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+164,Sonny Angel looking back Hippers Series Sealed Set (12 per set),7abd05ba-529a-40c8-8b50-4b7d7c75fcf7,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+165,Sonny Angle Sweets Series Sealed Set (12 per set),6aad304e-2589-4dfb-a2d3-b687127ab6b9,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+166,TOP TOY Maymei Bear Cookies Sealed Cases (8 per set),a825f3e7-babd-4935-bd75-a0f3335e83d7,live,TopToy,8,,,,1.4,1.12,,,no published specs found
+167,"TOPTOY Anime Blind Box Figures (6 pcs Set, Sealed Case)",96e3c72e-024c-47d8-85a3-07e5dc722302,live,TopToy,6,,,,1.4,0.84,,,no published specs found
+168,TOPTOY Kuromi Zodiac Series Plush Keychain Blind Box (12 pcs Set),ed3bb7a0-42ab-4c84-b81f-544bcad7b888,live,TopToy,12,,,,1.4,1.68,,,no published specs found
+169,TOPTOY Lilo & Stitch Series Blind Box (8 pcs Case),7cc5c6ad-f849-4b6c-94ac-553b032f221b,live,TopToy,8,,,,1.4,1.12,,,no published specs found
+170,TOPTOY Steampunk Series Figures Blind Box (6 pcs Case),8c477f7a-6367-4461-b576-2ac4ee20a149,live,TopToy,6,,,,1.4,0.84,,,no published specs found
+171,TOPTOY Winnie the Pooh Roo Series Plush Blind Box (6 pcs Case),664fe06b-930d-4fca-b229-8725ae3b2e49,live,TopToy,6,,,,1.4,0.84,,,no published specs found
+172,Team Rocket Attache Briefcase,9642e7e5-6062-4bc7-8720-15c4f92a44c3,draft,GiftETB,1,7.26,,,1.1,0.75,,,varies by product
+173,Terastal Grand Gathering — Booster Box,bed81e22-44c5-44f2-821f-e56c35a514a2,draft,BoosterCase,,1.31,Y,,1.15,0.4,,,unit count assumed from family
+174,Terastal Grand Gathering — Case of 20,671e42c7-b01a-45cd-ac16-165d73d847cc,draft,,20,1.31,Y,,1.2,3.65,,,from ShuXiu supplier sheet
+175,Terastal — Blind Badge Box,41cd4697-cb3d-4c05-aaad-95ae6aba879a,draft,,1,0.25,Y,,1.2,0.25,,,family assumed
+176,Terastal — Card Display Frame Set Blind Box (1 box),92210e6b-1d84-4627-a820-4eda5938cc72,draft,GiftETB,1,1.06,Y,,1.1,0.75,,,varies by product
+177,Terastal — Card Display Frame Set Blind Box (1 case),8975c720-4948-4ce2-a11e-28978a058426,draft,GiftETB,,3.1,Y,,1.1,0.75,,,unit count assumed from family
+178,Terastal — Coin Set Blind Bag,0d076fdb-1cd8-4585-a67e-23ccc7eae1e2,draft,,1,0.25,Y,,1.2,0.25,,,family assumed
+179,Terastal — Premium Gift Box (1 box),2910116d-9484-4caa-9c34-327f5dc7b8c5,draft,GiftETB,1,1.06,Y,,1.1,0.75,,,varies by product
+180,Top Level Bundle,acc7b980-5e0c-4a9e-90b6-d7d5345b4ccb,draft,,,,,,1.2,,,,no family assigned
+181,TopToy Bulk X Kuromi for Plastic Blind Box Sealed Cases 8 per set Free,194924d3-9c88-4ae5-9e8d-e382534821f6,live,TopToy,8,,,,1.4,1.12,,,no published specs found
+182,Vaporeon Edition Pokemon TCG Card Collector Gift Box (S-Chinese),ebb781f2-e7ba-4d4b-bd9c-a230a04ba92a,live,GiftETB,1,,,,1.1,0.75,,,varies by product
+183,WASA Kamen Rider 206 Dragon Collaboration Blind Box (6 pcs Set),0fe42f97-da3e-48a0-8c57-c8bb79cc8edd,live,,6,,,,1.2,0.92,,,family assumed
+184,X10 Boxes Paldea Trainer Charm Set V1 Pokémon S&V TCG S-Chinese 10 boxes,99447ca3-5890-4404-ae48-3a06e121207d,live,TcgMisc,10,,Y,,1.2,4.62,,,from ShuXiu supplier sheet
+185,"X10 Boxes Pokémon Paldea Trainer Photo Charm S&Violet, Ten Booster S-Chinese TCG",72848db5-ffb3-4a66-962c-0bf7b9f3c5b6,live,BoosterCase,10,,Y,,1.15,4.62,,,from ShuXiu supplier sheet
+186,"X10 Pokémon 151 Promotional Magnet Puzzle boxes (10 Sealed Box, S-Chinese)",c1a8d880-3710-4702-8c68-10eb3e981c8c,live,TcgMisc,10,,,,1.2,1.9,,,mixed group
+187,X10 Sets Pokémon TCG Chinese New Year Celebration Card Gift Box 2026 S-Chinese,60974374-2f67-44f0-8e89-e51baba8852f,live,GiftETB,10,,,,1.1,7.48,,,varies by product
+188,X15 Boxes Bulk Pokémon First Partner Booster Boxes (5 Sets of 3 S-Chinese Cards),472c2abe-1caa-4897-b912-1a3a1f2ba9f0,live,BoosterCase,5,,,,1.15,2.0,,,STANDARD box ~350g / SLIM box ~145g - check title
+189,X3 Boosters SV11W S&V Expansion White Flare Boosters Korean,a27890a7-a443-4f28-a8b7-3b23d12d1723,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+190,X3 Boxes Gallade EX MEGA Munikis Nihil Zero M3 Hanging Boxes,0ac9ffad-cb0e-4fc0-8e70-8ad36d72294c,live,,3,,,,1.2,1.2,,,family assumed
+191,X3 Boxes Korean Pikachu Plush Deck Box + Deck Sealed Box Promos,5d59e61e-29fd-48ba-aa60-27c6eda0907a,live,TcgMisc,3,,,,1.2,0.57,,,mixed group
+192,X3 Boxes Korean Pikachu Present Box Exclusive Promo Sealed Boxes,dfd046a9-e45e-483d-b328-c54111ddedd8,live,,3,,,,1.2,1.2,,,family assumed
+193,X3 Boxes Korean Pokemon Special Deck EX Venusaur /Charizard/Blastoise,1d00abc4-aecf-401f-904b-efa02d7afd17,draft,TcgMisc,3,,,,1.2,0.57,,,mixed group
+194,X3 Boxes M1L Mega Brave Lucario Big Gift Box Sealed Korean,f3fdad56-ce8c-4eeb-81cd-46af2b1579e7,live,GiftETB,3,,,,1.1,2.24,,,varies by product
+195,X3 Boxes M1L Mega Brave Lucario Korean Boosters Sealed,26b40a51-46e8-44b1-b560-437b69cbe70a,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+196,X3 Boxes M1S MEGA SYMPHONIA Big Gift Box Korean,b92558ed-c890-4f49-84b8-46cbe66855ed,live,GiftETB,3,,,,1.1,2.24,,,varies by product
+197,X3 Boxes M1S MEGA SYMPHONIA Boosters Korean,9f3b98f3-4c88-4f5f-a6b3-cfb5c5b7d6ae,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+198,X3 Boxes M2 MEGA Inferno X Booster Box Sealed Korean,46c83b03-a0df-471b-a60b-c82a5a3254a4,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+199,X3 Boxes M2 Mega Inferno X Charizard Big Gift Box Korean,ea1100bd-15f2-4a36-9f77-8734dd249ada,live,GiftETB,3,,,,1.1,2.24,,,varies by product
+200,X3 Boxes M2A Korean Mega Dream EX Boosters,bd8f4c6b-59ac-4862-9605-3db5f3e9cad4,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+201,X3 Boxes MEGA 100 Korean Start Deck Battle Collection Hanging boxes,2a2f30df-7efa-4733-ad80-ea42c2f50b51,draft,TcgMisc,3,,Y,,1.2,0.57,,,mixed group
+202,X3 Boxes MEGA Munikis Nihil Zero M3 Booster Boxes (90 Packs!),78098d7a-7da7-4f79-abb3-3739bed01d7f,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+203,"X3 Boxes MEGA Special Set ""N"" Korean Reshiram Zekrom",9839878d-2598-4d09-82ce-1d1a5c2a205d,live,,3,,,,1.2,1.2,,,family assumed
+204,X3 Boxes S&V - Clay Burst Boosters SV2D Korean Sealed,dec8d9b1-0264-4356-a4d9-4a805d4fa473,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+205,X3 Boxes S&V SV4M Future Flash Paradox Rift Korean,fbd79b39-8322-4a4a-95ed-b3b4ce6984f6,live,,3,,,,1.2,1.2,,,family assumed
+206,X3 Boxes S&V Snow Hazard SV2P Korean Boosters,1e4845f9-29ba-4126-ad30-a0f9ac267ffb,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+207,X3 Boxes S10A Dark Phantasma Boosters Sealed Korean,51d07f26-1c20-4a7f-8d16-7fc4ee599aa4,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+208,X3 Boxes S10P Space Juggler Boosters Sealed Korean,0b233cec-7397-4b24-8d12-e2602b38f98c,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+209,X3 Boxes S11 Lost Abyss Boosters Sealed Korean,c3805314-79f8-4af0-b37b-59f772434eea,draft,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+210,X3 Boxes S12 Sword & Shield Paradigm Trigger Boosters Korean,6c1004a3-52b0-422a-8e5f-d19918ecd32a,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+211,X3 Boxes S12A VSTAR Universe Boosters Korean,a9e3a204-4f80-401c-9d1a-a85cedb2aaa7,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+212,X3 Boxes S1W Sword & Shield V Boosters Korean,95e921ee-b36a-48b3-8d7f-5c09db079341,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+213,X3 Boxes S2A S&S Explosive flame Walker Boosters Korean,cf3fc4b3-7e54-4fb4-9fdd-9ee5115a48e4,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+214,X3 Boxes S5A Matchless Fighter Boosters Sealed Korean,3086ae4d-9c5b-4080-b60f-68c3abbaf38f,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+215,X3 Boxes S6A Eevee Heroes Boosters Sealed Korean,bf9aa8de-58d7-4229-9e0f-429d1ad48981,draft,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+216,X3 Boxes S6H Silver Lance Boosters Sealed Korean,027290ac-3a5c-441f-acd3-e18fe602f165,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+217,X3 Boxes S6K Black Spirit Boosters Sealed Korean,b6b6eed8-945d-46c1-9c2a-bda0eed8307d,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+218,X3 Boxes S7R Blue Sky Stream Boosters Sealed Korean,702e409b-087d-45fa-9bc5-4a1bebcacf32,draft,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+219,X3 Boxes S8A 25th Anniversary Collection Boxes Sealed Korean,dbee0f09-823e-4631-98fd-2c9d38277ad3,draft,,3,,,,1.2,1.2,,,family assumed
+220,X3 Boxes S9 Star Birth Boosters Sealed Korean,86dd765a-d69f-4c60-a051-0320a95e4c25,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+221,X3 Boxes S9A Battle Region Boosters Sealed Korean (60 Packs),b70e701c-3584-4cf1-9f0f-2da62100f7fd,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+222,X3 Boxes SV10 Team Rocket's Glory Boosters Sealed Korean,37b5e792-edf2-44ea-b0b4-680def7449cf,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+223,X3 Boxes SV11B S&V Expansion Black Bolt Boosters Korean,2b6715ca-6d79-4336-a914-0bf3e44001ec,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+224,X3 Boxes SV1A Triple Beat S&V Korean Booster Boxes Sealed,c400ab2e-2a26-408e-a430-d777c53481a2,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+225,X3 Boxes SV1S Scarlet EX Korean Boosters Sealed,63a68110-ddaf-4a71-9d47-85308e33cb47,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+226,X3 Boxes SV1V Violet EX Korean Boosters Sealed,fe7eb49f-dabd-4cfc-beb3-76d899764325,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+227,X3 Boxes SV2A 151 Korean Boosters Factory Sealed,1bb14ca6-37cd-4c28-8278-dc76a6c00f6a,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+228,X3 Boxes SV3 Ruler of the Black Flame Boosters SV3 Korean,52e49bb4-c6fb-4024-ad25-55cdbfd58608,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+229,X3 Boxes SV3A Raging Surf Boosters Korean,fa016029-fa2f-4d56-b257-648ad81e8d2d,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+230,X3 Boxes SV4A Shiny Treasure EX Booster Boxes Korean,c9a36b40-861f-42ac-bd8d-37a6e9d89bae,draft,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+231,X3 Boxes SV4K S&V Ancient Roar Boosters Korean,6c845325-7be4-4027-b7d0-134cb9245c68,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+232,X3 Boxes SV5A Crimson Haze Boosters Sealed Korean,bb008d6d-f54a-4135-812d-5f3a7f1678df,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+233,X3 Boxes SV5K Wild Force Boosters Korean,2722750c-ab59-4d58-9756-c13e057755f5,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+234,X3 Boxes SV5M Cyber Judge Boosters Sealed Korean,8d0b6941-472b-4a13-959f-382bea6783ac,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+235,X3 Boxes SV6 Transformation Mask Boosters Korean,6a2a9be7-0d79-4bc7-823f-73d2b37db088,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+236,X3 Boxes SV6A Night Wanderer Boosters Sealed Korean,72b3f9f5-fd67-490e-abef-900dfa875840,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+237,X3 Boxes SV7 Stellar Miracle Boosters SV7 Korean,cc669ac9-257e-425e-8e06-457ae1876106,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+238,X3 Boxes SV7A Paradise Dragona Boosters Sealed Korean,a5e2ed98-9f08-4008-a470-0cf676b08381,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+239,X3 Boxes SV8 Supercharged Breaker Boosters Sealed Korean,2c89b15c-0ff5-4cd4-8c69-f43a241e8045,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+240,X3 Boxes SV8A Terastal Festival Boosters Sealed Korean,fc774644-4dfe-4089-817b-94d5004d5218,live,BoosterCase,3,,Y,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+241,X3 Boxes SV9 S&V Battle Partners Boosters Sealed Korean,188539e7-edf5-48e1-ba64-a60474abb4cd,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+242,X3 Boxes SV9A Heat Wave Arena Boosters Sealed Korean,3eb32703-6761-4f63-9aa0-03ef9f7096ba,live,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+243,X3 MEGA Premium Trainer Box MEGA Brave Symphonia M1L M1S Korean,19437d68-3993-49d0-990d-495929664de5,live,,3,,,,1.2,1.2,,,family assumed
+244,X3 boxes S10B Pokemon Go S&S Boosters Sealed Korean,69134696-870a-49bb-b883-0b6ab3c338a4,draft,BoosterCase,3,,,,1.15,1.2,,,STANDARD box ~350g / SLIM box ~145g - check title
+245,X4 Boxes Morpeko V-Union Big Boxes (Sealed Case of Four S-Chinese TCG),e0e7f3ee-4c41-42ea-b0b4-91a4fd033c76,live,TcgMisc,4,,,,1.2,0.76,,,mixed group
+246,"X6 Boxes Pikachu V-Union Booster Boxes TCG (Sealed Case S-Chinese, Authentic)",b7dbe86f-7942-4392-a127-dbd005a576cb,live,BoosterCase,6,,,,1.15,2.39,,,STANDARD box ~350g / SLIM box ~145g - check title
+247,"X8 Box Pokémon Duraludon Dragons Return Booster Gift Box (S-Chinese, Authentic)",f384edfb-bed8-41ce-b0ec-4ef19a751661,live,BoosterCase,8,,,,1.15,3.19,,,STANDARD box ~350g / SLIM box ~145g - check title
+248,X8 Boxes Pokémon 30th Anniversary Special Art First Partner Vol.1 (S-Chinese),0caac7e2-b11a-4838-8b59-e002e2cba8f0,live,TcgMisc,8,,Y,,1.2,4.23,,,from ShuXiu supplier sheet
+249,[DRAFT 03] Terastal — Eeveelution Binder Gift Box,4ea3cae2-7124-4164-8190-ca5e393dbcb7,draft,GiftETB,1,1.06,Y,,1.1,0.75,,,varies by product
+250,[DRAFT 07] Terastal — Accessory Storage Box,1fd0fab0-65b8-4bf8-b2dd-5f4a139c3062,draft,,1,1.31,Y,,1.2,1.31,,,family assumed
+251,[DRAFT 11] Chasing Glory Together — Slim Booster Box (1 box),ee34c0d1-dfab-42ef-8ea5-96d6e70cbaaa,draft,BoosterCase,1,0.25,Y,,1.15,0.16,,,STANDARD box ~350g / SLIM box ~145g - check title
+252,[DRAFT 12] Gem Pack Vol. 6 — Case of 20,5b9791c4-cbe8-40cf-8d18-bbfa1c9bd499,draft,,20,5,Y,,1.2,2.88,,,from ShuXiu supplier sheet
+253,[DRAFT 14] Eternal Beginnings — Booster,3d4eeeea-afaf-4bc0-80ac-dec8bc08a1c0,draft,BoosterCase,,1.31,,,1.15,0.4,,,unit count assumed from family
+254,[DRAFT 15] Miracle Journey — Booster,76d72db2-cecb-4f77-8566-6a6a510eb894,draft,BoosterCase,,1.31,,,1.15,0.4,,,unit count assumed from family
+255,[DRAFT 16] Fearless Terastal — Booster,078b2d9d-c895-41aa-ae37-fd760170fbde,draft,BoosterCase,,1.31,Y,,1.15,0.4,,,unit count assumed from family
+256,[DRAFT 18] Collect 151 Hope — Booster,2794ce73-0835-481d-b63d-457d2f814b01,draft,BoosterCase,,1.31,Y,,1.15,0.4,,,unit count assumed from family
+257,[DRAFT 19] Collect 151 Surprise — Booster,6a5985c1-476a-4dfa-906f-ba7b4bd48fc1,draft,BoosterCase,,1.31,Y,,1.15,0.4,,,unit count assumed from family
+258,[DRAFT 28] Collect 151 Jigsaw Magnet Set Blind Box,91edc6c7-5bb4-415e-b2b1-8d187731290b,draft,TcgMisc,,0.25,Y,,1.2,0.87,,,from ShuXiu supplier sheet
+259,[DRAFT 29] Blokees Pokemon (Classic Class CV-S),de26d8cb-166e-435d-8297-2137e99ee51d,draft,Blokees,,1.31,,300,1.06,2.86,,,unit count assumed from family
+260,sonny angel Funbarus Hippers Posture Pal Sealed Set (12 per set),1b014638-ff76-4ec5-876e-d6006fdfa6c8,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+261,sonny angel snack Series Sealed Set (12 per set),7b40dad4-5f20-4b24-b2b7-0f27038ab1ef,live,SonnyAngel,12,,,33,1.5,0.59,,,PUBLISHED figure 32-34g sonnyangelusa.com
+262,💥 WASA Kamen Rider206 WASA Dragon Collaboration Series Blind Box Cases (6pc),28acffe0-6a65-48fa-a8ea-fd916df9fac5,draft,,6,,,,1.2,0.92,,,family assumed
+263,💥Blokees Kamen Rider Starlight Version V-3 Blind-Box model figures Sealed Cases,0eb863ea-d04b-4720-bfab-a89a37a19606,draft,Blokees,,,,300,1.06,2.86,,,unit count assumed from family
+264,💥Blokees Kamen Rider Starlight Version V-4 blind-box model figures Sealed Cases,495d7b82-c6bf-4a17-a502-3e4e88b43e51,draft,Blokees,,,,300,1.06,2.86,,,unit count assumed from family
+265,💥Blokees Transformers Defenders V-3 pocket model figures Sealed Cases(12pc/set),dbef078e-ea27-42d9-a4e0-f4cb69a5c3ed,draft,Blokees,12,,,300,1.06,3.82,,,PUBLISHED package 0.3kg bigbadtoystore.com
+266,💥Blokees Transformers Defenders V-4 pocket model figures Sealed Cases(12pc/set),152f2e5a-3fa2-41d9-ae69-72caf7079717,draft,Blokees,12,,,300,1.06,3.82,,,PUBLISHED package 0.3kg bigbadtoystore.com
