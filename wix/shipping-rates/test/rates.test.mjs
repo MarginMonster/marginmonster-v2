@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  quote, airPrice, cartWeight, unitWeight,
+  quote, airPrice, cartWeight, unitWeight, getShippingRates,
   RATE_PER_KG, MIN_CHARGE, FALLBACK_WEIGHT_KG, SEA_MIN_KG, seaAvailable
 } from './.tmp/ecom-shipping-rates.mjs';
 
@@ -91,4 +91,27 @@ test('order 10008 falls short of the sea minimum', () => {
   // Adding one more Eevee case (1.39) takes it over.
   assert.equal(quote([item(1.39, 3), item(2.53), item(4.23)]).sea, null);
   assert.equal(quote([item(1.39, 4), item(2.53), item(4.23)]).sea, 0);
+});
+
+test('the buyer is shown the weight and the arithmetic', () => {
+  const out = getShippingRates({ currency: 'USD', lineItems: [item(1.39, 3), item(2.53), item(4.23)] });
+  const air = out.shippingRates.find(r => r.code === 'air-upgrade');
+  assert.match(air.logistics.deliveryTime, /10\.9 kg/);
+  assert.match(air.logistics.deliveryTime, /\$9\.09\/kg/);
+  // the figure quoted in the text must equal the figure charged
+  assert.match(air.logistics.deliveryTime, new RegExp('= \\$' + air.cost.price));
+});
+
+test('a qualifying cart is told it qualifies', () => {
+  const out = getShippingRates({ currency: 'USD', lineItems: [item(20)] });
+  const sea = out.shippingRates.find(r => r.code === 'sea-included');
+  assert.equal(sea.cost.price, '0.00');
+  assert.match(sea.logistics.deliveryTime, /qualifies for sea/);
+  assert.match(sea.logistics.deliveryTime, /12 kg minimum/);
+});
+
+test('a light cart returns air only, never an empty list', () => {
+  const out = getShippingRates({ currency: 'USD', lineItems: [item(2)] });
+  assert.equal(out.shippingRates.length, 1);
+  assert.equal(out.shippingRates[0].code, 'air-upgrade');
 });

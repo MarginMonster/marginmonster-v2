@@ -39,12 +39,39 @@ const UNKNOWN_SKU_POLICY = 'allow';
 //   true  = only products listed in moq-data.js count
 const MIN_UNITS_COUNTS_ONLY_MOQ_ITEMS = false;
 
+/* --- shipping notice -------------------------------------------------
+ * Sea freight is free but needs a minimum consignment. Without a notice
+ * the sea option simply vanishes from checkout with no explanation, so
+ * the cart tells the buyer how far short they are.
+ *
+ * KEEP THESE THREE IN SYNC with ecom-shipping-rates.js. They are copied
+ * rather than imported on purpose: an import that fails to resolve takes
+ * the whole checkout down, and these two plugins are installed
+ * separately.
+ */
+const SEA_MIN_KG = 12;            // == SEA_MIN_KG
+const FALLBACK_WEIGHT_KG = 1.2;   // == FALLBACK_WEIGHT_KG
+const AIR_RATE_PER_KG = 9.09;     // == RATE_PER_KG
+
+// Set to false to stop showing the sea-minimum notice in the cart.
+const SHOW_SHIPPING_NOTICE = true;
+
 /* =============================================================== */
 
 const OTHER_TARGET = { other: { name: 'OTHER_DEFAULT' } };
 
 function violation(description) {
   return { severity: 'ERROR', target: OTHER_TARGET, description };
+}
+
+// WARNING is shown to the buyer but does not stop them checking out.
+function notice(description) {
+  return { severity: 'WARNING', target: OTHER_TARGET, description };
+}
+
+function weightOf(item) {
+  const w = Number(item && item.physicalProperties && item.physicalProperties.weight);
+  return Number.isFinite(w) && w > 0 ? w : FALLBACK_WEIGHT_KG;
 }
 
 function skuOf(item) {
@@ -161,6 +188,35 @@ function collectViolations(options) {
             `They can all be the same product — add ${MIN_TOTAL_UNITS - units} more.`
         )
       );
+    }
+  }
+
+  /* --- 3. shipping notice ------------------------------------------
+   * Not a blocker. Tells the buyer what their order weighs, which
+   * shipping they qualify for, and what the air upgrade would cost.
+   */
+  if (SHOW_SHIPPING_NOTICE && SEA_MIN_KG > 0) {
+    const kg = lineItems
+      .filter(isPhysical)
+      .reduce((sum, item) => sum + weightOf(item) * (Number(item.quantity) || 0), 0);
+
+    if (kg > 0) {
+      const air = Math.max(8, Math.ceil(kg * AIR_RATE_PER_KG * 100) / 100);
+
+      // Only speak up when there is something to act on. A cart that
+      // already qualifies for sea gets its weight and both prices from
+      // the shipping options at checkout; repeating it here would put a
+      // warning banner on a perfectly healthy order.
+      if (kg < SEA_MIN_KG) {
+        const short = SEA_MIN_KG - kg;
+        violations.push(
+          notice(
+            `Your order weighs about ${kg.toFixed(1)} kg. Free sea freight needs ` +
+              `${SEA_MIN_KG} kg — add about ${short.toFixed(1)} kg more to qualify. ` +
+              `Below that, air freight is the only option at $${air.toFixed(2)}.`
+          )
+        );
+      }
     }
   }
 

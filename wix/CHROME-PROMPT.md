@@ -43,11 +43,18 @@ Then turn off the old table, or buyers will see both sets of options:
    - `Air Freight Upgrade - Expedited` (the 13-band table)
    - `Sea Freight - Included (no extra charge)`
 
-**Check it:** add enough to a cart to pass 12 kg and open checkout. You
-should see `Sea Freight - Included` at $0.00 and `Air Freight Upgrade -
-Expedited` at roughly cart weight × $9.09. Then cut the cart down to one
-case — sea should vanish and only air remain. That is intentional: sea
-freight bills a minimum consignment and is withheld below 12 kg.
+**Check it:** add enough to a cart to pass 12 kg and open checkout. Both
+options must show the weight and the arithmetic under the option name,
+for example `14.2 kg x $9.09/kg = $129.08` under the air option, and
+`14.2 kg - qualifies for sea (12 kg minimum)` under the sea one. Confirm
+the figure in that text equals the figure actually charged.
+
+Then cut the cart down to one case. Sea should vanish, only air remain,
+and the **cart** should show a yellow notice reading roughly *"Your order
+weighs about X kg. Free sea freight needs 12 kg — add about Y kg more to
+qualify."* It must not block checkout — you should still be able to
+proceed to payment. That combination is the point: sea is withheld below
+the consignment minimum, but the buyer is told why and how to fix it.
 
 ---
 
@@ -72,8 +79,17 @@ product's MOQ in one click. It was written but never installed.
 
 **Check it:** open a costume product with a 120 MOQ. The button should
 read `BUY FULL CASE — 120 PCS`. Click it and confirm the cart shows
-**120**, not 1. Then open a Pokémon or Smiski product — those have no
-MOQ, so the button and note should both be hidden.
+**120**, not 1.
+
+The `caseNote` text should also spell out the shipping, something like:
+*"Sold by the case — 120 pcs minimum. About 4.5 kg per case. Sea freight
+is free and already in the price — orders reach the 12 kg sea minimum at
+3 cases. Air freight is optional, about $40.91 for this case."* If it
+only says the first sentence, the product has no weight on it — tell me
+which product.
+
+Then open a Pokémon or Smiski product — those have no MOQ, so the button
+and note should both be hidden.
 
 ---
 
@@ -92,9 +108,13 @@ turned away.
 4. Publish.
 
 **Check it:** put 3 of a single Smiski case in the cart. It should go
-through cleanly. Drop it to 2 and you should get: *"Wholesale orders
-start at 3 pieces. You have 2. They can all be the same product — add 1
-more."*
+through — a yellow shipping notice about the sea minimum is expected and
+fine, it does not block. Drop it to 2 and you should get a red blocking
+message: *"Wholesale orders start at 3 pieces. You have 2. They can all
+be the same product — add 1 more."*
+
+The difference matters: red stops checkout, yellow does not. If the
+shipping notice is stopping checkout, tell me.
 
 ---
 

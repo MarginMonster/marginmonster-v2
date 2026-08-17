@@ -46,10 +46,36 @@ export const FALLBACK_WEIGHT_KG = 1.2;
  */
 export const SEA_MIN_KG = 12;
 
-const SEA_TITLE = 'Sea Freight - Included (no extra charge)';
 const SEA_TIME = '40-60 days total (production + sea transit)';
-const AIR_TITLE = 'Air Freight Upgrade - Expedited';
 const AIR_TIME = '15-25 days total (production + air transit)';
+
+/* ------------------------------------------------------- wording */
+
+/** One decimal is enough for a shipping estimate and reads cleaner. */
+function kgLabel(kg) {
+  return kg.toFixed(1) + ' kg';
+}
+
+/**
+ * The buyer sees `title` as the option name and `deliveryTime` as the
+ * grey line under it. Both are used to show the arithmetic, so nobody
+ * has to guess where the number came from.
+ */
+function seaLabels(kg) {
+  return {
+    title: 'Sea Freight - included, no extra charge',
+    time: SEA_TIME + ' | ' + kgLabel(kg) + ' - qualifies for sea (' +
+          SEA_MIN_KG + ' kg minimum)'
+  };
+}
+
+function airLabels(kg, price) {
+  return {
+    title: 'Air Freight Upgrade - Expedited',
+    time: AIR_TIME + ' | ' + kgLabel(kg) + ' x $' + RATE_PER_KG.toFixed(2) +
+          '/kg = $' + price.toFixed(2)
+  };
+}
 
 /* ----------------------------------------------------------- helpers */
 
@@ -135,20 +161,24 @@ export const getShippingRates = (options) => {
   const rates = [];
 
   // Sea only appears once the cart makes up a consignment. Below that
-  // the minimum charge would not be covered by the baked-in price.
+  // the minimum charge would not be covered by the baked-in price. The
+  // cart plugin explains the shortfall so the option is never just
+  // missing without a reason.
   if (seaAvailable(kg)) {
+    const sea = seaLabels(kg);
     rates.push({
       code: 'sea-included',
-      title: SEA_TITLE,
-      logistics: { deliveryTime: SEA_TIME },
+      title: sea.title,
+      logistics: { deliveryTime: sea.time },
       cost: { price: '0.00', currency }
     });
   }
 
+  const airText = airLabels(kg, air);
   rates.push({
     code: 'air-upgrade',
-    title: AIR_TITLE,
-    logistics: { deliveryTime: AIR_TIME },
+    title: airText.title,
+    logistics: { deliveryTime: airText.time },
     cost: { price: air.toFixed(2), currency }
   });
 

@@ -52,6 +52,54 @@ Then empty it down to one case. Sea should disappear and only air remain.
 
 Cross-check against `wix/shipping/AIR-FREIGHT-RATES.md`.
 
+## What the buyer sees
+
+Both options spell out the arithmetic, so nobody has to guess where the
+number came from:
+
+    Sea Freight - included, no extra charge                    $0.00
+    40-60 days total (production + sea transit) |
+    14.2 kg - qualifies for sea (12 kg minimum)
+
+    Air Freight Upgrade - Expedited                          $129.08
+    15-25 days total (production + air transit) |
+    14.2 kg x $9.09/kg = $129.08
+
+Below the sea minimum the sea row is not shown at all. So that it never
+just goes missing without a reason, the MOQ plugin puts a non-blocking
+notice in the **cart**:
+
+> Your order weighs about 8.4 kg. Free sea freight needs 12 kg — add
+> about 3.6 kg more to qualify. Below that, air freight is the only
+> option at $76.36.
+
+That notice is `severity: WARNING`, so it informs without stopping
+checkout. It only appears when the cart is short — a cart that already
+qualifies stays clean, and gets its weight and both prices from the
+shipping options above.
+
+The product page carries the same information before anything is added
+to the cart, via the `caseNote` text element:
+
+> Sold by the case — 120 pcs minimum. About 4.5 kg per case. Sea freight
+> is free and already in the price — orders reach the 12 kg sea minimum
+> at 3 cases. Air freight is optional, about $40.91 for this case.
+
+## Keep these three numbers in step
+
+`SEA_MIN_KG`, `RATE_PER_KG` and `FALLBACK_WEIGHT_KG` appear in three
+files. They are copied rather than imported on purpose — an import that
+fails to resolve would take the whole checkout down, and these plugins
+install separately.
+
+| file | constants |
+| --- | --- |
+| `ecom-shipping-rates.js` | all three (the source of truth) |
+| `ecom-validations.js` | `SEA_MIN_KG`, `AIR_RATE_PER_KG`, `FALLBACK_WEIGHT_KG` |
+| `product-page.js` | `SEA_MIN_KG`, `AIR_RATE_PER_KG` |
+
+Change one, change all three, then publish.
+
 ## The sea minimum
 
 Sea freight bills a minimum consignment, so a small order costs the same

@@ -37,7 +37,7 @@ $w.onReady(async function () {
     return;
   }
 
-  setText('#caseNote', `Sold by the case — ${moq} pcs minimum.`);
+  setText('#caseNote', caseNoteText(product, moq));
   setLabel('#buyCaseButton', `BUY FULL CASE — ${moq} PCS`);
 
   $w('#buyCaseButton').onClick(async () => {
@@ -58,6 +58,32 @@ $w.onReady(async function () {
     }
   });
 });
+
+/* ------------------------------------------------------- shipping note
+ * Shows what the case weighs and what that means for shipping, so the
+ * buyer can see it on the product page rather than discovering it at
+ * checkout. Keep SEA_MIN_KG and AIR_RATE_PER_KG in step with
+ * ecom-shipping-rates.js.
+ */
+const SEA_MIN_KG = 12;
+const AIR_RATE_PER_KG = 9.09;
+
+function caseNoteText(prod, qty) {
+  const base = `Sold by the case — ${qty} pcs minimum.`;
+
+  const kg = Number(prod && prod.weight);
+  if (!Number.isFinite(kg) || kg <= 0) return base;
+
+  const cases = Math.ceil(SEA_MIN_KG / kg);
+  const air = Math.max(8, Math.ceil(kg * AIR_RATE_PER_KG * 100) / 100);
+
+  return (
+    `${base} About ${kg.toFixed(1)} kg per case. ` +
+    `Sea freight is free and already in the price — orders reach the ` +
+    `${SEA_MIN_KG} kg sea minimum at ${cases} case${cases === 1 ? '' : 's'}. ` +
+    `Air freight is optional, about $${air.toFixed(2)} for this case.`
+  );
+}
 
 /* The product object is exposed differently depending on how the page was
    built, so try the known shapes in order rather than assuming one. */

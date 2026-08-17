@@ -22,6 +22,9 @@ async function check(label, lineItems, expect) {
 }
 
 const none = g => g.length === 0;
+// The shipping notice is a WARNING, so a cart can be rule-clean and still
+// carry one. noErrors asserts nothing BLOCKS checkout.
+const noErrors = (g, v) => v.every(x => x.severity === 'WARNING');
 const has = re => g => g.some(d => re.test(d));
 const countIs = n => g => g.length === n;
 
@@ -49,7 +52,7 @@ await check('two products, plenty of pieces, allowed',
   [line('MM-0001', 60), line('MM-0002', 120)], none);
 // Three of the SAME product clears the floor.
 await check('three of one product is enough',
-  [line('MM-9999', 3, 'p-A')], none);
+  [line('MM-9999', 3, 'p-A')], noErrors);
 await check('two pieces is short by one',
   [line('MM-9999', 2, 'p-A')],
   has(/start at 3 pieces\. You have 2/));
@@ -57,7 +60,7 @@ await check('the message says they can all be the same product',
   [line('MM-9999', 1, 'p-A')],
   has(/all be the same product/));
 await check('pieces add up across separate lines',
-  [line('MM-9999', 1, 'p-A'), line('MM-9998', 1, 'p-B'), line('MM-9997', 1, 'p-C')], none);
+  [line('MM-9999', 1, 'p-A'), line('MM-9998', 1, 'p-B'), line('MM-9997', 1, 'p-C')], noErrors);
 
 console.log('\n--- edge cases ---');
 await check('empty cart is silent', [], none);
@@ -86,3 +89,23 @@ console.log('\n--- violation shape matches the Wix contract ---');
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
+
+console.log('\n--- shipping notice (WARNING, does not block) ---');
+// Three light cases: 3 x 1.2 kg fallback = 3.6 kg, short of the 12 kg sea minimum.
+const light = [line('MM-9999', 1, 'p-A'), line('MM-9998', 1, 'p-B'), line('MM-9997', 1, 'p-C')];
+
+await check('a light cart is told how far short of sea it is', light,
+  has(/Free sea freight needs 12 kg/));
+await check('the notice states the order weight', light, has(/weighs about 3\.6 kg/));
+await check('the notice quotes the air price', light, has(/air freight is the only option at \$/));
+
+// It must be a WARNING, never an ERROR — the buyer can still check out.
+const lightRes = await getValidationViolations({ validationInfo: { lineItems: light } });
+const sev = lightRes.violations.map(v => v.severity);
+console.log(sev.length > 0 && sev.every(s => s === 'WARNING')
+  ? '  PASS  the notice never blocks checkout'
+  : '  FAIL  expected only WARNING, got ' + JSON.stringify(sev));
+
+// A cart that already qualifies for sea should stay silent.
+await check('a qualifying cart gets no banner',
+  [line('MM-0001', 60), line('MM-0002', 120)], none);
