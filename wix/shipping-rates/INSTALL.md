@@ -42,12 +42,30 @@ The plugin returns replacements for both.
 
 ## 5. Check it
 
-Put three cases in a cart and open checkout. Two options should appear:
+Put enough in a cart to pass 12 kg and open checkout. Two options should
+appear:
 
 - Sea Freight - Included — $0.00
 - Air Freight Upgrade - Expedited — cart weight × $9.09
 
+Then empty it down to one case. Sea should disappear and only air remain.
+
 Cross-check against `wix/shipping/AIR-FREIGHT-RATES.md`.
+
+## The sea minimum
+
+Sea freight bills a minimum consignment, so a small order costs the same
+to ship as one at the minimum. Baking sea into the product price only
+recovers that once the cart is heavy enough.
+
+`SEA_MIN_KG` is set to **12 kg**. Below that the sea option is not
+offered and the buyer ships air. Set it to 0 to always offer sea.
+
+Worth knowing: order 10008 was 10.93 kg, so it would **not** have
+qualified for sea under this rule — one more Eevee case would have
+taken it over. If that is turning away orders you want, lower the
+number; the trade is that you eat the shortfall on the consignment
+minimum.
 
 ## Changing the rate
 

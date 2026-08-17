@@ -5,7 +5,8 @@
  *   quantity must equal that SKU's MOQ, or a whole multiple of it.
  *   e.g. MOQ 120  ->  120, 240, 360 OK.  1, 50, 130 blocked.
  *
- * Also enforces a minimum number of distinct products per order.
+ * Also enforces a minimum number of pieces per order. That floor counts
+ * pieces, not distinct products — three of the same item clears it.
  *
  * Products with no MOQ on file are handled by UNKNOWN_SKU_POLICY below.
  * ------------------------------------------------------------------ */
@@ -14,8 +15,10 @@ import { moqForSku } from 'backend/moq-data.js';
 
 /* ==================== SETTINGS — edit these ==================== */
 
-// Minimum number of DIFFERENT products in one order. Set to 0 to switch off.
-const MIN_DISTINCT_PRODUCTS = 3;
+// Minimum number of pieces in one order, counted across the whole cart.
+// Three of the SAME product satisfies this — they do not have to be
+// different products. Set to 0 to switch off.
+const MIN_TOTAL_UNITS = 3;
 
 // true  = quantity must be an exact multiple of the MOQ (120, 240, 360)
 // false = quantity only has to reach the MOQ (121, 155 also allowed)
@@ -25,16 +28,16 @@ const REQUIRE_WHOLE_CASES = true;
 //   'allow' = no case minimum; sells in any quantity  <-- toys rely on this
 //   'block' = refuse checkout and name the item
 // Pokemon, Smiski and the rest of the toys carry no per-SKU MOQ: they are held
-// to the MIN_DISTINCT_PRODUCTS rule below and nothing else. Switching this to
+// to the MIN_TOTAL_UNITS floor below and nothing else. Switching this to
 // 'block' would stop every one of them at the cart.
 // Trade-off: a COSTUME added later without a row in moq-data.js will likewise
 // sell in ones, with no warning. Add the MOQ row when you add the product.
 const UNKNOWN_SKU_POLICY = 'allow';
 
-// Should the "3 different products" rule count only MOQ-managed items?
+// Should the minimum-pieces rule count only MOQ-managed items?
 //   false = every product counts, toys included  <-- required for the toys
 //   true  = only products listed in moq-data.js count
-const MIN_DISTINCT_COUNTS_ONLY_MOQ_ITEMS = false;
+const MIN_UNITS_COUNTS_ONLY_MOQ_ITEMS = false;
 
 /* =============================================================== */
 
@@ -137,25 +140,25 @@ function collectViolations(options) {
     );
   }
 
-  /* --- 2. minimum distinct products ------------------------------- */
-  if (MIN_DISTINCT_PRODUCTS > 0) {
-    const counted = MIN_DISTINCT_COUNTS_ONLY_MOQ_ITEMS
+  /* --- 2. minimum pieces per order ---------------------------------
+   * Counts total pieces, not distinct products. Three of the same
+   * product clears the floor; they do not have to be different items.
+   */
+  if (MIN_TOTAL_UNITS > 0) {
+    const counted = MIN_UNITS_COUNTS_ONLY_MOQ_ITEMS
       ? lineItems.filter((item) => moqForSku(skuOf(item)))
-      : lineItems;
+      : lineItems.filter(isPhysical);
 
-    const distinct = new Set(
-      counted
-        .map(
-          (item) =>
-            (item.catalogReference && item.catalogReference.catalogItemId) || item.id
-        )
-        .filter(Boolean)
+    const units = counted.reduce(
+      (sum, item) => sum + (Number(item.quantity) || 0),
+      0
     );
 
-    if (distinct.size < MIN_DISTINCT_PRODUCTS) {
+    if (units < MIN_TOTAL_UNITS) {
       violations.push(
         violation(
-          `Wholesale orders need at least ${MIN_DISTINCT_PRODUCTS} different products. You have ${distinct.size}.`
+          `Wholesale orders start at ${MIN_TOTAL_UNITS} pieces. You have ${units}. ` +
+            `They can all be the same product — add ${MIN_TOTAL_UNITS - units} more.`
         )
       );
     }

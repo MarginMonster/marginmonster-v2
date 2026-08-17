@@ -99,10 +99,10 @@ Worth also testing: put **240** of a 120-piece SKU in the cart (should pass) and
 Top of `ecom-validations.js`:
 
 ```js
-const MIN_DISTINCT_PRODUCTS = 3;      // set to 0 to drop the 3-product rule
+const MIN_TOTAL_UNITS       = 3;      // pieces per order; 0 drops the floor
 const REQUIRE_WHOLE_CASES   = true;   // false = 121 pcs allowed, only the floor matters
 const UNKNOWN_SKU_POLICY    = 'allow'; // 'allow' | 'block' — see below
-const MIN_DISTINCT_COUNTS_ONLY_MOQ_ITEMS = false;
+const MIN_UNITS_COUNTS_ONLY_MOQ_ITEMS = false;
 ```
 
 ### `UNKNOWN_SKU_POLICY` — leave this on `'allow'`
@@ -114,18 +114,25 @@ The two product groups are meant to behave differently:
 | | Costumes (`MM-####`) | Toys — Pokemon, Smiski, etc. |
 |---|---|---|
 | Per-SKU minimum | Yes, by the case | **None** |
-| Counts toward the 3-product rule | Yes | **Yes** |
+| Counts toward the 3-piece floor | Yes | **Yes** |
 
 `'allow'` is what delivers the right-hand column: a SKU with no row in
 `moq-data.js` carries no case minimum and sells in any quantity, while still
-counting as one of the three distinct products the cart requires. A buyer taking
-three different Smiski at one each checks out cleanly; a buyer taking one gets
-the 3-product message and nothing else.
+counting toward the three pieces the cart requires. A buyer taking three Smiski
+checks out cleanly whether they are three different ones or three of the same;
+a buyer taking one gets the piece-floor message and nothing else.
 
 Setting it to `'block'` would stop every toy at the cart. Don't.
 
-For the same reason, leave `MIN_DISTINCT_COUNTS_ONLY_MOQ_ITEMS = false` — that
+For the same reason, leave `MIN_UNITS_COUNTS_ONLY_MOQ_ITEMS = false` — that
 is what lets toys count toward the three.
+
+### `MIN_TOTAL_UNITS` counts pieces, not products
+
+The floor is **three pieces**, and they may all be the same product. Three of
+one Smiski case clears it. This is a change from the original rule, which
+demanded three *different* products and turned away buyers who wanted a depth
+buy of a single line.
 
 **The trade-off you are accepting:** because unlisted SKUs sell freely, a
 *costume* added later without a row in `moq-data.js` will also sell in ones,

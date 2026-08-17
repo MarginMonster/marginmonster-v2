@@ -36,6 +36,16 @@ export const MIN_CHARGE = 8.00;
  */
 export const FALLBACK_WEIGHT_KG = 1.2;
 
+/**
+ * Sea freight bills a minimum consignment, so an order below this weight
+ * costs the same to ship as one at the minimum. Baking sea into the
+ * product price only recovers that cost once the cart reaches it.
+ *
+ * Below this weight the sea option is not offered and the buyer ships
+ * air. Set to 0 to always offer sea.
+ */
+export const SEA_MIN_KG = 12;
+
 const SEA_TITLE = 'Sea Freight - Included (no extra charge)';
 const SEA_TIME = '40-60 days total (production + sea transit)';
 const AIR_TITLE = 'Air Freight Upgrade - Expedited';
@@ -91,10 +101,20 @@ export function airPrice(kg) {
   return Math.max(MIN_CHARGE, rounded);
 }
 
+/** Is the cart heavy enough to make up a sea consignment? */
+export function seaAvailable(kg) {
+  return SEA_MIN_KG <= 0 || kg >= SEA_MIN_KG;
+}
+
 /** Both options for a cart, as plain numbers. Exported for the tests. */
 export function quote(lineItems) {
   const { kg, assumedLines } = cartWeight(lineItems);
-  return { kg, assumedLines, sea: 0, air: airPrice(kg) };
+  return {
+    kg,
+    assumedLines,
+    sea: seaAvailable(kg) ? 0 : null, // null = not offered at this weight
+    air: airPrice(kg)
+  };
 }
 
 /* ------------------------------------------------------- the plugin */
@@ -112,20 +132,25 @@ export const getShippingRates = (options) => {
     );
   }
 
-  return {
-    shippingRates: [
-      {
-        code: 'sea-included',
-        title: SEA_TITLE,
-        logistics: { deliveryTime: SEA_TIME },
-        cost: { price: '0.00', currency }
-      },
-      {
-        code: 'air-upgrade',
-        title: AIR_TITLE,
-        logistics: { deliveryTime: AIR_TIME },
-        cost: { price: air.toFixed(2), currency }
-      }
-    ]
-  };
+  const rates = [];
+
+  // Sea only appears once the cart makes up a consignment. Below that
+  // the minimum charge would not be covered by the baked-in price.
+  if (seaAvailable(kg)) {
+    rates.push({
+      code: 'sea-included',
+      title: SEA_TITLE,
+      logistics: { deliveryTime: SEA_TIME },
+      cost: { price: '0.00', currency }
+    });
+  }
+
+  rates.push({
+    code: 'air-upgrade',
+    title: AIR_TITLE,
+    logistics: { deliveryTime: AIR_TIME },
+    cost: { price: air.toFixed(2), currency }
+  });
+
+  return { shippingRates: rates };
 };

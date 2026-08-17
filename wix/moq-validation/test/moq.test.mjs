@@ -42,12 +42,22 @@ await check('summed total still short is caught', [line('MM-0002', 50), line('MM
 console.log('\n--- unlisted SKUs (TCG) pass through ---');
 await check('unknown SKU ignored', [line('TCG-POKE-01', 3), line('MM-0001', 60), line('MM-0002', 120)], none);
 
-console.log('\n--- minimum distinct products ---');
-await check('two products blocked', [line('MM-0001', 60), line('MM-0002', 120)],
-  has(/at least 3 different products\. You have 2/));
-await check('same product twice is still one product',
-  [line('MM-0002', 60, 'p-A'), line('MM-0002', 60, 'p-A'), line('MM-0001', 60, 'p-B')],
-  has(/You have 2/));
+console.log('\n--- minimum pieces per order ---');
+// The floor counts PIECES, not distinct products. Two products of 60 and
+// 120 is 180 pieces, so it clears the floor even though it is two items.
+await check('two products, plenty of pieces, allowed',
+  [line('MM-0001', 60), line('MM-0002', 120)], none);
+// Three of the SAME product clears the floor.
+await check('three of one product is enough',
+  [line('MM-9999', 3, 'p-A')], none);
+await check('two pieces is short by one',
+  [line('MM-9999', 2, 'p-A')],
+  has(/start at 3 pieces\. You have 2/));
+await check('the message says they can all be the same product',
+  [line('MM-9999', 1, 'p-A')],
+  has(/all be the same product/));
+await check('pieces add up across separate lines',
+  [line('MM-9999', 1, 'p-A'), line('MM-9998', 1, 'p-B'), line('MM-9997', 1, 'p-C')], none);
 
 console.log('\n--- edge cases ---');
 await check('empty cart is silent', [], none);

@@ -12,7 +12,8 @@ control. It runs on the Wix site, pasted in through the Editor.
 | Toys (Pokemon, Smiski, …) | **None** — sell in any quantity | Yes |
 
 Toys have no SKU in the catalogue, so they never match `moq-data.js` and are
-skipped by the per-SKU check. They are held only to `MIN_DISTINCT_PRODUCTS`.
+skipped by the per-SKU check. They are held only to `MIN_TOTAL_UNITS` — three
+pieces per order, which may all be the same product.
 
 ## Files
 
