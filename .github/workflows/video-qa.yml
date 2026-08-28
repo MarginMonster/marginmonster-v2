@@ -233,7 +233,11 @@ jobs:
           fi
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
-          rm -rf /tmp/pub && mkdir -p /tmp/pub && cp qa-out/frames/* /tmp/pub/
+          # -r because a mode may publish a SUBDIRECTORY of frames (the
+          # catalogue dump ships hundreds of product shots under cat/). Plain
+          # cp skips directories, and `set -e` then failed the whole publish
+          # after the work was already done and paid for.
+          rm -rf /tmp/pub && mkdir -p /tmp/pub && cp -r qa-out/frames/* /tmp/pub/
           # Overlay onto the existing branch instead of orphan-wiping it:
           # a stills-only run once silently destroyed ~$8 of published Veo
           # clips. Same-name frames still overwrite; nothing else is lost.
