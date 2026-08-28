@@ -1715,6 +1715,52 @@ async function mascotLab(): Promise<string> {
   // different angles, at different distances. Everything that makes a
   // composite look composited lives in that gap, so the prompt is almost
   // entirely about reconciling the two cameras.
+  // QA_MASCOT=catalog — dump a storefront's catalogue (titles, prices, links)
+  // plus a downscaled copy of every product image, so a catalogue can be built
+  // into a document offline. The sandbox has GitHub-only egress; CI has the
+  // open internet, so the fetch happens here and the bytes travel back on the
+  // qa-frames branch like every other artefact.
+  if (process.env.QA_MASCOT === "catalog") {
+    const store = process.env.QA_STORE_URL || "";
+    if (!store) return `${head}\n\nSKIPPED — set store_url.`;
+    const fs5 = require("node:fs") as typeof import("node:fs");
+    const path5 = require("node:path") as typeof import("node:path");
+    const outDir = path5.join(process.cwd(), "qa-out", "frames");
+    const imgDir = path5.join(outDir, "cat");
+    fs5.mkdirSync(imgDir, { recursive: true });
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const ff = (require("ffmpeg-static") as string) || "ffmpeg";
+    const { discoverCatalog } = await import("../app/lib/catalog-import.server");
+    const { products, source } = await discoverCatalog(store, 300);
+
+    // Downscale hard. 300 product shots at full resolution is a repository, not
+    // an artefact — 420px wide is more than a print catalogue tile needs.
+    let saved = 0;
+    const rows = await Promise.all(products.map(async (p, i) => {
+      let file = "";
+      if (p.imageUrl) {
+        try {
+          const res = await fetch(p.imageUrl, { signal: AbortSignal.timeout(30_000) });
+          if (res.ok) {
+            const raw = path5.join(imgDir, `raw-${i}`);
+            fs5.writeFileSync(raw, Buffer.from(await res.arrayBuffer()));
+            const jpg = path5.join(imgDir, `p${i}.jpg`);
+            try {
+              execFileSync(ff, ["-y", "-i", raw, "-vf", "scale='min(420,iw)':-2", "-q:v", "5", jpg], { stdio: "ignore" });
+              if (fs5.existsSync(jpg)) { file = `cat/p${i}.jpg`; saved++; }
+            } catch { /* unreadable image — the row still ships without one */ }
+            fs5.unlinkSync(raw);
+          }
+        } catch { /* skip */ }
+      }
+      return { i, title: p.title, url: p.url, price: p.priceText || "", image: file };
+    }));
+
+    fs5.writeFileSync(path5.join(outDir, "catalog.json"), JSON.stringify({ store, source, count: rows.length, rows }, null, 1));
+    return [head, ``,
+      `**${store}** — ${rows.length} products via \`${source}\`, ${saved} images.`,
+      `Data: [catalog.json](frames/catalog.json)`].join("\n");
+  }
   if (process.env.QA_MASCOT === "stack") {
     if (!process.env.FAL_KEY) return `${head}\n\nSKIPPED — FAL_KEY not set.`;
     const fs4 = require("node:fs") as typeof import("node:fs");
