@@ -20,6 +20,8 @@
  *   SHEET_CONTACT    contact line on the cover    (optional)
  *   AIR_NOTE         text for the air column when no rate table is supplied
  *   AIR_RATES        path to a JSON rate file (see resolveAir below)
+ *   EXCLUDE          case-insensitive regex; matching titles are left out
+ *                    (e.g. EXCLUDE='korean' for a sheet without the KR sets)
  */
 
 import fs from "node:fs";
@@ -34,7 +36,15 @@ if (!dumpDir) {
 }
 
 const data = JSON.parse(fs.readFileSync(path.join(dumpDir, "catalog.json"), "utf8"));
-const rows = data.rows || [];
+const allRows = data.rows || [];
+
+/* A sheet often goes to one buyer who cannot take part of the range — a region
+ * they are not licensed for, a line they already stock. Dropping those before
+ * sectioning keeps the counts on the cover and the section headers honest,
+ * which they would not be if the rows were merely hidden at render time. */
+const EXCLUDE = process.env.EXCLUDE ? new RegExp(process.env.EXCLUDE, "i") : null;
+const rows = EXCLUDE ? allRows.filter((r) => !EXCLUDE.test(String(r.title || ""))) : allRows;
+const excluded = allRows.length - rows.length;
 
 /* ── Sections ──────────────────────────────────────────────────────────────
  * The ask was "all Pokemon products, toys, and cards", which for this store is
@@ -228,7 +238,8 @@ execFileSync(chrome, [
 ], { stdio: ["ignore", "ignore", "pipe"] });
 
 const kb = Math.round(fs.statSync(outPdf).size / 1024);
-console.log(`${outPdf} — ${rows.length} products (${withPrices} priced), ${kb} KB`);
+console.log(`${outPdf} — ${rows.length} products (${withPrices} priced), ${kb} KB`
+  + (excluded ? ` — ${excluded} excluded by /${process.env.EXCLUDE}/i` : ""));
 for (const s of SECTIONS) {
   const n = bucketed.get(s.key).length;
   if (n) console.log(`  ${s.label}: ${n}`);
