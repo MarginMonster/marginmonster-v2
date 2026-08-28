@@ -16,6 +16,10 @@
 export interface ScrapedProduct {
   title?: string;
   image?: string;
+  /** Display price as the page states it, currency symbol included ("$44.99").
+   *  Text rather than a number on purpose: it is shown, never arithmetic'd, and
+   *  a store may price in any currency. */
+  price?: string;
   url: string;
 }
 
@@ -145,10 +149,12 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
     try {
       const jres = await fetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: UA });
       if (jres.ok) {
-        const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[] };
+        const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[]; price?: number };
         if (pj?.title) {
           const first = pj.featured_image || pj.images?.[0];
-          return { title: pj.title.slice(0, 120), image: first ? absolutise(first, u) : undefined, url: u.href };
+          // Shopify quotes price in CENTS on this endpoint.
+          const price = typeof pj.price === "number" ? `$${(pj.price / 100).toFixed(2)}` : undefined;
+          return { title: pj.title.slice(0, 120), image: first ? absolutise(first, u) : undefined, price, url: u.href };
         }
       }
     } catch { /* fall through to HTML parsing */ }
@@ -160,6 +166,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
 
   let title: string | undefined;
   let image: string | undefined;
+  let price: string | undefined;
 
   // 1) JSON-LD Product — the richest, most reliable source when present.
   const ldBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
@@ -182,6 +189,20 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
             || (im as { "@id"?: string })["@id"])
           : (im as string | undefined);
         if (src) image = absolutise(src, u);
+        // offers may be one Offer, an array of them, or an AggregateOffer with
+        // a lowPrice — take the first number any of those shapes yields.
+        const offers = prod.offers as unknown;
+        const offerNodes: Record<string, unknown>[] = Array.isArray(offers)
+          ? (offers as Record<string, unknown>[])
+          : offers && typeof offers === "object" ? [offers as Record<string, unknown>] : [];
+        for (const o of offerNodes) {
+          const p0 = o.price ?? o.lowPrice ?? (o.priceSpecification as Record<string, unknown> | undefined)?.price;
+          const n = typeof p0 === "number" ? p0 : parseFloat(String(p0 ?? ""));
+          if (Number.isFinite(n) && n > 0) {
+            price = formatPrice(n, typeof o.priceCurrency === "string" ? o.priceCurrency : undefined);
+            break;
+          }
+        }
         if (title || image) break;
       }
     } catch { /* try the next block */ }
@@ -199,6 +220,14 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
       || html.match(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i)?.[1];
     if (m) image = absolutise(m, u);
   }
+  // Wix, Squarespace and most platforms emit product:price:amount even when
+  // the page body is JS-driven and carries no readable JSON-LD.
+  if (!price) {
+    const amt = meta("product:price:amount") || meta("og:price:amount") || meta("twitter:data1");
+    const cur = meta("product:price:currency") || meta("og:price:currency");
+    const n = parseFloat(String(amt ?? "").replace(/[^0-9.]/g, ""));
+    if (Number.isFinite(n) && n > 0) price = formatPrice(n, cur);
+  }
 
   // 3) Last resort: the biggest-looking <img> on the page. Skips sprites,
   //    icons, logos and tracking pixels, which are never the product shot.
@@ -213,8 +242,19 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
   return {
     title: title ? cleanProductTitle(title, siteName) : undefined,
     image: image ? upgradeImageResolution(image) : undefined,
+    price,
     url: u.href,
   };
+}
+
+/** Money as the page would print it. Symbol for the currencies a merchant
+ *  actually sees most, ISO code otherwise — better an honest "44.99 SEK" than
+ *  a confident wrong "$44.99". */
+function formatPrice(n: number, currency?: string): string {
+  const cur = (currency || "USD").toUpperCase();
+  const symbol: Record<string, string> = { USD: "$", CAD: "CA$", AUD: "A$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥" };
+  const amount = cur === "JPY" ? Math.round(n).toString() : n.toFixed(2);
+  return symbol[cur] ? `${symbol[cur]}${amount}` : `${amount} ${cur}`;
 }
 
 /** Resolve whatever the merchant pasted into the PHOTO field into a usable

@@ -194,7 +194,12 @@ async function crawlProductPages(urls: string[], onProgress?: (n: number) => voi
       try {
         const p = await scrapeProductPage(url);
         if (p.title) {
-          out.push({ title: p.title.slice(0, 200), url, imageUrl: p.image, handle: undefined });
+          // priceText was silently dropped here: DiscoveredProduct and the
+          // CatalogProduct column both carry it, and the Shopify and Woo paths
+          // both fill it — but the sitemap path did not, so every non-Shopify
+          // store (which is every Wix store) imported a catalogue with no
+          // prices at all.
+          out.push({ title: p.title.slice(0, 200), url, imageUrl: p.image, priceText: p.price, handle: undefined });
         }
       } catch { /* one dead product page never kills the import */ }
       onProgress?.(out.length);
