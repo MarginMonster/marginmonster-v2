@@ -248,7 +248,7 @@ jobs:
             git rm -rf --cached . >/dev/null 2>&1 || true
             find . -maxdepth 1 -not -name .git -not -name . -exec rm -rf {} + 2>/dev/null || true
           fi
-          mkdir -p frames && cp /tmp/pub/* frames/
+          mkdir -p frames && cp -r /tmp/pub/* frames/
           git add -A frames
           # A rerun can produce byte-identical frames — an empty commit is
           # not a failure.
