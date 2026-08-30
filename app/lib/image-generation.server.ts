@@ -1914,7 +1914,7 @@ export async function runFormatRung(opts: {
  *  Used to spot a rendered word that is one edit from a word we asked for —
  *  "Teraastal" vs "Terastal" — which is the signature of a diffusion model
  *  corrupting a proper noun rather than writing different copy. */
-function editDistance(a: string, b: string, max = 2): number {
+export function editDistance(a: string, b: string, max = 2): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {

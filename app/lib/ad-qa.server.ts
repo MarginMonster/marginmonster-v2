@@ -18,6 +18,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { runFormatRung } from "./image-generation.server";
+import { editDistance } from "./image-generation.server";
 import { anthropicVision } from "./anthropic.server";
 import { AD_FORMAT_BY_KEY } from "./ad-formats";
 import { mirrorRender } from "./object-storage.server";
@@ -38,6 +39,9 @@ export interface Rubric {
   scalePlausible: boolean;
   wouldShip: boolean;
   notes: string;
+  /** Verbatim transcription of the ad's own layout text. Graded in CODE
+   *  below, not by the model — see scoreAdOnce. */
+  transcript?: string;
 }
 
 export interface Cell {
@@ -119,22 +123,52 @@ async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: str
         `Judge image 2 strictly, as an art director signing off on a paid ad. Answer each field independently.`,
         `These exact text strings were requested: ${expected.slice(0, 10).map((s) => `"${s.slice(0, 90)}"`).join(", ")}.`,
         ``,
-        `productIntact: is the product in image 2 the SAME product as image 1 — same shape, colors, packaging artwork, logos — not warped, restyled or reinvented?`,
+        `productIntact: is the product in image 2 the SAME product as image 1 — same shape, colors, packaging artwork, logos — not warped, restyled or reinvented? Compare any printed code, serial or number on the packaging CHARACTER BY CHARACTER against image 1 and answer false if a single character differs. This is a comparison between two images, so script and language do not matter.`,
         `textSensible: does every line of the ad's own text read as grammatical English that makes sense? A repeated word or phrase ("we still each still got", "first try first try") is a FAILURE even though each word is spelled correctly. Read for sense, not spelling.`,
         `textMatches: does the ad's text actually say the requested strings above, none missing, none invented?`,
         `noSourceText: the product's OWN packaging text is fine and expected. But has any marketing text, watermark, price badge or caption from the SOURCE photo's background been copied into the ad? That is a failure.`,
         `anatomyOk: if a person appears — correct hands (four fingers and one thumb each, never six digits), exactly two hands, no extra or disembodied limb, no arm reaching at the camera as if holding it. If no person appears, answer true.`,
         `scalePlausible: is the product shown at a believable real-world size relative to anything it is next to (a hand, a person, furniture)? A shrunk or giant product is a failure. If there is nothing to judge against, answer true.`,
         `wouldShip: would you let a paying merchant post this as-is?`,
+        `transcript: transcribe EVERY word of the ad's own added layout text, exactly as rendered, including any misspelling, in reading order, space-separated. Do NOT correct anything. Do NOT include text printed on the product packaging.`,
         `notes: one short sentence naming the single worst problem, or "clean" if there is none.`,
         ``,
-        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"anatomyOk":bool,"scalePlausible":bool,"wouldShip":bool,"notes":"..."}`,
+        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"anatomyOk":bool,"scalePlausible":bool,"wouldShip":bool,"transcript":"...","notes":"..."}`,
       ].join("\n"),
       [productImageUrl, adUrl]
     );
     const m = raw && raw.match(/\{[\s\S]*\}/);
     if (!m) throw new Error("no JSON in the reply");
-    return JSON.parse(m[0]) as Rubric;
+    const rubric = JSON.parse(m[0]) as Rubric;
+
+    // MEASURE THE THING THAT ACTUALLY SHIPS BROKEN.
+    //
+    // textMatches is a perceptual call, and the pipeline gate's own comment
+    // records why that is not enough: a one-character corruption of an
+    // unfamiliar proper noun reads as a match every time. A real ad shipped
+    // "Teraastal Umbreon" for "Terastal Umbreon" and passed. So this harness —
+    // the thing whose pass rate is supposed to tell us whether a prompt change
+    // helped — was scoring clean the exact failure class that reaches merchants.
+    //
+    // Same rule as qaFormat: transcribe verbatim, then diff in code. Distance 1
+    // for any requested word, and 2 for words six characters or longer, which
+    // is where the real corruptions land ("Umboron" for "Umbreon" is two).
+    const words = (t: string) => (t.toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []);
+    const wanted = new Set(expected.flatMap(words));
+    const rendered = typeof rubric.transcript === "string" ? words(rubric.transcript) : [];
+    const corrupted = rendered.find((w) => {
+      if (w.length < 6 || wanted.has(w)) return false;
+      const max = w.length >= 6 ? 2 : 1;
+      return [...wanted].some((e) => e !== w && Math.abs(e.length - w.length) <= max && editDistance(e, w, max) <= max);
+    });
+    if (corrupted) {
+      rubric.textMatches = false;
+      rubric.wouldShip = false;
+      if (!rubric.notes || rubric.notes.toLowerCase() === "clean") {
+        rubric.notes = `rendered "${corrupted}" — not the requested spelling`;
+      }
+    }
+    return rubric;
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 140) : String(e);
     // Backoff, not a single retry: one retry still left half the cells
