@@ -103,61 +103,82 @@ function assertTrialCap(plan: Plan, amount: number): void {
   }
 }
 
+/** Take `amount` out of the wallet — allowance first, overflow onto the
+ *  purchased top-up — without two concurrent spends both passing the
+ *  affordability check.
+ *
+ *  Both spend paths used to read the plan, decide the wallet could cover it,
+ *  and then issue an unconditional increment/decrement. Between the read and
+ *  the write another request could do exactly the same thing: with 10 tokens
+ *  left, two 10-token spends both saw "10 >= 10" and both went through. The
+ *  merchant got two pieces of work for one wallet, and tokensExtra could be
+ *  driven negative. Two browser tabs, or a questline settling while the
+ *  merchant clicks Generate, is all it takes.
+ *
+ *  The write is now conditional on the wallet still holding the exact values
+ *  the decision was made from. If anything moved, nothing is written and we
+ *  read again and re-decide, so the loser of the race gets an honest "not
+ *  enough tokens" instead of a free render. Matching on the observed values
+ *  rather than on a floor is what keeps this safe for a plan already driven
+ *  negative by the old bug: it still spends down correctly instead of being
+ *  permanently locked out. */
+async function deductFromWallet(
+  shopId: string,
+  amount: number,
+  shortfall: (needed: number, remaining: number) => Error
+): Promise<{ remaining: number; fromExtra: number }> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let plan = await db.plan.findUnique({ where: { shopId } });
+    if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
+    if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
+    plan = await refreshPeriod(plan);
+    assertTrialCap(plan, amount);
+
+    // spendableNow, not tokensRemaining: during a trial the purchased top-up is
+    // held back, so the raw wallet total would let a spend through that the cap
+    // is supposed to refuse.
+    const remaining = spendableNow(plan);
+    if (remaining < amount) throw shortfall(amount, remaining);
+
+    // Spend the monthly allowance first, overflow onto the purchased top-up.
+    const fromAllowance = Math.min(amount, Math.max(0, plan.tokensIncluded - plan.tokensUsed));
+    const fromExtra = amount - fromAllowance;
+
+    const applied = await db.plan.updateMany({
+      where: { id: plan.id, tokensUsed: plan.tokensUsed, tokensExtra: plan.tokensExtra },
+      data: { tokensUsed: { increment: fromAllowance }, tokensExtra: { decrement: fromExtra } },
+    });
+    if (applied.count === 1) return { remaining: remaining - amount, fromExtra };
+    // Someone else moved the wallet between the read and the write — start over.
+  }
+  throw new Error("Your token balance is being updated by something else right now — try that again in a moment.");
+}
+
 /** Spend tokens for an action. Throws InsufficientTokensError if the wallet
  *  can't cover it. Deducts from the monthly allowance first, then top-up. */
 export async function chargeTokens(shopId: string, action: TokenAction): Promise<{ remaining: number; charged: number; fromExtra: number }> {
   const cost = TOKEN_COST[action];
-  let plan = await db.plan.findUnique({ where: { shopId } });
-  if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
-  if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
-  plan = await refreshPeriod(plan);
-  assertTrialCap(plan, cost);
-
-  // spendableNow, not tokensRemaining: during a trial the purchased top-up is
-  // held back, so the raw wallet total would let a spend through that the cap
-  // is supposed to refuse.
-  const remaining = spendableNow(plan);
-  if (remaining < cost) throw new InsufficientTokensError(cost, remaining, action);
-
-  // Spend the monthly allowance first, overflow onto the purchased top-up.
-  const fromAllowance = Math.min(cost, Math.max(0, plan.tokensIncluded - plan.tokensUsed));
-  const fromExtra = cost - fromAllowance;
-  await db.plan.update({
-    where: { id: plan.id },
-    data: {
-      tokensUsed: { increment: fromAllowance },
-      tokensExtra: { decrement: fromExtra },
-    },
-  });
+  const { remaining, fromExtra } = await deductFromWallet(
+    shopId,
+    cost,
+    (needed, have) => new InsufficientTokensError(needed, have, action)
+  );
   // Arcade progression: spending tokens earns XP (farm-proof — they paid).
   await onTokensSpent(shopId, cost);
-  return { remaining: remaining - cost, charged: cost, fromExtra };
+  return { remaining, charged: cost, fromExtra };
 }
 
 /** Spend a flat token amount (e.g. accepting a Questline up front). Throws if
  *  the wallet can't cover it. Same allowance-first, then top-up logic. */
 export async function spendTokens(shopId: string, amount: number): Promise<{ remaining: number; fromExtra: number }> {
   if (amount <= 0) return { remaining: 0, fromExtra: 0 };
-  let plan = await db.plan.findUnique({ where: { shopId } });
-  if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
-  if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
-  plan = await refreshPeriod(plan);
-  assertTrialCap(plan, amount);
-
-  const remaining = spendableNow(plan);
-  if (remaining < amount) {
-    const e = new Error(`Not enough tokens — needs ${amount}, you have ${remaining}. Top up on the Plans page.`);
+  const out = await deductFromWallet(shopId, amount, (needed, have) => {
+    const e = new Error(`Not enough tokens — needs ${needed}, you have ${have}. Top up on the Plans page.`);
     e.name = "InsufficientTokensError";
-    throw e;
-  }
-  const fromAllowance = Math.min(amount, Math.max(0, plan.tokensIncluded - plan.tokensUsed));
-  const fromExtra = amount - fromAllowance;
-  await db.plan.update({
-    where: { id: plan.id },
-    data: { tokensUsed: { increment: fromAllowance }, tokensExtra: { decrement: fromExtra } },
+    return e;
   });
   await onTokensSpent(shopId, amount);
-  return { remaining: remaining - amount, fromExtra };
+  return out;
 }
 
 /** Credit tokens back — into the SAME buckets the spend came out of.
