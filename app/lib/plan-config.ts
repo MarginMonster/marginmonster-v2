@@ -182,6 +182,11 @@ export const TOKEN_COST = {
   // Studio 900/150 = 6 ≈ $18 COGS on $59 (~65%); Anthem 1600/150 ≈ 10 ≈ $35
   // COGS on $99 (~55% after Shopify's cut). The margin lever — raise if COGS climbs.
   video: 150,
+  // Forging a custom presenter renders one portrait per wardrobe outfit —
+  // four paid image generations in parallel — so it is priced as what it is.
+  // It used to cost nothing at all while the UI said "the forge runs on
+  // tokens", which made it the cheapest way to spend our money.
+  avatarForge: 20,
 } as const;
 export type TokenAction = keyof typeof TOKEN_COST;
 
@@ -194,6 +199,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   landing: "Landing page",
   video: "Product video",
   boost: "Ad boost",
+  avatarForge: "Custom presenter",
 };
 
 // Top-up packs — one currency, spend on anything YOUR TIER UNLOCKS. Priced

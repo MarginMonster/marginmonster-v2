@@ -245,6 +245,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     fsMod.mkdirSync(dir, { recursive: true });
     const fileName = `${shop.id.toLowerCase().replace(/[^a-z0-9]/g, "")}-mascot-${crypto.randomBytes(8).toString("hex")}.${ext}`;
     fsMod.writeFileSync(pathMod.join(dir, fileName), Buffer.from(await ref.arrayBuffer()));
+    // THE FORGE COSTS US FOUR RENDERS AND CHARGED FOR NONE.
+    //
+    // The guard above already tells the merchant "the forge runs on tokens",
+    // and then nothing took any: no spendTokens, no in-flight guard, no cap on
+    // how many presenters a shop could forge. Every submit queued a job that
+    // renders one portrait per outfit — four paid generations, in parallel —
+    // so pressing the button repeatedly was free to the merchant and billed to
+    // us, without limit.
+    const running = await db.job.count({
+      where: { shopId: shop.id, type: "FORGE_CUSTOM_AVATAR", status: { in: ["PENDING", "IN_PROGRESS"] } },
+    });
+    if (running > 0) {
+      return json({ avatarError: "Your last presenter is still being forged — give it a minute." });
+    }
+    const MAX_CUSTOM_PRESENTERS = 12;
+    const owned = await db.customAvatar.count({ where: { shopId: shop.id } });
+    if (owned >= MAX_CUSTOM_PRESENTERS) {
+      return json({ avatarError: `You already have ${MAX_CUSTOM_PRESENTERS} presenters — delete one to forge another.` });
+    }
+
+    let forgeFromExtra = 0;
+    try {
+      forgeFromExtra = (await spendTokens(shop.id, TOKEN_COST.avatarForge)).fromExtra;
+    } catch (e) {
+      return json({ avatarError: e instanceof Error ? e.message : "Not enough tokens to forge a presenter." });
+    }
+
     const row = await db.customAvatar.create({
       data: {
         shopId: shop.id, name, gender,
@@ -252,7 +279,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         refFile: fileName,
       },
     });
-    await enqueueJob(shop.id, "FORGE_CUSTOM_AVATAR", { customAvatarId: row.id });
+    await enqueueJob(shop.id, "FORGE_CUSTOM_AVATAR", {
+      customAvatarId: row.id,
+      prePaid: true,
+      chargedTokens: TOKEN_COST.avatarForge,
+      chargedFromExtra: forgeFromExtra,
+    });
     return json({ avatarQueued: name });
   }
 
