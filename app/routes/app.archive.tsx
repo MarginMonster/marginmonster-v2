@@ -138,7 +138,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // a fresh purchase: re-charge and restore prePaid so the economics stay
     // exactly one-spend-one-piece (never a mint loop, never a free ride).
     const jobId = (form.get("jobId") as string) || "";
-    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
+    // A retry is only ever legitimate for a job that FAILED terminally or is
+    // WEDGED in progress. With no status filter this also matched a COMPLETED
+    // job: payload.refunded is falsy on a successful run, so nothing was
+    // re-charged, the job went back to PENDING with attempts cleared, and the
+    // worker rendered the merchant another 150-token video for free — as many
+    // times as they pressed it.
+    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, status: { in: ["FAILED", "IN_PROGRESS"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
     if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
     let payload: Record<string, unknown> = {};
     try { payload = JSON.parse(job.payload); } catch { /* ignore */ }
