@@ -22,6 +22,57 @@ const CACHE_DAYS = 30;
 const EVERY_MS = 6 * 60 * 60_000; // check a few times a day
 let lastRun = 0;
 
+/** The pre-overlay stills nothing ever points at.
+ *
+ * overlayAdText writes "<name>-ad.jpg" beside the clean "<name>.jpg" and the
+ * asset records only the overlaid file. The clean still is therefore orphaned
+ * the instant it is made: no row names it, and the sweep above only deletes
+ * files an asset names. That is a second full-size JPEG per image ad sitting
+ * on the renders disk forever — which is also the disk the headroom warning
+ * above is watching.
+ *
+ * Deliberately narrow. A file qualifies only if its overlaid twin exists
+ * (proving it was a source rather than a delivered ad), it is old enough that
+ * nothing in flight could want it, and no asset mentions it — an ad that
+ * shipped WITHOUT the overlay is named by its own asset and stays. Custom
+ * avatars, ad-template art and every other file on the disk are never
+ * candidates, and subdirectories are skipped outright.
+ */
+const ORPHAN_GRACE_DAYS = 7;
+const ORPHAN_PER_SWEEP = 100;
+
+async function purgeOverlaySources(rendersDir: string, now: number): Promise<void> {
+  let names: string[];
+  try { names = fs.readdirSync(rendersDir); } catch { return; }
+  const present = new Set(names);
+  const cutoff = now - ORPHAN_GRACE_DAYS * 86_400_000;
+
+  const candidates: string[] = [];
+  for (const n of names) {
+    if (!n.endsWith(".jpg") || n.endsWith("-ad.jpg")) continue;
+    if (!present.has(n.replace(/.jpg$/, "-ad.jpg"))) continue; // no overlaid twin — not a source
+    try {
+      const st = fs.statSync(path.join(rendersDir, n));
+      if (st.isFile() && st.mtimeMs < cutoff) candidates.push(n);
+    } catch { /* vanished mid-sweep */ }
+    if (candidates.length >= ORPHAN_PER_SWEEP) break;
+  }
+  if (!candidates.length) return;
+
+  let freed = 0;
+  for (const n of candidates) {
+    try {
+      if (await db.asset.count({ where: { bodyJson: { contains: `/renders/${n}` } } })) continue;
+      const fp = path.join(rendersDir, n);
+      if (!fp.startsWith(rendersDir)) continue;
+      fs.rmSync(fp, { force: true });
+      try { await deleteObject(renderKey(n)); } catch { /* non-fatal */ }
+      freed++;
+    } catch { /* ignore one bad file */ }
+  }
+  if (freed) console.log(`[storage-cleanup] removed ${freed} orphaned pre-overlay still(s)`);
+}
+
 export async function purgeStaleUnkept(): Promise<void> {
   const now = Date.now();
   if (now - lastRun < EVERY_MS) return;
@@ -40,6 +91,10 @@ export async function purgeStaleUnkept(): Promise<void> {
     if (usedPct >= 80) console.warn(`[storage-cleanup] ⚠ ${line} — grow the disk or move to object storage soon`);
     else console.log(`[storage-cleanup] ${line}`);
   } catch { /* statfs unsupported on this platform — skip */ }
+
+  // Runs before the early returns below — orphans exist whether or not there
+  // is any stale asset to clear this round.
+  await purgeOverlaySources(rendersDir, now);
 
   try {
     const cutoff = new Date(now - CACHE_DAYS * 86_400_000);
