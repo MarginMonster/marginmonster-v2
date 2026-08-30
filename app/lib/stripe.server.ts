@@ -233,9 +233,32 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
   } catch (e) { console.error("[stripe] first-content kick failed (non-fatal):", e); }
 }
 
-export async function deactivateStripePlan(accountId: string): Promise<void> {
+/** Turn the plan off when a subscription ends.
+ *
+ *  `subId` is the subscription that actually cancelled. It matters because an
+ *  upgrade opens a SECOND Stripe subscription rather than editing the first, so
+ *  a cancellation event for the superseded one used to switch off the plan the
+ *  merchant had just upgraded to and is actively paying for.
+ *
+ *  When the ids disagree we keep the plan ON and say so loudly. Of the two ways
+ *  to be wrong, leaving a cancelled merchant with access for a while is a
+ *  revenue leak that shows up in the log; cutting off a paying merchant is an
+ *  outage they feel immediately and blame us for. */
+export async function deactivateStripePlan(accountId: string, subId?: string | null): Promise<void> {
   const shopId = await webShopIdFor(accountId);
   if (!shopId) return;
+
+  if (subId) {
+    const account = await db.account.findUnique({ where: { id: accountId }, select: { stripeSubId: true } });
+    if (account?.stripeSubId && account.stripeSubId !== subId) {
+      console.warn(
+        `[stripe] account ${accountId}: ignoring cancellation of ${subId} — the live subscription is ` +
+          `${account.stripeSubId}. If that is wrong the plan will stay active, so check this account.`
+      );
+      return;
+    }
+  }
+
   await db.plan.updateMany({ where: { shopId }, data: { active: false } });
 }
 

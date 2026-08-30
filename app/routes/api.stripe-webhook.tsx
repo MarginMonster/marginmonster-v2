@@ -24,6 +24,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     if (event.type === "checkout.session.completed") {
       const accountId = meta.accountId;
+      // Money has already moved by the time this fires. Anything we fail to act
+      // on here is a merchant who paid and received nothing — so an unhandled
+      // paid session must NOT be ACKed, or Stripe never retries and the failure
+      // never surfaces anywhere.
+      if (accountId && !meta.tierKey && !meta.packTokens) {
+        console.error(`[stripe-webhook] paid session ${obj.id} for account ${accountId} carries neither tierKey nor packTokens — cannot fulfil it`);
+        return new Response("Unfulfillable session", { status: 500 }); // Stripe retries; it also shows up as failing
+      }
       if (accountId && meta.tierKey) {
         await activateStripePlan(accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null);
       } else if (accountId && meta.packTokens) {
@@ -39,11 +47,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           // Keep type in sync (plan changes made in the Stripe portal land here).
           await activateStripePlan(accountId, meta.tierKey, (obj.id as string) || null, (obj.customer as string) || null);
         } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
-          await deactivateStripePlan(accountId);
+          await deactivateStripePlan(accountId, (obj.id as string) || null);
         }
       }
     } else if (event.type === "customer.subscription.deleted") {
-      if (meta.accountId) await deactivateStripePlan(meta.accountId);
+      if (meta.accountId) await deactivateStripePlan(meta.accountId, (obj.id as string) || null);
     }
   } catch (e) {
     console.error("[stripe-webhook]", event.type, e instanceof Error ? e.message : e);
