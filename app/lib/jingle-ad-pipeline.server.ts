@@ -26,10 +26,9 @@ import {
   ffprobeDuration,
   repCreate,
   repPoll,
-  resolvePortraitFile,
   runFfmpeg,
 } from "./ugc-ad-pipeline.server";
-import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import { OUTFITS, type Avatar } from "./avatars";
 import {
   CARTOON_RECIPES,
   checkpointUrlAlive,
@@ -246,7 +245,28 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
 
   // 2) SONG — the vocal gender matches the cast singer, so the lipsync
   // reads true. A resumed job keeps the TRUE engine of the checkpointed song.
-  const singer = params.avatarId ? AVATAR_BY_ID[params.avatarId] : undefined;
+  // Resolved through the shared presenter seam, which knows this shop's CUSTOM
+  // presenters ("cav…") as well as the public cast. AVATAR_BY_ID knows only the
+  // public cast, so a custom singer resolved to undefined — and undefined is
+  // the same value as "chose nobody", which is a legitimate mode that ships a
+  // product clip with the song playing over it. So a merchant who forged their
+  // own singer, picked them, and paid for an Anthem received one with no
+  // performer in it: billed in full, marked successful, silent about why.
+  //
+  // A presenter that cannot be resolved throws rather than degrading, so the
+  // queue refunds instead of delivering an ad missing what they chose.
+  const singerVariant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
+  let singer: Avatar | undefined;
+  let singerPortraitFile = "";
+  let singerPortraitUrl = "";
+  if (params.avatarId) {
+    const { resolvePresenter } = await import("./custom-avatars.server");
+    const resolved = await resolvePresenter(params.shopId, params.avatarId, singerVariant);
+    singer = resolved.avatar;
+    singerPortraitFile = resolved.portraitFile;
+    const singerBase = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    singerPortraitUrl = singerBase ? `${singerBase}${resolved.portraitPublicPath}` : "";
+  }
   let songUrl = resume.songUrl || "";
   let engine = (songUrl && resume.engine) || "minimax-music-1.5";
   // The checkpoint outlives the URL: provider delivery links die after ~1h, and
@@ -290,10 +310,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   if (singer && !talkingUrl) {
     let tmpSing: string | null = null;
     try {
-      const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
-      const portraitFile = resolvePortraitFile(singer.id, variant);
-      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-      const portraitPublicUrl = base ? `${base}/avatars/${path.basename(portraitFile)}` : "";
+      const variant = singerVariant;
+      const portraitFile = singerPortraitFile;
+      const portraitPublicUrl = singerPortraitUrl;
 
       // Cartoon singer: stylize the portrait mid-note before lipsyncing it.
       let frameUrl = resume.styledUrl || "";

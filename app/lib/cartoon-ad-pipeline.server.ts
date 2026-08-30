@@ -35,7 +35,6 @@ import {
   repPoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
-import { AVATAR_BY_ID } from "./avatars";
 import { langDirective } from "./content-lang";
 import { withBrandFallback } from "./ad-copy-retry.server";
 
@@ -514,12 +513,24 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     if (params.avatarId) {
       const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
       let portraitUrl = "";
-      try {
-        const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
-        const path = await import("node:path");
-        const file = resolvePortraitFile(params.avatarId, params.avatarVariant ?? 0);
-        if (base) portraitUrl = `${base}/avatars/${path.basename(file)}`;
-      } catch { /* unknown presenter on this deploy → product-hero path */ }
+      // resolvePresenter is the seam that knows this shop's CUSTOM presenters
+      // ("cav…") as well as the public cast — custom-avatars.server.ts names
+      // cartoon as one of the pipelines that goes through it. This one didn't.
+      //
+      // resolvePortraitFile only looks in public/avatars for "<id>_<n>.jpg",
+      // and a custom presenter's portraits live in data/renders as
+      // "cav-<id>_<n>.jpg", so it threw — straight into a catch that treats
+      // any failure as "no presenter chosen". A merchant who forged their own
+      // presenter, picked them, and paid 150 tokens for a cartoon got one with
+      // no character in it, marked successful, with nothing saying why.
+      //
+      // NOT wrapped in a catch any more: choosing a presenter we cannot
+      // resolve is an error, not a style. Throwing lets the queue refund;
+      // swallowing it charges full price for an ad missing the one thing the
+      // merchant picked. generateUgcAd already lets this throw.
+      const { resolvePresenter } = await import("./custom-avatars.server");
+      const presenter = await resolvePresenter(params.shopId, params.avatarId, params.avatarVariant ?? 0);
+      if (base) portraitUrl = `${base}${presenter.portraitPublicPath}`;
       if (portraitUrl) {
         sourcePhotoUrl = portraitUrl;
         withCharacter = true;
@@ -537,7 +548,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
               productImageUrl: params.productImageUrl,
               productSize: params.productSize,
             });
-            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase, AVATAR_BY_ID[params.avatarId || ""]?.continuity);
+            // Continuity comes from the RESOLVED presenter, so a custom one
+            // carries its own rather than looking up undefined in the public cast.
+            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase, presenter.avatar.continuity);
             composedUrl = frames[0] || "";
             if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
           } catch (e) {
