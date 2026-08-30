@@ -1,10 +1,10 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { json, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { db } from "../db.server";
 import type { LandingContent } from "../lib/landing.server";
 
-export const loader = async ({ params }: LoaderFunctionArgs) => {
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const slug = params.slug!;
   const page = await db.landingPage.findUnique({ where: { slug } });
   if (!page || !page.published) throw new Response("Not found", { status: 404 });
@@ -19,7 +19,38 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     content: JSON.parse(page.contentJson) as LandingContent,
     productName: page.productName,
     badgeUrl,
+    slug,
+    origin: new URL(request.url).origin,
   });
+};
+
+/* A landing page exists to be shared, so it needs a head of its own. It
+ * inherited the app-wide default before this, which meant every merchant's
+ * page announced itself as "EasyMode" with no description and no preview.
+ * The hero and subhead the page already displays are exactly the right
+ * words for the title and description — no second set of claims. */
+export const meta: MetaFunction<typeof loader> = ({ data }) => {
+  if (!data) return [{ title: "EasyMode" }];
+  const title = data.content?.hero || data.productName || "EasyMode";
+  const description = data.content?.subhead || "";
+  const url = data.origin + "/lp/" + (data.slug || "");
+  const tags: Array<Record<string, string>> = [
+    { title },
+    { property: "og:type", content: "product" },
+    { property: "og:title", content: title },
+    { property: "og:url", content: url },
+  ];
+  if (description) {
+    tags.push({ name: "description", content: description });
+    tags.push({ property: "og:description", content: description });
+    tags.push({ name: "twitter:description", content: description });
+  }
+  // No og:image: a landing page has no artwork of its own, and putting the
+  // EasyMode mark on a merchant's product page would brand their link with
+  // our logo. Title and description alone still unfurl properly.
+  tags.push({ name: "twitter:card", content: "summary" });
+  tags.push({ name: "twitter:title", content: title });
+  return tags;
 };
 
 export default function LandingPagePublic() {

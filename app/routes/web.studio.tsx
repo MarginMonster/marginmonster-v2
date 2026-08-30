@@ -23,6 +23,9 @@ import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.ser
 import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
 import { SIZE_CHOICES } from "../lib/product-scale";
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Studio · EasyMode" }];
+
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },

@@ -3,6 +3,9 @@ import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { createWebAccount, getWebIdentity, webSessionRedirect } from "../lib/web-auth.server";
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Start free · EasyMode" }];
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
   return json({});

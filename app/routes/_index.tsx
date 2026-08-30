@@ -1,4 +1,4 @@
-import { json, redirect, type LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { PLAN_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
@@ -15,7 +15,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // No shop param → the public marketing page (also serves as the health check).
-  return json({ ok: true });
+  // The origin travels to meta() so og:url and og:image can be absolute, which
+  // is what every link unfurler requires.
+  return json({ ok: true, origin: url.origin });
+};
+
+/* Every string here is the site's own hero copy (LANDING_I18N.en), not a fresh
+ * claim written for search engines. The page picks its language on the client,
+ * so the server-rendered head is English — same as the server-rendered body. */
+const TITLE = "EasyMode — your whole store's marketing, running itself";
+const DESCRIPTION =
+  "EasyMode turns your products into videos, image ads and SEO articles — then posts them to your socials on a schedule. You approve, it ships. Works with any store.";
+
+export const meta: MetaFunction<typeof loader> = ({ data }) => {
+  const origin = data?.origin || "https://easymodeapp.com";
+  const image = origin + "/easymode-head.png?v=2";
+  return [
+    { title: TITLE },
+    { name: "description", content: DESCRIPTION },
+    { property: "og:type", content: "website" },
+    { property: "og:site_name", content: "EasyMode" },
+    { property: "og:title", content: TITLE },
+    { property: "og:description", content: DESCRIPTION },
+    { property: "og:url", content: origin + "/" },
+    { property: "og:image", content: image },
+    { name: "twitter:card", content: "summary" },
+    { name: "twitter:title", content: TITLE },
+    { name: "twitter:description", content: DESCRIPTION },
+    { name: "twitter:image", content: image },
+  ];
 };
 
 export default function Index() {

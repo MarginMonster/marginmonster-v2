@@ -25,6 +25,9 @@ import { tokensRemainingLive } from "../lib/tokens.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { CATALOG_CAP } from "../lib/catalog-import.server";
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Campaigns · EasyMode" }];
+
 /* The four plans, in the order a merchant should read them: cheapest and
  * safest first, so the ladder sells itself instead of the biggest number
  * doing the talking. Mix and cost come from SOCIAL_PLAN_DEFS — token maths

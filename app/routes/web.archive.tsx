@@ -17,6 +17,9 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
 import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Archive · EasyMode" }];
+
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 /** Human name for the recipe behind an asset — the ad format, backdrop

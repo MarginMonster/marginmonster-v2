@@ -16,6 +16,9 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Dashboard · EasyMode" }];
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
   const tierKey = shop.activePlan?.active ? resolveTierKey(shop.activePlan.type) : null;

@@ -2,6 +2,9 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { getWebIdentity, loginWebAccount, webSessionRedirect } from "../lib/web-auth.server";
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Log in · EasyMode" }];
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
   return json({});
