@@ -640,7 +640,7 @@ export default function WebArchive() {
         {cooking > 0 && <> · <b>{cooking} piece{cooking > 1 ? "s" : ""} cooking below</b> — this page updates itself.</>}
       </p>
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>Want one-tap posting? <Link to="/web/connect">Link your socials</Link>.</p>}
-      <p className="wa-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString()} tokens` : "Pick a plan to generate."}</p>
+      <p className="wa-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString("en-US")} tokens` : "Pick a plan to generate."}</p>
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
       {remixed && <div className="wb-ok">✨ Remixing — a fresh {remixed === "blog" ? "article" : remixed} is on the way. It&apos;ll land on this shelf in a minute.</div>}
@@ -730,7 +730,14 @@ export default function WebArchive() {
                 </button>
                 <div className="m">
                   {a.title}
-                  <div className="s">{a.isVideo ? "Video" : "Image ad"} · {new Date(a.when).toLocaleDateString()}</div>
+                  {/* Rendered on the server in UTC and on the client in the
+                      viewer's zone, so these two disagree for anything made
+                      after early evening local time. That mismatch aborted
+                      hydration for the ENTIRE route (React #418, then #423 —
+                      "switch to client rendering"), which is why the Archive
+                      re-rendered itself from scratch on every visit. Keep the
+                      local date; let React reconcile this one node. */}
+                  <div className="s">{a.isVideo ? "Video" : "Image ad"} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo)} title="Download">⬇</a>}

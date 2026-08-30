@@ -617,8 +617,8 @@ export default function WebCampaigns() {
                     {p.videoLocked
                       ? "Video unlocks on the Studio plan"
                       : p.affordable
-                        ? `${p.cost.toLocaleString()} of your ${d.tokens.toLocaleString()} tokens`
-                        : `${p.cost.toLocaleString()} tokens — top up to run this`}
+                        ? `${p.cost.toLocaleString("en-US")} of your ${d.tokens.toLocaleString("en-US")} tokens`
+                        : `${p.cost.toLocaleString("en-US")} tokens — top up to run this`}
                   </span>
                 </span>
                 <span className="wc-worth">{p.worth}</span>

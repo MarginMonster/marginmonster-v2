@@ -815,7 +815,7 @@ export default function WebStudio() {
     <div>
       <style>{WS_STYLE}</style>
       <h1 className="wb-h1">Content Studio</h1>
-      <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: 🪙 {d.tokens.toLocaleString()}</p>
+      <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: 🪙 {d.tokens.toLocaleString("en-US")}</p>
       {!d.hasBrand && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
       {!d.hasPlan && <div className="wb-err">Pick a <Link to="/web">plan</Link> first — content runs on tokens.</div>}
       {/* Top banner too — a failure must be visible even when the config
@@ -1358,7 +1358,7 @@ export default function WebStudio() {
                     ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens`
                     : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`}
               </button>
-              <p className="ws-wallet">{d.hasPlan ? `Wallet: ${d.tokens.toLocaleString()} tokens` : "Choose a plan to generate."}</p>
+              <p className="ws-wallet">{d.hasPlan ? `Wallet: ${d.tokens.toLocaleString("en-US")} tokens` : "Choose a plan to generate."}</p>
             </div>
           </>
         )}

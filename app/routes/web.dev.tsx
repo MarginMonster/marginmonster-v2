@@ -65,7 +65,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   console.log(`[dev-grant] +${amount} tokens to ${account.email} (shop ${shop.id})`);
 
   const after = await db.plan.findUnique({ where: { shopId: shop.id } });
-  return json({ ok: `Granted ${amount.toLocaleString()} tokens.`, balance: tokensRemainingLive(after) });
+  return json({ ok: `Granted ${amount.toLocaleString("en-US")} tokens.`, balance: tokensRemainingLive(after) });
 };
 
 export default function WebDev() {
@@ -78,12 +78,12 @@ export default function WebDev() {
         Testing tool for <b>{d.email}</b>. Grants land on this account only.
       </p>
 
-      {a?.ok && <div className="wb-ok">{a.ok} New balance: <b>{a.balance?.toLocaleString()}</b></div>}
+      {a?.ok && <div className="wb-ok">{a.ok} New balance: <b>{a.balance?.toLocaleString("en-US")}</b></div>}
       {a?.error && <div className="wb-err">{a.error}</div>}
 
       <div className="ws-note" style={{ marginBottom: 12 }}>
-        Balance <b>{d.balance.toLocaleString()}</b>
-        {d.raw && <> · allowance {d.raw.included.toLocaleString()}, used {d.raw.used.toLocaleString()}, top-up {d.raw.extra.toLocaleString()}</>}
+        Balance <b>{d.balance.toLocaleString("en-US")}</b>
+        {d.raw && <> · allowance {d.raw.included.toLocaleString("en-US")}, used {d.raw.used.toLocaleString("en-US")}, top-up {d.raw.extra.toLocaleString("en-US")}</>}
         <br />
         Plan: {d.hasPlan ? d.planType : "none"}{d.trialing ? " · trialing (wallet is capped — granting ends the trial)" : ""}
       </div>
@@ -91,7 +91,7 @@ export default function WebDev() {
       <Form method="post" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {[500, 1000, 5000, 20000].map((n) => (
           <button key={n} className="wb-btn" name="amount" value={n} style={{ padding: "11px 16px", fontSize: 13 }}>
-            +{n.toLocaleString()}
+            +{n.toLocaleString("en-US")}
           </button>
         ))}
       </Form>

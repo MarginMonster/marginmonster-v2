@@ -242,7 +242,7 @@ export default function WebDashboard() {
       <h1 className="wb-h1">Welcome, {d.name}.</h1>
       <p className="wb-sub">
         {d.tierName
-          ? <>You&apos;re on <b>{d.tierName}</b>{d.trialing ? " (free trial)" : ""} with <b>{d.tokens.toLocaleString()}</b> tokens ready.</>
+          ? <>You&apos;re on <b>{d.tierName}</b>{d.trialing ? " (free trial)" : ""} with <b>{d.tokens.toLocaleString("en-US")}</b> tokens ready.</>
           : "Two steps to your first AI content drop: set your brand voice, pick a plan."}
       </p>
 
@@ -254,11 +254,11 @@ export default function WebDashboard() {
             {success.kind === "plan" ? (
               <>
                 <b className="ws-mh">{PLAN_BY_KEY[success.key]?.name ?? "Your plan"} is live</b>
-                <p className="ws-mp">Your marketing just leveled up — your 7-day free trial starts now, with {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString()} 🪙 tokens loading every month.</p>
+                <p className="ws-mp">Your marketing just leveled up — your 7-day free trial starts now, with {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} 🪙 tokens loading every month.</p>
               </>
             ) : (
               <>
-                <b className="ws-mh">+{success.n.toLocaleString()} tokens</b>
+                <b className="ws-mh">+{success.n.toLocaleString("en-US")} tokens</b>
                 <p className="ws-mp">They&apos;re landing on your balance now — spend them on anything your plan unlocks.</p>
               </>
             )}
@@ -401,10 +401,10 @@ export default function WebDashboard() {
             <div className="wb-price-name">{t.name} {d.tier === t.key && "· your plan ✓"}</div>
             <div className="wd-tagline">{t.tagline}</div>
             <div className="wb-price-amt">
-              {annual ? <>${t.yearly.toLocaleString()}<small>/yr</small></> : <>${t.price}<small>/mo</small></>}
+              {annual ? <>${t.yearly.toLocaleString("en-US")}<small>/yr</small></> : <>${t.price}<small>/mo</small></>}
             </div>
             <div className="wb-note">{annual ? `Just $${Math.round((t.price * 10) / 12)}/mo, billed yearly · 2 months free` : "billed monthly"}</div>
-            <div className="wb-note">🪙 {t.tokens.toLocaleString()} tokens/mo</div>
+            <div className="wb-note">🪙 {t.tokens.toLocaleString("en-US")} tokens/mo</div>
             <div className="wb-note">{t.capacity}</div>
             <ul className="wb-feats">{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
             {d.tier !== t.key && (
@@ -415,7 +415,7 @@ export default function WebDashboard() {
                   {annual && <input type="hidden" name="annual" value="1" />}
                   <button className="wb-btn" disabled={busy || !d.billingOn}>Start free trial</button>
                 </Form>
-                <div className="wd-trial">7-day free trial ({TRIAL_TOKEN_CAP} tokens to play) · then ${annual ? `${t.yearly.toLocaleString()}/yr` : `${t.price}/mo`}</div>
+                <div className="wd-trial">7-day free trial ({TRIAL_TOKEN_CAP} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</div>
               </>
             )}
           </div>
@@ -441,7 +441,7 @@ export default function WebDashboard() {
             {d.packs.map((p) => (
               <div className={`wb-card wd-plancard${p.best ? " hot" : ""}`} key={p.tokens}>
                 {p.best && <div className="wd-ribbon gold">Best value</div>}
-                <div className="wb-price-name">+{p.tokens.toLocaleString()} tokens</div>
+                <div className="wb-price-name">+{p.tokens.toLocaleString("en-US")} tokens</div>
                 <p className="wb-note" style={{ margin: "6px 0 4px" }}>{PACK_FRAMING[p.tokens] || "Extra fuel for anything your plan unlocks."}</p>
                 <div className="wb-note" style={{ margin: "0 0 12px" }}>One-time · they never expire</div>
                 <Form method="post">

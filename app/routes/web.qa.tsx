@@ -303,7 +303,7 @@ export default function WebQa() {
       {d.sheet && (
         <div className="wb-card" style={{ marginTop: 14 }}>
           <div className="qa-h"><span className="qa-n">4</span><b>Results</b>
-            <span className="qa-hint">{d.ranAt ? new Date(d.ranAt).toLocaleString() : ""}</span>
+            <span className="qa-hint" suppressHydrationWarning>{d.ranAt ? new Date(d.ranAt).toLocaleString() : ""}</span>
           </div>
           <div dangerouslySetInnerHTML={{ __html: d.sheet }} />
         </div>
