@@ -575,11 +575,46 @@ export interface CommercialAdParams {
 
 /** Full commercial. Checkpoints every paid artifact (plan is cheap but the
  *  keyframes, clips and TTS are money) so a queue restart re-attaches. */
+/** A resumed checkpoint is only worth something if what it points at still
+ *  exists. Provider render URLs expire in about an hour, so a retry that
+ *  starts after the orphan-reclaim window can be handed a list of dead links.
+ *  Those used to sail through as "already done" and fail deep in ffmpeg,
+ *  burning an attempt on artifacts that were never going to load. Keep the
+ *  live prefix and let the pipeline rebuild from the first gap. */
+async function livePrefix(urls: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const u of urls) {
+    if (typeof u !== "string" || !u) break;
+    if (!/^https?:/i.test(u)) { out.push(u); continue; } // local or mirrored path
+    // Only a definite "it is gone" discards a paid artifact. A 405 from a host
+    // that refuses HEAD, a 5xx, or a network blip must NOT be read as expiry —
+    // that would throw away good renders and pay to make them again, which is
+    // worse than the failure this check exists to prevent.
+    let gone = false;
+    try {
+      const r = await fetch(u, { method: "HEAD" });
+      gone = r.status === 403 || r.status === 404 || r.status === 410;
+    } catch { gone = false; }
+    if (gone) break;
+    out.push(u);
+  }
+  return out;
+}
+
 export async function generateCommercialAd(params: CommercialAdParams): Promise<string> {
   const serviceMode = params.serviceMode === true;
   if (!params.productImageUrl && !serviceMode) throw new Error("Commercial needs a product image");
-  const ckpt = (patch: Record<string, unknown>) =>
-    params.jobId ? checkpointJob(params.jobId, patch) : Promise.resolve();
+  // checkpointJob reads the payload, merges a patch and writes it back. The
+  // beat renders below run in parallel, so two concurrent patches would each
+  // load the same payload and the later write would silently drop the
+  // earlier one. Chain them so every checkpoint lands.
+  let ckQueue: Promise<void> = Promise.resolve();
+  const ckpt = (patch: Record<string, unknown>) => {
+    const id = params.jobId;
+    if (!id) return Promise.resolve();
+    ckQueue = ckQueue.then(() => checkpointJob(id, patch));
+    return ckQueue;
+  };
 
   // 1) SHOT LIST
   let plan: CommercialPlan;
@@ -591,7 +626,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   }
 
   // 2) KEYFRAMES — product-faithful scene stills, one per beat.
-  let keyframeUrls: string[] = params.resume?.keyframeUrls ? JSON.parse(params.resume.keyframeUrls) : [];
+  let keyframeUrls: string[] = await livePrefix(params.resume?.keyframeUrls ? JSON.parse(params.resume.keyframeUrls) : []);
   if (keyframeUrls.length < plan.beats.length) {
     for (let i = keyframeUrls.length; i < plan.beats.length; i++) {
       keyframeUrls.push(await sceneKeyframe(params.productImageUrl, plan.beats[i].scene, keyframeUrls[i - 1]));
@@ -609,21 +644,35 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   });
   // Beats are independent — render them ALL at once. Sequential clips made
   // a five-beat spot take 5× the slowest clip; parallel makes it take 1×.
-  let clipUrls: string[] = params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : [];
+  let clipUrls: string[] = await livePrefix(params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : []);
   if (clipUrls.length < plan.beats.length) {
-    const fresh = await Promise.all(
-      plan.beats.slice(clipUrls.length).map((_, k) => (async () => {
-        const i = clipUrls.length + k;
+    // BANK EACH CLIP AS IT LANDS. This used to checkpoint once, after
+    // Promise.all resolved — so if the fifth beat threw, or the container
+    // was recycled, the four finished clips were never written down and the
+    // retry paid to render all five again. Clips are the most expensive
+    // artifact in the pipeline and the queue allows three attempts.
+    //
+    // Only the contiguous run from the front can be banked: resume uses the
+    // array length as its cursor, so a gap would shift every later clip onto
+    // the wrong beat.
+    const prior = clipUrls.slice();
+    const slots: (string | null)[] = new Array(plan.beats.length - prior.length).fill(null);
+    await Promise.all(
+      slots.map((_, k) => (async () => {
+        const i = prior.length + k;
         let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`);
         const gate = await motionGate(clip, serviceMode);
         if (!gate.ok) {
           console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
           clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
         }
-        return clip;
+        slots[k] = clip;
+        const done: string[] = [];
+        for (const s of slots) { if (!s) break; done.push(s); }
+        if (done.length) await ckpt({ ckCommercialClips: JSON.stringify([...prior, ...done]) });
       })())
     );
-    clipUrls = [...clipUrls, ...fresh];
+    clipUrls = [...prior, ...(slots as string[])];
     await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
   }
 
