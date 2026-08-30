@@ -98,8 +98,12 @@ export const loader = async (_args: LoaderFunctionArgs) => {
       SESSION_SECRET: !!process.env.SESSION_SECRET,
       UPLOADPOST_API_KEY: !!process.env.UPLOADPOST_API_KEY,
       RESEND_API_KEY: !!process.env.RESEND_API_KEY,
-      // Loud on purpose: while this is set, /web/dev can grant tokens.
-      DEV_GRANT_KEY_ENABLED: !!process.env.DEV_GRANT_KEY,
+      // DEV_GRANT_KEY is deliberately NOT reported. This route is public — no
+      // authentication anywhere in it — and that flag answers "is the
+      // token-granting route armed right now?" for anyone who asks. Knowing
+      // when a backdoor is open is most of the work of using one, and the key
+      // itself travels in a query string, which lands in access logs. The
+      // answer belongs in the Render dashboard, next to the variable.
     },
     // Merchant photo uploads. This route has no authentication — the header
     // above says to open it in a browser — and /uploads/:file is protected by

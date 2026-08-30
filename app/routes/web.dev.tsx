@@ -14,15 +14,30 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useLoaderData } from "@remix-run/react";
 import { requireWebIdentity } from "../lib/web-auth.server";
+import crypto from "node:crypto";
 import { db } from "../db.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
+
+/** Constant-time compare, so the 404 tells an attacker nothing about how much
+ *  of the key they guessed right. Same reasoning as the DUMMY_HASH in
+ *  web-auth.server.ts — this codebase already closed one timing oracle. */
+function keyMatches(given: string, expected: string): boolean {
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 function assertEnabled(request: Request): void {
   const key = process.env.DEV_GRANT_KEY;
   // Not configured → this route genuinely does not exist.
   if (!key) throw new Response("Not Found", { status: 404 });
-  const given = new URL(request.url).searchParams.get("key") || "";
-  if (given !== key) throw new Response("Not Found", { status: 404 });
+  // A header is preferred over ?key= because query strings are recorded by
+  // access logs, proxies and browser history, and leak through Referer on any
+  // outbound link. The query form stays so opening the page in a browser still
+  // works, which is the whole point of this route.
+  const given = request.headers.get("x-dev-grant-key") || new URL(request.url).searchParams.get("key") || "";
+  if (!keyMatches(given, key)) throw new Response("Not Found", { status: 404 });
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
