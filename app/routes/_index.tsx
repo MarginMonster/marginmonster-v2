@@ -2,6 +2,7 @@ import { json, redirect, type LoaderFunctionArgs, type MetaFunction } from "@rem
 import { useLoaderData } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { PLAN_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
+import { externalOrigin } from "../lib/origin.server";
 import { LANDING_I18N, LANG_LABELS, detectLang, type LangKey } from "../lib/landing-i18n";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -17,7 +18,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // No shop param → the public marketing page (also serves as the health check).
   // The origin travels to meta() so og:url and og:image can be absolute, which
   // is what every link unfurler requires.
-  return json({ ok: true, origin: url.origin });
+  return json({ ok: true, origin: externalOrigin(request) });
 };
 
 /* Every string here is the site's own hero copy (LANDING_I18N.en), not a fresh

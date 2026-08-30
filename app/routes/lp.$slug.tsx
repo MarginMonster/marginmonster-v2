@@ -3,6 +3,7 @@ import { json, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { db } from "../db.server";
 import type { LandingContent } from "../lib/landing.server";
+import { externalOrigin } from "../lib/origin.server";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const slug = params.slug!;
@@ -20,7 +21,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     productName: page.productName,
     badgeUrl,
     slug,
-    origin: new URL(request.url).origin,
+    origin: externalOrigin(request),
   });
 };
 
