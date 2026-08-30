@@ -17,6 +17,15 @@ interface LaunchParams {
   jobId?: string;
 }
 
+/** Whether this app can attach an AD to the ad set it creates.
+ *
+ *  A function, not a constant, so the rest of launchCampaign stays reachable
+ *  to the type-checker while this is false. Flip it to true in the same commit
+ *  that wires meta.createAd / tiktok.createAd up — and not before. */
+function adCreationImplemented(): boolean {
+  return false;
+}
+
 export async function launchCampaign(params: LaunchParams): Promise<string> {
   const { assetId, shopId, platform, weeklyBudgetCents, jobId } = params;
 
@@ -50,6 +59,35 @@ export async function launchCampaign(params: LaunchParams): Promise<string> {
 
   const adAccount = shop.adAccounts.find((a) => a.platform === platform);
   if (!adAccount) throw new Error(`No ${platform} ad account connected`);
+
+  // REFUSE BEFORE TOUCHING THE PLATFORM, BECAUSE WE CANNOT FINISH THE JOB.
+  //
+  // This function creates a campaign and an ad set, and stops. It never
+  // creates an AD. meta.createAd and tiktok.createAd are both fully written
+  // and are called from nowhere in the app — grep them: the only references
+  // are their own definitions.
+  //
+  // A Meta ad set with no ad in it cannot serve a single impression. So a
+  // merchant paid the 25-token boost fee, watched a campaign appear on their
+  // real ad account, and got something that can never deliver. Silently.
+  //
+  // Finishing it is not a wiring job. meta.createAd needs a page id
+  // (META_PAGE_ID is declared in render.yaml and read nowhere in the app), a
+  // headline, primary text and a call to action — and that copy is burned
+  // into the image by overlayAdText rather than stored as fields — plus a
+  // destination URL. That is a real piece of work and it has to be tested
+  // against a live ad account, which is not something to guess at.
+  //
+  // Until then this refuses UP FRONT rather than half-launching. Throwing
+  // here means no campaign and no ad set are created on the merchant's
+  // account, the job fails terminally, and refundPrepaidOnce returns the
+  // boost fee. Being told "not yet" beats paying for a shell.
+  if (!adCreationImplemented()) {
+    throw new Error(
+      "Boost can't run yet: EasyMode can create the campaign and its ad set, but not the ad itself, " +
+        "so the campaign could never deliver. Nothing was charged."
+    );
+  }
 
   const config = getPlatformConfig(shop.activePlan.campaignGoal);
   const body = JSON.parse(asset.bodyJson);
