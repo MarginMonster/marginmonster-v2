@@ -27,7 +27,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (accountId && meta.tierKey) {
         await activateStripePlan(accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null);
       } else if (accountId && meta.packTokens) {
-        await creditStripePack(accountId, parseInt(meta.packTokens, 10) || 0);
+        // The checkout session id is the natural idempotency key — Stripe
+        // retries this webhook, and a replay used to credit the pack twice.
+        await creditStripePack(accountId, parseInt(meta.packTokens, 10) || 0, (obj.id as string) || null);
       }
     } else if (event.type === "customer.subscription.updated") {
       const accountId = meta.accountId;

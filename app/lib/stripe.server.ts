@@ -203,7 +203,13 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
       type: tier.key, active: true,
       blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
       adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
-      tokensIncluded: tier.monthlyTokens, tokensUsed: 0, periodStart: new Date(),
+      tokensIncluded: tier.monthlyTokens,
+      // NOT tokensUsed:0 / periodStart:now. This runs on every
+      // customer.subscription.updated (api.stripe-webhook.tsx:38), not just on
+      // first activation, so resetting here handed back a full monthly
+      // allowance on any subscription edit — repeatable, and real COGS.
+      // refreshPeriod() in tokens.server.ts owns the monthly roll and is
+      // correctly guarded on PERIOD_MS having actually elapsed.
     },
   });
   // Post-activation hooks — same rituals the Shopify billing return-leg runs
@@ -233,9 +239,31 @@ export async function deactivateStripePlan(accountId: string): Promise<void> {
   await db.plan.updateMany({ where: { shopId }, data: { active: false } });
 }
 
-export async function creditStripePack(accountId: string, tokens: number): Promise<void> {
+/** Credit a purchased token pack — EXACTLY ONCE per Stripe charge.
+ *
+ *  Stripe retries a webhook whenever the endpoint doesn't 200 (and our handler
+ *  deliberately 500s so it will), and the dashboard can Resend by hand. A bare
+ *  `increment` keyed only on shopId therefore paid out twice for one purchase.
+ *  TokenPurchase.chargeId is unique precisely for this — the Shopify billing
+ *  leg already guards the same feature this way. Write the receipt FIRST: if
+ *  the insert collides, this charge was already credited and we stop. */
+export async function creditStripePack(accountId: string, tokens: number, chargeId?: string | null): Promise<void> {
   const shopId = await webShopIdFor(accountId);
   if (!shopId || tokens <= 0) return;
+
+  if (chargeId) {
+    try {
+      await db.tokenPurchase.create({ data: { shopId, chargeId, tokens, amountUsd: 0 } });
+    } catch {
+      // Unique violation on chargeId = replayed webhook. Anything else failing
+      // here would also be unsafe to credit blind, so stop either way.
+      console.log(`[stripe] pack ${chargeId} already credited — ignoring replay`);
+      return;
+    }
+  } else {
+    console.warn("[stripe] crediting a token pack with no chargeId — cannot guard against a replayed webhook");
+  }
+
   await db.plan.updateMany({ where: { shopId }, data: { tokensExtra: { increment: tokens } } });
 }
 

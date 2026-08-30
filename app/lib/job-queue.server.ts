@@ -43,9 +43,27 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(p) } });
     // Refund what was ACTUALLY charged (engine surcharges ride in chargedTokens).
     const amount = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
-    await refundTokens(job.shopId, amount);
+    try {
+      await refundTokens(job.shopId, amount);
+    } catch (e) {
+      // The flags are written BEFORE the refund on purpose (see above) so a
+      // second terminal failure can't mint tokens. But that made a failed
+      // refund invisible AND permanent: the job now claims it was refunded,
+      // the merchant keeps the charge, and the Archive's retry button charges
+      // them a second time for the same piece. Put the flags back so the state
+      // matches reality and the next terminal failure can try again.
+      p.prePaid = true;
+      p.refunded = false;
+      try {
+        await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(p) } });
+      } catch { /* leave the flags set rather than risk a double refund */ }
+      throw e;
+    }
     console.log(`[worker] refunded ${amount} tokens for failed ${job.type} (${job.id})`);
-  } catch { /* refund is best-effort, never fatal */ }
+  } catch (e) {
+    // Never fatal — but never silent either. A merchant is out of pocket here.
+    console.error(`[worker] REFUND FAILED for ${job.type} (${job.id}) — merchant may have been charged for nothing:`, e);
+  }
 }
 
 /** Advance the questline that spawned this job, if any. Lazy import avoids a
@@ -89,6 +107,12 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     // restart-killed render (companion forges included).
     if (dead) {
       await refundPrepaidOnce(j);
+      // A questline slot must be told too. processNextJob's terminal path calls
+      // this; the orphan-reclaim path did not, so a restart-killed drop left
+      // its slot SCHEDULED forever — postDueSlots only ever publishes READY, so
+      // the drop silently never posted, and a later abandonQuestline refunded
+      // that same still-SCHEDULED slot a second time.
+      try { await maybeTickQuestline(JSON.parse(j.payload), j.shopId, false); } catch { /* non-fatal */ }
       if (j.type === "FORGE_COMPANION") {
         try { await refundTokens(j.shopId, 1); } catch { /* non-fatal */ }
       }

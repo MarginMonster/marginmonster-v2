@@ -137,6 +137,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!stripeEnabled()) return json({ error: "Billing is coming online — check back shortly." });
     const tierKey = form.get("tier") as PlanKey;
     if (!PLAN_BY_KEY[tierKey]) return json({ error: "Unknown plan." });
+    // Don't let an active subscriber buy the plan they are already on. `pack`
+    // has always guarded this; `subscribe` did not, so a re-post (or a stale
+    // tab) opened a second Stripe subscription for the same tier and billed
+    // twice. A DIFFERENT tier is a legitimate upgrade/downgrade and still goes
+    // through — this only blocks the pure duplicate.
+    if (shop.activePlan?.active && resolveTierKey(shop.activePlan.type) === tierKey) {
+      return json({ error: `You're already on ${PLAN_BY_KEY[tierKey].name}.` });
+    }
     const annual = form.get("annual") === "1";
     try {
       const url = await createPlanCheckout({ accountId: account.id, email: account.email, tierKey, annual, baseUrl });

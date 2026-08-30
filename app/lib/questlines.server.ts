@@ -651,6 +651,14 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
   } catch (e) {
     console.error("[questline] abandon job cleanup failed (non-fatal):", e);
   }
+  // Never refund more than was actually charged. The loop above re-prices the
+  // unspent slots from the CURRENT TOKEN_COST table, but accept() charged
+  // questlineCostFor(), which applies a tier discount (e.g. ANTHEM -15%). On a
+  // discounted questline the re-priced sum exceeds the real charge, so
+  // accept-then-abandon netted free tokens into the non-expiring `tokensExtra`
+  // bucket — and it was loopable. `tokenCost` is the amount accept() persisted.
+  if (q.tokenCost > 0) refund = Math.min(refund, q.tokenCost);
+
   if (refund > 0) {
     try { await refundTokens(shopId, refund); } catch (e) { console.error("[questline] refund failed:", e); refund = 0; }
   }

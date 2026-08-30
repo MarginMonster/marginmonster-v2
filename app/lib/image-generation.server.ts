@@ -2454,11 +2454,16 @@ export async function generateImageAd(
         let freezeReason: string | undefined; // set only for a fresh gate-passed frame
         if (cachedShot) {
           buf = cachedShot.buf;
-          fileName = cachedShot.fileName;
+          // Deliberately NOT reusing cachedShot.fileName — this asset writes
+          // its own copy below, so purging one ad can never blank another.
           artLog("image-ad", `presenter shot library: reusing the frozen ${layout} shot for this presenter — instant, no generation`);
         } else {
           const held = await runPresenterHold({
-            portraitUrl, productImageUrl, productTitle, wear, scene,
+            // `scene` is never populated for image jobs from the web Studio, so
+            // the merchant's typed "Describe it" direction (which arrives as
+            // stylePrompt) was silently thrown away on this path — they paid
+            // for an ad that ignored the one instruction they gave.
+            portraitUrl, productImageUrl, productTitle, wear, scene: scene || stylePrompt,
             scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass, cm: scaleHint?.cm,
             continuity: (await import("./avatars")).AVATAR_BY_ID[avatarId]?.continuity,
           });
@@ -2507,16 +2512,31 @@ export async function generateImageAd(
           try {
             const dir = path.join(process.cwd(), "data", "renders");
             fs.mkdirSync(dir, { recursive: true });
-            if (!fileName) {
-              fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-              fs.writeFileSync(path.join(dir, fileName), buf);
-              try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
-              if (freezeReason !== undefined) {
-                // Freeze the CLEAN composite — presenter stills ship untyped
-                // now, and a frozen shot must stay reusable if that changes.
-                if (!freshShot) await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName, gateReason: freezeReason });
-                artLog("image-ad", "presenter shot library: froze this gate-passed shot — future ads for this pair are instant");
-              }
+            // EVERY asset gets its OWN file, including on a Shot Library hit.
+            // Reusing the cached filename made several Assets point at one file
+            // on disk; storage-cleanup then purged the oldest un-kept one,
+            // deleted that shared file from disk AND object storage, and
+            // silently blanked every other ad still using it — including Kept,
+            // paid ads. The bytes are already in memory, so a private copy is
+            // just a write.
+            fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+            fs.writeFileSync(path.join(dir, fileName), buf);
+            try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
+
+            if (freezeReason !== undefined && !cachedShot) {
+              // The library's copy must NOT be an asset file, for the same
+              // reason: an asset file can be purged, and that would leave the
+              // library pointing at nothing. Give the frozen shot its own
+              // `shot-` name that no asset ever references, so the purge
+              // (which only deletes filenames found in an asset's bodyJson)
+              // can never reach it.
+              const shotFile = `shot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+              fs.writeFileSync(path.join(dir, shotFile), buf);
+              try { await mirrorRender(shotFile, buf); } catch { /* non-fatal */ }
+              // Freeze the CLEAN composite — presenter stills ship untyped
+              // now, and a frozen shot must stay reusable if that changes.
+              if (!freshShot) await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName: shotFile, gateReason: freezeReason });
+              artLog("image-ad", "presenter shot library: froze this gate-passed shot — future ads for this pair are instant");
             }
             localUrl = `/renders/${fileName}`;
             // NO POSTER TEXT ON A PRESENTER SHOT. The overlay uses a poster
