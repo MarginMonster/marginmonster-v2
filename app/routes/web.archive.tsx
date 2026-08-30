@@ -7,6 +7,7 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
+import { isExpiringUrl } from "../lib/image-generation.server";
 import { db } from "../db.server";
 import { ensureProfile, linkedFromCache, publishPost, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
@@ -147,8 +148,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totalAll,
     nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
     assets: assets.map((a) => {
-      let body: { videoUrl?: string; imageUrl?: string; title?: string; html?: string } = {};
+      let body: { videoUrl?: string; imageUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
+      // MEDIA WE KNOW IS GONE.
+      //
+      // Provider render URLs die after about an hour. backfillDeadImages
+      // re-forges what it can and stamps needsRegen:true on the rest — but
+      // the only thing that ever read that flag was the query that skips
+      // those rows, so the merchant was left with a permanently broken tile,
+      // a download link to nothing, and a Post button that could only fail.
+      // Say it plainly instead. The age check matters: a just-generated asset
+      // can legitimately still be serving from the provider.
+      const rawMedia = body.videoUrl || body.imageUrl || null;
+      const pastProviderTtl = nowMs - a.createdAt.getTime() > 2 * 60 * 60 * 1000;
+      const expired = body.needsRegen === true || (pastProviderTtl && isExpiringUrl(rawMedia || undefined));
       const text = typeof body.html === "string" ? stripHtml(body.html) : undefined;
       const unkeptMedia = a.status === "PENDING" && (a.type === "VIDEO_AD" || a.type === "IMAGE_AD");
       const daysLeft = unkeptMedia ? Math.max(0, CACHE_DAYS - Math.floor((nowMs - a.createdAt.getTime()) / 86_400_000)) : undefined;
@@ -156,7 +169,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         id: a.id,
         type: a.type,
         title: a.title || body.title || "Untitled",
-        media: body.videoUrl || body.imageUrl || null,
+        media: expired ? null : rawMedia,
+        expired,
         isVideo: a.type === "VIDEO_AD",
         snippet: text ? text.slice(0, 140) : undefined,
         html: a.type === "BLOG_POST" && typeof body.html === "string" ? body.html : undefined,
@@ -705,7 +719,12 @@ export default function WebArchive() {
                 <button type="button" className="wa-poster" onClick={() => setViewer(a)} title="Open it big">
                   {a.isVideo && a.media && <video src={`${a.media}#t=0.1`} muted playsInline preload="metadata" />}
                   {!a.isVideo && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
-                  {!a.media && <div style={{ height: 220, display: "grid", placeItems: "center", fontSize: 34, color: "#E7C879" }}>{a.isVideo ? "🎬" : "🖼"}</div>}
+                  {!a.media && (
+                    <div style={{ height: 220, display: "grid", placeItems: "center", gap: 6, textAlign: "center", color: "#E7C879" }}>
+                      <span style={{ fontSize: 34 }}>{a.isVideo ? "🎬" : "🖼"}</span>
+                      {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>This file expired and can't be recovered — make it again.</span>}
+                    </div>
+                  )}
                   {a.isVideo && a.media && <span className="wa-play" aria-hidden>▶</span>}
                   {a.daysLeft != null && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={`Auto-clears in ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} — open it and hit Keep`}>⏳ {a.daysLeft}d</span>}
                 </button>

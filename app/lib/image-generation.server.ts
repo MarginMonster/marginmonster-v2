@@ -2257,7 +2257,7 @@ const BACKFILL_EVERY_MS = 10 * 60 * 1000; // worker ticks every ~8s — heal gen
 /** Hosts whose delivery URLs expire — replicate AND fal (fal-hosted presenter
  *  stills were invisible to the healer, so they could never be flagged). */
 const EXPIRING_HOSTS = ["replicate.delivery", "fal.media", "queue.fal.run", "v3.fal.media"];
-const isExpiringUrl = (u?: string) => !!u && EXPIRING_HOSTS.some((h) => u.includes(h));
+export const isExpiringUrl = (u?: string) => !!u && EXPIRING_HOSTS.some((h) => u.includes(h));
 
 /** Assets forged before genMeta carry no `method`, and they're the exact
  *  population this healer exists for. Their prompt is unambiguous though: the
