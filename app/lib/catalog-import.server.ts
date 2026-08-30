@@ -280,10 +280,35 @@ export async function importCatalog(
 ): Promise<{ imported: number; removed: number; source: string; swept: boolean; failed: number; truncated: boolean }> {
   const { products, source } = await discoverCatalog(rawUrl, cap);
   const startedAt = new Date();
-  // What the merchant already has, measured BEFORE we touch anything — the
-  // sweep below needs it to judge whether this run is a credible picture of
-  // the whole catalogue or the wreckage of a partial one.
-  const existing = await db.catalogProduct.count({ where: { shopId } });
+  // What the merchant already has FROM THE STORE THIS RUN CRAWLED, measured
+  // BEFORE we touch anything — the sweep below needs it to judge whether this
+  // run is a credible picture of the whole catalogue or the wreckage of a
+  // partial one.
+  //
+  // Per ORIGIN, not per shop, because a shop-wide count latches. Import the
+  // wrong storefront once (a clipboard slip, a supplier's site, the domain
+  // from before a migration) and you have 250 foreign rows. Correct it and
+  // your real 40-product store fails 40 >= floor(250 * 0.8), so nothing is
+  // swept and the 40 are ADDED alongside — now 290. Try again and the bar is
+  // 232. `existing` only ever grows, so once a correction fails it can never
+  // succeed: the merchant is stuck offering another company's products as
+  // their own, forever, with no way out in the app. The same latch catches a
+  // merchant migrating from a big store to a smaller one, with no typo at all.
+  //
+  // The hostnames come from the URLs THIS RUN produced, never from what the
+  // merchant typed: Woo permalinks and sitemap entries carry the site's own
+  // canonical host, so "x.com" routinely comes back as "www.x.com", and
+  // matching on the typed address would read a healthy catalogue as foreign
+  // and wipe it.
+  const hostOf = (u: string): string => {
+    try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+  };
+  const crawledHosts = new Set(products.map((p) => hostOf(p.url)).filter(Boolean));
+  const priorRows = await db.catalogProduct.findMany({ where: { shopId }, select: { url: true } });
+  const existing = crawledHosts.size
+    ? priorRows.filter((r) => crawledHosts.has(hostOf(r.url))).length
+    : priorRows.length;
+  const foreign = priorRows.length - existing;
 
   let failed = 0;
   let position = 0;
@@ -336,11 +361,14 @@ export async function importCatalog(
     });
     removed = gone.count;
     swept = true;
-  } else if (existing > 0) {
+  } else if (priorRows.length > 0) {
     console.warn(
-      `[catalog] ${shopId}: kept the existing ${existing}-product catalogue — this run saw ${products.length}` +
+      `[catalog] ${shopId}: kept the existing ${priorRows.length}-product catalogue — this run saw ${products.length}` +
         `${failed ? ` with ${failed} write failure(s)` : ""}, which is not a credible full sync. Nothing deleted.`
     );
+  }
+  if (swept && foreign > 0) {
+    console.log(`[catalog] ${shopId}: swept ${foreign} product(s) from a different storefront than the one just crawled`);
   }
 
   // Hitting the cap exactly almost certainly means the store has MORE. Saying
