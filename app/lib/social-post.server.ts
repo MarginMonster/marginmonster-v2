@@ -159,6 +159,21 @@ export async function postDueSlots(): Promise<void> {
       if (changed) {
         await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
       }
+      // A campaign finishes when its LAST DROP POSTS, not when the last piece
+      // rendered — and this scan is the only place that can know that. The
+      // completion flip used to live on the forge path, where it fired a day
+      // early and then hid the questline from this very scan, stranding the
+      // final drops. Ask after a slot goes out, and also once the schedule has
+      // fully elapsed, so a drop that can never post (socials unlinked, a
+      // platform permanently refusing) can't pin the campaign ACTIVE forever.
+      const lastSlotMs = schedule.slots.reduce((m, s) => {
+        const t = new Date(`${s.date}T${s.time}:00`).getTime();
+        return Number.isFinite(t) && t > m ? t : m;
+      }, 0);
+      if (changed || (lastSlotMs > 0 && now > lastSlotMs + 24 * 60 * 60 * 1000)) {
+        const { settleQuestlineIfDone } = await import("./questlines.server");
+        await settleQuestlineIfDone(q.id);
+      }
     }
     if (due > 0) {
       console.log(`[social-post] ${due} slot(s) past post time (${posted} posted; publisher pending platform APIs)`);

@@ -666,6 +666,58 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
   return { ok: true, refunded: refund };
 }
 
+/** Finish a questline — but only once it has actually RUN, not merely rendered.
+ *
+ *  This used to be a `status: "COMPLETE"` flip inside onQuestlineObjectiveDone
+ *  the moment every content objective was done. Content forges GEN_LEAD_MS (a
+ *  full day) BEFORE its posting slot, so the last drops were still sitting
+ *  READY, waiting for their time, when the quest was declared finished — and
+ *  postDueSlots only ever scans `status: "ACTIVE"`. The campaign vanished from
+ *  the poster's view and those final drops never went out. The merchant paid
+ *  for them, watched the campaign turn green, and never saw them published.
+ *
+ *  So: complete when the content is done AND every slot has reached a terminal
+ *  posting state. The elapsed-schedule backstop matters just as much — a slot
+ *  that can NEVER post (socials unlinked, a platform permanently rejecting)
+ *  must not pin the questline ACTIVE forever, which would strand its reward and
+ *  keep it in the "running campaigns" count that gates accepting a new one.
+ *
+ *  Safe to call repeatedly and from anywhere; it no-ops unless the transition
+ *  is genuinely due, so the reward pays exactly once. */
+export async function settleQuestlineIfDone(questlineId: string): Promise<void> {
+  try {
+    const q = await db.questline.findUnique({ where: { id: questlineId } });
+    if (!q || q.status === "COMPLETE") return;
+
+    const objectives: Objective[] = JSON.parse(q.objectivesJson);
+    const schedule = parseSchedule(q.scheduleJson);
+    const allContentDone = objectives.filter((o) => o.type !== "post").every((o) => o.done >= o.target);
+    if (!allContentDone) return;
+
+    const postsSettled = schedule.slots.every((s) => s.status === "POSTED" || s.status === "FAILED");
+    const lastSlotMs = schedule.slots.reduce((m, s) => {
+      const t = new Date(`${s.date}T${s.time}:00`).getTime();
+      return Number.isFinite(t) && t > m ? t : m;
+    }, 0);
+    const scheduleElapsed = lastSlotMs > 0 && Date.now() > lastSlotMs + GEN_LEAD_MS;
+    if (!postsSettled && !scheduleElapsed) return; // drops still owed — stay ACTIVE so the poster keeps scanning
+
+    // Conditional write: two callers race here (the forge path and the poster),
+    // and the reward must not pay twice.
+    const done = await db.questline.updateMany({
+      where: { id: questlineId, status: { not: "COMPLETE" } },
+      data: { status: "COMPLETE", completedAt: new Date() },
+    });
+    if (done.count !== 1) return; // the other caller got there first
+
+    const res = await awardXp(q.shopId, q.xpReward);
+    if (res?.leveledUp) await checkLevelAchievements(q.shopId, res.level);
+    await unlockAchievement(q.shopId, "QUEST_COMPLETE");
+  } catch (e) {
+    console.error("[questline] settle failed (non-fatal):", e);
+  }
+}
+
 /** Called from the job queue when a questline-tagged content job finishes
  *  (ok=true) or permanently fails (ok=false). Marks the map slot, ticks the
  *  objective, drips step XP, pays weekly bonuses, and completes the quest +
@@ -721,17 +773,17 @@ export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey
         objectivesJson: JSON.stringify(objectives),
         scheduleJson: JSON.stringify(schedule),
         progress,
-        ...(allContentDone ? { status: "COMPLETE", completedAt: new Date() } : {}),
+        // NOT status:"COMPLETE" here. Forging the last piece is not finishing
+        // the campaign — the drop still has to post, up to a day later. See
+        // settleQuestlineIfDone.
       },
     });
 
     if (ok) await awardXp(shopId, 25 + weeklyBonus);
 
-    if (allContentDone) {
-      const res = await awardXp(shopId, q.xpReward);
-      if (res?.leveledUp) await checkLevelAchievements(shopId, res.level);
-      await unlockAchievement(shopId, "QUEST_COMPLETE");
-    }
+    // The forge may genuinely be the last thing outstanding (a schedule whose
+    // slots have all already posted, or one that has fully elapsed), so ask.
+    if (allContentDone) await settleQuestlineIfDone(questlineId);
   } catch (e) {
     console.error("[questline] progress update failed (non-fatal):", e);
   }
