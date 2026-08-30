@@ -51,9 +51,9 @@ const BOT_UA: Record<string, string> = { ...UA, "user-agent": "Mozilla/5.0 (comp
 /** Fetch a page as a browser would, retrying once with the bot UA if the host
  *  refuses. Storefronts differ on which they trust. */
 async function fetchPage(url: string, timeoutMs = 12_000): Promise<Response> {
-  let res = await fetch(url, { headers: UA, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
+  let res = await safeFetch(url, { headers: UA, signal: AbortSignal.timeout(timeoutMs) });
   if (res.status === 403 || res.status === 406 || res.status === 429) {
-    res = await fetch(url, { headers: BOT_UA, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
+    res = await safeFetch(url, { headers: BOT_UA, signal: AbortSignal.timeout(timeoutMs) });
   }
   return res;
 }
@@ -74,6 +74,40 @@ export function isBlockedHost(host: string): boolean {
     /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
     h === "[::1]" || h === "::1"
   );
+}
+
+/** fetch() that re-checks the host on EVERY redirect hop.
+ *
+ *  isBlockedHost was applied once, to the URL the merchant typed, and then
+ *  every fetch ran with redirect: "follow". A hostile storefront only had to
+ *  answer 302 Location: http://169.254.169.254/… and our server would follow
+ *  it straight to the cloud metadata endpoint, or to 127.0.0.1, and hand the
+ *  body back to the caller. The guard was checking the one URL that was never
+ *  the dangerous one.
+ *
+ *  Redirects are now followed by hand so each destination faces the same
+ *  check as the first. Note this closes the redirect hole, not DNS rebinding:
+ *  a hostname that resolves publicly here and privately at connect time would
+ *  still pass. Blocking that needs IP-level filtering at the socket. */
+export async function safeFetch(
+  url: string,
+  init: RequestInit = {},
+  maxHops = 5
+): Promise<Response> {
+  let current = url;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    let u: URL;
+    try { u = new URL(current); } catch { throw new Error("That URL isn't allowed."); }
+    if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) {
+      throw new Error("That URL isn't allowed.");
+    }
+    const res = await fetch(current, { ...init, redirect: "manual" });
+    if (res.status < 300 || res.status >= 400) return res;
+    const loc = res.headers.get("location");
+    if (!loc) return res; // a 3xx with nowhere to go — let the caller judge it
+    try { current = new URL(loc, current).toString(); } catch { throw new Error("That URL isn't allowed."); }
+  }
+  throw new Error("Too many redirects.");
 }
 
 /** Storefronts advertise a SMALL share-card image (Wix serves 500x500 for a
@@ -131,9 +165,9 @@ export async function isDirectImage(url: string, timeoutMs = 6000): Promise<bool
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    let res = await fetch(url, { method: "HEAD", signal: ac.signal, redirect: "follow", headers: UA });
+    let res = await safeFetch(url, { method: "HEAD", signal: ac.signal, headers: UA });
     if (res.status === 405 || res.status === 501 || res.status === 403) {
-      res = await fetch(url, { method: "GET", headers: { ...UA, Range: "bytes=0-1023" }, signal: ac.signal, redirect: "follow" });
+      res = await safeFetch(url, { method: "GET", headers: { ...UA, Range: "bytes=0-1023" }, signal: ac.signal });
     }
     if (!res.ok && res.status !== 206) return false;
     return (res.headers.get("content-type") || "").toLowerCase().startsWith("image/");
@@ -161,7 +195,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
   // Shopify storefronts expose exact product JSON — no parsing guesswork.
   if (/\/products\/[^/?#]+\/?$/.test(u.pathname)) {
     try {
-      const jres = await fetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: UA });
+      const jres = await safeFetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: UA });
       if (jres.ok) {
         const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[]; price?: number };
         if (pj?.title) {
