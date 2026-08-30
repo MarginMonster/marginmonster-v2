@@ -177,6 +177,22 @@ export async function processNextJob(): Promise<boolean> {
   }
   if (!job) return false; // everything visible was taken by someone else
 
+  // WHEN THIS ATTEMPT ACTUALLY STARTED.
+  //
+  // updatedAt cannot answer that. Every checkpoint a long pipeline writes
+  // moves it — deliberately, since it doubles as the heartbeat that keeps
+  // reclaimOrphanJobs from treating a live render as abandoned. But the
+  // Archive read updatedAt as the render's start, so a merchant watching a
+  // commercial saw the elapsed counter drop back to zero and the ETA climb
+  // again every time it banked a finished beat.
+  try {
+    const p = JSON.parse(job.payload);
+    p.__startedAt = new Date().toISOString();
+    const stamped = JSON.stringify(p);
+    await db.job.update({ where: { id: job.id }, data: { payload: stamped } });
+    job = { ...job, payload: stamped };
+  } catch { /* payload is not JSON — nothing to stamp */ }
+
   try {
     const payload = JSON.parse(job.payload);
     payload.__jobId = job.id; // lets long pipelines checkpoint their progress

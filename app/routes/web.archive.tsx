@@ -114,13 +114,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
   const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
     const failed = j.status === "FAILED";
     const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
     if (!failed && !generating) continue; // future-scheduled drip isn't "cooking"
-    const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
+    // __startedAt is written once, when the job is claimed. Falling back to
+    // updatedAt keeps jobs claimed before this existed reporting sensibly.
+    const stamped = Date.parse(String((p as { __startedAt?: string }).__startedAt || ""));
+    const startMs =
+      j.status === "IN_PROGRESS"
+        ? (Number.isFinite(stamped) ? stamped : j.updatedAt.getTime())
+        : j.createdAt.getTime();
     // Math.max(5, …) pinned the countdown at "5s left" forever once the
     // estimate ran out — a merchant watched it say that for two minutes. An
     // estimate that has expired is not a five-second estimate; it is an

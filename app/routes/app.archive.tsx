@@ -59,13 +59,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const RETRY_COST: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
   const jobCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; retryCost: number }[] = [];
   for (const j of jobRows) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
     const failed = j.status === "FAILED";
     const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
     if (!failed && !generating) continue; // scheduled-future drip lives in the Scheduled tab
-    const startMs = (j.status === "IN_PROGRESS" ? j.updatedAt : j.createdAt).getTime();
+    // __startedAt is written once, when the job is claimed. Falling back to
+    // updatedAt keeps jobs claimed before this existed reporting sensibly.
+    const stamped = Date.parse(String((p as { __startedAt?: string }).__startedAt || ""));
+    const startMs =
+      j.status === "IN_PROGRESS"
+        ? (Number.isFinite(stamped) ? stamped : j.updatedAt.getTime())
+        : j.createdAt.getTime();
     const etaSec = generating ? Math.max(5, Math.round(TYPICAL[j.type] - (nowMs - startMs) / 1000)) : 0;
     // Refunded terminal failures already gave the tokens back — retrying one
     // is a fresh purchase, and the button says so.
