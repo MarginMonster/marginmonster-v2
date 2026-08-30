@@ -1653,8 +1653,8 @@ function formatLayoutPrompt(key: string, c: Record<string, string>, hero?: strin
   // previews describe an EasyMode-branded hero product in text instead.
   const productClause = hero
     ? `The hero product is ${hero}. Any wordmark or label on it must read exactly "EASYMODE" — spelled E-A-S-Y-M-O-D-E in clean capital letters — and contain no other readable words.`
-    : "The product from the provided image must stay perfectly identical — same shape, colors, label and logos, never redrawn or warped.";
-  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, with NO other words, gibberish or invented text anywhere. Each string appears ONCE and reads as grammatical English — never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
+    : "The product from the provided image must stay perfectly identical — same shape, colors, label, logos, and every printed code, serial and number reproduced character for character, never redrawn, re-numbered or warped.";
+  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, and you must not INVENT any additional layout text, gibberish or filler anywhere. This rule is about the ad's own copy only: the words already printed on the product itself are part of the product and must be reproduced exactly as they appear in the photograph — every character, code, serial and number identical, never re-lettered, never re-numbered, never tidied up. Each string appears ONCE and reads as grammatical English — never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
   switch (key) {
     case "callout":
       return `${base} Layout: the product large in the center on a soft solid-color studio background that complements its palette. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
@@ -1958,7 +1958,7 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
         ``,
         `Answer each field INDEPENDENTLY — do not let a good overall impression carry a field that is actually wrong.`,
         productImageUrl
-          ? `productIntact: is the product in the ad the same product as image 1 — same shape, colors, packaging artwork, logos — not warped, restyled or reinvented?`
+          ? `productIntact: is the product in the ad the same product as image 1 — same shape, colors, packaging artwork, logos — not warped, restyled or reinvented? Compare any printed codes, serials or numbers on the packaging CHARACTER BY CHARACTER against image 1 and answer false if a single character differs; this is a comparison between the two images, so script and language do not matter.`
           : `productIntact: answer true.`,
         `textSensible: does every line of the ad's own text read as grammatical English that makes sense? A repeated word or phrase ("we still each still got", "first try first try") is a FAILURE even though every word in it is spelled correctly. Read each sentence back for SENSE, not spelling.`,
         `textMatches: does the ad's text say the requested strings above — none missing, none cut off mid-word, none invented?`,
@@ -2750,7 +2750,7 @@ export async function generateImageAd(
         } else if (t && platePath) {
           const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
           const plateUrl = base ? `${base}/ad-templates/plate-${t.key}.jpg` : null;
-          usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}.${stylePrompt ? ` Apply this one change the merchant asked for: ${stylePrompt.slice(0, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
+          usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}.${stylePrompt ? ` Apply this one change the merchant asked for: ${stylePrompt.slice(0, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, and every code, serial and number printed on it copied character for character, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
           const stagedOnce = async (): Promise<string> => {
             const inputs = plateUrl ? [plateUrl, productImageUrl] : [productImageUrl];
             try { return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: inputs, aspect_ratio: "1:1", output_format: "jpg" }); }
@@ -2807,7 +2807,7 @@ export async function generateImageAd(
 
     // RUNG 2 — SCENE: identity-strongest editor + vision QA with one retry.
     if (!localFileName && !imageUrl) {
-      usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail, at its TRUE real-world scale — never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
+      usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail — including every printed code, serial and number, copied character for character — at its TRUE real-world scale, never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
       const genOnce = async (): Promise<string> => {
         try {
           return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl], aspect_ratio: "1:1", output_format: "jpg" });
