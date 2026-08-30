@@ -7,12 +7,69 @@
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
-import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll } from "./ugc-ad-pipeline.server";
+import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import fs from "node:fs";
 import path from "node:path";
 import { mirrorRender } from "./object-storage.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
+
+/** Every finished video EasyMode ships is 720x1280.
+ *
+ *  This pipeline was the one exception, and it never re-encoded anything — it
+ *  wrote the provider's clip to disk byte for byte. Image-to-video engines
+ *  return the aspect ratio of the SEED FRAME, and the seed frame here is the
+ *  merchant's own product photo, so the output shape was whatever shape their
+ *  storefront images happen to be. Measured across a real account: seven of
+ *  eight pipelines produced 720x1280, and Product Highlight produced
+ *  1440x1440 — a square video, auto-posted to TikTok, Reels and Shorts, which
+ *  the landing page sells as "vertical-formatted". Only the Veo branch of
+ *  animateInputFor passes aspect_ratio at all; every Kling branch (including
+ *  the current default engine) passes none, and the word "vertical" in the
+ *  prompt is a hint the model is free to ignore.
+ *
+ *  Pad, never crop. Cropping 1440x1440 down to 9:16 throws away 44% of the
+ *  width, and the thing sitting in that width is the product the ad exists to
+ *  show. The frame is fitted whole and the bars are filled with a blurred,
+ *  zoomed copy of the footage — the standard social treatment, which reads as
+ *  deliberate rather than as a letterboxed mistake.
+ *
+ *  Returns false if it could not produce a file, so the caller falls back to
+ *  the untouched bytes: a wrongly-shaped video the merchant paid for still
+ *  beats no video at all. */
+async function toVerticalFrame(buf: Buffer, dir: string, outPath: string): Promise<boolean> {
+  const raw = path.join(dir, `.vid-src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`);
+  try {
+    fs.writeFileSync(raw, buf);
+    const { status, stderr } = await runFfmpeg([
+      "-y", "-i", raw,
+      "-filter_complex",
+      // The blur is heavy and the fill is darkened on purpose: at a gentler
+      // sigma the background is still a readable copy of the footage, so any
+      // caption near the frame edge reappears as a ghost of itself in the bar.
+      "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280," +
+        "gblur=sigma=42,eq=brightness=-0.16:saturation=0.85[bg];" +
+        "[0:v]scale=720:1280:force_original_aspect_ratio=decrease[fg];" +
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2,fps=30,format=yuv420p[v]",
+      "-map", "[v]", "-map", "0:a?",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+      "-c:a", "aac", "-b:a", "128k",
+      "-movflags", "+faststart",
+      outPath,
+    ]);
+    if (status !== 0 || !fs.existsSync(outPath) || fs.statSync(outPath).size < 1024) {
+      console.warn(`[video] vertical normalisation failed (status ${status}) — keeping the provider frame: ${stderr.slice(-400)}`);
+      try { fs.rmSync(outPath, { force: true }); } catch { /* nothing to remove */ }
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn(`[video] vertical normalisation unavailable — keeping the provider frame: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  } finally {
+    try { fs.rmSync(raw, { force: true }); } catch { /* best effort */ }
+  }
+}
 
 /** Download a provider render onto our own disk (and durable object storage)
  *  and return the /renders/ URL we serve it from.
@@ -32,8 +89,13 @@ async function persistRemoteVideo(url: string): Promise<string> {
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
     const fileName = `vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    fs.writeFileSync(path.join(rendersDir, fileName), buf);
-    try { await mirrorRender(fileName, buf); } catch { /* non-fatal — disk copy still serves */ }
+    const finalPath = path.join(rendersDir, fileName);
+
+    const framed = await toVerticalFrame(buf, rendersDir, finalPath);
+    if (!framed) fs.writeFileSync(finalPath, buf); // normalisation failed — ship what we paid for
+
+    const bytes = fs.readFileSync(finalPath);
+    try { await mirrorRender(fileName, bytes); } catch { /* non-fatal — disk copy still serves */ }
     return `/renders/${fileName}`;
   } catch (e) {
     console.warn(
