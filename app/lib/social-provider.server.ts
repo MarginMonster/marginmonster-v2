@@ -167,6 +167,33 @@ export async function fetchAnalytics(
  *  Video: pass the media URL directly (upload-post's /api/upload `video` field
  *  accepts a URL) — no re-upload through our server. Photos: /api/upload_photos
  *  is file-only, so we fetch the bytes and attach them. */
+/** The provider caps a post title at 150 characters. This used to be a blind
+ *  `slice(0, 150)`, which cut off precisely the thing that must never be cut:
+ *  the AI-disclosure hashtag. getOrMakeCaptions appends it LAST (see
+ *  social-caption.server.ts), so it always sat at the very end of the caption
+ *  and any over-length post shipped without it. Meta requires that disclosure —
+ *  the product's own landing page promises "AI-disclosure compliant captions,
+ *  so ads don't get rejected" — so it has to survive the trim.
+ *
+ *  Trim the BODY instead and re-attach the tag. Deliberately duplicated as a
+ *  literal rather than imported from social-caption.server: this is the last
+ *  gate before bytes leave for the provider, and it must not depend on the
+ *  module that generates captions still being reachable. */
+const TITLE_MAX = 150;
+const DISCLOSURE = "#EasyModeAi";
+export function trimKeepingDisclosure(raw: string): string {
+  const title = (raw || "").trim();
+  if (title.length <= TITLE_MAX) return title;
+
+  const hasTag = title.toLowerCase().includes(DISCLOSURE.toLowerCase());
+  if (!hasTag) return title.slice(0, TITLE_MAX);
+
+  // Drop the tag wherever it sits, trim the remainder to leave room, re-append.
+  const body = title.replace(new RegExp(DISCLOSURE.replace("#", "#?"), "ig"), "").replace(/\s+/g, " ").trim();
+  const room = TITLE_MAX - DISCLOSURE.length - 1; // -1 for the joining space
+  return `${body.slice(0, Math.max(0, room)).trim()} ${DISCLOSURE}`;
+}
+
 export async function publishPost(
   username: string,
   params: { title: string; mediaUrl: string; isVideo: boolean; platforms: string[] }
@@ -175,7 +202,7 @@ export async function publishPost(
   try {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const mediaAbs = params.mediaUrl.startsWith("http") ? params.mediaUrl : `${base}${params.mediaUrl}`;
-    const title = params.title.slice(0, 150);
+    const title = trimKeepingDisclosure(params.title);
 
     const form = new FormData();
     form.append("user", username);
