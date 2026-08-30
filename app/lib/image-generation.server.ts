@@ -1878,6 +1878,14 @@ export async function runFormatRung(opts: {
   const renderOnce = (fix?: string) => repRun("google/nano-banana", {
     prompt: fix ? `${prompt}${correction(fix)}` : prompt,
     image_input: [opts.productImageUrl],
+    // nano-banana defaults aspect_ratio to "match_input_image", so without
+    // this the ad came out shaped like whatever photo the merchant uploaded.
+    // Measured across one real account: 71 image ads in NINE different
+    // sizes, five of them landscape — auto-posted to feeds that are not.
+    // Every layout prompt already asks for "square 1:1" and every kontext
+    // fallback below already pins 1:1; only the primary path was letting
+    // the input photo decide.
+    aspect_ratio: "1:1",
     output_format: "jpg",
   });
 
@@ -2015,7 +2023,15 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
 const FORMAT_PREVIEW_VERSION = 2;
 // Per-key bumps (mirrors the tile system): poster v3 composites the canonical
 // statue bottle instead of describing a drink in text — one bottle everywhere.
-const FORMAT_PREVIEW_KEY_VERSIONS: Record<string, number> = { poster: 3 };
+const FORMAT_PREVIEW_KEY_VERSIONS: Record<string, number> = {
+  poster: 3,
+  // v2 shipped a headline the format never asked for — testimonialwall requests
+  // three review cards and nothing else — and misspelled it: "FALL ASALEP
+  // FASTER". It sat in the format picker every merchant browses. The base
+  // prompt already forbids invented text; the model added it anyway, so the
+  // only remedy is to forge the tile again.
+  testimonialwall: 3,
+};
 const fpVersion = (key: string) => FORMAT_PREVIEW_KEY_VERSIONS[key] ?? FORMAT_PREVIEW_VERSION;
 const formatPreviewInFlight = new Set<string>();
 
@@ -2383,7 +2399,12 @@ export async function renderFormatFrame(
     const copy = await formatCopy(f.key, f.fields, productTitle, tone, direction, contentLang);
     if (!copy) return null;
     const prompt = formatLayoutPrompt(f.key, copy);
-    const url = await repRun("google/nano-banana", { prompt, image_input: [productImageUrl], output_format: "jpg" });
+    // 9:16, not 1:1: this frame is only ever used to seed a video
+    // (video-generation.server.ts is its sole caller). Seeding a square
+    // still means a square clip that then has to be padded back to
+    // vertical; asking for the finished shape up front means the model
+    // COMPOSES for it and no bars are needed at all.
+    const url = await repRun("google/nano-banana", { prompt, image_input: [productImageUrl], aspect_ratio: "9:16", output_format: "jpg" });
     artLog("image-ad", `format ${f.key}: keyframe rendered for a video ad`);
     return url;
   } catch (e) {
@@ -2692,7 +2713,7 @@ export async function generateImageAd(
           usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}.${stylePrompt ? ` Apply this one change the merchant asked for: ${stylePrompt.slice(0, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
           const stagedOnce = async (): Promise<string> => {
             const inputs = plateUrl ? [plateUrl, productImageUrl] : [productImageUrl];
-            try { return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: inputs, output_format: "jpg" }); }
+            try { return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: inputs, aspect_ratio: "1:1", output_format: "jpg" }); }
             catch { return await repRun("black-forest-labs/flux-kontext-pro", { prompt: `${t.plate}. ${usedPrompt}`, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" }); }
           };
           imageUrl = await stagedOnce();
@@ -2749,7 +2770,7 @@ export async function generateImageAd(
       usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail, at its TRUE real-world scale — never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
       const genOnce = async (): Promise<string> => {
         try {
-          return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl], output_format: "jpg" });
+          return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl], aspect_ratio: "1:1", output_format: "jpg" });
         } catch (e) {
           console.log("[image-ad] nano-banana unavailable, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
           return await repRun("black-forest-labs/flux-kontext-pro", { prompt: usedPrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" });
