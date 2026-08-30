@@ -37,6 +37,7 @@ async function stripeReq(method: string, path: string, form?: Record<string, str
 }
 
 const stripePost = (path: string, form: Record<string, string>) => stripeReq("POST", path, form);
+const stripeDelete = (path: string) => stripeReq("DELETE", path);
 
 /* ---- Webhook self-provisioning ------------------------------------------ */
 
@@ -186,10 +187,47 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
   if (!tier) return;
   const shopId = await webShopIdFor(accountId);
   if (!shopId) return;
+  // A TIER CHANGE MUST END THE OLD SUBSCRIPTION.
+  //
+  // createPlanCheckout always opens a FRESH subscription session — no
+  // `customer`, no reference to the incumbent — and this function then
+  // overwrote stripeSubId with the new id. The previous subscription stayed
+  // live at Stripe with nothing pointing at it: no cancel call exists
+  // anywhere in this file, and there is no billing-portal link, so neither
+  // the app nor the merchant could end it. From the next cycle the card was
+  // charged for BOTH plans, every month, for one plan's service. Downgrades
+  // did the same, and each switch handed out another 7-day trial.
+  //
+  // Order is load-bearing. The new id is recorded FIRST, so when Stripe
+  // sends customer.subscription.deleted for the one we just cancelled,
+  // deactivateStripePlan sees it does not match the live subscription and
+  // ignores it — otherwise cancelling the old plan would switch off the plan
+  // the merchant just bought.
+  const prior = await db.account.findUnique({
+    where: { id: accountId },
+    select: { stripeSubId: true },
+  }).catch(() => null);
+
   await db.account.update({
     where: { id: accountId },
     data: { stripeSubId: subId, stripeCustomerId: customerId },
   }).catch(() => { /* non-fatal */ });
+
+  if (prior?.stripeSubId && subId && prior.stripeSubId !== subId) {
+    try {
+      await stripeDelete(`/subscriptions/${prior.stripeSubId}`);
+      console.log(`[stripe] account ${accountId}: cancelled superseded subscription ${prior.stripeSubId}`);
+    } catch (e) {
+      // Loud, and deliberately not fatal: the merchant has already paid for
+      // the new plan and must get it. But this is a live duplicate charge",
+      // so it needs a human.
+      console.error(
+        `[stripe] account ${accountId}: FAILED to cancel superseded subscription ${prior.stripeSubId} — ` +
+        `this account is now billed for TWO plans until it is cancelled by hand: ` +
+        (e instanceof Error ? e.message : String(e))
+      );
+    }
+  }
   await db.plan.upsert({
     where: { shopId },
     create: {
