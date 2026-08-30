@@ -107,7 +107,7 @@ export async function postDueSlots(): Promise<void> {
   try {
     const active = await db.questline.findMany({
       where: { status: "ACTIVE" },
-      select: { id: true, shopId: true, scheduleJson: true },
+      select: { id: true, shopId: true, scheduleJson: true, reviewMode: true },
     });
     if (active.length === 0) return;
 
@@ -123,7 +123,22 @@ export async function postDueSlots(): Promise<void> {
 
     let due = 0;
     let posted = 0;
+    let heldForReview = 0;
     for (const q of active) {
+      // "LET ME APPROVE EACH DROP" MEANS EXACTLY THAT.
+      //
+      // The campaign builder offers "Before it posts: Let me approve each drop"
+      // or "Post automatically", stores the answer on the questline, and
+      // nothing anywhere read it as a gate — this scan published every READY
+      // drop to the merchant's live TikTok, Instagram and Facebook either way.
+      // REVIEW_FIRST is the DEFAULT, so the setting was wrong for most
+      // campaigns, and posting to someone's real accounts is not undoable.
+      //
+      // The content still forges and still lands in the Archive; the merchant
+      // publishes it there with the button that is already on the card. The
+      // questline still completes either way — settleQuestlineIfDone falls
+      // through on scheduleElapsed when slots never post.
+      if (q.reviewMode === "REVIEW_FIRST") { heldForReview++; continue; }
       const schedule = parseSchedule(q.scheduleJson);
       let changed = false;
 
@@ -227,6 +242,9 @@ export async function postDueSlots(): Promise<void> {
         const { settleQuestlineIfDone } = await import("./questlines.server");
         await settleQuestlineIfDone(q.id);
       }
+    }
+    if (heldForReview > 0) {
+      console.log(`[social-post] ${heldForReview} campaign(s) set to "approve each drop" — their ready drops wait in the Archive`);
     }
     if (due > 0) {
       console.log(`[social-post] ${due} slot(s) past post time (${posted} posted; publisher pending platform APIs)`);

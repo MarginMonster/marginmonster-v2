@@ -1,4 +1,5 @@
 import "@shopify/shopify-app-remix/adapters/node";
+import { PLAN_BY_KEY, annualPrice } from "./lib/plan-config";
 import {
   ApiVersion,
   AppDistribution,
@@ -16,11 +17,29 @@ import "./worker.server"; // starts the in-process job worker on server boot
 // merchant approves the subscription but isn't charged until the trial ends,
 // so they can experience real value before paying a cent.
 const TRIAL_DAYS = 7;
+/* THE PRICE CHARGED IS THE PRICE SHOWN.
+ *
+ * These amounts used to be typed out here as well as in plan-config.ts, under
+ * a comment saying the two "must match". They did not: the plans page and the
+ * marketing site render PLAN_TIERS and showed $39 and $69, while Shopify was
+ * told to charge $59 and $99 — so a merchant read one number, approved the
+ * confirmation, and was billed 51% more, every month. The Stripe path takes
+ * its amount from tier.price and was always correct, which meant the same
+ * plan cost different money depending on which door the merchant came in by.
+ *
+ * Derived now, so the two cannot drift again. plan-config.ts imports nothing,
+ * so this is a leaf dependency with no cycle.
+ *
+ * NOTE: this fixes NEW subscriptions. Shopify keeps billing an existing
+ * AppSubscription at the amount it was approved at, so anyone already on
+ * STUDIO or ANTHEM stays at the old price until they re-subscribe. */
+const tierPrice = (key: "STARTER" | "STUDIO" | "ANTHEM") => PLAN_BY_KEY[key].price;
+
 export const BILLING_PLANS = {
-  // Current 3-tier ladder (must match app/lib/plan-config.ts)
-  STARTER: { amount: 19, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
-  STUDIO: { amount: 59, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
-  ANTHEM: { amount: 99, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  // Current 3-tier ladder — amounts come from app/lib/plan-config.ts.
+  STARTER: { amount: tierPrice("STARTER"), currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  STUDIO: { amount: tierPrice("STUDIO"), currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
+  ANTHEM: { amount: tierPrice("ANTHEM"), currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
   // Legacy ladder — kept registered so existing subscriptions keep verifying;
   // never offered in the UI. Gating maps them via LEGACY_TIER_MAP.
   GROWTH: { amount: 39, currencyCode: "USD", interval: BillingInterval.Every30Days, trialDays: TRIAL_DAYS },
@@ -31,9 +50,10 @@ export const BILLING_PLANS = {
 // Annual billing — pay for 10 months, get 12 (amounts = monthly × 10). Same
 // 7-day trial. Keys mirror the tier keys with an _ANNUAL suffix.
 export const BILLING_PLANS_ANNUAL = {
-  STARTER_ANNUAL: { amount: 190, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
-  STUDIO_ANNUAL: { amount: 590, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
-  ANTHEM_ANNUAL: { amount: 990, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  // annualPrice() is the same "pay for 10 months" rule the pricing page uses.
+  STARTER_ANNUAL: { amount: annualPrice(PLAN_BY_KEY.STARTER), currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  STUDIO_ANNUAL: { amount: annualPrice(PLAN_BY_KEY.STUDIO), currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
+  ANTHEM_ANNUAL: { amount: annualPrice(PLAN_BY_KEY.ANTHEM), currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
   // Legacy annual keys — same deal as above.
   GROWTH_ANNUAL: { amount: 390, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
   PRO_ANNUAL: { amount: 790, currencyCode: "USD", interval: BillingInterval.Annual, trialDays: TRIAL_DAYS },
