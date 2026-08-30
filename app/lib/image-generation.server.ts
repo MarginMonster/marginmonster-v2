@@ -9,6 +9,7 @@ import { trimToWord } from "./text-trim";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
+import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
@@ -1938,27 +1939,6 @@ export async function runFormatRung(opts: {
   };
 }
 
-/** Levenshtein distance, bailing out as soon as it exceeds `max`.
- *  Used to spot a rendered word that is one edit from a word we asked for —
- *  "Teraastal" vs "Terastal" — which is the signature of a diffusion model
- *  corrupting a proper noun rather than writing different copy. */
-export function editDistance(a: string, b: string, max = 2): number {
-  if (Math.abs(a.length - b.length) > max) return max + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    let best = i;
-    for (let jj = 1; jj <= b.length; jj++) {
-      cur[jj] = a[i - 1] === b[jj - 1]
-        ? prev[jj - 1]
-        : 1 + Math.min(prev[jj - 1], prev[jj], cur[jj - 1]);
-      if (cur[jj] < best) best = cur[jj];
-    }
-    if (best > max) return max + 1; // no path back under the ceiling
-    prev = cur;
-  }
-  return prev[b.length];
-}
 
 /** Vision QA for format ads.
  *
@@ -2026,31 +2006,9 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
     // requested copy is a one-edit, equal-length match and would fail a
     // perfectly good ad. Corrupted brand names — "Teraastal", "Umbreonn" — are
     // comfortably longer, so the floor costs us nothing real.
-    const MIN_FLAG = 6;
-    const words = (s: string) => (s.toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []);
-    const wanted = new Set(expected.flatMap(words));
-    const rendered = typeof j.transcript === "string" ? words(j.transcript) : [];
-
-    // PRODUCT NAMES GET A WIDER NET THAN ORDINARY COPY.
-    //
-    // One edit is not where these actually land. Two real examples caught by
-    // hand, both at distance TWO: an ad for "Terastal Umbreon" shipped
-    // "Terastal Umboron", and a format preview shipped "FALL ASALEP FASTER".
-    // A diffusion model mangling an unfamiliar proper noun usually gets more
-    // than one character wrong, so a threshold of exactly 1 misses the
-    // common case.
-    //
-    // Distance 2 stays scoped to words from the PRODUCT TITLE. Widening it
-    // across all requested copy would start flagging ordinary English —
-    // "through" and "thought" are two edits apart — and cost good ads a
-    // needless fallback. A product name has no such neighbours.
-    const named = new Set(protect.flatMap(words).filter((w) => w.length >= MIN_FLAG));
-    const nearMiss = (w: string, pool: Set<string>, max: number) =>
-      [...pool].some((e) => e !== w && Math.abs(e.length - w.length) <= max && editDistance(e, w, max) <= max);
-    const corrupted = rendered.find(
-      (w) => w.length >= MIN_FLAG && !wanted.has(w)
-        && (nearMiss(w, wanted, 1) || nearMiss(w, named, 2))
-    );
+    // One shared, tested implementation — see app/lib/text-gate.ts. This and
+    // the QA harness had drifted into two different rules.
+    const corrupted = findCorruptedWord(expected, protect, typeof j.transcript === "string" ? j.transcript : "");
     if (corrupted && !bad.length) {
       return { pass: false, reason: `textMatches: rendered "${corrupted}" — not the requested spelling`.slice(0, 160) };
     }

@@ -1,5 +1,9 @@
 {
   "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
+  // Tests run on node --test, which strips types itself and resolves ESM, so
+  // they import with explicit .ts extensions. The app build has no reason to
+  // typecheck them and would reject that extension.
+  "exclude": ["tests"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "types": ["@remix-run/node", "vite/client"],

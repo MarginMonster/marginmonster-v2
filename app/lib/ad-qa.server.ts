@@ -18,7 +18,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { runFormatRung } from "./image-generation.server";
-import { editDistance } from "./image-generation.server";
+import { findCorruptedWord } from "./text-gate";
 import { anthropicVision } from "./anthropic.server";
 import { AD_FORMAT_BY_KEY } from "./ad-formats";
 import { mirrorRender } from "./object-storage.server";
@@ -111,11 +111,11 @@ function serialise<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
-export function scoreAd(productImageUrl: string, adUrl: string, expected: string[]): Promise<Rubric> {
-  return serialise(() => scoreAdOnce(productImageUrl, adUrl, expected, 0));
+export function scoreAd(productImageUrl: string, adUrl: string, expected: string[], productTitle = ""): Promise<Rubric> {
+  return serialise(() => scoreAdOnce(productImageUrl, adUrl, expected, 0, productTitle));
 }
 
-async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: string[], attempt: number): Promise<Rubric> {
+async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: string[], attempt: number, productTitle = ""): Promise<Rubric> {
   try {
     const raw = await anthropicVision(
       [
@@ -153,14 +153,7 @@ async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: str
     // Same rule as qaFormat: transcribe verbatim, then diff in code. Distance 1
     // for any requested word, and 2 for words six characters or longer, which
     // is where the real corruptions land ("Umboron" for "Umbreon" is two).
-    const words = (t: string) => (t.toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []);
-    const wanted = new Set(expected.flatMap(words));
-    const rendered = typeof rubric.transcript === "string" ? words(rubric.transcript) : [];
-    const corrupted = rendered.find((w) => {
-      if (w.length < 6 || wanted.has(w)) return false;
-      const max = w.length >= 6 ? 2 : 1;
-      return [...wanted].some((e) => e !== w && Math.abs(e.length - w.length) <= max && editDistance(e, w, max) <= max);
-    });
+    const corrupted = findCorruptedWord(expected, [productTitle], rubric.transcript);
     if (corrupted) {
       rubric.textMatches = false;
       rubric.wouldShip = false;
@@ -177,7 +170,7 @@ async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: str
     const waits = [3_000, 12_000, 30_000];
     if (attempt < waits.length) {
       await new Promise((r) => setTimeout(r, waits[attempt]));
-      return scoreAdOnce(productImageUrl, adUrl, expected, attempt + 1);
+      return scoreAdOnce(productImageUrl, adUrl, expected, attempt + 1, productTitle);
     }
     console.error("[ad-qa] rubric failed after retries:", msg);
     throw new Error(msg);
@@ -225,7 +218,7 @@ export async function runQaCell(p: GoldenProduct, formatKey: string, runId: stri
     let rubric: Rubric | null = null;
     let rubricError: string | undefined;
     if (r.imageUrl && r.copy) {
-      try { rubric = await scoreAd(p.imageUrl, r.imageUrl, Object.values(r.copy)); }
+      try { rubric = await scoreAd(p.imageUrl, r.imageUrl, Object.values(r.copy), p.title); }
       catch (e) { rubricError = e instanceof Error ? e.message : String(e); }
     } else {
       rubricError = "nothing to grade";
