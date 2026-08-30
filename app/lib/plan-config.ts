@@ -173,6 +173,10 @@ export const TOKEN_COST = {
   strategy: 6, // marketing plan
   blog: 10, // SEO blog post
   landing: 10, // landing page
+  // Service fee to launch a paid boost. The merchant's own ad account pays the
+  // ad spend; this is our fee for building and launching the campaign. It lives
+  // here, not in a route, because the refund table has to know it too.
+  boost: 25,
   // AI product video — real COGS ~$2-3.5 (lip-sync + TTS + image, anthems the
   // priciest). Priced so an all-video month stays margin-positive per tier:
   // Studio 900/150 = 6 ≈ $18 COGS on $59 (~65%); Anthem 1600/150 ≈ 10 ≈ $35
@@ -189,6 +193,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   blog: "Blog post",
   landing: "Landing page",
   video: "Product video",
+  boost: "Ad boost",
 };
 
 // Top-up packs — one currency, spend on anything YOUR TIER UNLOCKS. Priced

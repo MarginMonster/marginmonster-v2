@@ -25,6 +25,10 @@ export const REFUND_BY_TYPE: Record<string, number> = {
   GENERATE_VIDEO_AD: TOKEN_COST.video,
   GENERATE_IMAGE_AD: TOKEN_COST.image,
   GENERATE_BLOG_POST: TOKEN_COST.blog,
+  // The boost service fee is charged up front too, and a launch that burns
+  // through its retries left the merchant 25 tokens down with no campaign to
+  // show for it — refundPrepaidOnce bailed out because this type was missing.
+  LAUNCH_CAMPAIGN: TOKEN_COST.boost,
 };
 
 /** Refund a terminally-failed pre-paid job EXACTLY ONCE. The payload is

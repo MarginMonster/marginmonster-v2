@@ -16,7 +16,9 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { getObject, renderKey } from "../lib/object-storage.server";
 
-const BOOST_FEE = 25; // token service fee per boost; ad spend bills the merchant's own account
+// Single source of truth — the refund table in job-queue.server.ts needs the
+// same number, and a failed launch has to give it back.
+const BOOST_FEE = TOKEN_COST.boost; // ad spend bills the merchant's own account
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function fmtWhen(date: string, time: string): string {
@@ -338,7 +340,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!asset) return json({ error: "That piece is gone." });
     try { await spendTokens(shop.id, BOOST_FEE); } catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for the boost fee." }); }
     await db.asset.update({ where: { id: assetId }, data: { status: "APPROVED" } });
-    await enqueueJob(shop.id, "LAUNCH_CAMPAIGN", { assetId, platform, weeklyBudgetCents: Math.round(budgetDaily * 7 * 100) });
+    // prePaid/chargedTokens are what make refundPrepaidOnce give the fee back
+    // if the launch burns through its retries. Without them the merchant paid
+    // 25 tokens for a campaign that never existed.
+    await enqueueJob(shop.id, "LAUNCH_CAMPAIGN", { assetId, platform, weeklyBudgetCents: Math.round(budgetDaily * 7 * 100), prePaid: true, chargedTokens: BOOST_FEE });
     return json({ boosted: platform });
   }
   if (intent === "attach") {
