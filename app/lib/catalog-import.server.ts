@@ -248,10 +248,15 @@ export async function importCatalog(
   shopId: string,
   rawUrl: string,
   cap = CATALOG_CAP
-): Promise<{ imported: number; removed: number; source: string }> {
+): Promise<{ imported: number; removed: number; source: string; swept: boolean; failed: number }> {
   const { products, source } = await discoverCatalog(rawUrl, cap);
   const startedAt = new Date();
+  // What the merchant already has, measured BEFORE we touch anything — the
+  // sweep below needs it to judge whether this run is a credible picture of
+  // the whole catalogue or the wreckage of a partial one.
+  const existing = await db.catalogProduct.count({ where: { shopId } });
 
+  let failed = 0;
   let position = 0;
   for (const p of products) {
     const data = {
@@ -269,22 +274,47 @@ export async function importCatalog(
         update: data,
       });
     } catch (e) {
+      // A swallowed write is not harmless here: this product keeps its OLD
+      // lastSeenAt, so the sweep below would read it as "delisted upstream"
+      // and delete a product that is alive and well. Count it and let it veto
+      // the sweep entirely.
+      failed++;
       console.error("[catalog] upsert failed for", p.url, e instanceof Error ? e.message.slice(0, 120) : e);
     }
   }
 
-  // Anything the newest sync didn't see is delisted upstream. Only sweep when
-  // the import actually returned a healthy set — a half-failed crawl must never
-  // wipe a catalogue the merchant already has.
+  // Anything the newest sync didn't see is delisted upstream — but ONLY if this
+  // sync actually saw the whole store.
+  //
+  // `products.length >= 5` was far too weak a test. A 270-product store whose
+  // crawl transiently returned 6 sailed past it and had 264 live products
+  // deleted: a rate-limited page, one slow origin, a sitemap served
+  // half-written. The merchant's picker empties out and every generated ad
+  // afterwards points at a product row that no longer exists.
+  //
+  // So compare against what they already had. A store really can shrink, but
+  // rarely by more than a fifth between syncs; a bigger drop is much more
+  // likely a partial crawl than a real delisting, and the safe failure is to
+  // keep a stale product (which the next good sync removes) rather than delete
+  // a live one (which nothing brings back).
+  const KEEP_RATIO = 0.8;
+  const credible = failed === 0 && (existing === 0 || products.length >= Math.floor(existing * KEEP_RATIO));
   let removed = 0;
-  if (products.length >= 5) {
+  let swept = false;
+  if (products.length >= 5 && credible) {
     const gone = await db.catalogProduct.deleteMany({
       where: { shopId, lastSeenAt: { lt: startedAt } },
     });
     removed = gone.count;
+    swept = true;
+  } else if (existing > 0) {
+    console.warn(
+      `[catalog] ${shopId}: kept the existing ${existing}-product catalogue — this run saw ${products.length}` +
+        `${failed ? ` with ${failed} write failure(s)` : ""}, which is not a credible full sync. Nothing deleted.`
+    );
   }
 
-  return { imported: products.length, removed, source };
+  return { imported: products.length, removed, source, swept, failed };
 }
 
 /** The merchant's own product page for a title we generated an ad about.
