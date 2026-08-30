@@ -9,6 +9,25 @@ import path from "node:path";
 import { artLogEntries } from "../lib/art-log.server";
 import { stripeWebhookReady } from "../lib/stripe.server";
 
+/** Upload-directory health WITHOUT naming the files. See the call site. */
+function uploadHealth(dir: string): { count: number; emptyFiles: number; totalKb: number; newest: string | null } {
+  try {
+    const files = fs.readdirSync(dir).filter((f) => !f.startsWith("."));
+    let totalKb = 0;
+    let emptyFiles = 0;
+    let newest = 0;
+    for (const f of files) {
+      const st = fs.statSync(path.join(dir, f));
+      totalKb += Math.round(st.size / 1024);
+      if (st.size === 0) emptyFiles++;
+      newest = Math.max(newest, st.mtime.getTime());
+    }
+    return { count: files.length, emptyFiles, totalKb, newest: newest ? new Date(newest).toISOString() : null };
+  } catch {
+    return { count: 0, emptyFiles: 0, totalKb: 0, newest: null };
+  }
+}
+
 function listDir(dir: string): { name: string; kb: number; mtime: string }[] {
   try {
     return fs
@@ -82,9 +101,16 @@ export const loader = async (_args: LoaderFunctionArgs) => {
       // Loud on purpose: while this is set, /web/dev can grant tokens.
       DEV_GRANT_KEY_ENABLED: !!process.env.DEV_GRANT_KEY,
     },
-    // Merchant photo uploads — if these are missing or 0 KB, the studio's
-    // upload path is broken and every render fails on an unfetchable input.
-    uploads: listDir(path.join(cwd, "data", "renders", "uploads")).slice(-12),
+    // Merchant photo uploads. This route has no authentication — the header
+    // above says to open it in a browser — and /uploads/:file is protected by
+    // nothing but the unguessability of its random filenames. Listing those
+    // names here handed out the key: it turned a private store of merchants'
+    // own product and mascot photographs into a public directory, readable by
+    // anyone, across every shop on the instance.
+    //
+    // The diagnostic this was for — "are uploads present and non-empty, or is
+    // the upload path broken" — needs counts, not names.
+    uploads: uploadHealth(path.join(cwd, "data", "renders", "uploads")),
     styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
     adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
     generation: await generationHealth(),

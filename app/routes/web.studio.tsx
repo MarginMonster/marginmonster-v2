@@ -14,6 +14,7 @@ import { db } from "../db.server";
 import { planTrialing, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
@@ -243,7 +244,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const ext = ref.type === "image/png" ? "png" : ref.type === "image/webp" ? "webp" : "jpg";
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
     fsMod.mkdirSync(dir, { recursive: true });
-    const fileName = `${shop.id.toLowerCase().replace(/[^a-z0-9]/g, "")}-mascot-${crypto.randomBytes(8).toString("hex")}.${ext}`;
+    // Built by the same module that allowlists it — see app/lib/upload-names.ts.
+    const fileName = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt, "mascot");
     fsMod.writeFileSync(pathMod.join(dir, fileName), Buffer.from(await ref.arrayBuffer()));
     // THE FORGE COSTS US FOUR RENDERS AND CHARGED FOR NONE.
     //
@@ -313,7 +315,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const ext = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
     fsMod.mkdirSync(dir, { recursive: true });
-    const name = `${shop.id.toLowerCase().replace(/[^a-z0-9]/g, "")}-${crypto.randomBytes(8).toString("hex")}.${ext}`;
+    const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
     fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await photo.arrayBuffer()));
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     if (!base) return json({ error: "Photo uploads aren't configured on this server yet — paste an image URL instead." });
