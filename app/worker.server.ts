@@ -8,6 +8,7 @@ import { refreshSocialStats } from "./lib/social-insights.server";
 import { backfillDeadImages } from "./lib/image-generation.server";
 import { purgeStaleUnkept } from "./lib/storage-cleanup.server";
 import { sendMonthlyDigests } from "./lib/digest.server";
+import { settlePendingReferrals } from "./lib/referral.server";
 
 declare global {
   var __mm_worker_started__: boolean | undefined;
@@ -57,6 +58,8 @@ async function tick() {
     await purgeStaleUnkept().catch((e) => console.error("[worker] storage cleanup (non-fatal):", e));
     // Monthly "here's what we made you" digest (self-throttled; per-shop 30-day gate).
     await sendMonthlyDigests().catch((e) => console.error("[worker] digest (non-fatal):", e));
+    // Pay referrals whose free trial has now elapsed (self-throttled to ~6h).
+    await settlePendingReferrals().catch((e) => console.error("[worker] referral settle (non-fatal):", e));
     // Drain any pending jobs each tick.
     let processed = true;
     let guard = 0;
