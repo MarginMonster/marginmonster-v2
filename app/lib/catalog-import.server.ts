@@ -248,7 +248,7 @@ export async function importCatalog(
   shopId: string,
   rawUrl: string,
   cap = CATALOG_CAP
-): Promise<{ imported: number; removed: number; source: string; swept: boolean; failed: number }> {
+): Promise<{ imported: number; removed: number; source: string; swept: boolean; failed: number; truncated: boolean }> {
   const { products, source } = await discoverCatalog(rawUrl, cap);
   const startedAt = new Date();
   // What the merchant already has, measured BEFORE we touch anything — the
@@ -314,7 +314,18 @@ export async function importCatalog(
     );
   }
 
-  return { imported: products.length, removed, source, swept, failed };
+  // Hitting the cap exactly almost certainly means the store has MORE. Saying
+  // "300 products imported" with nothing else is a claim that the catalogue is
+  // complete when it may be a third of it — and every later "pick a product"
+  // screen then quietly offers a subset the merchant cannot explain.
+  const truncated = products.length >= cap;
+  if (truncated) {
+    console.warn(
+      
+    );
+  }
+
+  return { imported: products.length, removed, source, swept, failed, truncated };
 }
 
 /** The merchant's own product page for a title we generated an ad about.

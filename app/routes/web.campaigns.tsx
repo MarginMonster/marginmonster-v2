@@ -23,6 +23,7 @@ import { acceptQuestline, abandonQuestline } from "../lib/questlines.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
+import { CATALOG_CAP } from "../lib/catalog-import.server";
 
 /* The four plans, in the order a merchant should read them: cheapest and
  * safest first, so the ladder sells itself instead of the biggest number
@@ -211,7 +212,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const catalog = await db.catalogProduct.findMany({
     where: { shopId: shop.id },
     orderBy: { position: "asc" },
-    take: 200,
+    // CATALOG_CAP, not a hand-picked 200. The import ceiling is 300, so 200
+    // silently hid products 201-300 from the campaign picker — a merchant with
+    // 270 products could not feature 70 of them, with nothing saying why. The
+    // Studio picker already reached past this number; the two disagreed about
+    // what the merchant owned.
+    take: CATALOG_CAP,
     select: { title: true, url: true, imageUrl: true },
   });
 

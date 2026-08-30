@@ -278,7 +278,7 @@ async function runJob(
     case "IMPORT_CATALOG": {
       const { importCatalog } = await import("./catalog-import.server");
       const r = await importCatalog(shopId, payload.storeUrl as string, payload.cap as number | undefined);
-      console.log(`[catalog] ${shopId}: imported ${r.imported} via ${r.source}, ${r.swept ? `swept ${r.removed}` : "sweep SKIPPED (partial sync — existing catalogue kept)"}`);
+      console.log(`[catalog] ${shopId}: imported ${r.imported} via ${r.source}, ${r.swept ? `swept ${r.removed}` : "sweep SKIPPED (partial sync — existing catalogue kept)"}${r.truncated ? ` — TRUNCATED at the ${r.imported}-product ceiling` : ""}`);
       break;
     }
 
