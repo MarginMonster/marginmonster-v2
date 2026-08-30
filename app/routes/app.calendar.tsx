@@ -67,7 +67,11 @@ export default function Content() {
     <Page
       title="Content"
       backAction={{ content: "Home", url: "/app" }}
-      subtitle={`On autopilot — a new piece roughly every ${cal.cadenceDays} days.`}
+      subtitle={
+        cal.upcoming.length
+          ? `${cal.upcoming.length} drop${cal.upcoming.length === 1 ? "" : "s"} scheduled — next on ${cal.upcoming[0].label}.`
+          : "Nothing scheduled yet. Start a questline and its drops show up here."
+      }
     >
       <div className="em-sched">
         <div className="em-seg">
@@ -83,6 +87,15 @@ export default function Content() {
 
         {view === "timeline" ? (
           <div className="em-tl">
+            {groups.length === 0 && (
+              <div className="em-day">
+                <div className="em-daylbl">Next up</div>
+                <div className="em-ev">
+                  <span className="em-ic">🗓️</span>
+                  <span className="em-m"><b>Nothing scheduled</b><span>Start a questline and its drops appear here</span></span>
+                </div>
+              </div>
+            )}
             {groups.map((g, gi) => (
               <div className="em-day" key={gi}>
                 <div className="em-daylbl">{gi === 0 ? "Next up" : g.label}{gi === 0 ? <small>&nbsp;· {g.label}</small> : null}</div>
