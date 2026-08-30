@@ -65,6 +65,24 @@ Return ONLY the HTML body content (h1, h2, p, ul, li, strong tags only — no ht
       const lastOpen = html.lastIndexOf("<");
       if (lastOpen > lastClose) html = html.slice(0, lastOpen).trim(); // drop a dangling partial tag
 
+      // CHECK THE ARTICLE BEFORE ADDING THE FOOTER.
+      //
+      // publishBlogAsset refuses to publish an empty body — `if (!html.trim())
+      // return { ok: false, error: "no-body" }`. That guard could never fire,
+      // because the footer below was appended first and made every body
+      // non-empty. So a model that returned nothing, or a refusal, was stored
+      // as a finished article, charged for, and auto-published to the
+      // merchant's real storefront as a page whose entire content is the words
+      // "This article was created with AI assistance."
+      //
+      // The floor is deliberately low — a very short post is a quality problem,
+      // an empty one is a broken promise — but it has to be above the length of
+      // a refusal sentence.
+      const visible = html.replace(/<[^>]+>/g, "").trim();
+      if (visible.length < 200) {
+        throw new Error(`blog generation returned no usable article (${visible.length} characters of text)`);
+      }
+
       // AI disclosure (FTC-aligned) — a subtle, honest footer on every published
       // article. Neutral wording so it's appropriate on any merchant's store.
       html += `\n<p style="margin-top:24px;font-size:13px;color:#8a8d82;font-style:italic;">This article was created with AI assistance and reviewed for your store.</p>`;

@@ -22,8 +22,24 @@ function storeName(domain: string): string {
  *  first existing blog (or creates a "News" blog), then creates a published
  *  article. Returns the live article URL on success. */
 export async function publishBlogAsset(shopDomain: string, assetId: string): Promise<PubResult> {
-  const asset = await db.asset.findUnique({ where: { id: assetId }, select: { type: true, title: true, bodyJson: true } });
+  const asset = await db.asset.findUnique({
+    where: { id: assetId },
+    select: { type: true, title: true, bodyJson: true, status: true, metaJson: true },
+  });
   if (!asset || asset.type !== "BLOG_POST") return { ok: false, error: "not-a-blog" };
+
+  // ALREADY LIVE? DO NOT WRITE A SECOND ARTICLE.
+  //
+  // Creating a Shopify article is not idempotent, and the caller marks the
+  // slot POSTED only after this returns. If that mark fails to save — a
+  // transient database error, a restart — the next scan finds the slot still
+  // READY and calls this again, and the merchant's blog collects the same
+  // article every five minutes until something breaks the loop.
+  if (asset.status === "PUBLISHED") {
+    let prior = "";
+    try { prior = (JSON.parse(asset.metaJson || "{}") as { blogUrl?: string }).blogUrl || ""; } catch { /* ignore */ }
+    return { ok: true, url: prior || undefined };
+  }
 
   let html = "";
   try {
@@ -42,12 +58,14 @@ export async function publishBlogAsset(shopDomain: string, assetId: string): Pro
     html += `\n<p style="margin-top:28px;padding-top:14px;border-top:1px solid #eee;font-size:13px;color:#9a9d92;">✨ Written with <a href="${bylineUrl}" rel="nofollow noopener" style="color:#0C7A46;font-weight:700;text-decoration:none;">EasyMode</a> — AI content &amp; auto-posting for Shopify.</p>`;
   }
 
-  // Pull a clean title: prefer the asset title, else the first <h1>.
-  let title = (asset.title || "").trim();
-  if (!title) {
-    const m = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
-    title = (m ? m[1] : "").replace(/<[^>]+>/g, "").trim() || "New from our shop";
-  }
+  // Prefer the article's OWN headline — that is the SEO-written one, and it is
+  // what the reader sees at the top of the page. The asset title is the bare
+  // product name, set at generation time, and it is never empty, so preferring
+  // it meant the <h1> branch below was dead and every published article was
+  // titled with the product name — identical for two posts about one product.
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const headline = (h1 ? h1[1] : "").replace(/<[^>]+>/g, "").trim();
+  const title = headline || (asset.title || "").trim() || "New from our shop";
 
   const { unauthenticated } = await import("./../shopify.server");
   let admin;
@@ -90,7 +108,16 @@ export async function publishBlogAsset(shopDomain: string, assetId: string): Pro
     const handle = data?.articleCreate?.article?.handle;
     const url = handle ? `https://${shopDomain}/blogs/${blogHandle}/${handle}` : undefined;
 
-    try { await db.asset.update({ where: { id: assetId }, data: { status: "PUBLISHED" } }); } catch { /* non-fatal */ }
+    // Record the live URL with the status, so the short-circuit above can hand
+    // it back instead of publishing again.
+    try {
+      let meta: Record<string, unknown> = {};
+      try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
+      await db.asset.update({
+        where: { id: assetId },
+        data: { status: "PUBLISHED", metaJson: JSON.stringify({ ...meta, blogUrl: url || null, blogPublishedAt: new Date().toISOString() }) },
+      });
+    } catch { /* non-fatal */ }
     return { ok: true, url };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "publish-failed" };
