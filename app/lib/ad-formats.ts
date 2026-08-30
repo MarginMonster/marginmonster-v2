@@ -363,10 +363,10 @@ export const AD_FORMATS: AdFormat[] = [
     preview: { headline: "Officially S-tier", tagline: "Ranked by people who type for a living" },
   },
   {
-    key: "swatch", name: "Pick a Shade", emoji: "🎨",
-    blurb: "The color lineup — collect-them-all energy",
+    key: "swatch", name: "Colour Story", emoji: "🎨",
+    blurb: "The product beside its own palette",
     fields: ["headline", "sw1", "sw2", "sw3", "sw4"],
-    hero: "four bottles of matte nail polish in muted earthy tones, lined up",
+    hero: "a single bottle of matte nail polish in a muted earthy tone",
     preview: { headline: "Pick your mood", sw1: "Cloud", sw2: "Clay", sw3: "Moss", sw4: "Midnight" },
   },
   {
