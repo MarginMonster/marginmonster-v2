@@ -1900,6 +1900,28 @@ export async function runFormatRung(opts: {
   };
 }
 
+/** Levenshtein distance, bailing out as soon as it exceeds `max`.
+ *  Used to spot a rendered word that is one edit from a word we asked for —
+ *  "Teraastal" vs "Terastal" — which is the signature of a diffusion model
+ *  corrupting a proper noun rather than writing different copy. */
+function editDistance(a: string, b: string, max = 2): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let jj = 1; jj <= b.length; jj++) {
+      cur[jj] = a[i - 1] === b[jj - 1]
+        ? prev[jj - 1]
+        : 1 + Math.min(prev[jj - 1], prev[jj], cur[jj - 1]);
+      if (cur[jj] < best) best = cur[jj];
+    }
+    if (best > max) return max + 1; // no path back under the ceiling
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
 /** Vision QA for format ads.
  *
  *  Asks each question SEPARATELY and derives pass/fail from the answers.
@@ -1930,6 +1952,14 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
           : `productIntact: answer true.`,
         `textSensible: does every line of the ad's own text read as grammatical English that makes sense? A repeated word or phrase ("we still each still got", "first try first try") is a FAILURE even though every word in it is spelled correctly. Read each sentence back for SENSE, not spelling.`,
         `textMatches: does the ad's text say the requested strings above — none missing, none cut off mid-word, none invented?`,
+        // TRANSCRIBE, don't judge. Asking "does it match?" is a perceptual call,
+        // and a one-character corruption of an unfamiliar proper noun reads as a
+        // match every time — a real ad shipped "Teraastal Umbreon" for a product
+        // called "Terastal Umbreon" and both textSensible and textMatches passed
+        // it (textSensible is deliberately told SENSE-not-spelling, and a brand
+        // name is not a grammar error). A verbatim transcription lets us diff it
+        // in CODE, which turns a judgment call into a string comparison.
+        `transcript: transcribe EVERY word of the ad's own added layout text, exactly as rendered, including any misspelling, in reading order, space-separated. Do NOT correct anything. Do NOT include text printed on the product packaging.`,
         `noSourceText: has any marketing text, watermark, price badge or caption from the SOURCE photo's background been copied into the ad? Answer true if NOT (the product's own packaging text is expected and fine).`,
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
@@ -1938,7 +1968,7 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
         // judging it as "gibberish" threw away the format the merchant chose
         // and shipped a generic ad instead.
         `IMPORTANT: ignore text printed on the product or its packaging, including non-Latin scripts and small print. Only judge the ad's added layout text. Non-English packaging is never a failure.`,
-        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"reason":"..."}`,
+        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"transcript":"...","reason":"..."}`,
       ].join(" "),
       urls
     );
@@ -1947,6 +1977,29 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     const bad = (["productIntact", "textSensible", "textMatches", "noSourceText"] as const)
       .filter((k) => j[k] === false);
+
+    // Mechanical spell-check of the RENDERED words against the words we asked
+    // for. Only flags a word that is a near-miss of an expected word — same
+    // length ±1 and one edit away — so genuine extra copy the model added is
+    // left alone and only corruption of OUR strings fails.
+    //
+    // MIN_FLAG=6 is load-bearing, not caution. Short English words sit one edit
+    // from each other constantly: a "Ship" in the ad against a "Shop" in the
+    // requested copy is a one-edit, equal-length match and would fail a
+    // perfectly good ad. Corrupted brand names — "Teraastal", "Umbreonn" — are
+    // comfortably longer, so the floor costs us nothing real.
+    const MIN_FLAG = 6;
+    const words = (s: string) => (s.toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []);
+    const wanted = new Set(expected.flatMap(words));
+    const rendered = typeof j.transcript === "string" ? words(j.transcript) : [];
+    const corrupted = rendered.find(
+      (w) => w.length >= MIN_FLAG && !wanted.has(w)
+        && [...wanted].some((e) => Math.abs(e.length - w.length) <= 1 && editDistance(e, w) === 1)
+    );
+    if (corrupted && !bad.length) {
+      return { pass: false, reason: `textMatches: rendered "${corrupted}" — not the requested spelling`.slice(0, 160) };
+    }
+
     if (!bad.length) return { pass: true, reason: "clean" };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
     return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 160) };

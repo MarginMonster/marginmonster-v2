@@ -8,8 +8,40 @@ import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll } from "./ugc-ad-pipeline.server";
+import fs from "node:fs";
+import path from "node:path";
+import { mirrorRender } from "./object-storage.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
+
+/** Download a provider render onto our own disk (and durable object storage)
+ *  and return the /renders/ URL we serve it from.
+ *
+ *  Returns the ORIGINAL url unchanged if anything goes wrong — the merchant has
+ *  already paid at this point, so a link that may expire is still better than
+ *  a failed job. The warning is deliberately loud: a spike here means videos
+ *  are silently going stale again. */
+async function persistRemoteVideo(url: string): Promise<string> {
+  try {
+    if (url.startsWith("/renders/")) return url; // already ours
+    const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 1024) throw new Error(`suspiciously small (${buf.length}B)`);
+
+    const rendersDir = path.join(process.cwd(), "data", "renders");
+    fs.mkdirSync(rendersDir, { recursive: true });
+    const fileName = `vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    fs.writeFileSync(path.join(rendersDir, fileName), buf);
+    try { await mirrorRender(fileName, buf); } catch { /* non-fatal — disk copy still serves */ }
+    return `/renders/${fileName}`;
+  } catch (e) {
+    console.warn(
+      `[video] could not persist provider render — storing the expiring URL instead: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return url;
+  }
+}
 
 // Replicate model slugs (using the model-predictions endpoint so we never
 // have to chase version hashes). minimax/video-01 is a strong text+image →
@@ -197,13 +229,25 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   }
   if (!videoUrl) throw new Error("Replicate video timed out");
 
+  // PERSIST THE BYTES. The provider hands back a CDN URL that expires — fal and
+  // Replicate both reap render output. Storing that URL means a merchant's
+  // 150-token video quietly becomes a dead link days later, and the Asset row
+  // outlives the file it points at. Every other pipeline (ugc, cartoon, jingle)
+  // writes to data/renders and serves via /renders/:file; this one did not.
+  //
+  // A download failure must NOT fail the job: the merchant has already been
+  // charged and a possibly-expiring video beats no video, so we fall back to
+  // the provider URL and log it loudly.
+  const storedUrl = await persistRemoteVideo(videoUrl);
+
   const asset = await db.asset.create({
     data: {
       shopId,
       type: "VIDEO_AD",
       status: "PENDING",
       title: `${style === "AI_AVATAR" ? (avatar ? `${avatar.name} presents` : "Avatar video") : "Product video"} — ${productTitle}`,
-      bodyJson: JSON.stringify({ style, videoUrl, prompt }),
+      // sourceUrl keeps the provider link for debugging/remix; videoUrl is ours.
+      bodyJson: JSON.stringify({ style, videoUrl: storedUrl, sourceUrl: videoUrl, prompt }),
       // productImageUrl is what a REMIX rebuilds from. Without it the remix
       // regenerates the product from its name — 150 tokens of something else.
       metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null, productImageUrl: params.productImageUrl || null, serviceMode: !!params.serviceMode }),

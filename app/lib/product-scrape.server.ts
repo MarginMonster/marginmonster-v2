@@ -16,7 +16,25 @@
 export interface ScrapedProduct {
   title?: string;
   image?: string;
+  /** Display-formatted price ("$126.98"). Only set when the page actually
+   *  states one — we never guess, because a wrong price in an ad is worse
+   *  than no price at all. */
+  price?: string;
   url: string;
+}
+
+/** Format a raw price + currency the way a shopper would see it. Falls back to
+ *  "CODE amount" for currencies without a well-known symbol rather than
+ *  inventing one. */
+function formatPrice(amount: string | number | undefined, currency?: string): string | undefined {
+  if (amount === undefined || amount === null || amount === "") return undefined;
+  const n = typeof amount === "number" ? amount : parseFloat(String(amount).replace(/[^0-9.]/g, ""));
+  if (!isFinite(n) || n <= 0) return undefined;
+  const SYMBOL: Record<string, string> = { USD: "$", CAD: "$", AUD: "$", NZD: "$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥" };
+  const code = (currency || "USD").toUpperCase();
+  const sym = SYMBOL[code];
+  const shown = code === "JPY" ? String(Math.round(n)) : n.toFixed(2);
+  return sym ? `${sym}${shown}` : `${code} ${shown}`;
 }
 
 // Wix, Squarespace and anything behind Cloudflare routinely 403 a "bot"
@@ -145,10 +163,16 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
     try {
       const jres = await fetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: UA });
       if (jres.ok) {
-        const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[] };
+        const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[]; price?: number };
         if (pj?.title) {
           const first = pj.featured_image || pj.images?.[0];
-          return { title: pj.title.slice(0, 120), image: first ? absolutise(first, u) : undefined, url: u.href };
+          return {
+            title: pj.title.slice(0, 120),
+            image: first ? absolutise(first, u) : undefined,
+            // Shopify's product JSON quotes price in minor units (cents).
+            price: typeof pj.price === "number" ? formatPrice(pj.price / 100) : undefined,
+            url: u.href,
+          };
         }
       }
     } catch { /* fall through to HTML parsing */ }
@@ -160,6 +184,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
 
   let title: string | undefined;
   let image: string | undefined;
+  let price: string | undefined;
 
   // 1) JSON-LD Product — the richest, most reliable source when present.
   const ldBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
@@ -182,6 +207,19 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
             || (im as { "@id"?: string })["@id"])
           : (im as string | undefined);
         if (src) image = absolutise(src, u);
+        // offers is either a single Offer, an array of them, or an
+        // AggregateOffer carrying lowPrice. Take the cheapest thing stated —
+        // that is the number the storefront leads with.
+        const offers = prod.offers as
+          | { price?: string | number; lowPrice?: string | number; priceCurrency?: string }
+          | { price?: string | number; priceCurrency?: string }[]
+          | undefined;
+        const offer = Array.isArray(offers) ? offers[0] : offers;
+        if (offer) {
+          const amt = (offer as { price?: string | number }).price
+            ?? (offer as { lowPrice?: string | number }).lowPrice;
+          price = price || formatPrice(amt, offer.priceCurrency);
+        }
         if (title || image) break;
       }
     } catch { /* try the next block */ }
@@ -208,11 +246,21 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
     if (candidate) image = absolutise(candidate, u);
   }
 
+  // Open Graph product tags are the standard fallback when a store ships no
+  // JSON-LD (older Woo themes, hand-rolled storefronts).
+  if (!price) {
+    price = formatPrice(
+      meta("product:price:amount") || meta("og:price:amount"),
+      meta("product:price:currency") || meta("og:price:currency")
+    );
+  }
+
   if (!title && !image) throw new Error("Couldn't find product info on that page.");
   const siteName = meta("og:site_name");
   return {
     title: title ? cleanProductTitle(title, siteName) : undefined,
     image: image ? upgradeImageResolution(image) : undefined,
+    price,
     url: u.href,
   };
 }

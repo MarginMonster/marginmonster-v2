@@ -162,7 +162,15 @@ async function productUrlsFromSitemaps(origin: URL, cap: number): Promise<string
     const isIndex = /<sitemapindex/i.test(xml);
     if (isIndex) {
       // Prefer children that look product-ish so we don't pull the blog too.
-      const kids = locs.filter((l) => /product|shop|store|item/i.test(l));
+      // Match on the PATH, not the whole URL — a domain like
+      // shopmagicmonster.com contains "shop" and would match everything. And
+      // anchor the words: the literal substring "item" lives inside the word
+      // "sitemap", so an unanchored test matched every child sitemap and this
+      // filter silently did nothing on every store.
+      const productish = /(^|[/_-])(products?|shop|store|items?|collections?)([/_.-]|$)/i;
+      const kids = locs.filter((l) => {
+        try { return productish.test(new URL(l).pathname); } catch { return false; }
+      });
       queue.push(...(kids.length ? kids : locs).slice(0, 25));
     } else {
       for (const l of locs) if (PRODUCT_URL.test(l)) seen.add(l);
@@ -194,7 +202,10 @@ async function crawlProductPages(urls: string[], onProgress?: (n: number) => voi
       try {
         const p = await scrapeProductPage(url);
         if (p.title) {
-          out.push({ title: p.title.slice(0, 200), url, imageUrl: p.image, handle: undefined });
+          // priceText comes through here too — the Shopify and Woo feeds carry
+          // a price, and a crawled store has one in its JSON-LD/OG tags, so a
+          // sitemap-imported catalogue is no longer priceless.
+          out.push({ title: p.title.slice(0, 200), url, imageUrl: p.image, handle: undefined, priceText: p.price });
         }
       } catch { /* one dead product page never kills the import */ }
       onProgress?.(out.length);

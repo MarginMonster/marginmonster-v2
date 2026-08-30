@@ -64,10 +64,38 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
+
+  // How many to render. This USED to be a hard `take: 60` with no pagination
+  // and no total — which quietly hid everything older than the newest 60. That
+  // was not merely cosmetic: un-kept media is permanently deleted at 30 days
+  // (storage-cleanup.server.ts), and the only ways to save a piece — Keep and
+  // Post — require opening it HERE. The hidden assets are by definition the
+  // oldest, i.e. exactly the ones about to be destroyed, so a merchant past 60
+  // pieces could not rescue the work they had paid for.
+  const SHOW_STEP = 60;
+  const SHOW_MAX = 600;
+  const showParam = parseInt(new URL(request.url).searchParams.get("show") || "", 10);
+  const show = Math.min(SHOW_MAX, Math.max(SHOW_STEP, Number.isFinite(showParam) ? showParam : SHOW_STEP));
+
+  // True per-type totals, independent of what we render — the tab labels were
+  // counting the truncated page and therefore under-reported the library.
+  const totalsRaw = await db.asset.groupBy({
+    by: ["type"],
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } },
+    _count: { _all: true },
+  });
+  const totals = { video: 0, image: 0, blog: 0 };
+  for (const t of totalsRaw) {
+    if (t.type === "VIDEO_AD") totals.video = t._count._all;
+    else if (t.type === "IMAGE_AD") totals.image = t._count._all;
+    else if (t.type === "BLOG_POST") totals.blog = t._count._all;
+  }
+  const totalAll = totals.video + totals.image + totals.blog;
+
   const assets = await db.asset.findMany({
     where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } },
     orderBy: { createdAt: "desc" },
-    take: 60,
+    take: show,
   });
   const jobs = await db.job.findMany({
     where: { shopId: shop.id, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } },
@@ -113,6 +141,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cost: TOKEN_COST,
     cooking: cookingCards.filter((c) => c.status === "generating").length,
     cookingCards,
+    totals,
+    // Whether anything is still hidden, and how to ask for more of it.
+    shown: Math.min(show, totalAll),
+    totalAll,
+    nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
     assets: assets.map((a) => {
       let body: { videoUrl?: string; imageUrl?: string; title?: string; html?: string } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
@@ -496,7 +529,7 @@ const WA_CSS = `
 `;
 
 export default function WebArchive() {
-  const { assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost } = useLoaderData<typeof loader>();
+  const { assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, shown, totalAll, nextShow } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -593,7 +626,11 @@ export default function WebArchive() {
       {remixed && <div className="wb-ok">✨ Remixing — a fresh {remixed === "blog" ? "article" : remixed} is on the way. It&apos;ll land on this shelf in a minute.</div>}
       <div className="ws-tabs" style={{ marginBottom: 16 }}>
         {([["video", "🎬 Videos"], ["image", "🖼 Images"], ["blog", "✍️ Articles"]] as [ATab, string][]).map(([k, label]) => {
-          const n = assets.filter((a) => A_KIND[a.type] === k).length + cookingCards.filter((j) => j.kind === k).length;
+          // Count the whole library, not the slice we happened to render —
+          // this used to read off `assets`, so a truncated page under-reported
+          // how much the merchant actually owned.
+          const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
+            + cookingCards.filter((j) => j.kind === k).length;
           return (
             <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>
               {label}{n > 0 ? ` · ${n}` : ""}
@@ -603,6 +640,14 @@ export default function WebArchive() {
       </div>
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
         <p className="wa-shelfnote">⏳ Un-kept videos &amp; photos clear after 30 days — open a piece and hit <b>Keep</b> to save it for good.</p>
+      )}
+      {nextShow != null && (
+        // The oldest pieces are the ones nearest the 30-day clear, so "older"
+        // must stay reachable — Keep is only available from the viewer here.
+        <p className="wa-shelfnote">
+          Showing the newest <b>{shown}</b> of <b>{totalAll}</b>.{" "}
+          <Link to={`?show=${nextShow}`} preventScrollReset>Show older pieces →</Link>
+        </p>
       )}
       {shelf.length === 0 && genCards.length === 0 && failCards.length === 0 && (
         <div className="wb-card">No {tab === "blog" ? "articles" : `${tab}s`} yet — make one in the <Link to="/web/studio">Studio</Link>.</div>
