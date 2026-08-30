@@ -44,6 +44,31 @@ export function sumStats(stats: SocialStats): PlatformStats & { platformCount: n
   return acc;
 }
 
+/** Fold a refresh into the cached numbers.
+ *
+ * fetchAnalytics returns only the platforms that ANSWERED — social-provider
+ * skips any platform the provider replied to with an error or a message
+ * object (an expired Instagram token, say) and still returns the rest. Both
+ * refresh paths used to assign that result straight over `platforms`, so one
+ * platform having a bad day erased every other platform's numbers from the
+ * Results screen. Not stale — gone, which is the opposite of what the
+ * honesty rule at the top of this file promises.
+ *
+ * Keep what we already had for platforms that are still linked, let this
+ * round overwrite what it actually fetched, and drop platforms the merchant
+ * has since unlinked so their numbers do not linger.
+ */
+function foldStats(
+  cachedJson: string | null | undefined,
+  linked: string[],
+  fresh: Record<string, PlatformStats>
+): Record<string, PlatformStats> {
+  const prior = parseSocialStats(cachedJson).platforms;
+  const kept: Record<string, PlatformStats> = {};
+  for (const p of linked) if (prior[p]) kept[p] = prior[p];
+  return { ...kept, ...fresh };
+}
+
 let lastScan = 0;
 const SCAN_EVERY_MS = 60 * 60_000; // hourly — profile analytics don't move fast
 
@@ -60,7 +85,7 @@ export async function refreshSocialStats(): Promise<void> {
 
     const shops = await db.shop.findMany({
       where: { socialProfileKey: { not: null } },
-      select: { id: true, socialProfileKey: true, socialsJson: true },
+      select: { id: true, socialProfileKey: true, socialsJson: true, socialStatsJson: true },
     });
 
     for (const s of shops) {
@@ -68,7 +93,10 @@ export async function refreshSocialStats(): Promise<void> {
       if (!s.socialProfileKey || linked.length === 0) continue;
       const platforms = await fetchAnalytics(s.socialProfileKey, linked);
       if (!platforms) continue; // failure / nothing usable → keep prior cache
-      const payload: SocialStats = { fetchedAt: new Date(now).toISOString(), platforms };
+      const payload: SocialStats = {
+        fetchedAt: new Date(now).toISOString(),
+        platforms: foldStats(s.socialStatsJson, linked, platforms),
+      };
       await db.shop.update({ where: { id: s.id }, data: { socialStatsJson: JSON.stringify(payload) } });
     }
   } catch (e) {
@@ -84,14 +112,17 @@ export async function refreshShopStats(shopId: string): Promise<SocialStats | nu
     if (!socialProviderEnabled()) return null;
     const shop = await db.shop.findUnique({
       where: { id: shopId },
-      select: { socialProfileKey: true, socialsJson: true },
+      select: { socialProfileKey: true, socialsJson: true, socialStatsJson: true },
     });
     if (!shop?.socialProfileKey) return null;
     const linked = linkedFromCache(shop.socialsJson).filter((p) => (SOCIAL_PLATFORMS as readonly string[]).includes(p));
     if (linked.length === 0) return null;
     const platforms = await fetchAnalytics(shop.socialProfileKey, linked);
     if (!platforms) return null;
-    const payload: SocialStats = { fetchedAt: new Date().toISOString(), platforms };
+    const payload: SocialStats = {
+      fetchedAt: new Date().toISOString(),
+      platforms: foldStats(shop.socialStatsJson, linked, platforms),
+    };
     await db.shop.update({ where: { id: shopId }, data: { socialStatsJson: JSON.stringify(payload) } });
     return payload;
   } catch (e) {

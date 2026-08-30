@@ -16,7 +16,9 @@ import { anthropicText } from "./anthropic.server";
  * any failure falls back to the old minimal caption so a slot still ships.
  */
 
-export type PlatformCaption = { text: string; hashtags: string[] };
+/** `fallback` marks the minimal stand-in we ship when the writer could not
+ *  be reached. It is deliberately NOT persisted — see getOrMakeCaptions. */
+export type PlatformCaption = { text: string; hashtags: string[]; fallback?: boolean };
 export type CaptionSet = Record<string, PlatformCaption>; // keyed by platform
 
 const SUPPORTED = ["tiktok", "instagram", "facebook"] as const;
@@ -144,12 +146,14 @@ ${wanted.map((p) => `  "${p}": { "text": "caption here", "hashtags": ["tag1", "t
     const parsed = firstJsonObject(raw);
     for (const p of wanted) {
       const entry = parsed[p] as { text?: unknown; hashtags?: unknown } | undefined;
-      const text = typeof entry?.text === "string" && entry.text.trim() ? entry.text.trim() : fb.text;
-      set[p] = { text: text.slice(0, 300), hashtags: cleanTags(entry?.hashtags, p) };
+      const written = typeof entry?.text === "string" ? entry.text.trim() : "";
+      set[p] = written
+        ? { text: written.slice(0, 300), hashtags: cleanTags(entry?.hashtags, p) }
+        : { ...fb, fallback: true }; // model skipped this platform — retry it next time
     }
   } catch (e) {
     console.error("[caption] generation failed, using fallback:", e instanceof Error ? e.message : e);
-    for (const p of wanted) set[p] = fb;
+    for (const p of wanted) set[p] = { ...fb, fallback: true };
   }
   return set;
 }
@@ -173,18 +177,36 @@ export async function getOrMakeCaptions(
   } catch { /* treat as empty */ }
 
   const cached = (body.captions && typeof body.captions === "object" ? body.captions : {}) as CaptionSet;
-  const missing = wanted.filter((p) => !cached[p]?.text);
+
+  // A cached entry counts as a hit only if it is a REAL caption. Anything
+  // that is byte-for-byte the emergency stand-in — same text, no hashtags —
+  // was written by the bug below and is treated as a miss so the asset heals
+  // on its next post instead of shipping a hookless caption forever.
+  const stand = fallbackCaption(input);
+  const poisoned = (c?: PlatformCaption) =>
+    !!c && c.text === stand.text && (c.hashtags?.length ?? 0) === 0;
+  const missing = wanted.filter((p) => !cached[p]?.text || poisoned(cached[p]));
   if (missing.length === 0) return cached;
 
   const fresh = await generateCaptionSet(shopId, { ...input, platforms: missing });
   const merged: CaptionSet = { ...cached, ...fresh };
 
-  // Persist the merged set back onto the asset (best-effort; a write failure
-  // just means we regenerate next time — never blocks the post).
+  // CACHE ONLY WHAT THE WRITER ACTUALLY WROTE.
+  //
+  // This used to persist `merged` wholesale. When the model call failed —
+  // a 429, a 529, a timeout, anything transient — generateCaptionSet returns
+  // the minimal "Title — topic" stand-in, and that got written to the asset.
+  // Every later post and every boost then found a cache hit and reused it, so
+  // one blip permanently downgraded that asset to the no-hook, no-hashtag
+  // caption this module exists to replace. Silently, and forever.
+  const durable: CaptionSet = {};
+  for (const [p, c] of Object.entries(merged)) if (!c.fallback) durable[p] = c;
+
+  // Best-effort; a write failure just means we regenerate next time.
   try {
     await db.asset.update({
       where: { id: assetId },
-      data: { bodyJson: JSON.stringify({ ...body, captions: merged }) },
+      data: { bodyJson: JSON.stringify({ ...body, captions: durable }) },
     });
   } catch (e) {
     console.error("[caption] cache write failed (non-fatal):", e instanceof Error ? e.message : e);
