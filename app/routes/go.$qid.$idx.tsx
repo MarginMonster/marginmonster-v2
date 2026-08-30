@@ -24,17 +24,41 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
       const schedule = parseSchedule(q.scheduleJson);
       const slot = schedule.slots.find((s) => s.idx === idx);
 
-      // count the click on its slot (single-instance worker → no race drama)
+      // Count the click with a compare-and-swap, writing back only this slot.
+      //
+      // The old note here said "single-instance worker → no race drama". That
+      // was the wrong invariant: the worker is imported into shopify.server.ts
+      // and shares this process's event loop, so the collision was never
+      // worker-against-worker — it was this route against the auto-poster.
+      // postDueSlots stamps a slot POSTED with the platforms it reached, and a
+      // shopper click landing in between wrote this stale blob back over it.
+      // postedTo is the only thing stopping a re-publish to an account that
+      // already took the post, so erasing it made the next scan post again:
+      // duplicate posts on the merchant's real accounts, caused by a shopper
+      // clicking a link. This is the highest-frequency writer of this blob and
+      // it is public, so it collides precisely during a publish window.
       if (slot) {
-        slot.clicks = (slot.clicks || 0) + 1;
-        await db.questline.update({
-          where: { id: q.id },
-          data: { scheduleJson: JSON.stringify(schedule) },
-        });
+        let total = 0;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const fresh = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true } });
+          if (!fresh) break;
+          const current = parseSchedule(fresh.scheduleJson);
+          const target = current.slots.find((x) => x.idx === idx);
+          if (!target) break;
+          target.clicks = (target.clicks || 0) + 1;
+          const done = await db.questline.updateMany({
+            where: { id: q.id, scheduleJson: fresh.scheduleJson },
+            data: { scheduleJson: JSON.stringify(current) },
+          });
+          if (done.count === 1) {
+            total = current.slots.reduce((n, x) => n + (x.clicks || 0), 0);
+            break;
+          }
+          // Something else committed in between — read it again and re-apply.
+        }
         // gold-rush achievements — a real shopper just walked the plank
         try {
           const { unlockAchievement } = await import("../lib/xp.server");
-          const total = schedule.slots.reduce((n, s) => n + (s.clicks || 0), 0);
           if (total >= 1) await unlockAchievement(q.shopId, "GOLD_RUSH");
           if (total >= 25) await unlockAchievement(q.shopId, "TREASURE_HUNTER");
         } catch { /* never break a shopper's redirect */ }

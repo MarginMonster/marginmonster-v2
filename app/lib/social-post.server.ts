@@ -1,5 +1,5 @@
 import { db } from "../db.server";
-import { parseSchedule } from "./questlines";
+import { parseSchedule, type QuestSlot } from "./questlines";
 
 /* The auto-posting engine (v0 scaffold).
  *
@@ -139,7 +139,12 @@ export async function postDueSlots(): Promise<void> {
       // questline still completes either way — settleQuestlineIfDone falls
       // through on scheduleElapsed when slots never post.
       if (q.reviewMode === "REVIEW_FIRST") { heldForReview++; continue; }
-      const schedule = parseSchedule(q.scheduleJson);
+      // Re-read rather than trusting the batch snapshot: by the time the loop
+      // reaches a questline near the end, that snapshot is as old as all the
+      // publishing done before it. One row, and it decides what we post.
+      const row = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true } });
+      if (!row) continue;
+      const schedule = parseSchedule(row.scheduleJson);
       let changed = false;
 
       // Record EVERY post the moment it lands. These marks used to accumulate
@@ -150,14 +155,62 @@ export async function postDueSlots(): Promise<void> {
       // published them again: duplicate posts on the merchant's real accounts,
       // which we cannot take back. A few extra writes a day is nothing against
       // that.
-      const record = async (): Promise<boolean> => {
-        try {
-          await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
-          return true;
-        } catch (e) {
-          console.error(`[social-post] could not record a post for questline ${q.id} — halting its scan so nothing double-posts:`, e);
-          return false;
+      // ...and write ONLY the three fields this scan owns, onto the CURRENT row.
+      //
+      // This used to serialize the whole in-memory `schedule` — a snapshot taken
+      // before publishing began. Publishing is not quick: a caption call, then a
+      // network round trip per platform, per slot. The worker is imported into
+      // shopify.server.ts and shares one event loop with the Remix handlers, so
+      // every await in there hands control to whatever the merchant is doing.
+      // Anything they committed in that window was erased by this write:
+      //
+      //   - a drop they had just paid 150 tokens to add vanished off the map,
+      //     tokens spent and never refunded, with objectivesJson left counting a
+      //     target the schedule no longer contains;
+      //   - a slot they had just hit Retry on had its status dragged back to
+      //     READY with the OLD assetId restored, so the next scan published to
+      //     their live accounts the exact asset they had paid to replace.
+      //
+      // Re-read, find the slot by idx (never by array position — addDrop assigns
+      // idx = max+1, so positions shift), copy across status/postedTo/postedUrls
+      // and nothing else, then commit with a compare-and-swap on the exact JSON
+      // just read, so a write landing in between is detected instead of lost.
+      const record = async (slot: QuestSlot): Promise<boolean> => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const fresh = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true } });
+            if (!fresh) return false; // abandoned mid-scan — stop touching it
+            const current = parseSchedule(fresh.scheduleJson);
+            const target = current.slots.find((x) => x.idx === slot.idx);
+            if (!target) return true; // no longer in the schedule — do not re-add it
+
+            // postedTo is a UNION, never a replacement. It is the only thing
+            // stopping a re-publish to an account that already took the post,
+            // and that cannot be taken back.
+            const union = [...new Set([...(target.postedTo || []), ...(slot.postedTo || [])])];
+            if (union.length) target.postedTo = union;
+            if (slot.postedUrls) target.postedUrls = { ...(target.postedUrls || {}), ...slot.postedUrls };
+
+            // Forward only. If the merchant hit Retry mid-publish the fresh copy
+            // reads FORGING with a new assetId — bank where this post reached,
+            // but leave the status for the next scan to decide.
+            if (slot.status === "POSTED" && (target.status === "READY" || target.status === "POSTED")) {
+              target.status = "POSTED";
+            }
+
+            const done = await db.questline.updateMany({
+              where: { id: q.id, scheduleJson: fresh.scheduleJson },
+              data: { scheduleJson: JSON.stringify(current) },
+            });
+            if (done.count === 1) return true;
+            // Someone committed between the read and the write — read it again.
+          } catch (e) {
+            console.error(`[social-post] could not record a post for questline ${q.id} — halting its scan so nothing double-posts:`, e);
+            return false;
+          }
         }
+        console.error(`[social-post] questline ${q.id}: its schedule kept changing under the recorder — halting its scan so nothing double-posts`);
+        return false;
       };
 
       for (const s of schedule.slots) {
@@ -177,7 +230,7 @@ export async function postDueSlots(): Promise<void> {
             if (br.url) s.postedUrls = { blog: br.url };
             changed = true;
             posted++;
-            if (!(await record())) break; // it is live; if we cannot write that down, stop.
+            if (!(await record(s))) break; // it is live; if we cannot write that down, stop.
           } else {
             console.log(`[blog-publish] slot ${q.id}#${s.idx} pending: ${br.error}`);
           }
@@ -197,7 +250,7 @@ export async function postDueSlots(): Promise<void> {
           // Everything it was ever meant to reach is done — close the slot.
           s.status = "POSTED";
           changed = true;
-          if (!(await record())) break;
+          if (!(await record(s))) break;
           continue;
         }
         const res = await publishContent(targets, link.profileKey, {
@@ -225,7 +278,7 @@ export async function postDueSlots(): Promise<void> {
               `still owed ${res.failed.join(", ")}${res.pending ? ` (${res.pending})` : ""} — will retry`
           );
         }
-        if (changed && !(await record())) break; // it is live; if we cannot write that down, stop.
+        if (changed && !(await record(s))) break; // it is live; if we cannot write that down, stop.
       }
       // A campaign finishes when its LAST DROP POSTS, not when the last piece
       // rendered — and this scan is the only place that can know that. The
