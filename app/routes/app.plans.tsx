@@ -48,10 +48,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try {
       if (subChargeId) {
         const res = await admin.graphql(
-          `{ node(id: "gid://shopify/AppSubscription/${subChargeId}") { ... on AppSubscription { status } } }`
+          `{ node(id: "gid://shopify/AppSubscription/${subChargeId}") { ... on AppSubscription { status name } } }`
         );
-        const j = (await res.json()) as { data?: { node?: { status?: string } } };
-        confirmed = j.data?.node?.status === "ACTIVE";
+        const j = (await res.json()) as { data?: { node?: { status?: string; name?: string } } };
+        // NAME, not just status. `activate` arrives in the query string, so
+        // asking Shopify only "is this charge active?" answers a different
+        // question than the one that matters: a merchant on the cheapest tier
+        // holds a permanently ACTIVE charge id, and re-visiting the return URL
+        // with activate=ANTHEM would have granted ANTHEM quotas and tokens off
+        // the back of their $19 subscription.
+        //
+        // shopify.server.ts registers every plan under its own key, so the
+        // subscription Shopify created carries that key as its name. Comparing
+        // it is what turns `activate` from an instruction into a claim.
+        confirmed = j.data?.node?.status === "ACTIVE" && j.data?.node?.name === (rawActivate || activate);
       } else {
         const { hasActivePayment } = await billing.check({ plans: [rawActivate || activate] as never, isTest: billingIsTest() });
         confirmed = hasActivePayment;
@@ -67,23 +77,40 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       if (shopRow) {
         const tier = PLAN_BY_KEY[activate];
         const reviewMode = url.searchParams.get("review") === "SET_AND_FORGET" ? "SET_AND_FORGET" as const : "REVIEW_FIRST" as const;
+
+        // AN APPROVED CHARGE GRANTS ITS ALLOWANCE ONCE.
+        //
+        // The block below sets tokensUsed back to 0 and restarts the period.
+        // That is right the first time and wrong every time after, because a
+        // subscription charge stays ACTIVE for its whole life — so this return
+        // URL keeps confirming, and a merchant who kept it could refill an
+        // empty wallet on demand, for free, as often as they liked. Leg 2
+        // below has always been protected this way (TokenPurchase.chargeId is
+        // unique); leg 1 had no such record at all.
+        const existing = await db.plan.findUnique({ where: { shopId: shopRow.id } });
+        const sameCharge = !!subChargeId && existing?.activationChargeId === subChargeId;
+        // The no-charge_id path verifies the tier through billing.check, so it
+        // cannot be spoofed — but it can still be replayed. Re-granting is only
+        // meaningful there when the tier actually changes.
+        const unchangedReplay = !subChargeId && !!existing && existing.active && existing.type === activate;
+        if (sameCharge || unchangedReplay) embeddedRedirect({ welcome: activate });
+
+        const grant = {
+          type: activate, reviewMode, active: true,
+          blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
+          adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
+          tokensIncluded: tier.monthlyTokens, tokensUsed: 0, periodStart: new Date(),
+          activationChargeId: subChargeId || null,
+        };
         await db.plan.upsert({
           where: { shopId: shopRow.id },
           create: {
-            shopId: shopRow.id, type: activate, reviewMode,
-            blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
-            adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
-            periodStart: new Date(), tokensIncluded: tier.monthlyTokens, tokensUsed: 0,
+            shopId: shopRow.id, ...grant,
             // First-ever subscription = the Shopify 7-day trial window. The cap
             // + capability rules key off this; upgrades keep the original date.
             trialEndsAt: new Date(Date.now() + 7 * 86_400_000),
           },
-          update: {
-            type: activate, reviewMode, active: true,
-            blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
-            adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
-            tokensIncluded: tier.monthlyTokens, tokensUsed: 0, periodStart: new Date(),
-          },
+          update: grant,
         });
         await unlockAchievement(shopRow.id, "INSERT_COIN");
         // Plan just went live — if the brand's already analyzed, forge their
@@ -116,10 +143,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         let status = "";
         try {
           const res = await admin.graphql(
-            `{ node(id: "gid://shopify/AppPurchaseOneTime/${chargeId.replace(/[^0-9]/g, "")}") { ... on AppPurchaseOneTime { status } } }`
+            `{ node(id: "gid://shopify/AppPurchaseOneTime/${chargeId.replace(/[^0-9]/g, "")}") { ... on AppPurchaseOneTime { status name } } }`
           );
-          const j = (await res.json()) as { data?: { node?: { status?: string } } };
-          status = j.data?.node?.status || "";
+          const j = (await res.json()) as { data?: { node?: { status?: string; name?: string } } };
+          // The pack size comes from ?pack= and the money came from this charge.
+          // Checking only that the charge is ACTIVE lets the two disagree: pay
+          // for the $25 pack, return with pack=TOKENS_2000 and the same real
+          // charge id, and the wallet is credited 2000 tokens. The uniqueness of
+          // chargeId caps that at once per charge — it does not make it honest.
+          status = j.data?.node?.status === "ACTIVE" && j.data?.node?.name === packKey ? "ACTIVE" : "";
         } catch (e) { console.error("[billing] charge verify failed:", e); }
         if (status === "ACTIVE") {
           await db.tokenPurchase.create({

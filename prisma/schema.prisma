@@ -297,6 +297,12 @@ model Plan {
   tokensUsed     Int @default(0) // spent this billing period
   tokensExtra    Int @default(0) // purchased top-up (does not reset)
 
+  // The approved Shopify charge that last granted this plan's allowance.
+  // Without it the billing return URL could be re-visited to reset the wallet
+  // to full, over and over — the charge stays ACTIVE for the life of the
+  // subscription, so the same URL keeps confirming.
+  activationChargeId String?
+
   // Free-trial window (first subscription only). While now < trialEndsAt the
   // wallet is hard-capped at TRIAL_TOKEN_CAP and anthem/cartoon stay locked.
   trialEndsAt DateTime?
