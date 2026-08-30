@@ -7,7 +7,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
-import { merchantBusy } from "./art-throttle.server";
+import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { hasCJK, langDirective } from "./content-lang";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
@@ -1624,6 +1624,7 @@ export function bottlePreviewFile(variant: string): string | null {
 export function ensureBottlePreview(variant: string): void {
   if (!BOTTLE_VARIANTS[variant] || bottlePreviewFile(variant) || bottleInFlight.has(variant)) return;
   if (!process.env.REPLICATE_API_TOKEN) return;
+  if (!takeArtSlot()) return; // shared cosmetic-render ceiling
   bottleInFlight.add(variant);
   (async () => {
     try {
@@ -1637,6 +1638,7 @@ export function ensureBottlePreview(variant: string): void {
       artLog("ad-templates", `bottle-${variant}: FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     } finally {
       bottleInFlight.delete(variant);
+      releaseArtSlot();
     }
   })();
 }
@@ -2036,6 +2038,7 @@ export function formatPreviewFile(key: string): string | null {
 export function ensureFormatPreview(key: string): void {
   const current = path.join(AD_TEMPLATE_DIR, `format-${key}-v${fpVersion(key)}.jpg`);
   if (fs.existsSync(current) || formatPreviewInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
+  if (!takeArtSlot()) return; // shared cosmetic-render ceiling
   formatPreviewInFlight.add(key);
   (async () => {
     try {
@@ -2076,6 +2079,7 @@ export function ensureFormatPreview(key: string): void {
       artLog("ad-formats", `${key}: preview FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     } finally {
       formatPreviewInFlight.delete(key);
+      releaseArtSlot();
     }
   })();
 }
@@ -2101,6 +2105,7 @@ export function statueFile(): string | null {
 export function ensureAdTemplate(key: string): void {
   if (fs.existsSync(currentTemplateFile("preview", key)) || templateInFlight.has(key)) return;
   if (!process.env.REPLICATE_API_TOKEN) { artLog("ad-templates", `${key}: skipped — REPLICATE_API_TOKEN not set`); return; }
+  if (!takeArtSlot()) return; // shared cosmetic-render ceiling
   templateInFlight.add(key);
   (async () => {
     try {
@@ -2139,6 +2144,7 @@ export function ensureAdTemplate(key: string): void {
       console.error(`[ad-templates] ${key} build failed:`, msg.slice(0, 160));
     } finally {
       templateInFlight.delete(key);
+      releaseArtSlot();
     }
   })();
 }
@@ -2156,6 +2162,7 @@ export function phCoverFile(): string | null {
 
 export function ensurePhCover(): void {
   if (phCoverFile() || phCoverInFlight || !process.env.REPLICATE_API_TOKEN) return;
+  if (!takeArtSlot()) return; // shared cosmetic-render ceiling
   phCoverInFlight = true;
   (async () => {
     try {
@@ -2173,6 +2180,7 @@ export function ensurePhCover(): void {
       artLog("ad-templates", `phcover: FAILED — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
     } finally {
       phCoverInFlight = false;
+      releaseArtSlot();
     }
   })();
 }
@@ -2201,6 +2209,7 @@ export function ensureCtCover(key: string): void {
   if (!CT_COVER_PROMPTS[key] || ctCoverFile(key) || ctCoverInFlight.has(key) || !process.env.REPLICATE_API_TOKEN) return;
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   if (!statueFile() || !base) return; // wait for the statue; the next request retries
+  if (!takeArtSlot()) return; // shared cosmetic-render ceiling
   ctCoverInFlight.add(key);
   (async () => {
     try {
@@ -2218,6 +2227,7 @@ export function ensureCtCover(key: string): void {
       artLog("ad-templates", `ctcover-${key}: FAILED — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
     } finally {
       ctCoverInFlight.delete(key);
+      releaseArtSlot();
     }
   })();
 }

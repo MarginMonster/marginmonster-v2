@@ -9,6 +9,7 @@ import path from "node:path";
 import { adTemplateFile, BOTTLE_VARIANTS, bottlePreviewFile, ctCoverFile, ensureAdTemplate, ensureAllAdTemplates, ensureAllFormatPreviews, ensureBottlePreview, ensureCtCover, ensureFormatPreview, ensurePhCover, formatPreviewFile, phCoverFile, statueFile } from "../lib/image-generation.server";
 import { AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMAT_BY_KEY } from "../lib/ad-formats";
+import { merchantBusy } from "../lib/art-throttle.server";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   // The stand-in bottle cutout — public so nano-banana can fetch it as an
@@ -33,7 +34,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
         headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
       });
     }
-    ensureFormatPreview(key);
+    if (!(await merchantBusy())) ensureFormatPreview(key);
     ensureAllFormatPreviews().catch(() => { /* best-effort */ });
     const stand = adTemplateFile("preview", "colorblock");
     if (stand) {
@@ -56,7 +57,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
         headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
       });
     }
-    ensureBottlePreview(bm[1]);
+    if (!(await merchantBusy())) ensureBottlePreview(bm[1]);
     return new Response("Rendering — refresh this link in ~30 seconds.", {
       status: 202, headers: { "Content-Type": "text/plain", "Cache-Control": "no-store", "Retry-After": "30" },
     });
@@ -74,7 +75,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
         headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
       });
     }
-    ensureCtCover(cc[1]);
+    if (!(await merchantBusy())) ensureCtCover(cc[1]);
     const stand = phCoverFile() || path.join(process.cwd(), "public", "content-types", "ph.png");
     if (!fs.existsSync(stand)) return new Response("Not ready", { status: 404 });
     return new Response(new Uint8Array(fs.readFileSync(stand)), {
@@ -89,7 +90,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
         headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=600" },
       });
     }
-    ensurePhCover();
+    if (!(await merchantBusy())) ensurePhCover();
     const fb = path.join(process.cwd(), "public", "content-types", "ph.png");
     if (!fs.existsSync(fb)) return new Response("Not ready", { status: 404 });
     return new Response(new Uint8Array(fs.readFileSync(fb)), {
@@ -111,7 +112,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 
   // Build it (and its siblings) in the background. Best available stand-in
   // while it cooks: the real plate (scene without the statue), then a generic.
-  ensureAdTemplate(key);
+  if (!(await merchantBusy())) ensureAdTemplate(key);
   ensureAllAdTemplates().catch(() => { /* best-effort */ });
   const plate = adTemplateFile("plate", key);
   if (plate) {

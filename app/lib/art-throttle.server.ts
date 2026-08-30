@@ -30,3 +30,30 @@ export async function merchantBusy(): Promise<boolean> {
     return false; // never block art forging on a DB hiccup
   }
 }
+
+/* Guard 3: a hard ceiling on how many cosmetic renders run at once.
+ *
+ * Guards 1 and 2 live in the ensureAll* walkers, but /ad-templates/:file is a
+ * PUBLIC, unauthenticated route that calls the per-key ensure* functions
+ * directly — and those had neither guard. Each key dedupes itself, so 48
+ * parallel requests for 48 distinct format keys meant 48 simultaneous
+ * Replicate renders: exactly the rate-limit saturation this module exists to
+ * prevent, triggerable by anyone with a URL and no session.
+ *
+ * The cap is shared across every cosmetic renderer (formats, templates,
+ * bottles, covers) because they all draw on the same per-model rate limit. */
+const ART_LIMIT = 2;
+let artActive = 0;
+
+/** Claim a render slot. False means "not now" — the caller must not start,
+ *  and must not mark itself in-flight; the self-heal tick retries later. */
+export function takeArtSlot(): boolean {
+  if (artActive >= ART_LIMIT) return false;
+  artActive++;
+  return true;
+}
+
+/** Release a slot claimed by takeArtSlot. Always call this from a finally. */
+export function releaseArtSlot(): void {
+  if (artActive > 0) artActive--;
+}
