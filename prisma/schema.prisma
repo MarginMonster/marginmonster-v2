@@ -429,6 +429,12 @@ model Campaign {
   asset       Asset          @relation(fields: [assetId], references: [id])
   platform    AdPlatform
   externalId  String? // platform campaign ID (null until launched)
+  /// The job that launched this. UNIQUE, so a retry of that job resumes this
+  /// row instead of creating a SECOND real campaign on Meta/TikTok. Keyed on the
+  /// job and not (shop, asset, platform) on purpose: boosting is a repeatable
+  /// purchase — the merchant can pay to boost the same asset again, and that is
+  /// a different job and legitimately a different campaign.
+  launchJobId String? @unique
   status      CampaignStatus @default(DRAFT)
   budgetCents Int
   spentCents  Int            @default(0)

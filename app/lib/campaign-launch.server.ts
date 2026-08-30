@@ -12,14 +12,35 @@ interface LaunchParams {
   shopId: string;
   platform: "META" | "TIKTOK";
   weeklyBudgetCents: number;
+  /** The queue job driving this launch. Supplying it makes the launch
+   *  idempotent across that job's retries — see below. */
+  jobId?: string;
 }
 
 export async function launchCampaign(params: LaunchParams): Promise<string> {
-  const { assetId, shopId, platform, weeklyBudgetCents } = params;
+  const { assetId, shopId, platform, weeklyBudgetCents, jobId } = params;
+
+  // IDEMPOTENCY, because the thing on the other side of this function is real
+  // money on someone's ad account.
+  //
+  // The old flow created the campaign at the platform, THEN the ad set, THEN
+  // the local row, THEN flipped the asset to PUBLISHED. Anything that threw
+  // after the first of those — a rejected budget, an audience error, a 429 —
+  // left a real campaign live at Meta or TikTok with no record of it here, and
+  // the queue retried the whole function. Three attempts, three campaigns.
+  //
+  // Keyed on the JOB, not on (shop, asset, platform): boosting is a repeatable
+  // purchase — app.archive.tsx charges BOOST_FEE and resets the asset to
+  // APPROVED each time — so a second paid boost of the same asset SHOULD create
+  // a second campaign. Only a retry of the same job must not.
+  const prior = jobId ? await db.campaign.findUnique({ where: { launchJobId: jobId } }) : null;
+  if (prior?.externalId && prior.status !== "DRAFT") return prior.id; // already finished
 
   const asset = await db.asset.findUnique({ where: { id: assetId } });
   if (!asset) throw new Error(`Asset ${assetId} not found`);
-  if (asset.status !== "APPROVED") throw new Error("Asset must be APPROVED before launching");
+  // A resumed attempt owns `prior`, so the asset may legitimately have moved on
+  // already; only a fresh launch has to see APPROVED.
+  if (!prior && asset.status !== "APPROVED") throw new Error("Asset must be APPROVED before launching");
 
   const shop = await db.shop.findUnique({
     where: { id: shopId },
@@ -35,18 +56,51 @@ export async function launchCampaign(params: LaunchParams): Promise<string> {
   const meta_ = JSON.parse(asset.metaJson);
   const campaignName = `MM-${shop.activePlan.campaignGoal}-${asset.id.slice(-6)}-${Date.now()}`;
 
-  let externalCampaignId: string;
+  // Resume a half-finished launch rather than starting a second one.
+  let externalCampaignId: string = prior?.externalId || "";
+  let campaignId: string | undefined = prior?.id;
+
+  if (!externalCampaignId) {
+    externalCampaignId =
+      platform === "META"
+        ? await meta.createCampaign({
+            adAccountId: adAccount.externalId,
+            name: campaignName,
+            objective: config.meta.objective,
+            budgetCents: weeklyBudgetCents,
+            token: adAccount.accessToken,
+          })
+        : await tiktok.createCampaign(
+            adAccount.externalId,
+            campaignName,
+            config.tiktok.objective,
+            weeklyBudgetCents,
+            adAccount.accessToken
+          );
+
+    // WRITE IT DOWN IMMEDIATELY. This is the line the old code was missing: the
+    // campaign now exists on someone's ad account, and if the process dies
+    // before we record it, nothing on our side knows it is there. Persist
+    // before the ad set — that call is the one that historically threw.
+    const row = campaignId
+      ? await db.campaign.update({ where: { id: campaignId }, data: { externalId: externalCampaignId } })
+      : await db.campaign.create({
+          data: {
+            shopId,
+            adAccountId: adAccount.id,
+            assetId,
+            platform,
+            externalId: externalCampaignId,
+            status: "DRAFT", // becomes PAUSED once its ad set/group exists
+            budgetCents: weeklyBudgetCents,
+            launchJobId: jobId ?? null,
+          },
+        });
+    campaignId = row.id;
+  }
 
   if (platform === "META") {
     const cfg = config.meta;
-    externalCampaignId = await meta.createCampaign({
-      adAccountId: adAccount.externalId,
-      name: campaignName,
-      objective: cfg.objective,
-      budgetCents: weeklyBudgetCents,
-      token: adAccount.accessToken,
-    });
-
     // Ad set with 1/7 of weekly budget as daily
     await meta.createAdSet({
       adAccountId: adAccount.externalId,
@@ -60,14 +114,7 @@ export async function launchCampaign(params: LaunchParams): Promise<string> {
     });
   } else {
     const cfg = config.tiktok;
-    externalCampaignId = await tiktok.createCampaign(
-      adAccount.externalId,
-      campaignName,
-      cfg.objective,
-      weeklyBudgetCents,
-      adAccount.accessToken
-    );
-
+    // The campaign itself is created and recorded above, for both platforms.
     await tiktok.createAdGroup(
       adAccount.externalId,
       externalCampaignId,
@@ -79,19 +126,10 @@ export async function launchCampaign(params: LaunchParams): Promise<string> {
     );
   }
 
-  const campaign = await db.campaign.create({
-    data: {
-      shopId,
-      adAccountId: adAccount.id,
-      assetId,
-      platform,
-      externalId: externalCampaignId,
-      status: "PAUSED",
-      budgetCents: weeklyBudgetCents,
-    },
-  });
-
+  // The row already exists (it was written the moment the platform campaign
+  // did); this only promotes it now that its ad set/group is in place.
+  await db.campaign.update({ where: { id: campaignId! }, data: { status: "PAUSED" } });
   await db.asset.update({ where: { id: assetId }, data: { status: "PUBLISHED" } });
 
-  return campaign.id;
+  return campaignId!;
 }

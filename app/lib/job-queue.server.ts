@@ -599,6 +599,9 @@ async function runJob(
         shopId,
         platform: payload.platform as "META" | "TIKTOK",
         weeklyBudgetCents: payload.weeklyBudgetCents as number,
+        // Makes the launch idempotent across THIS job's retries — without it a
+        // failure after the platform call created a second real campaign.
+        jobId: payload.__jobId as string | undefined,
       });
       break;
     }
