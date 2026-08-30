@@ -15,6 +15,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
+import { signOAuthState } from "../lib/oauth-state.server";
 import { socialProviderEnabled, connectUrl, refreshLinkedPlatforms, linkedFromCache } from "../lib/social-provider.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 
@@ -72,14 +73,16 @@ function buildMetaOAuthUrl(shop: string): string {
   const appId = process.env.META_APP_ID || "";
   const redirectUri = encodeURIComponent(`${process.env.SHOPIFY_APP_URL}/app/connect/meta/callback`);
   const scope = "ads_management,ads_read,business_management";
-  const state = encodeURIComponent(shop);
+  // Signed, not the bare domain: the callback binds an ad-account access
+  // token to whatever shop this names, and it is attacker-controllable.
+  const state = encodeURIComponent(signOAuthState(shop));
   return `https://www.facebook.com/v20.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
 }
 
 function buildTikTokOAuthUrl(shop: string): string {
   const appId = process.env.TIKTOK_APP_ID || "";
   const redirectUri = encodeURIComponent(`${process.env.SHOPIFY_APP_URL}/app/connect/tiktok/callback`);
-  const state = encodeURIComponent(shop);
+  const state = encodeURIComponent(signOAuthState(shop));
   return `https://business-api.tiktok.com/portal/auth?app_id=${appId}&redirect_uri=${redirectUri}&state=${state}`;
 }
 

@@ -1,12 +1,17 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { db } from "../db.server";
+import { verifyOAuthState } from "../lib/oauth-state.server";
 import * as tiktokAds from "../lib/tiktok-ads.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const shop = url.searchParams.get("state");
+  // This route does not authenticate — it cannot, it is a redirect back from
+  // the ad platform. `state` used to be the raw shop domain, so completing
+  // this flow with a hand-edited state wrote a live ad-account token against
+  // somebody else's shop. Only a state we minted and signed is trusted.
+  const shop = verifyOAuthState(url.searchParams.get("state"));
 
   if (!code || !shop) {
     return redirect("/app/connect?error=tiktok_oauth_failed");
@@ -36,7 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const account = accounts[0];
-  const shopRecord = await db.shop.findUnique({ where: { domain: decodeURIComponent(shop) } });
+  const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
   if (!shopRecord) {
     return redirect("/app/connect?error=shop_not_found");
   }
