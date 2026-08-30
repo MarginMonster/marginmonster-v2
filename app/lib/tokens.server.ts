@@ -67,12 +67,33 @@ export async function refreshPeriod(plan: Plan): Promise<Plan> {
   });
 }
 
+/** What this plan can actually spend right now.
+ *
+ *  The trial branch is the whole point. `tokensUsed` only ever tracks the
+ *  ALLOWANCE leg — once it reaches tokensIncluded it stops moving, because
+ *  further spend comes out of tokensExtra. So a cap written as
+ *  `TRIAL_TOKEN_CAP - tokensUsed` silently stopped counting the moment the
+ *  allowance ran out, and a trialist with any purchased tokens could drain all
+ *  of them inside a trial they were still free to cancel — real COGS, no
+ *  revenue. (Starter's 300 monthly is below the 400 cap, so this was reachable
+ *  on the cheapest plan.)
+ *
+ *  Holding top-ups back during the trial is what assertTrialCap's contract
+ *  always claimed ("purchased top-ups are held until the trial converts") and
+ *  what the HUD already displayed. Making it true here also keeps tokensUsed a
+ *  COMPLETE record of trial spend, which is what makes the ceiling keep working. */
+function spendableNow(plan: Plan): number {
+  const allowance = Math.max(0, plan.tokensIncluded - plan.tokensUsed);
+  if (planTrialing(plan)) return Math.min(allowance, Math.max(0, TRIAL_TOKEN_CAP - plan.tokensUsed));
+  return allowance + plan.tokensExtra;
+}
+
 /** Hard trial ceiling: during the free trial, total spend can't pass
  *  TRIAL_TOKEN_CAP — and purchased top-ups are held (not spendable) until the
  *  trial converts, so a cancelled trial can never burn real COGS at scale. */
 function assertTrialCap(plan: Plan, amount: number): void {
   if (!planTrialing(plan)) return;
-  const spendable = Math.max(0, TRIAL_TOKEN_CAP - plan.tokensUsed);
+  const spendable = spendableNow(plan);
   if (spendable < amount) {
     const e = new Error(
       `Free trials include ${TRIAL_TOKEN_CAP} tokens and you have ${spendable} left. Your full monthly allowance${plan.tokensExtra > 0 ? " (and your purchased tokens)" : ""} unlocks the moment the trial converts.`
@@ -92,7 +113,10 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
   plan = await refreshPeriod(plan);
   assertTrialCap(plan, cost);
 
-  const remaining = tokensRemaining(plan);
+  // spendableNow, not tokensRemaining: during a trial the purchased top-up is
+  // held back, so the raw wallet total would let a spend through that the cap
+  // is supposed to refuse.
+  const remaining = spendableNow(plan);
   if (remaining < cost) throw new InsufficientTokensError(cost, remaining, action);
 
   // Spend the monthly allowance first, overflow onto the purchased top-up.
@@ -120,7 +144,7 @@ export async function spendTokens(shopId: string, amount: number): Promise<{ rem
   plan = await refreshPeriod(plan);
   assertTrialCap(plan, amount);
 
-  const remaining = tokensRemaining(plan);
+  const remaining = spendableNow(plan);
   if (remaining < amount) {
     const e = new Error(`Not enough tokens — needs ${amount}, you have ${remaining}. Top up on the Plans page.`);
     e.name = "InsufficientTokensError";
