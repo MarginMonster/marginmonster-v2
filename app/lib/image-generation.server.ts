@@ -2473,9 +2473,15 @@ export async function generateImageAd(
     try {
       const { falImageEnabled } = await import("./fal-image.server");
       if (falImageEnabled()) {
-        const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
+        // resolvePresenter, not resolvePortraitFile: the latter only looks in
+        // public/avatars, so a shop's own forged presenter ("cav…") threw and
+        // was swallowed by the catch below — the ad quietly shipped as a plain
+        // product still with no presenter in it, at full price. Same defect as
+        // the cartoon and anthem pipelines had.
+        const { resolvePresenter } = await import("./custom-avatars.server");
+        const presenter = await resolvePresenter(shopId, avatarId, avatarVariant || 0);
         const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-        const portraitUrl = `${base}/avatars/${path.basename(resolvePortraitFile(avatarId, avatarVariant || 0))}`;
+        const portraitUrl = `${base}${presenter.portraitPublicPath}`;
         const { resolveProductScale } = await import("./product-scale.server");
         const scaleHint = await resolveProductScale({
           productTitle,
@@ -2493,7 +2499,7 @@ export async function generateImageAd(
         const { shotLibraryEnabled, presenterShotKey, findPresenterShot, savePresenterShot } =
           await import("./presenter-shots.server");
         const layout = presenterLayout(scaleHint?.sizeClass, wear);
-        const shotKey = presenterShotKey(avatarId, avatarVariant || 0, productImageUrl, layout);
+        const shotKey = presenterShotKey(avatarId, avatarVariant || 0, productImageUrl, layout, scene || stylePrompt);
         const cachedShot = shotLibraryEnabled() && !freshShot ? await findPresenterShot(shopId, shotKey) : null;
 
         let buf: Buffer | null = null;
@@ -2513,7 +2519,7 @@ export async function generateImageAd(
             // for an ad that ignored the one instruction they gave.
             portraitUrl, productImageUrl, productTitle, wear, scene: scene || stylePrompt,
             scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass, cm: scaleHint?.cm,
-            continuity: (await import("./avatars")).AVATAR_BY_ID[avatarId]?.continuity,
+            continuity: presenter.avatar.continuity,
           });
           if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
           // A presenter holding something that merely RESEMBLES the product is

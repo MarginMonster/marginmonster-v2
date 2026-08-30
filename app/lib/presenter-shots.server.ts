@@ -36,10 +36,27 @@ export function presenterShotKey(
   avatarId: string,
   variant: number,
   productImageUrl: string,
-  layout: string
+  layout: string,
+  /** The merchant's typed direction for this shot.
+   *
+   *  It reaches the composer as `scene`, and it changes the picture — so
+   *  leaving it out of the key meant a merchant could re-render the same
+   *  presenter and product with a completely different brief, be charged
+   *  for it, and be handed back the frozen bytes of the previous attempt.
+   *  Their one instruction, ignored, twice, for money.
+   *
+   *  Note this became reachable only recently: the direction used to be
+   *  dropped before it reached the composer at all, so every render of a
+   *  pair really was identical and the key was honest. Fixing that made
+   *  the key wrong. */
+  direction?: string
 ): string {
   const normalized = (productImageUrl || "").split("?")[0];
-  return crypto.createHash("sha1").update(`${avatarId}|${variant}|${normalized}|${layout}`).digest("hex");
+  const base = `${avatarId}|${variant}|${normalized}|${layout}`;
+  const brief = (direction || "").trim().toLowerCase().replace(/\s+/g, " ");
+  // No direction → the original key shape, so every shot frozen before this
+  // existed keeps hitting instead of being silently re-composed at our cost.
+  return crypto.createHash("sha1").update(brief ? `${base}|${brief}` : base).digest("hex");
 }
 
 export async function findPresenterShot(
