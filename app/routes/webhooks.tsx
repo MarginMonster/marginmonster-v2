@@ -25,44 +25,90 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         include: { activePlan: true, brandProfile: true },
       });
 
-      if (shopRecord?.activePlan && shopRecord?.brandProfile) {
+      // `activePlan` is only the RELATION NAME — Prisma does not filter it by
+      // `active`, so a cancelled shop still has one and kept receiving free
+      // auto-generated content after they stopped paying.
+      if (shopRecord?.activePlan?.active && shopRecord?.brandProfile) {
         const plan = shopRecord.activePlan;
         const product = payload as { title: string; body_html: string; images: { src: string }[] };
         const desc = product.body_html?.replace(/<[^>]+>/g, "") || "";
-        const jobs: Promise<string>[] = [];
+
+        // AUTO-GENERATION IS SPENDING, AND IT HAS TO BE METERED.
+        //
+        // This handler used to enqueue up to three renders per product with no
+        // charge of any kind — no spendTokens, no quota arithmetic, gated only
+        // on quota fields being non-zero. A merchant bulk-importing a catalogue
+        // (CSV, DSers, a migration app) fires one of these per product: 200
+        // products became 600 free jobs, 200 of them videos, each costing us
+        // real provider money. The trial ceiling does not apply either, because
+        // it lives inside the wallet and this path never touched the wallet.
+        //
+        // Charged the same way every other enqueue in the app is: spend first,
+        // then record prePaid/chargedTokens so a terminal failure refunds. A
+        // wallet that cannot cover a piece simply skips it — this is a courtesy
+        // the app performs unasked, so it must never fail the webhook or leave
+        // the merchant owing anything.
+        const { spendTokens } = await import("../lib/tokens.server");
+        const { TOKEN_COST } = await import("../lib/plan-config");
+
+        // A second ceiling, on top of the wallet: a bulk import should not be
+        // able to drain a month of tokens in one afternoon just because the
+        // merchant moved their catalogue in.
+        const AUTO_DAILY_CAP = 9; // ~3 products a day across the three types
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const autoToday = await db.job.count({
+          where: {
+            shopId: shopRecord.id,
+            createdAt: { gte: since },
+            payload: { contains: '"autoFromProduct":true' },
+          },
+        });
+        if (autoToday >= AUTO_DAILY_CAP) {
+          console.log(`[auto-content] ${shop}: daily cap reached (${autoToday}) — skipping`);
+          break;
+        }
+
+        const queue = async (type: string, cost: number, extra: Record<string, unknown>) => {
+          let chargedFromExtra = 0;
+          try {
+            chargedFromExtra = (await spendTokens(shopRecord.id, cost)).fromExtra;
+          } catch {
+            return; // wallet cannot cover it — skip quietly, nothing is owed
+          }
+          await enqueueJob(shopRecord.id, type, {
+            ...extra,
+            autoFromProduct: true,
+            prePaid: true,
+            chargedTokens: cost,
+            chargedFromExtra,
+          });
+        };
 
         // Enqueue whatever the plan's quotas include.
         if (plan.blogQuota > 0) {
-          jobs.push(
-            enqueueJob(shopRecord.id, "GENERATE_BLOG_POST", {
-              productTitle: product.title,
-              productDescription: desc.slice(0, 500),
-            })
-          );
+          await queue("GENERATE_BLOG_POST", TOKEN_COST.blog, {
+            productTitle: product.title,
+            productDescription: desc.slice(0, 500),
+          });
         }
         if (plan.videoQuota > 0) {
-          jobs.push(
-            enqueueJob(shopRecord.id, "GENERATE_VIDEO_AD", {
-              productTitle: product.title,
-              productDescription: desc.slice(0, 300),
-              productImageUrl: product.images?.[0]?.src,
-              style: "PRODUCT_HIGHLIGHT",
-            })
-          );
+          await queue("GENERATE_VIDEO_AD", TOKEN_COST.video, {
+            productTitle: product.title,
+            productDescription: desc.slice(0, 300),
+            productImageUrl: product.images?.[0]?.src,
+            style: "PRODUCT_HIGHLIGHT",
+          });
         }
         if (plan.imageQuota > 0) {
-          jobs.push(
-            enqueueJob(shopRecord.id, "GENERATE_IMAGE_AD", {
-              productTitle: product.title,
-              productImageUrl: product.images?.[0]?.src,
-            })
-          );
+          await queue("GENERATE_IMAGE_AD", TOKEN_COST.image, {
+            productTitle: product.title,
+            productImageUrl: product.images?.[0]?.src,
+          });
           // (Ad-copy auto-gen removed: it only ever surfaced in the retired
           //  Content Queue and nothing in the current flow consumes it — Boost
           //  uses the image/video asset and captions are written at post time.)
         }
 
-        await Promise.all(jobs);
       }
       break;
     }
