@@ -177,6 +177,30 @@ export async function processNextJob(): Promise<boolean> {
   try {
     const payload = JSON.parse(job.payload);
     payload.__jobId = job.id; // lets long pipelines checkpoint their progress
+
+    // PAUSE HAS TO REACH THE QUEUE. Pausing a campaign only flipped the
+    // questline's status; its already-queued drops kept their runAt and this
+    // worker happily rendered every one of them — real render spend, on content
+    // postDueSlots would then never publish, because it only scans ACTIVE. The
+    // merchant pressed Pause and watched the machine carry on.
+    //
+    // Put the job back rather than failing it: a pause is temporary, and a
+    // FAILED drop would refund and unravel a campaign the merchant intends to
+    // resume. It re-checks on the next tick after the resume.
+    if (typeof payload.questlineId === "string") {
+      const owner = await db.questline.findUnique({
+        where: { id: payload.questlineId },
+        select: { status: true },
+      });
+      if (owner?.status === "PAUSED") {
+        await db.job.update({
+          where: { id: job.id },
+          data: { status: "PENDING", attempts: { decrement: 1 }, runAt: new Date(Date.now() + 10 * 60_000) },
+        });
+        return true; // a tick was still spent; let the loop pull the next job
+      }
+    }
+
     await runJob(job.type, job.shopId, payload);
 
     // Terminal write, guarded: while we were rendering, orphan-reclaim may have
