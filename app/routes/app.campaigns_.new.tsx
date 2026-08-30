@@ -131,8 +131,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // questline's schedule.platforms carries the full target list and
   // postDueSlots fans each drop out to all of them.
   const crossFee = Math.max(0, platforms.length - 1) * CROSS_POST_FEE;
+  // Remembered so the refund below goes back where it came from. Without it,
+  // purchased tokens return as monthly allowance and expire at the next period
+  // roll — the merchant paid cash for those.
+  let crossFromExtra = 0;
   if (crossFee > 0) {
-    try { await spendTokens(shop.id, crossFee); }
+    try { crossFromExtra = (await spendTokens(shop.id, crossFee)).fromExtra; }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for cross-posting." }); }
   }
   const r = await acceptQuestline({
@@ -154,7 +158,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     platforms,
   });
   if (!r.ok) {
-    if (crossFee > 0) { try { await refundTokens(shop.id, crossFee); } catch { /* non-fatal */ } }
+    if (crossFee > 0) { try { await refundTokens(shop.id, crossFee, crossFromExtra); } catch { /* non-fatal */ } }
     return json({ error: r.error });
   }
   return redirect("/app/campaigns");

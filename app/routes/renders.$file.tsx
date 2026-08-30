@@ -36,7 +36,23 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       if (obj) {
         try {
           fs.mkdirSync(path.dirname(filePath), { recursive: true });
-          fs.writeFileSync(filePath, obj.buf);
+          // Write to a neighbour and rename, because a plain write is not
+          // atomic. A deploy or an OOM part-way through leaves a TRUNCATED
+          // file at filePath — and everything downstream then treats it as
+          // real: existsSync is true so this rehydrate never runs again, and
+          // the route serves the broken bytes with Cache-Control immutable.
+          // A merchant's Kept ad would be permanently half an image.
+          //
+          // rename(2) within the same directory is atomic, so a reader sees
+          // either no file or the whole file, never part of one.
+          const tmpPath = `${filePath}.rehydrating-${process.pid}-${Date.now()}`;
+          try {
+            fs.writeFileSync(tmpPath, obj.buf);
+            fs.renameSync(tmpPath, filePath);
+          } catch (err) {
+            try { fs.rmSync(tmpPath, { force: true }); } catch { /* nothing to clean */ }
+            throw err;
+          }
         } catch (e) {
           // If we can't write locally (disk full), still serve from memory.
           console.error("[renders] rehydrate write failed:", e instanceof Error ? e.message : e);
