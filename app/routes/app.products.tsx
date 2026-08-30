@@ -146,8 +146,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           const a2 = await unlockAchievement(shop.id, "BATCH_MASTER");
           if (a2) newAch.push(a2);
         }
-        xpRes = await awardXp(shop.id, XP_EVENTS.applyListing * ok);
-        if (xpRes?.leveledUp) newAch.push(...(await checkLevelAchievements(shop.id, xpRes.level)));
+        // NO XP HERE. Applying already-generated copy to Shopify costs us
+        // nothing and can be repeated on the same products forever — and XP
+        // is not cosmetic: awardXp levels the shop up and every level pays
+        // tokensExtra, which buys real renders. Pressing "Apply all" on the
+        // same twelve listings in a loop therefore minted spendable tokens out
+        // of nothing, all the way up the level ladder.
+        //
+        // The codebase already states the rule this broke — onTokensSpent is
+        // commented "spending tokens earns XP (farm-proof - they paid)". The
+        // merchant earns XP when they GENERATE the copy, which is charged.
+        // The achievements above still fire, and shopAchievement is one-shot
+        // per key, so recognition survives without the mint.
       } catch { /* progression is never fatal */ }
     }
     return json({ appliedAll: ok, appliedTotal: batch.length, applyError: failed.length ? `${failed.length} failed: ${failed[0]}` : null, xpRes, newAch });

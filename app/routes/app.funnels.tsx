@@ -19,6 +19,8 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
+import { refundTokens, spendTokens } from "../lib/tokens.server";
+import { TOKEN_COST } from "../lib/plan-config";
 import { generateLandingContent, slugify } from "../lib/landing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -58,7 +60,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({
     where: { domain: session.shop },
-    include: { brandProfile: true },
+    include: { brandProfile: true, activePlan: true },
   });
   if (!shop) return json({ error: "Shop not found" });
   const form = await request.formData();
@@ -69,6 +71,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const productName = (form.get("productName") as string)?.trim();
     const goal = (form.get("goal") as string) || "BUY";
     if (!productName) return json({ error: "Pick a product or type an offer." });
+
+    // TOKEN_COST.landing has been 10 since it was written and was never taken
+    // anywhere. This action ran an Anthropic generation and PUBLISHED a public
+    // page, for free, unlimited, without even requiring a plan.
+    if (!shop.activePlan?.active) return json({ error: "Pick a plan first — landing pages run on tokens." });
+    let landingFromExtra = 0;
+    try {
+      landingFromExtra = (await spendTokens(shop.id, TOKEN_COST.landing)).fromExtra;
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : "Not enough tokens for a landing page." });
+    }
+
     try {
       const content = await generateLandingContent(shop.brandProfile, productName, goal);
       await db.landingPage.create({
@@ -84,6 +98,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       return json({ ok: true });
     } catch (e) {
+      // Nothing was produced, so nothing is owed — back into the bucket it came
+      // out of.
+      await refundTokens(shop.id, TOKEN_COST.landing, landingFromExtra).catch(() => { /* non-fatal */ });
       return json({ error: e instanceof Error ? e.message : String(e) });
     }
   }
