@@ -200,7 +200,11 @@ model Questline {
   objectivesJson  String // [{key,label,type,target,done}]
   scheduleJson    String    @default("{}") // {slots:[{idx,day,date,time,type,spot,productTitle,productImageUrl,status}],weeksAwarded:[]}
   durationDays    Int       @default(30) // monthly segment
-  tokenCost       Int       @default(0) // charged upfront on accept
+  tokenCost       Int       @default(0) // total charged for REFUNDABLE (still-scheduled) content
+  // How much of tokenCost came out of the purchased, non-expiring bucket.
+  // Without it an abandon refunds everything into the monthly allowance, where
+  // tokens the merchant paid cash for quietly expire at the next period roll.
+  tokenFromExtra  Int       @default(0)
   xpReward        Int       @default(0) // dropped on completion
   progress        Int       @default(0) // 0-100
   createdAt       DateTime  @default(now())

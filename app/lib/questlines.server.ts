@@ -135,8 +135,12 @@ export async function acceptQuestline(params: {
   const cost = excluded.length
     ? questlineCostFor({ ...def, objectives: usable }, shop.activePlan.type)
     : questlineCostFor(def, shop.activePlan.type); // top-tier price break applies here
+  let acceptFromExtra = 0;
   try {
-    await spendTokens(params.shopId, cost); // the whole month, reserved upfront
+    // fromExtra is kept because a refund has to go back into the bucket it
+    // came out of. Without it, purchased tokens return as monthly allowance
+    // and expire at the next period roll — the merchant paid cash for those.
+    acceptFromExtra = (await spendTokens(params.shopId, cost)).fromExtra; // the whole month, reserved upfront
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
   }
@@ -162,6 +166,7 @@ export async function acceptQuestline(params: {
       scheduleJson: JSON.stringify(schedule),
       durationDays: QUEST_DURATION_DAYS,
       tokenCost: cost,
+      tokenFromExtra: acceptFromExtra,
       xpReward: def.xpReward,
       progress: 0,
     },
@@ -278,11 +283,21 @@ export async function addDrop(
   if (day < dayOf || day > duration) return { ok: false, error: "Pick a day that's still ahead on this campaign." };
 
   const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+  let addedFromExtra = 0;
   try {
-    await spendTokens(shopId, cost);
+    addedFromExtra = (await spendTokens(shopId, cost)).fromExtra;
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
   }
+  // A drop added after accept is charged separately and starts SCHEDULED, so
+  // it is refundable — but tokenCost only ever held the ACCEPT price, and
+  // abandon caps the refund at tokenCost. Every later drop was therefore paid
+  // for and silently kept on abandon. tokenCost is now the running total of
+  // everything charged for content that has not been generated yet.
+  await db.questline.update({
+    where: { id: q.id },
+    data: { tokenCost: { increment: cost }, tokenFromExtra: { increment: addedFromExtra } },
+  });
 
   const schedule = parseSchedule(q.scheduleJson);
   const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(q.objectivesJson);
@@ -373,8 +388,9 @@ export async function addManualDrop(
   if (!shop) return { ok: false, error: "Shop not found." };
 
   const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+  let oneOffFromExtra = 0;
   try {
-    await spendTokens(shopId, cost);
+    oneOffFromExtra = (await spendTokens(shopId, cost)).fromExtra;
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
   }
@@ -387,7 +403,7 @@ export async function addManualDrop(
         avatarId: shop.brandAvatarId, avatarVariant: shop.brandAvatarVariant ?? 0,
         reviewMode: "REVIEW_FIRST", productTitle: "", productImageUrl: null,
         objectivesJson: "[]", scheduleJson: JSON.stringify({ slots: [], weeksAwarded: [] }),
-        durationDays: 3650, tokenCost: 0, xpReward: 0, progress: 0,
+        durationDays: 3650, tokenCost: cost, tokenFromExtra: oneOffFromExtra, xpReward: 0, progress: 0,
       },
     });
   }
@@ -660,7 +676,12 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
   if (q.tokenCost > 0) refund = Math.min(refund, q.tokenCost);
 
   if (refund > 0) {
-    try { await refundTokens(shopId, refund); } catch (e) { console.error("[questline] refund failed:", e); refund = 0; }
+    try {
+      // Back into the bucket it came out of. Passing no fromExtra credited
+      // the whole refund to the monthly allowance, so tokens the merchant had
+      // BOUGHT came back as allowance and expired at the next period roll.
+      await refundTokens(shopId, refund, Math.min(refund, q.tokenFromExtra));
+    } catch (e) { console.error("[questline] refund failed:", e); refund = 0; }
   }
   await db.questline.delete({ where: { id: q.id } });
   return { ok: true, refunded: refund };
