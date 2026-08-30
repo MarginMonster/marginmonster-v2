@@ -239,11 +239,22 @@ export function buildPostTitle(
 }
 
 // Free-trial output carries a subtle credit (the viral watermark); paying
-// customers never get branded. Trial ≈ the first 7 days after activation.
+// customers never get branded.
+//
+// This used to measure the trial as "within 7.5 days of periodStart" — but
+// periodStart is the BILLING PERIOD marker, and refreshPeriod resets it every
+// 30 days when the monthly allowance rolls over. So the window reopened every
+// month: a merchant paying $69 got "Made with EasyMode" stamped on every post
+// for the first week of each billing cycle, forever. Paying to remove the
+// watermark and then watching it come back is the kind of thing that ends a
+// subscription.
+//
+// trialEndsAt is the actual trial window, written once at first activation
+// and never rolled — the same column planTrialing() reads.
 export const TRIAL_CREDIT = "✨ Made with EasyMode";
-export function trialCredit(plan: { periodStart?: Date | string | null } | null | undefined): string | undefined {
-  if (!plan?.periodStart) return undefined;
-  const start = new Date(plan.periodStart).getTime();
-  if (!Number.isFinite(start)) return undefined;
-  return Date.now() - start < 7.5 * 86_400_000 ? TRIAL_CREDIT : undefined;
+export function trialCredit(plan: { trialEndsAt?: Date | string | null } | null | undefined): string | undefined {
+  if (!plan?.trialEndsAt) return undefined;
+  const ends = new Date(plan.trialEndsAt).getTime();
+  if (!Number.isFinite(ends)) return undefined;
+  return ends > Date.now() ? TRIAL_CREDIT : undefined;
 }

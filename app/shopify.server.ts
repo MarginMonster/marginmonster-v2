@@ -134,11 +134,16 @@ const shopify = shopifyApp({
               payload: JSON.stringify({ shop: session.shop }),
             },
           });
-        } else if (existing.accessToken !== session.accessToken) {
-          await db.shop.update({
-            where: { domain: session.shop },
-            data: { accessToken: session.accessToken },
-          });
+        } else {
+          // Reinstall: refresh the grant and clear the uninstall marker. The
+          // row was deliberately kept on uninstall, so the merchant's wallet,
+          // Archive and brand profile are all still here waiting for them.
+          const patch: { accessToken?: string; uninstalledAt?: null } = {};
+          if (existing.accessToken !== session.accessToken) patch.accessToken = session.accessToken;
+          if (existing.uninstalledAt) patch.uninstalledAt = null;
+          if (Object.keys(patch).length) {
+            await db.shop.update({ where: { domain: session.shop }, data: patch });
+          }
         }
       } catch (e) {
         console.error("[afterAuth] non-fatal setup error:", e);

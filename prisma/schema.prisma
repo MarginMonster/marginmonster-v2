@@ -110,6 +110,13 @@ model Shop {
   referredBy         String? // referralCode of the shop that referred this one
   referralCreditAt   DateTime? // when we granted the referrer's reward
   lastDigestAt       DateTime? // last monthly "here's what we made you" digest
+  /// Set when Shopify reports the app was uninstalled, cleared on reinstall.
+  /// The row itself is KEPT: uninstall used to hard-delete the Shop, which
+  /// cascaded through eighteen relations and destroyed purchased tokens and
+  /// the whole Archive. Shopify's mandatory shop/redact fires ~48h later and
+  /// is the correct place for erasure; until then a reinstall must restore
+  /// everything the merchant paid for.
+  uninstalledAt      DateTime?
   contactEmail       String? // store's own contact email (for the digest)
 
   brandProfile       BrandProfile?

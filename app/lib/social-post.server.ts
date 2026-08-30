@@ -115,7 +115,7 @@ export async function postDueSlots(): Promise<void> {
     const shopIds = [...new Set(active.map((q) => q.shopId))];
     const shops = await db.shop.findMany({
       where: { id: { in: shopIds } },
-      select: { id: true, domain: true, socialProfileKey: true, socialsJson: true, activePlan: { select: { periodStart: true } } },
+      select: { id: true, domain: true, socialProfileKey: true, socialsJson: true, activePlan: { select: { trialEndsAt: true } } },
     });
     const { linkedFromCache } = await import("./social-provider.server");
     const { trialCredit } = await import("./social-caption.server");

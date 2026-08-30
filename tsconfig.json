@@ -7,6 +7,10 @@
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "types": ["@remix-run/node", "vite/client"],
+    // post-title.ts carries an explicit .ts extension so node --test can load
+    // it directly (see tests/post-title.test.ts). Vite resolves it natively and
+    // tsc only ever runs here with --noEmit, which is what this flag requires.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",

@@ -661,13 +661,10 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q) return { ok: false, refunded: 0 };
   const schedule = parseSchedule(q.scheduleJson);
-  let refund = 0;
-  for (const s of schedule.slots) {
-    if (s.status === "SCHEDULED") {
-      refund += s.type === "video" ? TOKEN_COST.video : s.type === "image" ? TOKEN_COST.image : s.type === "blog" ? TOKEN_COST.blog : 0;
-    }
-  }
-  // Cancel unstarted jobs for this quest
+
+  // Cancel unstarted jobs for this quest. This runs BEFORE the refund is
+  // priced, so anything the worker claims in the meantime is caught by the
+  // claimed-slot query below rather than slipping between the two.
   try {
     const jobs = await db.job.findMany({ where: { shopId, status: "PENDING", payload: { contains: questlineId } } });
     for (const j of jobs) {
@@ -678,6 +675,47 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
     }
   } catch (e) {
     console.error("[questline] abandon job cleanup failed (non-fatal):", e);
+  }
+
+  // WORK THE WORKER HAS ALREADY STARTED IS NOT REFUNDABLE.
+  //
+  // A slot only leaves "SCHEDULED" when its job REPORTS BACK
+  // (onQuestlineObjectiveDone writes READY or FAILED). The scheduled drip
+  // never marks it FORGING on the way in — only the two merchant-driven
+  // paths, generateSlotEarly and retrySlot, do that. So for the whole
+  // several-minute life of a video render the slot still reads SCHEDULED,
+  // and this refund used to pay it back in full. The job is IN_PROGRESS by
+  // then, so the cleanup above cannot cancel it either: the render finishes,
+  // the asset lands in the Archive, and the tokens are already back in the
+  // merchant's wallet. Accept a questline, wait for a video to start,
+  // abandon — a free render, repeatable, at our provider cost every time.
+  //
+  // The provider has been paid the moment the job is claimed, so a claimed
+  // slot is spent money whatever the slot's own status says.
+  const claimed = new Set<number>();
+  try {
+    const started = await db.job.findMany({
+      where: { shopId, status: { in: ["IN_PROGRESS", "COMPLETED"] }, payload: { contains: questlineId } },
+      select: { payload: true },
+    });
+    for (const j of started) {
+      try {
+        const p = JSON.parse(j.payload);
+        if (p.questlineId === questlineId && typeof p.slotIdx === "number") claimed.add(p.slotIdx);
+      } catch { /* skip */ }
+    }
+  } catch (e) {
+    // Cannot tell what has started. Refunding blind is the expensive
+    // mistake, so treat every slot as claimed and refund nothing.
+    console.error("[questline] abandon could not read in-flight jobs — refunding nothing:", e);
+    for (const s of schedule.slots) claimed.add(s.idx);
+  }
+
+  let refund = 0;
+  for (const s of schedule.slots) {
+    if (s.status === "SCHEDULED" && !claimed.has(s.idx)) {
+      refund += s.type === "video" ? TOKEN_COST.video : s.type === "image" ? TOKEN_COST.image : s.type === "blog" ? TOKEN_COST.blog : 0;
+    }
   }
   // Never refund more than was actually charged. The loop above re-prices the
   // unspent slots from the CURRENT TOKEN_COST table, but accept() charged
