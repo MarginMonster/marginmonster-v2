@@ -10,6 +10,8 @@ import { Link, useLoaderData, useFetcher } from "@remix-run/react";
 import { Page, Layout, Card, Banner, Button } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
+import { refundTokens, spendTokens } from "../lib/tokens.server";
+import { TOKEN_COST } from "../lib/plan-config";
 import { emailEnabled } from "../lib/email-provider.server";
 import { writeMarketingEmail } from "../lib/email-writer.server";
 import { EMAIL_KINDS, type EmailKind } from "../lib/email-kinds";
@@ -64,8 +66,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const form = await request.formData();
   const kind = (form.get("kind") as EmailKind) || "broadcast";
-  const productTitle = ((form.get("productTitle") as string) || "").trim() || undefined;
-  const topic = ((form.get("topic") as string) || "").trim() || undefined;
+  // Bounded before they reach a prompt. Both were trimmed but not capped, so
+  // a long paste inflated every call — and the call cost nothing, so there was
+  // no ceiling anywhere on how much could be spent this way.
+  const productTitle = ((form.get("productTitle") as string) || "").trim().slice(0, 200) || undefined;
+  const topic = ((form.get("topic") as string) || "").trim().slice(0, 300) || undefined;
+
+  // The guard above already tells the merchant email drafting "rolls with
+  // your plan"; nothing was ever taken. Charged before the call, refunded if
+  // the writer throws, so a failed draft is never billed.
+  let emailFromExtra = 0;
+  try {
+    emailFromExtra = (await spendTokens(shop.id, TOKEN_COST.email)).fromExtra;
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : "Not enough tokens to draft an email." });
+  }
+
   try {
     const email = await writeMarketingEmail(shop.brandProfile, {
       kind,
@@ -75,6 +91,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     return json({ ok: true, email });
   } catch (e) {
+    // Nothing was produced, so nothing is owed.
+    await refundTokens(shop.id, TOKEN_COST.email, emailFromExtra).catch(() => { /* non-fatal */ });
     return json({ error: e instanceof Error ? e.message : "Couldn't write the email." });
   }
 };

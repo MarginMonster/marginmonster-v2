@@ -187,6 +187,9 @@ export const TOKEN_COST = {
   // It used to cost nothing at all while the UI said "the forge runs on
   // tokens", which made it the cheapest way to spend our money.
   avatarForge: 20,
+  // A drafted marketing email. Cheap next to a render, but it is still an
+  // Anthropic call and it was free and unlimited before this.
+  email: 3,
 } as const;
 export type TokenAction = keyof typeof TOKEN_COST;
 
@@ -200,6 +203,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   video: "Product video",
   boost: "Ad boost",
   avatarForge: "Custom presenter",
+  email: "Marketing email",
 };
 
 // Top-up packs — one currency, spend on anything YOUR TIER UNLOCKS. Priced
