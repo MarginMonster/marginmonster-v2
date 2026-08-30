@@ -8,6 +8,26 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import type { Account, Shop, Plan, BrandProfile } from "@prisma/client";
 
+/** The key every session cookie is signed with.
+ *
+ *  There used to be a third fallback here: the literal string "em-dev-secret".
+ *  A deploy missing both real secrets would have signed sessions with a value
+ *  written in the source — anyone could mint a cookie for any accountId and be
+ *  logged in as that merchant. Production has SHOPIFY_API_SECRET set, so this
+ *  was latent rather than live, but a silent fallback to a published constant
+ *  is not something to leave lying in an auth path. Refuse to boot instead. */
+function sessionSecret(): string {
+  const real = process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET;
+  if (real) return real;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Refusing to start: neither SESSION_SECRET nor SHOPIFY_API_SECRET is set, so web session cookies " +
+        "would be signed with a key that is published in the source. Set SESSION_SECRET in the environment."
+    );
+  }
+  return "em-dev-secret"; // local development only — never reached in production
+}
+
 const storage = createCookieSessionStorage({
   cookie: {
     name: "em_web",
@@ -15,23 +35,40 @@ const storage = createCookieSessionStorage({
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    secrets: [process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET || "em-dev-secret"],
+    secrets: [sessionSecret()],
     maxAge: 60 * 60 * 24 * 30,
   },
 });
 
 // scrypt (node built-in) — no native deps to break the Docker build.
-export function hashPassword(pw: string): string {
+//
+// ASYNC, not scryptSync: this process also runs the job worker in-process, and
+// the sync variant parks the entire event loop for ~68ms on every login and
+// signup — every other merchant's request and every in-flight render stalls
+// behind someone typing a password.
+const scrypt = (pw: string, salt: string): Promise<Buffer> =>
+  new Promise((resolve, reject) =>
+    crypto.scrypt(pw, salt, 64, (err, key) => (err ? reject(err) : resolve(key)))
+  );
+
+export async function hashPassword(pw: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString("hex");
-  return `${salt}:${crypto.scryptSync(pw, salt, 64).toString("hex")}`;
+  return `${salt}:${(await scrypt(pw, salt)).toString("hex")}`;
 }
-export function verifyPassword(pw: string, stored: string): boolean {
+
+export async function verifyPassword(pw: string, stored: string): Promise<boolean> {
   const [salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
-  const test = crypto.scryptSync(pw, salt, 64);
+  const test = await scrypt(pw, salt);
   const real = Buffer.from(hash, "hex");
   return test.length === real.length && crypto.timingSafeEqual(test, real);
 }
+
+/** A throwaway hash to burn on a login for an email that doesn't exist.
+ *  Without it, "no such account" returned in ~0ms while a real account took
+ *  ~68ms — a timing oracle that let anyone enumerate which emails are
+ *  registered. Same work, same shape, result discarded. */
+const DUMMY_HASH = `${"0".repeat(32)}:${"0".repeat(128)}`;
 
 export type WebIdentity = {
   account: Account;
@@ -43,20 +80,38 @@ export type WebIdentity = {
 export async function createWebAccount(email: string, password: string, name?: string, contentLang?: string): Promise<Account> {
   const existing = await db.account.findUnique({ where: { email } });
   if (existing) throw new Error("An account with that email already exists — log in instead.");
-  const account = await db.account.create({
-    data: { email, passwordHash: hashPassword(password), name: name || null },
-  });
+
+  // Do the slow, failable work BEFORE opening the transaction.
+  const passwordHash = await hashPassword(password);
   const { normalizeContentLang } = await import("./content-lang");
-  const shop = await db.shop.create({
-    data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: normalizeContentLang(contentLang) },
+  const lang = normalizeContentLang(contentLang);
+
+  // ALL THREE OR NONE. These were three bare awaits: if the shop or the
+  // connection failed, the Account survived on its own — and an account with no
+  // WEB connection is unusable. getWebIdentity returns null for it, so every
+  // page bounces to /web/login, logging in bounces straight back, and signing
+  // up again is refused because the email is taken. A permanently locked-out
+  // user, created by one transient database error, with no way back.
+  return db.$transaction(async (tx) => {
+    const account = await tx.account.create({
+      data: { email, passwordHash, name: name || null },
+    });
+    const shop = await tx.shop.create({
+      data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: lang },
+    });
+    await tx.connection.create({ data: { accountId: account.id, kind: "web", externalId: shop.id } });
+    return account;
   });
-  await db.connection.create({ data: { accountId: account.id, kind: "web", externalId: shop.id } });
-  return account;
 }
 
 export async function loginWebAccount(email: string, password: string): Promise<Account | null> {
   const account = await db.account.findUnique({ where: { email } });
-  if (!account?.passwordHash || !verifyPassword(password, account.passwordHash)) return null;
+  // Always do the hashing work, even when there is no such account. Returning
+  // early made a miss answer in ~0ms and a hit in ~68ms, which is enough to
+  // enumerate exactly which emails have accounts here.
+  const stored = account?.passwordHash || DUMMY_HASH;
+  const ok = await verifyPassword(password, stored);
+  if (!account?.passwordHash || !ok) return null;
   return account;
 }
 
