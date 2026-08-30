@@ -89,7 +89,15 @@ export async function submitCompose(
   // Product-integrity guard — the #1 compose failure is the product getting
   // warped/restyled, and the #2 is it getting MINIATURIZED (a snowboard
   // shrunk into a hand-held tube). Lock identity AND true real-world scale.
-  const sizing = scaleHint ? ` ${scaleHint}` : "";
+  // SCALE TALK IS ABOUT HOLDING, SO IT MUST NOT REACH THE WEAR PROMPT.
+  //
+  // scaleHint describes how the item sits in a HAND — "about the width of the
+  // presenter's chest, too big for one hand. It is held with BOTH hands."
+  // Concatenated into the wear prompt, that asked for a garment worn on the
+  // body AND gripped in both hands at the same time, so the presenter clutched
+  // the shirt up to the camera instead of modelling it, or wore one copy while
+  // holding a second.
+  const sizing = scaleHint && mode !== "wear" ? ` ${scaleHint}` : "";
   // Storefront photos routinely carry the shop's OWN marketing text and
   // watermark burned into the background ("CASE X12", "20 Booster Boxes", a
   // logo badge in the corner). The composer reproduces them faithfully, so
@@ -149,7 +157,7 @@ export async function submitCompose(
     : plan?.gripDetail || plan?.sizeAnchor
       ? `Held ${plan?.gripDetail || "naturally"}${plan?.sizeAnchor ? ` — ${plan.sizeAnchor}` : ""}. Product facing the camera and clearly visible, below the chin so their face stays visible. `
       : `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. `;
-  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis: a hand-sized item stays small in the hand.${sizing}`;
+  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis${mode === "wear" ? ", fitting them the way the real garment would" : ": a hand-sized item stays small in the hand"}.${sizing}`;
   // RELIGHT, don't paste. The reference is a white-background pack shot lit
   // flat and evenly by a studio. "Keep it exactly as it is" faithfully
   // preserves THAT lighting — so a flat, tack-sharp, shadowless object lands
@@ -173,7 +181,13 @@ export async function submitCompose(
   // opposite of.
   const persona = continuity ? ` ${continuity.trim()}` : "";
   const camera = ` Shot by a second person standing a couple of steps back, camera at chest height: both of the subject's arms are free and visible, neither one reaching toward the lens.`;
-  const relight = ` The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
+  // The same idea, told in the right anatomy for each mode. The hold version
+  // talks about hands and fingers, which for a WORN garment pulled the item
+  // back into the presenter's grip — the relight clause was quietly arguing
+  // with the word "wearing".
+  const relight = mode === "wear"
+    ? ` The garment is really being worn, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — falling and creasing naturally over their shoulders and torso with soft shadow in the folds, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`
+    : ` The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
   // their top instead of being clutched on a hanger.

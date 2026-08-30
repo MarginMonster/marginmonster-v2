@@ -2699,9 +2699,30 @@ export async function generateImageAd(
     imageUrl = await fluxDevStill(usedPrompt, "service-outcome");
     genMeta.method = "lifestyle";
   } else if (hasProductImg) {
-    const wantBright = !stylePrompt || !/deliberately dark|noir|dark charcoal/i.test(stylePrompt);
+    // ONE LIGHTING BRIEF, NOT TWO.
+    //
+    // styleDesc fell back to BRIGHT_DEFAULT ("NOT dark, NOT moody, NOT a black
+    // background") whenever the merchant gave no direction, and the prompts
+    // below SEPARATELY append the brand profile's own imageStyle — which for a
+    // brand whose look is dark reads "dark moody". Both sentences went to the
+    // model in one prompt and it split the difference into murky grey.
+    //
+    // wantBright then made it worse: derived from stylePrompt alone, it was true
+    // whenever the merchant typed nothing, so qaFidelity FAILED the frame for
+    // being dark — punishing the model for obeying the brand profile we handed
+    // it in the same breath.
+    const brandStyle = typeof visual.imageStyle === "string" ? visual.imageStyle.trim() : "";
+    const brandWantsDark = /(dark|moody|noir|low.?key|black background)/i.test(brandStyle);
+    const wantBright = stylePrompt
+      ? !/deliberately dark|noir|dark charcoal/i.test(stylePrompt)
+      : !brandWantsDark;
+    // When the brand's own look becomes the lighting brief, do not also append
+    // it as a style note — saying it twice is how the contradiction started.
+    const styleTail = (!stylePrompt && brandWantsDark) || !brandStyle
+      ? "clean professional product photography"
+      : brandStyle;
     const mode: "backdrop" | "scene" = styleMode === "scene" || styleMode === "backdrop" ? styleMode : inferStyleMode(stylePrompt);
-    const styleDesc = stylePrompt || BRIGHT_DEFAULT;
+    const styleDesc = stylePrompt || (brandWantsDark ? brandStyle : BRIGHT_DEFAULT);
 
     // RUNG -1 — AD FORMAT: a genuinely different creative COMPOSITION
     // (callouts / review card / text convo / versus / before-after / offer /
@@ -2800,7 +2821,7 @@ export async function generateImageAd(
       try {
         const cutout = await removeBackground(productImageUrl!);
         if (cutout) {
-          const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area (clean surface, tabletop or seamless floor) across the lower third where a product will be placed, and clean uncluttered space across the top for a headline. ${visual.imageStyle || "clean professional product photography"}. Photorealistic, magazine-quality, soft believable ground shadow area, no text, no watermark.`;
+          const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area (clean surface, tabletop or seamless floor) across the lower third where a product will be placed, and clean uncluttered space across the top for a headline. ${styleTail}. Photorealistic, magazine-quality, soft believable ground shadow area, no text, no watermark.`;
           const bgUrl = await fluxDevStill(bgPrompt, "photo-true-backdrop");
           const fn = await compositeProductStill(bgUrl, cutout);
           if (fn) {
@@ -2817,7 +2838,7 @@ export async function generateImageAd(
 
     // RUNG 2 — SCENE: identity-strongest editor + vision QA with one retry.
     if (!localFileName && !imageUrl) {
-      usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail — including every printed code, serial and number, copied character for character — at its TRUE real-world scale, never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
+      usedPrompt = `Place this exact product, unchanged, as the hero of a premium advertising poster photograph. ${styleDesc}. ${direction}. ${styleTail}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Keep the product identical in shape, color, materials, logos and every detail — including every printed code, serial and number, copied character for character — at its TRUE real-world scale, never shrunk, never turned into a different object. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality commercial photography, sharp focus, no added text or watermark.`;
       const genOnce = async (): Promise<string> => {
         try {
           return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: [productImageUrl], aspect_ratio: "1:1", output_format: "jpg" });
