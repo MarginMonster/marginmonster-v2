@@ -32,7 +32,7 @@ async function publishContent(
   linked: string[],
   profileKey: string,
   item: Publishable
-): Promise<{ ok: boolean; pending?: string; urls?: Record<string, string> }> {
+): Promise<{ ok: boolean; pending?: string; urls?: Record<string, string>; posted?: string[]; failed?: string[] }> {
   if (item.type === "blog") return { ok: false, pending: "blog-not-social" };
   if (!item.assetId) return { ok: false, pending: "no-asset" };
   const { publishPost, socialProviderEnabled } = await import("./social-provider.server");
@@ -71,20 +71,28 @@ async function publishContent(
 
   // Each platform gets its own tailored caption + tag set, so we post
   // per-platform rather than one blanket call.
+  // Report per platform. This used to collapse to a single `anyOk`: one
+  // success out of three made the whole slot POSTED, and the two failures were
+  // discarded — never retried, never shown to the merchant, who believed the
+  // drop went out everywhere. `ok` now means EVERY targeted account took it;
+  // `posted` says which ones did, so a retry can skip them instead of
+  // publishing a duplicate to the account that already worked.
   const urls: Record<string, string> = {};
-  let anyOk = false;
+  const posted: string[] = [];
+  const failed: string[] = [];
   let lastErr: string | undefined;
   for (const p of platforms) {
     const title = buildPostTitle(captions[p], goUrl, fbText, item.credit);
     const res = await publishPost(profileKey, { title, mediaUrl, isVideo, platforms: [p] });
     if (res.ok) {
-      anyOk = true;
+      posted.push(p);
       if (res.urls) Object.assign(urls, res.urls);
     } else {
+      failed.push(p);
       lastErr = res.error;
     }
   }
-  return anyOk ? { ok: true, urls } : { ok: false, pending: lastErr };
+  return { ok: failed.length === 0 && posted.length > 0, urls, posted, failed, pending: lastErr };
 }
 
 let lastScan = 0;
@@ -163,19 +171,46 @@ export async function postDueSlots(): Promise<void> {
 
         if (!link?.profileKey || link.linked.length === 0) continue; // nothing linked yet
         // Social Media Plans scope a plan to specific accounts — post only there.
-        const targets = schedule.platforms?.length ? link.linked.filter((p) => schedule.platforms!.includes(p)) : link.linked;
-        if (targets.length === 0) continue;
+        const wanted = schedule.platforms?.length ? link.linked.filter((p) => schedule.platforms!.includes(p)) : link.linked;
+        // Never re-publish to an account this slot already reached. A partial
+        // success on a previous scan is remembered in postedTo precisely so the
+        // retry finishes the job instead of duplicating the part that worked.
+        const already = s.postedTo || [];
+        const targets = wanted.filter((p) => !already.includes(p));
+        if (wanted.length === 0) continue;
+        if (targets.length === 0) {
+          // Everything it was ever meant to reach is done — close the slot.
+          s.status = "POSTED";
+          changed = true;
+          if (!(await record())) break;
+          continue;
+        }
         const res = await publishContent(targets, link.profileKey, {
           shopId: q.shopId, questlineId: q.id, slotIdx: s.idx,
           type: s.type, productTitle: s.productTitle, topic: s.topic, assetId: s.assetId, credit: link.credit,
         });
-        if (res.ok) {
-          s.status = "POSTED";
-          if (res.urls && Object.keys(res.urls).length) s.postedUrls = res.urls;
+        // Bank whatever DID publish, whether or not the whole set succeeded.
+        if (res.posted?.length) {
+          s.postedTo = [...new Set([...already, ...res.posted])];
+          if (res.urls && Object.keys(res.urls).length) s.postedUrls = { ...(s.postedUrls || {}), ...res.urls };
           changed = true;
-          posted++;
-          if (!(await record())) break; // it is live; if we cannot write that down, stop.
+          posted += res.posted.length;
         }
+        // POSTED only once every account it was aimed at has taken it. A slot
+        // that reached TikTok but not Facebook stays READY so the next scan
+        // finishes Facebook — and, thanks to postedTo, does not touch TikTok
+        // again. Previously one success marked the slot done and the failures
+        // were thrown away silently.
+        if (wanted.every((p) => (s.postedTo || []).includes(p))) {
+          s.status = "POSTED";
+          changed = true;
+        } else if (res.failed?.length) {
+          console.warn(
+            `[social-post] slot ${q.id}#${s.idx}: published to ${(res.posted || []).join(", ") || "nothing"}, ` +
+              `still owed ${res.failed.join(", ")}${res.pending ? ` (${res.pending})` : ""} — will retry`
+          );
+        }
+        if (changed && !(await record())) break; // it is live; if we cannot write that down, stop.
       }
       // A campaign finishes when its LAST DROP POSTS, not when the last piece
       // rendered — and this scan is the only place that can know that. The

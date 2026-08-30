@@ -358,6 +358,11 @@ export type QuestSlot = {
   productUrl?: string | null; // storefront destination for this drop's go-link
   clicks?: number; // times the go-link was opened (our own attribution)
   postedUrls?: Record<string, string>; // live post URLs per platform
+  /** Platforms this slot has ALREADY been published to. A multi-platform drop
+   *  can succeed on one account and fail on another; without this the retry
+   *  re-posted the one that worked. Not every success returns a URL, so
+   *  completion cannot be inferred from postedUrls alone. */
+  postedTo?: string[];
 };
 
 export type QuestSchedule = { slots: QuestSlot[]; weeksAwarded: number[]; platforms?: string[] };
