@@ -48,7 +48,10 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     // Refund what was ACTUALLY charged (engine surcharges ride in chargedTokens).
     const amount = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
     try {
-      await refundTokens(job.shopId, amount);
+      // chargedFromExtra records which bucket the spend came out of, so the
+      // refund lands back where the money actually was.
+      const backToExtra = typeof p.chargedFromExtra === "number" ? p.chargedFromExtra : undefined;
+      await refundTokens(job.shopId, amount, backToExtra);
     } catch (e) {
       // The flags are written BEFORE the refund on purpose (see above) so a
       // second terminal failure can't mint tokens. But that made a failed

@@ -338,12 +338,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!shop.adAccounts.find((a) => a.platform === platform)) return json({ error: "Connect your ad account first — you set the budget, it spends from your account." });
     const asset = await db.asset.findFirst({ where: { id: assetId, shopId: shop.id } });
     if (!asset) return json({ error: "That piece is gone." });
-    try { await spendTokens(shop.id, BOOST_FEE); } catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for the boost fee." }); }
+    let boostFromExtra = 0;
+    try { boostFromExtra = (await spendTokens(shop.id, BOOST_FEE)).fromExtra; } catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for the boost fee." }); }
     await db.asset.update({ where: { id: assetId }, data: { status: "APPROVED" } });
     // prePaid/chargedTokens are what make refundPrepaidOnce give the fee back
     // if the launch burns through its retries. Without them the merchant paid
     // 25 tokens for a campaign that never existed.
-    await enqueueJob(shop.id, "LAUNCH_CAMPAIGN", { assetId, platform, weeklyBudgetCents: Math.round(budgetDaily * 7 * 100), prePaid: true, chargedTokens: BOOST_FEE });
+    await enqueueJob(shop.id, "LAUNCH_CAMPAIGN", { assetId, platform, weeklyBudgetCents: Math.round(budgetDaily * 7 * 100), prePaid: true, chargedTokens: BOOST_FEE, chargedFromExtra: boostFromExtra });
     return json({ boosted: platform });
   }
   if (intent === "attach") {

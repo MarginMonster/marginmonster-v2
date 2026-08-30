@@ -105,7 +105,7 @@ function assertTrialCap(plan: Plan, amount: number): void {
 
 /** Spend tokens for an action. Throws InsufficientTokensError if the wallet
  *  can't cover it. Deducts from the monthly allowance first, then top-up. */
-export async function chargeTokens(shopId: string, action: TokenAction): Promise<{ remaining: number; charged: number }> {
+export async function chargeTokens(shopId: string, action: TokenAction): Promise<{ remaining: number; charged: number; fromExtra: number }> {
   const cost = TOKEN_COST[action];
   let plan = await db.plan.findUnique({ where: { shopId } });
   if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
@@ -131,13 +131,13 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
   });
   // Arcade progression: spending tokens earns XP (farm-proof — they paid).
   await onTokensSpent(shopId, cost);
-  return { remaining: remaining - cost, charged: cost };
+  return { remaining: remaining - cost, charged: cost, fromExtra };
 }
 
 /** Spend a flat token amount (e.g. accepting a Questline up front). Throws if
  *  the wallet can't cover it. Same allowance-first, then top-up logic. */
-export async function spendTokens(shopId: string, amount: number): Promise<{ remaining: number }> {
-  if (amount <= 0) return { remaining: 0 };
+export async function spendTokens(shopId: string, amount: number): Promise<{ remaining: number; fromExtra: number }> {
+  if (amount <= 0) return { remaining: 0, fromExtra: 0 };
   let plan = await db.plan.findUnique({ where: { shopId } });
   if (!plan) throw new Error("No active plan. Choose a plan on the Plans page first.");
   if (!plan.active) throw new Error("Your subscription is paused — resubscribe on the Packages page to keep going.");
@@ -157,19 +157,48 @@ export async function spendTokens(shopId: string, amount: number): Promise<{ rem
     data: { tokensUsed: { increment: fromAllowance }, tokensExtra: { decrement: fromExtra } },
   });
   await onTokensSpent(shopId, amount);
-  return { remaining: remaining - amount };
+  return { remaining: remaining - amount, fromExtra };
 }
 
-/** Credit tokens back (e.g. abandoning a questline before its content was
- *  generated). Unwinds the monthly allowance first, overflow onto top-up. */
-export async function refundTokens(shopId: string, amount: number): Promise<void> {
+/** Credit tokens back — into the SAME buckets the spend came out of.
+ *
+ *  `fromExtra` is how much of the original spend was taken from the purchased
+ *  top-up. Pass it whenever it was recorded; the split is what makes a refund
+ *  honest, and guessing goes wrong in both directions:
+ *
+ *   - Guessing "allowance first" turns PURCHASED tokens into allowance tokens,
+ *     which expire at the next period roll. The merchant paid cash for those
+ *     and quietly loses them.
+ *   - Guessing "whatever the allowance can't absorb goes to top-up" mints
+ *     PERMANENT tokens out of an expiring allowance — spend from the allowance,
+ *     wait for the roll (which hands back a fresh full allowance anyway), then
+ *     refund, and the same tokens exist twice.
+ *
+ *  With no split recorded we unwind what we can against tokensUsed and credit
+ *  the remainder nowhere, because a period roll has already returned that
+ *  allowance. Dropping it is the conservative error: it never invents tokens,
+ *  and it is logged so the gap is visible rather than silent. */
+export async function refundTokens(shopId: string, amount: number, fromExtra?: number): Promise<void> {
   if (amount <= 0) return;
   const plan = await db.plan.findUnique({ where: { shopId } });
   if (!plan) return;
-  const toAllowance = Math.min(amount, plan.tokensUsed);
-  const toExtra = amount - toAllowance;
+
+  const toExtra = Math.max(0, Math.min(fromExtra ?? 0, amount));
+  const rest = amount - toExtra;
+  // Never decrement tokensUsed below zero — that would be allowance the current
+  // period never spent, i.e. tokens conjured from nothing.
+  const toAllowance = Math.min(rest, plan.tokensUsed);
+  const unattributed = rest - toAllowance;
+
   await db.plan.update({
     where: { id: plan.id },
     data: { tokensUsed: { decrement: toAllowance }, tokensExtra: { increment: toExtra } },
   });
+
+  if (unattributed > 0) {
+    console.warn(
+      `[tokens] ${shopId}: refunded ${toAllowance + toExtra} of ${amount} — ${unattributed} could not be ` +
+        `attributed (the allowance it was spent from has already rolled over). Record the spend split to close this.`
+    );
+  }
 }

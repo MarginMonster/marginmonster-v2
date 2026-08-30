@@ -315,7 +315,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // a ten-pack would empty most wallets on a single tap. Three is enough
       // to pick from without being a decision the merchant regrets.
       const n = burstCount(form, MAX_BURST.video);
-      await spendTokens(shop.id, each * n);
+      // Split the burst spend across its pieces so each job records the
+      // bucket ITS share came from — a burst can straddle allowance and
+      // top-up, and a single failed piece must refund only its own share.
+      const burstFromExtra = (await spendTokens(shop.id, each * n)).fromExtra;
+      const perPieceFromExtra = Math.floor(burstFromExtra / n);
       for (let i = 0; i < n; i++) {
         // Services: the presenter explains the offer to camera — nothing to hold.
         await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
@@ -327,7 +331,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           productSize: ((form.get("productSize") as string) || "").trim() || undefined,
           wearProduct: !!avatarId && wear && !service,
           serviceMode: service, scene,
-          videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, prePaid: true, initiator: "web",
+          videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra, prePaid: true, initiator: "web",
         }, burstRunAt(i));
       }
       return json({ ok: true, queued: "video", count: n });

@@ -247,10 +247,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!productImageUrl && !service) return json({ error: "Pick a product that has a photo — without one we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
     // One currency: video spends tokens like every other action (no separate
     // free-video quota). Campaigns and the Studio now bill identically.
-    try { await spendTokens(shop.id, charged); }
+    let chargedFromExtra = 0;
+    try { chargedFromExtra = (await spendTokens(shop.id, charged)).fromExtra; }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true, chargedFromExtra });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
