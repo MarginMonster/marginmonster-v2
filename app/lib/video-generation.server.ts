@@ -196,8 +196,26 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // BREAKOUT in motion: the still already composes the product bursting out of
   // a generic post card, so the motion brief only has to sell the DEPTH — the
   // product pushing further toward camera while the card holds still behind it.
-  const breakoutLook = `The product bursts OUT of a flat social-post card that sits behind it: the card stays static and flat while the product pushes further toward the camera in true 3D, its shadow sliding across the card as it emerges. Subtle parallax between the product, the card and the background, gentle float, premium product-commercial finish, vertical, no text overlay, no new lettering.`;
-  const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, confident slow camera push-in and orbit, premium big-brand energy, vertical, no text overlay.`;
+  // THE SEED FRAME IS THE MERCHANT'S PRODUCT PHOTO, AND NOTHING HERE EVER
+  // TOLD THE MODEL TO KEEP IT.
+  //
+  // The image pipeline has carried "must stay perfectly identical" for a long
+  // time. Every prompt in this file was silent on the subject, so the product
+  // was free to drift as the clip animated — and an image-to-video model given
+  // no instruction will happily restyle a label over 5 seconds.
+  //
+  // The "no text" half matters just as much. All three looks said "no text
+  // overlay" while the only lettering in frame is the merchant's own printed
+  // packaging, which reads as an instruction to get rid of it. That is the same
+  // pressure that was renumbering products in the image pipeline.
+  const productTruth =
+    " The product itself must stay EXACTLY as it appears in the source photograph:" +
+    " same shape, proportions, colours, materials, logos and packaging artwork, and every" +
+    " word, code and number printed on it unchanged and legible. Never redraw, restyle," +
+    " relabel, re-number or resize it. Add no text, caption or watermark of your own —" +
+    " the only lettering in frame is the product's own, exactly as photographed.";
+  const breakoutLook = `The product bursts OUT of a flat social-post card that sits behind it: the card stays static and flat while the product pushes further toward the camera in true 3D, its shadow sliding across the card as it emerges. Subtle parallax between the product, the card and the background, gentle float, premium product-commercial finish, vertical, photorealistic live-action footage.${productTruth}`;
+  const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, confident slow camera push-in and orbit, premium big-brand energy, vertical, photorealistic live-action footage, not an illustration or 3D render.${productTruth}`;
   const basePrompt =
     style === "AI_AVATAR" && avatar
       // This path has NO lip-sync (see VIDEO_MODEL note above), so a presenter
@@ -213,7 +231,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
           ? `${commercialLook} The product: ${productTitle}.`
           : params.serviceMode
           ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${productTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.`
-          : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`;
+          : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
   const direction = params.customPrompt?.trim();
   const context = productDescription?.trim()
     ? ` Product context: ${trimToWord(productDescription, 200)}.`
