@@ -180,11 +180,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {
       return json({ catalogError: e instanceof Error ? e.message : "That doesn't look like a web address." });
     }
-    const already = await db.job.count({
+    // A second submission usually means the merchant spotted a typo in the
+    // first one. This used to answer "queued!" and silently drop the new URL,
+    // so the wrong address kept importing, the corrected one never ran, and
+    // re-submitting did nothing until the bad crawl finished — with no hint
+    // anywhere that the address they were looking at was being ignored.
+    const running = await db.job.findMany({
       where: { shopId: shop.id, type: "IMPORT_CATALOG", status: { in: ["PENDING", "IN_PROGRESS"] } },
+      select: { id: true, status: true, payload: true },
+      orderBy: { createdAt: "desc" },
     });
-    if (already > 0) return json({ catalogQueued: true });
-    await enqueueJob(shop.id, "IMPORT_CATALOG", { storeUrl, cap: CATALOG_CAP });
+    const sameUrl = (p: string) => {
+      try { return ((JSON.parse(p) as { storeUrl?: string }).storeUrl || "") === storeUrl; } catch { return false; }
+    };
+    // Already importing this exact address — nothing to do.
+    if (running.some((j) => sameUrl(j.payload))) return json({ catalogQueued: true });
+
+    // Re-point anything still waiting: it has not started, so it can simply
+    // carry the corrected address instead.
+    const pending = running.filter((j) => j.status === "PENDING");
+    if (pending.length > 0) {
+      await db.job.updateMany({
+        where: { id: { in: pending.map((j) => j.id) }, status: "PENDING" },
+        data: { payload: JSON.stringify({ storeUrl, cap: CATALOG_CAP }) },
+      });
+    } else {
+      // Only an in-flight crawl of the old address exists. It cannot be
+      // redirected mid-run, so queue the correction behind it — the worker is
+      // serial, and the good import lands second and wins.
+      await enqueueJob(shop.id, "IMPORT_CATALOG", { storeUrl, cap: CATALOG_CAP });
+    }
     await db.shop.update({ where: { id: shop.id }, data: { storeUrl } }).catch(() => { /* column is optional */ });
     return json({ catalogQueued: true });
   }
