@@ -23,7 +23,7 @@ import ffprobeStatic from "ffprobe-static";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
-import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar } from "./fal-video.server";
+import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRenderFailed } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { hasCJK, langDirective } from "./content-lang";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
@@ -1056,17 +1056,51 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // skipped next time round: a job that already burned 10 minutes proving fal
     // can't render it must not re-buy that proof on every retry.
     if (!talkingUrl && falEnabled() && !resume.falError && animSourceUrl && audioHostedUrl) {
+      let falHandle: Awaited<ReturnType<typeof submitAvatar>> | null = null;
       try {
         // checkpoint the queue id the instant it exists — BEFORE the 10-min
         // poll — so a restart re-attaches above instead of paying twice
         const h = await submitAvatar(animSourceUrl, audioHostedUrl);
+        falHandle = h;
         await ckpt({ ckFalRequestId: h.requestId, ckEngine: "heygen-fal" });
         talkingUrl = await pollAvatar(h);
         engine = "heygen-fal";
       } catch (e) {
         const msg = (e instanceof Error ? e.message : String(e)).slice(0, 180);
-        console.error(`[ugc] fal heygen failed, falling back: ${msg}`);
-        await ckpt({ ckFalError: msg, ckFalRequestId: "" });
+        // A RENDER THAT DIED AND A RENDER WE STOPPED WATCHING ARE NOT THE SAME.
+        //
+        // Both used to land here and both cleared ckFalRequestId — the only
+        // place the queue id was ever stored — and set ckFalError, which is a
+        // permanent kill-switch for fal on this job. So a poll that merely ran
+        // out of time threw away the handle to a live, ALREADY BILLED HeyGen
+        // render, immediately bought a second performance on omni-human, and
+        // made sure no later attempt could ever re-attach to the first. Two
+        // renders paid for, one delivered, every time HeyGen was slow.
+        const dead = e instanceof FalRenderFailed;
+        if (dead) {
+          console.error(`[ugc] fal heygen failed, falling back: ${msg}`);
+          await ckpt({ ckFalError: msg, ckFalRequestId: "" });
+        } else {
+          // Still rendering. Watch a little longer before paying for a second
+          // performance — HeyGen being slow is the common case, and buying omni
+          // now means two renders billed and one delivered.
+          if (falHandle) {
+            try {
+              talkingUrl = await pollAvatar(falHandle, 4 * 60_000);
+              engine = "heygen-fal";
+            } catch (again) {
+              console.warn(`[ugc] fal heygen still not done after a second window: ${(again instanceof Error ? again.message : String(again)).slice(0, 140)}`);
+            }
+          }
+          // Keep the handle either way, and do NOT set ckFalError — this attempt
+          // proved nothing about whether fal can do the job, and RE-ATTACH #3
+          // keys on the request id alone, so a retry can still collect the
+          // render we have already paid for.
+          if (!talkingUrl) {
+            console.warn(`[ugc] fal heygen still rendering, falling back for now (handle kept): ${msg}`);
+            await ckpt({ ckFalWaited: msg });
+          }
+        }
       }
     }
     for (let attempt = 0; attempt < 2 && !talkingUrl; attempt++) {

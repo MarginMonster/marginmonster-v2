@@ -162,28 +162,55 @@ export function falQueueHandleFor(requestId: string): FalQueueHandle {
 /** Wait on an already-submitted render (~10 min ceiling) and return the output
  *  video URL, or throw so the pipeline falls through to omni-human/kling. Safe
  *  to call on a re-attach: fal keeps the result for a completed request. */
-export async function pollAvatar(h: FalQueueHandle): Promise<string> {
+/** The render is genuinely DEAD — fal reported FAILED/ERROR, or handed back a
+ *  completed result with no video in it.
+ *
+ *  Everything else a poll can go wrong with — running out of time, a socket
+ *  hangup, an HTML error page — means only that WE STOPPED WATCHING. The
+ *  render is still going and has already been billed, so the two must not
+ *  look the same to the caller: one should fall back to another engine, the
+ *  other should keep its queue id and re-attach. */
+export class FalRenderFailed extends Error {}
+
+export async function pollAvatar(h: FalQueueHandle, maxMs = 10 * 60_000): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
-  for (let i = 0; i < 120; i++) {
+  const deadline = Date.now() + maxMs;
+  let unreadable = 0;
+  let completed = false;
+  while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
-    const s = await fetch(h.statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
-    if (!s.ok) continue;
-    const sj = (await s.json()) as { status?: string };
-    if (sj.status === "COMPLETED") break;
+    let sj: { status?: string } | null = null;
+    try {
+      const s = await fetch(h.statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      if (s.ok) sj = (await s.json()) as { status?: string };
+    } catch { /* transport blip — counted just below */ }
+    if (!sj) {
+      // A poll we could not READ is not a render that FAILED. The old code
+      // did `if (!s.ok) continue`, which also meant a bad poll on the last
+      // iteration skipped the timeout throw entirely and fell through to read
+      // an in-progress result. Only a run of unreadable polls counts as an
+      // outage, and one good poll resets it.
+      if (++unreadable >= 10) break;
+      continue;
+    }
+    unreadable = 0;
+    if (sj.status === "COMPLETED") { completed = true; break; }
     if (sj.status === "FAILED" || sj.status === "ERROR") {
       // pull the real failure detail so it lands in the checkpoint/logs
       const errBody = await fetch(h.responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } })
         .then((r) => r.text()).catch(() => "");
-      throw new Error(`fal ${sj.status}: ${errBody.slice(0, 200)}`);
+      throw new FalRenderFailed(`fal ${sj.status}: ${errBody.slice(0, 200)}`);
     }
-    if (i === 119) throw new Error("fal: poll timeout");
   }
+  // Out of time, or out of readable polls. Deliberately NOT a FalRenderFailed:
+  // the render is alive and paid for, and the caller must keep its handle.
+  if (!completed) throw new Error("fal: stopped watching — the render is still running");
 
   const res = await fetch(h.responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
   if (!res.ok) throw new Error(`fal result ${res.status}`);
   const rj = (await res.json()) as { video?: { url?: string } };
   const url = rj.video?.url;
-  if (!url) throw new Error("fal: no video url in result");
+  if (!url) throw new FalRenderFailed("fal: no video url in result");
   return url;
 }
 

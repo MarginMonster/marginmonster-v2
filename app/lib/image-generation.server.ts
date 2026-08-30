@@ -2577,7 +2577,21 @@ export async function generateImageAd(
             fs.writeFileSync(path.join(dir, fileName), buf);
             try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
 
-            if (freezeReason !== undefined && !cachedShot) {
+            // Write the frozen shot ONLY when something will record it.
+            //
+            // The file write and the mirror used to sit outside the !freshShot
+            // guard, so a burst wrote one shot-*.jpg per item and recorded none
+            // of them. Nothing references those files — deliberately, see the
+            // note below — and the purge only deletes filenames it finds in an
+            // asset's bodyJson, so nothing could ever remove them. A ten-item
+            // presenter burst leaked ten full-size stills to the renders disk,
+            // and to object storage, every time.
+            //
+            // shotLibraryEnabled() joins the condition for the same reason: the
+            // READ is gated on it but the write was not, so with the library
+            // switched off it still wrote files and rows that nothing would ever
+            // consult.
+            if (freezeReason !== undefined && !cachedShot && !freshShot && shotLibraryEnabled()) {
               // The library's copy must NOT be an asset file, for the same
               // reason: an asset file can be purged, and that would leave the
               // library pointing at nothing. Give the frozen shot its own
@@ -2589,7 +2603,10 @@ export async function generateImageAd(
               try { await mirrorRender(shotFile, buf); } catch { /* non-fatal */ }
               // Freeze the CLEAN composite — presenter stills ship untyped
               // now, and a frozen shot must stay reusable if that changes.
-              if (!freshShot) await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName: shotFile, gateReason: freezeReason });
+              // Order matters: bytes, then mirror, then the row. findPresenterShot
+              // deletes any row whose file is missing, so a row written first would
+              // destroy itself and burn a re-compose.
+              await savePresenterShot({ shopId, cacheKey: shotKey, avatarId, layout, fileName: shotFile, gateReason: freezeReason });
               artLog("image-ad", "presenter shot library: froze this gate-passed shot — future ads for this pair are instant");
             }
             localUrl = `/renders/${fileName}`;
