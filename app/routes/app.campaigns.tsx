@@ -9,6 +9,7 @@ import { parseSchedule } from "../lib/questlines";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { acceptQuestline, rescheduleSlot, abandonQuestline, swapQuestlineItem, addDrop, addManualDrop } from "../lib/questlines.server";
+import { TOKEN_COST } from "../lib/plan-config";
 
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
 const QUOTES = [
@@ -231,7 +232,11 @@ const GLYPH = { tt: TT, ig: IG, fb: FB } as const;
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 const TYPE_LABEL: Record<string, string> = { video: "Video", image: "Image", blog: "Blog" };
 const STATUS_LABEL: Record<string, string> = { SCHEDULED: "Scheduled", FORGING: "Creating", READY: "Ready", POSTED: "Posted", FAILED: "Retry needed" };
-const TYPE_COST: Record<string, number> = { video: 60, image: 5, blog: 10 };
+// Quote exactly what the server will charge. This was a hand-written table
+// that had drifted: it said a video drop cost 60 while addManualDrop and
+// addDrop both spend TOKEN_COST.video (150). The button promised one price and
+// the wallet lost two and a half times that, with nothing to warn the merchant.
+const TYPE_COST: Record<string, number> = { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog };
 
 function typeLines(day: { video: number; image: number; blog: number }): string[] {
   const out: string[] = [];
