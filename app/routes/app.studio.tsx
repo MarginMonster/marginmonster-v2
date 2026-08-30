@@ -234,7 +234,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
     const commercial = form.get("commercial") === "1";
     const breakout = form.get("breakout") === "1";
-    const charged = TOKEN_COST.video + engineSurcharge(videoEngine);
+    // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
+    // not use one: it goes through the lipsync chain (HeyGen/omni-human), so
+    // generateUgcAd never even receives videoEngine. Charging the Seedance or
+    // Veo surcharge on those was billing for an engine that never ran. The web
+    // Studio already guarded this; the embedded one did not.
+    const engineDrivesRender = !avatarId;
+    const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
+    const charged = TOKEN_COST.video + engineSurcharge(effectiveEngine);
     // Without a photo the engines invent a product from the title — generic AI
     // art the merchant paid for. Services legitimately have nothing to shoot.
     if (!productImageUrl && !service) return json({ error: "Pick a product that has a photo — without one we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
@@ -243,7 +250,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try { await spendTokens(shop.id, charged); }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine, commercial, breakout, chargedTokens: charged, prePaid: true });
+    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true });
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -535,7 +542,10 @@ export default function Studio() {
   // ?v must move when a style's tile version bumps, or browsers pin the old art
   const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=5`;
 
-  const engineFee = tab === "video" ? engineSurcharge(videoEngine) : 0;
+  // Mirror the server rule exactly, or the quote and the charge diverge:
+  // a presenter video ignores the engine picker, so it carries no surcharge.
+  const engineApplies = tab === "video" && !avatarId;
+  const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
   const costLabel = `${meta.cost + engineFee} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`;
 
   return (
