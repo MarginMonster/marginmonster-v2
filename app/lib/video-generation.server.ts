@@ -11,8 +11,14 @@ import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCr
 import fs from "node:fs";
 import path from "node:path";
 import { mirrorRender } from "./object-storage.server";
+import { checkpointUrlAlive } from "./cartoon-ad-pipeline.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
+
+/** The provider handed back nothing usable — an expired delivery link, or a
+ *  body too small to be a video. Distinct from "we could not write it to
+ *  disk", because that one still has bytes worth keeping. */
+class DeadRenderError extends Error {}
 
 /** Every finished video EasyMode ships is 720x1280.
  *
@@ -74,17 +80,24 @@ async function toVerticalFrame(buf: Buffer, dir: string, outPath: string): Promi
 /** Download a provider render onto our own disk (and durable object storage)
  *  and return the /renders/ URL we serve it from.
  *
- *  Returns the ORIGINAL url unchanged if anything goes wrong — the merchant has
- *  already paid at this point, so a link that may expire is still better than
- *  a failed job. The warning is deliberately loud: a spike here means videos
- *  are silently going stale again. */
+ *  Two different failures, two different answers. If we HAVE the bytes and only
+ *  the local step failed, the provider URL is returned — it expires in about an
+ *  hour, which is worse than durable storage but far better than failing a
+ *  render the merchant paid for. If the provider gave us nothing at all, that
+ *  URL is already dead, so returning it would mint a COMPLETED, fully-charged
+ *  asset pointing at a broken link no healer can repair. That throws instead,
+ *  and the queue retries or refunds. */
 async function persistRemoteVideo(url: string): Promise<string> {
   try {
     if (url.startsWith("/renders/")) return url; // already ours
     const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
-    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    // NOTHING CAME BACK means the provider link is already dead, and handing
+    // that same dead link to the caller creates a COMPLETED, fully-charged
+    // asset pointing at nothing — a broken player, a drop that can never post,
+    // no healer and no refund. Rethrown as fatal below rather than swallowed.
+    if (!res.ok) throw new DeadRenderError(`fetch ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 1024) throw new Error(`suspiciously small (${buf.length}B)`);
+    if (buf.length < 1024) throw new DeadRenderError(`suspiciously small (${buf.length}B)`);
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
@@ -98,6 +111,13 @@ async function persistRemoteVideo(url: string): Promise<string> {
     try { await mirrorRender(fileName, bytes); } catch { /* non-fatal — disk copy still serves */ }
     return `/renders/${fileName}`;
   } catch (e) {
+    // The provider gave us nothing — there is no deliverable to store, and
+    // pretending otherwise bills the merchant for a dead link. Let it out so
+    // the queue retries and, on the last attempt, refunds.
+    if (e instanceof DeadRenderError) throw e;
+    // We DID have bytes and only the local step failed (a full disk, a bad
+    // temp write). The provider URL still works for about an hour, which is
+    // worse than durable storage but far better than failing a paid render.
     console.warn(
       `[video] could not persist provider render — storing the expiring URL instead: ${e instanceof Error ? e.message : String(e)}`
     );
@@ -236,6 +256,19 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   if (params.resume?.predictionId) {
     try {
       videoUrl = await animatePoll(params.resume.predictionId, VIDEO_POLL_MS, "video(resumed)");
+      // A checkpoint outlives the thing it points at. Provider delivery links
+      // die after about an hour, and a retry can easily start later than that:
+      // a paused campaign defers its job indefinitely, and three attempts with
+      // a 25-minute stuck window already reach past it. The prediction still
+      // reports "succeeded" and hands back its stored output URL, so without a
+      // probe we would sail on and build an asset around a dead link.
+      if (videoUrl && !(await checkpointUrlAlive(videoUrl))) {
+        console.log("[video] resumed prediction output has expired — re-rendering");
+        videoUrl = null;
+        // Clear it first, or every remaining attempt re-attaches to the same
+        // corpse and fails the same way.
+        await ckpt({ ckVideoPredId: "" });
+      }
     } catch (e) {
       console.error("[video] resumed prediction unusable — starting a fresh one:", e instanceof Error ? e.message.slice(0, 200) : e);
     }
