@@ -476,7 +476,7 @@ model Subscriber {
   shopId    String
   shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   email     String
-  source    String   @default("popup") // popup | manual | import
+  source    String   @default("popup") // popup | manual | import | unsubscribe
   status    String   @default("subscribed") // subscribed | unsubscribed
   createdAt DateTime @default(now())
 

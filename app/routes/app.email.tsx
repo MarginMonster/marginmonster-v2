@@ -89,7 +89,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       topic,
       storeName: session.shop.replace(/\.myshopify\.com$/, ""),
     });
-    return json({ ok: true, email });
+    // ACTUALLY SAVE IT.
+    //
+    // The banner on this page promises "everything you draft is saved and ready
+    // to fire the day you go live". Nothing was saved: the draft came back in
+    // the JSON response and vanished on the next navigation. The AssetType enum
+    // has carried an unused EMAIL member the whole time, so where it belongs was
+    // never in doubt — the write was just missing.
+    //
+    // It matters more now that drafting costs tokens: without this the merchant
+    // pays, is told it is saved, and loses it by reloading the page.
+    try {
+      await db.asset.create({
+        data: {
+          shopId: shop.id,
+          type: "EMAIL",
+          status: "PENDING",
+          title: email.subject || `${kind} email`,
+          bodyJson: JSON.stringify({ subject: email.subject, preheader: email.preheader, html: email.html, kind }),
+          metaJson: JSON.stringify({ kind, productTitle: productTitle || null, topic: topic || null }),
+        },
+      });
+    } catch (e) {
+      // The merchant has the draft in front of them either way — do not fail the
+      // request over the filing, but do not claim it was filed.
+      console.error("[email] draft generated but could not be saved:", e instanceof Error ? e.message : e);
+      return json({ ok: true, email, saved: false });
+    }
+    return json({ ok: true, email, saved: true });
   } catch (e) {
     // Nothing was produced, so nothing is owed.
     await refundTokens(shop.id, TOKEN_COST.email, emailFromExtra).catch(() => { /* non-fatal */ });

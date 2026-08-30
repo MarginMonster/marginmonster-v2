@@ -32,6 +32,11 @@ export async function sendEmail(opts: {
   subject: string;
   html: string;
   replyTo?: string;
+  /** Populates List-Unsubscribe / List-Unsubscribe-Post so Gmail and Outlook
+   *  show their own one-click opt-out button. Bulk senders without these get
+   *  spam-foldered, and recipients hit "report spam" instead of unsubscribing,
+   *  which burns the sending domain for every merchant sharing it. */
+  unsubscribeUrl?: string;
 }): Promise<SendResult> {
   if (!emailEnabled()) {
     return { ok: false, error: "Email is not connected yet (EMAIL_API_KEY / EMAIL_FROM unset)." };
@@ -49,6 +54,14 @@ export async function sendEmail(opts: {
         subject: opts.subject,
         html: opts.html,
         ...(opts.replyTo ? { reply_to: opts.replyTo } : {}),
+        ...(opts.unsubscribeUrl
+          ? {
+              headers: {
+                "List-Unsubscribe": `<${opts.unsubscribeUrl}>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              },
+            }
+          : {}),
       }),
     });
     if (!r.ok) {
