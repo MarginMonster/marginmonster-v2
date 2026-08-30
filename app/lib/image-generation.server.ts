@@ -5,6 +5,7 @@ import ffmpegPath from "ffmpeg-static";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
+import { trimToWord } from "./text-trim";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
@@ -1648,13 +1649,22 @@ export function ensureBottlePreview(variant: string): void {
  * Copy per product from Claude, layout rendered by nano-banana AROUND the
  * real product photo, vision-QA'd for spelling + product fidelity. */
 
-function formatLayoutPrompt(key: string, c: Record<string, string>, hero?: string): string {
+function formatLayoutPrompt(
+  key: string,
+  c: Record<string, string>,
+  hero?: string,
+  /** The finished shape this frame is rendered at. Defaults to the square the
+   *  ad formats were designed for; the video keyframe path renders 9:16 and
+   *  used to inherit "square 1:1" here, telling the model to compose for one
+   *  shape while asking the renderer for another. */
+  shape = "square 1:1",
+): string {
   // Real merchant ads pass the product photo as image_input; self-forged
   // previews describe an EasyMode-branded hero product in text instead.
   const productClause = hero
     ? `The hero product is ${hero}. Any wordmark or label on it must read exactly "EASYMODE" — spelled E-A-S-Y-M-O-D-E in clean capital letters — and contain no other readable words.`
     : "The product from the provided image must stay perfectly identical — same shape, colors, label, logos, and every printed code, serial and number reproduced character for character, never redrawn, re-numbered or warped.";
-  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, square 1:1, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, and you must not INVENT any additional layout text, gibberish or filler anywhere. This rule is about the ad's own copy only: the words already printed on the product itself are part of the product and must be reproduced exactly as they appear in the photograph — every character, code, serial and number identical, never re-lettered, never re-numbered, never tidied up. Each string appears ONCE and reads as grammatical English — never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
+  const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, ${shape}, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, and you must not INVENT any additional layout text, gibberish or filler anywhere. This rule is about the ad's own copy only: the words already printed on the product itself are part of the product and must be reproduced exactly as they appear in the photograph — every character, code, serial and number identical, never re-lettered, never re-numbered, never tidied up. Each string appears ONCE, in the SAME LANGUAGE it is written in above — reproduce it exactly, never translate it, never transliterate it — and it must read as correct, grammatical text in that language: never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
   switch (key) {
     case "callout":
       return `${base} Layout: the product large in the center on a soft solid-color studio background that complements its palette. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
@@ -1779,7 +1789,7 @@ async function formatCopy(
       // The merchant is the ONLY source of a discount. Anything we invent is a
       // promise their shop never agreed to honour.
       merchantOffer
-        ? `The merchant IS running this promotion, word for word: "${merchantOffer.slice(0, 60)}". Use it verbatim wherever an offer appears.`
+        ? `The merchant IS running this promotion, word for word: "${trimToWord(merchantOffer, 60)}". Use it verbatim wherever an offer appears.`
         : `The merchant is NOT running any promotion. NEVER invent a discount, percentage, sale, coupon, price cut, free shipping or any saving. Sell the product on what it IS.`,
       // From a full 49-template sweep: every remaining defect was text. Two of
       // them were written wrong before anything was rendered — an apostrophe
@@ -1808,7 +1818,7 @@ async function formatCopy(
     // instruction gets scrubbed rather than shipped.
     if (out.offer) {
       const invented = /\d|%|\$|\b(off|sale|free|save|deal|discount|coupon)\b/i.test(out.offer);
-      out.offer = merchantOffer ? merchantOffer.slice(0, 40) : invented ? "Own the set" : out.offer;
+      out.offer = merchantOffer ? trimToWord(merchantOffer, 40) : invented ? "Own the set" : out.offer;
     }
     return out;
   } catch { return null; }
@@ -2415,7 +2425,7 @@ export async function renderFormatFrame(
     if (!f) return null;
     const copy = await formatCopy(f.key, f.fields, productTitle, tone, direction, contentLang);
     if (!copy) return null;
-    const prompt = formatLayoutPrompt(f.key, copy);
+    const prompt = formatLayoutPrompt(f.key, copy, undefined, "vertical 9:16");
     // 9:16, not 1:1: this frame is only ever used to seed a video
     // (video-generation.server.ts is its sole caller). Seeding a square
     // still means a square clip that then has to be padded back to

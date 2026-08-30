@@ -7,6 +7,7 @@
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import { trimToWord } from "./text-trim";
 import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import fs from "node:fs";
 import path from "node:path";
@@ -215,7 +216,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
           : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, vertical, no text overlay.`;
   const direction = params.customPrompt?.trim();
   const context = productDescription?.trim()
-    ? ` Product context: ${productDescription.trim().slice(0, 200)}.`
+    ? ` Product context: ${trimToWord(productDescription, 200)}.`
     : "";
   const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}`;
 

@@ -26,6 +26,7 @@ import os from "node:os";
 import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
+import { trimToWord } from "./text-trim";
 import { mirrorRender } from "./object-storage.server";
 import {
   checkpointJob,
@@ -133,15 +134,18 @@ export async function planCommercial(
   const j = JSON.parse(m[0]) as CommercialPlan;
   if (!Array.isArray(j.beats) || j.beats.length < 3) throw new Error("commercial plan: fewer than 3 beats");
   j.beats = j.beats.slice(0, 5).map((b) => ({
-    scene: String(b.scene || "").slice(0, 300),
-    motion: String(b.motion || "slow cinematic push-in").slice(0, 120),
-    narration: String(b.narration || "").slice(0, 140),
+    scene: trimToWord(String(b.scene || ""), 300),
+    motion: trimToWord(String(b.motion || "slow cinematic push-in"), 120),
+    // Narration is SPOKEN — a mid-word cut is audible.
+    narration: trimToWord(String(b.narration || ""), 140),
   }));
-  j.tagline = String(j.tagline || productTitle).slice(0, 60);
+  // The tagline is burned into the end card AND read aloud, so a hard cut is
+  // both seen and heard.
+  j.tagline = trimToWord(String(j.tagline || productTitle), 60);
   // A tagline pinned in the direction is a hard override, not a suggestion —
   // the writer kept "improving" pinned lines into its own copy.
   const pin = direction?.match(/tagline must be exactly:\s*(.+?)\s*$/i);
-  if (pin) j.tagline = pin[1].slice(0, 60);
+  if (pin) j.tagline = trimToWord(pin[1], 60);
   return j;
 }
 
