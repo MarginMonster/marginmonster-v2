@@ -12,6 +12,7 @@ import {
   DataTable,
   Box,
   EmptyState,
+  Banner,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -289,7 +290,11 @@ function PaidROI({ summary }: { summary: Awaited<ReturnType<typeof getPerformanc
     );
   }
 
-  const { totals, roi, roas, byPlatform, campaigns } = summary;
+  const { totals, roi, roas, byPlatform, campaigns, hasMetrics } = summary;
+  // Campaigns can be live and spending while we hold no measurements at all.
+  // Rendering money(0) there states, as fact, that the merchant has spent
+  // nothing — about their own ad account. A dash says what is true.
+  const measured = (render: () => string) => (hasMetrics ? render() : "—");
   const platformRows = byPlatform.map((p) => [p.platform, money(p.spendCents), money(p.revenueCents), `${p.roas.toFixed(2)}x`, p.clicks.toLocaleString(), p.conversions.toLocaleString()]);
   const campaignRows = campaigns.map((c) => [c.name, c.platform, c.status, money(c.spendCents), money(c.revenueCents), `${c.roas.toFixed(2)}x`, `${c.roi >= 0 ? "+" : ""}${c.roi.toFixed(0)}%`, c.conversions.toLocaleString()]);
 
@@ -297,16 +302,23 @@ function PaidROI({ summary }: { summary: Awaited<ReturnType<typeof getPerformanc
     <Page title="Performance & ROI" backAction={{ content: "Home", url: "/app" }} subtitle="Every dollar in, every dollar out — ad spend, revenue, ROI, traffic, and conversions.">
       <Layout>
         <Layout.Section>
-          <div className="mm-score"><span className="lbl">Return on ad spend</span><span className="val">{`${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`}</span></div>
+          <div className="mm-score"><span className="lbl">Return on ad spend</span><span className="val">{measured(() => `${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`)}</span></div>
+        </Layout.Section>
+        <Layout.Section>
+          {!hasMetrics && (
+            <Banner tone="info" title="No performance figures yet">
+              <p>Your campaigns are live, but no spend or revenue has been reported back into EasyMode yet — so these figures are blank rather than zero. Your ad platform's own dashboard has the live numbers in the meantime.</p>
+            </Banner>
+          )}
         </Layout.Section>
         <Layout.Section>
           <InlineStack gap="400" wrap>
-            <Kpi label="Ad spend" value={money(totals.spendCents)} sub="total invested" />
-            <Kpi label="Revenue" value={money(totals.revenueCents)} sub="attributed to ads" tone="green" />
-            <Kpi label="ROI" value={`${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`} sub="return on ad spend" tone={roi >= 0 ? "green" : "red"} />
-            <Kpi label="ROAS" value={`${roas.toFixed(2)}x`} sub="revenue per $1 spent" />
-            <Kpi label="Conversions" value={totals.conversions.toLocaleString()} sub="purchases from ads" />
-            <Kpi label="Traffic" value={totals.clicks.toLocaleString()} sub="clicks to your store" />
+            <Kpi label="Ad spend" value={measured(() => money(totals.spendCents))} sub={hasMetrics ? "in the latest reporting window" : "not measured yet"} />
+            <Kpi label="Revenue" value={measured(() => money(totals.revenueCents))} sub={hasMetrics ? "attributed to ads" : "not measured yet"} tone="green" />
+            <Kpi label="ROI" value={measured(() => `${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`)} sub="return on ad spend" tone={hasMetrics && roi < 0 ? "red" : "green"} />
+            <Kpi label="ROAS" value={measured(() => `${roas.toFixed(2)}x`)} sub="revenue per $1 spent" />
+            <Kpi label="Conversions" value={measured(() => totals.conversions.toLocaleString())} sub="purchases from ads" />
+            <Kpi label="Traffic" value={measured(() => totals.clicks.toLocaleString())} sub="clicks to your store" />
           </InlineStack>
         </Layout.Section>
         <Layout.Section>

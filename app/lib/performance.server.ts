@@ -41,6 +41,10 @@ export interface PerformanceSummary {
   byPlatform: PlatformBreakdown[];
   campaigns: CampaignRow[];
   hasData: boolean;
+  /** Whether any real measurement exists. hasData only means "campaigns
+   *  exist", which is why a merchant with a live campaign and no metrics saw
+   *  a confident $0 rather than an empty state. */
+  hasMetrics: boolean;
 }
 
 function roiPct(revenueCents: number, spendCents: number): number {
@@ -119,5 +123,9 @@ export async function getPerformanceSummary(
     byPlatform,
     campaigns: rows,
     hasData: campaigns.length > 0,
+    // PerformanceMetric rows and campaign.spentCents are both written only by
+    // the decisioning pass. Nothing enqueues that pass, so in practice this is
+    // false today and the dashboard says so instead of inventing zeros.
+    hasMetrics: campaigns.some((c) => c.metrics.length > 0 || (c.spentCents ?? 0) > 0),
   };
 }

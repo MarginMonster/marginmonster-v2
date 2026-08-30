@@ -92,10 +92,28 @@ async function evaluateCampaign(campaign: {
     return;
   }
 
-  // Scale rule: roas exceeds min by 50% — bump budget
+  // Scale rule: roas exceeds min by 50% — bump budget.
+  //
+  // THE CEILING IS NOT OPTIONAL. This multiplies the campaign budget and
+  // persists the result, so each pass compounds on the last: at 20% a pass,
+  // an hourly cadence multiplies a winning campaign's daily budget by ~79
+  // in a day and ~6,000 in two. It spends the MERCHANT'S money on their own
+  // ad account, and nothing here or at the platform capped it.
+  //
+  // Four times the budget the merchant originally approved is the most this
+  // is allowed to reach on its own. Past that a human decides.
+  const SCALE_CEILING_MULTIPLE = 2;
   const scaleThreshold = cfg.minRoasToSurvive * 1.5;
   if (cfg.minRoasToSurvive > 0 && perf.roas >= scaleThreshold && cfg.scaleIncrementPct > 0) {
-    const newBudgetCents = Math.round(campaign.budgetCents * (1 + cfg.scaleIncrementPct));
+    // Anchored to the weekly budget the MERCHANT declared, not to the current
+    // budget — anchoring to the current one would move the ceiling up every time
+    // the ceiling was raised, which is no ceiling at all.
+    const ceilingCents = Math.round(weeklyBudgetCents * SCALE_CEILING_MULTIPLE);
+    if (campaign.budgetCents >= ceilingCents) {
+      console.log(`Campaign ${campaign.id} is at its scaling ceiling ($${(ceilingCents / 100).toFixed(2)}) — leaving it alone`);
+      return;
+    }
+    const newBudgetCents = Math.min(ceilingCents, Math.round(campaign.budgetCents * (1 + cfg.scaleIncrementPct)));
     await scalePlatformCampaign(campaign, newBudgetCents);
     await db.campaign.update({
       where: { id: campaign.id },
