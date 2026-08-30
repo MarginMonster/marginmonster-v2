@@ -140,7 +140,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     templateKey: def.key,
     avatarId: avatarId ?? shop.brandAvatarId,
     avatarVariant: avatarId && avatarId === shop.brandAvatarId ? (shop.brandAvatarVariant ?? 0) : 0,
-    reviewMode: "REVIEW_FIRST",
+    // SET_AND_FORGET, because that is what this page sells. It promises
+    // auto-posting in three separate places — "a full month of content that
+    // auto-posts", "creates AND auto-posts ... hands off", "auto-posts every
+    // one - no work from you" - and it offers no review-mode choice at all.
+    //
+    // It hardcoded REVIEW_FIRST, which was harmless only while the publisher
+    // ignored the field entirely. Now that REVIEW_FIRST genuinely holds drops
+    // back, leaving it here would mean a merchant buys a month of hands-off
+    // posting, is charged for every drop, and nothing ever posts.
+    reviewMode: "SET_AND_FORGET",
     bag,
     platforms,
   });

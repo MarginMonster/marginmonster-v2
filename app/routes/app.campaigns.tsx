@@ -182,7 +182,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       templateKey: (form.get("template") as string) || "",
       avatarId: ((form.get("avatarId") as string) || "").trim() || null,
       avatarVariant: parseInt((form.get("avatarVariant") as string) || "0", 10) || 0,
-      reviewMode: (form.get("reviewMode") as "REVIEW_FIRST" | "SET_AND_FORGET") || "REVIEW_FIRST",
+      // The FALLBACK is SET_AND_FORGET because this page promises auto-posting
+      // — "Your feed, on autopilot", "forged and auto-posted on schedule",
+      // "Auto-posts to" — and never renders a review-mode control, so the field
+      // it reads here is never sent and the fallback is the only value that ever
+      // applies. Defaulting to REVIEW_FIRST was harmless only while the
+      // publisher ignored the field; now that it genuinely holds drops back, it
+      // would mean a month of paid drops that never post. The form read stays,
+      // so adding a picker later just works.
+      reviewMode: (form.get("reviewMode") as "REVIEW_FIRST" | "SET_AND_FORGET") || "SET_AND_FORGET",
       bag,
     });
     return json(res.ok ? { accepted: true } : { error: res.error });
