@@ -107,8 +107,38 @@ type WooProduct = {
   permalink?: string;
   slug?: string;
   images?: { src?: string }[];
-  prices?: { price?: string; currency_prefix?: string };
+  prices?: {
+    price?: string;
+    currency_prefix?: string;
+    currency_suffix?: string;
+    /** How many decimal places `price` is expressed in — 2 for most
+     *  currencies, 0 for JPY. The Store API always sends it. */
+    currency_minor_unit?: number;
+  };
 };
+
+/** WooCommerce Store API prices are MINOR UNITS in a string: "1999" means
+ *  19.99, not one thousand nine hundred and ninety-nine.
+ *
+ *  This used to be `${currency_prefix}${price}`, so every WooCommerce
+ *  catalogue imported at 100x its real price — a $19.99 product arriving as
+ *  "$1999". The old comment said "leave formatting to it", but nothing
+ *  downstream divides; the string is stored and shown as-is, and it is what
+ *  the ad copywriter reads when it mentions price.
+ *
+ *  currency_minor_unit is what makes it right for zero-decimal currencies
+ *  like JPY, where dividing by 100 would be just as wrong in the other
+ *  direction. */
+function wooPriceText(prices: WooProduct["prices"]): string | undefined {
+  const raw = prices?.price;
+  if (raw === undefined || raw === null || String(raw).trim() === "") return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  const minorRaw = prices?.currency_minor_unit;
+  const minor = Number.isFinite(Number(minorRaw)) ? Math.max(0, Math.min(4, Number(minorRaw))) : 2;
+  const value = n / Math.pow(10, minor);
+  return `${prices?.currency_prefix || ""}${value.toFixed(minor)}${prices?.currency_suffix || ""}`;
+}
 
 async function fromWoo(origin: URL, cap: number): Promise<DiscoveredProduct[]> {
   const out: DiscoveredProduct[] = [];
@@ -124,8 +154,7 @@ async function fromWoo(origin: URL, cap: number): Promise<DiscoveredProduct[]> {
         url: p.permalink,
         imageUrl: p.images?.[0]?.src ? upgradeImageResolution(p.images[0].src) : undefined,
         handle: p.slug,
-        // Store API prices are minor units as a string; leave formatting to it.
-        priceText: p.prices?.price ? `${p.prices.currency_prefix || ""}${p.prices.price}` : undefined,
+        priceText: wooPriceText(p.prices),
       });
       if (out.length >= cap) break;
     }
