@@ -396,6 +396,18 @@ export async function addManualDrop(
   }
 
   let q = await db.questline.findFirst({ where: { shopId, template: "MANUAL", status: "ACTIVE" } });
+  // Every one-off drop is charged, so every one has to raise the container's
+  // refundable total. Setting it only on CREATE would leave a container
+  // holding ten scheduled drops claiming the price of one — and because the
+  // abandon cap is skipped entirely while tokenCost is 0, that would refund
+  // LESS than doing nothing at all.
+  if (q) {
+    await db.questline.update({
+      where: { id: q.id },
+      data: { tokenCost: { increment: cost }, tokenFromExtra: { increment: oneOffFromExtra } },
+    });
+    q = { ...q, tokenCost: q.tokenCost + cost, tokenFromExtra: q.tokenFromExtra + oneOffFromExtra };
+  }
   if (!q) {
     q = await db.questline.create({
       data: {
@@ -677,10 +689,22 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
 
   if (refund > 0) {
     try {
-      // Back into the bucket it came out of. Passing no fromExtra credited
-      // the whole refund to the monthly allowance, so tokens the merchant had
-      // BOUGHT came back as allowance and expired at the next period roll.
-      await refundTokens(shopId, refund, Math.min(refund, q.tokenFromExtra));
+      // Back into the buckets it came out of, in the SAME PROPORTION.
+      //
+      // Passing no split at all credited everything to the monthly allowance,
+      // so tokens the merchant had BOUGHT came back as allowance and expired
+      // at the next period roll. But refunding the purchased leg FIRST is the
+      // opposite mistake: on a partial abandon it converts expiring allowance
+      // into permanent tokensExtra — a mint, and the other failure refundTokens
+      // documents. Cost 900 of which 600 purchased, half already forged: an
+      // extra-first refund of 450 would credit all 450 to the permanent bucket
+      // when only 300 of it was ever permanent.
+      //
+      // floor(), not round(), so rounding can never mint either.
+      const fromExtra = q.tokenCost > 0
+        ? Math.floor((refund * q.tokenFromExtra) / q.tokenCost)
+        : 0;
+      await refundTokens(shopId, refund, Math.min(refund, fromExtra));
     } catch (e) { console.error("[questline] refund failed:", e); refund = 0; }
   }
   await db.questline.delete({ where: { id: q.id } });
