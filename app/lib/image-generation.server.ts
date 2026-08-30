@@ -1890,14 +1890,14 @@ export async function runFormatRung(opts: {
   });
 
   let imageUrl = await renderOnce();
-  let qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy));
+  let qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
   let retried = false;
   if (!qa.pass) {
     // A blind re-roll of the identical prompt repeats the same mistake as often
     // as not. Tell it what went wrong.
     retried = true;
     imageUrl = await renderOnce(qa.reason);
-    qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy));
+    qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
   }
   return {
     imageUrl,
@@ -1946,7 +1946,7 @@ function editDistance(a: string, b: string, max = 2): number {
  *
  *  Failing open on an outage is deliberate: a QA hiccup must never turn into
  *  a merchant losing the format they paid for. */
-async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[]): Promise<{ pass: boolean; reason: string }> {
+async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[], protect: string[] = []): Promise<{ pass: boolean; reason: string }> {
   try {
     const urls = productImageUrl ? [productImageUrl, imageUrl] : [imageUrl];
     const raw = await anthropicVision(
@@ -2002,9 +2002,26 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
     const words = (s: string) => (s.toLowerCase().match(/[a-z][a-z'-]{3,}/g) || []);
     const wanted = new Set(expected.flatMap(words));
     const rendered = typeof j.transcript === "string" ? words(j.transcript) : [];
+
+    // PRODUCT NAMES GET A WIDER NET THAN ORDINARY COPY.
+    //
+    // One edit is not where these actually land. Two real examples caught by
+    // hand, both at distance TWO: an ad for "Terastal Umbreon" shipped
+    // "Terastal Umboron", and a format preview shipped "FALL ASALEP FASTER".
+    // A diffusion model mangling an unfamiliar proper noun usually gets more
+    // than one character wrong, so a threshold of exactly 1 misses the
+    // common case.
+    //
+    // Distance 2 stays scoped to words from the PRODUCT TITLE. Widening it
+    // across all requested copy would start flagging ordinary English —
+    // "through" and "thought" are two edits apart — and cost good ads a
+    // needless fallback. A product name has no such neighbours.
+    const named = new Set(protect.flatMap(words).filter((w) => w.length >= MIN_FLAG));
+    const nearMiss = (w: string, pool: Set<string>, max: number) =>
+      [...pool].some((e) => e !== w && Math.abs(e.length - w.length) <= max && editDistance(e, w, max) <= max);
     const corrupted = rendered.find(
       (w) => w.length >= MIN_FLAG && !wanted.has(w)
-        && [...wanted].some((e) => Math.abs(e.length - w.length) <= 1 && editDistance(e, w) === 1)
+        && (nearMiss(w, wanted, 1) || nearMiss(w, named, 2))
     );
     if (corrupted && !bad.length) {
       return { pass: false, reason: `textMatches: rendered "${corrupted}" — not the requested spelling`.slice(0, 160) };
