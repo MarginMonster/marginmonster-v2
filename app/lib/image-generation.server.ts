@@ -2801,11 +2801,30 @@ export async function generateImageAd(
         } else if (t && platePath) {
           const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
           const plateUrl = base ? `${base}/ad-templates/plate-${t.key}.jpg` : null;
-          usedPrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${t.placement || "placed naturally as the hero"}.${stylePrompt ? ` Apply this one change the merchant asked for: ${stylePrompt.slice(0, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, and every code, serial and number printed on it copied character for character, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
+          // THE PROMPT MUST DESCRIBE THE IMAGES IT IS ACTUALLY GIVEN.
+          //
+          // The two-image wording — "the FIRST image's scene ... the SECOND
+          // image's product" — was sent unchanged when only ONE image went with
+          // it. That happens on the kontext fallback every single time (it takes
+          // one input_image), and on the nano-banana call itself whenever
+          // SHOPIFY_APP_URL is unset, because then no plate URL can be built. A
+          // model told to recreate a first image it was never handed has to invent
+          // what that scene was, and the fallback then stacked the plate
+          // description in front of a sentence still referring to it as an image.
+          const placement = t.placement || "placed naturally as the hero";
+          const truth = `${stylePrompt ? ` Apply this one change the merchant asked for: ${trimToWord(stylePrompt, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, and every code, serial and number printed on it copied character for character, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
+          const twoImagePrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${placement}.${truth}`;
+          const oneImagePrompt = `${t.plate}. Place the product from the provided image into that scene, ${placement}.${truth}`;
+          usedPrompt = plateUrl ? twoImagePrompt : oneImagePrompt;
           const stagedOnce = async (): Promise<string> => {
             const inputs = plateUrl ? [plateUrl, productImageUrl] : [productImageUrl];
             try { return await repRun("google/nano-banana", { prompt: usedPrompt, image_input: inputs, aspect_ratio: "1:1", output_format: "jpg" }); }
-            catch { return await repRun("black-forest-labs/flux-kontext-pro", { prompt: `${t.plate}. ${usedPrompt}`, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" }); }
+            catch {
+              // kontext takes a single image, so it always gets the one-image
+              // wording — and usedPrompt follows, so the asset records what ran.
+              usedPrompt = oneImagePrompt;
+              return await repRun("black-forest-labs/flux-kontext-pro", { prompt: oneImagePrompt, input_image: productImageUrl, aspect_ratio: "1:1", output_format: "jpg" });
+            }
           };
           imageUrl = await stagedOnce();
           let qa = await qaFidelity(productImageUrl!, imageUrl, true);
