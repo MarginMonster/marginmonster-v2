@@ -44,13 +44,37 @@ function ffmpegBin(): string | null {
   return null;
 }
 
+/** Hard ceiling for one encode. A wedged ffmpeg (bad input stream, stalled
+ *  filter graph) never emits "close", so without this the promise never
+ *  settles: the job sits IN_PROGRESS and the SERIAL drain loop stops draining
+ *  FOR EVERY MERCHANT — and orphan-reclaim can only fix the database row, not
+ *  unstick this process, so the worker stays dead until someone redeploys.
+ *  ugc-ad-pipeline learned this the hard way and already guards it; this
+ *  pipeline was still spawning bare. 10 min is far beyond any real 720x1280
+ *  segment encode. */
+const FFMPEG_TIMEOUT_MS = 10 * 60_000;
+
 function runFfmpeg(bin: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const p = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { p.kill("SIGKILL"); } catch { /* already gone */ }
+    }, FFMPEG_TIMEOUT_MS);
     p.stderr.on("data", (d) => { err += String(d); if (err.length > 8000) err = err.slice(-8000); });
-    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${err.slice(-400)}`))));
-    p.on("error", reject);
+    p.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        // Reject rather than resolve: the caller's retry/refund path is the
+        // right destination, and a silent success would ship a truncated file.
+        reject(new Error(`ffmpeg killed after ${FFMPEG_TIMEOUT_MS / 60_000} min (wedged): ${err.slice(-400)}`));
+        return;
+      }
+      code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${err.slice(-400)}`));
+    });
+    p.on("error", (e) => { clearTimeout(timer); reject(e); });
   });
 }
 
