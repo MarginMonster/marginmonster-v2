@@ -118,6 +118,25 @@ export async function postDueSlots(): Promise<void> {
     for (const q of active) {
       const schedule = parseSchedule(q.scheduleJson);
       let changed = false;
+
+      // Record EVERY post the moment it lands. These marks used to accumulate
+      // in memory and get written once at the end of the questline's loop, so
+      // any throw in between — a provider hanging up, publishBlogAsset raising —
+      // escaped to the outer catch and discarded the marks for posts that had
+      // ALREADY gone out. The next scan saw those slots still READY and
+      // published them again: duplicate posts on the merchant's real accounts,
+      // which we cannot take back. A few extra writes a day is nothing against
+      // that.
+      const record = async (): Promise<boolean> => {
+        try {
+          await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
+          return true;
+        } catch (e) {
+          console.error(`[social-post] could not record a post for questline ${q.id} — halting its scan so nothing double-posts:`, e);
+          return false;
+        }
+      };
+
       for (const s of schedule.slots) {
         if (s.status !== "READY") continue;
         if (new Date(`${s.date}T${s.time}:00`).getTime() > now) continue;
@@ -135,6 +154,7 @@ export async function postDueSlots(): Promise<void> {
             if (br.url) s.postedUrls = { blog: br.url };
             changed = true;
             posted++;
+            if (!(await record())) break; // it is live; if we cannot write that down, stop.
           } else {
             console.log(`[blog-publish] slot ${q.id}#${s.idx} pending: ${br.error}`);
           }
@@ -154,10 +174,8 @@ export async function postDueSlots(): Promise<void> {
           if (res.urls && Object.keys(res.urls).length) s.postedUrls = res.urls;
           changed = true;
           posted++;
+          if (!(await record())) break; // it is live; if we cannot write that down, stop.
         }
-      }
-      if (changed) {
-        await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
       }
       // A campaign finishes when its LAST DROP POSTS, not when the last piece
       // rendered — and this scan is the only place that can know that. The
