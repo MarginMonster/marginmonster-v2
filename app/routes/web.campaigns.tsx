@@ -375,7 +375,7 @@ export default function WebCampaigns() {
 
   return (
     <div className="wc">
-      <style>{WC_STYLE}</style>
+      <style dangerouslySetInnerHTML={{ __html: WC_STYLE }} />
 
       <div className="wc-head">
         <div>

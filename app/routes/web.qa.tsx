@@ -203,7 +203,7 @@ export default function WebQa() {
 
   return (
     <div>
-      <style>{QA_CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: QA_CSS }} />
       <h1 className="wb-h1">Ad QA</h1>
       <p className="wb-sub">
         Makes real ads from real products and grades them, so bad ones turn up here instead of in a merchant&apos;s feed.

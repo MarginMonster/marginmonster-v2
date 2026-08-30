@@ -813,7 +813,7 @@ export default function WebStudio() {
 
   return (
     <div>
-      <style>{WS_STYLE}</style>
+      <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
       <h1 className="wb-h1">Content Studio</h1>
       <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: 🪙 {d.tokens.toLocaleString("en-US")}</p>
       {!d.hasBrand && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}

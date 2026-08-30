@@ -41,16 +41,7 @@ export default function LandingPagePublic() {
 
   return (
     <div style={{ fontFamily: "Inter, -apple-system, sans-serif", background: "#F4F1E6", color: "#14201A", margin: 0 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
-        a.lp-cta{position:relative;overflow:hidden;isolation:isolate}
-        a.lp-cta:hover{transform:translateY(-2px);transition:transform .15s;filter:brightness(1.05)}
-        a.lp-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-16px;width:96px;height:96px;margin-top:-48px;border-radius:50%;
-          background:repeating-conic-gradient(from 0deg,rgba(255,228,158,.15) 0deg 1.4deg,transparent 1.4deg 4deg),repeating-conic-gradient(from 0deg,rgba(255,228,158,.10) 0deg .7deg,transparent .7deg 7deg),repeating-radial-gradient(circle,rgba(255,228,158,.12) 0 1px,transparent 1px 6px);
-          -webkit-mask:radial-gradient(circle,#000 60%,transparent 63%);mask:radial-gradient(circle,#000 60%,transparent 63%);opacity:.8;animation:lpmed 26s linear infinite;pointer-events:none}
-        @keyframes lpmed{to{transform:rotate(360deg)}}
-        @media (prefers-reduced-motion:reduce){a.lp-cta::after{animation:none}}
-        a.em-badge{transition:background .15s,border-color .15s}
-        a.em-badge:hover{background:rgba(255,255,255,0.11)!important;border-color:rgba(231,200,121,0.6)!important}`}</style>
+      <style dangerouslySetInnerHTML={{ __html: LP_CSS }} />
 
       <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(244,241,230,0.85)", backdropFilter: "blur(10px)", borderBottom: "1px solid #E4DFCF" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -105,3 +96,19 @@ export default function LandingPagePublic() {
     </div>
   );
 }
+
+/* Injected raw rather than as a JSX child. As a child, React escapes
+ * apostrophes and ampersands to entities — and <style> is a raw-text
+ * element, so the browser never decodes them back. The server tree and the
+ * client tree then disagree and hydration fails for the whole page. This
+ * CSS contains both, in the @import url(...) alone. */
+const LP_CSS = `@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
+        a.lp-cta{position:relative;overflow:hidden;isolation:isolate}
+        a.lp-cta:hover{transform:translateY(-2px);transition:transform .15s;filter:brightness(1.05)}
+        a.lp-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-16px;width:96px;height:96px;margin-top:-48px;border-radius:50%;
+          background:repeating-conic-gradient(from 0deg,rgba(255,228,158,.15) 0deg 1.4deg,transparent 1.4deg 4deg),repeating-conic-gradient(from 0deg,rgba(255,228,158,.10) 0deg .7deg,transparent .7deg 7deg),repeating-radial-gradient(circle,rgba(255,228,158,.12) 0 1px,transparent 1px 6px);
+          -webkit-mask:radial-gradient(circle,#000 60%,transparent 63%);mask:radial-gradient(circle,#000 60%,transparent 63%);opacity:.8;animation:lpmed 26s linear infinite;pointer-events:none}
+        @keyframes lpmed{to{transform:rotate(360deg)}}
+        @media (prefers-reduced-motion:reduce){a.lp-cta::after{animation:none}}
+        a.em-badge{transition:background .15s,border-color .15s}
+        a.em-badge:hover{background:rgba(255,255,255,0.11)!important;border-color:rgba(231,200,121,0.6)!important}`;
