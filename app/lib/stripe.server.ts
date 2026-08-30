@@ -100,19 +100,76 @@ export function ensureStripeWebhook(): void {
   })();
 }
 
-/** Subscription checkout for a tier (monthly or annual), 7-day trial. */
+/** Has this account already had its one free trial?
+ *
+ *  trialUsedAt was added after the first web accounts existed, so it is null
+ *  for them. A recorded subscription id is proof enough on its own — you do
+ *  not get one without having gone through checkout. */
+export function trialAlreadyTaken(a: { trialUsedAt?: Date | string | null; stripeSubId?: string | null } | null | undefined): boolean {
+  return !!a?.trialUsedAt || !!a?.stripeSubId;
+}
+
+/** Subscription checkout for a tier (monthly or annual).
+ *
+ * THE FREE TRIAL IS GRANTED ONCE PER ACCOUNT, AND ITS END DATE NEVER MOVES.
+ *
+ * This used to attach `trial_period_days: 7` unconditionally, and every tier
+ * change opens a brand-new checkout session (that is what the cancel-the-old
+ * -subscription block in activateStripePlan exists to clean up after). So a
+ * merchant could switch tier on day 6, get another seven free days, and have
+ * the superseded subscription cancelled inside its own trial — never invoiced.
+ * Repeat weekly and the plan stays active forever without a cent being
+ * charged. Each session also passed customer_email rather than a customer id,
+ * minting a fresh Stripe Customer every time, so Stripe's own trial-
+ * eligibility tracking never had a chance to notice either.
+ *
+ * It also disarmed the token cap. Plan.trialEndsAt is written only on the
+ * upsert's create branch, so it stayed frozen at the ORIGINAL date while
+ * Stripe ran a fresh unpaid trial — and once that stale date passed,
+ * planTrialing() went false and the 400-token trial ceiling stopped applying
+ * to an account that had still never paid.
+ *
+ * Now: the first subscription gets seven days. A later one carries the
+ * ORIGINAL trial end forward (so switching tier mid-trial is not punished by
+ * an immediate charge) and can never push it back. Once that date is behind
+ * us, no trial parameters are sent at all and Stripe bills straight away. */
 export async function createPlanCheckout(opts: {
   accountId: string;
   email: string;
   tierKey: PlanKey;
   annual: boolean;
   baseUrl: string;
+  /** Account.trialUsedAt — null means the trial has never been taken. */
+  trialUsedAt?: Date | string | null;
+  /** Plan.trialEndsAt — the trial window already in flight, if any. */
+  trialEndsAt?: Date | string | null;
+  /** Account.stripeCustomerId, so Stripe sees one customer per account. */
+  customerId?: string | null;
 }): Promise<string> {
   const tier = PLAN_BY_KEY[opts.tierKey];
   const amount = (opts.annual ? annualPrice(tier) : tier.price) * 100;
+
+  // Trial parameters, or none.
+  let trialParams: Record<string, string> = {};
+  if (!opts.trialUsedAt) {
+    trialParams = { "subscription_data[trial_period_days]": "7" };
+  } else if (opts.trialEndsAt) {
+    const endsMs = new Date(opts.trialEndsAt).getTime();
+    // Stripe rejects a trial_end that is not comfortably in the future, so
+    // below roughly two days we simply bill now rather than risk a 400 that
+    // would leave the merchant staring at a dead checkout button.
+    if (Number.isFinite(endsMs) && endsMs - Date.now() > 49 * 3_600_000) {
+      trialParams = { "subscription_data[trial_end]": String(Math.floor(endsMs / 1000)) };
+    }
+  }
+  const trialing = Object.keys(trialParams).length > 0;
+
   const session = await stripePost("/checkout/sessions", {
     mode: "subscription",
-    customer_email: opts.email,
+    // Reuse the account's Stripe customer when we have one. A new customer per
+    // checkout scattered one merchant's subscriptions across several records
+    // and hid the duplicate from Stripe's own trial handling.
+    ...(opts.customerId ? { customer: opts.customerId } : { customer_email: opts.email }),
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": String(amount),
@@ -120,9 +177,14 @@ export async function createPlanCheckout(opts: {
     "line_items[0][price_data][product_data][name]": `EasyMode ${tier.name} plan${opts.annual ? " (annual)" : ""}`,
     "line_items[0][price_data][product_data][description]": `${tier.monthlyTokens.toLocaleString()} tokens every month — AI videos, image ads, articles & auto-posting for your store.`,
     "line_items[0][price_data][product_data][images][0]": `${opts.baseUrl}/ad-templates/phcover.jpg`,
-    "custom_text[submit][message]": "🚀 7 days free — you won't be charged today, and you can cancel anytime before day 7. Your store's marketing goes on autopilot the moment you're in.",
+    // Say what will actually happen. Promising "7 days free" to someone who
+    // has already used the trial and is about to be charged today is the kind
+    // of surprise that becomes a chargeback.
+    "custom_text[submit][message]": trialing
+      ? "🚀 Your free trial is on — you won't be charged today, and you can cancel anytime before it ends. Your store's marketing goes on autopilot the moment you're in."
+      : "🚀 Your plan starts today. Cancel anytime — your store's marketing goes on autopilot the moment you're in.",
     "custom_text[after_submit][message]": "Welcome to EasyMode. Head back to your dashboard — your Studio is already unlocked.",
-    "subscription_data[trial_period_days]": "7",
+    ...trialParams,
     "subscription_data[metadata][accountId]": opts.accountId,
     "subscription_data[metadata][tierKey]": opts.tierKey,
     "metadata[accountId]": opts.accountId,
@@ -205,12 +267,19 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
   // the merchant just bought.
   const prior = await db.account.findUnique({
     where: { id: accountId },
-    select: { stripeSubId: true },
+    select: { stripeSubId: true, trialUsedAt: true },
   }).catch(() => null);
 
+  // The first activation is the one that consumes the trial. Recording it
+  // here — not at checkout — means an abandoned checkout never burns it.
+  const firstEver = !trialAlreadyTaken(prior);
   await db.account.update({
     where: { id: accountId },
-    data: { stripeSubId: subId, stripeCustomerId: customerId },
+    data: {
+      stripeSubId: subId,
+      stripeCustomerId: customerId,
+      ...(firstEver ? { trialUsedAt: new Date() } : {}),
+    },
   }).catch(() => { /* non-fatal */ });
 
   if (prior?.stripeSubId && subId && prior.stripeSubId !== subId) {
@@ -242,6 +311,10 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
       blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
       adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
       tokensIncluded: tier.monthlyTokens,
+      // trialEndsAt is deliberately NOT rewritten here. It belongs to the
+      // account's one trial, createPlanCheckout carries the same date onto
+      // any later subscription, and moving it forward on a plan edit is
+      // exactly how the trial ceiling used to come unstuck.
       // NOT tokensUsed:0 / periodStart:now. This runs on every
       // customer.subscription.updated (api.stripe-webhook.tsx:38), not just on
       // first activation, so resetting here handed back a full monthly

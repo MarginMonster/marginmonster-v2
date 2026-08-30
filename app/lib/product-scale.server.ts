@@ -16,6 +16,7 @@
  * call, then nothing — a missing hint just restores today's behaviour. */
 
 import { anthropicText, anthropicVision } from "./anthropic.server";
+import { explicitCm } from "./product-scale.ts";
 import { classifySize, SIZE_CHOICES, type SizeClass } from "./product-scale";
 
 export { SIZE_CHOICES, type SizeClass };
@@ -43,22 +44,6 @@ export function scalePhrase(cm: number): string {
     return `SCALE: this product is large — roughly ${cm}cm at its longest, about shoulder-width or bigger. It is held with both hands and reaches from about the presenter's waist to their chin, or rests on a surface beside them.`;
   }
   return `SCALE: this product is BIG — roughly ${cm}cm at its longest, comparable to the presenter's own height. It stands on the floor beside them or is held upright with both hands, and may extend past the top or bottom of the frame. It must NEVER be shrunk into a hand-held object.`;
-}
-
-/** Dimensions stated outright in the text — free, exact, no model call.
- *  Handles cm / mm / m and inches, taking the LARGEST number found. */
-function explicitCm(text: string): number | null {
-  let best = 0;
-  for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*(cm|mm|m|in|inch|inches|")\b/gi)) {
-    const n = parseFloat(m[1]);
-    if (!Number.isFinite(n)) continue;
-    const unit = m[2].toLowerCase();
-    const cm = unit === "mm" ? n / 10 : unit === "m" ? n * 100 : unit === "cm" ? n : n * 2.54;
-    // Ignore absurd readings — "2026" in a title isn't a measurement, and a
-    // 0.2cm product isn't real.
-    if (cm >= 2 && cm <= 400) best = Math.max(best, cm);
-  }
-  return best || null;
 }
 
 /** Best guess at a product's physical size. Never throws — callers treat null

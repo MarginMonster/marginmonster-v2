@@ -1,6 +1,7 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
+import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { createWebAccount, getWebIdentity, webSessionRedirect } from "../lib/web-auth.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
@@ -19,6 +20,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = ((form.get("lang") as string) || "").trim() || undefined;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "Enter a valid email address." });
   if (password.length < 8) return json({ error: "Password needs at least 8 characters." });
+
+  // Signing up is free and unverified, and each one creates an Account, a
+  // Shop and a Connection, hashes a password on the shared thread pool, and
+  // yields a session that can queue a sitemap crawl on the single serial
+  // worker. Ten a day from one address is far beyond anything a real person
+  // does and far below what an abuser needs.
+  const gate = rateLimit(`signup:ip:${clientIp(request)}`, 10, 60 * 60_000);
+  if (!gate.ok) {
+    return json(
+      { error: "Too many accounts created from here recently. Try again a little later." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfterSec) } }
+    );
+  }
   try {
     const account = await createWebAccount(email, password, name || undefined, lang);
     return webSessionRedirect(account.id);

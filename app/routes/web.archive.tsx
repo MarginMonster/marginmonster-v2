@@ -304,14 +304,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       try { assertCapability(shop.activePlan, cap); }
       catch (e) { return json({ error: (e as Error).message }); }
     }
-    try { await spendTokens(shop.id, cost); }
+    // Capture WHICH bucket paid. spendTokens draws from the expiring monthly
+    // allowance first and the purchased top-up only after it runs out, and
+    // the job carries that split so a terminal failure refunds to the same
+    // place. Discarding it meant a failed remix paid for with bought,
+    // never-expiring tokens came back as allowance — and expired at the next
+    // period roll. The merchant paid cash for those.
+    let remixFromExtra = 0;
+    try { remixFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
     if (type === "video") {
       const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
       // Cartoon/jingle remixes stay cartoon/jingle — the content type (and the
       // picked animation style) rides along from the original's metaJson.
       const contentType = meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined;
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, initiator: "remix" });
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, chargedTokens: cost, chargedFromExtra: remixFromExtra, initiator: "remix" });
     } else if (type === "image") {
       // A remix is a VARIATION of this ad, so the recipe rides along — without
       // the format/template the "remix" quietly became a different ad entirely.
@@ -322,10 +329,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         templateKey: meta.templateKey || undefined,
         serviceMode: !!meta.serviceMode,
         styleMode: meta.styleMode === "scene" || meta.styleMode === "backdrop" ? meta.styleMode : undefined,
-        prePaid: true,
+        prePaid: true, chargedTokens: cost, chargedFromExtra: remixFromExtra,
       });
     } else {
-      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true });
+      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true, chargedTokens: cost, chargedFromExtra: remixFromExtra });
     }
     return json({ remixed: type });
   }

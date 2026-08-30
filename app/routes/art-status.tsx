@@ -82,7 +82,15 @@ async function generationHealth() {
   }
 }
 
-export const loader = async (_args: LoaderFunctionArgs) => {
+/** The shared diagnostics key, exactly as api.diag.tsx checks it: unset in
+ *  the environment means nobody has it. */
+function hasDiagKey(request: Request): boolean {
+  const key = process.env.PURGE_KEY;
+  if (!key) return false;
+  return new URL(request.url).searchParams.get("key") === key;
+}
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cwd = process.cwd();
   const body = {
     now: new Date().toISOString(),
@@ -118,7 +126,11 @@ export const loader = async (_args: LoaderFunctionArgs) => {
     styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
     adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
     generation: await generationHealth(),
-    activity: artLogEntries(),
+    // Merchant-specific render activity only with the diagnostics key — the
+    // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
+    // answers the question it exists for ("did the app's own art build?")
+    // but stops publishing other shops' product names and ad copy.
+    activity: artLogEntries(hasDiagKey(request)),
   };
   return new Response(JSON.stringify(body, null, 2), {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },

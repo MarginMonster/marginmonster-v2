@@ -11,7 +11,7 @@ import {
   annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
 } from "../lib/plan-config";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
-import { createPackCheckout, createPlanCheckout, stripeEnabled } from "../lib/stripe.server";
+import { createPackCheckout, createPlanCheckout, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
@@ -150,7 +150,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     const annual = form.get("annual") === "1";
     try {
-      const url = await createPlanCheckout({ accountId: account.id, email: account.email, tierKey, annual, baseUrl });
+      const url = await createPlanCheckout({
+        accountId: account.id,
+        email: account.email,
+        tierKey,
+        annual,
+        baseUrl,
+        // One trial per account, and a tier change mid-trial keeps the
+        // original end date rather than minting seven more free days.
+        trialUsedAt: trialAlreadyTaken(account) ? (account.trialUsedAt ?? account.createdAt) : null,
+        trialEndsAt: shop.activePlan?.trialEndsAt ?? null,
+        customerId: account.stripeCustomerId,
+      });
       return redirect(url);
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : "Checkout couldn't start." });

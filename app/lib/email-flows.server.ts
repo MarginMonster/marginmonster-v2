@@ -38,8 +38,40 @@ export async function sendBrandEmail(
     console.error("[email] refusing to send without a working unsubscribe link:", (e as Error).message);
     return { ok: false, reason: "no-optout" };
   }
-  const shop = await db.shop.findUnique({ where: { id: shopId }, include: { brandProfile: true } });
+  const shop = await db.shop.findUnique({
+    where: { id: shopId },
+    include: { brandProfile: true, activePlan: true },
+  });
   if (!shop?.brandProfile) return { ok: false, reason: "no-brand" };
+
+  // AUTOMATED EMAIL IS GENERATION, AND GENERATION IS METERED.
+  //
+  // Every flow that reaches here writes a fresh email with Anthropic. None of
+  // them charged for it, and the plan check that did exist elsewhere was
+  // missing entirely — so a cancelled shop kept sending, and the welcome flow
+  // in particular is reachable from a PUBLIC storefront form: one AI call per
+  // address anyone chose to type in, on a worker that runs one job at a time.
+  //
+  // Same rule the PRODUCTS_CREATE auto-generation follows: spend first, and a
+  // wallet that cannot cover it simply skips. These are emails the app sends
+  // on the merchant's behalf, so they must never fail loudly or leave the
+  // merchant owing anything.
+  if (!shop.activePlan?.active) return { ok: false, reason: "no-plan" };
+
+  const { spendTokens, refundTokens } = await import("./tokens.server");
+  const { TOKEN_COST } = await import("./plan-config");
+  let fromExtra = 0;
+  try {
+    fromExtra = (await spendTokens(shopId, TOKEN_COST.email)).fromExtra;
+  } catch {
+    return { ok: false, reason: "no-tokens" };
+  }
+
+  const refund = async () => {
+    try { await refundTokens(shopId, TOKEN_COST.email, fromExtra); }
+    catch (e) { console.error("[email] refund failed:", e); }
+  };
+
   try {
     const email = await writeMarketingEmail(shop.brandProfile, {
       kind: opts.kind,
@@ -54,8 +86,10 @@ export async function sendBrandEmail(
       html: email.html,
       unsubscribeUrl: optOutLink,
     });
+    if (!res.ok) await refund(); // nothing was delivered, so nothing is owed
     return { ok: res.ok, reason: res.ok ? undefined : "send-failed" };
   } catch (e) {
+    await refund();
     return { ok: false, reason: (e as Error).message };
   }
 }

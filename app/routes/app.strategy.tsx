@@ -38,11 +38,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     include: { brandProfile: true, activePlan: true },
   });
   if (!shop?.brandProfile) return json({ error: "Analyze your store on the dashboard first." });
-  if (!shop?.activePlan) return json({ error: "Choose a plan first." });
+  // `activePlan` is only the RELATION NAME — Prisma does not filter it by
+  // `active`, so this let a cancelled shop keep generating marketing plans.
+  if (!shop.activePlan?.active) return json({ error: "Choose a plan first." });
+
+  // AND IT HAS TO BE PAID FOR. TOKEN_COST lists this at 6 tokens and the
+  // merchant is shown that price, but nothing ever spent them: every other
+  // generator in the app charges, this one called Anthropic for free and
+  // could be re-run as often as anyone liked. Same shape as app.email.tsx —
+  // spend first, refund into the bucket it came from if the call throws, so
+  // a failed generation is never billed.
+  const { spendTokens, refundTokens } = await import("../lib/tokens.server");
+  const { TOKEN_COST } = await import("../lib/plan-config");
+  let fromExtra = 0;
+  try {
+    fromExtra = (await spendTokens(shop.id, TOKEN_COST.strategy)).fromExtra;
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : "Not enough tokens for a marketing plan." });
+  }
+
   try {
     const plan = await generateMarketingPlan(shop.brandProfile, shop.activePlan);
     return json({ plan });
   } catch (e) {
+    try { await refundTokens(shop.id, TOKEN_COST.strategy, fromExtra); }
+    catch (r) { console.error("[strategy] refund failed:", r); }
     return json({ error: e instanceof Error ? e.message : String(e) });
   }
 };

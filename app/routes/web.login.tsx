@@ -1,5 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
+import { clientIp, rateLimit, rateLimitReset } from "../lib/rate-limit.server";
 import { getWebIdentity, loginWebAccount, webSessionRedirect } from "../lib/web-auth.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
@@ -14,8 +15,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const form = await request.formData();
   const email = ((form.get("email") as string) || "").trim().toLowerCase();
   const password = (form.get("password") as string) || "";
+
+  // Two limits, because they stop different things.
+  //
+  // Per address: credential stuffing works by trying many passwords against
+  // one account, and nothing here slowed that down.
+  //
+  // Per source: verifying a password runs scrypt, which is expensive on
+  // purpose and runs on libuv's four-thread pool — the same pool the render
+  // pipeline's file work uses. A burst of login attempts was therefore enough
+  // to stall every other tenant's jobs without any code looking slow.
+  const ip = clientIp(request);
+  const byIp = rateLimit(`login:ip:${ip}`, 20, 10 * 60_000);
+  const byEmail = email ? rateLimit(`login:acct:${email}`, 8, 10 * 60_000) : { ok: true, retryAfterSec: 0 };
+  if (!byIp.ok || !byEmail.ok) {
+    const wait = Math.max(byIp.retryAfterSec, byEmail.retryAfterSec);
+    return json(
+      { error: `Too many attempts. Try again in ${Math.ceil(wait / 60)} minute${wait > 60 ? "s" : ""}.` },
+      { status: 429, headers: { "Retry-After": String(wait) } }
+    );
+  }
+
   const account = await loginWebAccount(email, password);
   if (!account) return json({ error: "Email or password didn't match." });
+  // Someone who got in was never the threat — don't leave them throttled by
+  // their own mistyped attempts.
+  rateLimitReset(`login:acct:${email}`);
   return webSessionRedirect(account.id);
 };
 

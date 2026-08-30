@@ -200,6 +200,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Already importing this exact address — nothing to do.
     if (running.some((j) => sameUrl(j.payload))) return json({ catalogQueued: true });
 
+    // A CRAWL IS EXPENSIVE AND THIS PAGE IS REACHABLE WITHOUT A PLAN.
+    //
+    // Importing a catalogue is hundreds of fetches against someone else's
+    // server, queued on a worker that runs one job at a time for every tenant.
+    // It sits above the "pick a plan first" gate on purpose — a new merchant
+    // has to be able to connect their store before they subscribe — so the
+    // bound has to come from somewhere else. The dedupe below only catches the
+    // same address twice; varying the URL walked straight past it.
+    //
+    // Correcting a typo takes a couple of goes. Six an hour is generous for
+    // that and useless as an amplifier.
+    const crawls = await db.job.count({
+      where: {
+        shopId: shop.id,
+        type: "IMPORT_CATALOG",
+        createdAt: { gte: new Date(Date.now() - 60 * 60_000) },
+      },
+    });
+    if (crawls >= 6) {
+      return json({ catalogError: "That's a lot of imports in one hour — give the last one time to finish and try again shortly." });
+    }
+
     // Re-point anything still waiting: it has not started, so it can simply
     // carry the corrected address instead.
     const pending = running.filter((j) => j.status === "PENDING");

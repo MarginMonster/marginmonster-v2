@@ -36,6 +36,10 @@ model Account {
   name             String?
   stripeCustomerId String?
   stripeSubId      String?
+  /// When this account first started a paid subscription. A free trial is
+  /// granted once per account; without this, every tier change opened a
+  /// fresh checkout with another 7 free days attached.
+  trialUsedAt      DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   connections      Connection[]
