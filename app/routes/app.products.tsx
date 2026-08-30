@@ -187,14 +187,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
 
   let remaining = have;
-  const forged = results.filter((r) => "copy" in r).length;
-  for (let i = 0; i < forged; i++) {
+  const written = results.filter((r) => "copy" in r).length;
+  let paid = 0;
+  for (let i = 0; i < written; i++) {
     try {
       remaining = (await chargeTokens(shop.id, "description")).remaining;
+      paid++;
     } catch {
       break;
     }
   }
+
+  // HAND OVER ONLY WHAT WE CHARGED FOR.
+  //
+  // The affordability check above runs before the copy is written, and the
+  // wallet can be drained in between — another tab, a queued job, a boost.
+  // chargeTokens then throws partway through this loop, and the old code
+  // broke out and returned all twelve listings anyway. The merchant kept
+  // copy they had paid for two or three of, every time, silently.
+  let handed = 0;
+  const delivered = results.map((r) => {
+    if (!("copy" in r)) return r;
+    handed++;
+    if (handed <= paid) return r;
+    return {
+      id: r.id,
+      title: r.title,
+      error: "Your tokens ran out before this one, so it was not charged for. Top up and run it again.",
+    };
+  });
+  const forged = paid; // progression counts what was actually paid for
 
   // Progression: forge XP + forge-count achievements (token-spend XP already
   // flowed through chargeTokens).
@@ -219,7 +241,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (freshPlan) remaining = tokensRemaining(freshPlan);
     } catch { /* progression is never fatal */ }
   }
-  return json({ results, remaining, forged, xpRes, newAch });
+  return json({ results: delivered, remaining, forged, xpRes, newAch });
 };
 
 function escapeHtml(s: string): string {
