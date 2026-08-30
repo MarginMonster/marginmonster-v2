@@ -393,25 +393,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const goUrl = `${base}/go/a/${id}`;
       titleFor = (p) => buildPostTitle(captions[p], goUrl, fbText, credit);
     }
-    let anyOk = false;
+    // NAME THE PLATFORMS THAT ACTUALLY TOOK IT.
+    //
+    // This used to track a single anyOk flag and then report success against
+    // `platforms` — the list the merchant ASKED for, not the list that
+    // worked. One live account out of two, and the toast still read "Posted
+    // to tiktok · facebook 🎉". The merchant believes it went to Facebook, it
+    // did not, and nothing ever corrects them. Same defect the questline
+    // poster was already fixed for; the manual path kept it.
     let lastErr: string | undefined;
     const postedUrls: Record<string, string> = {};
+    const landed: string[] = [];
+    const missed: string[] = [];
     for (const p of platforms) {
       const r = await publishPost(profileKey, { title: titleFor(p), mediaUrl, isVideo, platforms: [p] });
       if (r.ok) {
-        anyOk = true;
+        landed.push(p);
         if (r.urls) Object.assign(postedUrls, r.urls);
-      } else lastErr = r.error;
+      } else {
+        missed.push(p);
+        lastErr = r.error;
+      }
     }
-    if (!anyOk) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your linked accounts.` });
+    if (!landed.length) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your linked accounts.` });
     // Remember WHERE it landed: the live post links power the Boost panel
     // and stay on the card long after this response is gone.
     let meta: Record<string, unknown> = {};
     try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
     meta.postedUrls = { ...(meta.postedUrls as Record<string, string> | undefined), ...postedUrls };
     meta.postedAt = new Date().toISOString();
+    // Which accounts already have it, so a second attempt does not re-post
+    // where it already landed.
+    meta.postedTo = [...new Set([...((meta.postedTo as string[] | undefined) || []), ...landed])];
     await db.asset.update({ where: { id }, data: { status: "PUBLISHED", metaJson: JSON.stringify(meta) } });
-    return json({ posted: platforms.join(" · "), ok: `Posted to ${platforms.join(" · ")} 🎉`, postedUrls });
+    return json({
+      posted: landed.join(" · "),
+      ok: missed.length
+        ? `Posted to ${landed.join(" · ")}. ${missed.join(" · ")} didn't go through (${lastErr || "unknown"}) — check that account and try again.`
+        : `Posted to ${landed.join(" · ")} 🎉`,
+      postedUrls,
+    });
   }
   return json({});
 };

@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CARTOON_RECIPES, type CartoonStyleKey } from "./cartoon-ad-pipeline.server";
 import { artLog } from "./art-log.server";
-import { merchantBusy } from "./art-throttle.server";
+import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 
 // Default character (boot pre-render + the Cartoon Avatar cover).
 export const DEFAULT_TILE_CHARACTER = "ingrid";
@@ -85,6 +85,12 @@ export function ensureStyleTile(character: string, key: string): void {
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   if (!base) { artLog("style-tiles", `${flightKey}: skipped — SHOPIFY_APP_URL not set`); return; }
 
+  // Same shared ceiling every other cosmetic renderer answers to. The route
+  // that calls this is PUBLIC, and only the ensureAll* walker below checked
+  // anything — so parallel requests for distinct character x style keys could
+  // start that many paid Replicate renders at once, against the same per-model
+  // rate limit merchant image ads depend on.
+  if (!takeArtSlot()) return;
   inFlight.add(flightKey);
   (async () => {
     try {
@@ -140,6 +146,7 @@ export function ensureStyleTile(character: string, key: string): void {
       console.error(`[style-tiles] ${character}×${key} failed (portrait keeps serving):`, msg);
     } finally {
       inFlight.delete(flightKey);
+      releaseArtSlot();
     }
   })();
 }

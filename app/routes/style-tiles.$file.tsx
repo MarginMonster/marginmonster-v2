@@ -7,6 +7,7 @@
 
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
+import { merchantBusy } from "../lib/art-throttle.server";
 import { DEFAULT_TILE_CHARACTER, ensureAllStyleTiles, ensureStyleTile, isPickerKey, portraitFile, styleTilePath } from "../lib/style-tiles.server";
 
 function serveFile(p: string, cache: string): Response {
@@ -39,7 +40,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 
   // Requesting one tile warms the character's whole set — a merchant looking
   // at the picker wants all 8 anyway.
-  ensureStyleTile(character, key);
+  // Public route: never compete with a paying merchant's render.
+  if (!(await merchantBusy())) ensureStyleTile(character, key);
   ensureAllStyleTiles(character);
   const fb = portraitFile(character);
   return fb ? serveFile(fb, "no-store") : new Response("Not ready", { status: 404 });
