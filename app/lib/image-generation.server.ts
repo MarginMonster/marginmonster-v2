@@ -12,6 +12,7 @@ import { artLog } from "./art-log.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
+import { tidyAdCopy } from "./ad-copy-tidy";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -40,7 +41,30 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
     const m = raw && raw.match(/\{[\s\S]*\}/);
     if (!m) return null;
     const j = JSON.parse(m[0]) as { headline?: string; sub?: string; cta?: string };
-    const clean = (s: string | undefined, n: number) => (s || "").replace(/["'“”]/g, "").trim().split(/\s+/).slice(0, n).join(" ");
+    // THE APOSTROPHE WAS BEING DELETED RIGHT HERE.
+    //
+    // This character class contained the apostrophe, so every one the model
+    // was just instructed to write got stripped on the way out: won’t left
+    // this function as wont and was drawn into the image that way. A live ad
+    // in the Archive reads FINALLY A CAKE THAT WONT CRUMBLE, and the prompt
+    // was never at fault.
+    //
+    // Only the DOUBLE quotes need removing, because they would show up as
+    // stray marks in the layout. Curly single quotes are folded to a straight
+    // one rather than dropped — image models render that fine.
+    //
+    // The word cap is a cap, not a chop: slicing a sentence at N words ships
+    // half a thought onto a finished ad.
+    const clean = (s: string | undefined, n: number) =>
+      tidyAdCopy(
+        (s || "")
+          .replace(/["“”]/g, "")
+          .replace(/[‘’]/g, "'")
+          .trim()
+          .split(/\s+/)
+          .slice(0, n)
+          .join(" ")
+      );
     const headline = clean(j.headline, 8);
     const sub = clean(j.sub, 9);
     const cta = clean(j.cta, 3);
@@ -1815,7 +1839,13 @@ async function formatCopy(
       // them were written wrong before anything was rendered — an apostrophe
       // dropped ("thats"), and a Versus ad whose two columns contradicted each
       // other. Neither is the image model's fault.
-      `Punctuation must be correct — write "that's", "you're", "it's" with apostrophes, never "thats" or "youre".`,
+      `Punctuation must be correct — write "that's", "you're", "it's", "won't", "can't", "don't" with apostrophes, never "thats", "youre", "wont" or "cant".`,
+      // A live ad shipped with the subhead "REUSABLE BIRTHDAY DRAMA ZERO
+      // CALORIES." — three ideas jammed together with no grammar between
+      // them. The before/after fields already carried a "not a keyword
+      // string" rule because the same thing happened there; every prose
+      // field needs it, not just those two.
+      `Every field that is a phrase or a sentence — headline, sub, quote, caption, note, praise, answer, punchline, tagline, origin, before, after, bubble, tweet, alertbody, pov — must be NATURAL LANGUAGE a person would actually say out loud, with the small words left in. Never a keyword string: "Reusable birthday drama zero calories" is three ideas with the grammar removed, and it reads as broken on the finished ad. If it will not fit as a sentence, say less, not more.`,
       `Fields that pair up must agree and never contradict: the US column must not claim something the THEM column also claims, before/after must describe the same situation improving, and no two fields may make opposite promises about the same thing.`,
       // The renderer draws this text into a fixed layout, and the sweep's
       // cut-offs ("duplica" for "duplicates") were simply strings too long for
@@ -1829,7 +1859,14 @@ async function formatCopy(
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     const out: Record<string, string> = {};
     for (const f of fields) {
-      const v = typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "").trim() : "";
+      // tidyAdCopy is a DETERMINISTIC repair, not a second opinion. Once this
+      // string reaches the image model it is baked into pixels, so a dropped
+      // apostrophe is not a typo the merchant can edit — it is a re-render, or
+      // an ad they post with a spelling mistake on it. A live ad shipped
+      // reading "FINALLY A CAKE THAT WONT CRUMBLE" despite the instruction
+      // below spelling out the rule. Instructions lower the rate; this takes
+      // the mechanically-decidable part of it to zero.
+      const v = tidyAdCopy(typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "") : "");
       if (!v) return null;
       out[f] = v;
     }

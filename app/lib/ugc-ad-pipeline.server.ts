@@ -522,9 +522,28 @@ export function ffprobeDuration(file: string): number {
 
 /** Caption-safe text: bold UGC style is ALL CAPS; strip anything that fights
  *  drawtext's escaping rules. Unicode-aware so Spanish accents, German
- *  umlauts and Chinese characters survive (the old A-Z filter erased them). */
+ *  umlauts and Chinese characters survive (the old A-Z filter erased them).
+ *
+ *  THE APOSTROPHE IS KEPT, AS A CURLY ONE.
+ *
+ *  It used to be deleted outright, so every burned-in caption read WONT,
+ *  DONT, THATS, YOURE — on the merchant's finished video, where it cannot be
+ *  edited. The reason was real: the filtergraph passes the string as
+ *  text='...', and a straight apostrophe closes that quote early.
+ *
+ *  U+2019 solves it without any escaping at all. It is a letter to ffmpeg,
+ *  not punctuation in the filter syntax; Poppins and Noto both carry it; and
+ *  it is the typographically correct mark for a contraction anyway, so the
+ *  caption also just looks better. Straight quotes from the writer are folded
+ *  into it rather than dropped.
+ */
 function captionSafe(s: string): string {
-  return s.toUpperCase().replace(/[^\p{L}\p{N} .,!?$'-]/gu, "").replace(/'/g, "").replace(/\s+/g, " ").trim();
+  return s
+    .toUpperCase()
+    .replace(/[']/g, "’")
+    .replace(/[^\p{L}\p{N} .,!?$’-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Font for burned-in text. Poppins covers Latin; CJK needs Noto, which we
