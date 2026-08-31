@@ -921,6 +921,65 @@ export async function scheduleExistingAssets(
   return { ok: true, id: q.id, scheduled: slots.length, skipped, tooMany };
 }
 
+/** A drop the merchant published BY HAND, from the Archive.
+ *
+ *  REVIEW_FIRST is the default review mode and the poster skips those
+ *  questlines entirely — the campaigns page tells the merchant to publish each
+ *  piece from the Archive instead. But the Archive only ever stamped the
+ *  ASSET, so the questline slot that asset belongs to stayed READY forever:
+ *  the campaign never advanced, “Next drop” kept naming a date that had
+ *  passed, the posted count stayed at zero, and settleQuestlineIfDone had
+ *  nothing to settle. The merchant did exactly what the page asked and the
+ *  campaign behaved as though they had not.
+ *
+ *  Mirrors postDueSlots' semantics rather than inventing new ones: POSTED only
+ *  once every account the slot was AIMED at has taken it, postedTo unioned so
+ *  a partial send is finished rather than repeated, and the whole schedule
+ *  written back with a compare-and-swap.
+ *
+ *  Fully non-fatal: the post is already live, and failing to write that down
+ *  must never turn a success into an error on the merchant's screen. */
+export async function recordManualPost(
+  shopId: string,
+  assetId: string,
+  landed: string[],
+  urls: Record<string, string>
+): Promise<void> {
+  if (!assetId || !landed.length) return;
+  try {
+    const live = await db.questline.findMany({
+      where: { shopId, status: { in: ["ACTIVE", "PAUSED"] } },
+      select: { id: true, scheduleJson: true },
+    });
+    for (const q of live) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const fresh = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true } });
+        if (!fresh) break;
+        const schedule = parseSchedule(fresh.scheduleJson);
+        const slot = schedule.slots.find((sl) => sl.assetId === assetId);
+        if (!slot || slot.status === "POSTED") break;
+
+        const already = slot.postedTo || [];
+        const wanted = schedule.platforms?.length ? schedule.platforms : landed;
+        slot.postedTo = [...new Set([...already, ...landed])];
+        if (Object.keys(urls).length) slot.postedUrls = { ...(slot.postedUrls || {}), ...urls };
+        if (wanted.every((p) => slot.postedTo!.includes(p))) slot.status = "POSTED";
+
+        const done = await db.questline.updateMany({
+          where: { id: q.id, scheduleJson: fresh.scheduleJson },
+          data: { scheduleJson: JSON.stringify(schedule) },
+        });
+        if (done.count === 1) {
+          if (slot.status === "POSTED") await settleQuestlineIfDone(q.id);
+          return;
+        }
+        // Something else wrote the schedule in between — re-read and re-apply.
+      }
+    }
+  } catch (e) {
+    console.error("[questline] could not record a manual post (non-fatal):", e);
+  }
+}
 export async function abandonQuestline(shopId: string, questlineId: string): Promise<{ ok: boolean; refunded: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q) return { ok: false, refunded: 0 };

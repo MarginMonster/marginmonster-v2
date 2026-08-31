@@ -564,6 +564,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       if (done.count === 1) break;
     }
+    // If this piece is a drop in a running campaign, close its slot too.
+    // REVIEW_FIRST is the default and the poster never touches those, so this
+    // is the ONLY thing that can advance such a campaign.
+    try {
+      const { recordManualPost } = await import("../lib/questlines.server");
+      await recordManualPost(shop.id, id, landed, postedUrls);
+    } catch (e) {
+      console.error("[archive] manual post slot update failed (non-fatal):", e);
+    }
     return json({
       // WHICH piece this is about. Without it the badge below is a claim
       // about whatever the merchant happens to be looking at.
