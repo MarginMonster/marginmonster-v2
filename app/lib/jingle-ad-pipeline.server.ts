@@ -598,6 +598,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     const outPath = path.join(rendersDir, fileName);
 
     await assemble({
+      jobId: params.jobId,
       talkingPath: animPath,
       audioPath: songPath,
       productImagePath,

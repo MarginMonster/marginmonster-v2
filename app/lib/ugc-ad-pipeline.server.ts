@@ -301,14 +301,22 @@ export async function repPoll(id: string, maxMs: number, stage: string): Promise
 /* STREAM to disk — never buffer whole videos in memory. Render starter has a
  * 512MB ceiling; arrayBuffer()-ing a big clip mid-render was OOM-killing the
  * instance (crash → worker retry → crash loop). */
+/* A provider CDN that accepts the connection and then goes quiet used to park
+ * the worker forever: fetch has no default timeout, this runs on the single
+ * in-process job worker, and the stretch it sits in writes no checkpoint, so
+ * nothing upstream could tell a stalled download from a slow render. Ten
+ * minutes is far longer than any of these files legitimately take and far
+ * shorter than "never". */
+const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+
 export async function download(url: string, file: string): Promise<void> {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!res.ok || !res.body) throw new Error(`[ugc] download ${res.status} for ${file}`);
   await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(file));
 }
 
 export async function downloadBuffer(url: string): Promise<Buffer> {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`[ugc] download ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
@@ -646,7 +654,25 @@ export async function assemble(opts: {
    *  reveals — the presenter talks, the product gets its own moving shots.
    *  Falls back to the static cut-in if the zoompan graph fails. */
   cutaway?: boolean;
+  /** The job this assembly belongs to, so it can keep its own heartbeat.
+   *
+   *  Job.updatedAt only moves on a write, and the orphan reaper treats a row
+   *  untouched for 25 minutes as a corpse: it marks the job FAILED and refunds
+   *  the merchant. Assembly is the longest checkpoint-free stretch in the whole
+   *  app — up to five serial ffmpeg rungs, each allowed ten minutes — so a
+   *  render that fell down the recovery ladder got refunded WHILE STILL
+   *  ENCODING, and then finished and put the finished ad in the merchant's
+   *  Archive anyway. They keep the video and the 150 tokens; the provider bill
+   *  is ours. Below MAX_ATTEMPTS it is worse: the row goes back to PENDING and
+   *  a second assembly starts alongside the first.
+   *
+   *  Beating between rungs makes the row's age mean what the reaper thinks it
+   *  means — time since anything actually happened. */
+  jobId?: string;
 }): Promise<void> {
+  // Non-fatal by construction: checkpointJob swallows its own errors, and a
+  // missed beat costs at worst a wrongly-reclaimed job, never the render.
+  const beat = async () => { if (opts.jobId) await checkpointJob(opts.jobId, { ckBeat: Date.now() }); };
   // CJK scripts need the Noto font (fetched once); if it can't be had, ship
   // the video without burned captions instead of burning tofu boxes.
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
@@ -685,6 +711,7 @@ export async function assemble(opts: {
   let bRollPath = opts.productImagePath;
   if (bRollPath) {
     const norm = `${bRollPath}.norm.jpg`;
+    await beat();
     const conv = await runFfmpeg(["-y", "-i", bRollPath, "-frames:v", "1", norm]);
     if (conv.status === 0 && fs.existsSync(norm)) bRollPath = norm;
     else console.error(`[ugc:assemble] product image re-encode failed — using original: ${(conv.stderr || "").slice(-200)}`);
@@ -778,6 +805,7 @@ export async function assemble(opts: {
     return runFfmpeg(args);
   };
 
+  await beat();
   let run = await encode(script);
   // CAPTIONS ARE A NICE-TO-HAVE; THE VIDEO IS THE PRODUCT. By the time we get
   // here the render is fully paid (kling/omni + TTS/song), and this free last
@@ -788,6 +816,7 @@ export async function assemble(opts: {
   // refunded, no video. Retry ONCE with no captions before giving up.
   if ((run.status !== 0 || !fs.existsSync(opts.outPath)) && script) {
     console.error(`[ugc:assemble] encode failed — retrying WITHOUT burned captions: ${(run.stderr || "").slice(-300)}`);
+    await beat();
     run = await encode("");
     if (run.status === 0) console.log("[ugc:assemble] recovered — shipped without burned captions");
   }
@@ -796,6 +825,7 @@ export async function assemble(opts: {
   // never cost an ad the static cut-in could still deliver. One rung down.
   if ((run.status !== 0 || !fs.existsSync(opts.outPath)) && opts.cutaway && opts.productImagePath) {
     console.error(`[ugc:assemble] still failing — retrying with a STATIC product cut instead of Ken Burns: ${(run.stderr || "").slice(-300)}`);
+    await beat();
     run = await encode("", true, false);
     if (run.status === 0) console.log("[ugc:assemble] recovered — shipped with the static cut-in");
   }
@@ -805,6 +835,7 @@ export async function assemble(opts: {
   // missing. Losing the closing beat beats losing the ad and refunding.
   if ((run.status !== 0 || !fs.existsSync(opts.outPath)) && opts.productImagePath) {
     console.error(`[ugc:assemble] still failing — retrying WITHOUT the product cut-in: ${(run.stderr || "").slice(-300)}`);
+    await beat();
     run = await encode("", false);
     if (run.status === 0) console.log("[ugc:assemble] recovered — shipped without the product cut-in");
   }
@@ -1210,6 +1241,12 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const fromCheckpointedUrl = !!resume.talkingUrl && talkingUrl === resume.talkingUrl;
 
   // 4) ASSEMBLY
+  // From here to the asset write was the longest checkpoint-free stretch in the
+  // app, and Job.updatedAt only moves on a write — so the reaper measured this
+  // whole phase as "nothing has happened" and reclaimed live renders. On a
+  // RESUMED job it is the entire attempt, because acquireTalking returns from
+  // the checkpointed url without writing anything.
+  await ckpt({ ckBeat: Date.now() });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ugc-"));
   try {
     const talkingPath = path.join(tmp, "talking.mp4");
@@ -1250,6 +1287,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     const outPath = path.join(rendersDir, fileName);
 
     await assemble({
+      jobId: params.jobId,
       talkingPath, audioPath, productImagePath, outPath,
       script: params.captions === false ? "" : script, // "" = no captions
       // omni-human AND fal HeyGen bake the lip-synced audio into their output;
