@@ -449,23 +449,50 @@ function detectContentCrop(file: string): string | null {
   try {
     const out = spawnSync(ffmpegBin(), [
       "-hide_banner", "-t", "2", "-i", file,
-      // limit=250 catches near-white bars as well as black ones; round=2 keeps
-      // the box even so the later scale stays clean.
-      "-vf", "cropdetect=limit=250:round=2:reset=0", "-f", "null", "-",
+      // NEGATE FIRST. cropdetect's `limit` is a BLACK threshold — a row counts
+      // as picture only when its luma EXCEEDS it — so it can only ever find
+      // DARK borders. The bars this function exists to remove are WHITE, and
+      // the original filter tried to reach them by raising limit to 250. That
+      // cannot work in the direction intended: 8-bit limited-range luma tops
+      // out at 235, so at 250 NOTHING qualifies as picture and ffmpeg emits a
+      // degenerate box — verified against this repo's own binary on a 720x960
+      // clip padded to 720x1280 with white bars:
+      //
+      //   cropdetect=limit=250        -> crop=-718:-1278:720:1280   (degenerate)
+      //   cropdetect=limit=24         -> crop=720:1280:0:0          (bars kept)
+      //   negate,cropdetect=limit=24  -> crop=720:960:0:160         (correct)
+      //
+      // The regex below reads \d+, which cannot match "-718", so the match set
+      // came back empty and this returned null on EVERY clip. The letterbox
+      // detection has never once fired: white bands have been shipping in
+      // finished ads the whole time, on the very path written to remove them.
+      //
+      // Inverting first turns those white bars black, where cropdetect can see
+      // them at its normal threshold.
+      "-vf", "negate,cropdetect=limit=24:round=2:reset=0", "-f", "null", "-",
     ], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 60_000 });
-    const hits = [...String(out.stderr || "").matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+    // Tolerate the negative form so a no-detect is explicit rather than an
+    // accident of the pattern not matching.
+    const hits = [...String(out.stderr || "").matchAll(/crop=(-?\d+):(-?\d+):(-?\d+):(-?\d+)/g)];
     const last = hits[hits.length - 1];
     if (!last) return null;
     const [w, h, x, y] = last.slice(1, 5).map(Number);
-    if (!w || !h) return null;
+    if (!(w > 0) || !(h > 0) || x < 0 || y < 0) return null;
     const probe = spawnSync(ffprobeBin(), ["-v", "error", "-select_streams", "v:0",
       "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file], { encoding: "utf8", timeout: 15_000 });
     const [fw, fh] = String(probe.stdout || "").trim().split("x").map(Number);
     if (!fw || !fh) return null;
     // Only act on real letterboxing, and never crop away more than a third of
-    // the frame — a dark scene can fool cropdetect into eating the picture.
+    // the frame — a bright scene can now fool cropdetect the same way a dark
+    // one used to, since we inverted it.
     const trimmed = (fh - h) / fh;
     if (trimmed < 0.04 || trimmed > 0.34 || w < fw * 0.9) return null;
+    // LETTERBOXING IS SYMMETRIC AND FULL-WIDTH. Padding puts equal bars top
+    // and bottom across the whole frame; a bright ceiling or a white wall at
+    // the top of a real shot does not. Requiring that shape is what keeps the
+    // inverted probe from cropping picture out of a legitimately bright clip.
+    if (x !== 0 || w !== fw) return null;
+    if (Math.abs(y - (fh - h) / 2) > 8) return null;
     console.log(`[ugc:assemble] letterbox detected — cropping ${fw}x${fh} to ${w}x${h}`);
     return `crop=${w}:${h}:${x}:${y}`;
   } catch (e) {
