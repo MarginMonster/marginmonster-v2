@@ -35,7 +35,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   try {
     const account = await createWebAccount(email, password, name || undefined, lang);
-    return webSessionRedirect(account.id);
+    return webSessionRedirect(account);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Couldn't create the account — try again." });
   }

@@ -41,7 +41,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Someone who got in was never the threat — don't leave them throttled by
   // their own mistyped attempts.
   rateLimitReset(`login:acct:${email}`);
-  return webSessionRedirect(account.id);
+  return webSessionRedirect(account);
 };
 
 export default function WebLogin() {

@@ -116,9 +116,34 @@ export async function loginWebAccount(email: string, password: string): Promise<
 }
 
 /** Redirect that sets the session cookie. */
-export async function webSessionRedirect(accountId: string, to = "/web"): Promise<Response> {
+/* A session cookie says WHO, and now also says WHICH PASSWORD it was issued
+ * under.
+ *
+ * The cookie carried only accountId and lives 30 days, so changing a password
+ * did nothing to sessions already open elsewhere. That is backwards: the
+ * commonest reason to change a password is that somebody else has it, and
+ * until now doing so left them logged in for up to a month on their own
+ * device while the owner believed they had shut the door.
+ *
+ * A short HMAC of the stored hash is enough — it identifies the password
+ * without being derived from it in any usable direction, and it is keyed with
+ * the session secret so a cookie cannot be hand-made. Truncated because this
+ * rides in every request's cookie and only needs to distinguish, not to
+ * withstand a preimage search of a value the holder would have to already
+ * know. */
+function pwFingerprint(passwordHash: string | null): string {
+  return crypto.createHmac("sha256", sessionSecret()).update(`pwv|${passwordHash ?? ""}`).digest("base64url").slice(0, 16);
+}
+
+/** Redirect that sets the session cookie. Takes the account rather than an id
+ *  so the cookie can record which password it was minted under. */
+export async function webSessionRedirect(
+  account: { id: string; passwordHash: string | null },
+  to = "/web"
+): Promise<Response> {
   const session = await storage.getSession();
-  session.set("accountId", accountId);
+  session.set("accountId", account.id);
+  session.set("pwv", pwFingerprint(account.passwordHash));
   return redirect(to, { headers: { "Set-Cookie": await storage.commitSession(session) } });
 }
 
@@ -133,6 +158,17 @@ export async function getWebIdentity(request: Request): Promise<WebIdentity | nu
   if (!accountId) return null;
   const account = await db.account.findUnique({ where: { id: accountId } });
   if (!account) return null;
+
+  // A cookie minted under a password that has since changed is dead. The
+  // `pwv &&` guard grandfathers cookies issued before this shipped — none of
+  // them carry the key, and expiring every live merchant's session on a deploy
+  // reads as an outage on a paid product. Those cookies age out within 30 days
+  // (maxAge above), after which this is unconditional. The cost of the window
+  // is real and worth naming: a password changed in the next month does not
+  // yet evict a session that predates this deploy.
+  const pwv = session.get("pwv") as string | undefined;
+  if (pwv && pwv !== pwFingerprint(account.passwordHash)) return null;
+
   const conn = await db.connection.findFirst({ where: { accountId, kind: "web" } });
   if (!conn) return null;
   const shop = await db.shop.findUnique({

@@ -71,7 +71,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const conn = await db.connection.findFirst({ where: { accountId: account.id, kind: "web" } });
   if (!conn) return json({ orphaned: true });
 
-  return webSessionRedirect(account.id);
+  // The new hash, not the account object we verified against — that still
+  // holds the OLD hash, and a cookie fingerprinted with it would be rejected
+  // on the very next request, bouncing the merchant back to the login page
+  // seconds after a successful reset.
+  return webSessionRedirect({ id: account.id, passwordHash: newHash });
 };
 
 export default function ResetPassword() {
