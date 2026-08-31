@@ -104,8 +104,8 @@ export default function Content() {
                   return (
                     <div className="em-ev" key={i}>
                       <span className={`em-ic t-${s.type}`}>{mt.icon}</span>
-                      <span className="em-m"><b>{s.title || `${mt.label} — from your catalog`}</b><span>{mt.label} · to your socials</span></span>
-                      <span className="em-chip sched">Scheduled</span>
+                      <span className="em-m"><b>{s.title || `${mt.label} — from your catalog`}</b><span>{mt.label} · {s.status === "review" ? "yours to publish" : "to your socials"}</span></span>
+                      <span className="em-chip sched">{s.status === "review" ? "Needs your OK" : "Scheduled"}</span>
                     </div>
                   );
                 })}

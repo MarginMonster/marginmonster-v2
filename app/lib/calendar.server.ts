@@ -19,7 +19,10 @@ export interface CalendarSlot {
   date: string; // ISO date
   label: string; // e.g. "Mon, Jul 8"
   type: string; // BLOG_POST | VIDEO_AD | IMAGE_AD
-  status: "scheduled" | "generated";
+  // "review" is a slot that will be FORGED on its date but never published:
+  // its questline is REVIEW_FIRST, and postDueSlots skips those entirely. It
+  // is not a lesser kind of "scheduled", it is a different promise.
+  status: "scheduled" | "generated" | "review";
   title?: string;
 }
 
@@ -51,7 +54,7 @@ export async function getContentCalendar(shopId: string): Promise<{
     db.plan.findUnique({ where: { shopId }, select: { id: true } }),
     db.questline.findMany({
       where: { shopId, status: "ACTIVE" },
-      select: { name: true, scheduleJson: true },
+      select: { name: true, scheduleJson: true, reviewMode: true },
     }),
     db.asset.findMany({
       where: { shopId, type: { in: ["BLOG_POST", "VIDEO_AD", "IMAGE_AD"] } },
@@ -74,7 +77,17 @@ export async function getContentCalendar(shopId: string): Promise<{
         date: at.toISOString(),
         label: fmt(at),
         type: SLOT_TYPE[s.type] || s.type,
-        status: "scheduled",
+        // THE CALENDAR MUST NOT PROMISE WHAT THE POSTER WILL NOT DO.
+        //
+        // postDueSlots skips a REVIEW_FIRST questline outright — deliberately,
+        // because publishing to someone's real accounts is not undoable. Every
+        // one-off drop lands in one: the MANUAL "One-off drops" container is
+        // created with reviewMode REVIEW_FIRST and reused forever, and no code
+        // path anywhere changes it. So those slots were being drawn as
+        // "Scheduled · to your socials" on a date they will be made and then
+        // sit in the Archive waiting for a click that the merchant has no
+        // reason to know is needed.
+        status: q.reviewMode === "REVIEW_FIRST" ? "review" : "scheduled",
         title: s.topic || s.productTitle || q.name,
       });
     }

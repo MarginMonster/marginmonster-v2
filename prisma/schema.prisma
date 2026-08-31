@@ -114,6 +114,10 @@ model Shop {
   referredBy         String? // referralCode of the shop that referred this one
   referralCreditAt   DateTime? // when we granted the referrer's reward
   lastDigestAt       DateTime? // last monthly "here's what we made you" digest
+  /// Set when the last catalogue import stopped at CATALOG_CAP, cleared when
+  /// it did not. Without it the merchant is told "300 products imported",
+  /// which reads as "your catalogue is here" when it may be a third of it.
+  catalogTruncatedAt DateTime?
   /// Set when Shopify reports the app was uninstalled, cleared on reinstall.
   /// The row itself is KEPT: uninstall used to hard-delete the Shop, which
   /// cascaded through eighteen relations and destroyed purchased tokens and

@@ -134,6 +134,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     catalog,
     catalogCount,
+    // Said next to the count, because the count on its own reads as "your
+    // catalogue is here" when the import stopped at the ceiling.
+    catalogTruncated: !!shop.catalogTruncatedAt,
     catalogSyncing: !!syncing,
     // Real start time, so the elapsed counter survives a reload instead of
     // restarting at zero and making a long import look stuck.
@@ -907,7 +910,9 @@ export default function WebStudio() {
             <div className="ws-lbl">Bring your store in</div>
             {d.catalog.length > 0 ? (
               <p className="ws-offernote">
-                <b>{d.catalogCount} product{d.catalogCount === 1 ? "" : "s"}</b> imported. Pick one from the grid
+                <b>{d.catalogCount} product{d.catalogCount === 1 ? "" : "s"}</b> imported.
+                {d.catalogTruncated ? " That’s our maximum for a single import, so if your store has more they aren’t here yet." : ""}{" "}
+                Pick one from the grid
                 whenever you make something — no more hunting down links. Re-run this any time your catalogue changes.
               </p>
             ) : (

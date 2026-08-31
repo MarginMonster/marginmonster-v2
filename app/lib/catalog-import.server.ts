@@ -378,9 +378,20 @@ export async function importCatalog(
   const truncated = products.length >= cap;
   if (truncated) {
     console.warn(
-      
+      `[catalog] ${shopId}: stopped at the ${cap}-product ceiling — this store almost certainly has more`
     );
   }
+  // Persisted so a LOADER can say it. The flag was computed here, described
+  // in the comment above, and then thrown away: its only consumer anywhere was
+  // a server log the merchant will never read, so the reasoning shipped and
+  // the notice did not.
+  //
+  // Written on both branches, not just the true one, so a merchant who prunes
+  // their store back under the ceiling clears the notice on their next sync.
+  // A latching banner is the same failure in the other direction.
+  await db.shop
+    .update({ where: { id: shopId }, data: { catalogTruncatedAt: truncated ? new Date() : null } })
+    .catch((e) => console.error("[catalog] could not record the truncation flag (non-fatal):", e));
 
   return { imported: products.length, removed, source, swept, failed, truncated };
 }
