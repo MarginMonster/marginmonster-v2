@@ -187,6 +187,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "pack") {
     if (!stripeEnabled()) return json({ error: "Billing is coming online — check back shortly." });
     if (!shop.activePlan?.active) return json({ error: "Pick a plan first — packs top up a plan's balance." });
+    // A TRIAL WILL NOT LET THEM SPEND THIS.
+    //
+    // Purchased tokens land in tokensExtra, and for the whole trial both the
+    // spend path and the balance display deliberately exclude that bucket —
+    // the ceiling is the point of a trial. So a merchant who hit the cap on
+    // day one could be shown "Top up tokens", pay $140 for two thousand of
+    // them, and watch the balance not move: no error, no explanation, nothing
+    // to spend. Ending the trial is what actually unlocks them, and that
+    // button already exists in the Studio.
+    if (planTrialing(shop.activePlan)) {
+      return json({
+        error:
+          "Top-ups unlock when your trial converts — they can't be spent before then. " +
+          "Start your plan now from the Studio and your balance opens up straight away.",
+      });
+    }
     const tokens = parseInt((form.get("tokens") as string) || "0", 10);
     try {
       const url = await createPackCheckout({ accountId: account.id, email: account.email, tokens, baseUrl });
@@ -493,8 +509,20 @@ export default function WebDashboard() {
         <div className="wdg-note">Your plan unlocks WHICH generators you can use; tokens meter HOW MUCH you make. Run out mid-month? Top up below — tokens never unlock a generator your plan doesn&apos;t include.</div>
       </div>
 
+      {d.tier && d.trialing && (
+        <div className="wb-note" style={{ marginBottom: 22 }}>
+          <b>Top-ups unlock when your trial converts.</b> Extra tokens can&apos;t be spent during the
+          trial, so we don&apos;t sell them yet — start your plan from the Studio whenever you&apos;re ready
+          and your full balance opens up.
+        </div>
+      )}
+
       {/* ── Top-ups ────────────────────────────────────────────────────── */}
-      {d.tier && (
+      {/* Not during a trial: purchased tokens sit in a bucket the trial does
+          not let anyone spend, so offering the shop here sells something that
+          cannot be used and does not even show up in the balance. The action
+          refuses it too — this only stops us asking. */}
+      {d.tier && !d.trialing && (
         <>
           <div className="wb-price-name" style={{ marginBottom: 10 }}>Top up tokens</div>
           <div className="wb-grid">

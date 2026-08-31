@@ -316,6 +316,19 @@ export async function importCatalog(
 ): Promise<{ imported: number; removed: number; source: string; swept: boolean; failed: number; truncated: boolean }> {
   const { products, source } = await discoverCatalog(rawUrl, cap);
   const startedAt = new Date();
+
+  // REMEMBER WHERE THE STORE IS.
+  //
+  // Shop.storeUrl exists for exactly this — its schema comment says "the
+  // storefront this shop's catalogue was mirrored from (web accounts)" — and
+  // nothing in the app ever wrote it, so it was null for every web merchant.
+  // That matters far outside this file: a web shop's `domain` is the synthetic
+  // web-<id>.easymode.app, which does not resolve, and the public /go
+  // turnstiles fall back to it. Every shopper who tapped a post whose product
+  // could not be matched by title landed on a dead host.
+  await db.shop
+    .update({ where: { id: shopId }, data: { storeUrl: storeOrigin(rawUrl).origin } })
+    .catch((e) => console.error("[catalog] could not record the storefront (non-fatal):", e));
   // What the merchant already has FROM THE STORE THIS RUN CRAWLED, measured
   // BEFORE we touch anything — the sweep below needs it to judge whether this
   // run is a credible picture of the whole catalogue or the wreckage of a

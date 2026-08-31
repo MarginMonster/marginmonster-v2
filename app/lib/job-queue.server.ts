@@ -32,6 +32,40 @@ export const REFUND_BY_TYPE: Record<string, number> = {
   FORGE_CUSTOM_AVATAR: TOKEN_COST.avatarForge,
 };
 
+/** Keep the merchant’s chosen product page ON the finished piece.
+ *
+ * The Studio says twice that "the product page rides along to the post, so
+ * shoppers land straight on the buy page", and the /go turnstile needs it: its
+ * only other route is matching the title against the mirrored catalogue, and
+ * when that misses it falls back to the shop domain — which for a web account
+ * is a synthetic host that does not resolve.
+ *
+ * Stamped here rather than threaded through seven generator signatures: this is
+ * the one place that has both the payload and the new asset id, so every
+ * pipeline is covered by one write. Conditional, like every other writer of
+ * this blob. */
+async function stampProductUrl(assetId: string | undefined, payload: Record<string, unknown>): Promise<void> {
+  const url = typeof payload.productUrl === "string" ? payload.productUrl : "";
+  if (!assetId || !/^https?:\/\//i.test(url)) return;
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const fresh = await db.asset.findUnique({ where: { id: assetId }, select: { metaJson: true } });
+      if (!fresh) return;
+      let meta: Record<string, unknown> = {};
+      try { meta = JSON.parse(fresh.metaJson || "{}"); } catch { /* fresh */ }
+      if (meta.productUrl === url) return;
+      meta.productUrl = url;
+      const done = await db.asset.updateMany({
+        where: { id: assetId, metaJson: fresh.metaJson },
+        data: { metaJson: JSON.stringify(meta) },
+      });
+      if (done.count === 1) return;
+    }
+  } catch (e) {
+    console.error("[queue] could not stamp the product url (non-fatal):", e);
+  }
+}
+
 /** A forge job that dies terminally must not leave its card spinning.
  *
  * custom-avatars marks its own row failed from inside its catch, which covers
@@ -572,6 +606,8 @@ async function runJob(
           resume: { predictionId: payload.ckVideoPredId as string | undefined },
         });
       }
+      await stampProductUrl(forgedAssetId, payload);
+
       // Accounting. Questline videos were pre-paid on accept (tokens) and don't
       // touch the manual video quota; standalone Studio videos burn a take.
       try {

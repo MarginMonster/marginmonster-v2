@@ -31,7 +31,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   try {
     const a = await db.asset.findUnique({
       where: { id },
-      include: { shop: { select: { id: true, domain: true } } },
+      include: { shop: { select: { id: true, domain: true, storeUrl: true } } },
     });
     if (a) {
       let meta: Record<string, unknown> = {};
@@ -70,12 +70,22 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       }
 
       const title = typeof meta.productTitle === "string" ? meta.productTitle : undefined;
-      let base = "";
+      // The exact page the merchant picked beats any lookup by title.
+      let base = typeof meta.productUrl === "string" && /^https?:\/\//i.test(meta.productUrl) ? meta.productUrl : "";
       try {
         const { productLinkFor } = await import("../lib/catalog-import.server");
-        base = await productLinkFor(a.shop.id, title);
+        if (!base) base = await productLinkFor(a.shop.id, title);
       } catch { /* fall through to the storefront */ }
-      if (!base) base = `https://${a.shop.domain}`;
+      // A WEB SHOP'S `domain` IS NOT A REAL HOST.
+      //
+      // It is the synthetic web-<accountId>.easymode.app minted at signup, and
+      // it does not resolve. Falling back to it meant that any piece whose
+      // product could not be matched by title — a hand-typed title, anything
+      // added by URL, every service, and every merchant who never ran an
+      // import — sent its shoppers to a dead address. The storefront the
+      // catalogue was crawled from is the honest fallback; the app's own front
+      // door beats a dead host if we have neither.
+      if (!base) base = a.shop.storeUrl || (/\.easymode\.app$/i.test(a.shop.domain) ? "https://easymodeapp.com" : `https://${a.shop.domain}`);
       const u = new URL(base);
       u.searchParams.set("utm_source", "easymode");
       u.searchParams.set("utm_medium", "social");

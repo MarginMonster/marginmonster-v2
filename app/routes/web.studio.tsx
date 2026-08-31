@@ -339,6 +339,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();
   const urlField = ((form.get("productImageUrl") as string) || "").trim() || undefined;
+  // THE LINK THE STUDIO PROMISES TWICE.
+  //
+  // The catalogue picker submits productUrl and the page says, in two places,
+  // that "the product page rides along to the post, so shoppers land straight
+  // on the buy page". The action never read it. The go turnstile then fell
+  // back to matching the title against the mirrored catalogue, and when that
+  // missed — a hand-typed title, anything added by URL, any service — it
+  // reached for the shop's domain, which for a web account is synthetic and
+  // dead. Carried on the payload now so the asset can keep it.
+  const productUrlRaw = ((form.get("productUrl") as string) || "").trim();
+  const productUrl =
+    productUrlRaw && /^https?:\/\//i.test(productUrlRaw) && productUrlRaw.length <= 600
+      ? productUrlRaw
+      : undefined;
   // The input carries maxLength={300}, which is a courtesy to the merchant and
   // nothing to the server: this string is interpolated straight into the image
   // and video prompts, ahead of the fidelity clauses that keep the product
@@ -437,7 +451,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       for (let i = 0; i < n; i++) {
         // Services: the presenter explains the offer to camera — nothing to hold.
         await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
-          productTitle, productImageUrl, customPrompt: videoDirection, productDescription: direction,
+          productTitle, productImageUrl, productUrl, customPrompt: videoDirection, productDescription: direction,
           style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
           contentType, cartoonStyle,
           avatarId, avatarVariant,
@@ -480,7 +494,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           // A burst wants OPTIONS, so every item composes fresh instead of
           // being handed the Shot Library's one frozen composite.
           freshShot: n > 1,
-          productTitle, productImageUrl, stylePrompt: direction,
+          productTitle, productImageUrl, productUrl, stylePrompt: direction,
           styleMode: direction ? "scene" : "backdrop",
           templateKey: avatarId || service ? undefined : templateKey,
           formatKey: avatarId || service ? undefined : (spread[i] || formatKey),
@@ -497,7 +511,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
       await spendTokens(shop.id, TOKEN_COST.blog);
-      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, serviceMode: service, prePaid: true });
+      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productUrl, productDescription: direction, serviceMode: service, prePaid: true });
       return json({ ok: true, queued: "article" });
     }
   } catch (e) {

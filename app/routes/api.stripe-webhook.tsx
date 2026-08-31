@@ -4,6 +4,7 @@
  * customer.subscription.deleted. Signature-verified; unsigned = 400. */
 
 import type { ActionFunctionArgs } from "@remix-run/node";
+import { db } from "../db.server";
 import {
   activateStripePlan,
   creditStripePack,
@@ -44,8 +45,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const status = obj.status as string;
       if (accountId && meta.tierKey) {
         if (status === "active" || status === "trialing") {
-          // Keep type in sync (plan changes made in the Stripe portal land here).
-          await activateStripePlan(accountId, meta.tierKey, (obj.id as string) || null, (obj.customer as string) || null);
+          // ONLY FOR THE SUBSCRIPTION THE ACCOUNT IS ACTUALLY ON.
+          //
+          // Stripe does not guarantee webhook ordering, and this endpoint
+          // manufactures out-of-order delivery itself by 500-ing on a
+          // transient failure and being retried. activateStripePlan
+          // unconditionally re-points the account at whatever subscription id
+          // the event carries and then CANCELS whatever it pointed at before —
+          // so a late "updated" for the subscription a merchant just upgraded
+          // AWAY from would cancel the one they had just paid for and downgrade
+          // them to the old tier. deactivateStripePlan has carried exactly this
+          // guard for the mirror-image case all along; this side never got it.
+          //
+          // Establishing a NEW subscription is checkout.session.completed's
+          // job. This event only keeps the live one in sync.
+          const acct = await db.account.findUnique({ where: { id: accountId }, select: { stripeSubId: true } });
+          const subId = (obj.id as string) || null;
+          if (acct?.stripeSubId && subId && acct.stripeSubId !== subId) {
+            console.warn(`[stripe] ignoring subscription.updated for ${subId} — the account is on ${acct.stripeSubId}`);
+          } else {
+            // Keep type in sync (plan changes made in the Stripe portal land here).
+            await activateStripePlan(accountId, meta.tierKey, subId, (obj.customer as string) || null);
+          }
         } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
           await deactivateStripePlan(accountId, (obj.id as string) || null);
         }

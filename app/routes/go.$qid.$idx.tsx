@@ -36,7 +36,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   try {
     const q = await db.questline.findUnique({
       where: { id: qid },
-      include: { shop: { select: { domain: true } } },
+      include: { shop: { select: { domain: true, storeUrl: true } } },
     });
     if (q) {
       const schedule = parseSchedule(q.scheduleJson);
@@ -82,7 +82,12 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
         } catch { /* never break a shopper's redirect */ }
       }
 
-      const base = slot?.productUrl || `https://${q.shop.domain}`;
+      // Same as the asset turnstile: a web shop's domain is synthetic and dead,
+      // so prefer the slot's own product link, then the crawled storefront.
+      const base =
+        slot?.productUrl ||
+        q.shop.storeUrl ||
+        (/\.easymode\.app$/i.test(q.shop.domain) ? "https://easymodeapp.com" : `https://${q.shop.domain}`);
       const u = new URL(base);
       u.searchParams.set("utm_source", "easymode");
       u.searchParams.set("utm_medium", "social");
