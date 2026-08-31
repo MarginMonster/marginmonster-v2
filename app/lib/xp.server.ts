@@ -24,37 +24,64 @@ export type UnlockResult = AchievementDef & { unlockedAt: string };
 export async function awardXp(shopId: string, gained: number): Promise<XpResult | null> {
   try {
     if (gained <= 0) return null;
-    const shop = await db.shop.findUnique({
+
+    // A LEVEL IS CROSSED ONCE, AND ITS GIFT IS PAID ONCE.
+    //
+    // This read the shop, computed shop.xp + gained, and wrote both xp and
+    // level back. Two awards landing together — a job finishing while the
+    // merchant clicks, an achievement unlock that itself awards XP — both read
+    // the same level, both saw a level-up, and both paid the gift into
+    // tokensExtra. That bucket is PURCHASED tokens: it never expires and it
+    // buys real renders, so the duplicate is permanent spendable money. The
+    // stale read also silently dropped one award's XP entirely.
+    //
+    // The XP itself is an atomic increment, so nothing is lost. The level-up
+    // is then claimed with a compare-and-swap on the level column: whoever
+    // moves it from N to M owns the whole span N+1..M and pays exactly that,
+    // and everyone else finds the level already moved and pays nothing.
+    const bumped = await db.shop.update({
       where: { id: shopId },
-      include: { activePlan: true },
+      data: { xp: { increment: gained } },
+      select: { xp: true, level: true },
     });
-    if (!shop) return null;
 
-    const xp = shop.xp + gained;
-    const level = levelForXp(xp);
-    const leveledUp = level > shop.level;
-
+    let level = bumped.level;
     let giftedTokens = 0;
-    if (leveledUp) {
-      for (let l = shop.level + 1; l <= level; l++) giftedTokens += giftForLevel(l);
+    let leveledUp = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const cur = await db.shop.findUnique({ where: { id: shopId }, select: { xp: true, level: true } });
+      if (!cur) break;
+      const reached = levelForXp(cur.xp);
+      level = Math.max(cur.level, reached);
+      if (reached <= cur.level) break; // nothing new to claim
+      let gift = 0;
+      for (let l = cur.level + 1; l <= reached; l++) gift += giftForLevel(l);
+      const claimed = await db.shop.updateMany({
+        where: { id: shopId, level: cur.level },
+        data: {
+          level: reached,
+          // flash for the global level-up popup (read + cleared by the app shell)
+          pendingLevelUp: JSON.stringify({ level: reached, gift }),
+        },
+      });
+      if (claimed.count === 1) {
+        giftedTokens = gift;
+        leveledUp = true;
+        break;
+      }
+      // Someone else moved the level — read it again and see what is left.
     }
 
-    await db.shop.update({
-      where: { id: shopId },
-      data: {
-        xp,
-        level,
-        // flash for the global level-up popup (read + cleared by the app shell)
-        ...(leveledUp ? { pendingLevelUp: JSON.stringify({ level, gift: giftedTokens }) } : {}),
-      },
-    });
-    if (giftedTokens > 0 && shop.activePlan) {
-      await db.plan.update({
-        where: { id: shop.activePlan.id },
-        data: { tokensExtra: { increment: giftedTokens } },
-      });
+    if (giftedTokens > 0) {
+      const plan = await db.plan.findUnique({ where: { shopId }, select: { id: true } });
+      if (plan) {
+        await db.plan.update({
+          where: { id: plan.id },
+          data: { tokensExtra: { increment: giftedTokens } },
+        });
+      }
     }
-    return { gained, xp, level, leveledUp, giftedTokens };
+    return { gained, xp: bumped.xp + 0, level, leveledUp, giftedTokens };
   } catch (e) {
     console.error("[xp] awardXp failed (non-fatal):", e);
     return null;

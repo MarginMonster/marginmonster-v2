@@ -96,8 +96,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           await db.shop.update({ where: { id: shop.id }, data: { appliedCount: { increment: 1 } } });
           const a = await unlockAchievement(shop.id, "SHIPPED_IT");
           if (a) newAch.push(a);
-          xpRes = await awardXp(shop.id, XP_EVENTS.applyListing);
-          if (xpRes?.leveledUp) newAch.push(...(await checkLevelAchievements(shop.id, xpRes.level)));
+          // NO XP HERE — same rule, and the same reason, as "Apply all"
+          // below, which had this removed and wrote the argument out in full.
+          // Applying already-generated copy to Shopify costs us nothing and
+          // can be repeated on the same product forever, and XP is not
+          // cosmetic: every level pays tokensExtra, which buys real renders.
+          // Closing the batch button and leaving the single one open just
+          // made the farm slower, not smaller. The merchant earns XP when they
+          // GENERATE the copy, which is charged; the achievement above still
+          // fires and is one-shot per key, so the recognition survives.
         } catch { /* progression is never fatal */ }
       }
       return json({ applied: true, appliedTitle: j.data?.productUpdate?.product?.title || "", xpRes, newAch });

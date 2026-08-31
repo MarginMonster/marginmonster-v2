@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { db } from "../db.server";
+import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { parseSchedule } from "../lib/questlines";
 
 /* The attribution turnstile. Every auto-posted caption links here instead of
@@ -11,9 +12,26 @@ import { parseSchedule } from "../lib/questlines";
  *
  * PUBLIC route — clicked from TikTok/IG/FB, no session. Never breaks the
  * shopper: any failure still redirects somewhere sensible. */
-export const loader = async ({ params }: LoaderFunctionArgs) => {
+/* One source cannot run the click counter up.
+ *
+ * These numbers are shown to the merchant as results, and they unlock
+ * achievements that pay tokens — GOLD_RUSH at one click and TREASURE_HUNTER at
+ * twenty-five, 55 tokens between them. The route is a public GET with the id
+ * in the caption of every post, so anybody could curl it in a loop: real money
+ * out of nothing, and a Results page reporting engagement that never happened.
+ *
+ * Counting is what gets throttled, never the redirect — a shopper must always
+ * reach the product. Three per source per ten minutes is far above what a
+ * person does with one link and far below what a loop needs. It is a floor,
+ * not a bot defence: link previewers and shared NATs will still be counted.
+ */
+const CLICK_LIMIT = 3;
+const CLICK_WINDOW_MS = 10 * 60_000;
+
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const qid = params.qid || "";
   const idx = parseInt(params.idx || "-1", 10);
+  const countable = rateLimit(`click:${clientIp(request)}:q:${qid}:${idx}`, CLICK_LIMIT, CLICK_WINDOW_MS).ok;
 
   try {
     const q = await db.questline.findUnique({
@@ -37,7 +55,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
       // duplicate posts on the merchant's real accounts, caused by a shopper
       // clicking a link. This is the highest-frequency writer of this blob and
       // it is public, so it collides precisely during a publish window.
-      if (slot) {
+      if (slot && countable) {
         let total = 0;
         for (let attempt = 0; attempt < 3; attempt++) {
           const fresh = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true } });
