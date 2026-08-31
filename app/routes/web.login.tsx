@@ -63,6 +63,9 @@ export default function WebLogin() {
         </div>
       </Form>
       <p className="wb-note" style={{ marginTop: 16 }}>
+        <Link to="/web/forgot">Forgot your password?</Link>
+      </p>
+      <p className="wb-note" style={{ marginTop: 8 }}>
         New here? <Link to="/web/signup">Create an account</Link>
       </p>
     </div>
