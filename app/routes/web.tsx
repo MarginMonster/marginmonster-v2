@@ -126,8 +126,14 @@ export default function WebLayout() {
                   <Link to="/web#plans" className="wb-hud-topup" title="Get more tokens">
                     <span>🪙 {hud.tokens.toLocaleString()}</span><b>Add tokens</b>
                   </Link>
-                  <span className="wb-hud-stat" title="Videos your balance affords">🎬 {hud.videos} Videos</span>
-                  <span className="wb-hud-stat" title="Image ads your balance affords">🖼 {hud.ads} Images</span>
+                  {/* These are what the BALANCE AFFORDS, not what the merchant
+                      owns — but the label said "3 Videos", which on the Archive
+                      page sits inches from that page’s own "Videos · 9" tab and
+                      reads as a count of their library. The only thing
+                      distinguishing them was a title attribute, which does not
+                      exist on touch. Say what the number means. */}
+                  <span className="wb-hud-stat" title="How many product videos your balance covers">🎬 {hud.videos} videos&apos; worth</span>
+                  <span className="wb-hud-stat" title="How many image ads your balance covers">🖼 {hud.ads} images&apos; worth</span>
                 </div>
               </>
             )}

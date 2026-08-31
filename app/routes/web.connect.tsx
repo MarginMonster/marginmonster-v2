@@ -10,6 +10,9 @@ import { connectUrl, refreshLinkedPlatforms, socialProviderEnabled } from "../li
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
 
+// Merchants keep several of these open at once; an untitled tab is just a URL.
+export const meta = () => [{ title: "Auto-posting · EasyMode" }];
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const enabled = socialProviderEnabled();

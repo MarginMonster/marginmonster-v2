@@ -429,7 +429,13 @@ export default function WebDashboard() {
                   {annual && <input type="hidden" name="annual" value="1" />}
                   <button className="wb-btn" disabled={busy || !d.billingOn}>Start free trial</button>
                 </Form>
-                <div className="wd-trial">7-day free trial ({TRIAL_TOKEN_CAP} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</div>
+                {/* The trial ceiling is a CAP, not a grant: what a trialist can
+                    actually spend is min(the tier’s own allowance, the cap). On
+                    Starter those are 300 and 400, so this card promised 400 and
+                    the wallet allowed 300 — a hundred tokens the merchant was
+                    told they had and could never use. Studio and Legend are
+                    unaffected, since the cap binds first there. */}
+                <div className="wd-trial">7-day free trial ({Math.min(t.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US")} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</div>
               </>
             )}
           </div>

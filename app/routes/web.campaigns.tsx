@@ -18,7 +18,7 @@ import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
 import { parseSchedule } from "../lib/questlines";
-import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
+import { SOCIAL_PLAN_DEFS, questlineCostFor } from "../lib/questlines";
 import { acceptQuestline, abandonQuestline } from "../lib/questlines.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
@@ -153,7 +153,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const postable = def.objectives.filter((o) => o.type !== "blog");
     const mix = { video: 0, image: 0 };
     for (const o of postable) if (o.type in mix) (mix as Record<string, number>)[o.type] = o.target;
-    const cost = questlineTokenCost({ ...def, objectives: postable });
+    // questlineCostFor, not questlineTokenCost — the same function accept()
+    // charges with. Top-tier members get a 15% break on premium campaigns, and
+    // quoting the undiscounted number meant the Legend plan card advertised a
+    // "Campaign discount on token costs" that was never visible anywhere the
+    // merchant could see it: they upgraded for a benefit the purchase screen
+    // then hid. It also made the quote disagree with the charge — in their
+    // favour, but a price that is not the price is still wrong.
+    const cost = questlineCostFor({ ...def, objectives: postable }, full?.activePlan?.type);
     const videoLocked = mix.video > 0 && !hasVideo;
     return {
       key, name: def.name, icon: def.icon, cadence: def.cadence, bagSize: def.bagSize,
