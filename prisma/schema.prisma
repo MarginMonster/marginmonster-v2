@@ -329,6 +329,11 @@ model Plan {
   // subscription, so the same URL keeps confirming.
   activationChargeId String?
 
+  /// Set when the merchant has cancelled but the period they already paid
+  /// for has not ended yet. The plan stays ACTIVE until Stripe closes it —
+  /// cancelling should not confiscate the month they bought.
+  cancelAtPeriodEnd  Boolean @default(false)
+
   // Free-trial window (first subscription only). While now < trialEndsAt the
   // wallet is hard-capped at TRIAL_TOKEN_CAP and anthem/cartoon stay locked.
   trialEndsAt DateTime?

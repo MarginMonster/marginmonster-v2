@@ -125,10 +125,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       select: { id: true, title: true, url: true, imageUrl: true, priceText: true },
     }),
     db.catalogProduct.count({ where: { shopId: shop.id } }),
+    // THE LAST IMPORT, WHATEVER HAPPENED TO IT.
+    //
+    // This asked only for a LIVE import, so a failed one was invisible: the
+    // merchant saw "Import queued — your products will appear here shortly",
+    // then a spinner that says it updates itself, then nothing — an empty
+    // catalogue and no explanation anywhere in the product. Meanwhile
+    // catalog-import throws messages written FOR them ("Double-check the
+    // address — or keep pasting individual product links, which always
+    // works"), which reached a server log and stopped there.
+    //
+    // Taking the most recent job of any status makes this self-clearing: a
+    // later successful import is a newer row, so the error goes away on its
+    // own rather than nagging forever.
     db.job.findFirst({
-      where: { shopId: shop.id, type: "IMPORT_CATALOG", status: { in: ["PENDING", "IN_PROGRESS"] } },
+      where: { shopId: shop.id, type: "IMPORT_CATALOG" },
       orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
+      select: { createdAt: true, status: true, lastError: true },
     }),
   ]);
   return json({
@@ -137,10 +150,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Said next to the count, because the count on its own reads as "your
     // catalogue is here" when the import stopped at the ceiling.
     catalogTruncated: !!shop.catalogTruncatedAt,
-    catalogSyncing: !!syncing,
+    catalogSyncing: syncing?.status === "PENDING" || syncing?.status === "IN_PROGRESS",
+    // Only when the MOST RECENT attempt is the failed one.
+    catalogFailed: syncing?.status === "FAILED" ? syncing.lastError || "That import didn't complete." : null,
     // Real start time, so the elapsed counter survives a reload instead of
     // restarting at zero and making a long import look stuck.
-    catalogSyncStartedAt: syncing?.createdAt.toISOString() || null,
+    catalogSyncStartedAt:
+      syncing?.status === "PENDING" || syncing?.status === "IN_PROGRESS"
+        ? syncing.createdAt.toISOString()
+        : null,
     // A trial that's out of tokens shouldn't strand the merchant until day 7.
     trialing: planTrialing(shop.activePlan),
     hasBrand: !!shop.brandProfile,
@@ -968,6 +986,11 @@ export default function WebStudio() {
             {actionData && "catalogQueued" in actionData && actionData.catalogQueued
               ? <p className="ws-offernote">Import queued — your products will appear here shortly.</p> : null}
             {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
+            {!d.catalogSyncing && d.catalogFailed && (
+              <div className="wb-err" style={{ marginTop: 10 }}>
+                <b>That import didn&apos;t work.</b> {d.catalogFailed}
+              </div>
+            )}
 
             <div className="ws-lbl" style={{ marginTop: 26 }}>
               <span>Turn your brand mascot into a marketing tool</span>

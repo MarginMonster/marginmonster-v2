@@ -102,6 +102,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       tokens: t.monthlyTokens, capacity: planCapacityLine(t), features: t.features, highlight: !!t.highlight,
     })),
     packs: TOKEN_PACKS.map((p) => ({ tokens: p.tokens, price: p.price, best: !!(p as { best?: boolean }).best })),
+    // Cancelled but still inside the period they paid for.
+    cancelPending: !!shop.activePlan?.cancelAtPeriodEnd,
   });
 };
 
@@ -166,6 +168,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : "Checkout couldn't start." });
     }
+  }
+
+  // "Cancel anytime" is printed on the Stripe checkout page and in the terms.
+  // Until now it was not true anywhere in the product.
+  if (intent === "cancelPlan" || intent === "resumePlan") {
+    const { setPlanCancellation } = await import("../lib/stripe.server");
+    const r = await setPlanCancellation(account.id, intent === "cancelPlan");
+    if (!r.ok) return json({ error: r.error || "Couldn't update your plan just now." });
+    return json({
+      ok:
+        intent === "cancelPlan"
+          ? "Your plan won't renew. You keep everything until the end of the period you've already paid for."
+          : "Your plan is back on — it'll renew as normal.",
+    });
   }
 
   if (intent === "pack") {
@@ -421,6 +437,30 @@ export default function WebDashboard() {
             <div className="wb-note">🪙 {t.tokens.toLocaleString("en-US")} tokens/mo</div>
             <div className="wb-note">{t.capacity}</div>
             <ul className="wb-feats">{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
+            {d.tier === t.key && d.billingOn && (
+              d.cancelPending ? (
+                <>
+                  <p className="wb-note" style={{ marginTop: 8 }}>
+                    Cancelled — this plan won&apos;t renew. You keep every generator and every token
+                    until the period you&apos;ve paid for ends.
+                  </p>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="resumePlan" />
+                    <button className="wb-btn" disabled={busy}>Keep my plan</button>
+                  </Form>
+                </>
+              ) : (
+                <Form
+                  method="post"
+                  onSubmit={(e) => {
+                    if (!confirm("Cancel your plan? It stays active — with all your tokens — until the end of the period you've already paid for, then stops renewing.")) e.preventDefault();
+                  }}
+                >
+                  <input type="hidden" name="intent" value="cancelPlan" />
+                  <button className="wb-btn ghost" disabled={busy}>Cancel plan</button>
+                </Form>
+              )
+            )}
             {d.tier !== t.key && (
               <>
                 <Form method="post">

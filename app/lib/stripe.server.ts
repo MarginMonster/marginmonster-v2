@@ -304,10 +304,15 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
       blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
       adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
       periodStart: new Date(), tokensIncluded: tier.monthlyTokens, tokensUsed: 0,
+      cancelAtPeriodEnd: false,
       trialEndsAt: new Date(Date.now() + 7 * 86_400_000),
     },
     update: {
       type: tier.key, active: true,
+      // A new activation is not a cancelled one — otherwise a merchant who
+      // cancelled and then subscribed again would still be told their plan
+      // will not renew.
+      cancelAtPeriodEnd: false,
       blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
       adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
       tokensIncluded: tier.monthlyTokens,
@@ -411,6 +416,50 @@ export async function creditStripePack(accountId: string, tokens: number, charge
  *  holds back) unlocks the moment they land back on the page.
  *
  *  Returns a human-readable reason on failure — never throws at the caller. */
+/** Cancel at the end of the paid period, or undo that.
+ *
+ * The Stripe checkout page tells the merchant "cancel anytime", and the terms
+ * say "cancel any time and everything you generated stays yours" — and there
+ * was no way to do it anywhere in the web app. Not a hidden one: none. The
+ * only exits were emailing support or a chargeback, which is the outcome the
+ * checkout copy exists to avoid. The single billing lever the app did expose,
+ * endTrialNow below, runs the other way and starts charging sooner.
+ *
+ * cancel_at_period_end, NOT a delete. Deleting the subscription would end it
+ * immediately and confiscate the remainder of a month the merchant has
+ * already paid for. They keep everything until the period they bought runs
+ * out, then Stripe's customer.subscription.deleted arrives and
+ * deactivateStripePlan switches the plan off — which is why this must target
+ * account.stripeSubId specifically: that function deliberately ignores a
+ * cancellation for any subscription that is not the live one. */
+export async function setPlanCancellation(
+  accountId: string,
+  cancel: boolean
+): Promise<{ ok: boolean; error?: string }> {
+  if (!stripeEnabled()) return { ok: false, error: "Billing isn't configured on this server yet." };
+  const account = await db.account.findUnique({ where: { id: accountId } });
+  if (!account?.stripeSubId) return { ok: false, error: "No live subscription on this account." };
+  const shopId = await webShopIdFor(accountId);
+  if (!shopId) return { ok: false, error: "This account isn't linked to a workspace yet." };
+
+  try {
+    await stripePost(`/subscriptions/${account.stripeSubId}`, {
+      cancel_at_period_end: cancel ? "true" : "false",
+    });
+  } catch (e) {
+    console.error("[stripe] cancel toggle failed:", e);
+    return { ok: false, error: e instanceof Error ? e.message : "Stripe wouldn't accept that just now." };
+  }
+
+  // Local mirror so the dashboard can say what is happening on the next load.
+  // Non-fatal: Stripe is the source of truth and its webhook still decides
+  // when the plan actually switches off.
+  await db.plan
+    .updateMany({ where: { shopId }, data: { cancelAtPeriodEnd: cancel } })
+    .catch((e) => console.error("[stripe] cancel mirror failed (non-fatal):", e));
+  return { ok: true };
+}
+
 export async function endTrialNow(accountId: string): Promise<{ ok: boolean; error?: string }> {
   if (!stripeEnabled()) return { ok: false, error: "Billing isn't configured on this server yet." };
   const account = await db.account.findUnique({ where: { id: accountId } });
