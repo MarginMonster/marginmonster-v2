@@ -1820,7 +1820,11 @@ async function formatCopy(
   tone: string | undefined,
   direction: string | undefined,
   contentLang?: string | null,
-  merchantOffer?: string | null
+  merchantOffer?: string | null,
+  /** The merchant's ACTUAL price for this product, verbatim from the
+   *  catalogue. Undefined when we do not know it — in which case no format
+   *  may print a number. */
+  productPrice?: string | null
 ): Promise<Record<string, string> | null> {
   try {
     const prompt = [
@@ -1835,6 +1839,19 @@ async function formatCopy(
       merchantOffer
         ? `The merchant IS running this promotion, word for word: "${trimToWord(merchantOffer, 60)}". Use it verbatim wherever an offer appears.`
         : `The merchant is NOT running any promotion. NEVER invent a discount, percentage, sale, coupon, price cut, free shipping or any saving. Sell the product on what it IS.`,
+      // THE PRICE IS NOT OURS TO INVENT EITHER.
+      //
+      // The guide used to say: price a plausible price like "$29", and math a
+      // cost-per-use line "derived from plausible pricing". Those strings are
+      // then printed as the headline number of a receipt ad or rendered HUGE
+      // in the centre of the frame. A merchant selling a $79 product got an
+      // ad announcing $29 — a false advertised price, worse than the invented
+      // discount three lines above, because the shopper clicks through
+      // expecting the number. The real one is in CatalogProduct.priceText and
+      // was simply never forwarded.
+      productPrice
+        ? `The product’s REAL price is "${productPrice}". Wherever a price appears, reproduce that string EXACTLY — never round it, never restate it in another currency, never make up a different one. Any per-use or per-serving figure must be arithmetic on that number and nothing else.`
+        : `You do NOT know this product’s price. Never write a currency amount anywhere — no price, no cost-per-use, no per-serving figure, no “from $…”. Sell it on what it is instead.`,
       // From a full 49-template sweep: every remaining defect was text. Two of
       // them were written wrong before anything was rendered — an apostrophe
       // dropped ("thats"), and a Versus ad whose two columns contradicted each
@@ -1873,6 +1890,14 @@ async function formatCopy(
     // Belt and braces on the one field that can promise the merchant's money
     // away: their exact words win, and any invented discount that survived the
     // instruction gets scrubbed rather than shipped.
+    // The same belt-and-braces as `offer`, for the same reason: an invented
+    // number that survived the instruction must not reach the canvas.
+    if (typeof out.price === "string") {
+      if (productPrice) out.price = productPrice;
+      else if (/[\d$£€¥]/.test(out.price)) return null; // no price on file — this format cannot run truthfully
+    }
+    if (typeof out.math === "string" && !productPrice && /[\d$£€¥]/.test(out.math)) return null;
+
     if (out.offer) {
       const invented = /\d|%|\$|\b(off|sale|free|save|deal|discount|coupon)\b/i.test(out.offer);
       out.offer = merchantOffer ? trimToWord(merchantOffer, 40) : invented ? "Own the set" : out.offer;
@@ -1908,15 +1933,28 @@ export async function runFormatRung(opts: {
   direction?: string;
   contentLang?: string | null;
   merchantOffer?: string | null;
+  /** The merchant's real price, when the catalogue has one. */
+  productPrice?: string | null;
 }): Promise<FormatRunResult> {
   const nil = (fallback: string): FormatRunResult =>
     ({ imageUrl: null, copy: null, prompt: null, qaPass: false, qaReason: "", retried: false, fallback });
 
   // The merchant PICKED this format. Losing it silently and shipping a generic
   // scene instead is the worst possible outcome, so copy gets a second chance.
-  let copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer);
-  if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer);
-  if (!copy) return nil("copy-failed");
+  let copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice);
+  if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice);
+  if (!copy) {
+    // Two formats need real money on the canvas. With no price in the
+    // catalogue for this product the copywriter is forbidden to write one, so
+    // the rung genuinely cannot run — and falling to a scene ad is the right
+    // outcome, but it must be SAID rather than looking like a random failure.
+    const needsMoney = opts.formatKey === "receipt" || opts.formatKey === "pricemath";
+    if (needsMoney && !opts.productPrice) {
+      console.log(`[image-ad] format ${opts.formatKey} needs the product’s real price and the catalogue has none for “${opts.productTitle}” — falling to a scene ad rather than printing a made-up number`);
+      return nil("no-price-on-file");
+    }
+    return nil("copy-failed");
+  }
 
   const prompt = formatLayoutPrompt(opts.formatKey, copy);
   // The rejection reason goes into an IMAGE prompt, and the QA reply often
@@ -2819,9 +2857,31 @@ export async function generateImageAd(
         const f = AD_FORMAT_BY_KEY[formatKey];
         if (f) {
           const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
+          // THE REAL PRICE, RESOLVED ONCE.
+          //
+          // Two formats print money — receipt puts it on the receipt line,
+          // pricemath renders it HUGE in the middle of the frame — and the
+          // copywriter was told to make one up. It is looked up here rather
+          // than threaded through every payload because the payload route
+          // would have to be patched in six places (studio, the FORMAT
+          // ROTATION questline drops, onboarding, the archive remix and the
+          // webhooks), and the auto-posting path is precisely the one that
+          // would have been missed.
+          const productPrice = await (async () => {
+            try {
+              const row = await db.catalogProduct.findFirst({
+                where: { shopId, title: productTitle },
+                select: { priceText: true },
+              });
+              const p = (row?.priceText || "").trim();
+              // A price has to look like one. A blank, a “Sold out” or a
+              // scrape artefact must read as “we do not know”, not as money.
+              return /[0-9]/.test(p) && p.length <= 24 ? p : null;
+            } catch { return null; }
+          })();
           const r = await runFormatRung({
             formatKey: f.key, fields: f.fields, productTitle, productImageUrl: productImageUrl!,
-            tone: voiceTone, direction: stylePrompt, contentLang, merchantOffer,
+            tone: voiceTone, direction: stylePrompt, contentLang, merchantOffer, productPrice,
           });
           if (r.qaPass && r.imageUrl) {
             imageUrl = r.imageUrl;

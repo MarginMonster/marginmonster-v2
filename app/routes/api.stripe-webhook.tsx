@@ -79,7 +79,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             console.warn(`[stripe] ignoring subscription.updated for ${subId} — the account is on ${acct.stripeSubId}`);
           } else {
             // Keep type in sync (plan changes made in the Stripe portal land here).
-            await activateStripePlan(accountId, meta.tierKey, subId, (obj.customer as string) || null);
+            // Carry the renewal state the event itself reports, rather than
+            // overwriting it with false. Read both spellings: newer Stripe API
+            // versions express this as cancel_at alongside cancel_at_period_end,
+            // and a cancellation that only appears in one of them must still
+            // reach the merchant's dashboard.
+            const willCancel = obj.cancel_at_period_end === true || !!obj.cancel_at;
+            await activateStripePlan(accountId, meta.tierKey, subId, (obj.customer as string) || null, willCancel);
           }
         } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
           await deactivateStripePlan(accountId, (obj.id as string) || null);

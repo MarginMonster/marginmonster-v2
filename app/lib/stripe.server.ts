@@ -252,7 +252,10 @@ async function webShopIdFor(accountId: string): Promise<string | null> {
 }
 
 /** Activate/refresh the account's plan from a Stripe subscription event. */
-export async function activateStripePlan(accountId: string, tierKey: string, subId: string | null, customerId: string | null): Promise<void> {
+/** @param cancelAtPeriodEnd  What STRIPE currently says about renewal. Only
+ *  the subscription.updated path has an opinion here; a fresh checkout never
+ *  does, so it keeps the default. */
+export async function activateStripePlan(accountId: string, tierKey: string, subId: string | null, customerId: string | null, cancelAtPeriodEnd = false): Promise<void> {
   const tier = PLAN_BY_KEY[tierKey as PlanKey];
   if (!tier) return;
   const shopId = await webShopIdFor(accountId);
@@ -319,8 +322,17 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
       type: tier.key, active: true,
       // A new activation is not a cancelled one — otherwise a merchant who
       // cancelled and then subscribed again would still be told their plan
-      // will not renew.
-      cancelAtPeriodEnd: false,
+      // will not renew. But this was HARDCODED false, and every
+      // subscription.updated event routes through here: cancelling set
+      // cancel_at_period_end at Stripe, Stripe immediately emitted an
+      // updated event with status still "active", and this line wiped the
+      // local mirror seconds later. The dashboard then showed "Cancel plan"
+      // again with no "won't renew" notice — and, worse, no "Keep my plan",
+      // which is the only undo in the app and renders only inside that
+      // branch. A merchant who cancelled by accident had no way back, while
+      // being told the plan still renews. It does not; Stripe still holds
+      // the cancellation.
+      cancelAtPeriodEnd,
       blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
       adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
       tokensIncluded: tier.monthlyTokens,
