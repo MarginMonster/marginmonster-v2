@@ -498,9 +498,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       for (let i = 0; i < n; i++) {
         // Services skip the presenter-hold and product photo → outcome scene.
         await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
-          // A burst wants OPTIONS, so every item composes fresh instead of
-          // being handed the Shot Library's one frozen composite.
-          freshShot: n > 1,
+          // ALWAYS FRESH FROM THE STUDIO.
+          //
+          // This was `n > 1`: a burst composed fresh, a single press reused the
+          // Shot Library’s frozen composite for the pair. That was sound while
+          // presenter stills carried a copy overlay — same composite, different
+          // headline, different ad. Then presenter stills started shipping
+          // CLEAN (see the “NO POSTER TEXT ON A PRESENTER SHOT” note in
+          // image-generation.server.ts) and nobody reconnected the two, so the
+          // reuse has nothing left to vary: the frozen shot IS the deliverable.
+          //
+          // The wardrobe variant is part of the shot key and the client rotates
+          // it 0→1→2→3, so ads 1-4 differ and ad 5 comes back byte-identical to
+          // ad 1, at full price, forever. This Archive has a pair with eight
+          // assets pointing at one render.
+          //
+          // A merchant pressing Generate is asking for another one, so they get
+          // another one. The library still serves every other caller.
+          freshShot: true,
           productTitle, productImageUrl, productUrl, stylePrompt: direction,
           styleMode: direction ? "scene" : "backdrop",
           templateKey: avatarId || service ? undefined : templateKey,
@@ -944,12 +959,24 @@ export default function WebStudio() {
     finalScene = direction.trim();
   }
 
-  // Rotate the presenter's 4 wardrobe variants across generations so repeated
-  // content of the same face never looks stale (0→1→2→3→…, remembered locally).
+  // Rotate the presenter’s 4 wardrobe variants across generations so repeated
+  // content of the same face never looks stale (0→1→2→3→…).
+  //
+  // The counter is PER PRESENTER AND PRODUCT. One global “csOutfit” key meant
+  // the rotation was shared by every pair the merchant had ever made: two ads
+  // of different products could land on the same outfit while two ads of the
+  // SAME product skipped straight past one, so “their outfit rotates each
+  // time” — which this page says out loud — was true only by accident.
+  //
+  // localStorage still, because it is a nicety, not an invariant: a fresh
+  // browser starts the pair at outfit 1 again, which is a different outfit
+  // from a merchant’s first-ever ad only by luck. What guarantees the ads
+  // differ is freshShot in the action, not this.
   const variantRef = useRef<HTMLInputElement | null>(null);
   const nextVariant = () => {
+    const pair = `csOutfit:${avatarId || "none"}:${(productTitle || "").slice(0, 60)}`;
     let n = 0;
-    try { n = ((parseInt(localStorage.getItem("csOutfit") || "0", 10) || 0) + 1); localStorage.setItem("csOutfit", String(n)); } catch { /* ignore */ }
+    try { n = ((parseInt(localStorage.getItem(pair) || "0", 10) || 0) + 1); localStorage.setItem(pair, String(n)); } catch { /* private mode */ }
     return String(n % 4);
   };
   const onFormSubmit = () => { if (variantRef.current) variantRef.current.value = nextVariant(); };
