@@ -2038,7 +2038,10 @@ export async function runFormatRung(opts: {
   let imageUrl = await renderOnce();
   let qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
   let retried = false;
-  if (!qa.pass) {
+  // Retry a REJECTION — the reason tells the model what to fix. Never retry
+  // an OUTAGE: the gate learned nothing about this take, so a second paid
+  // render is money for no information.
+  if (!qa.pass && !qa.degraded) {
     // A blind re-roll of the identical prompt repeats the same mistake as often
     // as not. Tell it what went wrong.
     retried = true;
@@ -2071,7 +2074,12 @@ export async function runFormatRung(opts: {
  *
  *  Failing open on an outage is deliberate: a QA hiccup must never turn into
  *  a merchant losing the format they paid for. */
-async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[], protect: string[] = []): Promise<{ pass: boolean; reason: string }> {
+/** The format gate. FAILS CLOSED, for the same reason qaFidelity does: this
+ *  is the only thing standing between a garbled render and the merchant's
+ *  feed, and a gate that answers “pass” when it could not look is not a gate.
+ *  `degraded` marks “could not judge” so the caller does not spend a second
+ *  render arguing with a vision API that is down. */
+async function qaFormat(imageUrl: string, productImageUrl: string | null, expected: string[], protect: string[] = []): Promise<{ pass: boolean; reason: string; degraded?: boolean }> {
   try {
     const urls = productImageUrl ? [productImageUrl, imageUrl] : [imageUrl];
     const raw = await anthropicVision(
@@ -2108,7 +2116,10 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
       urls
     );
     const m = raw && raw.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: true, reason: "qa-unavailable" };
+    if (!m) {
+      console.error(`[image-ad] qaFormat could not parse a verdict from: ${String(raw).slice(0, 300)}`);
+      return { pass: false, reason: "qa-unparseable", degraded: true };
+    }
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     const bad = (["productIntact", "textSensible", "textMatches", "noSourceText"] as const)
       .filter((k) => j[k] === false);
@@ -2133,7 +2144,9 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
     if (!bad.length) return { pass: true, reason: "clean" };
     const why = typeof j.reason === "string" && j.reason ? j.reason : bad.join(", ");
     return { pass: false, reason: `${bad.join("/")}: ${why}`.slice(0, 160) };
-  } catch { return { pass: true, reason: "qa-error" }; }
+  } catch (e) {
+    return { pass: false, reason: `qa-outage: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, degraded: true };
+  }
 }
 
 /* Self-forged format previews — each tile stars a DIFFERENT EasyMode-branded

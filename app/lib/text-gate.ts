@@ -66,7 +66,35 @@ export function findCorruptedWord(
   const nearMiss = (w: string, pool: Set<string>, max: number): boolean =>
     [...pool].some((e) => e !== w && Math.abs(e.length - w.length) <= max && editDistance(e, w, max) <= max);
 
-  return rendered.find(
+  const direct = rendered.find(
     (w) => w.length >= MIN_FLAG && !wanted.has(w) && (nearMiss(w, wanted, 1) || nearMiss(w, named, 2))
-  ) || null;
+  );
+  if (direct) return direct;
+
+  // THE REVERSE CHECK, WHICH IS THE STRONGER ONE.
+  //
+  // Every requested string is supposed to be rendered verbatim, so a long
+  // requested word that is ABSENT from the transcript is already suspicious —
+  // and if something two edits away IS present, that present word is the
+  // corruption. This needs no dictionary and cannot fire on an ordinary
+  // English near-pair, because the word we asked for would still be there.
+  //
+  // It is what the forward rule cannot reach. A live ad rendered “flimily”
+  // for a requested “flimsy”: two edits, and “flimsy” is ordinary English
+  // rather than a product name, so the tight one-edit pool missed it and the
+  // wide two-edit pool never looks at it. Anchoring on the MISSING word
+  // instead of the rendered one catches it exactly.
+  //
+  // Safe when the transcriber simply drops a line: with no near neighbour
+  // rendered, nothing fires.
+  const renderedSet = new Set(rendered);
+  for (const want of wanted) {
+    if (want.length < MIN_FLAG || renderedSet.has(want)) continue;
+    const impostor = rendered.find(
+      (w) => !wanted.has(w) && Math.abs(w.length - want.length) <= 2 && editDistance(want, w, 2) <= 2
+    );
+    if (impostor) return impostor;
+  }
+
+  return null;
 }
