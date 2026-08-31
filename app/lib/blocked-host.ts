@@ -80,6 +80,23 @@ function blockedV6(ip: string): boolean {
   return false;
 }
 
+/** The same ranges, tested against a bare IP address rather than a hostname.
+ *  safeFetch resolves a name and runs every answer through this, which is how
+ *  a public name pointing at 169.254.169.254 gets stopped. An input that is
+ *  not an IP at all is blocked: a caller that thinks it has an address and
+ *  does not must fail closed. */
+export function isBlockedIp(ip: string): boolean {
+  const bare = (ip || "").trim().toLowerCase();
+  const kind = net.isIP(bare);
+  if (kind === 4) return blockedV4(bare);
+  if (kind === 6) {
+    const mapped = unmapV4(bare);
+    if (mapped) return blockedV4(mapped);
+    return blockedV6(bare);
+  }
+  return true;
+}
+
 /** Reject loopback, private, link-local and internal targets before we fetch
  *  them. Takes a URL.hostname, so an IPv6 literal arrives in brackets. */
 export function isBlockedHost(host: string): boolean {

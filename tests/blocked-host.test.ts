@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isBlockedHost } from "../app/lib/blocked-host.ts";
+import { isBlockedHost, isBlockedIp } from "../app/lib/blocked-host.ts";
 
 /** What the guard actually receives: URL.hostname, brackets and all. */
 const hostOf = (u: string) => new URL(u).hostname;
@@ -119,4 +119,25 @@ test("case does not matter", () => {
   assert.equal(isBlockedHost("LOCALHOST"), true);
   assert.equal(isBlockedHost("[::FFFF:127.0.0.1]"), true);
   assert.equal(isBlockedHost("API.INTERNAL"), true);
+});
+
+test("isBlockedIp refuses every private range, and anything that isn't an address", () => {
+  for (const bad of [
+    "127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.254", "192.168.1.1",
+    "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1",
+    "::1", "::", "fd00::1", "fe80::1", "ff02::1",
+    "::ffff:127.0.0.1", "::ffff:7f00:1", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe",
+  ]) {
+    assert.equal(isBlockedIp(bad), true, bad);
+  }
+  // Not an address at all — a caller that thinks it has one must fail closed.
+  for (const notAnIp of ["", "example.com", "localhost", "1.2.3", "999.1.1.1", "[::1]"]) {
+    assert.equal(isBlockedIp(notAnIp), true, JSON.stringify(notAnIp));
+  }
+});
+
+test("isBlockedIp lets real public addresses through", () => {
+  for (const ok of ["8.8.8.8", "1.1.1.1", "23.227.38.65", "172.15.0.1", "172.32.0.1", "2606:4700::1111"]) {
+    assert.equal(isBlockedIp(ok), false, ok);
+  }
 });

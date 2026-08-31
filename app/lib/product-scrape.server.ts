@@ -72,6 +72,32 @@ const decodeEntities = (s: string) => s
  * [::ffff:7f00:1] — and which connects to loopback. Re-exported here so every
  * existing caller, including catalog-import, is unchanged. */
 export { isBlockedHost } from "./blocked-host";
+import { isBlockedIp } from "./blocked-host";
+import dns from "node:dns/promises";
+import net from "node:net";
+
+/** A public NAME that resolves to a private ADDRESS.
+ *
+ *  isBlockedHost reads the hostname as written, so evil.example.com pointing
+ *  at 169.254.169.254 sailed straight through — the one-line version of the
+ *  rebinding hole the comment below describes. Resolving here and rejecting
+ *  if ANY answer is private closes that; it does not close true rebinding,
+ *  where the address changes between this lookup and the socket, but it turns
+ *  a trivial attack into a race.
+ *
+ *  A lookup that fails is not treated as hostile: fetch does its own
+ *  resolution and will fail on its own if the name is genuinely bad, and
+ *  refusing every transient DNS hiccup would break real storefront imports.
+ */
+async function resolvesSomewhereForbidden(hostname: string): Promise<boolean> {
+  if (net.isIP(hostname.replace(/^[|]$/g, ""))) return false; // already checked literally
+  try {
+    const answers = await dns.lookup(hostname, { all: true });
+    return answers.length === 0 || answers.some((a) => isBlockedIp(a.address));
+  } catch {
+    return false;
+  }
+}
 
 /** fetch() that re-checks the host on EVERY redirect hop.
  *
@@ -96,6 +122,9 @@ export async function safeFetch(
     let u: URL;
     try { u = new URL(current); } catch { throw new Error("That URL isn't allowed."); }
     if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) {
+      throw new Error("That URL isn't allowed.");
+    }
+    if (await resolvesSomewhereForbidden(u.hostname)) {
       throw new Error("That URL isn't allowed.");
     }
     const res = await fetch(current, { ...init, redirect: "manual" });
