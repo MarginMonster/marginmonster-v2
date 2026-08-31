@@ -16,6 +16,7 @@ import { assertCapability, videoCapabilityFor } from "../lib/capabilities.server
 import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
 import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
+import { externalOrigin } from "../lib/origin.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Archive · EasyMode" }];
@@ -384,8 +385,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
     if (platforms.length === 0) return json({ error: "Link your socials first on the Auto-posting page." });
     const isVideo = asset.type === "VIDEO_AD";
-    const base = new URL(request.url).origin;
-    const mediaUrl = /^https?:\/\//.test(media) ? media : `${base}${media}`;
+    // DO NOT ABSOLUTIZE HERE.
+    //
+    // Render terminates TLS at its edge and forwards over plain HTTP, and
+    // remix-serve never sets Express’s "trust proxy", so req.protocol is
+    // "http" and `new URL(request.url).origin` is http://easymodeapp.com on a
+    // page the merchant loaded over HTTPS. The provider was handed an http://
+    // video URL to fetch — and because it already began with "http",
+    // publishPost’s own correct absolutization (SHOPIFY_APP_URL) was skipped.
+    // So this button and the scheduled poster disagreed about the address of
+    // the very same file, and only the scheduler had it right.
+    //
+    // Every pipeline stores videoUrl/imageUrl as "/renders/<file>", so pass
+    // the stored value through and let publishPost resolve it exactly the way
+    // it does for a campaign drop.
+    const mediaUrl = media;
+    // The go-link goes out IN THE CAPTION, publicly, so it must be https for
+    // the same reason: request.url reads http:// behind the edge. Resolved the
+    // way the scheduled poster resolves it, from the env, with the forwarded
+    // origin as a fallback.
+    const base =
+      (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "") || externalOrigin(request);
 
     // If the merchant edited a caption in the draft box, post THAT verbatim to
     // every platform (their words win, no tokens spent). Otherwise fall back to

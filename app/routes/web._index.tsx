@@ -15,6 +15,7 @@ import { createPackCheckout, createPlanCheckout, stripeEnabled, trialAlreadyTake
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
+import { externalOrigin } from "../lib/origin.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Dashboard · EasyMode" }];
@@ -111,7 +112,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
-  const baseUrl = new URL(request.url).origin;
+  // Not `new URL(request.url).origin` — behind Render’s TLS-terminating edge
+  // that reads http://, which Stripe then uses for the checkout product image
+  // (dropped as mixed content on their https page) and for success_url.
+  const baseUrl = externalOrigin(request);
 
   if (intent === "brand") {
     const tone = ((form.get("tone") as string) || "").trim();

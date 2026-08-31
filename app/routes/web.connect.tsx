@@ -6,6 +6,7 @@ import { json, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { connectUrl, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
+import { externalOrigin } from "../lib/origin.server";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
@@ -23,7 +24,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   if (!socialProviderEnabled()) return json({ error: "Social posting is coming online — check back shortly." });
-  const url = await connectUrl(shop.id, `${new URL(request.url).origin}/web/connect`);
+  // externalOrigin, because request.url is http:// behind Render’s edge and
+  // this address is where the provider sends the merchant back.
+  const url = await connectUrl(shop.id, `${externalOrigin(request)}/web/connect`);
   if (!url) return json({ error: "Couldn't open the connect page — try again in a moment." });
   return redirect(url);
 };
