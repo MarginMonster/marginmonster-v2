@@ -52,14 +52,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasData: totals.reach + totals.views + totals.followers + totals.likes > 0,
   };
 
-  // Referral — surface the invite once they can earn (have a plan).
-  let referral: { code: string; reward: number; referredBy: boolean } | null = null;
-  if (shop.activePlan?.active) {
-    try {
-      const { ensureReferralCode, REFERRAL_REWARD_TOKENS } = await import("../lib/referral.server");
-      referral = { code: await ensureReferralCode(shop.id), reward: REFERRAL_REWARD_TOKENS, referredBy: !!shop.referredBy };
-    } catch { /* non-fatal */ }
-  }
+  // REFERRAL CODES COULD NEVER BE REDEEMED.
+  //
+  // This whole block — including the “Got a code from someone?” input, the
+  // only place in the app a code can be entered — was built solely when
+  // shop.activePlan?.active. applyReferralCode refuses EXACTLY that state,
+  // and for a good reason spelled out in referral.server.ts: the reward buys
+  // a conversion, and there is none to buy from someone already paying. So
+  // the box was shown only to people it would reject, and never to the new
+  // stores the programme exists for. Every code handed out was dead on
+  // arrival, and the invite copy promises both wallets 150 tokens.
+  //
+  // Built for everyone now; the two halves are gated separately below.
+  let referral: { code: string; reward: number; referredBy: boolean; canEarn: boolean } | null = null;
+  try {
+    const { ensureReferralCode, REFERRAL_REWARD_TOKENS } = await import("../lib/referral.server");
+    referral = {
+      code: await ensureReferralCode(shop.id),
+      reward: REFERRAL_REWARD_TOKENS,
+      referredBy: !!shop.referredBy,
+      // Sharing a code only pays once THIS store is on a plan.
+      canEarn: !!shop.activePlan?.active,
+    };
+  } catch { /* non-fatal */ }
 
   // ── Next best move: highest-value action the plan features AND the wallet
   // affords right now. Kills the blank-page moment. ──
@@ -91,6 +106,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tier: tierKey,
     tierName: tierKey ? PLAN_BY_KEY[tierKey].name : null,
     trialing: planTrialing(shop.activePlan),
+    // A trial is once per ACCOUNT. The plan cards promised a free one to
+    // everybody, including merchants who had already spent theirs — and
+    // createPlanCheckout correctly does not attach one, so Stripe charged in
+    // full on a page that had just said “7-day free trial”.
+    trialAvailable: !trialAlreadyTaken(account),
     tokens: tokensRemainingLive(shop.activePlan),
     billingOn: stripeEnabled(),
     launch,
@@ -534,7 +554,13 @@ export default function WebDashboard() {
                   <input type="hidden" name="intent" value="subscribe" />
                   <input type="hidden" name="tier" value={t.key} />
                   {annual && <input type="hidden" name="annual" value="1" />}
-                  <button className="wb-btn" disabled={busy || !d.billingOn}>Start free trial</button>
+                  {/* Say what will happen. A merchant already inside their one
+                      trial is CHANGING tier and keeps the original end date;
+                      one who has spent it is charged today. Neither is
+                      “Start free trial”. */}
+                  <button className="wb-btn" disabled={busy || !d.billingOn}>
+                    {d.trialAvailable ? "Start free trial" : d.trialing ? `Switch to ${t.name}` : `Start ${t.name}`}
+                  </button>
                 </Form>
                 {/* The trial ceiling is a CAP, not a grant: what a trialist can
                     actually spend is min(the tier’s own allowance, the cap). On
@@ -542,7 +568,13 @@ export default function WebDashboard() {
                     the wallet allowed 300 — a hundred tokens the merchant was
                     told they had and could never use. Studio and Legend are
                     unaffected, since the cap binds first there. */}
-                <div className="wd-trial">7-day free trial ({Math.min(t.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US")} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</div>
+                <div className="wd-trial">
+                  {d.trialAvailable
+                    ? <>7-day free trial ({Math.min(t.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US")} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</>
+                    : d.trialing
+                      ? <>Keeps your current trial end date · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</>
+                      : <>${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}, billed today · your free trial is already used</>}
+                </div>
               </>
             )}
           </div>
@@ -597,15 +629,20 @@ export default function WebDashboard() {
       {/* ── Referral ───────────────────────────────────────────────────── */}
       {d.referral && (
         <div className="wd-refer">
-          <div className="wdr-main">
-            <b>Refer a friend — you both get {d.referral.reward} 🪙</b>
-            <span>Share your code; tokens land in both wallets when they start a paid plan.</span>
-            <div className="wdr-act">
-              <span className="wdr-code">{d.referral.code}</span>
-              <button type="button" className="wb-btn" onClick={copyReferral}>{refCopied ? "Copied ✓" : "Copy invite"}</button>
+          {/* Sharing pays only once this store is itself on a plan. */}
+          {d.referral.canEarn && (
+            <div className="wdr-main">
+              <b>Refer a friend — you both get {d.referral.reward} 🪙</b>
+              <span>Share your code; tokens land in both wallets when they start a paid plan.</span>
+              <div className="wdr-act">
+                <span className="wdr-code">{d.referral.code}</span>
+                <button type="button" className="wb-btn" onClick={copyReferral}>{refCopied ? "Copied ✓" : "Copy invite"}</button>
+              </div>
             </div>
-          </div>
-          {!d.referral.referredBy && !referralApplied && (
+          )}
+          {/* Entering one is for a store that has NOT started a plan yet —
+              the same condition applyReferralCode enforces. */}
+          {!d.referral.canEarn && !d.referral.referredBy && !referralApplied && (
             <div className="wdr-enter">
               <label className="wb-lbl" style={{ margin: "0 0 6px" }}>Got a code from someone?</label>
               <div className="wdr-row">

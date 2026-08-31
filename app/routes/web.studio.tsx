@@ -926,6 +926,20 @@ export default function WebStudio() {
   // service-outcome image — after a screen that told them the presenter would
   // be in it. A control nobody can see must not be able to change the order.
   const showService = tab === "video" || (tab === "image" && imageMode === "product");
+  // ONE FLAG, AND IT IS THE ONE THAT GETS SUBMITTED.
+  //
+  // `service` survives a tab or mode change but the toggle only EXISTS while
+  // showService is true, and the hidden field is only submitted under the
+  // same condition. The client-side checks still read the raw state, so:
+  // turn Service on in Video, switch to Image + With presenter, and
+  // needsPhoto reads false while the field is not submitted. The button
+  // enables, the form posts with no photo and no service flag, and the
+  // server generates a presenter ad from the product NAME — the AI-slop path
+  // the “add a product photo” warning exists to prevent, at full price.
+  //
+  // Everything the client reasons about now uses the effective value, so a
+  // control nobody can see cannot change the order.
+  const serviceOn = showService && service;
   // baseOf, not the literal. Review and Unboxing are avatar-based presets
   // (CT_PRESETS above maps both to base "avatar"), and every other test in this
   // file goes through baseOf — needsPresenter, the presenter picker, the
@@ -933,7 +947,7 @@ export default function WebStudio() {
   // are ABOUT holding the product, the merchant lost both the hold/wear choice
   // and the "how big is it?" control, and no wear flag was submitted. Size then
   // falls to inference, which is how a twelve-box case once came out palm-sized.
-  const showWear = ((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && !!avatarId && !service;
+  const showWear = ((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && !!avatarId && !serviceOn;
   const avatarRides = (tab === "video" && !!contentType && needsPresenterField(contentType) && !!avatarId) || (tab === "image" && imageMode === "presenter" && !!avatarId);
 
   // Compose direction + scene exactly like the embedded Studio: Advanced's
@@ -988,7 +1002,7 @@ export default function WebStudio() {
   // pipeline happily renders it and the merchant pays for slop. Require a
   // photo (upload OR url) for anything that should SHOW the product; services
   // legitimately have nothing to photograph.
-  const needsPhoto = tab !== "blog" && !service && !hasFile && !imageUrl.trim();
+  const needsPhoto = tab !== "blog" && !serviceOn && !hasFile && !imageUrl.trim();
   const ctaDisabled = busy || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle);
 
   return (
@@ -1492,7 +1506,7 @@ export default function WebStudio() {
                 submit (needed for the photo upload) carries them. */}
             <input type="hidden" name="direction" value={finalDirection} />
             {finalScene ? <input type="hidden" name="scene" value={finalScene} /> : null}
-            {showService && service ? <input type="hidden" name="service" value="1" /> : null}
+            {serviceOn ? <input type="hidden" name="service" value="1" /> : null}
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
