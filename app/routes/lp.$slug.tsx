@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { db } from "../db.server";
+import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import type { LandingContent } from "../lib/landing.server";
 import { externalOrigin } from "../lib/origin.server";
 
@@ -9,7 +10,25 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const slug = params.slug!;
   const page = await db.landingPage.findUnique({ where: { slug } });
   if (!page || !page.published) throw new Response("Not found", { status: 404 });
-  await db.landingPage.update({ where: { id: page.id }, data: { views: { increment: 1 } } });
+  // COUNTING IS THROTTLED; SERVING IS NOT.
+  //
+  // This is a public, unauthenticated GET that did an unconditional DB write
+  // on every hit — on the single event loop the render worker shares. Anyone
+  // with the link could hold it open in a loop and turn a marketing page into
+  // a write flood, while inflating a number the merchant reads as real
+  // traffic. The /go turnstiles were given the same treatment for the same
+  // reason; this one was missed.
+  //
+  // And the write is wrapped: a database hiccup must never stop a visitor
+  // seeing the merchant’s page. A lost view is nothing; a 500 on a link they
+  // paid to promote is not.
+  if (rateLimit(`lpview:${clientIp(request)}:${slug}`, 3, 10 * 60_000).ok) {
+    try {
+      await db.landingPage.update({ where: { id: page.id }, data: { views: { increment: 1 } } });
+    } catch (e) {
+      console.error("[lp] view count failed (non-fatal):", e);
+    }
+  }
   // Self-marketing: every published landing page carries a tracked "Made with
   // EasyMode" badge → the App Store. The people browsing a store's landing
   // pages are disproportionately other store owners (competitor research), i.e.
