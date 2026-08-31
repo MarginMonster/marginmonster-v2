@@ -1,7 +1,7 @@
 import type { Plan } from "@prisma/client";
 import { db } from "../db.server";
 import { TOKEN_COST, TOKEN_ACTION_LABEL, PLAN_BY_KEY, TRIAL_TOKEN_CAP, resolveTierKey, type TokenAction } from "./plan-config";
-import { onTokensSpent } from "./xp.server";
+import { onTokensSpent, onTokensRefunded } from "./xp.server";
 
 const PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -289,6 +289,9 @@ export async function refundTokens(shopId: string, amount: number, fromExtra?: n
         `the wallet kept moving under it. This is owed to the merchant.`
     );
   }
+
+  // The progression this spend bought comes back with the tokens.
+  await onTokensRefunded(shopId, amount - owed);
 
   if (unattributed > 0) {
     console.warn(

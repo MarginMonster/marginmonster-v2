@@ -124,6 +124,35 @@ export async function checkLevelAchievements(shopId: string, level: number): Pro
 }
 
 /** Called from chargeTokens — 1 XP per token spent + lifetime-spend tracking. */
+/** Undo the progression a spend earned, when that spend is given back.
+ *
+ * onTokensSpent is documented as "farm-proof — they paid", and a refund makes
+ * that false: a job that fails terminally returns the tokens but the XP and the
+ * lifetime tokensSpent it minted stayed, so failure was a slow, free way up the
+ * level ladder — and every level pays tokensExtra, which buys real renders.
+ *
+ * XP and the lifetime counter are wound back, clamped at zero. The LEVEL and
+ * any gift already paid are deliberately left alone: clawing back tokens a
+ * merchant has seen land is a worse experience than the leak, and awardXp only
+ * grants when levelForXp(xp) passes the CURRENT level, so re-earning the same
+ * XP cannot pay a second time. */
+export async function onTokensRefunded(shopId: string, amount: number): Promise<void> {
+  if (amount <= 0) return;
+  try {
+    const shop = await db.shop.findUnique({ where: { id: shopId }, select: { xp: true, tokensSpent: true } });
+    if (!shop) return;
+    await db.shop.update({
+      where: { id: shopId },
+      data: {
+        xp: { decrement: Math.min(amount, Math.max(0, shop.xp)) },
+        tokensSpent: { decrement: Math.min(amount, Math.max(0, shop.tokensSpent)) },
+      },
+    });
+  } catch (e) {
+    console.error("[xp] onTokensRefunded failed (non-fatal):", e);
+  }
+}
+
 export async function onTokensSpent(shopId: string, amount: number): Promise<void> {
   try {
     const shop = await db.shop.update({
