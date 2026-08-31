@@ -8,7 +8,13 @@ import { externalOrigin } from "../lib/origin.server";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const slug = params.slug!;
-  const page = await db.landingPage.findUnique({ where: { slug } });
+  const page = await db.landingPage.findUnique({
+    where: { slug },
+    // Only what the page needs. Never the whole shop row — it carries the
+    // wallet, the plan and the access token, and this loader's data is
+    // serialised straight into a public HTML document.
+    include: { shop: { select: { id: true, domain: true, storeUrl: true } } },
+  });
   if (!page || !page.published) throw new Response("Not found", { status: 404 });
   // COUNTING IS THROTTLED; SERVING IS NOT.
   //
@@ -35,10 +41,34 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   // exactly EasyMode's buyer. UTM so we can see which pages convert installs.
   const listing = process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com";
   const badgeUrl = `${listing}${listing.includes("?") ? "&" : "?"}utm_source=merchant_landing&utm_medium=made_with_badge&utm_campaign=self_marketing`;
+  // THE BUY BUTTON HAD NOWHERE TO GO.
+  //
+  // The closing CTA — the one the whole page funnels to — was <a href="#">,
+  // which scrolls to the top and does nothing else. The merchant pays for
+  // "a high-converting landing page", publishes it, drives traffic to it, and
+  // watches the view counter climb with no sales and no way to tell that the
+  // page itself is the reason. There is no ctaUrl anywhere: the schema
+  // comment mentions one, the generator never asks for one and the row never
+  // stored one.
+  //
+  // Resolve it the way /go/a already does — the exact product page when the
+  // catalogue has it, the storefront otherwise. A web shop's `domain` is the
+  // synthetic web-<id>.easymode.app minted at signup and does not resolve, so
+  // it is never used as a destination.
+  let buyHref = "";
+  try {
+    const { productLinkFor } = await import("../lib/catalog-import.server");
+    buyHref = await productLinkFor(page.shop.id, page.productName);
+  } catch { /* fall through to the storefront */ }
+  if (!buyHref && page.shop.storeUrl) buyHref = page.shop.storeUrl;
+  if (!buyHref && !/\.easymode\.app$/i.test(page.shop.domain)) buyHref = `https://${page.shop.domain}`;
+  if (!/^https?:\/\//i.test(buyHref)) buyHref = "";
+
   return json({
     content: JSON.parse(page.contentJson) as LandingContent,
     productName: page.productName,
     badgeUrl,
+    buyHref,
     slug,
     origin: externalOrigin(request),
   });
@@ -74,7 +104,7 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
 };
 
 export default function LandingPagePublic() {
-  const { content, productName, badgeUrl } = useLoaderData<typeof loader>();
+  const { content, productName, badgeUrl, buyHref } = useLoaderData<typeof loader>();
 
   const cta: React.CSSProperties = {
     display: "inline-block",
@@ -132,7 +162,12 @@ export default function LandingPagePublic() {
       <section id="buy" style={{ color: "#EAF4EE", padding: "72px 24px", textAlign: "center", background: `repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),${darkPanel}` }}>
         <h2 style={{ fontFamily: "Poppins, sans-serif", fontSize: 32, fontWeight: 800, margin: "0 0 14px", letterSpacing: "-0.02em", color: "#F4EAC8" }}>{content.hero}</h2>
         <p style={{ color: "rgba(220,240,225,0.82)", maxWidth: 480, margin: "0 auto 30px", fontSize: 16 }}>{content.subhead}</p>
-        <a href="#" className="lp-cta" style={cta}>{content.ctaText}</a>
+        {/* No destination means no button. A CTA that visibly does nothing
+            is worse than a page that plainly ends — the visitor concludes the
+            store is broken rather than that there is nothing to click. */}
+        {buyHref
+          ? <a href={buyHref} className="lp-cta" style={cta}>{content.ctaText}</a>
+          : null}
         <a href={badgeUrl} target="_blank" rel="noopener noreferrer" className="em-badge" style={{
           display: "inline-flex", alignItems: "center", gap: 8, marginTop: 42, padding: "8px 15px",
           borderRadius: 999, textDecoration: "none",

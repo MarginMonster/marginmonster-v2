@@ -371,8 +371,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
       // Cartoon/jingle remixes stay cartoon/jingle — the content type (and the
       // picked animation style) rides along from the original's metaJson.
-      const contentType = meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined;
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra, initiator: "remix" });
+      // COMMERCIAL was missing from this map, so remixing a cinematic
+      // commercial fell through to contentType undefined and produced a plain
+      // product highlight — a different format entirely, for the same 150
+      // tokens, with nothing on screen saying so. Every branch job-queue
+      // dispatches on (cartoon / commercial / jingle) is now represented.
+      const contentType = meta.style === "CARTOON" ? "cartoon"
+        : meta.style === "COMMERCIAL" ? "commercial"
+        : meta.style === "JINGLE" ? "jingle"
+        : undefined;
+      // SERVICE MODE HAS TO RIDE ALONG.
+      //
+      // The guard above lets a piece through with no product photo precisely
+      // BECAUSE meta.serviceMode is true — and then this payload dropped the
+      // flag, so the pipelines took the physical-product path: a script
+      // written about an object, a presenter told to hold one, and a prompt
+      // demanding the product "stay exactly as it appears in the source
+      // photograph" when there is no photograph and no product. A coach or a
+      // local service paid 150 tokens for the AI-slop path the guard above
+      // exists to refuse. The image branch below already passes it.
+      const serviceMode = !!meta.serviceMode;
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, serviceMode, holdProduct: !!avatarId && !contentType && !serviceMode, wearProduct: false, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra, initiator: "remix" });
     } else if (type === "image") {
       // A remix is a VARIATION of this ad, so the recipe rides along — without
       // the format/template the "remix" quietly became a different ad entirely.
