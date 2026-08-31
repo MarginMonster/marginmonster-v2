@@ -442,6 +442,11 @@ async function runJob(
         typeof payload.productSize === "string" ? payload.productSize : undefined,
         payload.freshShot === true
       );
+      // The Studio deliberately puts productUrl on the image payload so the
+      // caption can deep-link the buy page, and stampProductUrl was called
+      // from exactly one place: the end of the VIDEO case. Every image ad
+      // dropped the link, and /go/a then fell back to the storefront.
+      await stampProductUrl(typeof imgAssetId === "string" ? imgAssetId : undefined, payload);
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements
       try {

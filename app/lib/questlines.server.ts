@@ -789,8 +789,13 @@ export async function scheduleExistingAssets(
     name?: string;
     platforms?: string[];
   }
-): Promise<{ ok: true; id: string; scheduled: number; skipped: number } | { ok: false; error: string }> {
-  const ids = [...new Set((params.assetIds || []).filter(Boolean))].slice(0, 60);
+): Promise<{ ok: true; id: string; scheduled: number; skipped: number; tooMany: number } | { ok: false; error: string }> {
+  // The loader offers 120 assets and the UI has a Select all button, so a
+  // bare slice(0, 60) silently threw away half of what the merchant picked
+  // and then reported success for all of it. Counted and reported instead.
+  const unique = [...new Set((params.assetIds || []).filter(Boolean))];
+  const ids = unique.slice(0, 60);
+  const tooMany = unique.length - ids.length;
   if (!ids.length) return { ok: false, error: "Pick at least one thing from your Archive." };
   const days = Math.max(1, Math.min(90, Math.round(params.days || 30)));
   const time = /^\d{2}:\d{2}$/.test(params.time || "") ? (params.time as string) : "12:00";
@@ -846,11 +851,30 @@ export async function scheduleExistingAssets(
   const start = new Date();
   const step = ordered.length > 1 ? (days - 1) / (ordered.length - 1) : 0;
 
+  // MORE PICKS THAN DAYS MEANS SEVERAL LAND ON ONE DAY.
+  //
+  // Every slot took the SAME wall time, so ten assets over three days went
+  // out in one minute — the burst every platform reads as spam, under a hint
+  // that promises “about one post every N days”. Same-day drops are now
+  // spread through the hours the merchant's chosen time leaves in that day,
+  // so the date they were given never changes.
+  const [baseH, baseM] = time.split(":").map(Number);
+  const baseMin = baseH * 60 + baseM;
+  const roomMin = Math.max(0, 24 * 60 - 1 - baseMin);
+  const perDay: Record<number, number> = {};
+  for (let i = 0; i < ordered.length; i++) perDay[Math.round(i * step)] = (perDay[Math.round(i * step)] || 0) + 1;
+  const seenOnDay: Record<number, number> = {};
+
   const counts: Record<string, number> = {};
   const slots: QuestSlot[] = ordered.map((a, i) => {
     const type = typeOf(a.type);
     const dayOffset = Math.round(i * step);
     const when = new Date(start.getTime() + dayOffset * 86400000);
+    const kth = (seenOnDay[dayOffset] = (seenOnDay[dayOffset] || 0) + 1) - 1;
+    const onThisDay = perDay[dayOffset] || 1;
+    const gap = onThisDay > 1 ? Math.floor(roomMin / onThisDay) : 0;
+    const at = baseMin + kth * gap;
+    const slotTime = `${String(Math.floor(at / 60)).padStart(2, "0")}:${String(at % 60).padStart(2, "0")}`;
     const meta = (() => { try { return JSON.parse(a.metaJson || "{}"); } catch { return {}; } })() as Record<string, unknown>;
     const body = (() => { try { return JSON.parse(a.bodyJson || "{}"); } catch { return {}; } })() as Record<string, unknown>;
     counts[type] = (counts[type] || 0) + 1;
@@ -858,7 +882,7 @@ export async function scheduleExistingAssets(
       idx: i,
       day: dayOffset + 1,
       date: when.toISOString().slice(0, 10),
-      time,
+      time: slotTime,
       type,
       spot: spotName(type, counts[type] - 1),
       productTitle: (meta.productTitle as string) || a.title || "",
@@ -894,7 +918,7 @@ export async function scheduleExistingAssets(
       progress: 0,
     },
   });
-  return { ok: true, id: q.id, scheduled: slots.length, skipped };
+  return { ok: true, id: q.id, scheduled: slots.length, skipped, tooMany };
 }
 
 export async function abandonQuestline(shopId: string, questlineId: string): Promise<{ ok: boolean; refunded: number }> {

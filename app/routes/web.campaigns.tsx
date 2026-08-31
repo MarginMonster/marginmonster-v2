@@ -310,7 +310,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       platforms: (() => { try { return JSON.parse((form.get("platforms") as string) || "[]"); } catch { return []; } })(),
     });
     return res.ok
-      ? json({ launched: true, reposted: res.scheduled, alreadyQueued: res.skipped })
+      ? json({ launched: true, reposted: res.scheduled, alreadyQueued: res.skipped, tooMany: res.tooMany })
       : json({ error: res.error });
   }
   if (intent === "pauseToggle") {
@@ -431,6 +431,9 @@ export default function WebCampaigns() {
               : "Campaign is live — the first drops are being created now."}
             {/* Say what we dropped rather than silently scheduling fewer than
                 the merchant picked. */}
+            {"tooMany" in actionData && Number(actionData.tooMany) > 0
+              ? ` One campaign holds 60 pieces, so ${Number(actionData.tooMany)} of your picks weren’t scheduled — they’re still in the Archive, ready for a second run.`
+              : ""}
             {"alreadyQueued" in actionData && Number(actionData.alreadyQueued) > 0
               ? ` ${Number(actionData.alreadyQueued)} of them ${Number(actionData.alreadyQueued) === 1 ? "was" : "were"} already scheduled, so ${Number(actionData.alreadyQueued) === 1 ? "it" : "they"} won't go out twice.`
               : ""}

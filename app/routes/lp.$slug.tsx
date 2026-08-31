@@ -143,7 +143,11 @@ export default function LandingPagePublic() {
 
       <section style={{ maxWidth: 1000, margin: "0 auto", padding: "72px 24px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 20 }}>
-          {content.benefits.map((b, i) => (
+          {/* The model's JSON is cast, never shape-checked — not at generation,
+            not at write, not here. One response with `benefits` as a string,
+            or missing, turned the merchant's published page into a permanent
+            500 for every visitor. Guard the one field that gets iterated. */}
+        {(Array.isArray(content.benefits) ? content.benefits : []).map((b, i) => (
             <div key={i} style={{ background: "#FDFCF7", border: "1px solid #E4DFCF", borderRadius: 18, padding: 28, boxShadow: "0 2px 12px rgba(20,32,26,0.05)" }}>
               <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(12,122,70,0.09)", color: "#0C7A46", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Poppins, sans-serif", fontWeight: 800, marginBottom: 16, boxShadow: "inset 0 0 0 1px rgba(12,122,70,0.2)" }}>{i + 1}</div>
               <div style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: 18, marginBottom: 8, color: "#14201A" }}>{b.title}</div>

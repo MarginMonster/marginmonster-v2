@@ -65,7 +65,26 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
           where: { id, metaJson: fresh.metaJson },
           data: { metaJson: JSON.stringify(cur) },
         });
-        if (done.count === 1) break;
+        if (done.count === 1) {
+          // THE HEADER ABOVE PROMISES THESE AND NOTHING PAID THEM.
+          //
+          // “they unlock achievements that pay tokens — GOLD_RUSH at one click
+          // and TREASURE_HUNTER at twenty-five, 55 tokens between them” was
+          // copied from the campaign turnstile, which does award them. This
+          // route counted the click and awarded nothing, so every click on a
+          // manually-posted piece earned the merchant none of it.
+          //
+          // Non-fatal on purpose: a shopper must always reach the product,
+          // whatever the wallet is doing.
+          try {
+            const { unlockAchievement } = await import("../lib/xp.server");
+            await unlockAchievement(a.shop.id, "GOLD_RUSH");
+            if ((Number(cur.clicks) || 0) >= 25) await unlockAchievement(a.shop.id, "TREASURE_HUNTER");
+          } catch (e) {
+            console.error("[go:a] click achievement failed (non-fatal):", e);
+          }
+          break;
+        }
         // Something else committed in between — read it again and re-apply.
       }
 

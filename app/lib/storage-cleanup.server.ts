@@ -118,10 +118,25 @@ export async function purgeStaleUnkept(): Promise<void> {
     const doomed = stale.filter((a) => !referenced.has(a.id));
     if (!doomed.length) return;
 
-    // Free the render files on disk AND in durable object storage before
-    // dropping the rows — otherwise the bucket would grow forever.
+    // DELETE THE ROW FIRST, AND ONLY UNLINK WHAT THE DELETE ACTUALLY CLAIMED.
+    //
+    // This snapshotted up to 1000 PENDING rows, then unlinked every render
+    // file — from disk AND from object storage, each an awaited network call —
+    // and only afterwards deleted the rows, keyed on id alone. A merchant who
+    // pressed Keep during that window (the Archive marks the asset APPROVED,
+    // which is not PENDING) had their file destroyed anyway: the unlink did
+    // not re-check, and the final deleteMany did not either. The one action
+    // the whole 30-day countdown tells them to take could lose the thing it
+    // was meant to save.
+    //
+    // Per row now: the status-guarded delete IS the claim, and the bytes go
+    // only when it wins. The exposure shrinks from a whole sweep to one asset.
+    let cleared = 0;
     for (const a of doomed) {
       try {
+        const { count } = await db.asset.deleteMany({ where: { id: a.id, status: "PENDING" } });
+        if (count !== 1) continue; // Kept, posted or already gone — leave the file alone
+        cleared++;
         const b = JSON.parse(a.bodyJson || "{}");
         for (const u of [b.videoUrl, b.imageUrl]) {
           if (typeof u === "string" && u.startsWith("/renders/")) {
@@ -131,11 +146,10 @@ export async function purgeStaleUnkept(): Promise<void> {
             try { await deleteObject(renderKey(base)); } catch { /* non-fatal */ }
           }
         }
-      } catch { /* ignore a single bad row */ }
+      } catch (e) { console.error(`[storage-cleanup] row ${a.id} failed (non-fatal):`, e); }
     }
 
-    const res = await db.asset.deleteMany({ where: { id: { in: doomed.map((a) => a.id) } } });
-    if (res.count) console.log(`[storage-cleanup] cleared ${res.count} un-kept media asset(s) older than ${CACHE_DAYS}d`);
+    if (cleared) console.log(`[storage-cleanup] cleared ${cleared} un-kept media asset(s) older than ${CACHE_DAYS}d`);
   } catch (e) {
     console.error("[storage-cleanup] sweep failed (non-fatal):", e);
   }
