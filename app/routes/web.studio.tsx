@@ -862,7 +862,14 @@ export default function WebStudio() {
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
   const cfgReady = tab === "blog" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
   const showService = tab === "video" || (tab === "image" && imageMode === "product");
-  const showWear = ((tab === "video" && contentType === "avatar") || (tab === "image" && imageMode === "presenter")) && !!avatarId && !service;
+  // baseOf, not the literal. Review and Unboxing are avatar-based presets
+  // (CT_PRESETS above maps both to base "avatar"), and every other test in this
+  // file goes through baseOf — needsPresenter, the presenter picker, the
+  // product-in-hand hint. This one did not, so on exactly the two formats that
+  // are ABOUT holding the product, the merchant lost both the hold/wear choice
+  // and the "how big is it?" control, and no wear flag was submitted. Size then
+  // falls to inference, which is how a twelve-box case once came out palm-sized.
+  const showWear = ((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && !!avatarId && !service;
   const avatarRides = (tab === "video" && !!contentType && needsPresenterField(contentType) && !!avatarId) || (tab === "image" && imageMode === "presenter" && !!avatarId);
 
   // Compose direction + scene exactly like the embedded Studio: Advanced's

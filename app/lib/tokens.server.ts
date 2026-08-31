@@ -44,11 +44,20 @@ export function tokensRemainingLive(
   const tier = resolveTierKey(plan.type);
   const included = elapsed ? (tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded) : plan.tokensIncluded;
   const used = elapsed ? 0 : plan.tokensUsed;
-  const normal = Math.max(0, included - used) + plan.tokensExtra;
-  // During the free trial the wallet is hard-capped: show the capped number so
-  // the HUD never promises tokens the spend path will refuse.
-  if (planTrialing(plan)) return Math.min(normal, Math.max(0, TRIAL_TOKEN_CAP - plan.tokensUsed));
-  return normal;
+  const allowance = Math.max(0, included - used);
+  const extra = Math.max(0, plan.tokensExtra);
+  // DURING THE TRIAL THE TOP-UP IS HELD, SO IT MUST NOT BE DISPLAYED.
+  //
+  // The comment that used to sit here said this number exists "so the HUD never
+  // promises tokens the spend path will refuse" — and then added tokensExtra
+  // before capping, while spendableNow excludes it outright. A Starter trialist
+  // who drains the 300-token allowance and picks up a level-up gift saw a
+  // non-zero balance that every generator refused: included 300, used 300,
+  // extra 250 displayed as 100 and spent as 0.
+  //
+  // Same rule as the enforcement path now, so the two cannot drift again.
+  if (planTrialing(plan)) return Math.min(allowance, Math.max(0, TRIAL_TOKEN_CAP - used));
+  return allowance + extra;
 }
 
 /** True while the plan's free-trial window is still open. */

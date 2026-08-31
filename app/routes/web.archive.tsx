@@ -456,6 +456,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (done.count === 1) break;
     }
     return json({
+      // WHICH piece this is about. Without it the badge below is a claim
+      // about whatever the merchant happens to be looking at.
+      postedAssetId: id,
       posted: landed.join(" · "),
       ok: missed.length
         ? `Posted to ${landed.join(" · ")}. ${missed.join(" · ")} didn't go through (${lastErr || "unknown"}) — check that account and try again.`
@@ -632,6 +635,13 @@ export default function WebArchive() {
   const err = actionData && "error" in actionData ? (actionData as { error: string }).error : null;
   const ok = actionData && "ok" in actionData ? (actionData as { ok: string }).ok : null;
   const posted = actionData && "posted" in actionData ? (actionData as { posted: string }).posted : null;
+  // actionData survives for the whole page, and the viewer is not closed on a
+  // successful post — only on delete/keep/remix. So after posting one piece,
+  // opening ANY other piece showed "Posted to … ✓" on it and suppressed its
+  // real status chip: the Archive told the merchant something had gone out
+  // when it had not, and hid what actually had. Tie the badge to the id the
+  // action reported.
+  const postedAssetId = actionData && "postedAssetId" in actionData ? (actionData as { postedAssetId: string }).postedAssetId : null;
   const remixed = actionData && "remixed" in actionData ? (actionData as { remixed: string }).remixed : null;
   const draftText = actionData && "draft" in actionData ? (actionData as { draft: string }).draft : null;
 
@@ -865,7 +875,7 @@ export default function WebArchive() {
               <div className="wa-vtitle">
                 <b>{viewer.title}</b>
                 {viewer.recipe && <span className="wa-recipe" title="The recipe this ad was built with">🎛 {viewer.recipe}</span>}
-                {posted ? <span className="wa-vok">Posted to {posted} ✓</span>
+                {posted && postedAssetId === viewer.id ? <span className="wa-vok">Posted to {posted} ✓</span>
                   : err ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>

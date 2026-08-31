@@ -179,3 +179,22 @@ test("the refund's rollback re-reads rather than writing back a stale payload", 
     "the rollback writes the stale parsed payload, erasing any checkpoint made while the refund was in flight"
   );
 });
+
+test("the HUD never shows a token the spend path would refuse", () => {
+  // tokensRemainingLive is what the merchant reads; spendableNow is what the
+  // wallet enforces. During a trial the purchased/gifted bucket is HELD, so the
+  // display added tokensExtra and then capped, while the spend path excluded it
+  // outright: a Starter trialist with 300 used of 300 and a 250-token level-up
+  // gift was shown 100 tokens that every generator refused.
+  const live = stripComments(fnBody("tokensRemainingLive"));
+  // Just the trial return line — the non-trial return legitimately adds the
+  // top-up, so asserting over the whole body would always fail.
+  const trialReturn = live.split(/\r?\n/).find((l) => /planTrialing\(plan\)\)\s*return/.test(l)) || "";
+  assert.ok(trialReturn, "the trial branch of tokensRemainingLive was not found");
+  assert.doesNotMatch(
+    trialReturn,
+    /tokensExtra|\bextra\b/,
+    "the trial branch of the HUD must not count the held top-up"
+  );
+  assert.match(live, /return allowance \+ extra/, "outside a trial the top-up is spendable and must be shown");
+});
