@@ -132,6 +132,26 @@ export function buildSchedule(
   });
 }
 
+/** Why this shop cannot schedule this content type, or null if it can.
+ *
+ *  Checked BEFORE any spend. acceptQuestline already refuses a plan whose
+ *  tier does not include video; adding a drop to an existing campaign did
+ *  not, so a Starter merchant could tap a day on the calendar, pick
+ *  "Video — 150", and lose 150 tokens — half their monthly allowance — for
+ *  content their tier forbids and the generator refuses downstream. */
+async function capabilityBlock(shopId: string, type: "video" | "image" | "blog"): Promise<string | null> {
+  const shop = await db.shop.findUnique({ where: { id: shopId }, include: { activePlan: true } });
+  if (!shop?.activePlan?.active) return "Choose a plan first to schedule drops.";
+  const { capabilitiesFor } = await import("./capabilities.server");
+  const caps = capabilitiesFor(shop.activePlan);
+  if (!caps.has(type)) {
+    return type === "video"
+      ? "Videos unlock on the Studio plan — schedule an image or an article on this one."
+      : `Your plan doesn't include ${type} drops.`;
+  }
+  return null;
+}
+
 /** The merchant’s IANA zone, or null. Every wall time in a schedule is theirs,
  *  not the container’s. */
 async function tzFor(shopId: string): Promise<string | null> {
@@ -334,6 +354,11 @@ export async function addDrop(
 ): Promise<{ ok: boolean; error?: string; cost?: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q || q.status === "COMPLETE") return { ok: false, error: "Campaign not found or already complete." };
+  // The tier's capabilities apply to a drop added later, not just to the
+  // campaign accepted up front — see capabilityBlock.
+  const capBlock = await capabilityBlock(shopId, type);
+  if (capBlock) return { ok: false, error: capBlock };
+
   const dtz = await tzFor(shopId);
   const duration = q.durationDays || QUEST_DURATION_DAYS;
   const dayOf = Math.max(1, Math.min(duration, Math.floor((Date.now() - q.createdAt.getTime()) / 86400000) + 1));
@@ -463,6 +488,9 @@ export async function addManualDrop(
   const { date, time, type } = params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return { ok: false, error: "Bad date or time." };
   if (!["video", "image", "blog"].includes(type)) return { ok: false, error: "Unknown content type." };
+  // Same gate as addDrop and acceptQuestline.
+  const manualCapBlock = await capabilityBlock(shopId, type);
+  if (manualCapBlock) return { ok: false, error: manualCapBlock };
   const mtz = await tzFor(shopId);
   // The merchant typed a wall time in THEIR day.
   const post = zonedInstant(date, time, mtz);

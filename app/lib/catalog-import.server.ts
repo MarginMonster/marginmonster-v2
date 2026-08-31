@@ -16,8 +16,44 @@
  * SSRF: every host goes through isBlockedHost before we fetch it. */
 
 import { db } from "../db.server";
-import { fetchRetry } from "./http-retry.server";
-import { isBlockedHost, scrapeProductPage, upgradeImageResolution } from "./product-scrape.server";
+import { isBlockedHost, safeFetch, scrapeProductPage, upgradeImageResolution } from "./product-scrape.server";
+
+/* EVERY hop, not just the address the merchant typed.
+ *
+ * The header above promises "every host goes through isBlockedHost before we
+ * fetch it", and storeOrigin does check the URL the merchant submits. But the
+ * crawler then follows that store's sitemap, and the <loc> entries inside it
+ * are chosen by whoever controls the store — so the URLs that actually get
+ * fetched never faced the guard at all. fetchRetry also follows redirects with
+ * the default policy, so even a checked URL could 302 anywhere.
+ *
+ * safeFetch re-checks the host on every hop. Wrapped in a small retry here
+ * rather than swapped for fetchRetry, because these helpers deliberately give
+ * a flaky storefront a second go and bound each attempt.
+ *
+ * This bounds the DESTINATION, not the sitemap's contents: a <loc> pointing at
+ * another PUBLIC site is still fetched, which is a crawl of a public page and
+ * not the hazard. Reaching PRIVATE hosts was the hazard. */
+async function guardedFetch(url: string, timeoutMs: number, attempts = 2): Promise<Response | null> {
+  let last: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await safeFetch(url, { headers: UA, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      last = e;
+      // A refused host is a verdict, not a blip — retrying cannot change it.
+      if (e instanceof Error && /isn't allowed/.test(e.message)) break;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
+    }
+  }
+  if (last) {
+    console.warn(
+      `[catalog] fetch refused or failed for ${url.slice(0, 120)}: ` +
+        (last instanceof Error ? last.message.slice(0, 120) : String(last))
+    );
+  }
+  return null;
+}
 
 export interface DiscoveredProduct {
   title: string;
@@ -57,12 +93,8 @@ export function storeOrigin(raw: string): URL {
 
 const json = async (url: string, timeoutMs = 12_000): Promise<unknown | null> => {
   try {
-    // timeoutMs as an OPTION, not a signal. Passing AbortSignal.timeout here
-    // minted one signal for both attempts, so the retry started already
-    // aborted and never actually retried anything. fetchRetry now mints a fresh
-    // deadline per attempt and disarms it before the body is read.
-    const res = await fetchRetry(url, { headers: UA }, { attempts: 2, timeoutMs });
-    if (!res.ok) return null;
+    const res = await guardedFetch(url, timeoutMs);
+    if (!res || !res.ok) return null;
     const ct = (res.headers.get("content-type") || "").toLowerCase();
     if (!ct.includes("json")) return null;
     return await res.json();
@@ -173,12 +205,8 @@ const PRODUCT_URL = /\/(products?|product-page|shop|item|p)\//i;
 
 async function fetchText(url: string, timeoutMs = 12_000): Promise<string | null> {
   try {
-    // timeoutMs as an OPTION, not a signal. Passing AbortSignal.timeout here
-    // minted one signal for both attempts, so the retry started already
-    // aborted and never actually retried anything. fetchRetry now mints a fresh
-    // deadline per attempt and disarms it before the body is read.
-    const res = await fetchRetry(url, { headers: UA }, { attempts: 2, timeoutMs });
-    if (!res.ok) return null;
+    const res = await guardedFetch(url, timeoutMs);
+    if (!res || !res.ok) return null;
     return (await res.text()).slice(0, 3_000_000);
   } catch {
     return null;
