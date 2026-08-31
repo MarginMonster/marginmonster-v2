@@ -331,10 +331,25 @@ export async function processNextJob(): Promise<boolean> {
   } catch (e: unknown) {
     const lastError = e instanceof Error ? e.message : String(e);
     const nextStatus = job.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
-    await db.job.update({
-      where: { id: job.id },
-      data: { status: nextStatus, lastError },
-    });
+    // STILL OURS? The success path ten lines above uses updateMany with a
+    // status guard for exactly this hazard, and this branch was a bare
+    // update. Once reclaimOrphanJobs has bounced a long render back to
+    // PENDING — which it does on a 25-minute ceiling that a slow video can
+    // genuinely cross — a second run picks the row up while the first is
+    // still in flight. The first one then throws, walks in here, and marks
+    // FAILED over the live attempt: the questline slot is stamped failed,
+    // the merchant is refunded, and the render that is still going finishes
+    // into an asset nobody paid for.
+    const won =
+      (await db.job.updateMany({
+        where: { id: job.id, status: "IN_PROGRESS" },
+        data: { status: nextStatus, lastError },
+      })).count === 1;
+    if (!won) {
+      const now = await db.job.findUnique({ where: { id: job.id }, select: { status: true } });
+      console.warn(`[worker] job ${job.id} (${job.type}) failed but was already reclaimed (now ${now?.status}) — leaving it to the run that owns it: ${lastError}`);
+      return true;
+    }
     console.error(`Job ${job.id} (${job.type}) failed:`, lastError);
     // Out of retries → mark the questline slot FAILED (non-fatal), and refund
     // the token a custom companion cost so a server-busy failure is free.

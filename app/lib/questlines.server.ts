@@ -267,8 +267,32 @@ export async function acceptQuestline(params: {
   // finished take within minutes of signing (the demo moment).
   const tz = await tzFor(params.shopId);
   let firstVideoBoosted = false;
+
+  // WHAT EACH DROP ACTUALLY COST, AND WHICH BUCKET PAID FOR IT.
+  //
+  // These payloads carried prePaid and nothing else, so a drop that failed
+  // permanently refunded REFUND_BY_TYPE — the full list price — into the
+  // expiring monthly allowance. Both halves of that are wrong:
+  //
+  //   the AMOUNT, because a campaign is bought at a plan discount. A 700-token
+  //   questline whose slots list at 900 refunded 25 for a failed image the
+  //   merchant paid about 19 for. Tokens minted, per failure.
+  //
+  //   the BUCKET, because spendTokens draws the expiring allowance first and
+  //   the purchased top-up only after it runs out. A campaign funded from
+  //   bought, never-expiring tokens got its refunds back as allowance, which
+  //   expires at the next period roll. The merchant paid cash for those.
+  //
+  // Apportioned by list price so the parts sum back to the whole, floored so
+  // rounding can only ever under-refund.
+  const listOf = (t: string) => (t === "video" ? TOKEN_COST.video : t === "image" ? TOKEN_COST.image : t === "blog" ? TOKEN_COST.blog : 0);
+  const listTotal = slots.reduce((sum, sl) => sum + listOf(sl.type), 0);
+  const chargeFor = (t: string) => (listTotal > 0 ? Math.floor((listOf(t) * cost) / listTotal) : 0);
+  const extraFor = (charged: number) => (cost > 0 ? Math.floor((charged * acceptFromExtra) / cost) : 0);
+
   for (const slot of slots) {
     const objective = objectives.find((o) => o.type === slot.type);
+    const chargedTokens = chargeFor(slot.type);
     const base = {
       productTitle: slot.productTitle,
       productImageUrl: slot.productImageUrl || undefined,
@@ -276,6 +300,8 @@ export async function acceptQuestline(params: {
       objectiveKey: objective?.key,
       slotIdx: slot.idx,
       prePaid: true,
+      chargedTokens,
+      chargedFromExtra: extraFor(chargedTokens),
     };
     let runAt = slotRunAt(slot, tz);
     if (slot.type === "video" && !firstVideoBoosted) { firstVideoBoosted = true; runAt = new Date(); }
@@ -874,6 +900,23 @@ export async function scheduleExistingAssets(
 export async function abandonQuestline(shopId: string, questlineId: string): Promise<{ ok: boolean; refunded: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q) return { ok: false, refunded: 0 };
+
+  // CLAIM IT BY DELETING IT, BEFORE ANY REFUND WORK.
+  //
+  // The row was read here and deleted at the very END, with a job findMany,
+  // a per-job delete loop, a second findMany and the refund pricing in
+  // between — every one of them an await on the event loop this shares with
+  // every HTTP handler. Two overlapping Stop clicks (a double-tap, a retried
+  // submit) both read the same live row, both priced the same refund and
+  // both called refundTokens: the merchant was paid twice for one campaign,
+  // into the permanent tokensExtra bucket.
+  //
+  // deleteMany is the claim. Exactly one caller can see count === 1, and it
+  // is the one that does the refund. No new status value, so nothing else in
+  // this file has to learn about a half-abandoned questline.
+  const claimedQuest = await db.questline.deleteMany({ where: { id: q.id, shopId } });
+  if (claimedQuest.count !== 1) return { ok: false, refunded: 0 };
+
   const schedule = parseSchedule(q.scheduleJson);
 
   // Cancel unstarted jobs for this quest. This runs BEFORE the refund is
@@ -959,7 +1002,7 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
       await refundTokens(shopId, refund, Math.min(refund, fromExtra));
     } catch (e) { console.error("[questline] refund failed:", e); refund = 0; }
   }
-  await db.questline.delete({ where: { id: q.id } });
+  // Already deleted above — that delete WAS the claim.
   return { ok: true, refunded: refund };
 }
 
@@ -988,16 +1031,37 @@ export async function settleQuestlineIfDone(questlineId: string): Promise<void> 
 
     const objectives: Objective[] = JSON.parse(q.objectivesJson);
     const schedule = parseSchedule(q.scheduleJson);
-    const allContentDone = objectives.filter((o) => o.type !== "post").every((o) => o.done >= o.target);
-    if (!allContentDone) return;
 
-    const postsSettled = schedule.slots.every((s) => s.status === "POSTED" || s.status === "FAILED");
+    // ELAPSED IS COMPUTED FIRST, AND IT OVERRIDES EVERYTHING.
+    //
+    // The content gate used to sit above this and return outright. But
+    // onQuestlineObjectiveDone only increments `done` when ok === true, so a
+    // drop that fails permanently — three attempts burned, or a deploy
+    // killing a render mid-flight — leaves its objective one short FOREVER.
+    // The questline then pinned itself ACTIVE with no path out: xpReward (550
+    // to 3,000) never paid, the card never cleared, and it kept counting
+    // against the running-campaigns cap that gates accepting a new one. The
+    // doc comment two paragraphs up already promises this cannot happen.
+    //
+    // Once the whole schedule is a day past its last slot there is nothing
+    // left to wait for, whatever the counters say.
     const lastSlotMs = schedule.slots.reduce((m, s) => {
       const t = new Date(`${s.date}T${s.time}:00`).getTime();
       return Number.isFinite(t) && t > m ? t : m;
     }, 0);
+    // Parsed without the shop's timezone, which is worth at most ±14h — well
+    // inside the GEN_LEAD_MS day of slack this adds on top.
     const scheduleElapsed = lastSlotMs > 0 && Date.now() > lastSlotMs + GEN_LEAD_MS;
-    if (!postsSettled && !scheduleElapsed) return; // drops still owed — stay ACTIVE so the poster keeps scanning
+
+    const allContentDone = objectives.filter((o) => o.type !== "post").every((o) => o.done >= o.target);
+    const postsSettled = schedule.slots.every((s) => s.status === "POSTED" || s.status === "FAILED");
+
+    // Still genuinely running: content outstanding, drops still owed, and the
+    // schedule has not run out. Stay ACTIVE so the poster keeps scanning.
+    if (!scheduleElapsed && (!allContentDone || !postsSettled)) return;
+    if (!allContentDone) {
+      console.warn(`[questline] ${questlineId} settling with content still short — its schedule elapsed, so something failed permanently`);
+    }
 
     // Conditional write: two callers race here (the forge path and the poster),
     // and the reward must not pay twice.
