@@ -2,6 +2,7 @@ import { db } from "../db.server";
 import { spendTokens, refundTokens } from "./tokens.server";
 import { awardXp, unlockAchievement, checkLevelAchievements } from "./xp.server";
 import { enqueueJob } from "./job-queue.server";
+import { zonedInstant, calendarDaysBetween, zonedDateString } from "./timezone";
 import { TOKEN_COST } from "./plan-config";
 import {
   QUESTLINE_BY_KEY, questlineTokenCost, questlineCostFor, spotName, parseSchedule,
@@ -131,8 +132,16 @@ export function buildSchedule(
   });
 }
 
-function slotRunAt(slot: QuestSlot): Date {
-  const post = new Date(`${slot.date}T${slot.time}:00`);
+/** The merchant’s IANA zone, or null. Every wall time in a schedule is theirs,
+ *  not the container’s. */
+async function tzFor(shopId: string): Promise<string | null> {
+  const row = await db.shop.findUnique({ where: { id: shopId }, select: { timezone: true } });
+  return row?.timezone ?? null;
+}
+
+function slotRunAt(slot: QuestSlot, tz?: string | null): Date {
+  // The slot's time is a WALL time in the merchant's day, not a UTC instant.
+  const post = zonedInstant(slot.date, slot.time, tz);
   const runAt = new Date(post.getTime() - GEN_LEAD_MS);
   return runAt.getTime() < Date.now() ? new Date() : runAt;
 }
@@ -236,6 +245,7 @@ export async function acceptQuestline(params: {
   // One PRE-PAID job per slot, scheduled to forge ~24h before its post time —
   // except the FIRST video, which forges IMMEDIATELY so the merchant sees a
   // finished take within minutes of signing (the demo moment).
+  const tz = await tzFor(params.shopId);
   let firstVideoBoosted = false;
   for (const slot of slots) {
     const objective = objectives.find((o) => o.type === slot.type);
@@ -247,7 +257,7 @@ export async function acceptQuestline(params: {
       slotIdx: slot.idx,
       prePaid: true,
     };
-    let runAt = slotRunAt(slot);
+    let runAt = slotRunAt(slot, tz);
     if (slot.type === "video" && !firstVideoBoosted) { firstVideoBoosted = true; runAt = new Date(); }
     if (slot.type === "video") {
       const contentType = slot.idx === anthemIdx ? "jingle" : slot.idx === cartoonIdx ? "cartoon" : undefined;
@@ -290,8 +300,12 @@ export async function rescheduleSlot(shopId: string, questlineId: string, slotId
 
   slot.date = date;
   slot.time = time;
+  const tz = await tzFor(shopId);
   const start = q.createdAt.getTime();
-  slot.day = Math.max(1, Math.round((new Date(`${date}T00:00:00`).getTime() - start) / 86400000) + 1);
+  // Calendar days, not rounded timestamps: q.createdAt is a real time of day,
+  // so subtracting it from a midnight and rounding made the second calendar
+  // day come out as "day 1" for any campaign created in the afternoon.
+  slot.day = Math.max(1, calendarDaysBetween(zonedDateString(new Date(start), tz), date) + 1);
   await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
 
   // Move the matching pending job's runAt
@@ -301,7 +315,7 @@ export async function rescheduleSlot(shopId: string, questlineId: string, slotId
       try {
         const p = JSON.parse(j.payload);
         if (p.questlineId === questlineId && p.slotIdx === slotIdx) {
-          await db.job.update({ where: { id: j.id }, data: { runAt: slotRunAt(slot) } });
+          await db.job.update({ where: { id: j.id }, data: { runAt: slotRunAt(slot, tz) } });
         }
       } catch { /* skip */ }
     }
@@ -320,6 +334,7 @@ export async function addDrop(
 ): Promise<{ ok: boolean; error?: string; cost?: number }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q || q.status === "COMPLETE") return { ok: false, error: "Campaign not found or already complete." };
+  const dtz = await tzFor(shopId);
   const duration = q.durationDays || QUEST_DURATION_DAYS;
   const dayOf = Math.max(1, Math.min(duration, Math.floor((Date.now() - q.createdAt.getTime()) / 86400000) + 1));
   if (opts.instant) day = dayOf;
@@ -426,7 +441,7 @@ export async function addDrop(
     customPrompt: direction, productDescription: direction,
     questlineId: q.id, objectiveKey: obj.key, slotIdx: idx, prePaid: true,
   };
-  const runAt = opts.instant ? new Date() : slotRunAt(slot);
+  const runAt = opts.instant ? new Date() : slotRunAt(slot, dtz);
   if (type === "video") {
     await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, runAt);
   } else if (type === "image") {
@@ -448,7 +463,9 @@ export async function addManualDrop(
   const { date, time, type } = params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return { ok: false, error: "Bad date or time." };
   if (!["video", "image", "blog"].includes(type)) return { ok: false, error: "Unknown content type." };
-  const post = new Date(`${date}T${time}:00`);
+  const mtz = await tzFor(shopId);
+  // The merchant typed a wall time in THEIR day.
+  const post = zonedInstant(date, time, mtz);
   if (isNaN(post.getTime())) return { ok: false, error: "Bad date or time." };
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   if (post.getTime() < todayStart.getTime()) return { ok: false, error: "Pick a day that hasn't passed." };
@@ -507,7 +524,7 @@ export async function addManualDrop(
   const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(row.objectivesJson || "[]");
   idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
   const typeCount = schedule.slots.filter((s) => s.type === type).length;
-  const day = Math.max(1, Math.round((new Date(`${date}T00:00:00`).getTime() - q.createdAt.getTime()) / 86400000) + 1);
+  const day = Math.max(1, calendarDaysBetween(zonedDateString(q.createdAt, mtz), date) + 1);
   slot = {
     idx, day, date, time, type, spot: spotName(type, typeCount),
     productTitle: params.product.title, productImageUrl: params.product.image || null, productUrl: params.product.url || null,
@@ -543,7 +560,7 @@ export async function addManualDrop(
     customPrompt: direction, productDescription: direction,
     questlineId: q.id, objectiveKey: obj.key, slotIdx: idx, prePaid: true,
   };
-  const runAt = slotRunAt(slot);
+  const runAt = slotRunAt(slot, mtz);
   if (type === "video") await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, runAt);
   else if (type === "image") await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, runAt);
   else await enqueueJob(shopId, "GENERATE_BLOG_POST", base, runAt);

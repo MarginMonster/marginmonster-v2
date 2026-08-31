@@ -13,6 +13,7 @@
 // is scheduled.
 
 import { db } from "../db.server";
+import { zonedInstant } from "./timezone";
 import { parseSchedule } from "./questlines";
 
 export interface CalendarSlot {
@@ -50,6 +51,8 @@ export async function getContentCalendar(shopId: string): Promise<{
   recent: CalendarSlot[];
   active: boolean;
 }> {
+  const shopRow = await db.shop.findUnique({ where: { id: shopId }, select: { timezone: true } });
+  const tz = shopRow?.timezone ?? null;
   const [plan, quests, assets] = await Promise.all([
     db.plan.findUnique({ where: { shopId }, select: { id: true } }),
     db.questline.findMany({
@@ -71,7 +74,8 @@ export async function getContentCalendar(shopId: string): Promise<{
   for (const q of quests) {
     for (const s of parseSchedule(q.scheduleJson).slots) {
       if (s.status === "POSTED" || s.status === "FAILED") continue;
-      const at = new Date(`${s.date}T${s.time || "12:00"}:00`);
+      // The merchant's wall time, so the calendar agrees with the poster.
+      const at = zonedInstant(s.date, s.time || "12:00", tz);
       if (isNaN(at.getTime()) || at.getTime() < now) continue;
       upcoming.push({
         date: at.toISOString(),

@@ -89,6 +89,13 @@ model Shop {
   // null = not chosen yet: web signups seed it from the landing language,
   // Shopify shops auto-detect once from the store's primary locale.
   contentLang        String?
+  /// IANA zone the merchant's day happens in — "America/Los_Angeles". The
+  /// scheduler stores wall times ("19:00" = evening scroll peak) and needs
+  /// this to know which instant that is; without it everything resolved in
+  /// the container's UTC, so an evening drop landed at noon in California.
+  /// Shopify shops take it from the shop's own setting; web accounts from the
+  /// browser at signup. Null falls back to UTC.
+  timezone           String?
   // Companion — the merchant's chosen chibi partner (companions.ts id, or
   // "custom" with the forged art stored inline as base64 PNGs; disk on Render
   // is ephemeral so custom art lives in the DB until the R2/S3 track)

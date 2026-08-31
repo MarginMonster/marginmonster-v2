@@ -77,7 +77,7 @@ export type WebIdentity = {
 
 /** Create the account + its companion WEB shop. Throws on duplicate email.
  *  contentLang seeds the AI generation language from the landing toggle. */
-export async function createWebAccount(email: string, password: string, name?: string, contentLang?: string): Promise<Account> {
+export async function createWebAccount(email: string, password: string, name?: string, contentLang?: string, timezone?: string): Promise<Account> {
   const existing = await db.account.findUnique({ where: { email } });
   if (existing) throw new Error("An account with that email already exists — log in instead.");
 
@@ -97,7 +97,7 @@ export async function createWebAccount(email: string, password: string, name?: s
       data: { email, passwordHash, name: name || null },
     });
     const shop = await tx.shop.create({
-      data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: lang },
+      data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: lang, timezone: timezone || null },
     });
     await tx.connection.create({ data: { accountId: account.id, kind: "web", externalId: shop.id } });
     return account;

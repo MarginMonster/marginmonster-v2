@@ -1,6 +1,9 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
+import { useEffect, useState } from "react";
+import { db } from "../db.server";
 import { clientIp, rateLimit, rateLimitReset } from "../lib/rate-limit.server";
+import { isValidTimeZone } from "../lib/timezone";
 import { getWebIdentity, loginWebAccount, webSessionRedirect } from "../lib/web-auth.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
@@ -41,17 +44,44 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Someone who got in was never the threat — don't leave them throttled by
   // their own mistyped attempts.
   rateLimitReset(`login:acct:${email}`);
+
+  // BACKFILL THE TIMEZONE, ONCE.
+  //
+  // Everyone who signed up before the scheduler learned about timezones has
+  // none stored, and would sit on the UTC fallback forever with nothing in the
+  // UI to change it. The browser knows, and login is the one moment we hear
+  // from it. Written ONLY when the column is null — overwriting on every
+  // login would move a merchant's whole posting schedule the first time they
+  // opened the app from an airport.
+  const rawTz = ((form.get("tz") as string) || "").trim();
+  if (isValidTimeZone(rawTz)) {
+    try {
+      const conn = await db.connection.findFirst({ where: { accountId: account.id, kind: "web" } });
+      if (conn) {
+        await db.shop.updateMany({
+          where: { id: conn.externalId, timezone: null },
+          data: { timezone: rawTz },
+        });
+      }
+    } catch (e) {
+      console.error("[login] timezone backfill failed (non-fatal):", e);
+    }
+  }
   return webSessionRedirect(account);
 };
 
 export default function WebLogin() {
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
+  // Same one-line ask as signup — see the backfill in the action.
+  const [tz, setTz] = useState("");
+  useEffect(() => { try { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); } catch { /* older browser */ } }, []);
   return (
     <div className="wb-auth wb-card">
       <h1 className="wb-h1" style={{ marginTop: 0 }}>Log in</h1>
       {actionData && "error" in actionData && <div className="wb-err">{actionData.error}</div>}
       <Form method="post">
+        <input type="hidden" name="tz" value={tz} />
         <label className="wb-lbl">Email</label>
         <input className="wb-in" name="email" type="email" required />
         <label className="wb-lbl">Password</label>

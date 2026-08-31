@@ -3,6 +3,7 @@ import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { createWebAccount, getWebIdentity, webSessionRedirect } from "../lib/web-auth.server";
+import { isValidTimeZone } from "../lib/timezone";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Start free · EasyMode" }];
@@ -18,6 +19,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const password = (form.get("password") as string) || "";
   const name = ((form.get("name") as string) || "").trim();
   const lang = ((form.get("lang") as string) || "").trim() || undefined;
+  // The merchant's own zone, so a drop scheduled for 7pm posts at 7pm where
+  // they are rather than 7pm UTC. Validated server-side — this arrives from
+  // the browser and is used to build instants.
+  const rawTz = ((form.get("tz") as string) || "").trim();
+  const timezone = isValidTimeZone(rawTz) ? rawTz : undefined;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "Enter a valid email address." });
   if (password.length < 8) return json({ error: "Password needs at least 8 characters." });
 
@@ -34,7 +40,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
   try {
-    const account = await createWebAccount(email, password, name || undefined, lang);
+    const account = await createWebAccount(email, password, name || undefined, lang, timezone);
     return webSessionRedirect(account);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Couldn't create the account — try again." });
@@ -46,7 +52,10 @@ export default function WebSignup() {
   const nav = useNavigation();
   // Seed the account's AI content language from the landing-page toggle.
   const [lang, setLang] = useState("en");
+  const [tz, setTz] = useState("");
   useEffect(() => { try { setLang(localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
+  // Same idea as the language above: ask the browser once, at signup.
+  useEffect(() => { try { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); } catch { /* older browser */ } }, []);
   return (
     <div className="wb-auth wb-card">
       <h1 className="wb-h1" style={{ marginTop: 0 }}>Create your account</h1>
@@ -54,6 +63,7 @@ export default function WebSignup() {
       {actionData && "error" in actionData && <div className="wb-err">{actionData.error}</div>}
       <Form method="post">
         <input type="hidden" name="lang" value={lang} />
+        <input type="hidden" name="tz" value={tz} />
         <label className="wb-lbl">Your name (or brand)</label>
         <input className="wb-in" name="name" placeholder="Sunny Supply Co." />
         <label className="wb-lbl">Email</label>

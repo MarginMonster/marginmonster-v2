@@ -1,4 +1,5 @@
 import { db } from "../db.server";
+import { zonedInstant } from "./timezone";
 import { parseSchedule, type QuestSlot } from "./questlines";
 
 /* The auto-posting engine (v0 scaffold).
@@ -115,11 +116,11 @@ export async function postDueSlots(): Promise<void> {
     const shopIds = [...new Set(active.map((q) => q.shopId))];
     const shops = await db.shop.findMany({
       where: { id: { in: shopIds } },
-      select: { id: true, domain: true, socialProfileKey: true, socialsJson: true, activePlan: { select: { trialEndsAt: true } } },
+      select: { id: true, domain: true, timezone: true, socialProfileKey: true, socialsJson: true, activePlan: { select: { trialEndsAt: true } } },
     });
     const { linkedFromCache } = await import("./social-provider.server");
     const { trialCredit } = await import("./social-caption.server");
-    const byShop = new Map(shops.map((s) => [s.id, { domain: s.domain, profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson), credit: trialCredit(s.activePlan) }]));
+    const byShop = new Map(shops.map((s) => [s.id, { domain: s.domain, timezone: s.timezone, profileKey: s.socialProfileKey, linked: linkedFromCache(s.socialsJson), credit: trialCredit(s.activePlan) }]));
 
     let due = 0;
     let posted = 0;
@@ -215,7 +216,10 @@ export async function postDueSlots(): Promise<void> {
 
       for (const s of schedule.slots) {
         if (s.status !== "READY") continue;
-        if (new Date(`${s.date}T${s.time}:00`).getTime() > now) continue;
+        // A slot time is a WALL time in the merchant's day. Read as UTC it
+        // fired at the wrong hour for everyone outside it — and for a merchant
+        // west of UTC, hours EARLY, publishing a drop before its date.
+        if (zonedInstant(s.date, s.time, byShop.get(q.shopId)?.timezone).getTime() > now) continue;
         due++;
         const link = byShop.get(q.shopId);
 
@@ -288,7 +292,7 @@ export async function postDueSlots(): Promise<void> {
       // fully elapsed, so a drop that can never post (socials unlinked, a
       // platform permanently refusing) can't pin the campaign ACTIVE forever.
       const lastSlotMs = schedule.slots.reduce((m, s) => {
-        const t = new Date(`${s.date}T${s.time}:00`).getTime();
+        const t = zonedInstant(s.date, s.time, byShop.get(q.shopId)?.timezone).getTime();
         return Number.isFinite(t) && t > m ? t : m;
       }, 0);
       if (changed || (lastSlotMs > 0 && now > lastSlotMs + 24 * 60 * 60 * 1000)) {
