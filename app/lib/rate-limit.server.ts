@@ -17,9 +17,6 @@
  */
 
 import net from "node:net";
-// .ts extension so node --test can load this module directly — the repo
-// convention for a tested lib importing a sibling (see password-reset.server.ts).
-import { isBlockedIp } from "./blocked-host.ts";
 
 type Window = { count: number; resetAt: number };
 
@@ -63,40 +60,61 @@ function asIp(raw: string): string {
   return net.isIP(v) ? v.toLowerCase() : "";
 }
 
-/** The client address, read RIGHT TO LEFT.
+/** How many proxies sit in front of this app and APPEND to x-forwarded-for.
  *
- *  This used to take the FIRST entry of x-forwarded-for, which is the one
- *  part of that header a caller writes themselves. Verified against the live
- *  site: 22 POSTs to /web/reset carrying "X-Forwarded-For: 9.9.9.9" tripped
- *  the 20-per-10-minutes limit and started answering 429 — and the very next
- *  request, identical but claiming 8.8.8.8, got a 200. Every IP limit on the
- *  public surface was one header away from unlimited: signup (10/hr — free
- *  Account+Shop+Connection creation, each able to queue a sitemap crawl onto
- *  the one serial worker every merchant's renders share), login and reset
- *  (scrypt on libuv's four-thread pool, which is the stall the note at the
- *  top of this file exists to prevent), the /go click counters that pay out
- *  achievement tokens, and landing-page view counting.
+ *  Render's edge adds exactly one entry, so the client is the second from the
+ *  right. This is not a guess that can be left to rot — it is checkable from
+ *  outside in one minute, with no access to any log:
  *
- *  A proxy APPENDS the address it observed, so entries can only be forged to
- *  the LEFT of the truth. Walking from the right and taking the first public
- *  address therefore lands on the hop our edge actually saw, and needs no
- *  guess about how many proxies are in front of us: with one entry the rule
- *  degenerates to the old behaviour, and with a forged prefix it skips it.
+ *    25 POSTs to /web/reset/anything with no forwarded header should start
+ *    answering 429 at the 21st. Then 25 more, each claiming a DIFFERENT
+ *    X-Forwarded-For, should stay 429 — a forged entry can only be added on
+ *    the left, so it cannot buy a fresh bucket.
  *
- *  Nothing that is not a valid IP literal is ever returned. An arbitrary
- *  header string used as a Map key is how MAX_KEYS above gets exhausted on
- *  purpose, which would turn the limiter into a global lockout.
+ *  If the first run never reaches 429, the count is too low (the key is
+ *  landing on a proxy address that rotates). If the second run answers 200,
+ *  it is too high (the key is landing on the forged entry).
+ *
+ *  Override with TRUSTED_PROXY_HOPS if the topology ever changes.
+ */
+const TRUSTED_PROXY_HOPS = (() => {
+  const n = Number.parseInt(process.env.TRUSTED_PROXY_HOPS || "", 10);
+  return Number.isInteger(n) && n >= 0 && n <= 8 ? n : 1;
+})();
+
+/** The client address.
+ *
+ *  Two wrong answers were tried before this one, and both were caught by the
+ *  same probe against the live site, so the reasoning is worth keeping.
+ *
+ *  FIRST ENTRY (the original) is the part of the header a caller writes
+ *  themselves. 22 POSTs to /web/reset claiming "X-Forwarded-For: 9.9.9.9"
+ *  tripped the limit and answered 429; the next request, identical but
+ *  claiming 8.8.8.8, got a 200. Every IP limit on the public surface was one
+ *  header away from unlimited: signup, login, password reset, the /go click
+ *  counters that pay out achievement tokens, landing-page view counting.
+ *
+ *  RIGHTMOST PUBLIC ENTRY closed that, and opened a worse hole: 25 requests
+ *  from one machine with no forged header were never limited either. The
+ *  entry our edge appends is itself a public address that varies between
+ *  requests, so every caller got a fresh bucket and the limiter was off.
+ *
+ *  COUNTING FROM THE RIGHT is what actually works. Each proxy appends the
+ *  address it saw, so with a known number of appending hops the client sits
+ *  at a fixed offset from the end — and a forged entry, which can only be
+ *  prepended, shifts nothing at that offset.
  */
 export function clientIp(request: Request): string {
   const chain = (request.headers.get("x-forwarded-for") || "").split(",").map(asIp).filter(Boolean);
 
-  // Right to left: the first PUBLIC address is the one our edge observed.
-  for (let i = chain.length - 1; i >= 0; i--) {
-    if (!isBlockedIp(chain[i])) return chain[i];
+  if (chain.length) {
+    const idx = chain.length - 1 - TRUSTED_PROXY_HOPS;
+    // A chain shorter than the expected hop count means the request did not
+    // come through the usual path. The leftmost entry is then the closest
+    // thing to a client we have, and it is no more forgeable than the whole
+    // header already is in that situation.
+    return idx >= 0 ? chain[idx] : chain[0];
   }
-  // Every hop was private — a purely internal call, or a forged chain with no
-  // public entry. The rightmost is still the closest thing to the truth.
-  if (chain.length) return chain[chain.length - 1];
 
   const real = asIp(request.headers.get("x-real-ip") || "");
   if (real) return real;
@@ -105,9 +123,6 @@ export function clientIp(request: Request): string {
   // safer direction when we cannot tell callers apart.
   return "unknown";
 }
-
-/** Clear a key — used after a successful login so one person fat-fingering
- *  their password three times is not then locked out by their own retries. */
 export function rateLimitReset(key: string): void {
   buckets.delete(key);
 }

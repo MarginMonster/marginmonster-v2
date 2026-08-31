@@ -62,24 +62,37 @@ test("staying under the limit forever is never refused", () => {
 
 const req = (h: Record<string, string>) => new Request("https://x.test/", { headers: h });
 
-test("the client address is the rightmost PUBLIC hop, not the first entry", () => {
-  assert.equal(clientIp(req({ "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
-  assert.equal(clientIp(req({ "x-forwarded-for": "  203.0.113.7  " })), "203.0.113.7");
-  // Internal hops appended after the client are skipped.
-  assert.equal(clientIp(req({ "x-forwarded-for": "203.0.113.7, 10.0.0.1, 10.0.0.2" })), "203.0.113.7");
+const EDGE = "198.51.100.200"; // the entry our edge appends; it varies per request
+
+test("the client is the entry one hop from the right", () => {
+  assert.equal(clientIp(req({ "x-forwarded-for": `203.0.113.7, ${EDGE}` })), "203.0.113.7");
+  assert.equal(clientIp(req({ "x-forwarded-for": `  203.0.113.7 ,  ${EDGE} ` })), "203.0.113.7");
   assert.equal(clientIp(req({ "x-real-ip": "198.51.100.4" })), "198.51.100.4");
 });
 
+test("the appended entry is never the key, because it changes every request", () => {
+  // This is the second wrong answer, caught by the same live probe as the
+  // first: keying on the rightmost entry meant 25 requests from one machine
+  // with no forged header were never limited, because our edge appends a
+  // public address that rotates. Every caller got a fresh bucket.
+  const client = "203.0.113.7";
+  const keys = ["198.51.100.1", "198.51.100.2", "198.51.100.3"].map((edge) =>
+    clientIp(req({ "x-forwarded-for": `${client}, ${edge}` })));
+  assert.deepEqual(keys, [client, client, client]);
+});
+
 test("a forged prefix cannot buy a fresh bucket", () => {
-  // Verified against the live site before this changed: 22 POSTs claiming
-  // "X-Forwarded-For: 9.9.9.9" tripped the limit and answered 429, and the
-  // next request claiming 8.8.8.8 got a 200. A proxy APPENDS what it saw, so
-  // anything a caller writes lands to the LEFT of the truth.
+  // Verified against the live site before any of this changed: 22 POSTs
+  // claiming "X-Forwarded-For: 9.9.9.9" tripped the limit and answered 429,
+  // and the next request claiming 8.8.8.8 got a 200. A proxy APPENDS what it
+  // saw, so a forged entry can only land to the LEFT of the truth — and the
+  // offset counted from the RIGHT does not move when one is added.
   const real = "203.0.113.7";
   const spoofs = [
-    `9.9.9.9, ${real}`,
-    `8.8.8.8, ${real}`,
-    `1.1.1.1, 2.2.2.2, 3.3.3.3, ${real}`,
+    `9.9.9.9, ${real}, ${EDGE}`,
+    `8.8.8.8, ${real}, ${EDGE}`,
+    `1.1.1.1, 2.2.2.2, 3.3.3.3, ${real}, ${EDGE}`,
+    `not-an-ip, ${real}, ${EDGE}`,
   ];
   for (const xff of spoofs) assert.equal(clientIp(req({ "x-forwarded-for": xff })), real, xff);
 });
@@ -94,23 +107,28 @@ test("nothing that is not an IP is ever used as a bucket key", () => {
     assert.equal(clientIp(req({ "x-forwarded-for": junk })), "unknown", JSON.stringify(junk.slice(0, 20)));
   }
   // Junk to the left of a real address does not stop the real one being found.
-  assert.equal(clientIp(req({ "x-forwarded-for": "not-an-ip, 203.0.113.7" })), "203.0.113.7");
+  assert.equal(clientIp(req({ "x-forwarded-for": `not-an-ip, 203.0.113.7, ${EDGE}` })), "203.0.113.7");
   assert.equal(clientIp(req({ "x-real-ip": "still-not-an-ip" })), "unknown");
 });
 
 test("address forms a proxy actually emits are understood", () => {
   // Ports and bracketed IPv6 both appear in real chains.
-  assert.equal(clientIp(req({ "x-forwarded-for": "203.0.113.7:41234" })), "203.0.113.7");
-  assert.equal(clientIp(req({ "x-forwarded-for": "[2001:db8::1]:443" })), "2001:db8::1");
-  assert.equal(clientIp(req({ "x-forwarded-for": "2001:db8::1" })), "2001:db8::1");
-  // An IPv4-mapped loopback is loopback, so it is not mistaken for a client.
-  assert.equal(clientIp(req({ "x-forwarded-for": "203.0.113.7, ::ffff:127.0.0.1" })), "203.0.113.7");
+  assert.equal(clientIp(req({ "x-forwarded-for": `203.0.113.7:41234, ${EDGE}` })), "203.0.113.7");
+  assert.equal(clientIp(req({ "x-forwarded-for": `[2001:db8::1]:443, ${EDGE}` })), "2001:db8::1");
+  assert.equal(clientIp(req({ "x-forwarded-for": `2001:db8::1, ${EDGE}` })), "2001:db8::1");
+});
+
+test("a chain shorter than the expected hop count still yields a stable key", () => {
+  // A request that did not come through the usual path. The leftmost entry is
+  // the closest thing to a client there is, and it is no more forgeable than
+  // the whole header already is in that situation.
+  assert.equal(clientIp(req({ "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
 });
 
 test("an all-private chain still yields a stable key, never junk", () => {
-  // A purely internal call, or a forged chain with no public entry: the
-  // rightmost hop is the closest thing to the truth we have.
-  assert.equal(clientIp(req({ "x-forwarded-for": "10.0.0.1, 10.0.0.2" })), "10.0.0.2");
+  // A purely internal call: still a valid literal, still stable, never a
+  // string an attacker chose.
+  assert.equal(clientIp(req({ "x-forwarded-for": "10.0.0.1, 10.0.0.2" })), "10.0.0.1");
 });
 
 test("an unidentifiable caller is throttled, not waved through", () => {
