@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
@@ -186,6 +187,42 @@ async function singJingle(
   throw new Error(`[jingle:music] every engine failed: ${errors.join(" | ")}`);
 }
 
+/** Fit an image onto a 9:16 canvas, filling the margins with a blurred,
+ *  darkened copy of itself. Returns a PUBLIC url (the animator fetches by
+ *  URL), or null if anything goes wrong — the caller then falls back to the
+ *  raw photo, which is what it used unconditionally before. */
+async function padToVertical(srcUrl: string): Promise<string | null> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!base) return null;
+  let tmp = "";
+  try {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "anthem-key-"));
+    const src = path.join(tmp, "src.jpg");
+    await download(srcUrl, src);
+    const dir = path.join(process.cwd(), "data", "renders");
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `anthem-key-${crypto.randomBytes(6).toString("hex")}.jpg`;
+    const out = path.join(dir, name);
+    const r = await runFfmpeg([
+      "-y", "-i", src,
+      "-vf",
+      "split[a][b];" +
+        "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=42,eq=brightness=-0.16[bg];" +
+        "[b]scale=1080:1920:force_original_aspect_ratio=decrease[fg];" +
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2",
+      "-frames:v", "1", "-q:v", "3", out,
+    ]);
+    if (r.status !== 0 || !fs.existsSync(out)) return null;
+    try { await mirrorRender(name, fs.readFileSync(out)); } catch { /* non-fatal */ }
+    return `${base}/renders/${name}`;
+  } catch (e) {
+    console.error("[anthem] keyframe pad failed, using the raw photo:", e instanceof Error ? e.message.slice(0, 140) : e);
+    return null;
+  } finally {
+    if (tmp) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* tidy */ } }
+  }
+}
+
 export async function generateJingleAd(params: JingleAdParams): Promise<string> {
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const resume = params.resume || {};
@@ -295,6 +332,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   // with the song over it, as before. Singing failure falls back gracefully.
   let talkingUrl = resume.talkingUrl || "";
   let singEngine = (talkingUrl && resume.singEngine) || "";
+  // Set when the singing performance failed and the ad degraded to a product
+  // visual, so the asset does not claim a performer who is not in it.
+  let performanceFailed = false;
   // Did the performer end up actually holding the product? Survives a resume
   // that skips the whole visual block because the lipsync was checkpointed.
   let heldProduct = ck.ckHeldOk === "1";
@@ -451,6 +491,12 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       console.error("[anthem] singing performance failed — product visual instead:", e instanceof Error ? e.message.slice(0, 180) : e);
       talkingUrl = "";
       singEngine = "";
+      // The degrade stays — re-throwing would burn all three attempts on a
+      // transient capacity blip and leave the merchant with nothing at all —
+      // but it must not be silent. The asset used to record the singer the
+      // merchant chose whether or not that singer made it into the ad, so the
+      // Studio card named a performer who simply is not there.
+      performanceFailed = true;
     } finally {
       if (tmpSing) { try { fs.rmSync(tmpSing, { recursive: true, force: true }); } catch { /* tidy */ } }
     }
@@ -467,7 +513,19 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   }
   if (!talkingUrl && !keyframeUrl) {
     if (!params.serviceMode && params.productImageUrl) {
-      keyframeUrl = params.productImageUrl; // the real photo IS the keyframe
+      // THE REAL PHOTO IS THE KEYFRAME — BUT NOT AT ITS OWN ASPECT.
+      //
+      // Handing a merchant's raw product photo to the animator gives back a
+      // clip at that photo's shape, and assembly then cover-crops it to 9:16.
+      // A square Shopify photo loses about 44% of its width and a 4:3 landscape
+      // about 58% — so a bottle at the left of frame, or a name printed across
+      // the width, is simply sliced off. For the no-singer Anthem this is the
+      // whole ad, not a cutaway.
+      //
+      // Padded locally with ffmpeg rather than composed by a model: it costs
+      // nothing, it is deterministic, and it cannot redraw the product. The
+      // blurred fill is the same treatment the video path already uses.
+      keyframeUrl = (await padToVertical(params.productImageUrl)) || params.productImageUrl;
     } else {
       const prompt =
         `Bright joyful retro TV-commercial scene for "${params.productTitle}"` +
@@ -620,7 +678,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
           style: "JINGLE",
           engine,
           singEngine: singEngine || null,
-          singerId: singer?.id || null,
+          singerId: singEngine ? singer?.id || null : null,
           cartoonStyle: params.cartoonStyle || null,
           videoUrl: `/renders/${fileName}`,
           lyrics,
@@ -630,8 +688,11 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         metaJson: JSON.stringify({
           style: "JINGLE",
           productTitle: params.productTitle,
-          avatarId: singer?.id || null,
-          avatarVariant: singer ? (params.avatarVariant ?? 0) : null,
+          avatarId: singEngine ? singer?.id || null : null,
+          avatarVariant: singEngine && singer ? (params.avatarVariant ?? 0) : null,
+          // The merchant picked a singer and did not get one — record it
+          // rather than quietly shipping a slideshow that names them.
+          performanceFailed: performanceFailed || undefined,
           cartoonStyle: params.cartoonStyle || null,
           heldProduct, // did the singer perform WITH the product in hand?
           direction: params.direction || null,
