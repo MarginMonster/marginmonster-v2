@@ -20,6 +20,7 @@ import { Form, isRouteErrorResponse, useActionData, useLoaderData, useRevalidato
 import { useEffect, useState } from "react";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { AD_FORMATS } from "../lib/ad-formats";
 import {
@@ -30,11 +31,25 @@ import {
 const CAP = 60; // fits a full sweep: every format once
 const CONCURRENCY = 2; // gentle: this is the box serving merchants
 
+/** Constant-time compare, so the 404 says nothing about how much of the key
+ *  was right. web/dev.tsx next door already does this; this route was still
+ *  on ===, which short-circuits on the first wrong byte. */
+function keyMatches(given: string, expected: string): boolean {
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 function assertEnabled(request: Request): void {
   const key = process.env.QA_KEY;
   if (!key) throw new Response("Not Found", { status: 404 });
-  const given = new URL(request.url).searchParams.get("key") || "";
-  if (given !== key) throw new Response("Not Found", { status: 404 });
+  // Header first for the same reason as /web/dev: a query string is written
+  // into access logs, proxy logs, browser history and any outbound Referer.
+  // The query form stays so the page still opens in a browser, which is the
+  // point of a route with a UI.
+  const given = request.headers.get("x-qa-key") || new URL(request.url).searchParams.get("key") || "";
+  if (!keyMatches(given, key)) throw new Response("Not Found", { status: 404 });
 }
 
 const reportPath = () => path.join(process.cwd(), "data", "renders", "qa-report.json");
