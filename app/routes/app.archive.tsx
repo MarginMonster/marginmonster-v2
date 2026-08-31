@@ -347,6 +347,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const assetId = (form.get("assetId") as string) || "";
     const platform = (form.get("platform") as string) || "";
     const budgetDaily = Math.max(1, Math.min(500, Number(form.get("budget") || 10)));
+    // THE FLAG IS A GATE, NOT A DECORATION.
+    //
+    // paidAdsEnabled() hides the Boost button in the loader and gates ad-account
+    // connect, but this action never consulted it. FEATURE_PAID_ADS is unset in
+    // production — paid ads are waiting on Marketing API approval — so a POST
+    // formed by hand, or replayed from a session when the flag was briefly on,
+    // spent the 25-token fee below on a job guaranteed to throw at
+    // campaign-launch.server.ts. The fee does come back through
+    // refundPrepaidOnce after the retries burn, but the merchant watches 25
+    // tokens vanish and a campaign fail for no reason they can see.
+    if (!paidAdsEnabled()) return json({ error: "Paid campaigns aren't switched on yet." });
     if (!shop.activePlan?.active) return json({ error: "Pick a plan first to boost." });
     if (!shop.adAccounts.find((a) => a.platform === platform)) return json({ error: "Connect your ad account first — you set the budget, it spends from your account." });
     const asset = await db.asset.findFirst({ where: { id: assetId, shopId: shop.id } });

@@ -406,7 +406,13 @@ function hasAudioStream(file: string): boolean {
   const out = spawnSync(
     ffprobeBin(),
     ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", file],
-    { encoding: "utf8" }
+    // spawnSync BLOCKS THE WHOLE PROCESS, so an unbounded one is not a slow
+    // probe, it is a dead server: the event loop stops, every merchant's
+    // request stops, and the worker tick that would have recovered it never
+    // gets to run. These read a local file that is already on disk; anything
+    // past these limits is a wedge, not work. (anthropic.server.ts:150 has
+    // carried a timeout on its ffmpeg call all along — these four missed it.)
+    { encoding: "utf8", timeout: 15_000 }
   );
   return !!(out.stdout || "").trim();
 }
@@ -424,14 +430,14 @@ function detectContentCrop(file: string): string | null {
       // limit=250 catches near-white bars as well as black ones; round=2 keeps
       // the box even so the later scale stays clean.
       "-vf", "cropdetect=limit=250:round=2:reset=0", "-f", "null", "-",
-    ], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+    ], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 60_000 });
     const hits = [...String(out.stderr || "").matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
     const last = hits[hits.length - 1];
     if (!last) return null;
     const [w, h, x, y] = last.slice(1, 5).map(Number);
     if (!w || !h) return null;
     const probe = spawnSync(ffprobeBin(), ["-v", "error", "-select_streams", "v:0",
-      "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file], { encoding: "utf8" });
+      "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file], { encoding: "utf8", timeout: 15_000 });
     const [fw, fh] = String(probe.stdout || "").trim().split("x").map(Number);
     if (!fw || !fh) return null;
     // Only act on real letterboxing, and never crop away more than a third of
@@ -449,6 +455,7 @@ function detectContentCrop(file: string): string | null {
 export function ffprobeDuration(file: string): number {
   const out = spawnSync(ffprobeBin(), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], {
     encoding: "utf8",
+    timeout: 15_000,
   });
   const d = parseFloat((out.stdout || "").trim());
   if (!d || Number.isNaN(d)) throw new Error(`[ugc:assemble] couldn't probe duration (${out.stderr?.slice(0, 120)})`);

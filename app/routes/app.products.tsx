@@ -199,11 +199,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let remaining = have;
   const written = results.filter((r) => "copy" in r).length;
   let paid = 0;
+  // WHY the charging stopped decides what the merchant is told. A bare catch
+  // treated every failure as insolvency, but the wallet also refuses a spend
+  // when its compare-and-swap loses five times in a row to a concurrent
+  // action — a busy wallet, not an empty one. Telling someone with a full
+  // balance that they ran out sends them to top up money they do not need.
+  let stoppedByContention = false;
   for (let i = 0; i < written; i++) {
     try {
       remaining = (await chargeTokens(shop.id, "description")).remaining;
       paid++;
-    } catch {
+    } catch (e) {
+      stoppedByContention = (e as Error)?.name !== "InsufficientTokensError";
       break;
     }
   }
@@ -223,7 +230,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return {
       id: r.id,
       title: r.title,
-      error: "Your tokens ran out before this one, so it was not charged for. Top up and run it again.",
+      error: stoppedByContention
+        ? "Your wallet was busy with another action, so this one wasn't charged for. Try it again in a moment."
+        : "Your tokens ran out before this one, so it was not charged for. Top up and run it again.",
     };
   });
   const forged = paid; // progression counts what was actually paid for

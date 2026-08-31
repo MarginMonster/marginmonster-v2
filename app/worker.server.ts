@@ -24,17 +24,47 @@ const STUCK_MS = 25 * 60_000;
 const BOOT_GRACE_MS = 2 * 60_000;
 
 let lastTileKick = 0;
+
+// A tick that has been running this long is not slow, it is wedged. The
+// legitimate worst case is a full drain of 20 jobs, and each job carries its
+// own failure paths; nothing here should legitimately take a third of an hour.
+const TICK_DEADLINE_MS = 20 * 60_000;
+
 // setInterval fires every 8s but a tick awaits FULL renders, so ticks used to
 // stack: several overlapping drains all racing for the same PENDING rows. The
 // conditional claim in processNextJob stops the double-render; this stops the
 // pile-up that caused it.
+//
+// A PERMANENT "return" IS WORSE THAN AN OVERLAP.
+//
+// The guard had no escape. If any await in the tick never settled — an
+// unsignalled fetch to a provider that accepted the connection and went quiet,
+// a blocking probe on a wedged file — then `ticking` stayed true forever and
+// every subsequent tick returned immediately. No job drained again, for any
+// merchant, until somebody redeployed. And because reclaimOrphanJobs sat
+// inside the same guard, the one mechanism that would have marked those jobs
+// failed and refunded them was switched off by the same fault.
+//
+// Two changes. The reaper now runs on its own timer, outside this guard, so a
+// wedged tick can no longer suppress refunds. And the guard expires: past the
+// deadline a fresh tick takes over. That does not cancel the stuck promise —
+// nothing in JavaScript can — but an overlapping drain is a bounded cost the
+// conditional claim already handles, and a dead worker is not.
 let ticking = false;
+let tickStartedAt = 0;
+let tickGen = 0;
 async function tick() {
-  if (ticking) return;
+  if (ticking && Date.now() - tickStartedAt < TICK_DEADLINE_MS) return;
+  if (ticking) {
+    console.error(
+      `[worker] the previous tick has been running for ${Math.round((Date.now() - tickStartedAt) / 60_000)} min — ` +
+        `treating it as wedged and starting a fresh one. Something in it is awaiting a promise that will not settle.`
+    );
+  }
+  const gen = ++tickGen;
   ticking = true;
+  tickStartedAt = Date.now();
   try {
-    // Free any jobs whose process died mid-run (deploys, restarts).
-    await reclaimOrphanJobs(STUCK_MS);
     // Self-heal the style tiles + ad templates: cheap no-op when everything
     // exists; re-kicks anything a deploy restart interrupted mid-render.
     if (Date.now() - lastTileKick > 10 * 60_000) {
@@ -70,7 +100,26 @@ async function tick() {
   } catch (e) {
     console.error("[worker] tick error:", e);
   } finally {
-    ticking = false;
+    // Only the newest tick may release the flag. A wedged predecessor that
+    // finally settles must not clear it out from under its replacement.
+    if (gen === tickGen) ticking = false;
+  }
+}
+
+// The reaper, deliberately on its own timer and its own guard. This is the
+// only thing that turns a job killed by a restart — or by a wedge — into a
+// FAILED row with the merchant's tokens returned, so it must not be reachable
+// from anything that can stall.
+let reaping = false;
+async function reap() {
+  if (reaping) return;
+  reaping = true;
+  try {
+    await reclaimOrphanJobs(STUCK_MS);
+  } catch (e) {
+    console.error("[worker] orphan reclaim:", e);
+  } finally {
+    reaping = false;
   }
 }
 
@@ -83,6 +132,8 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   // must not be grabbed. The grace window only frees rows nobody has touched.
   reclaimOrphanJobs(BOOT_GRACE_MS).catch((e) => console.error("[worker] boot reclaim:", e));
   setInterval(tick, POLL_MS);
+  // Independent of the drain: a wedged tick must not switch off refunds.
+  setInterval(reap, 60_000);
   // Kick one immediately so freshly-installed shops don't wait.
   tick();
   // Self-build the cartoon style-picker tiles (real flux renders of the first
