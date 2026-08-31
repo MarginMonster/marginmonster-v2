@@ -57,7 +57,11 @@ export function storeOrigin(raw: string): URL {
 
 const json = async (url: string, timeoutMs = 12_000): Promise<unknown | null> => {
   try {
-    const res = await fetchRetry(url, { headers: UA, signal: AbortSignal.timeout(timeoutMs) }, { attempts: 2 });
+    // timeoutMs as an OPTION, not a signal. Passing AbortSignal.timeout here
+    // minted one signal for both attempts, so the retry started already
+    // aborted and never actually retried anything. fetchRetry now mints a fresh
+    // deadline per attempt and disarms it before the body is read.
+    const res = await fetchRetry(url, { headers: UA }, { attempts: 2, timeoutMs });
     if (!res.ok) return null;
     const ct = (res.headers.get("content-type") || "").toLowerCase();
     if (!ct.includes("json")) return null;
@@ -169,7 +173,11 @@ const PRODUCT_URL = /\/(products?|product-page|shop|item|p)\//i;
 
 async function fetchText(url: string, timeoutMs = 12_000): Promise<string | null> {
   try {
-    const res = await fetchRetry(url, { headers: UA, signal: AbortSignal.timeout(timeoutMs) }, { attempts: 2 });
+    // timeoutMs as an OPTION, not a signal. Passing AbortSignal.timeout here
+    // minted one signal for both attempts, so the retry started already
+    // aborted and never actually retried anything. fetchRetry now mints a fresh
+    // deadline per attempt and disarms it before the body is read.
+    const res = await fetchRetry(url, { headers: UA }, { attempts: 2, timeoutMs });
     if (!res.ok) return null;
     return (await res.text()).slice(0, 3_000_000);
   } catch {

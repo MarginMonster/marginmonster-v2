@@ -86,9 +86,28 @@ async function signedRequest(method: "PUT" | "GET" | "HEAD" | "DELETE", key: str
 
   const authorization = `AWS4-HMAC-SHA256 Credential=${c.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
+  // A DEADLINE, SPLIT BY WHAT THE CALL ACTUALLY CARRIES.
+  //
+  // This is the single network exit for every PUT/GET/HEAD/DELETE and it had
+  // no bound at all. The PUT is the worst place in the app to hang: the render
+  // is finished, ffmpeg has run, provider money is spent, and the job row is
+  // still IN_PROGRESS — so past the reaper's ceiling the merchant is refunded
+  // for a video that exists on disk. DELETEs are worse-placed still: they run
+  // in the tick loop, ahead of the drain.
+  //
+  // Two numbers, because these payloads differ by three orders of magnitude.
+  // PUT and GET move whole renders (tens of MB), so five minutes — which
+  // mostly buys protection against a stalled request-body write rather than a
+  // slow response, and that is the case actually worth catching here. HEAD and
+  // DELETE are small control-plane calls with no excuse to take thirty
+  // seconds. A GET on the render cache-miss path deliberately gets the long
+  // budget: cold playback of a large mp4 must not start failing.
+  const budgetMs = method === "PUT" || method === "GET" ? 300_000 : 30_000;
+
   return fetch(`${c.endpoint}${canonicalUri}`, {
     method,
     headers: { ...headers, Authorization: authorization },
+    signal: AbortSignal.timeout(budgetMs),
     // Buffer is a valid BodyInit at runtime (undici); the DOM lib types don't
     // model it, so cast through Uint8Array to keep tsc happy.
     body: method === "PUT" && body ? new Uint8Array(body) : undefined,

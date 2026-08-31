@@ -33,9 +33,22 @@ export async function ensureReferralCode(shopId: string): Promise<string> {
 export async function applyReferralCode(shopId: string, rawCode: string): Promise<{ ok: boolean; error?: string }> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a code first." };
-  const me = await db.shop.findUnique({ where: { id: shopId }, select: { referredBy: true, referralCode: true } });
+  const me = await db.shop.findUnique({
+    where: { id: shopId },
+    select: { referredBy: true, referralCode: true, activePlan: { select: { active: true } } },
+  });
   if (!me) return { ok: false, error: "Shop not found." };
   if (me.referredBy) return { ok: false, error: "You've already used a referral code." };
+  // A REFERRAL IS FOR BRINGING IN A NEW STORE.
+  //
+  // There was no check for this anywhere, so an established paying merchant
+  // could type a friend's code and both wallets took 150 tokens for a
+  // subscription that already existed and was never at risk. Two merchants who
+  // already pay can trade codes and mint 300 tokens between them for nothing.
+  // The reward exists to buy a conversion; there is none to buy here.
+  if (me.activePlan?.active) {
+    return { ok: false, error: "Referral codes are for new stores — yours is already on a plan." };
+  }
   if (me.referralCode === code) return { ok: false, error: "That's your own code." };
   const referrer = await db.shop.findFirst({ where: { referralCode: code }, select: { id: true } });
   if (!referrer || referrer.id === shopId) return { ok: false, error: "That code isn't valid." };
@@ -65,6 +78,22 @@ export async function creditReferralOnConversion(shopId: string): Promise<void> 
     if (!mine?.activePlan?.active) return;
     const { planTrialing } = await import("./tokens.server");
     if (planTrialing(mine.activePlan)) return; // pay when it converts, not when it starts
+
+    // BOTH WALLETS OR NEITHER.
+    //
+    // The claim below is permanent: it stamps referralCreditAt and nothing ever
+    // clears it. The grant underneath was a no-op when a plan id was missing,
+    // so a referrer who shared their code BEFORE picking a plan — which the
+    // Plans page invites them to do, at the exact moment it hands them the code
+    // — brought in a paying store, and their 150 tokens went nowhere, silently
+    // and forever. Leaving it unclaimed instead means the sweep pays them the
+    // moment they subscribe.
+    if (!referrer.activePlan?.id) {
+      console.warn(
+        `[referral] ${referrer.id} has no plan to credit yet — leaving ${shopId} pending until they subscribe`
+      );
+      return;
+    }
 
     // CLAIM ATOMICALLY. The old code read referralCreditAt, then wrote it with
     // a plain update — two concurrent calls both passed the read and both
@@ -100,11 +129,35 @@ export async function settlePendingReferrals(): Promise<void> {
   if (now - lastReferralSweep < REFERRAL_SWEEP_EVERY_MS) return;
   lastReferralSweep = now;
   try {
+    // A WINDOW THAT ADVANCES.
+    //
+    // Every merchant who typed a code and then never subscribed stays in this
+    // set forever — referredBy set, referralCreditAt null, nothing anywhere
+    // clears either. With an unordered take of 200 and no filter, Postgres
+    // handed back the same first 200 rows every sweep, so once that many
+    // non-subscribers accumulated, no genuine convert was ever scanned again.
+    //
+    // Filtering on an existing plan is exact rather than approximate: the guard
+    // inside creditReferralOnConversion already refuses a shop without an
+    // active plan, so a shop that has none can never be paid and has no
+    // business occupying a slot. A shop mid-trial legitimately keeps its place
+    // — it is pending, not dead. Oldest first, so the queue is fair rather than
+    // whatever order the heap returns.
+    const TAKE = 500;
     const pending = await db.shop.findMany({
-      where: { referredBy: { not: null }, referralCreditAt: null },
+      where: {
+        referredBy: { not: null },
+        referralCreditAt: null,
+        activePlan: { is: { active: true } },
+      },
       select: { id: true },
-      take: 200,
+      orderBy: { createdAt: "asc" },
+      take: TAKE,
     });
+    if (pending.length === TAKE) {
+      // Loud on purpose: a full page means somebody at the back is waiting.
+      console.warn(`[referral] sweep filled its ${TAKE}-row page — some conversions are waiting for the next pass`);
+    }
     for (const s of pending) {
       // Re-runs the same guards, so a shop that cancelled inside its trial is
       // simply never paid.

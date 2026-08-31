@@ -29,9 +29,40 @@ export interface FetchRetryOptions {
   totalCapMs?: number;
   /** Log prefix so a retry storm is attributable in the logs. */
   label?: string;
+  /** Ceiling for ONE attempt's request, in ms. Default 120s.
+   *
+   *  The caps above bound only the SLEEPS between attempts; the request itself
+   *  had no bound at all. A host that accepts the TCP connection and then goes
+   *  quiet — the ordinary load-balancer drain — parked this await forever, and
+   *  since Anthropic is the first step of every paid pipeline, that is the
+   *  serial worker stopped for every merchant. */
+  timeoutMs?: number;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/* Run one fetch under a deadline that is DISARMED the moment it resolves.
+ *
+ * The obvious version — passing AbortSignal.timeout(n) straight through — is
+ * wrong twice over. It stays armed after fetch returns, so it can abort the
+ * caller's body read (every caller here reads .text() or .json() afterwards);
+ * and one signal shared across attempts means attempt two starts already
+ * aborted. A controller cleared in a finally has neither problem, and a fresh
+ * one per attempt gives each retry its full window.
+ *
+ * The caller's own signal is composed in, never replaced: where one is passed
+ * it is the budget for the WHOLE operation and must survive the composition.
+ */
+async function fetchOnce(url: string, init: RequestInit | undefined, ms: number): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(new Error(`request exceeded ${Math.round(ms / 1000)}s`)), ms);
+  const signal = init?.signal ? AbortSignal.any([init.signal, ac.signal]) : ac.signal;
+  try {
+    return await fetch(url, { ...init, signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Parse a `retry-after` header — the spec allows delta-seconds or an HTTP-date.
  *  Returns ms, or 0 when the header is absent/unparseable. */
@@ -72,6 +103,7 @@ export async function fetchRetry(
   const attempts = Math.max(1, opts.attempts ?? 6);
   const capMs = opts.capMs ?? 60_000;
   const totalCapMs = opts.totalCapMs ?? 120_000;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
   const label = opts.label ? `[${opts.label}] ` : "";
 
   let slept = 0;
@@ -84,7 +116,7 @@ export async function fetchRetry(
 
     let res: Response;
     try {
-      res = await fetch(url, init);
+      res = await fetchOnce(url, init, timeoutMs);
     } catch (e) {
       // network-level failure (DNS, reset, TLS): no Response to hand back, so
       // this is the one case where we can end up throwing.
