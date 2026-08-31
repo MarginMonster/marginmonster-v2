@@ -29,6 +29,7 @@ import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { hasCJK, langDirective } from "./content-lang";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
+import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
  *  circular import with job-queue.server). Never fatal. Shared by the cartoon
@@ -566,34 +567,23 @@ export async function resolveTextFont(text: string): Promise<string> {
 }
 
 function buildCaptionFilters(script: string, duration: number, fontFile: string): string[] {
-  const words = captionSafe(script).split(" ").filter(Boolean);
-  if (!words.length) return [];
-  // Chunk by CHARACTER budget, not word count — fixed 3-word chunks overflowed
-  // the 720px frame whenever the words ran long ("MULTI-MANAGED SNOWBOARD…").
-  // Max 3 words per burst keeps the punchy UGC rhythm; the char cap keeps it
-  // on screen; the per-chunk font scale below catches whatever's left.
-  // CJK text has no spaces and square glyphs — chunk by characters instead of
-  // words, with a tighter budget (each glyph is ~1.05×fontsize wide).
-  const cjk = hasCJK(script);
-  const budget = cjk ? 9 : 16;
-  const chunks: string[] = [];
-  if (cjk && words.length <= 2) {
-    const flat = words.join("");
-    for (let i = 0; i < flat.length; i += budget) chunks.push(flat.slice(i, i + budget));
-  } else {
-    let cur = "";
-    for (const w of words) {
-      const joined = cur ? `${cur} ${w}` : w;
-      if (cur && (joined.length > budget || cur.split(" ").length >= 3)) {
-        chunks.push(cur);
-        cur = w;
-      } else {
-        cur = joined;
-      }
-    }
-    if (cur) chunks.push(cur);
-  }
-  const capped = chunks.slice(0, 20);
+  // GRAMMAR FIRST, THEN WIDTH.
+  //
+  // The chunker used to be a character/word budget and nothing else, so it cut
+  // wherever the count ran out. A real video in the Archive captions as
+  //
+  //     EVER SEEN | POKEMON LOOK | THE WILD. THIS | NATURAL | BRINGS SIX
+  //
+  // "THE WILD. THIS" carries a full stop through its middle with the next
+  // sentence's first word stuck on the end. These are burned into the
+  // merchant's finished video — there is no editing them afterwards.
+  //
+  // captionChunks splits on sentences, then on clause boundaries inside a
+  // long sentence, and only then packs to width; it also rebalances rather
+  // than truncating, which is what used to make the captions stop while the
+  // voice-over kept talking. It is pure — see tests/caption-chunks.test.ts.
+  const capped = captionChunks(captionSafe(script), hasCJK(script) ? CJK_OPTS : LATIN_OPTS);
+  if (!capped.length) return [];
   const per = duration / capped.length;
   // fontfile path needs forward slashes + escaped colon for the filter parser
   const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
