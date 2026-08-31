@@ -163,18 +163,38 @@ async function falQueueImage(model: string, body: Record<string, unknown>, tag: 
   if (!q.status_url || !q.response_url) throw new Error(`${tag}: no queue urls`);
   // 5 minutes: the fal queue under load has sat past the old 3-minute cap
   // and killed an otherwise-healthy render mid-sequence.
+  // A POLL WE COULD NOT READ IS NOT A RENDER THAT FAILED.
+  //
+  // This called s.json() with no s.ok check, so one 5xx — which fal returns as
+  // an HTML error page, not JSON — threw a SyntaxError straight out of the
+  // loop and abandoned a keyframe fal was already billing us for. Since the
+  // beats render in parallel, that one blip took the whole batch down with it.
+  //
+  // Same shape pollAvatar in fal-video.server.ts already uses, and for the
+  // same reason: only a RUN of unreadable polls counts as an outage, and one
+  // good poll resets it.
+  let unreadable = 0;
   for (let i = 0; i < 150; i++) {
     await new Promise((r) => setTimeout(r, 2000));
-    const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
-    const sj = (await s.json()) as { status?: string };
+    let sj: { status?: string } | null = null;
+    try {
+      const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      if (s.ok) sj = (await s.json()) as { status?: string };
+    } catch { /* transport blip — counted just below */ }
+    if (!sj) {
+      if (++unreadable >= 10) throw new Error(`${tag}: lost contact with the queue`);
+      continue;
+    }
+    unreadable = 0;
     if (sj.status === "COMPLETED") {
       const r = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      if (!r.ok) throw new Error(`${tag}: result ${r.status}`);
       const rj = (await r.json()) as { images?: { url?: string }[] };
       const url = rj.images?.[0]?.url;
       if (!url) throw new Error(`${tag}: completed without an image`);
       return url;
     }
-    if (sj.status === "FAILED") throw new Error(`${tag}: FAILED`);
+    if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`${tag}: ${sj.status}`);
   }
   throw new Error(`${tag}: timed out after 5 minutes`);
 }

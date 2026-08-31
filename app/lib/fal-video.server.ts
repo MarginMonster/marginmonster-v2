@@ -89,15 +89,29 @@ async function falTtsOnce(text: string, voiceId: string, speed: number, delivery
       if (!submit.ok) throw new Error(`fal tts submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
       const q = (await submit.json()) as { status_url?: string; response_url?: string };
       if (!q.status_url || !q.response_url) throw new Error("fal tts: no queue urls");
+      // The bug pollAvatar's comment records, still live one function above it:
+      // `if (!s.ok) continue` on the LAST iteration skipped the timeout throw
+      // as well, so the loop exited normally and the code below read a result
+      // that was still in progress — shipping whatever half-finished thing the
+      // queue returned as the merchant's voiceover.
+      let completed = false;
+      let unreadable = 0;
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 2000));
-        const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
-        if (!s.ok) continue;
-        const sj = (await s.json()) as { status?: string };
-        if (sj.status === "COMPLETED") break;
+        let sj: { status?: string } | null = null;
+        try {
+          const s = await fetch(q.status_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+          if (s.ok) sj = (await s.json()) as { status?: string };
+        } catch { /* transport blip — counted just below */ }
+        if (!sj) {
+          if (++unreadable >= 10) break;
+          continue;
+        }
+        unreadable = 0;
+        if (sj.status === "COMPLETED") { completed = true; break; }
         if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`fal tts ${sj.status}`);
-        if (i === 59) throw new Error("fal tts: poll timeout");
       }
+      if (!completed) throw new Error("fal tts: poll timeout");
       const res = await fetch(q.response_url, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
       if (!res.ok) throw new Error(`fal tts result ${res.status}: ${(await res.text()).slice(0, 200)}`);
       const rj = (await res.json()) as { audio?: { url?: string } };
@@ -266,14 +280,36 @@ export async function falVideoPoll(model: string, requestId: string, maxMs = 12 
   const statusUrl = `https://queue.fal.run/${app}/requests/${requestId}/status`;
   const responseUrl = `https://queue.fal.run/${app}/requests/${requestId}`;
   const start = Date.now();
+  // RUNNING OUT OF TIME IS NOT FINISHING.
+  //
+  // The loop exited on COMPLETED and on the deadline alike, then read the
+  // result either way — so a timeout fetched the response of a render still in
+  // the queue and whatever came back was treated as the merchant paid-for
+  // video. The status read also had no try/catch, so a transport blip escaped
+  // and abandoned a render fal was already billing. pollAvatar below carries
+  // the same reasoning; this function never got it.
+  let completed = false;
+  let unreadable = 0;
   while (Date.now() - start < maxMs) {
     await new Promise((r) => setTimeout(r, 5000));
-    const s = await fetch(statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
-    if (!s.ok) continue; // a bad poll is not a failed prediction
-    const sj = (await s.json()) as { status?: string };
-    if (sj.status === "COMPLETED") break;
+    let sj: { status?: string } | null = null;
+    try {
+      const s = await fetch(statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
+      if (s.ok) sj = (await s.json()) as { status?: string };
+    } catch { /* transport blip — counted just below */ }
+    if (!sj) {
+      // A poll we could not read is not a render that failed. Only a run of
+      // them counts as an outage, and one good poll resets it.
+      if (++unreadable >= 10) break;
+      continue;
+    }
+    unreadable = 0;
+    if (sj.status === "COMPLETED") { completed = true; break; }
     if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`fal video ${requestId}: failed in queue`);
   }
+  // Deliberately not a queue failure: the render is alive and paid for, and the
+  // caller keeps its request id so a later attempt can re-attach.
+  if (!completed) throw new Error(`fal video ${requestId}: stopped watching — the render is still running`);
   const r = await fetch(responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
   if (!r.ok) throw new Error(`fal video result ${r.status}`);
   const rj = (await r.json()) as { video?: { url?: string }; video_url?: string };
