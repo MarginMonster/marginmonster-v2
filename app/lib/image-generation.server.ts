@@ -2316,16 +2316,32 @@ export async function backfillDeadImages(): Promise<void> {
       // silently replaced the merchant's ad with a generic, product-less
       // picture. Flag those for regeneration instead of corrupting them.
       const method = body.method || (looksText2img(body.prompt) ? "text2img" : "");
-      if (method !== "text2img" && method !== "lifestyle") {
+      // AND THERE HAS TO BE A PROMPT TO RE-FORGE FROM.
+      //
+      // The method check is only half the guard. `method` can be set on an asset
+      // whose `prompt` is missing — and that is exactly the population this
+      // backfill exists for, since these are old rows written before the prompt
+      // was reliably captured (see the ReferenceError note further down). The
+      // re-forge then fell back to a generic stock brief and stamped the result
+      // healed:true, doing precisely the thing the comment above says must never
+      // happen: the merchant opens their Archive and finds a stranger's product
+      // where their ad used to be, marked as fine.
+      const reforgeable = method === "text2img" || method === "lifestyle";
+      if (!reforgeable || !body.prompt) {
         await db.asset.update({
           where: { id: a.id },
-          data: { bodyJson: JSON.stringify({ ...body, needsRegen: true, healSkipped: method || "unknown" }) },
+          data: {
+            bodyJson: JSON.stringify({
+              ...body,
+              needsRegen: true,
+              healSkipped: reforgeable ? "no-prompt" : method || "unknown",
+            }),
+          },
         });
         console.log(`[image-backfill] asset ${a.id} (${method || "unknown"}) can't be re-forged from its prompt — flagged for regeneration`);
         continue;
       }
-      const prompt = body.prompt || "clean product photography, professional advertising quality, 1:1, vibrant colors";
-      const localUrl = await fluxToDisk(prompt);
+      const localUrl = await fluxToDisk(body.prompt);
       await db.asset.update({
         where: { id: a.id },
         data: { bodyJson: JSON.stringify({ ...body, imageUrl: localUrl, sourceUrl: undefined, healed: true }) },
@@ -2380,8 +2396,36 @@ async function fluxToDisk(prompt: string): Promise<string> {
 const PLAN_VISUAL_DIRECTION: Record<string, string> = {
   GROW_SALES: "lifestyle product shot, natural lighting, aspirational mood, conversion-optimized",
   LAUNCH_PRODUCT: "bold hero shot, dramatic lighting, excitement and novelty, launch energy",
-  CLEAR_INVENTORY: "clean product on white, urgency cues, sale badge aesthetic",
+  // NOT "sale badge aesthetic". Every prompt that interpolates this table ends
+  // with "no text, no watermark" — a badge is text, so that phrasing could only
+  // ever pull against the instruction, and the model resolves the argument by
+  // painting a garbled sticker. The urgency is carried by light and contrast
+  // instead; the actual offer copy is the caption's job.
+  CLEAR_INVENTORY: "clean product on white, urgent high-contrast clearance energy, bright and punchy",
   BUILD_AWARENESS: "brand story visual, emotional resonance, people + product, editorial style",
+};
+
+/* THE SAME DIRECTION, WITH THE SUBJECTS TAKEN OUT.
+ *
+ * The table above describes the finished AD, and it names its subjects: a
+ * "product shot", "people + product", a "sale badge". That reads correctly in
+ * the poster and scene prompts, where a product is exactly what we want.
+ *
+ * On the photo-true rung it is a straight contradiction. That prompt asks for
+ * an EMPTY backdrop — "NO products, NO objects, NO people" — because the
+ * merchant's real photograph is composited onto it afterwards, which is what
+ * makes that rung the one where the product cannot come out wrong. Handing the
+ * model "lifestyle product shot" and "NO products" in the same breath invites
+ * it to paint a product anyway, and a stray extra product (or a person, under
+ * BUILD_AWARENESS) standing next to the merchant's real one ruins the
+ * composite. "Sale badge aesthetic" pulls the same way against "no text".
+ *
+ * Same mood and lighting, no subjects. */
+const PLAN_MOOD_DIRECTION: Record<string, string> = {
+  GROW_SALES: "natural daylight, warm aspirational everyday mood",
+  LAUNCH_PRODUCT: "dramatic directional lighting, high-energy launch mood",
+  CLEAR_INVENTORY: "bright clean white-studio look, crisp and uncluttered",
+  BUILD_AWARENESS: "editorial magazine-feature mood, warm and emotive",
 };
 
 /** Render a single AD-FORMAT still and return its URL — no asset, no tokens.
@@ -2651,6 +2695,9 @@ export async function generateImageAd(
   const visual = JSON.parse(brandProfile.visualJson);
   const direction =
     PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;
+  // For prompts whose subject is NOT a product — see PLAN_MOOD_DIRECTION.
+  const moodDirection =
+    PLAN_MOOD_DIRECTION[plan.campaignGoal] || PLAN_MOOD_DIRECTION.GROW_SALES;
 
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
@@ -2672,7 +2719,11 @@ export async function generateImageAd(
   const genMeta: Record<string, unknown> = {};
 
   if (serviceMode) {
-    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${direction}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
+    // moodDirection, not direction: this ad has no product to photograph and
+    // ends with "Absolutely NO text", so "clean product on white" and "sale
+    // badge aesthetic" would both be instructions to do the opposite of what
+    // the rest of the sentence asks for.
+    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${moodDirection}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
     // Only rung on this path — an unretried blip here terminal-failed a paid ad.
     imageUrl = await fluxDevStill(usedPrompt, "service-outcome");
     genMeta.method = "lifestyle";
@@ -2818,7 +2869,7 @@ export async function generateImageAd(
       try {
         const cutout = await removeBackground(productImageUrl!);
         if (cutout) {
-          const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area (clean surface, tabletop or seamless floor) across the lower third where a product will be placed, and clean uncluttered space across the top for a headline. ${styleTail}. Photorealistic, magazine-quality, soft believable ground shadow area, no text, no watermark.`;
+          const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${moodDirection}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area (clean surface, tabletop or seamless floor) across the lower third where a product will be placed, and clean uncluttered space across the top for a headline. ${styleTail}. Photorealistic, magazine-quality, soft believable ground shadow area, no text, no watermark.`;
           const bgUrl = await fluxDevStill(bgPrompt, "photo-true-backdrop");
           const fn = await compositeProductStill(bgUrl, cutout);
           if (fn) {
@@ -2849,7 +2900,7 @@ export async function generateImageAd(
       const backdropComposite = async (stage: string): Promise<boolean> => {
         const cutout = await removeBackground(productImageUrl!);
         if (!cutout) return false;
-        const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${direction}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area across the lower third, clean space at the top for a headline. Photorealistic, magazine-quality, no text, no watermark.`;
+        const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. ${moodDirection}. Completely empty scene: NO products, NO objects, NO people — just a beautiful empty display area across the lower third, clean space at the top for a headline. Photorealistic, magazine-quality, no text, no watermark.`;
         const bgUrl = await fluxDevStill(bgPrompt, stage);
         const fn = await compositeProductStill(bgUrl, cutout);
         if (!fn) return false;
