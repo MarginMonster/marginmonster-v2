@@ -301,6 +301,9 @@ interface CartoonAdParams {
     keyframeUrl?: string;
     klingPredictionId?: string; // re-attach to a live animate run — never re-buy it
     animUrl?: string;
+    /** true when animUrl came from omni-human (narration baked in) rather than
+     *  the silent kling fallback. Assembly treats the two differently. */
+    animLipSynced?: boolean;
     audioUrl?: string;
   };
 }
@@ -681,6 +684,23 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // here. Only when there is a character on screen: a product-hero cartoon has
   // no face to sync, and kling gives it better motion.
   let animUrl = resume.animUrl || "";
+  // WHICH ENGINE PRODUCED THE CLIP DECIDES HOW IT IS ASSEMBLED.
+  //
+  // Step 4 runs omni-human, which bakes the narration into the performance;
+  // the fallback runs kling, which returns silent motion. assemble needs to
+  // know which — with lipSynced:false it loops the clip (-stream_loop -1) and
+  // lays the narration over it, and with true it keeps the baked audio and
+  // freeze-extends a clip that comes back short. This was hardcoded false even
+  // when omni had succeeded, so a lip-synced performance shorter than the
+  // narration — which the assembler's own `truncated` check exists because it
+  // expects — restarted visibly from frame 0 for the tail instead of holding
+  // the last frame. The jingle pipeline gets this right (`lipSynced:
+  // !!talkingUrl`); cartoon was the odd one out.
+  //
+  // Carried in its own checkpoint so a resumed job does not lose the label and
+  // assemble a baked clip as if it were silent — the same split-key discipline
+  // the UGC pipeline keeps between its kling and omni keys.
+  let lipSynced = resume.animLipSynced === true;
   if (!animUrl && params.avatarId) {
     let tmpLip = "";
     try {
@@ -698,12 +718,15 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         maxMs: 12 * 60_000,
         stage: "cartoon-lipsync",
       });
-      await ckpt({ ckAnimUrl: animUrl });
+      lipSynced = true;
+      await ckpt({ ckAnimUrl: animUrl, ckAnimLipSynced: true });
       console.log("[cartoon] lipsynced performance ok");
     } catch (e) {
       // A failed lipsync must never cost the merchant the whole ad — fall
       // through to the motion path below, which does not fake talking.
       animUrl = "";
+      lipSynced = false;
+      await ckpt({ ckAnimLipSynced: false });
       console.error("[cartoon] lipsync failed, falling back to motion:", e instanceof Error ? e.message.slice(0, 180) : e);
     } finally {
       if (tmpLip) { try { fs.rmSync(tmpLip, { recursive: true, force: true }); } catch { /* tidy */ } }
@@ -727,7 +750,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   if (animUrl && !(await checkpointUrlAlive(animUrl))) {
     console.log("[cartoon] checkpointed animation URL has expired — re-animating");
     animUrl = "";
-    await ckpt({ ckAnimUrl: "", ckKlingId: "" });
+    await ckpt({ ckAnimUrl: "", ckKlingId: "", ckAnimLipSynced: false });
   }
   if (!animUrl) {
     // The keyframe may itself be a resumed (now-dead) url — kling would fetch
@@ -772,7 +795,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       productImagePath: null,
       script,
       outPath,
-      lipSynced: false, // silent kling clip + our narration
+      // true = omni baked the narration in; false = silent kling motion with
+      // our narration laid over it.
+      lipSynced,
     });
 
     try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
@@ -786,7 +811,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         bodyJson: JSON.stringify({
           style: "CARTOON",
           cartoonStyle: recipe.name,
-          engine: "flux+kling",
+          engine: lipSynced ? "flux+omni-human" : "flux+kling",
           voiceId: recipe.voice,
           videoUrl: `/renders/${fileName}`,
           keyframeUrl,

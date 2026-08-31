@@ -423,6 +423,9 @@ async function runJob(
             keyframeUrl: payload.ckKeyframeUrl as string | undefined,
             klingPredictionId: payload.ckKlingId as string | undefined,
             animUrl: payload.ckAnimUrl as string | undefined,
+            // Which engine made that clip — a baked lip-sync must not be
+            // reassembled as if it were silent motion after a restart.
+            animLipSynced: payload.ckAnimLipSynced as boolean | undefined,
             audioUrl: payload.ckAudioUrl as string | undefined,
           },
         });
