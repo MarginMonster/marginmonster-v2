@@ -353,8 +353,22 @@ export async function assembleCommercial(opts: {
     for (let i = 0; i < opts.clipPaths.length; i++) {
       const sec = clipSecs[i];
       const n = path.join(tmp, `n${i}.mp4`);
+      // THE FIRST FRAME IS THE THUMBNAIL.
+      //
+      // Every clip faded in from black, including the first one, so the
+      // finished video opened on a fully black frame — measured at mean luma
+      // 0.0, not reaching normal exposure until ~0.6s. TikTok, Instagram and
+      // Facebook all take frame 0 as the cover unless told otherwise, so
+      // every commercial we auto-posted led with a black rectangle. The
+      // Archive already works around it by playing from #t=0.1, which is how
+      // this went unnoticed here.
+      //
+      // A fade between scenes is the point; a fade INTO the first scene has
+      // nothing to fade from. The packshot branch below already knows this —
+      // its comment says a pre-zoom fade-in makes frame 0 pure black.
+      const fadeIn = i === 0 ? "" : "fade=t=in:st=0:d=0.25,";
       await runFfmpeg(bin, ["-y", "-t", String(sec), "-i", opts.clipPaths[i],
-        "-vf", `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=${(sec - 0.4).toFixed(2)}:d=0.35,format=yuv420p`,
+        "-vf", `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,${fadeIn}fade=t=out:st=${(sec - 0.4).toFixed(2)}:d=0.35,format=yuv420p`,
         "-t", String(sec),
         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", n]);
       norm.push(n);
