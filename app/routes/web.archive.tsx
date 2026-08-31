@@ -195,6 +195,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // piece went live, for the Boost panel.
         clicks: (() => { try { return Number(JSON.parse(a.metaJson || "{}").clicks) || 0; } catch { return 0; } })(),
         postedUrls: (() => { try { const u = JSON.parse(a.metaJson || "{}").postedUrls; return u && typeof u === "object" ? (u as Record<string, string>) : undefined; } catch { return undefined; } })(),
+        // WE LOST IT, SO WE REPLACE IT.
+        //
+        // When a render goes missing the only thing the merchant can do is
+        // remix — and remix charges full price for a video (150 tokens) they
+        // already paid for once. Charging a second time for our own storage
+        // failure is not a thing this app should do. One free replacement per
+        // dead piece; the stamp lives on the asset so it cannot be farmed.
+        freeRemake: expired && !(() => { try { return JSON.parse(a.metaJson || "{}").freeReplacedAt; } catch { return false; } })(),
       };
     }),
   });
@@ -319,15 +327,44 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // place. Discarding it meant a failed remix paid for with bought,
     // never-expiring tokens came back as allowance — and expired at the next
     // period roll. The merchant paid cash for those.
+    // IS THIS A REPLACEMENT FOR SOMETHING WE LOST?
+    //
+    // Same test the loader uses: needsRegen stamped by the healer, or a
+    // provider URL that is past its ~1h life. If so the remake is free, once.
+    // The stamp is claimed with a compare-and-swap BEFORE anything is spent
+    // or enqueued, so two clicks in the same second cannot both take it — the
+    // loser pays like any other remix.
+    let free = false;
+    if (asset.type !== "BLOG_POST") {
+      let deadBody: { videoUrl?: string; imageUrl?: string; needsRegen?: boolean } = {};
+      try { deadBody = JSON.parse(asset.bodyJson || "{}"); } catch { /* treat as alive */ }
+      const rawMedia = deadBody.videoUrl || deadBody.imageUrl || null;
+      const pastProviderTtl = Date.now() - asset.createdAt.getTime() > 2 * 60 * 60 * 1000;
+      const mediaLost = deadBody.needsRegen === true || (pastProviderTtl && isExpiringUrl(rawMedia || undefined));
+      if (mediaLost && !(meta as { freeReplacedAt?: string }).freeReplacedAt) {
+        const claimed = await db.asset.updateMany({
+          where: { id: asset.id, metaJson: asset.metaJson },
+          data: { metaJson: JSON.stringify({ ...meta, freeReplacedAt: new Date().toISOString() }) },
+        });
+        free = claimed.count === 1;
+      }
+    }
     let remixFromExtra = 0;
-    try { remixFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
-    catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
+    if (!free) {
+      try { remixFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
+      catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
+    }
+    // prePaid:false on a free job, NOT chargedTokens:0 — the refund path
+    // falls back to REFUND_BY_TYPE when chargedTokens is not a positive
+    // number, so a failed free remake would have minted 150 tokens out of a
+    // spend that never happened.
+    const paid = !free;
     if (type === "video") {
       const style = avatarId ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT";
       // Cartoon/jingle remixes stay cartoon/jingle — the content type (and the
       // picked animation style) rides along from the original's metaJson.
       const contentType = meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined;
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: true, chargedTokens: cost, chargedFromExtra: remixFromExtra, initiator: "remix" });
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !contentType, wearProduct: false, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra, initiator: "remix" });
     } else if (type === "image") {
       // A remix is a VARIATION of this ad, so the recipe rides along — without
       // the format/template the "remix" quietly became a different ad entirely.
@@ -338,12 +375,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         templateKey: meta.templateKey || undefined,
         serviceMode: !!meta.serviceMode,
         styleMode: meta.styleMode === "scene" || meta.styleMode === "backdrop" ? meta.styleMode : undefined,
-        prePaid: true, chargedTokens: cost, chargedFromExtra: remixFromExtra,
+        prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra,
       });
     } else {
-      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: true, chargedTokens: cost, chargedFromExtra: remixFromExtra });
+      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra });
     }
-    return json({ remixed: type });
+    return json({ remixed: type, free });
   }
   if (intent === "draft") {
     // Suggest one editable caption for the manual post box. A single caption
@@ -663,6 +700,7 @@ export default function WebArchive() {
   // action reported.
   const postedAssetId = actionData && "postedAssetId" in actionData ? (actionData as { postedAssetId: string }).postedAssetId : null;
   const remixed = actionData && "remixed" in actionData ? (actionData as { remixed: string }).remixed : null;
+  const remixFree = !!(actionData && "free" in actionData && (actionData as { free?: boolean }).free);
   const draftText = actionData && "draft" in actionData ? (actionData as { draft: string }).draft : null;
 
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
@@ -732,7 +770,12 @@ export default function WebArchive() {
       <p className="wa-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString("en-US")} tokens` : "Pick a plan to generate."}</p>
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
-      {remixed && <div className="wb-ok">✨ Remixing — a fresh {remixed === "blog" ? "article" : remixed} is on the way. It&apos;ll land on this shelf in a minute.</div>}
+      {remixed && (
+        <div className="wb-ok">
+          ✨ {remixFree ? "Making it again, on us" : "Remixing"} — a fresh {remixed === "blog" ? "article" : remixed} is on the way.
+          It&apos;ll land on this shelf in a minute.{remixFree ? " No tokens spent." : ""}
+        </div>
+      )}
       <div className="ws-tabs" style={{ marginBottom: 16 }}>
         {([["video", "🎬 Videos"], ["image", "🖼 Images"], ["blog", "✍️ Articles"]] as [ATab, string][]).map(([k, label]) => {
           // Count the whole library, not the slice we happened to render —
@@ -811,11 +854,16 @@ export default function WebArchive() {
                   {!a.media && (
                     <div style={{ height: 220, display: "grid", placeItems: "center", gap: 6, textAlign: "center", color: "#E7C879" }}>
                       <span style={{ fontSize: 34 }}>{a.isVideo ? "🎬" : "🖼"}</span>
-                      {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>This file expired and can't be recovered — make it again.</span>}
+                      {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>The render for this one is gone — make it again.</span>}
                     </div>
                   )}
                   {a.isVideo && a.media && <span className="wa-play" aria-hidden>▶</span>}
-                  {a.daysLeft != null && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={`Auto-clears in ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} — open it and hit Keep`}>⏳ {a.daysLeft}d</span>}
+                  {/* Not on a dead tile. A video whose render is gone was
+                      showing “The render for this one is gone” and “⏳ 29d” at
+                      the same time — one says it is lost, the other says it is
+                      safe for a month. The countdown is about un-kept media
+                      clearing; there is nothing here left to clear. */}
+                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={`Auto-clears in ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} — open it and hit Keep`}>⏳ {a.daysLeft}d</span>}
                 </button>
                 <div className="m">
                   {a.title}
@@ -919,7 +967,7 @@ export default function WebArchive() {
                   )}
                 </div>
               )}
-              {viewer.daysLeft != null && !posted && (
+              {viewer.daysLeft != null && !posted && !viewer.expired && (
                 <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}>⏳ Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — <b>Keep</b> saves it for good.</span>
               )}
               {viewer.type !== "BLOG_POST" && <span className="wa-aitag">✦ AI-generated · review before posting</span>}
@@ -940,7 +988,9 @@ export default function WebArchive() {
                       <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo)}>⬇ Download</a>}
-                    <button type="button" className="wa-vbtn gold" disabled={busy} title="Make a fresh variation of this piece" onClick={() => remix(viewer.id)}>✨ Remix<span className="c">{costOf(viewer.type)} tokens</span></button>
+                    {/* A piece whose render we lost is replaced on us, so the
+                        button must not quote a price the merchant will not pay. */}
+                    <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "✨ Make it again" : "✨ Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens`}</span></button>
                     <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                   </div>
                   {capOpen && (

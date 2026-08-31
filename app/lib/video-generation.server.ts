@@ -12,7 +12,7 @@ import { trimToWord } from "./text-trim";
 import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import fs from "node:fs";
 import path from "node:path";
-import { mirrorRender } from "./object-storage.server";
+import { mirrorRender, storageEnabled } from "./object-storage.server";
 import { checkpointUrlAlive } from "./cartoon-ad-pipeline.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
@@ -106,12 +106,40 @@ async function persistRemoteVideo(url: string): Promise<string> {
     const fileName = `vid-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const finalPath = path.join(rendersDir, fileName);
 
-    const framed = await toVerticalFrame(buf, rendersDir, finalPath);
-    if (!framed) fs.writeFileSync(finalPath, buf); // normalisation failed — ship what we paid for
+    // THE LOCAL DISK IS NOT THE ONLY PLACE THIS CAN LIVE.
+    //
+    // A full or unwritable disk used to send the whole function into the
+    // catch below, which stored the provider URL — dead in about an hour. The
+    // Archive then showed a video the merchant had paid ~150 tokens for as
+    // “expired and can’t be recovered”, with no healer (backfillDeadImages is
+    // IMAGE_AD-only) and no refund. But we are holding the bytes right here,
+    // and /renders/:file already rehydrates a missing local file from object
+    // storage. So a disk failure only costs us the local copy.
+    let onDisk = false;
+    try {
+      const framed = await toVerticalFrame(buf, rendersDir, finalPath);
+      if (!framed) fs.writeFileSync(finalPath, buf); // normalisation failed — ship what we paid for
+      onDisk = true;
+    } catch (diskErr) {
+      console.warn(`[video] local write failed, trying durable storage: ${diskErr instanceof Error ? diskErr.message : String(diskErr)}`);
+    }
 
-    const bytes = fs.readFileSync(finalPath);
-    try { await mirrorRender(fileName, bytes); } catch { /* non-fatal — disk copy still serves */ }
-    return `/renders/${fileName}`;
+    // Mirror the framed file when we have one, the raw download when we don’t.
+    let mirrored = false;
+    if (storageEnabled()) {
+      try {
+        await mirrorRender(fileName, onDisk ? fs.readFileSync(finalPath) : buf);
+        mirrored = true;
+      } catch (e) {
+        console.warn(`[video] mirror failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    // Our own URL only if the bytes are somewhere we can serve them from. If
+    // neither the disk nor the bucket took them, /renders/<file> would 404
+    // forever — strictly worse than an hour of provider URL.
+    if (onDisk || mirrored) return `/renders/${fileName}`;
+    throw new Error("neither the local disk nor object storage accepted the render");
   } catch (e) {
     // The provider gave us nothing — there is no deliverable to store, and
     // pretending otherwise bills the merchant for a dead link. Let it out so
