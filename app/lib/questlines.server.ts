@@ -18,6 +18,49 @@ type Objective = { key: string; label: string; type: ObjectiveType; target: numb
 type BagItem = { title: string; image: string | null; url?: string | null };
 
 const GEN_LEAD_MS = 24 * 60 * 60 * 1000; // forge content a day before its slot
+
+/* EDIT THE SCHEDULE UNDER A COMPARE-AND-SWAP.
+ *
+ * scheduleJson is one JSON blob holding every slot, and a dozen places write
+ * it. Two of them were already conditional and for good reason: the poster
+ * (social-post.server.ts) stamps a slot POSTED with the accounts it reached,
+ * and the public click turnstile (/go/:qid/:idx) counts clicks. Everything in
+ * THIS file read the blob, changed one field, and wrote the whole thing back.
+ *
+ * Those writers are merchant clicks — move a drop, retry it, forge it early,
+ * swap a product — and they run in HTTP actions on the same event loop as the
+ * worker. A click landing mid-publish wrote back a copy read before the
+ * publish, erasing the POSTED status and the postedTo record with it. The next
+ * scan then posts again to accounts that already have it. The same collision
+ * in the other direction leaves a slot stuck FORGING, which never publishes
+ * because postDueSlots only sends READY.
+ *
+ * `apply` runs against a FRESH copy and may run more than once, so it must be
+ * pure — do any spending or enqueueing outside it. Re-evaluating each caller's
+ * own guards against current state is not a side effect of this design, it is
+ * the point: "that drop already posted" should be answered from the row, not
+ * from a copy taken before the merchant clicked. */
+type ScheduleEdit<T> = { error: string } | { data?: Record<string, unknown>; result: T };
+
+async function editSchedule<T>(
+  questlineId: string,
+  apply: (schedule: QuestSchedule) => ScheduleEdit<T>
+): Promise<{ ok: true; result: T } | { ok: false; error: string }> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const row = await db.questline.findUnique({ where: { id: questlineId }, select: { scheduleJson: true } });
+    if (!row) return { ok: false, error: "Campaign not found." };
+    const schedule = parseSchedule(row.scheduleJson);
+    const out = apply(schedule);
+    if ("error" in out) return { ok: false, error: out.error };
+    const done = await db.questline.updateMany({
+      where: { id: questlineId, scheduleJson: row.scheduleJson },
+      data: { scheduleJson: JSON.stringify(schedule), ...(out.data || {}) },
+    });
+    if (done.count === 1) return { ok: true, result: out.result };
+    // Something else committed in between — read it again and re-decide.
+  }
+  return { ok: false, error: "That campaign is being updated right now — try again in a moment." };
+}
 const WEEK_BONUS_XP = 100;
 
 /* Platform-smart posting times per content type (heuristics now; learned
@@ -459,20 +502,25 @@ export async function addManualDrop(
 export async function generateSlotEarly(shopId: string, questlineId: string, slotIdx: number): Promise<{ ok: boolean; error?: string }> {
   const q = await db.questline.findFirst({ where: { id: questlineId, shopId } });
   if (!q) return { ok: false, error: "Campaign not found." };
-  const schedule = parseSchedule(q.scheduleJson);
-  const slot = schedule.slots.find((s) => s.idx === slotIdx);
-  if (!slot) return { ok: false, error: "Drop not found." };
-  if (slot.status !== "SCHEDULED") return { ok: false, error: "That drop is already being made." };
   try {
+    // Moving the job's runAt first: it is idempotent, so a lost race on the
+    // schedule below costs nothing but the label.
     const jobs = await db.job.findMany({ where: { shopId, status: "PENDING", payload: { contains: questlineId } } });
     let moved = false;
     for (const jb of jobs) {
       try { const p = JSON.parse(jb.payload); if (p.questlineId === questlineId && p.slotIdx === slotIdx) { await db.job.update({ where: { id: jb.id }, data: { runAt: new Date() } }); moved = true; } } catch { /* skip */ }
     }
     if (!moved) return { ok: false, error: "No pending job for this drop yet — try again shortly." };
-    slot.status = "FORGING";
-    await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
-    return { ok: true };
+    // The status guard is re-checked against the CURRENT schedule: between the
+    // page render and this click the poster may have taken the slot.
+    const r = await editSchedule(q.id, (schedule) => {
+      const slot = schedule.slots.find((x) => x.idx === slotIdx);
+      if (!slot) return { error: "Drop not found." };
+      if (slot.status !== "SCHEDULED") return { error: "That drop is already being made." };
+      slot.status = "FORGING";
+      return { result: true };
+    });
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Couldn't start early." };
   }
@@ -490,11 +538,36 @@ export async function retrySlot(shopId: string, questlineId: string, slotIdx: nu
   if (slot.type !== "video" && slot.type !== "image" && slot.type !== "blog") return { ok: false, error: "Nothing to regenerate." };
   if (slot.status === "POSTED") return { ok: false, error: "That drop already posted." };
   const cost = slot.type === "video" ? TOKEN_COST.video : slot.type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
-  try { await spendTokens(shopId, cost); } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." }; }
 
-  slot.status = "FORGING";
-  slot.assetId = undefined;
-  await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule) } });
+  // CLAIM THE SLOT BEFORE SPENDING. The POSTED guard above answers from a copy
+  // read before the merchant clicked, and the poster writes that field from
+  // the worker. Charging first and then discovering the drop had just gone out
+  // would leave the merchant paying for a regeneration of something already
+  // published — so the claim goes first and the wallet is only touched once it
+  // has been won.
+  const claim = await editSchedule(q.id, (fresh) => {
+    const target = fresh.slots.find((x) => x.idx === slotIdx);
+    if (!target) return { error: "Drop not found." };
+    if (target.status === "POSTED") return { error: "That drop already posted." };
+    // Deliberately NOT refusing a slot already marked FORGING. Retry is the
+    // merchant's escape hatch for a drop whose job died without reporting back,
+    // and that leaves the slot exactly there.
+    target.status = "FORGING";
+    target.assetId = undefined;
+    return { result: true };
+  });
+  if (!claim.ok) return { ok: false, error: claim.error };
+
+  try { await spendTokens(shopId, cost); } catch (e) {
+    // Hand the slot back — it is not being forged after all.
+    await editSchedule(q.id, (fresh) => {
+      const target = fresh.slots.find((x) => x.idx === slotIdx);
+      if (!target || target.status !== "FORGING") return { error: "moved on" };
+      target.status = "SCHEDULED";
+      return { result: true };
+    });
+    return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
+  }
   const objectives: { key: string; type: string }[] = JSON.parse(q.objectivesJson || "[]");
   const obj = objectives.find((o) => o.type === slot.type);
   const base = { productTitle: slot.productTitle, productImageUrl: slot.productImageUrl || undefined, customPrompt: slot.topic, productDescription: slot.topic, questlineId: q.id, objectiveKey: obj?.key, slotIdx, prePaid: true };
