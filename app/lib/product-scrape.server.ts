@@ -1,3 +1,4 @@
+import { isBlockedHost } from "./blocked-host";
 /* Pull a product's title + hero image out of ANY storefront page.
  *
  * Merchants paste product LINKS, not image files — that's the natural thing to
@@ -63,18 +64,14 @@ const decodeEntities = (s: string) => s
   .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&nbsp;/g, " ")
   .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
 
-/** Reject loopback/private/link-local targets before we fetch them. */
-export function isBlockedHost(host: string): boolean {
-  const h = host.toLowerCase();
-  return (
-    h === "localhost" ||
-    h.endsWith(".local") ||
-    h.endsWith(".internal") ||
-    /^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
-    h === "[::1]" || h === "::1"
-  );
-}
+/* Reject loopback/private/link-local targets before we fetch them.
+ *
+ * Moved to ./blocked-host so it can be tested directly, and rewritten to
+ * PARSE the address rather than pattern-match its spelling: the old string
+ * prefixes were blind to [::ffff:127.0.0.1], which the URL parser renders as
+ * [::ffff:7f00:1] — and which connects to loopback. Re-exported here so every
+ * existing caller, including catalog-import, is unchanged. */
+export { isBlockedHost } from "./blocked-host";
 
 /** fetch() that re-checks the host on EVERY redirect hop.
  *
