@@ -129,3 +129,53 @@ test("the trial ceiling counts from the clamped figure", () => {
     "the trial cap must subtract the clamped value, not the raw column"
   );
 });
+
+/* ---------------------------------------------------------------------------
+ * The job queue's refund guard, same structural approach and the same class of
+ * defect: a flag read, then written, with awaits in between.
+ * ------------------------------------------------------------------------- */
+
+const queueSrc = readFileSync(new URL("../app/lib/job-queue.server.ts", import.meta.url), "utf8");
+
+function queueFn(name: string): string {
+  const start = queueSrc.search(new RegExp(`(export )?(async )?function ${name}\\b`));
+  assert.ok(start >= 0, `${name} not found in job-queue.server.ts`);
+  const rest = queueSrc.slice(start);
+  const open = rest.search(/[{][ \t]*[\r]?[\n]/);
+  let depth = 0;
+  for (let i = open; i < rest.length; i++) {
+    if (rest[i] === "{") depth++;
+    else if (rest[i] === "}" && --depth === 0) return rest.slice(open, i + 1);
+  }
+  throw new Error(`could not find the end of ${name}`);
+}
+
+test("a refund is CLAIMED, not merely intended", () => {
+  // Two paths refund the same job: reclaimOrphanJobs when a row is stuck past
+  // the ceiling with its retries spent, and processNextJob's catch on a
+  // terminal failure. Both can fire for one job, because "stuck" and "still
+  // rendering" look identical from outside. The prePaid flag was the
+  // exactly-once guard and it was read, then written, two awaits later.
+  const body = stripComments(queueFn("refundPrepaidOnce"));
+  assert.match(
+    body,
+    /updateMany\(\{[\s\S]*payload:\s*before/,
+    "the prePaid flip must be conditional on the payload it was decided from"
+  );
+  assert.match(body, /claimed\.count !== 1/, "the claim's outcome has to decide whether we refund");
+});
+
+test("the refund's rollback re-reads rather than writing back a stale payload", () => {
+  // A pipeline may checkpoint while the refund is in flight. Writing the parsed
+  // copy back would erase that checkpoint and re-run paid work on the retry.
+  const body = stripComments(queueFn("refundPrepaidOnce"));
+  const rollback = body.slice(body.indexOf("prePaid = true"));
+  assert.match(rollback, /prePaid = true/, "a failed refund must leave the job refundable again");
+  // The specific mistake: writing the object we parsed BEFORE the refund back
+  // over whatever the payload holds now.
+  assert.doesNotMatch(
+    rollback,
+    /update\(\{[^)]*JSON\.stringify\(p\)/,
+    "the rollback writes the stale parsed payload, erasing any checkpoint made while the refund was in flight"
+  );
+});

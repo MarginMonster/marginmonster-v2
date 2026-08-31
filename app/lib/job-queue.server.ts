@@ -41,11 +41,34 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     // Re-fetch: the claimed copy is stale — pipelines checkpoint ck* keys into
     // the payload mid-run, and rewriting from the stale copy would erase them.
     const fresh = await db.job.findUnique({ where: { id: job.id }, select: { payload: true } });
-    const p = JSON.parse((fresh ?? job).payload) as Record<string, unknown>;
+    const before = (fresh ?? job).payload;
+    const p = JSON.parse(before) as Record<string, unknown>;
     if (!p.prePaid || !REFUND_BY_TYPE[job.type]) return;
     p.prePaid = false;
     p.refunded = true;
-    await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(p) } });
+
+    // CLAIM THE REFUND — reading the flag is not holding it.
+    //
+    // TWO paths reach here for the same job. reclaimOrphanJobs refunds a row it
+    // finds stuck past the 25-minute ceiling with its retries spent, and
+    // processNextJob's catch refunds when a run terminally fails — and both can
+    // fire for one job, because "stuck past the ceiling" and "still genuinely
+    // rendering" are the same state from outside. The prePaid flag was the
+    // exactly-once guard, but it was READ and then written with two awaits in
+    // between, on an event loop the worker and the routes share. Both readers
+    // saw prePaid true, both wrote, both refunded: 150 tokens minted from one
+    // failed video.
+    //
+    // Pinning the payload we decided from makes the flip a single atomic step,
+    // so exactly one caller owns the refund and the other returns having done
+    // nothing. It also correctly loses to a checkpoint written in between —
+    // that payload is not the one we read, so we re-enter through the caller
+    // rather than clobbering it.
+    const claimed = await db.job.updateMany({
+      where: { id: job.id, payload: before },
+      data: { payload: JSON.stringify(p) },
+    });
+    if (claimed.count !== 1) return; // someone else is refunding this one
     // Refund what was ACTUALLY charged (engine surcharges ride in chargedTokens).
     const amount = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
     try {
@@ -60,10 +83,15 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
       // the merchant keeps the charge, and the Archive's retry button charges
       // them a second time for the same piece. Put the flags back so the state
       // matches reality and the next terminal failure can try again.
-      p.prePaid = true;
-      p.refunded = false;
       try {
-        await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(p) } });
+        // Restore onto the CURRENT payload, not the copy we parsed: a pipeline
+        // may have checkpointed while the refund was in flight, and writing our
+        // stale object back would erase it and re-run paid work on the retry.
+        const now = await db.job.findUnique({ where: { id: job.id }, select: { payload: true } });
+        const back = JSON.parse(now?.payload ?? JSON.stringify(p)) as Record<string, unknown>;
+        back.prePaid = true;
+        back.refunded = false;
+        await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(back) } });
       } catch { /* leave the flags set rather than risk a double refund */ }
       throw e;
     }
