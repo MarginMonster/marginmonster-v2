@@ -633,6 +633,20 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // lettering is vision-checked, repaired to the exact product title, or
   // stripped; gibberish never ships.
   let keyframeUrl = resume.keyframeUrl || "";
+  // PROBE BEFORE THE LIP-SYNC, NOT AFTER IT.
+  //
+  // Step 4 downloads this URL to feed omni-human. A checkpointed provider URL
+  // expires in about an hour and a re-queued job can easily sit longer, so the
+  // download failed, the catch there permanently forfeited the lip-sync for
+  // this ad, and only THEN did the motion branch notice the URL was dead and
+  // redraw the frame. The merchant paid full price for a talking cartoon and
+  // got a mouth-closed one, with nothing anywhere saying why.
+  const resumedKeyframe = !!keyframeUrl;
+  if (resumedKeyframe && !(await checkpointUrlAlive(keyframeUrl))) {
+    console.log("[cartoon] checkpointed keyframe has expired — redrawing before the lipsync");
+    keyframeUrl = "";
+    await ckpt({ ckKeyframeUrl: "" });
+  }
   if (!keyframeUrl) keyframeUrl = await forgeKeyframe();
 
   // 3) VOICE — moved AHEAD of the animation because the lipsync step needs

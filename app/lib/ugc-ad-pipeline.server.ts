@@ -1131,7 +1131,25 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         talkingUrl = await pollAvatar(falQueueHandleFor(resume.falRequestId));
       } catch (e) {
         engine = "omni-human";
-        console.error(`[ugc] fal re-attach failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 160);
+        // "WE STOPPED WATCHING" IS NOT "IT DIED" — the distinction the
+        // in-attempt path below already draws, and this one threw away.
+        //
+        // pollAvatar throws FalRenderFailed only when the queue reports a real
+        // failure. Running out of time, or ten unreadable status polls (about
+        // fifty seconds of fal flakiness), throws a PLAIN Error while the
+        // render is alive and already billed. Treating both as dead meant the
+        // next block submitted a SECOND HeyGen performance and overwrote the
+        // only handle to the first, which then completed, was billed, and
+        // became unreachable forever.
+        if (e instanceof FalRenderFailed) {
+          console.error(`[ugc] fal re-attach: the render failed in the queue — retiring it: ${msg}`);
+          await ckpt({ ckFalError: msg, ckFalRequestId: "" });
+        } else {
+          // Keep the handle. This attempt goes on without it, but a later one
+          // can still collect the render we have already paid for.
+          console.error(`[ugc] fal re-attach: still running, keeping the handle: ${msg}`);
+        }
       }
     }
 

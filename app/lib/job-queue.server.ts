@@ -32,6 +32,29 @@ export const REFUND_BY_TYPE: Record<string, number> = {
   FORGE_CUSTOM_AVATAR: TOKEN_COST.avatarForge,
 };
 
+/** A forge job that dies terminally must not leave its card spinning.
+ *
+ * custom-avatars marks its own row failed from inside its catch, which covers
+ * everything that throws in the forge — but not a process killed mid-render, and
+ * not a failure of that very update. The row then keeps its default "forging"
+ * status forever: the merchant sees "Forging… 4h elapsed", is never told it
+ * failed (they were refunded, but nothing says so), and one of their twelve
+ * presenter slots is gone with no way out.
+ *
+ * The status filter is load-bearing. Without it, orphan-reclaim racing a forge
+ * that has just written "ready" would destroy a presenter that was delivered. */
+async function markForgeFailed(job: { type: string; payload: string }, reason: string): Promise<void> {
+  if (job.type !== "FORGE_CUSTOM_AVATAR") return;
+  try {
+    const id = (JSON.parse(job.payload) as { customAvatarId?: string }).customAvatarId;
+    if (!id) return;
+    await db.customAvatar.updateMany({
+      where: { id, status: "forging" },
+      data: { status: "failed", error: reason.slice(0, 500) },
+    });
+  } catch { /* never fatal */ }
+}
+
 /** Refund a terminally-failed pre-paid job EXACTLY ONCE. The payload is
  *  rewritten first (prePaid→false, refunded→true) so a second terminal
  *  failure — or the archive's free retry failing again — can never mint
@@ -143,6 +166,7 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     // restart-killed render (companion forges included).
     if (dead) {
       await refundPrepaidOnce(j);
+      await markForgeFailed(j, "Interrupted by a server restart — forge it again.");
       // A questline slot must be told too. processNextJob's terminal path calls
       // this; the orphan-reclaim path did not, so a restart-killed drop left
       // its slot SCHEDULED forever — postDueSlots only ever publishes READY, so
@@ -283,6 +307,7 @@ export async function processNextJob(): Promise<boolean> {
         try { await refundTokens(job.shopId, 1); } catch { /* non-fatal */ }
       }
       await refundPrepaidOnce(job);
+      await markForgeFailed(job, lastError);
     }
   }
 

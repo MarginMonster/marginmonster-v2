@@ -169,7 +169,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
       try { await spendTokens(shop.id, cost); }
       catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
-      newPayload = JSON.stringify({ ...payload, prePaid: true, refunded: false });
+      // START CLEAN. A re-run is a fresh render the merchant is paying for
+      // again, so it must not inherit the previous run's stage checkpoints:
+      // ckFalRequestId, ckTalkingUrl and friends would re-attach to — or
+      // re-deliver — work from the earlier attempt, handing over an old video
+      // for a new charge. Everything the pipelines checkpoint is prefixed ck.
+      const fresh = Object.fromEntries(
+        Object.entries(payload as Record<string, unknown>).filter(([k]) => !k.startsWith("ck"))
+      );
+      newPayload = JSON.stringify({ ...fresh, prePaid: true, refunded: false });
     }
     await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date(), ...(newPayload ? { payload: newPayload } : {}) } });
     return json({ jobRetried: true });

@@ -18,6 +18,7 @@ import { db } from "../db.server";
 import type { Avatar } from "./avatars";
 import { OUTFITS } from "./avatars";
 import { brandStill } from "./commercial-ad-pipeline.server";
+import { mirrorRender } from "./object-storage.server";
 
 export const CUSTOM_PREFIX = "cav";
 export const isCustomAvatarId = (id: string): boolean => id.startsWith(CUSTOM_PREFIX);
@@ -94,25 +95,47 @@ export async function resolvePresenter(
 export async function forgeCustomAvatar(customAvatarId: string): Promise<void> {
   const row = await db.customAvatar.findUnique({ where: { id: customAvatarId } });
   if (!row) throw new Error(`custom avatar ${customAvatarId} not found`);
-  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  if (!row.refFile || !base) throw new Error("forge needs a reference image and SHOPIFY_APP_URL");
+  // The pre-flight check below used to sit OUTSIDE the try, so the two ways it
+  // can fail never reached the handler that marks the row failed. The card then
+  // said "Forging…" forever — no error, no explanation, and one of the
+  // merchant's twelve presenter slots eaten by a row nothing will ever finish.
+  try {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    if (!row.refFile || !base) throw new Error("forge needs a reference image and SHOPIFY_APP_URL");
+    await forgePortraits(row, base);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await db.customAvatar
+      .update({ where: { id: row.id }, data: { status: "failed", error: msg.slice(0, 500) } })
+      .catch(() => { /* the job's terminal path is the backstop */ });
+    throw e;
+  }
+}
+
+async function forgePortraits(row: { id: string; refFile: string | null }, base: string): Promise<void> {
   // references are merchant uploads: data/renders/uploads, served at /uploads
   const refUrl = `${base}/uploads/${row.refFile}`;
   const KEEP = `The reference image shows a brand character or spokesperson. Recreate the EXACT same character — identical face, colours, features and style — as a clean professional presenter photo.`;
   const HALF = `Half-body presenter framing (waist up, facing camera, arms relaxed and visible), soft even studio light on a plain warm neutral backdrop, sharp focus. No text anywhere.`;
-  try {
-    const files = await Promise.all(OUTFITS.map(async (o, i) => {
-      const url = await brandStill(`${KEEP} The character wears ${o.desc}. ${HALF}`, refUrl, true);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`portrait ${i} fetch ${res.status}`);
-      const name = `cav-${row.id}_${i}.jpg`;
-      fs.writeFileSync(path.join(rendersDir(), name), Buffer.from(await res.arrayBuffer()));
-      return name;
-    }));
-    await db.customAvatar.update({ where: { id: row.id }, data: { status: "ready", files: JSON.stringify(files), error: null } });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await db.customAvatar.update({ where: { id: row.id }, data: { status: "failed", error: msg.slice(0, 500) } });
-    throw e;
-  }
+  const files = await Promise.all(OUTFITS.map(async (o, i) => {
+    const url = await brandStill(`${KEEP} The character wears ${o.desc}. ${HALF}`, refUrl, true);
+    const res = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
+    if (!res.ok) throw new Error(`portrait ${i} fetch ${res.status}`);
+    const name = `cav-${row.id}_${i}.jpg`;
+    const buf = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(path.join(rendersDir(), name), buf);
+    // MIRROR, like every other render this app writes.
+    //
+    // render.yaml states the contract: the renders disk is "a FAST CACHE, not
+    // the source of truth", and every ad pipeline mirrors what it writes so a
+    // disk resize or instance recreation does not destroy it. Forged presenter
+    // portraits were the one paid asset class that never did — and losing them
+    // is worse than losing an ad, because resolvePresenter THROWS on a missing
+    // portrait, so every future job naming that presenter fails outright.
+    // renders.$file.tsx already re-fetches from storage on a cache miss; there
+    // was simply never anything there to find.
+    try { await mirrorRender(name, buf); } catch { /* non-fatal, as everywhere else */ }
+    return name;
+  }));
+  await db.customAvatar.update({ where: { id: row.id }, data: { status: "ready", files: JSON.stringify(files), error: null } });
 }

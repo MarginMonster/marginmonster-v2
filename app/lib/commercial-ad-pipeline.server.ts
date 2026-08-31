@@ -688,7 +688,21 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
         const gate = await motionGate(clip, serviceMode);
         if (!gate.ok) {
           console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
-          clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
+          try {
+            clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
+          } catch (e) {
+            // KEEP THE FIRST TAKE. The gate verdict is a vision judge's
+            // subjective call, and the clip that failed it is paid for and
+            // playable. Letting the re-roll's error escape threw that clip
+            // away AND took the whole parallel batch with it — the other four
+            // beats had rendered fine, and the retry re-bought all five. The
+            // comment above this block calls clips "the most expensive
+            // artifact in the pipeline"; this is the one place that ignored it.
+            console.error(
+              `[commercial] beat ${i + 1} re-roll failed — shipping the first take: ` +
+                (e instanceof Error ? e.message.slice(0, 160) : String(e))
+            );
+          }
         }
         slots[k] = clip;
         const done: string[] = [];
@@ -706,7 +720,16 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   const voLines = [...plan.beats.map((b) => b.narration || plan.tagline), `${plan.tagline}.`];
   let audioUrls: string[] = [];
   if (params.resume?.audioUrl?.trim().startsWith("[")) {
-    audioUrls = JSON.parse(params.resume.audioUrl) as string[];
+    // THROUGH THE SAME GATE THE CLIPS USE.
+    //
+    // Keyframes and clips are both run through livePrefix on resume, for the
+    // reason stated above them: a provider URL expires in about an hour, and
+    // the orphan window alone is 25 minutes. The voice-over checkpoint was
+    // taken on trust. Once it aged out, every remaining attempt re-rendered
+    // all five clips for real money, reached assembly, and died downloading a
+    // dead audio URL — a poison pill that burns the most expensive artifact in
+    // the pipeline on every attempt and can never deliver.
+    audioUrls = await livePrefix(JSON.parse(params.resume.audioUrl) as string[]);
   } // a legacy single-URL checkpoint is a differently-paced read — re-synthesize
   if (audioUrls.length < voLines.length) {
     const freshVo = await Promise.all(
@@ -730,7 +753,8 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   // (checkpointed: it's a paid render like the keyframes).
   let packshotUrl = params.productImageUrl || "";
   if (serviceMode && !params.productImageUrl) {
-    packshotUrl = params.resume?.endcardUrl || "";
+    // Same treatment: an expired end card is not an end card.
+    packshotUrl = (await livePrefix([params.resume?.endcardUrl || ""].filter(Boolean)))[0] || "";
     if (!packshotUrl) {
       packshotUrl = await commercialEndCard(params.productTitle, plan.tagline, params.brandProfile?.visualJson);
       await ckpt({ ckCommercialEndcard: packshotUrl });
