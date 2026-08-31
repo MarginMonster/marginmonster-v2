@@ -203,11 +203,21 @@ export async function getOrMakeCaptions(
   for (const [p, c] of Object.entries(merged)) if (!c.fallback) durable[p] = c;
 
   // Best-effort; a write failure just means we regenerate next time.
+  // Re-read before writing: `body` was captured before the model call, and the
+  // image backfill writes this same column (imageUrl, needsRegen) from the
+  // worker tick. Writing the stale copy back would undo a heal.
   try {
-    await db.asset.update({
-      where: { id: assetId },
-      data: { bodyJson: JSON.stringify({ ...body, captions: durable }) },
-    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const fresh = await db.asset.findUnique({ where: { id: assetId }, select: { bodyJson: true } });
+      if (!fresh) break;
+      let cur: Record<string, unknown> = {};
+      try { cur = JSON.parse(fresh.bodyJson || "{}"); } catch { /* fresh */ }
+      const done = await db.asset.updateMany({
+        where: { id: assetId, bodyJson: fresh.bodyJson },
+        data: { bodyJson: JSON.stringify({ ...cur, captions: durable }) },
+      });
+      if (done.count === 1) break;
+    }
   } catch (e) {
     console.error("[caption] cache write failed (non-fatal):", e instanceof Error ? e.message : e);
   }

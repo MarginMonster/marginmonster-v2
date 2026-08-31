@@ -342,16 +342,30 @@ export async function addDrop(
     data: { tokenCost: { increment: cost }, tokenFromExtra: { increment: addedFromExtra } },
   });
 
-  const schedule = parseSchedule(q.scheduleJson);
-  const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(q.objectivesJson);
-  const idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
+  // Everything below is recomputed per attempt against a FRESH read, because
+  // the next slot index is derived from the schedule: two drops added at once,
+  // or one added while the worker marks another READY, both computed the same
+  // idx from the same stale copy and the second write erased the first. The
+  // enqueued job then pointed at a slot that no longer existed.
+  let idx = 0;
+  let item: { title: string; image: string | null } = { title: "", image: null };
+  let obj!: { key: string; label: string; type: string; target: number; done: number };
+  let slot!: QuestSlot;
+  let committed = false;
+
+  for (let attempt = 0; attempt < 4 && !committed; attempt++) {
+  const row = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true, objectivesJson: true } });
+  if (!row) return { ok: false, error: "Campaign not found." };
+  const schedule = parseSchedule(row.scheduleJson);
+  const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(row.objectivesJson);
+  idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
   const typeCount = schedule.slots.filter((s) => s.type === type).length;
   // rotate the bag: give the new drop the least-recently-used packed item
   const uniq: { title: string; image: string | null }[] = [];
   for (const s of schedule.slots) {
     if (s.productTitle && !uniq.some((u) => u.title === s.productTitle)) uniq.push({ title: s.productTitle, image: s.productImageUrl });
   }
-  let item = uniq.length ? uniq[idx % uniq.length] : { title: q.productTitle || "", image: q.productImageUrl };
+  item = uniq.length ? uniq[idx % uniq.length] : { title: q.productTitle || "", image: q.productImageUrl };
   if (opts.productTitle) {
     const picked = uniq.find((u) => u.title === opts.productTitle);
     if (picked) item = picked;
@@ -361,7 +375,7 @@ export async function addDrop(
   const nowHM = new Date().toISOString().slice(11, 16);
   const defTime = type === "video" ? "19:00" : type === "blog" ? "09:00" : "12:00";
   const chosenTime = opts.time && /^\d{2}:\d{2}$/.test(opts.time) ? opts.time : defTime;
-  const slot = {
+  slot = {
     idx, day, date,
     time: opts.instant ? nowHM : chosenTime,
     type, spot: spotName(type, typeCount),
@@ -371,8 +385,8 @@ export async function addDrop(
   };
   schedule.slots.push(slot);
 
-  let obj = objectives.find((o) => o.type === type);
-  if (obj) obj.target += 1;
+  const found = objectives.find((o) => o.type === type);
+  if (found) { found.target += 1; obj = found; }
   else {
     obj = { key: `${type}-x${idx}`, label: type === "video" ? "UGC videos with your Brand Face" : type === "image" ? "Scroll-stopping image ads" : "SEO blog posts", type, target: 1, done: 0 };
     objectives.push(obj);
@@ -382,14 +396,27 @@ export async function addDrop(
   const totalTarget = objectives.reduce((s, o) => s + o.target, 0);
   const totalDone = objectives.reduce((s, o) => s + o.done, 0);
 
-  await db.questline.update({
-    where: { id: q.id },
+  const applied = await db.questline.updateMany({
+    where: { id: q.id, scheduleJson: row.scheduleJson, objectivesJson: row.objectivesJson },
     data: {
       scheduleJson: JSON.stringify(schedule),
       objectivesJson: JSON.stringify(objectives),
       progress: totalTarget ? Math.round((totalDone / totalTarget) * 100) : 0,
     },
   });
+  if (applied.count === 1) committed = true;
+  }
+
+  if (!committed) {
+    // The charge above already happened, so hand it back rather than leaving
+    // the merchant paying for a drop that was never added.
+    await db.questline.update({
+      where: { id: q.id },
+      data: { tokenCost: { decrement: cost }, tokenFromExtra: { decrement: addedFromExtra } },
+    }).catch(() => { /* the abandon cap is the backstop */ });
+    await refundTokens(shopId, cost, addedFromExtra).catch(() => { /* logged inside */ });
+    return { ok: false, error: "That campaign is being updated right now — try again in a moment." };
+  }
 
   const direction = (opts.direction || "").trim().slice(0, 160) || undefined;
   const base = {
@@ -463,13 +490,25 @@ export async function addManualDrop(
     });
   }
 
-  const schedule = parseSchedule(q.scheduleJson);
-  const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(q.objectivesJson || "[]");
-  const idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
+  const direction = (params.direction || "").trim().slice(0, 160) || undefined;
+  // Recomputed per attempt against a fresh read — the next index comes from
+  // the schedule, and the MANUAL container is shared by every one-off drop the
+  // shop ever makes, so it is the most contended blob in the app. Two drops
+  // added together derived the same idx from the same stale copy, and the
+  // second write erased the first along with the job pointing at it.
+  let idx = 0;
+  let obj!: { key: string; label: string; type: string; target: number; done: number };
+  let slot!: QuestSlot;
+  let committed = false;
+  for (let attempt = 0; attempt < 4 && !committed; attempt++) {
+  const row = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true, objectivesJson: true } });
+  if (!row) return { ok: false, error: "Campaign not found." };
+  const schedule = parseSchedule(row.scheduleJson);
+  const objectives: { key: string; label: string; type: string; target: number; done: number }[] = JSON.parse(row.objectivesJson || "[]");
+  idx = schedule.slots.reduce((m, s) => Math.max(m, s.idx), -1) + 1;
   const typeCount = schedule.slots.filter((s) => s.type === type).length;
   const day = Math.max(1, Math.round((new Date(`${date}T00:00:00`).getTime() - q.createdAt.getTime()) / 86400000) + 1);
-  const direction = (params.direction || "").trim().slice(0, 160) || undefined;
-  const slot: QuestSlot = {
+  slot = {
     idx, day, date, time, type, spot: spotName(type, typeCount),
     productTitle: params.product.title, productImageUrl: params.product.image || null, productUrl: params.product.url || null,
     status: "SCHEDULED", topic: direction,
@@ -477,11 +516,27 @@ export async function addManualDrop(
   schedule.slots.push(slot);
   if (params.platforms?.length) schedule.platforms = params.platforms;
 
-  let obj = objectives.find((o) => o.type === type);
-  if (obj) obj.target += 1;
+  const found = objectives.find((o) => o.type === type);
+  if (found) { found.target += 1; obj = found; }
   else { obj = { key: `${type}-m${idx}`, label: type === "video" ? "UGC videos" : type === "image" ? "Image ads" : "SEO blog posts", type, target: 1, done: 0 }; objectives.push(obj); }
 
-  await db.questline.update({ where: { id: q.id }, data: { scheduleJson: JSON.stringify(schedule), objectivesJson: JSON.stringify(objectives) } });
+  const applied = await db.questline.updateMany({
+    where: { id: q.id, scheduleJson: row.scheduleJson, objectivesJson: row.objectivesJson },
+    data: { scheduleJson: JSON.stringify(schedule), objectivesJson: JSON.stringify(objectives) },
+  });
+  if (applied.count === 1) committed = true;
+  }
+
+  if (!committed) {
+    // The tokens were taken before the container was touched, so give them
+    // back rather than charging for a drop that was never scheduled.
+    await db.questline.update({
+      where: { id: q.id },
+      data: { tokenCost: { decrement: cost }, tokenFromExtra: { decrement: oneOffFromExtra } },
+    }).catch(() => { /* the abandon cap is the backstop */ });
+    await refundTokens(shopId, cost, oneOffFromExtra).catch(() => { /* logged inside */ });
+    return { ok: false, error: "That campaign is being updated right now — try again in a moment." };
+  }
 
   const base = {
     productTitle: params.product.title, productImageUrl: params.product.image || undefined,
@@ -616,7 +671,14 @@ export async function swapQuestlineItem(
         if (p.questlineId === questlineId && typeof p.slotIdx === "number" && changed.has(p.slotIdx)) {
           p.productTitle = to.title.trim();
           p.productImageUrl = to.image || undefined;
-          await db.job.update({ where: { id: j.id }, data: { payload: JSON.stringify(p) } });
+          // Only while it is still PENDING and still holds the payload we
+          // read. A job claimed between the scan and this write is already
+          // rendering and checkpointing into that same field — overwriting it
+          // would erase its resume state and re-buy the stages it had done.
+          await db.job.updateMany({
+            where: { id: j.id, status: "PENDING", payload: j.payload },
+            data: { payload: JSON.stringify(p) },
+          });
         }
       } catch { /* skip */ }
     }
@@ -880,61 +942,98 @@ export async function settleQuestlineIfDone(questlineId: string): Promise<void> 
  *  drops its reward when all content is done. Fully non-fatal. */
 export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey: string | undefined, shopId: string, slotIdx?: number, ok: boolean = true, assetId?: string): Promise<void> {
   try {
-    const q = await db.questline.findUnique({ where: { id: questlineId } });
-    if (!q || q.status === "COMPLETE") return;
-    const objectives: Objective[] = JSON.parse(q.objectivesJson);
-    const schedule = parseSchedule(q.scheduleJson);
-
-    // Mark the map slot
-    const slot = slotIdx != null ? schedule.slots.find((s) => s.idx === slotIdx) : undefined;
-    if (slot) {
-      slot.status = ok ? "READY" : "FAILED";
-      if (ok && assetId) slot.assetId = assetId;
-    }
-
-    if (ok) {
-      const obj = objectives.find((o) => o.key === objectiveKey);
-      if (obj && obj.done < obj.target) obj.done += 1;
-      // "post" objectives mirror content progress until platform posting lands.
-      const post = objectives.find((o) => o.type === "post");
-      if (post) {
-        const contentDone = objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.done, 0);
-        post.done = Math.min(post.target, contentDone);
-      }
-    }
-
-    const totalTarget = objectives.reduce((s, o) => s + o.target, 0);
-    const totalDone = objectives.reduce((s, o) => s + o.done, 0);
-    const progress = totalTarget ? Math.round((totalDone / totalTarget) * 100) : 100;
-    const contentObjs = objectives.filter((o) => o.type !== "post");
-    const allContentDone = contentObjs.every((o) => o.done >= o.target);
-
-    // Weekly bonus: all of a week's slots forged -> +100 XP, once per week.
+    // THE WORKER'S OWN WRITE HAS TO BE CONDITIONAL TOO.
+    //
+    // This reads both blobs, computes over them, awaits, and wrote the whole
+    // lot back. It is the counterpart to the merchant-facing writers that were
+    // made conditional: with only one side guarded, this one still overwrites
+    // theirs — and worse, it can land on top of the poster's POSTED stamp,
+    // which erases the record of which accounts already have the drop and lets
+    // the next scan publish it to them again.
+    //
+    // Everything inside the loop is pure. The one await that used to sit in the
+    // middle — the PERFECT_WEEK unlock — is hoisted out, so a retried attempt
+    // cannot fire it twice and a lost race cannot fire it at all.
+    let committed = false;
+    let perfectWeek = false;
     let weeklyBonus = 0;
-    if (ok && slot) {
-      const week = Math.ceil(slot.day / 7);
-      if (!schedule.weeksAwarded.includes(week)) {
-        const weekSlots = schedule.slots.filter((s) => Math.ceil(s.day / 7) === week);
-        if (weekSlots.length > 0 && weekSlots.every((s) => s.status === "READY" || s.status === "POSTED")) {
-          schedule.weeksAwarded.push(week);
-          weeklyBonus = WEEK_BONUS_XP;
-          try { await unlockAchievement(shopId, "PERFECT_WEEK"); } catch { /* non-fatal */ }
+    let allContentDone = false;
+
+    for (let attempt = 0; attempt < 4 && !committed; attempt++) {
+      const q = await db.questline.findUnique({ where: { id: questlineId } });
+      if (!q || q.status === "COMPLETE") return;
+      const objectives: Objective[] = JSON.parse(q.objectivesJson);
+      const schedule = parseSchedule(q.scheduleJson);
+
+      // Mark the map slot
+      const slot = slotIdx != null ? schedule.slots.find((s) => s.idx === slotIdx) : undefined;
+      if (slot) {
+        // Never demote a drop that has already gone out. The poster owns that
+        // status, and it carries the postedTo record with it.
+        if (slot.status !== "POSTED") {
+          slot.status = ok ? "READY" : "FAILED";
+          if (ok && assetId) slot.assetId = assetId;
+        } else if (ok && assetId && !slot.assetId) {
+          slot.assetId = assetId;
         }
       }
+
+      if (ok) {
+        const obj = objectives.find((o) => o.key === objectiveKey);
+        if (obj && obj.done < obj.target) obj.done += 1;
+        // "post" objectives mirror content progress until platform posting lands.
+        const post = objectives.find((o) => o.type === "post");
+        if (post) {
+          const contentDone = objectives.filter((o) => o.type !== "post").reduce((s, o) => s + o.done, 0);
+          post.done = Math.min(post.target, contentDone);
+        }
+      }
+
+      const totalTarget = objectives.reduce((s, o) => s + o.target, 0);
+      const totalDone = objectives.reduce((s, o) => s + o.done, 0);
+      const progress = totalTarget ? Math.round((totalDone / totalTarget) * 100) : 100;
+      const contentObjs = objectives.filter((o) => o.type !== "post");
+      allContentDone = contentObjs.every((o) => o.done >= o.target);
+
+      // Weekly bonus: all of a week's slots forged -> +100 XP, once per week.
+      perfectWeek = false;
+      weeklyBonus = 0;
+      if (ok && slot) {
+        const week = Math.ceil(slot.day / 7);
+        if (!schedule.weeksAwarded.includes(week)) {
+          const weekSlots = schedule.slots.filter((s) => Math.ceil(s.day / 7) === week);
+          if (weekSlots.length > 0 && weekSlots.every((s) => s.status === "READY" || s.status === "POSTED")) {
+            schedule.weeksAwarded.push(week);
+            weeklyBonus = WEEK_BONUS_XP;
+            perfectWeek = true;
+          }
+        }
+      }
+
+      const done = await db.questline.updateMany({
+        where: { id: questlineId, scheduleJson: q.scheduleJson, objectivesJson: q.objectivesJson },
+        data: {
+          objectivesJson: JSON.stringify(objectives),
+          scheduleJson: JSON.stringify(schedule),
+          progress,
+          // NOT status:"COMPLETE" here. Forging the last piece is not finishing
+          // the campaign — the drop still has to post, up to a day later. See
+          // settleQuestlineIfDone.
+        },
+      });
+      if (done.count === 1) committed = true;
+      // Otherwise something else moved the campaign — read it again and
+      // recompute against what is actually there.
     }
 
-    await db.questline.update({
-      where: { id: questlineId },
-      data: {
-        objectivesJson: JSON.stringify(objectives),
-        scheduleJson: JSON.stringify(schedule),
-        progress,
-        // NOT status:"COMPLETE" here. Forging the last piece is not finishing
-        // the campaign — the drop still has to post, up to a day later. See
-        // settleQuestlineIfDone.
-      },
-    });
+    if (!committed) {
+      console.warn(`[questline] ${questlineId}: progress for slot ${slotIdx} lost four races — not recorded`);
+      return;
+    }
 
+    if (perfectWeek) {
+      try { await unlockAchievement(shopId, "PERFECT_WEEK"); } catch { /* non-fatal */ }
+    }
     if (ok) await awardXp(shopId, 25 + weeklyBonus);
 
     // The forge may genuinely be the last thing outstanding (a schedule whose

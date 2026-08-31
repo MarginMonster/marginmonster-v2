@@ -2306,7 +2306,9 @@ export async function backfillDeadImages(): Promise<void> {
       const body = JSON.parse(a.bodyJson) as { imageUrl?: string; prompt?: string; sourceUrl?: string; method?: string };
       if (!isExpiringUrl(body.imageUrl)) {
         // contains() matched sourceUrl only — already healed; strip the marker
-        await db.asset.update({ where: { id: a.id }, data: { bodyJson: JSON.stringify({ ...body, sourceUrl: undefined }) } });
+        // Conditional for the same reason as the heal write below: the caption
+        // cache writes this column from a route while this runs in the tick.
+        await db.asset.updateMany({ where: { id: a.id, bodyJson: a.bodyJson }, data: { bodyJson: JSON.stringify({ ...body, sourceUrl: undefined }) } });
         continue;
       }
       // Re-forging from the stored prompt only reproduces PROMPT-ONLY ads.
@@ -2342,8 +2344,11 @@ export async function backfillDeadImages(): Promise<void> {
         continue;
       }
       const localUrl = await fluxToDisk(body.prompt);
-      await db.asset.update({
-        where: { id: a.id },
+      // Conditional: the caption cache writes this same column from a route
+      // while this runs in the worker tick, and a stale write here would drop
+      // the captions a merchant just paid to generate.
+      await db.asset.updateMany({
+        where: { id: a.id, bodyJson: a.bodyJson },
         data: { bodyJson: JSON.stringify({ ...body, imageUrl: localUrl, sourceUrl: undefined, healed: true }) },
       });
       console.log(`[image-backfill] healed asset ${a.id}`);

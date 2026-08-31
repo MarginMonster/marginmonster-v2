@@ -110,13 +110,25 @@ export async function publishBlogAsset(shopDomain: string, assetId: string): Pro
 
     // Record the live URL with the status, so the short-circuit above can hand
     // it back instead of publishing again.
+    // Re-read and write conditionally: metaJson also carries the click count
+    // and postedTo, and the public /go turnstile writes it whenever a shopper
+    // taps a link. `asset` here was read before the Shopify publish round-trip,
+    // so writing it back whole would drop anything that landed in between.
     try {
-      let meta: Record<string, unknown> = {};
-      try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
-      await db.asset.update({
-        where: { id: assetId },
-        data: { status: "PUBLISHED", metaJson: JSON.stringify({ ...meta, blogUrl: url || null, blogPublishedAt: new Date().toISOString() }) },
-      });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const fresh = await db.asset.findUnique({ where: { id: assetId }, select: { metaJson: true } });
+        if (!fresh) break;
+        let meta: Record<string, unknown> = {};
+        try { meta = JSON.parse(fresh.metaJson || "{}"); } catch { /* fresh */ }
+        const done = await db.asset.updateMany({
+          where: { id: assetId, metaJson: fresh.metaJson },
+          data: {
+            status: "PUBLISHED",
+            metaJson: JSON.stringify({ ...meta, blogUrl: url || null, blogPublishedAt: new Date().toISOString() }),
+          },
+        });
+        if (done.count === 1) break;
+      }
     } catch { /* non-fatal */ }
     return { ok: true, url };
   } catch (e) {

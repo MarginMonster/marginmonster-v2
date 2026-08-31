@@ -114,7 +114,10 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
         const back = JSON.parse(now?.payload ?? JSON.stringify(p)) as Record<string, unknown>;
         back.prePaid = true;
         back.refunded = false;
-        await db.job.update({ where: { id: job.id }, data: { payload: JSON.stringify(back) } });
+        // Conditional even here: a pipeline stage can checkpoint between the
+        // re-read above and this write, and clobbering that would re-run paid
+        // work on the retry.
+        await db.job.updateMany({ where: { id: job.id, payload: now?.payload }, data: { payload: JSON.stringify(back) } });
       } catch { /* leave the flags set rather than risk a double refund */ }
       throw e;
     }
