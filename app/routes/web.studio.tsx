@@ -1126,7 +1126,15 @@ export default function WebStudio() {
                       {locked && <span className="ws-lock">🔒 {ct.tier}</span>}
                     </span>
                     <b>{ct.name}</b>
-                    <span className="ws-tile-sub">{locked ? `Unlock with ${ct.tier}` : ct.sub}</span>
+                    {/* The description, always. With no plan every tile is
+                        locked, so this line used to replace all eight
+                        explanations with “Unlock with Studio” — a merchant
+                        deciding whether to pay could not find out what Anthem,
+                        Unboxing or Satisfying Close-Up even were. The lock is
+                        already said twice over by the badge and the tile
+                        styling, and tapping one opens the panel that names the
+                        tier and the price. */}
+                    <span className="ws-tile-sub" title={ct.sub}>{ct.sub}</span>
                   </button>
                 );
               })}
@@ -1505,9 +1513,29 @@ export default function WebStudio() {
                     </div>
                   </>
                 )}
-                <div className="ws-lbl">{tab === "image" ? (templateKey ? "Tweaks" : "Describe it") : "Topic"} <span className="ws-opt">optional</span></div>
+                {/* WHAT THIS BOX DOES DEPENDS ON WHAT IS ABOVE IT.
+                    With an ad FORMAT picked the composition is already fixed
+                    and this text only ever reaches the copywriter as “Angle:”,
+                    so asking the merchant to “describe the scene you want”
+                    invited an instruction the renderer will not follow — and
+                    they then blame the app for ignoring them. Ask for the
+                    thing it can actually deliver. */}
+                <div className="ws-lbl">
+                  {tab === "image"
+                    ? templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
+                    : "Topic"}{" "}
+                  <span className="ws-opt">optional</span>
+                </div>
                 <input className="wb-in" value={direction} maxLength={300}
-                  placeholder={tab === "image" ? (templateKey ? "Any edits — e.g. make the wall sage green, add pine branches…" : "Describe the scene you want — or leave blank for bright & clean…") : "Tap an angle above, or describe your own topic…"}
+                  placeholder={
+                    tab === "image"
+                      ? templateKey
+                        ? "Any edits — e.g. make the wall sage green, add pine branches…"
+                        : formatKey
+                          ? "e.g. lead with how fast it ships — or leave blank and we'll pick the angle"
+                          : "Describe the scene you want — or leave blank for bright & clean…"
+                      : "Tap an angle above, or describe your own topic…"
+                  }
                   onChange={(e) => setDirection(e.target.value)} />
               </>
             )}

@@ -1723,7 +1723,14 @@ function formatLayoutPrompt(
   // previews describe an EasyMode-branded hero product in text instead.
   const productClause = hero
     ? `The hero product is ${hero}. Any wordmark or label on it must read exactly "EASYMODE" — spelled E-A-S-Y-M-O-D-E in clean capital letters — and contain no other readable words.`
-    : "The product from the provided image must stay perfectly identical — same shape, colors, label, logos, and every printed code, serial and number reproduced character for character, never redrawn, re-numbered or warped.";
+    // The second sentence is the one qaFormat hard-fails on and nothing here
+    // was asking for it: the gate rejects an ad that copied a watermark, price
+    // badge or marketing caption out of the SOURCE photo's background, while
+    // the prompt only ever locked the product's OWN printing. Merchants
+    // photograph products against their supplier's branded backdrop all the
+    // time, so the model copied it in good faith and the render was thrown
+    // away. Same clause the compose modes use, word for word.
+    : "The product from the provided image must stay perfectly identical — same shape, colors, label, logos, and every printed code, serial and number reproduced character for character, never redrawn, re-numbered or warped. Reproduce only the physical product; ignore any marketing text or watermark on the reference photo’s background.";
   const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, ${shape}, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, and you must not INVENT any additional layout text, gibberish or filler anywhere. This rule is about the ad's own copy only: the words already printed on the product itself are part of the product and must be reproduced exactly as they appear in the photograph — every character, code, serial and number identical, never re-lettered, never re-numbered, never tidied up. Each string appears ONCE, in the SAME LANGUAGE it is written in above — reproduce it exactly, never translate it, never transliterate it — and it must read as correct, grammatical text in that language: never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
   switch (key) {
     case "callout":
@@ -1867,7 +1874,7 @@ async function formatCopy(
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
       `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
-      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 8-13 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions, each a natural phrase a person would say out loud, not a keyword string; offer is a benefit or invitation flash of 2-4 words ("Own the set", "New arrival") and MUST NOT contain a number, a percentage, a currency amount, or the words sale/off/free/save/deal/discount; caption is a lowercase social caption of 6-11 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere founder note of 12-16 words, one or two short sentences, with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 10-16 words, specific and funny, no hashtags; handle is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 3-6 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 3-6 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 6-12 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words; k1-k4 are lowercase relatable "that's me" moments of 3-5 words; f1-f3 are punchy truthful product facts of 3-7 words; am starts "Morning:" and pm starts "Night:", each ≤ 6 words after the colon; tq1-tq3 are mini review quotes of 3-6 words with tn1-tn3 as first name + last initial; pov starts "POV:" and is 5-9 words; b1-b3 are included-item lines of 2-5 words; word is ONE powerful word ending in a period; line1/line2 are warm chalkboard lines of 3-6 words; bubble is the product playfully "speaking" in 2-6 words — it must be a natural, grammatical phrase a person would actually say; never force a pun that breaks the sentence; v1/v2 are REAL product spec numbers with l1/l2 as their 2-4 word labels — never invented customer stats; origin is one truthful craft or materials line of 5-10 words (no fake place claims); tagline is a witty 4-8 word line; pair1/pair2 are short names for the two paired items; item is the product's short name, price a plausible price like "$29", memo a lowercase 3-5 word aside; sw1-sw4 are one-or-two-word names for colours that are ACTUALLY PRESENT IN THE PRODUCT PHOTO — they label a palette drawn from the product itself, NEVER alternative colourways or variants, which the store may not sell; handle is the brand name in caps, no @ and no invented engagement numbers; caption for the breakout format is a scroll-stopping 5-10 word line.`,
+      `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 8-13 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions, each a natural phrase a person would say out loud, not a keyword string; offer is a benefit or invitation flash of 2-4 words ("Own the set", "New arrival") and MUST NOT contain a number, a percentage, a currency amount, or the words sale/off/free/save/deal/discount; caption is a lowercase social caption of 6-11 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere founder note of 12-16 words, one or two short sentences, with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 10-16 words, specific and funny, no hashtags; handle for the tweet format is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 3-6 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 3-6 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 6-12 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words; k1-k4 are lowercase relatable "that's me" moments of 3-5 words; f1-f3 are punchy truthful product facts of 3-7 words; am starts "Morning:" and pm starts "Night:", each ≤ 6 words after the colon; tq1-tq3 are mini review quotes of 3-6 words with tn1-tn3 as first name + last initial; pov starts "POV:" and is 5-9 words; b1-b3 are included-item lines of 2-5 words; word is ONE powerful word ending in a period; line1/line2 are warm chalkboard lines of 3-6 words; bubble is the product playfully "speaking" in 2-6 words — it must be a natural, grammatical phrase a person would actually say; never force a pun that breaks the sentence; v1/v2 are REAL product spec numbers with l1/l2 as their 2-4 word labels — never invented customer stats; origin is one truthful craft or materials line of 5-10 words (no fake place claims); tagline is a witty 4-8 word line; pair1/pair2 are short names for the two paired items; item is the product's short name, price a plausible price like "$29", memo a lowercase 3-5 word aside; sw1-sw4 are one-or-two-word names for colours that are ACTUALLY PRESENT IN THE PRODUCT PHOTO — they label a palette drawn from the product itself, NEVER alternative colourways or variants, which the store may not sell; handle for the breakout format is the brand name in caps, no @ and no invented engagement numbers; caption for the breakout format is a scroll-stopping 5-10 word line.`,
       // The merchant is the ONLY source of a discount. Anything we invent is a
       // promise their shop never agreed to honour.
       merchantOffer
@@ -2630,9 +2637,16 @@ export async function generateImageAd(
         const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         const portraitUrl = `${base}${presenter.portraitPublicPath}`;
         const { resolveProductScale } = await import("./product-scale.server");
+        // stylePrompt is the merchant’s “Describe it” direction — the same
+        // string handed to the scene two lines down. Passing it as the product
+        // DESCRIPTION told the scale resolver that “on a marble kitchen
+        // counter” was a fact about the product, and it sizes the item from
+        // that text. There is no product description on this path at all
+        // (CatalogProduct has no such column), so title, photo and the
+        // merchant’s own size picker are the honest inputs — exactly what the
+        // cartoon and UGC pipelines pass when they have no description.
         const scaleHint = await resolveProductScale({
           productTitle,
-          productDescription: stylePrompt,
           productImageUrl,
           productSize,
         });
@@ -2869,9 +2883,12 @@ export async function generateImageAd(
     // it in the same breath.
     const brandStyle = typeof visual.imageStyle === "string" ? visual.imageStyle.trim() : "";
     const brandWantsDark = /(dark|moody|noir|low.?key|black background)/i.test(brandStyle);
-    const wantBright = stylePrompt
-      ? !/deliberately dark|noir|dark charcoal/i.test(stylePrompt)
-      : !brandWantsDark;
+    // The same vocabulary the brand test above uses. This branch only
+    // recognised three exact phrases, so a merchant typing “moody” or “black
+    // background” in Describe it got their own request marked as a defect by
+    // the gate and the render thrown away.
+    const DARK_INTENT = /(dark|moody|noir|low.?key|black background|night|shadow)/i;
+    const wantBright = stylePrompt ? !DARK_INTENT.test(stylePrompt) : !brandWantsDark;
     // When the brand's own look becomes the lighting brief, do not also append
     // it as a style note — saying it twice is how the contradiction started.
     const styleTail = (!stylePrompt && brandWantsDark) || !brandStyle
@@ -2985,13 +3002,22 @@ export async function generateImageAd(
             }
           };
           imageUrl = await stagedOnce();
-          let qa = await qaFidelity(productImageUrl!, imageUrl, true);
+          // JUDGE THE BRIEF THIS RUNG ACTUALLY SENT.
+          //
+          // This asserted wantBright: true for every template, and qaFidelity
+          // is told to FAIL an image that is “dark/moody or on a black
+          // background” when that flag is set. Several plates are dark BY
+          // DEFINITION, so the model did exactly as asked and the gate
+          // rejected it — twice — before dropping to the composite. The
+          // merchant picked a dark template and could never receive one.
+          const plateWantsBright = !DARK_INTENT.test(t.plate || "");
+          let qa = await qaFidelity(productImageUrl!, imageUrl, plateWantsBright && wantBright);
           // A gate that could not judge has told us nothing about this take,
           // so a second paid render against it is money for no information.
           if (!qa.pass && !qa.degraded) {
             console.log(`[image-ad] template QA rejected (${qa.reason}) — retrying`);
             imageUrl = await stagedOnce();
-            qa = await qaFidelity(productImageUrl!, imageUrl, true);
+            qa = await qaFidelity(productImageUrl!, imageUrl, plateWantsBright && wantBright);
           }
           genMeta.method = `template-staged:${t.key}`;
           genMeta.qa = qa;

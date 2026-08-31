@@ -124,6 +124,24 @@ export async function postDueSlots(): Promise<void> {
 
     let due = 0;
     let posted = 0;
+
+    // DRAIN A BACKLOG, DO NOT DUMP IT.
+    //
+    // This loop had no lower bound on how far in the past a due slot could
+    // be, no per-scan cap and no spacing. A slot that could not publish
+    // earlier — no linked account, no provider key, campaign paused — stays
+    // READY and stays due forever, so the moment the blocker clears, one tick
+    // fires the ENTIRE backlog back to back. A merchant who connects
+    // Instagram two weeks into a 30-day campaign gets fourteen posts in a
+    // burst: exactly the pattern every platform treats as spam, on the
+    // account we just helped them link.
+    //
+    // Counted per SHOP, not per questline — a shop can be running several
+    // campaigns plus a repost, and the platform sees one account. The rest
+    // stay READY and go out on the next five-minute tick, so nothing is
+    // dropped, it just arrives at a human pace.
+    const CATCHUP_PER_SHOP = 3;
+    const publishedThisScan = new Map<string, number>();
     let heldForReview = 0;
     for (const q of active) {
       // "LET ME APPROVE EACH DROP" MEANS EXACTLY THAT.
@@ -240,6 +258,10 @@ export async function postDueSlots(): Promise<void> {
 
       for (const s of schedule.slots) {
         if (s.status !== "READY") continue;
+        if ((publishedThisScan.get(q.shopId) || 0) >= CATCHUP_PER_SHOP) {
+          console.log(`[social-post] shop ${q.shopId} hit the ${CATCHUP_PER_SHOP}-per-scan catch-up cap — the rest stay READY for the next tick`);
+          break;
+        }
         // A slot time is a WALL time in the merchant's day. Read as UTC it
         // fired at the wrong hour for everyone outside it — and for a merchant
         // west of UTC, hours EARLY, publishing a drop before its date.
@@ -258,6 +280,7 @@ export async function postDueSlots(): Promise<void> {
             if (br.url) s.postedUrls = { blog: br.url };
             changed = true;
             posted++;
+            publishedThisScan.set(q.shopId, (publishedThisScan.get(q.shopId) || 0) + 1);
             if (!(await record(s))) break; // it is live; if we cannot write that down, stop.
           } else {
             console.log(`[blog-publish] slot ${q.id}#${s.idx} pending: ${br.error}`);
@@ -291,6 +314,9 @@ export async function postDueSlots(): Promise<void> {
           if (res.urls && Object.keys(res.urls).length) s.postedUrls = { ...(s.postedUrls || {}), ...res.urls };
           changed = true;
           posted += res.posted.length;
+          // One SLOT is one post as far as the platform is concerned, however
+          // many accounts it reached, so the catch-up cap counts slots.
+          publishedThisScan.set(q.shopId, (publishedThisScan.get(q.shopId) || 0) + 1);
         }
         // POSTED only once every account it was aimed at has taken it. A slot
         // that reached TikTok but not Facebook stays READY so the next scan
