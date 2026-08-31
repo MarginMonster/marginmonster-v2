@@ -668,7 +668,7 @@ const WA_CSS = `
 `;
 
 export default function WebArchive() {
-  const { assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, shown, totalAll, nextShow } = useLoaderData<typeof loader>();
+  const { assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -724,6 +724,9 @@ export default function WebArchive() {
   useEffect(() => { if (actionData && ("deleted" in actionData || "kept" in actionData || "remixed" in actionData)) setViewer(null); }, [actionData]);
 
   const shelf = assets.filter((a) => A_KIND[a.type] === tab);
+  // The true library count for the open tab, so the note under the shelf
+  // matches the number on the tab itself.
+  const tabTotal = totals?.[tab] ?? shelf.length;
   const vIdx = viewer ? shelf.findIndex((c) => c.id === viewer.id) : -1;
   const openAt = (idx: number) => { const n = shelf[(idx % shelf.length + shelf.length) % shelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
@@ -796,8 +799,15 @@ export default function WebArchive() {
       {nextShow != null && (
         // The oldest pieces are the ones nearest the 30-day clear, so "older"
         // must stay reachable — Keep is only available from the viewer here.
+        //
+        // Counted for THIS tab, not the whole library. The page loads the
+        // newest N across every type and the tabs then filter that slice in
+        // the browser, so the tab label ("Images · 77") and the shelf under it
+        // disagreed with no explanation, and the note said "60 of 87" on a tab
+        // showing neither number.
         <p className="wa-shelfnote">
-          Showing the newest <b>{shown}</b> of <b>{totalAll}</b>.{" "}
+          Showing <b>{shelf.length}</b> of <b>{tabTotal}</b>{" "}
+          {tab === "blog" ? "articles" : `${tab}s`}.{" "}
           <Link to={`?show=${nextShow}`} preventScrollReset>Show older pieces →</Link>
         </p>
       )}
