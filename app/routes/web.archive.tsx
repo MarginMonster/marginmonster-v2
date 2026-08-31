@@ -796,7 +796,10 @@ export default function WebArchive() {
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
         <p className="wa-shelfnote">⏳ Un-kept videos &amp; photos clear after 30 days — open a piece and hit <b>Keep</b> to save it for good.</p>
       )}
-      {nextShow != null && (
+      {/* Only when there is genuinely more of THIS type to load. The library
+          can be past the page size while the open tab is already complete —
+          the Videos tab read “Showing 9 of 9 videos. Show older pieces→”. */}
+      {nextShow != null && shelf.length < tabTotal && (
         // The oldest pieces are the ones nearest the 30-day clear, so "older"
         // must stay reachable — Keep is only available from the viewer here.
         //
