@@ -1,4 +1,5 @@
 import { db } from "../db.server";
+import { sanitizeArticleHtml } from "./sanitize-html";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { langDirective } from "./content-lang";
@@ -64,6 +65,13 @@ Return ONLY the HTML body content (h1, h2, p, ul, li, strong tags only — no ht
       const lastClose = html.lastIndexOf("</");
       const lastOpen = html.lastIndexOf("<");
       if (lastOpen > lastClose) html = html.slice(0, lastOpen).trim(); // drop a dangling partial tag
+      // SANITIZE ONCE, HERE. This HTML is rendered into the merchant’s Archive
+      // with dangerouslySetInnerHTML and published to their storefront, and
+      // nothing anywhere sanitized it. The model does not have to be hostile to
+      // emit a <script> or an onerror= — a product description that looks like
+      // markup is enough. Allowlist, so a tag nobody anticipated is dropped
+      // rather than admitted.
+      html = sanitizeArticleHtml(html);
 
       // CHECK THE ARTICLE BEFORE ADDING THE FOOTER.
       //

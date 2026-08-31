@@ -131,7 +131,7 @@ function renderEmailHtml(e: {
       <tr><td style="padding:8px 32px 18px;font:800 24px/1.25 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14121F;">${esc(e.subject)}</td></tr>
       ${body}
       <tr><td style="padding:8px 32px 30px;">
-        <a href="${href}" style="display:inline-block;background:#14121F;color:#FFD778;text-decoration:none;font:800 15px/1 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:14px 26px;border-radius:10px;">${esc(e.cta)} &nbsp;→</a>
+        <a href="${esc(href)}" style="display:inline-block;background:#14121F;color:#FFD778;text-decoration:none;font:800 15px/1 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:14px 26px;border-radius:10px;">${esc(e.cta)} &nbsp;→</a>
       </td></tr>
       <tr><td style="padding:18px 32px 26px;border-top:1px solid #EEE9DC;font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#8A8598;">
         Sent with 🏝️ EasyMode · ${optOut}

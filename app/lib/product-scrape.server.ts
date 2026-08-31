@@ -306,7 +306,17 @@ export async function resolveImageOrPage(input: string): Promise<{ image: string
   try {
     const p = await scrapeProductPage(url);
     if (p.image && (await isDirectImage(p.image))) return { image: p.image, scrapedTitle: p.title };
-    if (p.image) return { image: p.image, scrapedTitle: p.title }; // trust it; the pipeline degrades if it 404s
+    // "Trust it" applied to a URL the SCRAPED PAGE chose, not one the merchant
+    // typed — an og:image pointing at a private host would be handed straight
+    // to the render pipeline, which downloads it with no check of its own. The
+    // host still has to pass; only the is-it-really-an-image part is trusted.
+    if (p.image) {
+      try {
+        const iu = new URL(p.image);
+        if (!/^https?:$/.test(iu.protocol) || isBlockedHost(iu.hostname)) return { image: null, why: "that page’s image link isn’t allowed" };
+      } catch { return { image: null, why: "that page’s image link couldn’t be read" }; }
+      return { image: p.image, scrapedTitle: p.title };
+    }
     return { image: null, why: "we couldn't find a product image on that page" };
   } catch (e) {
     return { image: null, why: e instanceof Error ? e.message.replace(/\.$/, "") : "we couldn't read that link" };
