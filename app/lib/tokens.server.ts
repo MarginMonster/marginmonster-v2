@@ -20,7 +20,14 @@ export class InsufficientTokensError extends Error {
 
 /** Total tokens available right now = (monthly allowance not yet used) + top-up. */
 export function tokensRemaining(plan: Pick<Plan, "tokensIncluded" | "tokensUsed" | "tokensExtra">): number {
-  return Math.max(0, plan.tokensIncluded - plan.tokensUsed) + plan.tokensExtra;
+  // Both counters are clamped before use. A NEGATIVE tokensUsed inflates the
+  // wallet — included - (-10) is included + 10, tokens conjured from nothing —
+  // and the concurrent-refund hole below could produce one. A negative
+  // tokensExtra (legacy, from the pre-CAS double-spend) does the opposite: it
+  // is silently re-subtracted from the merchant's fresh allowance every month
+  // forever, with nothing in the UI to explain where the tokens went. Neither
+  // is a state the wallet should transact on.
+  return Math.max(0, plan.tokensIncluded - Math.max(0, plan.tokensUsed)) + Math.max(0, plan.tokensExtra);
 }
 
 /**
@@ -50,13 +57,28 @@ export function planTrialing(plan: { trialEndsAt?: Date | string | null } | null
 }
 
 /** Roll the monthly allowance over if the billing period has elapsed. Returns
- *  the (possibly refreshed) plan. */
+ *  the (possibly refreshed) plan.
+ *
+ *  THE ROLL HAS TO HAPPEN EXACTLY ONCE.
+ *
+ *  This decides from the caller's in-memory plan object and then wrote
+ *  `tokensUsed: 0` unconditionally. deductFromWallet calls it INSIDE its retry
+ *  loop, and app.tsx calls it from a page loader, so two requests routinely
+ *  hold the same stale row at a period boundary. Both saw an elapsed period,
+ *  both reset. The first then spent 50 tokens — a write its compare-and-swap
+ *  correctly applied — and the second's blind reset erased it. The wallet is
+ *  guarded against concurrent SPENDS and was wide open on the roll between
+ *  them, which also zeroed blogUsed/videoUsed and handed back the quota.
+ *
+ *  Conditional on periodStart not having moved, so only one roll lands, then
+ *  re-read: whether we rolled it or lost to someone who did, the caller must
+ *  continue from what is actually in the row, not from what it assumed. */
 export async function refreshPeriod(plan: Plan): Promise<Plan> {
   if (Date.now() - new Date(plan.periodStart).getTime() < PERIOD_MS) return plan;
   const tier = resolveTierKey(plan.type);
   const monthly = tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded;
-  return db.plan.update({
-    where: { id: plan.id },
+  await db.plan.updateMany({
+    where: { id: plan.id, periodStart: plan.periodStart },
     data: {
       periodStart: new Date(),
       tokensUsed: 0,
@@ -65,6 +87,9 @@ export async function refreshPeriod(plan: Plan): Promise<Plan> {
       videoUsed: 0,
     },
   });
+  // The row has moved either way. Falling back to the caller's object covers
+  // the row having been deleted mid-flight, which must not throw here.
+  return (await db.plan.findUnique({ where: { id: plan.id } })) ?? plan;
 }
 
 /** What this plan can actually spend right now.
@@ -83,9 +108,13 @@ export async function refreshPeriod(plan: Plan): Promise<Plan> {
  *  what the HUD already displayed. Making it true here also keeps tokensUsed a
  *  COMPLETE record of trial spend, which is what makes the ceiling keep working. */
 function spendableNow(plan: Plan): number {
-  const allowance = Math.max(0, plan.tokensIncluded - plan.tokensUsed);
-  if (planTrialing(plan)) return Math.min(allowance, Math.max(0, TRIAL_TOKEN_CAP - plan.tokensUsed));
-  return allowance + plan.tokensExtra;
+  // Clamped for the reasons given on tokensRemaining — including the trial
+  // ceiling, which a negative tokensUsed would otherwise raise.
+  const used = Math.max(0, plan.tokensUsed);
+  const extra = Math.max(0, plan.tokensExtra);
+  const allowance = Math.max(0, plan.tokensIncluded - used);
+  if (planTrialing(plan)) return Math.min(allowance, Math.max(0, TRIAL_TOKEN_CAP - used));
+  return allowance + extra;
 }
 
 /** Hard trial ceiling: during the free trial, total spend can't pass
@@ -208,13 +237,58 @@ export async function refundTokens(shopId: string, amount: number, fromExtra?: n
   const rest = amount - toExtra;
   // Never decrement tokensUsed below zero — that would be allowance the current
   // period never spent, i.e. tokens conjured from nothing.
-  const toAllowance = Math.min(rest, plan.tokensUsed);
+  const toAllowance = Math.min(rest, Math.max(0, plan.tokensUsed));
   const unattributed = rest - toAllowance;
 
-  await db.plan.update({
-    where: { id: plan.id },
-    data: { tokensUsed: { decrement: toAllowance }, tokensExtra: { increment: toExtra } },
-  });
+  // THE CLAMP AND THE WRITE HAVE TO BE ONE STEP.
+  //
+  // Clamping against the value just read and then issuing an unconditional
+  // decrement is the same read-then-write the spend path was fixed for, and it
+  // fails in the expensive direction. Two refunds can genuinely overlap — the
+  // worker's terminal-failure refund (job-queue.server.ts) and a route's catch
+  // block share one event loop — and both clamped against the SAME stale
+  // tokensUsed. With 10 used and two 60-token refunds, both computed
+  // toAllowance = 10 and both decremented: tokensUsed landed at -10. A negative
+  // there is not merely untidy, it MINTS tokens, because the allowance is
+  // computed as included - used.
+  //
+  // The two buckets need different treatment, so they get separate writes:
+  //
+  //   tokensExtra is only ever INCREMENTED by a refund. The database applies
+  //   that atomically and it has no floor to breach, so it needs no guard and
+  //   must not be made to wait on one — the merchant paid cash for it.
+  //
+  //   tokensUsed has a floor at zero, so its decrement is conditional on the
+  //   value the amount was clamped against. If another refund moved it, we
+  //   re-read and re-clamp rather than writing through a stale figure.
+  if (toExtra > 0) {
+    await db.plan.update({ where: { id: plan.id }, data: { tokensExtra: { increment: toExtra } } });
+  }
+
+  let owed = toAllowance;
+  for (let attempt = 0; attempt < 5 && owed > 0; attempt++) {
+    const cur = await db.plan.findUnique({ where: { id: plan.id }, select: { tokensUsed: true } });
+    if (!cur) break;
+    const take = Math.min(owed, Math.max(0, cur.tokensUsed));
+    if (take <= 0) break; // nothing left of this period's spend to unwind
+    const applied = await db.plan.updateMany({
+      where: { id: plan.id, tokensUsed: cur.tokensUsed },
+      data: { tokensUsed: { decrement: take } },
+    });
+    if (applied.count === 1) {
+      owed -= take;
+      break;
+    }
+    // Someone else moved it between the read and the write — re-read and re-clamp.
+  }
+  if (owed > 0) {
+    // Under-refunded rather than over-refunded, which is the safe direction, but
+    // the merchant is owed and nobody would otherwise know.
+    console.warn(
+      `[tokens] ${shopId}: ${owed} of a ${amount}-token refund could not be applied — ` +
+        `the wallet kept moving under it. This is owed to the merchant.`
+    );
+  }
 
   if (unattributed > 0) {
     console.warn(
