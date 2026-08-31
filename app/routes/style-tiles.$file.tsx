@@ -25,9 +25,15 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   // The Cartoon Avatar cover — the default character in Pixar style; also
   // kicks the default set.
   if (!m?.[1] && key === "cover") {
-    ensureAllStyleTiles();
+    // Disk FIRST. ensureAllStyleTiles awaits merchantBusy(), which is a
+    // db.job.count — so calling it before checking the file meant every
+    // cache HIT on this public, unauthenticated, highly-cacheable image URL
+    // ran a database count. Anyone with curl could turn an image request
+    // into database load, and an ordinary picker page did it on every view.
+    // The walker only has work to do when the tile is missing anyway.
     const real = styleTilePath(DEFAULT_TILE_CHARACTER, "pixar");
     if (real) return serveFile(real, "public, max-age=600");
+    ensureAllStyleTiles();
     const fb = portraitFile(DEFAULT_TILE_CHARACTER);
     return fb ? serveFile(fb, "no-store") : new Response("Not ready", { status: 404 });
   }
