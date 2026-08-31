@@ -1,5 +1,6 @@
 import type { BrandProfile, Plan } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
+import { brandBlock } from "./brand-prompt";
 
 export interface MarketingPlan {
   headline: string;
@@ -24,16 +25,13 @@ export async function generateMarketingPlan(
   brandProfile: BrandProfile,
   plan: Plan
 ): Promise<MarketingPlan> {
-  const voice = JSON.parse(brandProfile.voiceJson);
-  const products = JSON.parse(brandProfile.productJson);
+  // One shared block, and only the lines we can actually fill.
+  const brand = brandBlock(brandProfile);
   const focus = PLAN_FOCUS[plan.type] || PLAN_FOCUS.GROWTH;
 
   const prompt = `You are a senior e-commerce growth strategist. Build a concrete 4-week marketing plan for this Shopify store.
 
-Store: ${products.storeName || "the store"}
-Positioning: ${products.positioning || "N/A"}
-Brand tone: ${voice.tone}
-Brand values: ${(voice.values || []).join(", ")}
+${brand}
 Current focus: ${focus}
 Weekly budget available: $${plan.weeklyBudget || 150}
 

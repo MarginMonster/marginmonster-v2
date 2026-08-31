@@ -47,7 +47,7 @@ export const PLAN_TIERS: PlanTier[] = [
     campaignAutopilot: false,
     features: [
       "AI image ads built on famous ad formats",
-      "SEO blog posts, written & published for you",
+      "SEO blog posts, written for you and ready to paste",
       "Captions + hashtags, auto-posted to TikTok, IG & Facebook",
       "AI product listings & ad copy",
     ],

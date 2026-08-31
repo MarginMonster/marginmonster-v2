@@ -763,7 +763,7 @@ export async function scheduleExistingAssets(
     name?: string;
     platforms?: string[];
   }
-): Promise<{ ok: true; id: string; scheduled: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; id: string; scheduled: number; skipped: number } | { ok: false; error: string }> {
   const ids = [...new Set((params.assetIds || []).filter(Boolean))].slice(0, 60);
   if (!ids.length) return { ok: false, error: "Pick at least one thing from your Archive." };
   const days = Math.max(1, Math.min(90, Math.round(params.days || 30)));
@@ -778,9 +778,43 @@ export async function scheduleExistingAssets(
     select: { id: true, type: true, title: true, bodyJson: true, metaJson: true },
   });
   if (!assets.length) return { ok: false, error: "None of those are postable — pick videos, images or articles." };
+
+  // DON'T DOUBLE-BOOK.
+  //
+  // Nothing stopped the same asset being scheduled into two live campaigns:
+  // pick five things, repost, then pick the same five again, and the poster
+  // dutifully publishes each of them twice to the merchant's real accounts.
+  // Duplicate posts are the one thing every platform punishes. Anything
+  // already sitting in a slot that has not gone out yet is dropped here.
+  // Something already POSTED is fair game — reposting last month's winner is
+  // the whole point of this screen.
+  const live = await db.questline.findMany({
+    where: { shopId, status: { in: ["ACTIVE", "PAUSED"] } },
+    select: { scheduleJson: true },
+  });
+  const pending = new Set<string>();
+  for (const l of live) {
+    for (const s of parseSchedule(l.scheduleJson).slots) {
+      // POSTED is done and FAILED will never fire, so neither blocks a repost.
+      if (s.assetId && s.status !== "POSTED" && s.status !== "FAILED") pending.add(s.assetId);
+    }
+  }
+  // Counted off the real assets, not the raw ids, so junk on the wire cannot
+  // inflate the number we report back.
+  const skipped = assets.filter((a) => pending.has(a.id)).length;
+
   // Keep the merchant's chosen order; findMany doesn't preserve it.
   const byId = new Map(assets.map((a) => [a.id, a]));
-  const ordered = ids.map((i) => byId.get(i)).filter(Boolean) as typeof assets;
+  const ordered = ids.map((i) => byId.get(i)).filter(Boolean).filter((a) => !pending.has(a!.id)) as typeof assets;
+  if (!ordered.length) {
+    return {
+      ok: false,
+      error:
+        skipped === 1
+          ? "That one is already scheduled to go out — check Running above."
+          : "Those are all already scheduled to go out — check Running above.",
+    };
+  }
 
   const typeOf = (t: string): ObjectiveType => (t === "VIDEO_AD" ? "video" : t === "IMAGE_AD" ? "image" : "blog");
   const start = new Date();
@@ -834,7 +868,7 @@ export async function scheduleExistingAssets(
       progress: 0,
     },
   });
-  return { ok: true, id: q.id, scheduled: slots.length };
+  return { ok: true, id: q.id, scheduled: slots.length, skipped };
 }
 
 export async function abandonQuestline(shopId: string, questlineId: string): Promise<{ ok: boolean; refunded: number }> {

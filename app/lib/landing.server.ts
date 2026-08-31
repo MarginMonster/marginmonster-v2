@@ -1,5 +1,6 @@
 import type { BrandProfile } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
+import { brandBlock } from "./brand-prompt";
 
 export interface LandingContent {
   hero: string;
@@ -14,8 +15,8 @@ export async function generateLandingContent(
   productName: string,
   goal: string
 ): Promise<LandingContent> {
-  const voice = JSON.parse(brandProfile.voiceJson);
-  const products = JSON.parse(brandProfile.productJson);
+  // One shared block, and only the lines we can actually fill.
+  const brand = brandBlock(brandProfile);
 
   const goalLine =
     goal === "LEAD"
@@ -26,9 +27,7 @@ export async function generateLandingContent(
 
   const prompt = `Write a high-converting landing page for a Shopify product.
 
-Brand tone: ${voice.tone}
-Brand vocabulary: ${(voice.vocabulary || []).join(", ")}
-Positioning: ${products.positioning || ""}
+${brand}
 Product: ${productName}
 Goal: ${goalLine}
 

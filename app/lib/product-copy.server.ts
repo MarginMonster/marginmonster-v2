@@ -1,5 +1,6 @@
 import type { BrandProfile } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
+import { brandBlock } from "./brand-prompt";
 
 export interface ProductCopy {
   seoTitle: string;
@@ -13,14 +14,12 @@ export async function generateProductCopy(
   productName: string,
   notes: string
 ): Promise<ProductCopy> {
-  const voice = JSON.parse(brandProfile.voiceJson);
-  const products = JSON.parse(brandProfile.productJson);
+  // One shared block, and only the lines we can actually fill.
+  const brand = brandBlock(brandProfile);
 
   const prompt = `Write high-converting, SEO-friendly product copy for a Shopify store.
 
-Brand tone: ${voice.tone}
-Brand vocabulary: ${(voice.vocabulary || []).join(", ")}
-Brand positioning: ${products.positioning || ""}
+${brand}
 
 Product: ${productName}
 Extra notes from the merchant: ${notes || "none"}

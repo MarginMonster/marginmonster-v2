@@ -480,7 +480,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // "needs X, you have Y" before anything is queued, so a burst the
       // merchant can't afford costs them nothing and says so — far better
       // than queueing four and failing the fifth mid-run.
-      await spendTokens(shop.id, TOKEN_COST.image * n);
+      // Capture the split, like the video path above. spendTokens draws from
+      // the expiring allowance first and the purchased top-up only after it
+      // runs out, and the job carries that split so a terminal failure refunds
+      // to the same place. Discarding it meant an image paid for with bought,
+      // never-expiring tokens came back as allowance and expired at the next
+      // period roll — the merchant paid cash for those.
+      const imgFromExtra = (await spendTokens(shop.id, TOKEN_COST.image * n)).fromExtra;
+      const imgPerPieceFromExtra = Math.floor(imgFromExtra / n);
       // A burst exists to give the merchant a SPREAD to choose from, so when
       // they haven't pinned a template or format, walk the format list instead
       // of rendering the same composition n times. Pin one and every shot in
@@ -504,14 +511,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           avatarId: service ? undefined : avatarId, avatarVariant,
           wear: !!avatarId && wear && !service,
           serviceMode: service, scene, prePaid: true,
+          chargedTokens: TOKEN_COST.image, chargedFromExtra: imgPerPieceFromExtra,
         }, burstRunAt(i));
       }
       return json({ ok: true, queued: "image", count: n });
     }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
-      await spendTokens(shop.id, TOKEN_COST.blog);
-      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productUrl, productDescription: direction, serviceMode: service, prePaid: true });
+      const blogFromExtra = (await spendTokens(shop.id, TOKEN_COST.blog)).fromExtra;
+      await enqueueJob(shop.id, "GENERATE_BLOG_POST", {
+        productTitle, productUrl, productDescription: direction, serviceMode: service,
+        prePaid: true, chargedTokens: TOKEN_COST.blog, chargedFromExtra: blogFromExtra,
+      });
       return json({ ok: true, queued: "article" });
     }
   } catch (e) {
@@ -1458,7 +1469,7 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            <div className="ws-tok"><span className="tt">This {noun}</span><span className="tb"><b>{baseCost}</b><i>tokens</i></span></div>
+            <div className="ws-tok"><span className="tt">This {noun}</span><span className="tb"><b>{cost}</b><i>tokens</i></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
             {/* The trial cap is the ONE spend failure the merchant can clear

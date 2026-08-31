@@ -119,10 +119,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const about = ((form.get("about") as string) || "").trim();
     if (!tone && !about) return json({ error: "Tell us a little about the brand so content sounds like you." });
     const voiceJson = JSON.stringify({ tone: tone || "friendly, confident, modern", tagline, about, vocabulary: [], values: [] });
+    // "{}" here meant every prompt that reads productJson.positioning got the
+    // literal string "undefined" for a web merchant. What the merchant typed
+    // in "about" IS their positioning, so carry it across — merged into any
+    // existing profile rather than replacing it, because a store that also
+    // connected Shopify has real categories, avgPrice and storeName in there
+    // that this form knows nothing about and must not wipe.
+    const prior = await db.brandProfile.findUnique({
+      where: { shopId: shop.id },
+      select: { productJson: true },
+    });
+    let productMeta: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(prior?.productJson || "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) productMeta = parsed;
+    } catch { /* a corrupt blob is worth less than what the merchant just typed */ }
+    if (about) productMeta.positioning = about.slice(0, 600);
+    // Shop rows for the web have a synthetic domain and no display name, so
+    // the store name comes off the account. Never overwritten — a Shopify
+    // import knows the real storefront name.
+    if (!productMeta.storeName && account.name) productMeta.storeName = account.name;
+    const productJson = JSON.stringify(productMeta);
     await db.brandProfile.upsert({
       where: { shopId: shop.id },
-      create: { shopId: shop.id, voiceJson, visualJson: "{}", productJson: "{}" },
-      update: { voiceJson },
+      create: { shopId: shop.id, voiceJson, visualJson: "{}", productJson },
+      update: { voiceJson, productJson },
     });
     // Content language rides the brand form — it's part of the brand's voice.
     const { normalizeContentLang } = await import("../lib/content-lang");
@@ -463,6 +484,22 @@ export default function WebDashboard() {
             <div className="wb-note">🪙 {t.tokens.toLocaleString("en-US")} tokens/mo</div>
             <div className="wb-note">{t.capacity}</div>
             <ul className="wb-feats">{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
+            {/* Flipping to Annual re-prices every card, including the one the
+                merchant is already on — which had no buy button, because the
+                subscribe form only renders for OTHER tiers. So the annual
+                price for your own plan was displayed with no way on earth to
+                take it. It cannot simply be made clickable either: every
+                checkout opens a FRESH subscription, so buying your own tier
+                again bills you twice — which is exactly what the duplicate
+                guard in the action exists to stop. Say what the path actually
+                is instead of dangling a price. */}
+            {d.tier === t.key && annual && (
+              <p className="wb-note" style={{ marginTop: 8 }}>
+                Already on this plan. To move it to annual billing, email{" "}
+                <a href="mailto:hello@easymodeapp.com?subject=Switch%20me%20to%20annual%20billing">hello@easymodeapp.com</a>{" "}
+                and we&apos;ll switch it over without you losing the period you&apos;ve paid for.
+              </p>
+            )}
             {d.tier === t.key && d.billingOn && (
               d.cancelPending ? (
                 <>

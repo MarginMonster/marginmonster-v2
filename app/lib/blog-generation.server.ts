@@ -3,6 +3,7 @@ import { sanitizeArticleHtml } from "./sanitize-html";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { langDirective } from "./content-lang";
+import { brandBlock } from "./brand-prompt";
 
 // Blog posts are the SEO Autopilot product: the goal is always organic
 // search traffic — rank for buyer-intent keywords, then convert.
@@ -18,17 +19,14 @@ export async function generateBlogPost(
   productTitle: string,
   productDescription: string
 ): Promise<string> {
-  const voice = JSON.parse(brandProfile.voiceJson);
-  const products = JSON.parse(brandProfile.productJson);
+  // One shared block, and only the lines we can actually fill.
+  const brand = brandBlock(brandProfile);
   const intent = SEO_BLOG_INTENT;
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
 
   const prompt = `Write a blog post for the store with this brand profile:${langDirective(contentLang)}
 
-Tone: ${voice.tone}
-Vocabulary to use: ${voice.vocabulary?.join(", ")}
-Brand values: ${voice.values?.join(", ")}
-Brand positioning: ${products.positioning}
+${brand}
 
 Product to feature: ${productTitle}
 Product details: ${productDescription?.slice(0, 400) || ""}

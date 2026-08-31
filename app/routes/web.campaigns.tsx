@@ -108,7 +108,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const dropMap: Record<number, { video: number; image: number }> = {};
   const campaigns: {
     id: string; name: string; status: string; image: string | null;
-    posted: number; total: number; next: string | null; holdsForReview: boolean;
+    posted: number; overdue: number; total: number; next: string | null; holdsForReview: boolean;
     upcoming: { when: string; type: string; product: string; status: string }[];
   }[] = [];
 
@@ -116,6 +116,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (q.status === "COMPLETE") continue;
     const slots = parseSchedule(q.scheduleJson).slots;
     let posted = 0;
+    let overdue = 0;
     let next: { date: string; time: string } | null = null;
     for (const s of slots) {
       if (s.status === "POSTED") posted++;
@@ -124,9 +125,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const cell = (dropMap[d] = dropMap[d] || { video: 0, image: 0 });
         cell[s.type]++;
       }
-      if ((s.status === "SCHEDULED" || s.status === "READY" || s.status === "FORGING") && s.date >= todayStr) {
+      const waiting = s.status === "SCHEDULED" || s.status === "READY" || s.status === "FORGING";
+      if (waiting && s.date >= todayStr) {
         if (!next || s.date < next.date || (s.date === next.date && s.time < next.time)) next = { date: s.date, time: s.time };
       }
+      // A slot whose date has passed while still waiting — or one that failed —
+      // is not a future drop, and it is emphatically not a posted one. Counting
+      // it nowhere is what let the card say "All drops posted" about a campaign
+      // that had posted nothing at all.
+      if ((waiting && s.date < todayStr) || s.status === "FAILED") overdue++;
     }
     if (q.template === "MANUAL") continue; // one-off container, not a campaign
     const upcoming = slots
@@ -136,7 +143,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .map((s) => ({ when: fmtWhen(s.date, s.time), type: s.type, product: s.productTitle || "", status: s.status }));
     campaigns.push({
       id: q.id, name: q.name, status: q.status, image: q.productImageUrl,
-      posted, total: slots.length,
+      posted, overdue, total: slots.length,
       // A REVIEW_FIRST campaign is never published by the scheduler — the
       // poster skips those questlines outright. The card must not keep saying
       // "Auto-posts to …" about one.
@@ -303,7 +310,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       platforms: (() => { try { return JSON.parse((form.get("platforms") as string) || "[]"); } catch { return []; } })(),
     });
     return res.ok
-      ? json({ launched: true, reposted: res.scheduled })
+      ? json({ launched: true, reposted: res.scheduled, alreadyQueued: res.skipped })
       : json({ error: res.error });
   }
   if (intent === "pauseToggle") {
@@ -368,7 +375,12 @@ export default function WebCampaigns() {
         assetIds: JSON.stringify(pickedAssets),
         days: String(spreadDays),
         time: postTime,
-        platforms: JSON.stringify(d.linked),
+        // Deliberately NOT pinned to the accounts linked right now. Freezing
+        // them meant a merchant who connected Instagram a week into a 30-day
+        // campaign — the most likely next action after seeing the "Connect an
+        // account" chip — got nothing there for the rest of the month, while
+        // this page's own "Auto-posts to" panel listed it. Omitted, so the
+        // poster uses whatever is linked at the time it publishes.
       },
       { method: "post" }
     );
@@ -382,7 +394,12 @@ export default function WebCampaigns() {
         plan: plan.key,
         avatarId: avatarId ?? "",
         reviewMode,
-        platforms: JSON.stringify(d.linked),
+        // Deliberately NOT pinned to the accounts linked right now. Freezing
+        // them meant a merchant who connected Instagram a week into a 30-day
+        // campaign — the most likely next action after seeing the "Connect an
+        // account" chip — got nothing there for the rest of the month, while
+        // this page's own "Auto-posts to" panel listed it. Omitted, so the
+        // poster uses whatever is linked at the time it publishes.
         products: JSON.stringify(picked.map((i) => d.catalog[i]).filter(Boolean).map((p) => ({ title: p.title, image: p.imageUrl, url: p.url }))),
       },
       { method: "post" }
@@ -412,6 +429,11 @@ export default function WebCampaigns() {
             {"reposted" in actionData && actionData.reposted
               ? `Scheduled ${actionData.reposted} post${actionData.reposted === 1 ? "" : "s"} from your Archive — no tokens spent.`
               : "Campaign is live — the first drops are being created now."}
+            {/* Say what we dropped rather than silently scheduling fewer than
+                the merchant picked. */}
+            {"alreadyQueued" in actionData && Number(actionData.alreadyQueued) > 0
+              ? ` ${Number(actionData.alreadyQueued)} of them ${Number(actionData.alreadyQueued) === 1 ? "was" : "were"} already scheduled, so ${Number(actionData.alreadyQueued) === 1 ? "it" : "they"} won't go out twice.`
+              : ""}
           </p> : null}
 
       {/* ---- running campaigns ---- */}
@@ -425,7 +447,17 @@ export default function WebCampaigns() {
                   <span className="wc-card-img" style={c.image ? { backgroundImage: `url(${c.image})` } : undefined} />
                   <div className="wc-card-id">
                     <b>{c.name}</b>
-                    <span>{c.status === "PAUSED" ? "Paused" : c.next ? `Next drop ${c.next}` : "All drops posted"}</span>
+                    <span>
+                      {c.status === "PAUSED"
+                        ? "Paused"
+                        : c.next
+                          ? `Next drop ${c.next}`
+                          : c.overdue > 0
+                            ? `${c.overdue} drop${c.overdue === 1 ? "" : "s"} still waiting`
+                            : c.posted > 0
+                              ? "All drops posted"
+                              : "Nothing posted yet"}
+                    </span>
                   </div>
                 </div>
                 <div className="wc-bar" role="img" aria-label={`${c.posted} of ${c.total} posted`}>
@@ -450,7 +482,7 @@ export default function WebCampaigns() {
                     {c.status === "PAUSED" ? "Resume" : "Pause"}
                   </button>
                   <button type="button" className="danger" disabled={busy}
-                    onClick={() => { if (confirm(`Stop "${c.name}"? Unposted drops are cancelled and their tokens refunded.`)) submit({ intent: "stop", campaignId: c.id }, { method: "post" }); }}>
+                    onClick={() => { if (confirm(`Stop "${c.name}"? Drops that haven't started yet are cancelled and refunded — anything already made is yours to keep and is not refunded.`)) submit({ intent: "stop", campaignId: c.id }, { method: "post" }); }}>
                     Stop
                   </button>
                 </div>

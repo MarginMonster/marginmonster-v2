@@ -53,7 +53,7 @@ const EN: LandingCopy = {
   features: [
     { icon: "🎬", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
     { icon: "🎨", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, block build, claymation — or an Anthem your avatar sings on camera." },
-    { icon: "✍️", title: "SEO articles on autopilot", body: "Buyer-intent articles written and published for you, pulling in free Google traffic month after month." },
+    { icon: "✍️", title: "SEO articles on autopilot", body: "Buyer-intent articles written for you as ready-to-paste HTML, pulling in free Google traffic month after month." },
     { icon: "📣", title: "Auto-posted for you", body: "Every drop goes out to TikTok, Instagram & Facebook on a schedule — captions and hashtags written to travel." },
     { icon: "🪄", title: "One-tap autopilot", body: "Pick a goal. EasyMode builds a full month of content, launches it, and scales what works." },
     { icon: "🎥", title: "Cinematic Commercials", body: "A multi-scene story ad with a voice-over and a packshot finale — big-budget TV energy, built from one product photo." },
@@ -87,7 +87,7 @@ const EN: LandingCopy = {
     tiers: {
       STARTER: [
         "AI image ads built on famous ad formats",
-        "SEO articles, written & published for you",
+        "SEO articles, written for you and ready to paste",
         "Captions + hashtags, auto-posted to TikTok, IG & Facebook",
         "AI product listings & ad copy",
       ],
@@ -159,7 +159,7 @@ const ES: LandingCopy = {
   features: [
     { icon: "🎬", title: "Videos UGC que venden", body: "Presentadores de IA sostienen tu producto y lo presentan — en formato vertical para TikTok, Reels y Shorts." },
     { icon: "🎨", title: "Anuncios cartoon virales", body: "Tu producto en los formatos que internet ya comparte — anime, figura de colección, bloques, claymation — o un Anthem que tu avatar canta a cámara." },
-    { icon: "✍️", title: "Artículos SEO en piloto automático", body: "Artículos con intención de compra, escritos y publicados por ti, atrayendo tráfico gratuito de Google mes tras mes." },
+    { icon: "✍️", title: "Artículos SEO en piloto automático", body: "Artículos con intención de compra, escritos para ti en HTML listo para pegar, atrayendo tráfico gratuito de Google mes tras mes." },
     { icon: "📣", title: "Publicado por ti", body: "Cada pieza sale a TikTok, Instagram y Facebook según un calendario — con textos y hashtags pensados para viajar." },
     { icon: "🪄", title: "Piloto automático en un toque", body: "Elige un objetivo. EasyMode crea un mes entero de contenido, lo lanza y escala lo que funciona." },
   ],
@@ -190,7 +190,7 @@ const ES: LandingCopy = {
     tiers: {
       STARTER: [
         "Anuncios de imagen con IA basados en formatos famosos",
-        "Artículos SEO, escritos y publicados por ti",
+        "Artículos SEO, escritos para ti y listos para pegar",
         "Textos + hashtags, publicados en TikTok, IG y Facebook",
         "Fichas de producto y textos de anuncio con IA",
       ],
@@ -262,7 +262,7 @@ const FR: LandingCopy = {
   features: [
     { icon: "🎬", title: "Des vidéos UGC qui vendent", body: "Des présentateurs IA tiennent votre produit et en parlent — au format vertical pour TikTok, Reels et Shorts." },
     { icon: "🎨", title: "Pubs cartoon virales", body: "Votre produit dans les formats que l'internet partage déjà — anime, figurine en boîte, briques, claymation — ou un Anthem que votre avatar chante face caméra." },
-    { icon: "✍️", title: "Articles SEO en pilote auto", body: "Des articles à intention d'achat, rédigés et publiés pour vous, qui attirent du trafic Google gratuit mois après mois." },
+    { icon: "✍️", title: "Articles SEO en pilote auto", body: "Des articles à intention d'achat, rédigés pour vous en HTML prêt à coller, qui attirent du trafic Google gratuit mois après mois." },
     { icon: "📣", title: "Publication automatique", body: "Chaque création part sur TikTok, Instagram et Facebook selon un calendrier — légendes et hashtags pensés pour voyager." },
     { icon: "🪄", title: "Pilote auto en un geste", body: "Choisissez un objectif. EasyMode crée un mois entier de contenu, le lance et amplifie ce qui marche." },
   ],
@@ -293,7 +293,7 @@ const FR: LandingCopy = {
     tiers: {
       STARTER: [
         "Visuels publicitaires IA inspirés des formats célèbres",
-        "Articles SEO, rédigés et publiés pour vous",
+        "Articles SEO, rédigés pour vous et prêts à coller",
         "Légendes + hashtags, auto-publiés sur TikTok, IG et Facebook",
         "Fiches produit et textes publicitaires IA",
       ],
@@ -365,7 +365,7 @@ const DE: LandingCopy = {
   features: [
     { icon: "🎬", title: "UGC-Videos, die verkaufen", body: "KI-Presenter halten dein Produkt in der Hand und stellen es vor — vertikal formatiert für TikTok, Reels & Shorts." },
     { icon: "🎨", title: "Virale Cartoon-Ads", body: "Dein Produkt in den Formaten, die das Internet schon teilt — Anime, Sammelfigur, Klötzchen-Look, Knetanimation — oder ein Anthem, das dein Avatar vor der Kamera singt." },
-    { icon: "✍️", title: "SEO-Artikel auf Autopilot", body: "Kaufintention-Artikel, für dich geschrieben und veröffentlicht — kostenloser Google-Traffic, Monat für Monat." },
+    { icon: "✍️", title: "SEO-Artikel auf Autopilot", body: "Kaufintention-Artikel, für dich als fertiges HTML zum Einfügen geschrieben — kostenloser Google-Traffic, Monat für Monat." },
     { icon: "📣", title: "Automatisch gepostet", body: "Jeder Drop geht nach Zeitplan auf TikTok, Instagram & Facebook — mit Captions und Hashtags, die reisen." },
     { icon: "🪄", title: "Autopilot mit einem Tipp", body: "Wähle ein Ziel. EasyMode baut einen ganzen Content-Monat, startet ihn und skaliert, was funktioniert." },
   ],
@@ -396,7 +396,7 @@ const DE: LandingCopy = {
     tiers: {
       STARTER: [
         "KI-Werbebilder nach berühmten Ad-Formaten",
-        "SEO-Artikel, für dich geschrieben & veröffentlicht",
+        "SEO-Artikel, für dich geschrieben & bereit zum Einfügen",
         "Captions + Hashtags, automatisch auf TikTok, IG & Facebook",
         "KI-Produkttexte & Anzeigentexte",
       ],
