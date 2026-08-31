@@ -236,7 +236,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (payload.refunded) {
       const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
       const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
-      try { await spendTokens(shop.id, cost); }
+      // The RE-SPEND has its own split. The refund that preceded this put
+      // tokens back into whichever bucket paid the first time, but the wallet
+      // has moved on since — a period roll, a top-up, other spends — so the
+      // second charge can easily come out of the other bucket. Carrying the
+      // old chargedFromExtra forward would refund a purchased token as an
+      // expiring one on the next failure, which is the bug this field exists
+      // to prevent.
+      let retryFromExtra = 0;
+      try { retryFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
       catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
       // START CLEAN. A re-run is a fresh render the merchant is paying for
       // again, so it must not inherit the previous run's stage checkpoints:
@@ -246,7 +254,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const fresh = Object.fromEntries(
         Object.entries(payload as Record<string, unknown>).filter(([k]) => !k.startsWith("ck"))
       );
-      newPayload = JSON.stringify({ ...fresh, prePaid: true, refunded: false });
+      newPayload = JSON.stringify({ ...fresh, prePaid: true, refunded: false, chargedTokens: cost, chargedFromExtra: retryFromExtra });
     }
     await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date(), ...(newPayload ? { payload: newPayload } : {}) } });
     return json({ ok: "Retrying — back in the oven. 🔥" });
