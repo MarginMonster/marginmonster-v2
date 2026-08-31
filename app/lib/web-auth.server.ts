@@ -77,9 +77,16 @@ export type WebIdentity = {
 
 /** Create the account + its companion WEB shop. Throws on duplicate email.
  *  contentLang seeds the AI generation language from the landing toggle. */
+/** An error whose message is safe to show a visitor. Anything else that
+ *  escapes createWebAccount is an internal failure, and the signup route
+ *  says so generically rather than echoing it into the browser. */
+export class SignupError extends Error {}
+
+const EMAIL_TAKEN = "An account with that email already exists — log in instead.";
+
 export async function createWebAccount(email: string, password: string, name?: string, contentLang?: string, timezone?: string): Promise<Account> {
   const existing = await db.account.findUnique({ where: { email } });
-  if (existing) throw new Error("An account with that email already exists — log in instead.");
+  if (existing) throw new SignupError(EMAIL_TAKEN);
 
   // Do the slow, failable work BEFORE opening the transaction.
   const passwordHash = await hashPassword(password);
@@ -92,16 +99,28 @@ export async function createWebAccount(email: string, password: string, name?: s
   // page bounces to /web/login, logging in bounces straight back, and signing
   // up again is refused because the email is taken. A permanently locked-out
   // user, created by one transient database error, with no way back.
-  return db.$transaction(async (tx) => {
-    const account = await tx.account.create({
-      data: { email, passwordHash, name: name || null },
+  try {
+    return await db.$transaction(async (tx) => {
+      const account = await tx.account.create({
+        data: { email, passwordHash, name: name || null },
+      });
+      const shop = await tx.shop.create({
+        data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: lang, timezone: timezone || null },
+      });
+      await tx.connection.create({ data: { accountId: account.id, kind: "web", externalId: shop.id } });
+      return account;
     });
-    const shop = await tx.shop.create({
-      data: { domain: `web-${account.id}.easymode.app`, accessToken: "", contentLang: lang, timezone: timezone || null },
-    });
-    await tx.connection.create({ data: { accountId: account.id, kind: "web", externalId: shop.id } });
-    return account;
-  });
+  } catch (e) {
+    // The findUnique above is a check, not a lock. Two signups for the same
+    // address in the same instant both pass it and both reach the create,
+    // where the unique index stops the second — and Prisma’s P2002 message
+    // (constraint name, model, sometimes the query) was being returned
+    // verbatim to an unauthenticated browser. Same outcome, our words.
+    if (typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002") {
+      throw new SignupError(EMAIL_TAKEN);
+    }
+    throw e;
+  }
 }
 
 export async function loginWebAccount(email: string, password: string): Promise<Account | null> {

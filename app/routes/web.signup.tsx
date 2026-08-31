@@ -2,7 +2,7 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
-import { createWebAccount, getWebIdentity, webSessionRedirect } from "../lib/web-auth.server";
+import { createWebAccount, getWebIdentity, webSessionRedirect, SignupError } from "../lib/web-auth.server";
 import { isValidTimeZone } from "../lib/timezone";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
@@ -43,7 +43,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const account = await createWebAccount(email, password, name || undefined, lang, timezone);
     return webSessionRedirect(account);
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : "Couldn't create the account — try again." });
+    // Only messages we wrote go to the browser. Anything else — a Prisma
+    // fault, a connection drop — is logged and answered generically, because
+    // this endpoint is open to the internet.
+    if (e instanceof SignupError) return json({ error: e.message });
+    console.error("[signup] failed:", e);
+    return json({ error: "Couldn't create the account just now — try again in a moment." });
   }
 };
 
