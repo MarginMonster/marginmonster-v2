@@ -834,7 +834,21 @@ export default function WebStudio() {
   // Mirror the server: no presenter → the engine renders the video and its
   // surcharge is real. With a presenter the lipsync engine does the work, so
   // quoting a surcharge here would quote a fee we don't take.
-  const engineApplies = tab === "video" && !avatarId;
+  // QUOTE WHAT THE SERVER WILL CHARGE.
+  //
+  // This asked "is a presenter selected?", but the server asks "did a presenter
+  // ARRIVE?" — and avatarId is only submitted for the content types that use
+  // one (needsPresenterField). The picker state defaults to the brand face on
+  // arrival and is never cleared, so for Highlight, Commercial and Satisfying
+  // Close-Up the button saw a presenter, quoted no surcharge, and the server
+  // saw no presenter and took one: 225 tokens for a Veo video the button priced
+  // at 150, or 675 against a quoted 450 on a x3 burst. The note underneath also
+  // told the merchant the surcharge did not apply, while it did.
+  //
+  // Same condition as the hidden field, so the quote and the charge cannot
+  // disagree again.
+  const presenterWillBeSent = !!avatarId && needsPresenterField(contentType);
+  const engineApplies = tab === "video" && !presenterWillBeSent;
   const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
   // Re-clamp on every render rather than in an effect: switching from a ×10
   // image burst to the video tab must not quote — or charge — ten videos.
