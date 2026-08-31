@@ -127,7 +127,11 @@ export function ErrorBoundary() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* No <Meta />: the root meta export emits its own <title>, and two
             titles in one document is a coin toss over which the browser shows. */}
-        <title>{title} · EasyMode</title>
+        {/* One expression, not text + expression: React SSR splits mixed
+            children with a <!-- --> marker, and inside <title> that marker is
+            literal text — the tab read “That page isn’t here<!-- --> ·
+            EasyMode”. */}
+        <title>{`${title} · EasyMode`}</title>
         <Links />
       </head>
       <body style={{ margin: 0, background: "#F4F1E6", color: "#14201A", fontFamily: "Inter, -apple-system, sans-serif" }}>
