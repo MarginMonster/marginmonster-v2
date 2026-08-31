@@ -785,6 +785,18 @@ export default function WebStudio() {
   // post can deep-link shoppers straight to the buy page.
   const [pickedUrl, setPickedUrl] = useState("");
   const [catQuery, setCatQuery] = useState("");
+  // WHAT IS ON SCREEN, NOT WHAT IS IN THE DATABASE.
+  //
+  // The label quoted catalogCount — every row the shop has — over a grid that
+  // renders at most 60 tiles. A merchant with 300 products read "300 products"
+  // above 60 of them and had no way to know the other 240 existed, let alone
+  // that the search box was how to reach them. The count was true about the
+  // database and false about the page.
+  const CAT_TILES = 60;
+  const catFiltered = d.catalog.filter(
+    (c) => !catQuery.trim() || c.title.toLowerCase().includes(catQuery.trim().toLowerCase())
+  );
+  const catShown = catFiltered.slice(0, CAT_TILES);
   const [productSize, setProductSize] = useState("");
   const [showConnect, setShowConnect] = useState(false);
   const [storeInput, setStoreInput] = useState("");
@@ -1175,16 +1187,18 @@ export default function WebStudio() {
               <>
                 <div className="ws-lbl">
                   <span>Pick from your store</span>
-                  <span className="ws-opt">{d.catalogCount} product{d.catalogCount === 1 ? "" : "s"}</span>
+                  <span className="ws-opt">
+                    {catShown.length < d.catalogCount
+                      ? `showing ${catShown.length} of ${d.catalogCount} — search for the rest`
+                      : `${d.catalogCount} product${d.catalogCount === 1 ? "" : "s"}`}
+                  </span>
                 </div>
                 {d.catalog.length > 8 && (
                   <input className="wb-in ws-catsearch" value={catQuery} placeholder="Search your catalogue…"
                     onChange={(e) => setCatQuery(e.target.value)} />
                 )}
                 <div className="ws-catgrid">
-                  {d.catalog
-                    .filter((c) => !catQuery.trim() || c.title.toLowerCase().includes(catQuery.trim().toLowerCase()))
-                    .slice(0, 60)
+                  {catShown
                     .map((c) => (
                       <button type="button" key={c.id}
                         className={`ws-cat${productTitle === c.title ? " sel" : ""}`}

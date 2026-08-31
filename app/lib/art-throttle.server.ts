@@ -26,8 +26,16 @@ export async function merchantBusy(): Promise<boolean> {
       },
     });
     return n > 0;
-  } catch {
-    return false; // never block art forging on a DB hiccup
+  } catch (e) {
+    // FAIL CLOSED. This used to return false — "never block art forging on a
+    // DB hiccup" — which has it backwards: the only thing this gates is
+    // cosmetic background art (style tiles, ad-template plates), every caller
+    // is a self-heal walker that retries on the next tick, and the cost of
+    // guessing wrong is competing with a merchant's PAID render for the same
+    // provider rate limit. Not knowing whether the queue is busy is a reason
+    // to wait, not a reason to spend.
+    console.error("[art-throttle] could not read the job queue — standing down this round:", e);
+    return true;
   }
 }
 
