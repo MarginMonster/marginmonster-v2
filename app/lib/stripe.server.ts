@@ -489,6 +489,28 @@ export async function endTrialNow(accountId: string): Promise<{ ok: boolean; err
   const conn = await db.connection.findFirst({ where: { accountId, kind: "web" } });
   if (!conn) return { ok: false, error: "This account isn't linked to a workspace yet." };
 
+  // THERE HAS TO BE A TRIAL TO END, AND ONLY ONE CALLER MAY END IT.
+  //
+  // This checked for a stripeSubId and a web connection and nothing else,
+  // then wrote periodStart: new Date() and tokensUsed: 0. On an account with
+  // no trial that is a free wallet reset — repeatable, from a public intent,
+  // by anyone logged in. It also restarted the billing period out from under
+  // Stripe, so the merchant's month and ours drifted apart.
+  //
+  // The claim is a compare-and-swap on the date we just read, not a check
+  // followed by a write: two clicks in the same second both pass a check.
+  // Clearing trialEndsAt IS the claim, and it is put back if Stripe refuses,
+  // so a declined card does not cost the merchant the rest of their trial.
+  const { planTrialing } = await import("./tokens.server");
+  const plan = await db.plan.findUnique({ where: { shopId: conn.externalId } });
+  if (!planTrialing(plan)) return { ok: false, error: "You're not on a trial — your plan is already running." };
+  const trialWas = plan!.trialEndsAt;
+  const claimed = await db.plan.updateMany({
+    where: { shopId: conn.externalId, trialEndsAt: trialWas },
+    data: { trialEndsAt: null },
+  });
+  if (claimed.count !== 1) return { ok: false, error: "That's already done — refresh the page." };
+
   try {
     // trial_end=now closes the trial and invoices immediately. Stripe's
     // customer.subscription.updated webhook follows, but we don't wait on it:
@@ -500,6 +522,11 @@ export async function endTrialNow(accountId: string): Promise<{ ok: boolean; err
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[stripe] end-trial failed:", msg.slice(0, 200));
+    // Give the trial back — the claim above took it, and Stripe said no.
+    await db.plan.updateMany({
+      where: { shopId: conn.externalId, trialEndsAt: null },
+      data: { trialEndsAt: trialWas },
+    }).catch((err) => console.error("[stripe] could not restore the trial after a failed end-trial:", err));
     // Card declines are the common case and the merchant can act on them.
     return {
       ok: false,
@@ -509,9 +536,10 @@ export async function endTrialNow(accountId: string): Promise<{ ok: boolean; err
     };
   }
 
+  // trialEndsAt is already null — that was the claim.
   await db.plan.updateMany({
     where: { shopId: conn.externalId },
-    data: { trialEndsAt: null, periodStart: new Date(), tokensUsed: 0, active: true },
+    data: { periodStart: new Date(), tokensUsed: 0, active: true },
   });
   console.log(`[stripe] trial ended early by request for account ${accountId}`);
   return { ok: true };

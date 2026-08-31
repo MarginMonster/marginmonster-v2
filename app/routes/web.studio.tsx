@@ -882,7 +882,15 @@ export default function WebStudio() {
   }, [actionData]);
   useEffect(() => {
     const imp = actionData && "imported" in actionData ? (actionData as { imported: { title: string; image: string | null; url: string | null } }).imported : null;
-    if (imp) { setProductTitle(imp.title); setImageUrl(imp.image || ""); setUrlInput(""); setShowImport(false); }
+    // THE BUY LINK MOVES WITH THE PRODUCT, ON EVERY PATH.
+    //
+    // pickedUrl is set by the catalogue tile and cleared only by the product
+    // NAME input's onChange. Two paths replace the product without firing
+    // that handler — this import, and the “Use last” chip — so the previous
+    // pick's URL rode along: the ad went out with a caption linking to a
+    // different product than the one in the picture. Here the scraped page IS
+    // the right destination, so carry it.
+    if (imp) { setProductTitle(imp.title); setImageUrl(imp.image || ""); setPickedUrl(imp.url || ""); setUrlInput(""); setShowImport(false); }
   }, [actionData]);
   const importErr = actionData && "importError" in actionData ? (actionData as { importError: string }).importError : null;
 
@@ -1396,8 +1404,10 @@ export default function WebStudio() {
               </div>
             )}
             {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+            {/* setPickedUrl("") because no URL is remembered with the last
+                product — the previous pick's link must not survive the swap. */}
             {lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
-              <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); }}>
+              <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); }}>
                 ↺ Use last: {lastProd.title}
               </button>
             )}
