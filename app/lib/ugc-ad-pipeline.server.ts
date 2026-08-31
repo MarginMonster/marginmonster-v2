@@ -34,10 +34,32 @@ import type { BrandProfile } from "@prisma/client";
  *  and jingle pipelines too. */
 export async function checkpointJob(jobId: string, patch: Record<string, unknown>): Promise<void> {
   try {
-    const job = await db.job.findUnique({ where: { id: jobId } });
-    if (!job) return;
-    const payload = { ...JSON.parse(job.payload || "{}"), ...patch };
-    await db.job.update({ where: { id: jobId }, data: { payload: JSON.stringify(payload) } });
+    // MERGE ONTO WHAT IS THERE AT WRITE TIME, NOT WHAT WAS THERE AT READ TIME.
+    //
+    // A checkpoint used to read the payload, merge, and write the whole blob
+    // back. The payload is also where prePaid lives — the flag that says a
+    // failed job still owes the merchant a refund — and refundPrepaidOnce
+    // clears it from the ORPHAN REAPER, which runs on its own timer alongside
+    // this render. So: the reaper decides a 26-minute render is a corpse,
+    // refunds 150 tokens and clears prePaid; the render, still alive, finishes
+    // a stage and writes back a payload it read a moment earlier — with
+    // prePaid true again. The next terminal failure refunds a second time.
+    //
+    // Re-reading inside the loop is what fixes it: after the reaper commits,
+    // the retry merges onto the CLEARED flag and the refund stays spent.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const job = await db.job.findUnique({ where: { id: jobId }, select: { payload: true } });
+      if (!job) return;
+      const merged = { ...JSON.parse(job.payload || "{}"), ...patch };
+      const done = await db.job.updateMany({
+        where: { id: jobId, payload: job.payload },
+        data: { payload: JSON.stringify(merged) },
+      });
+      if (done.count === 1) return;
+    }
+    // Losing four races means this stage re-runs if the job resumes. That
+    // costs a re-render; writing through a stale payload costs a double refund.
+    console.warn(`[ugc] checkpoint for ${jobId} could not commit — the stage will re-run on resume`);
   } catch (e) {
     console.error("[ugc] checkpoint failed (non-fatal):", e);
   }
