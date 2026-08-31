@@ -18,8 +18,38 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     if (a) {
       let meta: Record<string, unknown> = {};
       try { meta = JSON.parse(a.metaJson || "{}"); } catch { /* fresh */ }
-      meta.clicks = (Number(meta.clicks) || 0) + 1;
-      await db.asset.update({ where: { id }, data: { metaJson: JSON.stringify(meta) } });
+
+      // COUNT THE CLICK WITHOUT CLOBBERING THE BLOB.
+      //
+      // This is a read-modify-write of metaJson from a PUBLIC route — the
+      // highest-frequency writer of that field, reachable by anyone with the
+      // link, and it shares an event loop with everything else. The sibling
+      // /go/:qid/:idx route was fixed for exactly this and its comment spells
+      // out why it matters; this one was left as it was.
+      //
+      // metaJson also holds postedTo — the record of which accounts already
+      // have this piece, and the only thing stopping a second attempt from
+      // posting again where it already landed (web.archive.tsx writes it after
+      // the network round-trip, so its read is seconds stale). A shopper
+      // clicking in that window wrote a blob back without postedTo, and the
+      // merchant's next attempt duplicated posts on their real accounts.
+      // Caused by a stranger tapping a link.
+      //
+      // A lost click count is nothing; a lost postedTo is not. So this gives
+      // up rather than forcing the write.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const fresh = await db.asset.findUnique({ where: { id }, select: { metaJson: true } });
+        if (!fresh) break;
+        let cur: Record<string, unknown> = {};
+        try { cur = JSON.parse(fresh.metaJson || "{}"); } catch { /* fresh */ }
+        cur.clicks = (Number(cur.clicks) || 0) + 1;
+        const done = await db.asset.updateMany({
+          where: { id, metaJson: fresh.metaJson },
+          data: { metaJson: JSON.stringify(cur) },
+        });
+        if (done.count === 1) break;
+        // Something else committed in between — read it again and re-apply.
+      }
 
       const title = typeof meta.productTitle === "string" ? meta.productTitle : undefined;
       let base = "";

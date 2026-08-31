@@ -336,11 +336,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     if (!anyOk) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your connected accounts.` });
     // Live post links persist for the Boost panel; clicks accrue on metaJson.
-    let pmeta: Record<string, unknown> = {};
-    try { pmeta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
-    pmeta.postedUrls = { ...(pmeta.postedUrls as Record<string, string> | undefined), ...urls };
-    pmeta.postedAt = new Date().toISOString();
-    await db.asset.update({ where: { id }, data: { status: "PUBLISHED", metaJson: JSON.stringify(pmeta) } });
+    // Re-read, merge only what this action owns, and write conditionally. The
+    // `asset` in scope was loaded BEFORE the posting round-trip, so by now it
+    // is seconds stale — and metaJson's other writer is a public click
+    // counter that anyone with the link can fire. Writing the stale blob back
+    // loses whatever landed in between.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const fresh = await db.asset.findUnique({ where: { id }, select: { metaJson: true } });
+      if (!fresh) break; // the piece was deleted while we were posting
+      let pmeta: Record<string, unknown> = {};
+      try { pmeta = JSON.parse(fresh.metaJson || "{}"); } catch { /* fresh */ }
+      pmeta.postedUrls = { ...(pmeta.postedUrls as Record<string, string> | undefined), ...urls };
+      pmeta.postedAt = new Date().toISOString();
+      const done = await db.asset.updateMany({
+        where: { id, metaJson: fresh.metaJson },
+        data: { status: "PUBLISHED", metaJson: JSON.stringify(pmeta) },
+      });
+      if (done.count === 1) break;
+    }
     return json({ posted: platforms.join(", ") });
   }
   if (intent === "boost") {

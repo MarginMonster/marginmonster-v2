@@ -427,12 +427,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // and stay on the card long after this response is gone.
     let meta: Record<string, unknown> = {};
     try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* fresh */ }
-    meta.postedUrls = { ...(meta.postedUrls as Record<string, string> | undefined), ...postedUrls };
-    meta.postedAt = new Date().toISOString();
-    // Which accounts already have it, so a second attempt does not re-post
-    // where it already landed.
-    meta.postedTo = [...new Set([...((meta.postedTo as string[] | undefined) || []), ...landed])];
-    await db.asset.update({ where: { id }, data: { status: "PUBLISHED", metaJson: JSON.stringify(meta) } });
+    // postedTo is the load-bearing one: it is what stops a second attempt from
+    // posting again where it already landed. Re-read and merge rather than
+    // writing back a blob captured before the network round-trip — the public
+    // click counter writes this same field, so the stale copy loses real state.
+    // Union, never replace: two attempts that each reached different accounts
+    // must both be remembered.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const fresh = await db.asset.findUnique({ where: { id }, select: { metaJson: true } });
+      if (!fresh) break; // the piece was deleted while we were posting
+      let m: Record<string, unknown> = {};
+      try { m = JSON.parse(fresh.metaJson || "{}"); } catch { /* fresh */ }
+      m.postedUrls = { ...(m.postedUrls as Record<string, string> | undefined), ...postedUrls };
+      m.postedAt = new Date().toISOString();
+      m.postedTo = [...new Set([...((m.postedTo as string[] | undefined) || []), ...landed])];
+      const done = await db.asset.updateMany({
+        where: { id, metaJson: fresh.metaJson },
+        data: { status: "PUBLISHED", metaJson: JSON.stringify(m) },
+      });
+      if (done.count === 1) break;
+    }
     return json({
       posted: landed.join(" · "),
       ok: missed.length
