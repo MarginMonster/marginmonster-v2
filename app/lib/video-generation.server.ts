@@ -232,7 +232,9 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
           : params.serviceMode
           ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${productTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.`
           : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
-  const direction = params.customPrompt?.trim();
+  // Bounded for the same reason the image pipeline bounds its brief: this is
+  // appended AFTER the fidelity clause, so an unbounded paste buries it.
+  const direction = trimToWord(params.customPrompt, 500) || undefined;
   const context = productDescription?.trim()
     ? ` Product context: ${trimToWord(productDescription, 200)}.`
     : "";

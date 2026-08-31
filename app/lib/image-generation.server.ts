@@ -2693,6 +2693,18 @@ export async function generateImageAd(
   }
 
   const visual = JSON.parse(brandProfile.visualJson);
+
+  // THE MERCHANT'S BRIEF, BOUNDED.
+  //
+  // stylePrompt is free text and reaches this function from four callers, not
+  // all of which cap it. It is interpolated at the FRONT of the prompt, ahead
+  // of the clauses that keep the product looking like the product — so a
+  // pasted brief pushes "keep every printed code character for character" into
+  // the tail, where a diffusion model weights it least. Bounded at the front
+  // gate instead. trimToWord because a model reads this: a brief ending
+  // mid-word is a brief that reads as damaged.
+  const styleBrief = trimToWord(stylePrompt, 500) || undefined;
+
   const direction =
     PLAN_VISUAL_DIRECTION[plan.campaignGoal] || PLAN_VISUAL_DIRECTION.GROW_SALES;
   // For prompts whose subject is NOT a product — see PLAN_MOOD_DIRECTION.
@@ -2723,7 +2735,7 @@ export async function generateImageAd(
     // ends with "Absolutely NO text", so "clean product on white" and "sale
     // badge aesthetic" would both be instructions to do the opposite of what
     // the rest of the sentence asks for.
-    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${stylePrompt ? "" : `${moodDirection}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
+    usedPrompt = `${styleBrief ? `${styleBrief}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${styleBrief ? "" : `${moodDirection}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
     // Only rung on this path — an unretried blip here terminal-failed a paid ad.
     imageUrl = await fluxDevStill(usedPrompt, "service-outcome");
     genMeta.method = "lifestyle";
@@ -2751,7 +2763,7 @@ export async function generateImageAd(
       ? "clean professional product photography"
       : brandStyle;
     const mode: "backdrop" | "scene" = styleMode === "scene" || styleMode === "backdrop" ? styleMode : inferStyleMode(stylePrompt);
-    const styleDesc = stylePrompt || (brandWantsDark ? brandStyle : BRIGHT_DEFAULT);
+    const styleDesc = styleBrief || (brandWantsDark ? brandStyle : BRIGHT_DEFAULT);
 
     // RUNG -1 — AD FORMAT: a genuinely different creative COMPOSITION
     // (callouts / review card / text convo / versus / before-after / offer /
@@ -2951,14 +2963,14 @@ export async function generateImageAd(
         if (!localFileName) {
           // Nothing product-true available. A clean generated poster still beats
           // a terminal failure; if THIS throws the job fails and refunds.
-          usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+          usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
           imageUrl = await fluxDevStill(usedPrompt, "scene-degrade-poster");
           genMeta.method = "text2img-degraded";
         }
       }
     }
   } else {
-    usedPrompt = `${stylePrompt ? `${stylePrompt}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+    usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
     // Only rung on this path (no product photo) — retry rather than fail the job.
     imageUrl = await fluxDevStill(usedPrompt, "text2img");
     genMeta.method = "text2img";

@@ -7,6 +7,7 @@
  * name + photo (upload, URL, or scraped from any store's product page). */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
+import { trimToWord } from "../lib/text-trim";
 import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -317,7 +318,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();
   const urlField = ((form.get("productImageUrl") as string) || "").trim() || undefined;
-  const direction = ((form.get("direction") as string) || "").trim() || undefined;
+  // The input carries maxLength={300}, which is a courtesy to the merchant and
+  // nothing to the server: this string is interpolated straight into the image
+  // and video prompts, ahead of the fidelity clauses that keep the product
+  // looking like the product. A pasted brief pushes those to the tail of a very
+  // long prompt, where models weight them least. 500 leaves room for the
+  // composed presets on top of a full-length direction and stops a novel.
+  // trimToWord, not slice: this text is read by a model, so it must not end
+  // mid-word.
+  const direction = trimToWord((form.get("direction") as string) || "", 500) || undefined;
   const service = form.get("service") === "1"; // intangible offering — sell the outcome
   const wear = form.get("wear") === "1";
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
