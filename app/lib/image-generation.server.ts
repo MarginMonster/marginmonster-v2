@@ -75,7 +75,25 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
 
 // drawtext is picky: escape the characters that break its filter parser.
 // Unicode-aware so accents and CJK survive (the old \w filter erased them).
-const dt = (s: string) => s.replace(/\\/g, "").replace(/[':%]/g, "").replace(/[^\p{L}\p{N} \-!?.&]/gu, "").trim();
+//
+// THE APOSTROPHE AND THE COMMA BOTH SURVIVE NOW.
+//
+// This dropped ' along with the : and % it was actually aiming at, and the
+// allow-list on the end then dropped the comma too — so a poster headline
+// came out reading DONT SETTLE, YOURE READY, and a subhead lost the pause
+// that made it a sentence. Verified with this repo's own ffmpeg and Poppins:
+// a STRAIGHT apostrophe inside text='...' is silently swallowed by the filter
+// parser, but U+2019 renders correctly and needs no escaping at all — it is a
+// letter to ffmpeg, not syntax. It is also the right mark for a contraction,
+// so the type simply looks better. Same fix as captionSafe in the UGC
+// pipeline.
+const dt = (s: string) =>
+  s
+    .replace(/\\/g, "")
+    .replace(/[']/g, "’")   // fold BEFORE the allow-list, or it is stripped
+    .replace(/[:%]/g, "")
+    .replace(/[^\p{L}\p{N} \-!?.,&’]/gu, "")
+    .trim();
 
 /**
  * Composite the ad copy onto a square still with ffmpeg — ADAPTIVE poster
@@ -486,8 +504,21 @@ async function compositeProductStill(backdropUrl: string, cutoutUrl: string): Pr
 }
 
 /** Vision QA: does the generated ad actually show THIS product, undamaged,
- *  on-brief? Never blocks on its own failure — QA that errors passes. */
-async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolean): Promise<{ pass: boolean; reason: string }> {
+ *  on-brief?
+ *
+ *  IT USED TO FAIL OPEN. An unparseable verdict and a thrown vision call both
+ *  returned pass:true, and this is the only gate on RUNG 2 (scene) — the
+ *  most-travelled path for any ad built from a product photo. A vision outage
+ *  therefore did not slow anything down; it switched the quality gate off and
+ *  wrote “pass” into genMeta, which is also what the QA harness reads back.
+ *  Every warped, duplicated or wrong-scale product shipped, logged as fine.
+ *
+ *  It fails closed now — but a gate that CANNOT JUDGE is not the same as one
+ *  that judged and rejected, and the difference costs real money: both callers
+ *  retry once on a rejection, which is a second paid generation. `degraded`
+ *  says which happened, so an outage drops straight to the deterministic
+ *  composite instead of burning a re-roll against a gate that is down. */
+async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolean): Promise<{ pass: boolean; reason: string; degraded?: boolean }> {
   try {
     const raw = await anthropicVision(
       [
@@ -500,11 +531,14 @@ async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolea
       { maxTokens: 200 }
     );
     const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: true, reason: "qa-unparseable" };
+    if (!m) {
+      console.error(`[image-ad] qaFidelity could not parse a verdict from: ${raw.slice(0, 300)}`);
+      return { pass: false, reason: "qa-unparseable", degraded: true };
+    }
     const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
     return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 200) };
   } catch (e) {
-    return { pass: true, reason: `qa-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}` };
+    return { pass: false, reason: `qa-outage: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, degraded: true };
   }
 }
 
@@ -2952,7 +2986,9 @@ export async function generateImageAd(
           };
           imageUrl = await stagedOnce();
           let qa = await qaFidelity(productImageUrl!, imageUrl, true);
-          if (!qa.pass) {
+          // A gate that could not judge has told us nothing about this take,
+          // so a second paid render against it is money for no information.
+          if (!qa.pass && !qa.degraded) {
             console.log(`[image-ad] template QA rejected (${qa.reason}) — retrying`);
             imageUrl = await stagedOnce();
             qa = await qaFidelity(productImageUrl!, imageUrl, true);
@@ -3034,7 +3070,8 @@ export async function generateImageAd(
         imageUrl = await genOnce();
         genMeta.method = "scene";
         let qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);
-        if (!qa.pass) {
+        // Same here: retry a REJECTION, never an outage.
+        if (!qa.pass && !qa.degraded) {
           console.log(`[image-ad] QA rejected first take (${qa.reason}) — retrying`);
           imageUrl = await genOnce();
           qa = await qaFidelity(productImageUrl!, imageUrl, wantBright);

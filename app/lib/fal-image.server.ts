@@ -237,7 +237,14 @@ export async function submitCompose(
     `The exact person from the first image standing behind ${s ? "a surface in the setting described below" : "a kitchen counter or table"}, with the ${productTitle || "product"} from the second image resting on the surface in front of them, closer to the camera than they are — the COMPLETE item exactly as pictured, with every unit, box and panel it has. ` +
     `Its front is turned square-on to the camera and completely unobstructed: nothing overlaps it, no hands or fingers in front of it. ` +
     `The product sits LOW in the frame — its top edge around the presenter's mid-chest, the whole item inside the BOTTOM THIRD of the frame — and takes up a good part of the width. The presenter is behind and above it, visible from the waist up, their head near the TOP EDGE of the frame with just a little headroom, whole face clearly visible with a wide band of clear space between their chin and the top of the product. ` +
-    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${relight}${textRule} ` +
+        // noSourceText belongs here for the same reason it is on every other
+    // mode: the reference PHOTO usually has the seller’s own marketing text or
+    // a watermark behind the product, the model happily paints it into the
+    // scene, and qaFormat then hard-fails the render for text that was never
+    // ours. This was the one mode that omitted it. (integrity is deliberately
+    // NOT added — this composition already spells out the product rules in
+    // full, and the two contradict each other on framing.)
+    `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${relight}${noSourceText}${textRule} ` +
     `Exact same person — same face, same hairstyle, same outfit.${persona} ${bg} ` +
     `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}.${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
