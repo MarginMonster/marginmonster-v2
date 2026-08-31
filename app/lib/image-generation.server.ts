@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -175,7 +176,7 @@ async function productAspect(url: string): Promise<number | undefined> {
     if (!res.ok) return undefined;
     const dir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(dir, { recursive: true });
-    const tmp = path.join(dir, `.pa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    const tmp = path.join(dir, `.pa-${Date.now()}-${crypto.randomBytes(9).toString("hex")}`);
     fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
     const size = headerSize(tmp);
     fs.rmSync(tmp, { force: true });
@@ -427,7 +428,7 @@ async function compositeProductStill(backdropUrl: string, cutoutUrl: string): Pr
   // Date.now() alone COLLIDES: two composites started in the same millisecond
   // (template self-heal beside a merchant job) overwrote each other's temp
   // files and the finally-block deleted the other's sources mid-encode.
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
   const tmpBg = path.join(dir, `.bg-${stamp}.jpg`);
   const tmpCut = path.join(dir, `.cut-${stamp}.png`);
   const fileName = `img-${stamp}.jpg`;
@@ -826,7 +827,7 @@ async function overlayRealProduct(
 
   const dir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(dir, { recursive: true });
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
   const tmpFrame = path.join(dir, `.hf-${stamp}.jpg`);
   const tmpCut = path.join(dir, `.hc-${stamp}.png`);
   const fileName = `img-${stamp}.jpg`;
@@ -989,7 +990,7 @@ async function blendProductEdges(
   if (!bin) return give("no ffmpeg binary");
   const { inpaintFill } = await import("./fal-image.server");
   const dir = path.join(process.cwd(), "data", "renders");
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
   const maskFile = path.join(dir, `.mk-${stamp}.png`);
   const { rect, frame } = pasted;
   const out = Math.max(24, Math.round(rect.w * dilate));
@@ -2392,7 +2393,7 @@ async function fluxToDisk(prompt: string): Promise<string> {
   if (buf.length < 5_000) throw new Error("image too small");
   const dir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(dir, { recursive: true });
-  const fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
   fs.writeFileSync(path.join(dir, fileName), buf);
   try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
   return `/renders/${fileName}`;
@@ -2610,7 +2611,7 @@ export async function generateImageAd(
             // silently blanked every other ad still using it — including Kept,
             // paid ads. The bytes are already in memory, so a private copy is
             // just a write.
-            fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+            fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
             fs.writeFileSync(path.join(dir, fileName), buf);
             try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
 
@@ -2635,7 +2636,7 @@ export async function generateImageAd(
               // `shot-` name that no asset ever references, so the purge
               // (which only deletes filenames found in an asset's bodyJson)
               // can never reach it.
-              const shotFile = `shot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+              const shotFile = `shot-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
               fs.writeFileSync(path.join(dir, shotFile), buf);
               try { await mirrorRender(shotFile, buf); } catch { /* non-fatal */ }
               // Freeze the CLEAN composite — presenter stills ship untyped
@@ -2997,7 +2998,7 @@ export async function generateImageAd(
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > 5_000) {
-          fileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+          fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
           fs.writeFileSync(path.join(dir, fileName), buf);
         }
       }

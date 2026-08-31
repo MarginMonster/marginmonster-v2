@@ -54,7 +54,7 @@ function scrub(s: string): string {
     .slice(0, 300);
 }
 
-async function generationHealth() {
+async function generationHealth(includeFailureText = false) {
   try {
     const { db } = await import("../db.server");
     const since = new Date(Date.now() - 24 * 3600_000);
@@ -76,7 +76,7 @@ async function generationHealth() {
         minsAgo: Math.round((Date.now() - j.updatedAt.getTime()) / 60000),
         error: scrub(j.lastError || ""),
       }));
-    return { last24h: counts, failures };
+    return { last24h: counts, failures: includeFailureText ? failures : [] };
   } catch (e) {
     return { error: e instanceof Error ? e.message.slice(0, 160) : "unavailable" };
   }
@@ -125,7 +125,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     uploads: uploadHealth(path.join(cwd, "data", "renders", "uploads")),
     styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
     adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
-    generation: await generationHealth(),
+    // FAILURE TEXT NAMES FILES. A pipeline error carries the render it was
+    // working on, and /renders is public by necessity — so an anonymous
+    // caller could read a failure here, lift the filename out of it, and
+    // fetch another merchant's forged presenter or paid video. The aggregate
+    // counts are safe and stay public; the messages need the same diagnostics
+    // key the activity log already requires.
+    generation: await generationHealth(hasDiagKey(request)),
     // Merchant-specific render activity only with the diagnostics key — the
     // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
     // answers the question it exists for ("did the app's own art build?")

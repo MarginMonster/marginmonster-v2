@@ -18,6 +18,7 @@
  * COGS ≈ $0.04 keyframe + ~$0.25-0.50 performance + $0.001 TTS. Checkpointed
  * like the UGC pipeline so deploy restarts never re-spend completed stages. */
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -799,7 +800,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
-    const fileName = `toon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const fileName = `toon-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
     await assemble({

@@ -20,6 +20,7 @@
  * to renting a third-party generator, on keys we already hold, with our
  * fidelity thinking in the loop instead of theirs.
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -787,7 +788,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
-    const fileName = `commercial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const fileName = `commercial-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const outPath = path.join(rendersDir, fileName);
     await assembleCommercial({
       clipPaths,

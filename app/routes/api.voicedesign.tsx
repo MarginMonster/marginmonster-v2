@@ -104,6 +104,21 @@ export async function action({ request }: ActionFunctionArgs) {
     }
     if (body.mode === "animCheck") {
       if (!body.statusUrl || !body.responseUrl) return json({ error: "statusUrl, responseUrl required" }, { status: 400 });
+    // THE KEY GOES TO fal, OR NOWHERE.
+    //
+    // Both of these are caller-supplied and were fetched with
+    // `Authorization: Key ${FAL_KEY}` attached, so one request to an
+    // attacker's host hands over the credential that pays for every premium
+    // render — and the same two lines are an SSRF with the key along for the
+    // ride. The route is inert as shipped (VOICEDESIGN_SECRET is unset), and
+    // its own header says to strip it once the cast is final; this keeps the
+    // tool usable in the meantime without leaving that primitive lying about.
+    const isFalQueue = (u: string) => {
+      try { return new URL(u).origin === "https://queue.fal.run"; } catch { return false; }
+    };
+    if (!isFalQueue(body.statusUrl) || !isFalQueue(body.responseUrl)) {
+      return json({ error: "statusUrl and responseUrl must be fal queue urls" }, { status: 400 });
+    }
       const s = await fetch(body.statusUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
       const sj = (await s.json().catch(() => ({}))) as { status?: string };
       if (sj.status === "COMPLETED") {

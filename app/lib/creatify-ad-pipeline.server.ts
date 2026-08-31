@@ -17,6 +17,7 @@
  *   GET  /api/link_to_videos/{id}/     poll: status done|error, video_output
  *   GET  /api/remaining_credits/       health + budget guard
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db.server";
@@ -155,7 +156,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   // 4) OWN THE BYTES. Provider URLs expire; /renders + the mirror do not.
   const rendersDir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(rendersDir, { recursive: true });
-  const fileName = `commercial-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+  const fileName = `commercial-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
   const outPath = path.join(rendersDir, fileName);
   await download(videoUrl, outPath);
   try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }

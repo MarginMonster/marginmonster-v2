@@ -11,6 +11,7 @@
  * Total COGS ≈ $2-3 per finished ad. Output saved to data/renders and served
  * via the /renders/:file resource route. */
 
+import crypto from "node:crypto";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import fs from "node:fs";
 import path from "node:path";
@@ -1301,7 +1302,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
-    const fileName = `ugc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const fileName = `ugc-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
     await assemble({

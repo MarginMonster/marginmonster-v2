@@ -652,7 +652,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
-    const fileName = `jingle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const fileName = `jingle-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
     await assemble({

@@ -4,6 +4,7 @@
 // Both run through Replicate. Video is the only high-cost deliverable, so
 // it is always metered against the plan quota / video credits by the caller.
 
+import crypto from "node:crypto";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
@@ -45,7 +46,7 @@ class DeadRenderError extends Error {}
  *  the untouched bytes: a wrongly-shaped video the merchant paid for still
  *  beats no video at all. */
 async function toVerticalFrame(buf: Buffer, dir: string, outPath: string): Promise<boolean> {
-  const raw = path.join(dir, `.vid-src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`);
+  const raw = path.join(dir, `.vid-src-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`);
   try {
     fs.writeFileSync(raw, buf);
     const { status, stderr } = await runFfmpeg([
@@ -102,7 +103,7 @@ async function persistRemoteVideo(url: string): Promise<string> {
 
     const rendersDir = path.join(process.cwd(), "data", "renders");
     fs.mkdirSync(rendersDir, { recursive: true });
-    const fileName = `vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const fileName = `vid-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const finalPath = path.join(rendersDir, fileName);
 
     const framed = await toVerticalFrame(buf, rendersDir, finalPath);
