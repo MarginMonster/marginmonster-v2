@@ -300,7 +300,17 @@ export default function WebDashboard() {
             {success.kind === "plan" ? (
               <>
                 <b className="ws-mh">{PLAN_BY_KEY[success.key]?.name ?? "Your plan"} is live</b>
-                <p className="ws-mp">Your marketing just leveled up — your 7-day free trial starts now, with {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} 🪙 tokens loading every month.</p>
+                {/* Only the FIRST subscription gets a trial. Someone changing tier,
+                    or coming back after a lapse, is charged in full at Stripe —
+                    and was then told on landing that their free trial had just
+                    started. */}
+                <p className="ws-mp">
+                  Your marketing just leveled up —{" "}
+                  {d.trialing
+                    ? <>your 7-day free trial starts now, with </>
+                    : <>you&apos;re on {PLAN_BY_KEY[success.key]?.name}, with </>}
+                  {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} 🪙 tokens loading every month.
+                </p>
               </>
             ) : (
               <>

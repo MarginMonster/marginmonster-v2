@@ -139,7 +139,31 @@ export async function postDueSlots(): Promise<void> {
       // publishes it there with the button that is already on the card. The
       // questline still completes either way — settleQuestlineIfDone falls
       // through on scheduleElapsed when slots never post.
-      if (q.reviewMode === "REVIEW_FIRST") { heldForReview++; continue; }
+      if (q.reviewMode === "REVIEW_FIRST") {
+        heldForReview++;
+        // THE COMMENT ABOVE WAS NOT TRUE. It says the questline "still
+        // completes either way — settleQuestlineIfDone falls through on
+        // scheduleElapsed when slots never post", and the `continue` that
+        // used to be on this line skipped the only call that does it. So every
+        // held campaign — which is every campaign on the default setting —
+        // stayed ACTIVE forever, never paid out its xpReward (550 to 3,000)
+        // and never unlocked QUEST_COMPLETE. Nothing published, so nothing
+        // else could ever settle it either.
+        try {
+          const held = parseSchedule(q.scheduleJson);
+          const lastMs = held.slots.reduce((m, s) => {
+            const t = zonedInstant(s.date, s.time, byShop.get(q.shopId)?.timezone).getTime();
+            return Number.isFinite(t) && t > m ? t : m;
+          }, 0);
+          if (lastMs > 0 && now > lastMs + 24 * 60 * 60 * 1000) {
+            const { settleQuestlineIfDone } = await import("./questlines.server");
+            await settleQuestlineIfDone(q.id);
+          }
+        } catch (e) {
+          console.error("[post] held-campaign settle check failed (non-fatal):", e);
+        }
+        continue;
+      }
       // Re-read rather than trusting the batch snapshot: by the time the loop
       // reaches a questline near the end, that snapshot is as old as all the
       // publishing done before it. One row, and it decides what we post.

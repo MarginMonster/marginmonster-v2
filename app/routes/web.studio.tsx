@@ -893,6 +893,12 @@ export default function WebStudio() {
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
   const cfgReady = tab === "blog" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
+  // The Service/offer toggle only EXISTS on two of the four surfaces, but its
+  // state survived a tab or mode change and the hidden field was submitted
+  // regardless. So a merchant who tried Service on the product screen, backed
+  // out and picked "With presenter" was charged for a presenter-less
+  // service-outcome image — after a screen that told them the presenter would
+  // be in it. A control nobody can see must not be able to change the order.
   const showService = tab === "video" || (tab === "image" && imageMode === "product");
   // baseOf, not the literal. Review and Unboxing are avatar-based presets
   // (CT_PRESETS above maps both to base "avatar"), and every other test in this
@@ -1448,7 +1454,7 @@ export default function WebStudio() {
                 submit (needed for the photo upload) carries them. */}
             <input type="hidden" name="direction" value={finalDirection} />
             {finalScene ? <input type="hidden" name="scene" value={finalScene} /> : null}
-            {service ? <input type="hidden" name="service" value="1" /> : null}
+            {showService && service ? <input type="hidden" name="service" value="1" /> : null}
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 

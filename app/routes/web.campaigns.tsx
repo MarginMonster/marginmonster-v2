@@ -108,7 +108,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const dropMap: Record<number, { video: number; image: number }> = {};
   const campaigns: {
     id: string; name: string; status: string; image: string | null;
-    posted: number; total: number; next: string | null;
+    posted: number; total: number; next: string | null; holdsForReview: boolean;
     upcoming: { when: string; type: string; product: string; status: string }[];
   }[] = [];
 
@@ -137,6 +137,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     campaigns.push({
       id: q.id, name: q.name, status: q.status, image: q.productImageUrl,
       posted, total: slots.length,
+      // A REVIEW_FIRST campaign is never published by the scheduler — the
+      // poster skips those questlines outright. The card must not keep saying
+      // "Auto-posts to …" about one.
+      holdsForReview: q.reviewMode === "REVIEW_FIRST",
       next: next ? fmtWhen(next.date, next.time) : null,
       upcoming,
     });
@@ -341,10 +345,12 @@ export default function WebCampaigns() {
 
   // The soonest unposted drop across every running campaign — the single most
   // useful fact on this page, and the one the month grid can't tell you.
-  const nextUp = d.campaigns
-    .filter((c) => c.status === "ACTIVE")
-    .flatMap((c) => c.upcoming)
-    .find(Boolean);
+  const activeCampaigns = d.campaigns.filter((c) => c.status === "ACTIVE");
+  const nextUp = activeCampaigns.flatMap((c) => c.upcoming).find(Boolean);
+  // Nothing running will publish itself. The poster skips a REVIEW_FIRST
+  // questline outright, so "Auto-posts to …" is a claim the scheduler will
+  // not honour for any of them.
+  const allHeldForReview = activeCampaigns.length > 0 && activeCampaigns.every((c) => c.holdsForReview);
 
   const needle = castQ.trim().toLowerCase();
   const castShown = needle
@@ -515,11 +521,17 @@ export default function WebCampaigns() {
             )}
 
             <div className="wc-posts">
-              <span className="wc-plabel">Auto-posts to</span>
+              <span className="wc-plabel">{allHeldForReview ? "You publish to" : "Auto-posts to"}</span>
               {d.linked.length
                 ? d.linked.map((p) => <span className="wc-pchip" key={p}>{PLAT_LABEL[p] || p}</span>)
                 : <Link className="wc-pchip off" to="/web/connect">Connect an account</Link>}
             </div>
+            {allHeldForReview && (
+              <p className="wc-hint">
+                You chose to approve each drop, so nothing posts on its own — each piece lands in your{" "}
+                <Link to="/web/archive">Archive</Link> and goes out when you send it.
+              </p>
+            )}
           </div>
         </div>
         <div className="wc-key">

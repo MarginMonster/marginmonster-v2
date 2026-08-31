@@ -42,7 +42,15 @@ const stripeDelete = (path: string) => stripeReq("DELETE", path);
 /* ---- Webhook self-provisioning ------------------------------------------ */
 
 const WEBHOOK_SECRET_SETTING = "stripe_webhook_secret";
-const WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.updated", "customer.subscription.deleted"];
+// async_payment_succeeded is what fulfils a delayed method (ACH, SEPA, Bacs):
+// those complete the session unpaid and settle later, so without it a bank
+// transfer would pay and never be granted anything.
+const WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+];
 let cachedWebhookSecret: string | null | undefined;
 let webhookProvisionInFlight = false;
 

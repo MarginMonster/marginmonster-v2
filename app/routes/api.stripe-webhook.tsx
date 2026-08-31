@@ -23,8 +23,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const meta = (obj.metadata || {}) as Record<string, string>;
 
   try {
-    if (event.type === "checkout.session.completed") {
+    if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       const accountId = meta.accountId;
+      // MONEY HAS TO HAVE ARRIVED.
+      //
+      // The comment below says "money has already moved by the time this
+      // fires", which is true for a card and not for the delayed methods
+      // Stripe enables automatically — ACH, SEPA, Bacs and friends complete
+      // the session with payment_status "unpaid" and settle days later, or
+      // fail. Nothing here ever looked at that field, so a plan was granted
+      // and tokens credited before a penny landed. async_payment_succeeded is
+      // now handled by this same branch, which is what actually fulfils those.
+      const paid = obj.payment_status === "paid" || obj.payment_status === "no_payment_required";
+      if (!paid) {
+        console.log(`[stripe] session ${obj.id} is ${obj.payment_status} — waiting for it to settle before granting anything`);
+        return new Response(null, { status: 200 });
+      }
       // Money has already moved by the time this fires. Anything we fail to act
       // on here is a merchant who paid and received nothing — so an unhandled
       // paid session must NOT be ACKed, or Stripe never retries and the failure
