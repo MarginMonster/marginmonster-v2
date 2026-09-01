@@ -26,7 +26,8 @@ import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
 import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRenderFailed } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
-import { hasCJK, langDirective } from "./content-lang";
+import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
+import { scriptTooShort, capScript, endStop } from "./script-length";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
@@ -926,14 +927,19 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         .replace(/\s+/g, " ")
         .trim();
       // A truncated fragment is worse than empty — the spec is 26-32 words,
-      // so anything under 12 is a mangled output. Return "" so the fallback
-      // ladder treats it as a refusal and retries instead of shipping it.
-      return raw.split(/\s+/).length < 12 ? "" : raw;
+      // so a fragment is a mangled output. Return "" so the fallback ladder
+      // treats it as a refusal and retries instead of shipping it.
+      // Measured per writing system: `split(/\s+/)` scored a perfect
+      // 35-character Chinese script as ONE word, so every zh shop failed
+      // this check forever and could not make a UGC ad at all.
+      return scriptTooShort(raw) ? "" : raw;
     }, params.productTitle, "ugc:script", params.productDescription);
-    const w = script.split(" ");
-    if (w.length > 34) script = w.slice(0, 34).join(" "); // 12s budget — hard cap so it never runs past the lip-sync sweet spot
-    // give the voice model a clean final stop so it doesn't rush/trail the ending
-    if (script && !/[.!?]$/.test(script)) script += ".";
+    // 12s budget — hard cap so it never runs past the lip-sync sweet spot.
+    // In characters for CJK, where the old word cap could never fire.
+    script = capScript(script, 34);
+    // give the voice model a clean final stop so it doesn't rush/trail the
+    // ending — 。for CJK, where a Latin full stop reads as a typo
+    script = endStop(script);
     await ckpt({ ckScript: script });
   }
 
@@ -967,6 +973,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         return await falTts(script, delivery.voice, delivery.speed, {
           pitch: delivery.pitch,
           emotion: delivery.emotion,
+          // the fal path is the same take as the Replicate path above and
+          // needs the same language, or half the routes speak English anyway
+          lang: contentLang,
         });
       } catch (e) {
         // A DESIGNED VOICE IS PAID-FOR AND IS NOT SUBSTITUTABLE. This used to
@@ -1002,8 +1011,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         emotion: delivery.emotion,
         speed: delivery.speed,
         pitch: delivery.pitch,
-        english_normalization: true,
-        language_boost: "English",
+        // The script above was written in the shop language by langDirective;
+        // telling the voice model to expect English mispronounced it and applied
+        // English number/date normalisation to text that is not English.
+        ...voiceLangOpts(contentLang),
       });
       return await repPoll(ttsId, 3 * 60_000, "tts");
     } catch (e) {

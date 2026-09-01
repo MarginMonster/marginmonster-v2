@@ -31,3 +31,30 @@ export function langDirective(code: string | null | undefined): string {
 export function hasCJK(s: string): boolean {
   return /[\u3000-\u9FFF\uF900-\uFAFF\u3040-\u30FF]/.test(s);
 }
+
+/* MiniMax TTS settings for a content language.
+ *
+ * Every voice call in the codebase sent `language_boost: "English"` and
+ * `english_normalization: true` as literals, while the script sitting right
+ * above them had been generated in French, Spanish, German or Chinese by
+ * langDirective. So the merchant got their own language read by a model told
+ * to expect English — mispronounced, and with English number/date
+ * normalisation applied to text that is not English.
+ *
+ * `english_normalization` expands "3" to "three" and "1/2" to "January
+ * second" using English rules; it must only ever be on for English. */
+const MINIMAX_BOOST: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  zh: "Chinese",
+};
+
+export function voiceLangOpts(code: string | null | undefined): {
+  language_boost: string;
+  english_normalization: boolean;
+} {
+  const c = normalizeContentLang(code);
+  return { language_boost: MINIMAX_BOOST[c] || "English", english_normalization: c === "en" };
+}

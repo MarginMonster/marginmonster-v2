@@ -36,7 +36,8 @@ import {
   repPoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
-import { langDirective } from "./content-lang";
+import { langDirective, voiceLangOpts } from "./content-lang";
+import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
 
@@ -385,13 +386,12 @@ async function writeCartoonScriptOnce(o: {
   // Empty is a REFUSAL, not a crash — withBrandFallback decides what next.
   if (!script) return "";
   // A truncated fragment is WORSE than empty: "Every t." shipped as a voice
-  // -over once. The spec is 24-30 words; anything under 12 is a mangled
-  // output, so treat it exactly like a refusal and let the ladder retry.
-  if (script.split(/\s+/).length < 12) return "";
-  const w = script.split(" ");
-  if (w.length > 32) script = w.slice(0, 32).join(" ");
-  if (!/[.!?]$/.test(script)) script += ".";
-  return script;
+  // -over once. The spec is 24-30 words, so treat a fragment exactly like a
+  // refusal and let the ladder retry. Measured per writing system — the old
+  // `split(/\s+/)` scored a whole Chinese script as one word and discarded
+  // it, which made Cartoon video impossible for every zh shop.
+  if (scriptTooShort(script)) return "";
+  return endStop(capScript(script, 32));
 }
 
 /** Words that must never reach a viewer's ears. The failure this catches was
@@ -679,8 +679,8 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           text: script,
           voice_id: recipe.voice,
           emotion: "happy",
-          english_normalization: true,
-          language_boost: "English",
+          // see ugc — the voice must expect the language the script is in
+          ...voiceLangOpts(contentLang),
         }),
         save: (id) => ckpt({ ckTtsId: id }),
         maxMs: 3 * 60_000,

@@ -21,11 +21,17 @@ function headers(): Record<string, string> {
  *  voices (ttv-voice-*): they live on the fal MiniMax account and do not
  *  resolve on Replicate's. Returns a hosted mp3 url. Tries the full schema,
  *  then a minimal variant (fal has 422'd on audio_setting before). */
+import { voiceLangOpts } from "./content-lang";
+
 export interface TtsDelivery {
   /** MiniMax-native semitones, kept within ±3 upstream so reads stay natural. */
   pitch?: number;
   /** "happy" | "neutral" | … — drives the whole character of the read. */
   emotion?: string;
+  /** The shop's content language. Without it this path hard-coded English,
+   *  so a French script came back read by a model expecting English — and
+   *  english_normalization spoke its numbers and dates by English rules. */
+  lang?: string | null;
 }
 
 export async function falTts(text: string, voiceId: string, speed = 1, delivery: TtsDelivery = {}): Promise<string> {
@@ -64,14 +70,16 @@ async function falTtsOnce(text: string, voiceId: string, speed: number, delivery
     vol: 1,
     ...(delivery.pitch ? { pitch: delivery.pitch } : {}),
     ...(delivery.emotion ? { emotion: delivery.emotion } : {}),
-    english_normalization: true,
+    // english_normalization expands numbers and dates by English rules; it
+    // must only be on when the script actually is English.
+    english_normalization: voiceLangOpts(delivery.lang).english_normalization,
   };
   const variants: Record<string, unknown>[] = [
     {
       text,
       voice_setting: full,
       audio_setting: { sample_rate: "32000", bitrate: "128000", format: "mp3", channel: "1" },
-      language_boost: "English",
+      language_boost: voiceLangOpts(delivery.lang).language_boost,
       output_format: "url",
     },
     { text, voice_setting: full, output_format: "url" },

@@ -39,6 +39,7 @@ import {
   animatePoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
+import { langDirective, voiceLangOpts } from "./content-lang";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
 
 function ffmpegBin(): string | null {
@@ -102,7 +103,11 @@ export async function planCommercial(
   productTitle: string,
   productDescription?: string,
   direction?: string,
-  serviceMode?: boolean
+  serviceMode?: boolean,
+  // Every sibling generator threads this. This one never did, so a shop set to
+  // Spanish got a Spanish landing page, Spanish captions — and an English
+  // voice-over on the format it pays the most for.
+  contentLang?: string | null
 ): Promise<CommercialPlan> {
   const raw = await anthropicText(
     [
@@ -126,6 +131,9 @@ export async function planCommercial(
       serviceMode ? `Then tagline: 3-6 punchy words for the closing brand card.` : `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,
+      langDirective(contentLang)
+        ? `${langDirective(contentLang)} This applies to every "narration" value and to "tagline" ONLY — keep "scene" and "motion" in English, they are camera directions for the image model.`
+        : "",
     ].filter(Boolean).join("\n"),
     // 1400: the restate-the-protagonist rule makes scene sentences long, and
     // a truncated JSON plan kills the render before it starts.
@@ -645,6 +653,10 @@ async function livePrefix(urls: string[]): Promise<string[]> {
 
 export async function generateCommercialAd(params: CommercialAdParams): Promise<string> {
   const serviceMode = params.serviceMode === true;
+  // Every sibling pipeline reads the shop's content language. This one never
+  // did, so the format the merchant pays the most for was the one format that
+  // always spoke English.
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
   if (!params.productImageUrl && !serviceMode) throw new Error("Commercial needs a product image");
   // checkpointJob reads the payload, merges a patch and writes it back. The
   // beat renders below run in parallel, so two concurrent patches would each
@@ -663,7 +675,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   if (params.resume?.plan) {
     plan = JSON.parse(params.resume.plan) as CommercialPlan;
   } else {
-    plan = await planCommercial(params.productTitle, params.productDescription, params.direction, serviceMode);
+    plan = await planCommercial(params.productTitle, params.productDescription, params.direction, serviceMode, contentLang);
     await ckpt({ ckCommercialPlan: JSON.stringify(plan) });
   }
 
@@ -760,8 +772,8 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
           text,
           voice_id: "English_Trustworth_Man",
           emotion: "neutral",
-          english_normalization: true,
-          language_boost: "English",
+          // the narration is written in contentLang now; the voice must expect it
+          ...voiceLangOpts(contentLang),
         });
         return repPoll(id, 3 * 60_000, `commercial-vo-${audioUrls.length + k + 1}`);
       })())
