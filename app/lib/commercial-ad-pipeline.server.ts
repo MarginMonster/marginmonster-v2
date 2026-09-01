@@ -39,6 +39,7 @@ import {
   animatePoll,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
+import { parseGateVerdict, outageReason } from "./gate-verdict";
 
 function ffmpegBin(): string | null {
   for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) if (fs.existsSync(p)) return p;
@@ -548,7 +549,7 @@ export async function renderMotionClip(
  *  passes beautiful frames; this is what catches the slop BETWEEN them.
  *  Fail-open on judge/tooling outage: a paid clip must not die because
  *  the judge did. Exported for the QA harness. */
-export async function motionGate(clipUrl: string, serviceMode: boolean): Promise<{ ok: boolean; why: string }> {
+export async function motionGate(clipUrl: string, serviceMode: boolean): Promise<{ ok: boolean; why: string; degraded?: boolean }> {
   const bin = ffmpegBin();
   if (!bin) return { ok: true, why: "no ffmpeg" };
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mgate-"));
@@ -577,12 +578,14 @@ export async function motionGate(clipUrl: string, serviceMode: boolean): Promise
       ].filter(Boolean).join("\n"),
       frames
     );
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return { ok: true, why: "judge reply unreadable" };
-    const j = JSON.parse(m[0]) as { ok?: boolean; why?: string };
-    return { ok: j.ok !== false, why: String(j.why || "").slice(0, 120) };
+    // FAILS CLOSED, with `degraded` meaning "could not judge" — the caller
+    // uses that to skip the re-roll, because a clip is the most expensive
+    // artifact in this pipeline and an unreachable judge is not evidence
+    // that the take was bad.
+    const v = parseGateVerdict(raw, "ok", "why", 120);
+    return { ok: v.ok, why: v.reason || (v.degraded ? "judge reply unusable" : ""), degraded: v.degraded };
   } catch (e) {
-    return { ok: true, why: `gate error: ${(e instanceof Error ? e.message : String(e)).slice(0, 80)}` };
+    return { ok: false, degraded: true, why: outageReason(e, 80) };
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
   }
@@ -701,7 +704,11 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
         const i = prior.length + k;
         let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`);
         const gate = await motionGate(clip, serviceMode);
-        if (!gate.ok) {
+        if (!gate.ok && gate.degraded) {
+          // Judged nothing. Re-buying a clip on no information is the exact
+          // waste the block below was written to avoid.
+          console.error(`[commercial] beat ${i + 1} motion gate could not judge (${gate.why}) — shipping UNVERIFIED`);
+        } else if (!gate.ok) {
           console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
           try {
             clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);

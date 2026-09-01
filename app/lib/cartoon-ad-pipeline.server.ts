@@ -38,6 +38,7 @@ import {
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 import { withBrandFallback } from "./ad-copy-retry.server";
+import { parseGateVerdict, outageReason } from "./gate-verdict";
 
 /* ---- Resume plumbing: never re-BUY what a restart interrupted ------------
  * Two failure modes here cost merchants real money:
@@ -124,7 +125,7 @@ export async function qaStylizedText(
   frameUrl: string,
   productTitle: string,
   productImageUrl?: string | null
-): Promise<{ pass: boolean; reason: string }> {
+): Promise<{ pass: boolean; reason: string; degraded?: boolean }> {
   try {
     const { anthropicVision } = await import("./anthropic.server");
     const urls = productImageUrl ? [productImageUrl, frameUrl] : [frameUrl];
@@ -139,12 +140,15 @@ export async function qaStylizedText(
       ].filter(Boolean).join(" "),
       urls
     );
-    const m = raw && raw.match(/\{[\s\S]*\}/);
-    if (!m) return { pass: true, reason: "qa-unavailable" };
-    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
-    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 160) };
-  } catch {
-    return { pass: true, reason: "qa-error" };
+    // FAILS CLOSED. This is the gate that catches "Loose flimily clasp" and
+    // "Secure keychien clip" before they ship; answering "pass" because the
+    // judge was unreachable is the one answer it must never give.
+    // `degraded` = could not judge, so the caller skips the repair chain
+    // rather than paying two renders to fix a fault nobody saw.
+    const v = parseGateVerdict(raw, "pass", "reason", 160);
+    return { pass: v.ok, reason: v.reason || (v.degraded ? "qa-unparseable" : ""), degraded: v.degraded };
+  } catch (e) {
+    return { pass: false, reason: outageReason(e), degraded: true };
   }
 }
 
@@ -183,6 +187,14 @@ export async function gateStylizedFrame(
   try {
     let qa = await qaStylizedText(frameUrl, productTitle, productImageUrl);
     if (qa.pass) return frameUrl;
+    // Could not judge, as opposed to judged and rejected. The repair chain
+    // below costs two more renders and would be guessing at a fault nobody
+    // observed, so ship the frame — but never in silence, and never as if
+    // it had passed.
+    if (qa.degraded) {
+      console.error(`[${tag}] text gate could not judge (${qa.reason}) — shipping frame UNVERIFIED`);
+      return frameUrl;
+    }
     console.log(`[${tag}] stylized frame failed text QA (${qa.reason}) — repairing lettering`);
     const fixed = await repairStylizedText(frameUrl, productTitle, "fix", {
       priorId: resume?.fixId,

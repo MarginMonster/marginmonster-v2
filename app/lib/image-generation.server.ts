@@ -13,6 +13,7 @@ import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
 import { tidyAdCopy } from "./ad-copy-tidy";
+import { parseGateVerdict, outageReason } from "./gate-verdict";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -530,15 +531,11 @@ async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolea
       [productUrl, genUrl],
       { maxTokens: 200 }
     );
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) {
-      console.error(`[image-ad] qaFidelity could not parse a verdict from: ${raw.slice(0, 300)}`);
-      return { pass: false, reason: "qa-unparseable", degraded: true };
-    }
-    const j = JSON.parse(m[0]) as { pass?: boolean; reason?: string };
-    return { pass: j.pass !== false, reason: (j.reason || "").slice(0, 200) };
+    const v = parseGateVerdict(raw, "pass", "reason", 200);
+    if (v.degraded) console.error(`[image-ad] qaFidelity got no usable verdict from: ${String(raw).slice(0, 300)}`);
+    return { pass: v.ok, reason: v.reason, degraded: v.degraded };
   } catch (e) {
-    return { pass: false, reason: `qa-outage: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`, degraded: true };
+    return { pass: false, reason: outageReason(e), degraded: true };
   }
 }
 
