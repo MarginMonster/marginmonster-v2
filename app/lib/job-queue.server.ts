@@ -623,7 +623,10 @@ async function runJob(
           // jobId + resume: without these the prediction id is never
           // checkpointed, so each of the 3 attempts bought a BRAND-NEW video
           jobId: payload.__jobId as string | undefined,
-          resume: { predictionId: payload.ckVideoPredId as string | undefined },
+          resume: {
+            predictionId: payload.ckVideoPredId as string | undefined,
+            engineRefunded: payload.ckEngineRefunded === true,
+          },
         });
       }
       await stampProductUrl(forgedAssetId, payload);

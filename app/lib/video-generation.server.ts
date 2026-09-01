@@ -185,6 +185,10 @@ interface GenerateVideoParams {
      *  already paid for. Without this, a restart (or any retry) mid-poll bought
      *  a brand-new video every time: three attempts, three bills, one asset. */
     predictionId?: string;
+    /** Set once the engine-downgrade refund has been CLAIMED. A resumed job
+     *  re-reaches the reconcile below, and paying a refund twice is the worse
+     *  bug — see the no-blind-writes rule. */
+    engineRefunded?: boolean;
   };
 }
 
@@ -192,6 +196,10 @@ interface GenerateVideoParams {
 // "timed out" on predictions that went on to succeed — a paid render thrown
 // away, and the retry paid for another one.
 const VIDEO_POLL_MS = 12 * 60_000;
+
+import { surchargeShortfall, downgradeNote } from "./engine-delivery";
+import { engineSurcharge } from "./video-engines";
+import { refundTokens } from "./tokens.server";
 
 export async function generateVideoAd(params: GenerateVideoParams): Promise<string> {
   const {
@@ -324,11 +332,13 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     }
   }
 
+  // Hoisted: the surcharge reconcile at the end of this function has to know
+  // which engine actually rendered, and this was scoped to the block below.
+  let ranModel = "";
   if (!videoUrl) {
     // Engine-picker path: a chosen engine (with a seed frame) runs through the
     // multi-engine adapter, which falls back to the default engine on rejection.
     let predictionId: string;
-    let ranModel: string;
     // ANY seed frame goes through the engine adapter — including "Auto".
     //
     // This used to read `params.videoEngine && seedImage`, and "Auto"
@@ -368,6 +378,10 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // straight back to the fal engine that just failed at inference.
       console.error(`[video] ${ranModel} failed at inference — retrying on ${DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
       const retry = await animateCreate("kling25", { startImage: seedImage, prompt });
+      // The default engine is what actually renders from here. Leaving
+      // ranModel on the premium engine made the asset metadata claim a
+      // model that never ran, and hid the downgrade from the refund below.
+      ranModel = retry.model;
       await ckpt({ ckVideoPredId: retry.id });
       videoUrl = await animatePoll(retry.id, VIDEO_POLL_MS, "video(default-engine)");
     }
@@ -383,6 +397,34 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // A download failure must NOT fail the job: the merchant has already been
   // charged and a possibly-expiring video beats no video, so we fall back to
   // the provider URL and log it loudly.
+  // THE MERCHANT PAID FOR AN ENGINE; RECONCILE AGAINST THE ONE THAT RAN.
+  // veo31 and kling25fal are fal-only, and animateModelFor has no veo31 case,
+  // so no FAL_KEY (or a fal reject, or an inference failure) rendered a
+  // 75-token premium pick on the free default and kept the 75.
+  // `ranModel` is empty only when this run RESUMED someone else’s prediction and
+  // never went through the engine adapter. We do not know what rendered then,
+  // and surchargeShortfall(engine, "") would read as a full downgrade — so say
+  // so and skip, rather than invent a refund.
+  const owedBack = ranModel ? surchargeShortfall(params.videoEngine, ranModel) : 0;
+  if (!ranModel && engineSurcharge(params.videoEngine) > 0) {
+    console.warn(`[video] resumed a prediction of unknown engine; surcharge for "${params.videoEngine}" not reconciled`);
+  }
+  if (owedBack > 0 && !params.resume?.engineRefunded) {
+    // Claim BEFORE crediting: if the credit throws we lose one refund, which
+    // is recoverable and loudly logged. Crediting first and crashing before
+    // the claim pays it again on every resume.
+    await ckpt({ ckEngineRefunded: true });
+    try {
+      await refundTokens(shopId, owedBack);
+      console.warn(`[video] ${downgradeNote(params.videoEngine, ranModel)}`);
+    } catch (e) {
+      console.error(
+        `[video] ENGINE REFUND FAILED after being claimed — shop ${shopId} is owed ${owedBack} tokens: `,
+        e instanceof Error ? e.message.slice(0, 200) : e
+      );
+    }
+  }
+
   const storedUrl = await persistRemoteVideo(videoUrl);
 
   const asset = await db.asset.create({
