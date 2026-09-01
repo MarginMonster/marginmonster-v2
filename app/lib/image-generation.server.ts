@@ -13,6 +13,7 @@ import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
 import { tidyAdCopy } from "./ad-copy-tidy";
+import { occupiedPlate } from "./plate-scene";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
@@ -556,7 +557,13 @@ async function qaPresenterHold(
   genUrl: string,
   scalePhrase: string | undefined,
   sizeClass?: string,
-  cm?: number
+  cm?: number,
+  /** Worn apparel. The scale questions below are meaningless for a garment —
+   *  it spans the torso because it is being worn — so they are dropped. Every
+   *  fidelity and anatomy question still applies, and artworkMatches most of
+   *  all: a tee rendered with different print art is the same defect as a box
+   *  rendered with different box art. */
+  wear?: boolean
 ): Promise<{ pass: boolean; reason: string; bad: string[]; soft: string[] }> {
   try {
     // The real product photo goes up as BYTES. Passed as a URL, the API's own
@@ -635,13 +642,15 @@ async function qaPresenterHold(
         // severity as a lip balm drawn as a shoebox (a lie). The gate now
         // reports which size band the render READS as and the caller measures
         // the distance from the expected band, both directions.
-        `renderedSize: against the person, how big does the product READ in image 2? Answer exactly one of: "palm" (fits in one palm), "two-hands" (needs both hands, smaller than the torso), "torso" (spans the torso or needs arms wrapped around), "floor" (furniture-sized or larger).${scalePhrase ? ` For context, the real product is ${scalePhrase}.` : ""}`,
+        wear
+          ? `wornCorrectly: the garment is being WORN by the presenter and hangs like real fabric on a real body — not floating, not pasted flat over them, not draped on a hanger or mannequin.`
+          : `renderedSize: against the person, how big does the product READ in image 2? Answer exactly one of: "palm" (fits in one palm), "two-hands" (needs both hands, smaller than the torso), "torso" (spans the torso or needs arms wrapped around), "floor" (furniture-sized or larger).${scalePhrase ? ` For context, the real product is ${scalePhrase}.` : ""}`,
         // Bands are too coarse to catch a lie WITHIN a band — a 20cm bottle
         // drawn at 45cm is "two-hands" either way and twice life size. So
         // also take an absolute measurement against the one ruler always in
         // frame: the presenter's own head.
         `headHeights: measure the product's longest visible dimension in image 2 against the presenter's HEAD (chin to top of head). Answer a decimal number — e.g. 0.5 if it is half a head tall, 2 if it is two heads tall. Measure what is DRAWN, not what the product should be.`,
-        `scalePlausible: judging by what the product obviously is, is it a believable size against the person?`,
+        wear ? "" : `scalePlausible: judging by what the product obviously is, is it a believable size against the person?`,
         `noSourceText: has marketing text, a caption, a price flash or a shop watermark from image 1's BACKGROUND been copied in, or packaging text duplicated? Answer true if NOT.`,
         `handsOk: if no hand is visible in the picture, answer true — a product resting on a surface does not need one. Otherwise COUNT THE DIGITS on every visible hand — four fingers plus one thumb, five total, never six. Five visible fingers with a thumb hidden behind the product is still six: failure. Exactly TWO hands in the whole image, both attached to the presenter, no third or disembodied hand.`,
         // Counting digits is not the same as looking at them. A frame came back
@@ -654,7 +663,11 @@ async function qaPresenterHold(
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
         `Judge fidelity, scale and anatomy only — not lighting or taste.`,
-        `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"renderedSize":"palm|two-hands|torso|floor","headHeights":number,"scalePlausible":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
+        // the shape must match the questions actually asked above, or the
+        // judge answers a scale question we did not ask and skips the fit one
+        wear
+          ? `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"wornCorrectly":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`
+          : `Reply ONLY JSON: {"artworkMatches":bool,"sameObject":bool,"notSimplified":bool,"singleProduct":bool,"textFaithful":bool,"finePrintFaithful":bool,"renderedSize":"palm|two-hands|torso|floor","headHeights":number,"scalePlausible":bool,"noSourceText":bool,"handsOk":bool,"handsHuman":bool,"faceVisible":bool,"notSelfie":bool,"reason":"..."}`,
       ].filter(Boolean).join("\n"),
       [productRef, genRef],
       // The cheap vision model looked straight at plastic doll fingers with
@@ -696,7 +709,11 @@ async function qaPresenterHold(
     // object drawn at twice life size — a 200ml Ramune bottle shipped as a
     // half-metre jug before this rule — and every viewer knows how big a
     // bottle is. Oversizing the small stuff blocks.
-    const ORD: Record<string, number> = { palm: 0, "two-hand": 1, "two-hands": 1, large: 2, torso: 2, floor: 3 };
+    // A worn garment has no meaningful size band — it is the size of the
+    // person wearing it — so the whole scale block is skipped and the fit
+    // question stands in its place.
+    if (wear && j.wornCorrectly === false) bad.push("wornCorrectly");
+    const ORD: Record<string, number> = wear ? {} : { palm: 0, "two-hand": 1, "two-hands": 1, large: 2, torso: 2, floor: 3 };
     const expected = ORD[(sizeClass || "").trim()];
     const rendered = ORD[String(j.renderedSize || "").trim().toLowerCase()];
     if (expected !== undefined && rendered !== undefined) {
@@ -713,7 +730,7 @@ async function qaPresenterHold(
     // A 20cm bottle drawn two heads tall shipped before this — same band as
     // life size, twice the size. 1.8x either way is a visible lie.
     const heads = Number(j.headHeights);
-    if (cm && Number.isFinite(heads) && heads > 0) {
+    if (!wear && cm && Number.isFinite(heads) && heads > 0) {
       const ratio = (heads * 23) / cm;
       if ((ratio >= 1.8 || ratio <= 0.55) && !bad.includes("scaleFar") && !bad.includes("scaleUp")) {
         bad.push(ratio >= 1.8 ? "scaleUp" : "scaleFar");
@@ -1459,9 +1476,9 @@ export async function runPresenterHold(opts: {
   const oneMode = opts.wear ? ("wear" as const) : showcase ? ("showcase" as const) : ("hold" as const);
   let composed = preComposed || (await runCompose(opts.scalePhrase, oneMode));
   if (!composed) return { url: null, pass: false, reason: "compose returned nothing", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
-  if (opts.wear) return { url: composed, pass: true, reason: "wear-path (ungated)", retried: false, composited: false, via: "drawn", failed: [], wrongProduct: false };
-
-  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase, opts.sizeClass, opts.cm));
+  // Apparel used to return pass:true here without ever looking. It is gated
+  // now, minus the scale questions that a worn garment cannot answer.
+  let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase, opts.sizeClass, opts.cm, opts.wear));
   let retried = false;
   if (!qa.pass) {
     // The retry SHOUTS the requirement rather than repeating it — a second
@@ -3017,7 +3034,13 @@ export async function generateImageAd(
           const placement = t.placement || "placed naturally as the hero";
           const truth = `${stylePrompt ? ` Apply this one change the merchant asked for: ${trimToWord(stylePrompt, 200)}.` : ""} The product stays identical to its photo: same shape, colors, logos and details, and every code, serial and number printed on it copied character for character, at its TRUE real-world scale. Any hands shown are anatomically correct with five fingers. Photorealistic, magazine-quality, no added text or watermark.`;
           const twoImagePrompt = `Recreate the FIRST image's scene exactly — same composition, lighting, colors and style — with the SECOND image's product ${placement}.${truth}`;
-          const oneImagePrompt = `${t.plate}. Place the product from the provided image into that scene, ${placement}.${truth}`;
+          // `plate` is documented as the EMPTY stage and says so in its own text
+          // ("completely empty scene ... no objects"). The two-image path renders
+          // that plate and composites onto it, which is correct. This one-image
+          // fallback pasted the same string in front of "Place the product ... into
+          // that scene", telling the model the scene contains no objects and to put
+          // an object in it — on the already-degraded path.
+          const oneImagePrompt = `${occupiedPlate(t.plate)}. Place the product from the provided image into that scene, ${placement}.${truth}`;
           usedPrompt = plateUrl ? twoImagePrompt : oneImagePrompt;
           const stagedOnce = async (): Promise<string> => {
             const inputs = plateUrl ? [plateUrl, productImageUrl] : [productImageUrl];
