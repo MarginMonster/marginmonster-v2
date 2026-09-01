@@ -40,6 +40,7 @@ import {
 } from "./cartoon-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
+import { capScript } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
@@ -275,8 +276,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         .join("\n")
         .trim(),
       params.productTitle, "jingle:lyrics", params.productDescription);
-    const words = lyrics.split(/\s+/);
-    if (words.length > 48) lyrics = words.slice(0, 48).join(" ");
+    // Measured per writing system. `split(/\s+/)` scored a whole Chinese
+    // lyric as one word, so this cap never fired and the song ran long.
+    lyrics = capScript(lyrics, 48);
     await ckpt({ ckLyrics: lyrics });
   }
 

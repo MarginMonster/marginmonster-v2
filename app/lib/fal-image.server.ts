@@ -7,6 +7,8 @@
  * Sync endpoint (images render in ~5-15s). Any failure throws — callers fall
  * back to the plain portrait so a bad compose never blocks a render. */
 
+import { hasCJK } from "./content-lang";
+
 /** The compose engine. Overridable because "would a different model fix
  *  this?" is a question with a measurable answer, and swapping one should not
  *  need a code change to find out. Seedream v4 edit stays the default until
@@ -135,12 +137,17 @@ export async function submitCompose(
   const raw = (scene || "").trim().slice(0, 220);
   const looksLikeScene = (t: string): boolean => {
     if (!t) return false;
-    const words = t.split(/\s+/).length;
+    // Chinese has no inter-word spaces, so a perfectly good scene direction
+    // scored 1 and was demoted to a style note — the merchant typed a place
+    // and the shot stayed where it was. Characters decide for CJK.
+    const long = hasCJK(t) ? [...t.replace(/\s+/g, "")].length >= 12 : t.split(/\s+/).length >= 8;
     // a place or an action, the two things that relocate a shot
     if (/\b(in|at|on|inside|outside|beside|behind|near|by the|next to|during|while|mid-)\b/i.test(t)) return true;
     if (/\b(kitchen|bathroom|bedroom|office|gym|studio|street|beach|park|garden|counter|desk|table|car|shop|store|cafe|window|outdoors|indoors)\b/i.test(t)) return true;
     // long enough to be describing rather than adjusting
-    return words >= 8;
+    // (the keyword tests above are English-only by nature, so for CJK this
+    //  length test is the whole decision — hence the deliberately low bar)
+    return long;
   };
   const s = looksLikeScene(raw) ? raw : "";
   const styleNote = !s && raw ? ` Overall look the merchant asked for: ${raw}.` : "";
