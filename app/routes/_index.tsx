@@ -47,6 +47,32 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
   ];
 };
 
+
+/* Feature icons. These were emoji — which read as a hobby project next to a
+   competitor's drawn set, and rendered as a different glyph on every OS.
+   One stroke weight, one 24-grid, currentColor so the tile tints them. */
+const FEAT_ICONS: Record<string, JSX.Element> = {
+  video: <><rect x="2.5" y="5" width="19" height="14" rx="3" /><path d="m10 9.5 5 2.5-5 2.5z" /></>,
+  cartoon: <><path d="M12 3.2 13.7 8 18.5 9.7 13.7 11.4 12 16.2 10.3 11.4 5.5 9.7 10.3 8z" /><path d="M18.2 15.2l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /><path d="M6 16.5l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4L4.1 18.4l1.4-.5z" /></>,
+  seo: <><path d="M5.5 3.5h9L19 8v12.5H5.5z" /><path d="M14 3.6V8.2h4.6" /><path d="M8.6 12.4h6.8M8.6 16h4.6" /></>,
+  post: <><path d="M21 3.6 10.6 14" /><path d="M21 3.6 14.4 21l-3.8-7-7-3.8z" /></>,
+  auto: <><path d="M20.4 12a8.4 8.4 0 1 1-2.6-6.1" /><path d="M20.6 4.2v4.6H16" /><circle cx="12" cy="12" r="2.4" /></>,
+  cinema: <><rect x="2.5" y="8" width="19" height="12.5" rx="2.5" /><path d="m3.4 8 3.3-4.2 3.6 4.2M10.3 8l3.3-4.2L17.2 8" /></>,
+  shield: <><path d="M12 3.2 19.4 6v6c0 4.2-3 7.3-7.4 8.8C7.6 19.3 4.6 16.2 4.6 12V6z" /><path d="m9 12.1 2.2 2.2 4-4.2" /></>,
+  bolt: <><path d="M13.2 2.6 4.8 13.4h6L10.6 21.4 19 10.6h-6z" /></>,
+};
+
+function FeatIcon({ name }: { name: string }) {
+  const g = FEAT_ICONS[name];
+  if (!g) return null;
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {g}
+    </svg>
+  );
+}
+
 export default function Index() {
   useLoaderData<typeof loader>();
   // Language toggle — persisted per browser, auto-detected on first visit.
@@ -69,7 +95,14 @@ export default function Index() {
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <label className="lz-lang">
-              🌐
+              {/* was a 🌐 emoji, which rendered as a different picture on every
+                  OS and sat at a different baseline than the select beside it */}
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                   strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3.2 9.4h17.6M3.2 14.6h17.6" />
+                <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
+              </svg>
               <select value={lang} onChange={(e) => pick(e.target.value as LangKey)} aria-label="Language">
                 {(Object.keys(LANG_LABELS) as LangKey[]).map((l) => (
                   <option key={l} value={l}>{LANG_LABELS[l]}</option>
@@ -101,7 +134,7 @@ export default function Index() {
                   and a cinematic product highlight, both muted loops. */}
               <video
                 className="lz-flank"
-                src="/showcase/flank-left.mp4?v=1"
+                src="/showcase/flank-left.mp4?v=2"
                 poster="/showcase/flank-left.jpg?v=1"
                 autoPlay muted loop playsInline
                 aria-label="An EasyMode avatar presenter ad"
@@ -115,7 +148,7 @@ export default function Index() {
               />
               <video
                 className="lz-flank"
-                src="/showcase/flank-right.mp4?v=1"
+                src="/showcase/flank-right.mp4?v=2"
                 poster="/showcase/flank-right.jpg?v=1"
                 autoPlay muted loop playsInline
                 aria-label="An EasyMode cinematic product highlight"
@@ -170,7 +203,7 @@ export default function Index() {
         <section className="lz-feats"><span className="lz-rose lz-rose-feats" aria-hidden="true" />
           {t.features.map((f) => (
             <div className="lz-card" key={f.title}>
-              <div className="lz-ic">{f.icon}</div>
+              <div className="lz-ic"><FeatIcon name={f.icon} /></div>
               <h3>{f.title}</h3>
               <p>{f.body}</p>
             </div>
@@ -185,7 +218,7 @@ export default function Index() {
           <p className="lz-show-sub">{t.show.sub}</p>
           <div className="lz-show-grid">
             <figure className="lz-show-card" key="commercial">
-              <video className="lz-show-vid" src="/showcase/commercial.mp4?v=2" poster="/showcase/commercial-cover.jpg?v=2" autoPlay muted loop playsInline aria-label="EasyMode-generated commercial" />
+              <video className="lz-show-vid" src="/showcase/commercial.mp4?v=3" poster="/showcase/commercial-cover.jpg?v=2" autoPlay muted loop playsInline aria-label="EasyMode-generated commercial" />
               <figcaption><b>Commercial</b><span>A cinematic story ad — script, scenes &amp; voice by EasyMode</span></figcaption>
             </figure>
             {[
@@ -218,7 +251,15 @@ export default function Index() {
                 <div className="lz-price-name">{tier.name}</div>
                 <div className="lz-price-amt">${tier.price}<small>{t.price.perMo}</small></div>
                 <div className="lz-price-alt">{t.price.yearAlt.replace("{Y}", annualPrice(tier).toLocaleString())}</div>
-                <div className="lz-price-tok">{t.price.tokensMo.replace("{N}", tier.monthlyTokens.toLocaleString())}</div>
+                <div className="lz-price-tok">
+                  {/* was a 🪙 emoji inside the copy string, so it shipped in all
+                      five languages and rendered as a different coin per OS */}
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8.4" /><path d="M12 7.6v8.8M9.7 9.9h3.5a1.9 1.9 0 0 1 0 3.8h-3.5" />
+                  </svg>
+                  <span>{t.price.tokensMo.replace("{N}", tier.monthlyTokens.toLocaleString())}</span>
+                </div>
                 {lang === "en" && <div className="lz-price-cap">{planCapacityLine(tier)}</div>}
                 <ul>{(t.price.tiers[tier.key] || tier.features).map((f) => <li key={f}>{f}</li>)}</ul>
                 <a className="lz-price-cta" href="/web/signup">{t.price.cta}</a>
@@ -272,7 +313,10 @@ export default function Index() {
             <span className="lz-crest" style={{ width: 26, height: 26 }} aria-hidden="true">
               <img src="/easymode-head.png?v=2" alt="" />
             </span>
-            <span>Easy<b>Mode</b><i>.io</i></span>
+            {/* was ".io" — a domain we do not own, sitting two elements away
+                from mailto:hello@easymodeapp.com. The header wordmark carries
+                no TLD either; the real address is in the links below. */}
+            <span>Easy<b>Mode</b></span>
           </div>
           <span className="lz-copy">{t.footer.copy}</span>
           <nav className="lz-footlinks" aria-label="Footer">
@@ -341,8 +385,6 @@ html,body{margin:0;padding:0}
   animation:lz-medallion 60s linear infinite;}
 /* Far enough right that the rosette's hollow centre clears the edge — closer
    in, the centre reads as a dark smudge sitting on the button. */
-.lz-cta::after,.lz-price-cta::after{right:-96px;width:158px;height:158px;margin-top:-79px;opacity:.6;}
-.lz-navcta::after{right:-74px;width:112px;height:112px;margin-top:-56px;opacity:.5;}
 .lz-cta{background:
     repeating-linear-gradient(57deg,rgba(255,220,120,.12) 0 1px,transparent 1px 8px),
     repeating-linear-gradient(123deg,rgba(255,220,120,.09) 0 1px,transparent 1px 8px),
@@ -371,7 +413,7 @@ html,body{margin:0;padding:0}
 .lz-rose-feats{position:absolute;top:-70px;right:-120px;transform:scale(.75);opacity:.5;pointer-events:none;}
 .lz-rose-show{position:absolute;bottom:-60px;left:-130px;transform:scale(.7);opacity:.5;pointer-events:none;}
 .lz-card{display:flex;flex-direction:column;min-height:200px;}
-.lz-card .lz-ic{font-size:30px;width:56px;height:56px;display:grid;place-items:center;}
+.lz-card .lz-ic{width:56px;height:56px;display:grid;place-items:center;}
 .lz-heroshow{margin:40px auto 0;max-width:340px;position:relative;}
 .lz-herorow{display:flex;align-items:center;justify-content:center;gap:26px;}
 .lz-herovid{width:100%;max-width:340px;aspect-ratio:9/16;object-fit:cover;border-radius:22px;display:block;
@@ -410,12 +452,15 @@ html,body{margin:0;padding:0}
 .lz-pow i{font-style:normal;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
 .lz-pow-note{max-width:560px;margin:0 auto;font-size:13.5px;line-height:1.55;color:var(--muted);}
 @media(max-width:620px){.lz-pow-row{gap:12px 22px;}.lz-pow b{font-size:15px;}}
-.lz-feats{max-width:1000px;margin:56px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;}
+/* Fixed 4-up, not auto-fit. auto-fit resolved to 5 columns at this max-width,
+   so the 8 cards landed 5 + 3 and the second row trailed off with two empty
+   slots — the one thing on the page that looked unfinished. 4 x 2 is even. */
+.lz-feats{max-width:1000px;margin:56px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;}
 .lz-card{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:18px;padding:22px 20px;
   box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);
   transition:transform .12s,border-color .12s,box-shadow .12s;}
 .lz-card:hover{transform:translateY(-4px);border-color:var(--green2);box-shadow:0 16px 40px rgba(12,122,70,.14)}
-.lz-ic{width:46px;height:46px;display:grid;place-items:center;font-size:23px;border-radius:13px;margin-bottom:14px;
+.lz-ic{width:46px;height:46px;display:grid;place-items:center;color:var(--green,#0C7A46);border-radius:13px;margin-bottom:14px;
   background:rgba(12,122,70,.09);box-shadow:inset 0 0 0 1px rgba(12,122,70,.2);}
 .lz-card h3{font-family:Poppins,sans-serif;font-weight:700;font-size:16px;margin:0 0 7px;letter-spacing:-.01em;color:var(--ink);}
 .lz-card p{font-size:13.5px;line-height:1.55;color:var(--ink2);margin:0;}
@@ -438,7 +483,7 @@ html,body{margin:0;padding:0}
 .lz-price-amt{font-family:Poppins,sans-serif;font-weight:800;font-size:38px;color:var(--green);margin-top:6px;}
 .lz-price-amt small{font-size:15px;color:var(--ink2);font-weight:600;}
 .lz-price-alt{font-size:12px;color:var(--ink2);margin-top:2px;}
-.lz-price-tok{margin-top:14px;font-weight:700;font-size:13.5px;color:var(--gold-deep);}
+.lz-price-tok{display:flex;align-items:center;gap:6px;justify-content:flex-start;margin-top:14px;font-weight:700;font-size:13.5px;color:var(--gold-deep);}
 .lz-price-cap{font-size:12.5px;color:var(--ink2);margin-top:3px;}
 .lz-price-card ul{list-style:none;margin:16px 0 18px;padding:0;display:flex;flex-direction:column;gap:9px;flex:1;}
 .lz-price-card li{position:relative;padding-left:24px;font-size:13.5px;line-height:1.45;color:var(--ink2);}
