@@ -135,8 +135,14 @@ export async function qaStylizedText(
         productImageUrl
           ? `Image 1 is a real product photo; image 2 is a stylized cartoon ad frame featuring that product.`
           : `This is a stylized cartoon ad frame.`,
-        `Check every piece of visible lettering (labels, packaging, box art, signs): each must be real, correctly-spelled, right-side-up readable language — and wherever it names the product it must read exactly "${productTitle}". Stylized fonts are fine; invented words, garbled or half-formed letters, mirrored or upside-down text are a FAIL.`,
-        productImageUrl ? `Also FAIL if the product's shape or colors are unrecognizable compared to image 1.` : "",
+        `Check every piece of visible lettering (labels, packaging, box art, signs): each must be real, correctly-spelled, right-side-up readable language. Stylized fonts are fine; invented words, garbled or half-formed letters, mirrored or upside-down text are a FAIL.`,
+        // With a photograph the truth is the photograph. Demanding the
+        // catalogue title here failed frames that had correctly kept the
+        // merchant's own brand mark, and sent them to a repair that
+        // relabelled a package which had been right.
+        productImageUrl
+          ? `The lettering printed on the product must match image 1 — same words, same spelling, same script. FAIL if it was re-lettered, translated, or replaced with different words, and FAIL if the product's shape or colors are unrecognizable compared to image 1.`
+          : `Wherever the packaging names the product it must read exactly "${productTitle}".`,
         `Reply ONLY JSON: {"pass": true|false, "reason": "short reason"}.`,
       ].filter(Boolean).join(" "),
       urls
@@ -157,17 +163,29 @@ export async function repairStylizedText(
   frameUrl: string,
   productTitle: string,
   mode: "fix" | "strip",
+  /** The real product photo, when there is one. With it the repair RESTORES
+   *  the merchant's own lettering; without it, the title is the only text we
+   *  can honestly put on an invented package. */
+  productImageUrl?: string | null,
   // Each repair is a PAID nano-banana edit — resume plumbing so a restart
   // mid-poll re-attaches instead of buying it again. Only safe to pass when
   // the input frame is the same one the checkpointed edit ran on.
   resume?: { priorId?: string; save?: (id: string) => Promise<void> }
 ): Promise<string> {
-  const prompt = mode === "fix"
+  const restore = mode === "fix" && !!productImageUrl;
+  const prompt = restore
+    ? `Edit image 1: image 2 is the REAL product. Correct ONLY the lettering that is garbled, misspelled, mirrored or half-formed, so that every word printed on the product matches image 2 exactly — same words, same spelling, same language and script. Do not translate it, do not replace it with a product name, and do not add any lettering that is not in image 2. Leave the art style, colors and composition of image 1 untouched.`
+    : mode === "fix"
     ? `Edit this image: correct ALL lettering so that any packaging, label or box text reads exactly "${productTitle}" in clean bold letters, perfectly spelled, and remove every other piece of lettering. Change NOTHING else — same art style, same character, same product shape and colors, same composition.`
     : `Edit this image: remove ALL lettering and text from every surface — packaging, labels, box art, signs — leaving those surfaces clean in the same art style. Change NOTHING else — same character, same product shape and colors, same composition.`;
   return resumablePrediction({
     priorId: resume?.priorId,
-    create: () => repCreate("google/nano-banana", { prompt, image_input: [frameUrl], output_format: "jpg" }),
+    create: () => repCreate("google/nano-banana", {
+      prompt,
+      // image 2 is the reference the restore prompt above refers to
+      image_input: restore ? [frameUrl, productImageUrl as string] : [frameUrl],
+      output_format: "jpg",
+    }),
     save: async (id) => { await resume?.save?.(id); },
     maxMs: 5 * 60_000,
     stage: `stylized-text-${mode}`,
@@ -197,14 +215,14 @@ export async function gateStylizedFrame(
       return frameUrl;
     }
     console.log(`[${tag}] stylized frame failed text QA (${qa.reason}) — repairing lettering`);
-    const fixed = await repairStylizedText(frameUrl, productTitle, "fix", {
+    const fixed = await repairStylizedText(frameUrl, productTitle, "fix", productImageUrl, {
       priorId: resume?.fixId,
       save: async (id) => { await resume?.save?.({ ckGateFixId: id }); },
     });
     qa = await qaStylizedText(fixed, productTitle, productImageUrl);
     if (qa.pass) return fixed;
     console.log(`[${tag}] repair still failing QA (${qa.reason}) — stripping lettering`);
-    const stripped = await repairStylizedText(frameUrl, productTitle, "strip", {
+    const stripped = await repairStylizedText(frameUrl, productTitle, "strip", productImageUrl, {
       priorId: resume?.stripId,
       save: async (id) => { await resume?.save?.({ ckGateStripId: id }); },
     });
@@ -433,10 +451,25 @@ export function characterKeyframePrompt(o: {
 }
 
 /** Packaging-text rule, shared with production so the harness cannot drift. */
+/** For the branch with NO reference photograph. A text-to-image render
+ *  invents the package outright, so the product title is the only correct
+ *  thing that can go on it. */
 export function keyframeExactTextRule(productTitle: string): string {
   return (
     ` If any packaging, box art or label appears in the scene, it displays ONLY the title "${productTitle}" ` +
     `in clean bold lettering spelled EXACTLY like that — never invented words, never gibberish text; any other surface stays text-free.`
+  );
+}
+
+/** For every branch that HAS a reference photograph. The lettering already
+ *  exists and is the merchant's own: a brand mark, a net weight, a set code,
+ *  often a script that is not Latin. Re-lettering it to the catalogue title
+ *  is not a fix, it is the defect. */
+export function keyframePreserveTextRule(): string {
+  return (
+    ` Every word, logo and code printed on the product is copied from the photograph exactly as it appears — same spelling, ` +
+    `same language and script, never re-lettered, never translated, never replaced with the product listing title. ` +
+    `Do not add lettering that is not in the photograph; any OTHER surface in the scene stays text-free.`
   );
 }
 
@@ -453,7 +486,8 @@ export async function stylizeKeyframeForTest(o: {
   const prompt = characterKeyframePrompt({
     productTitle: o.productTitle,
     recipe,
-    exactText: keyframeExactTextRule(o.productTitle),
+    // this harness path stylizes a real photo, so preserve rather than relabel
+    exactText: keyframePreserveTextRule(),
   });
   const id = await repCreate("black-forest-labs/flux-kontext-pro", {
     prompt, input_image: o.sourcePhotoUrl, aspect_ratio: "9:16", output_format: "jpg",
@@ -580,6 +614,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     // The BRAND goes on the box: styles that draw packaging (boxed figure,
     // toy shelf) kept inventing gibberish wordmarks ("TPLIGES"). Any packaging
     // must carry the real product title, spelled exactly — or no text at all.
+    // The two branches that pass a real photograph keep its lettering.
+    const preserveText = keyframePreserveTextRule();
+    // Used only by the text-to-image branch below, which has no photograph.
     const exactText =
       ` If any packaging, box art or label appears in the scene, it displays ONLY the title "${params.productTitle}" ` +
       `in clean bold lettering spelled EXACTLY like that — never invented words, never gibberish text; any other surface stays text-free.`;
@@ -600,7 +637,11 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     let url: string;
     if (sourcePhotoUrl && withCharacter) {
       const prompt = characterKeyframePrompt({
-        productTitle: params.productTitle, recipe, serviceMode: params.serviceMode, sceneBits, exactText,
+        // input_image below is a real composed photo — the printed text in it
+        // is the merchant's, and must survive the restyle rather than be
+        // overwritten with the catalogue title.
+        productTitle: params.productTitle, recipe, serviceMode: params.serviceMode, sceneBits,
+        exactText: preserveText,
       });
       url = await run({
         prompt,
@@ -612,7 +653,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       const prompt =
         `Redraw this exact product as a ${recipe.look}. Keep the product's shape, colors, ` +
         `proportions, logos and text clearly recognizable — same product, new art style. ` +
-        `Place it as the hero of a delightful advertising scene with a simple complementary background.${sceneBits}${exactText} ` +
+        `Place it as the hero of a delightful advertising scene with a simple complementary background.${sceneBits}${preserveText} ` +
         `Vertical 9:16 composition, no watermark, no caption text.`;
       url = await run({
         prompt,

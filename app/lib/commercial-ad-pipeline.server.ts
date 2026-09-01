@@ -693,7 +693,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   // take ships either way — unbounded re-rolls would be an open wallet).
   const animOpts = (i: number) => ({
     startImage: keyframeUrls[i],
-    prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${serviceMode ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, no text.`,
+    prompt: `${plan.beats[i].motion}. Cinematic live-action, natural physics${serviceMode ? "" : ", the product keeps its exact printed artwork and lettering"}. No morphing, and no ADDED captions, titles or overlay text — the only lettering in frame is the product’s own.`,
     negativePrompt: "warping, morphing text, extra limbs, cartoon, distortion",
   });
   // Beats are independent — render them ALL at once. Sequential clips made

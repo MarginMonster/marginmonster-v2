@@ -190,20 +190,34 @@ export async function anthropicVision(
     return { type: "image", source: { type: "url", url: visionSafeUrl(url) } };
   }));
   content.push({ type: "text", text: prompt });
-  const res = await fetch(ANTHROPIC_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: opts.maxTokens || 500,
-      ...thinkingFieldFor(model),
-      messages: [{ role: "user", content }],
-    }),
-  });
+  // Retried, like anthropicText beside it. This was a bare fetch: no retry, no
+  // 429 handling, no per-attempt timeout. Every vision call in the product is a
+  // QUALITY GATE, and the gates now fail CLOSED — so a single transient 429 no
+  // longer just cost a check, it marked a good ad `degraded` and skipped its
+  // remediation. The judge deserves the same five attempts the writer gets.
+  let res: Response;
+  try {
+    res = await fetchRetry(
+      ANTHROPIC_URL,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: opts.maxTokens || 500,
+          ...thinkingFieldFor(model),
+          messages: [{ role: "user", content }],
+        }),
+      },
+      { label: "anthropic-vision", attempts: 5, totalCapMs: 90_000 }
+    );
+  } catch (e) {
+    throw new Error(`Network error reaching Anthropic: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const bodyText = await res.text();
   if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${bodyText.slice(0, 300)}`);
   const json = JSON.parse(bodyText) as { content?: Array<{ type: string; text?: string }> };
