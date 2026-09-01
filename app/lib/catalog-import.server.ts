@@ -16,7 +16,7 @@
  * SSRF: every host goes through isBlockedHost before we fetch it. */
 
 import { db } from "../db.server";
-import { isBlockedHost, safeFetch, scrapeProductPage, upgradeImageResolution } from "./product-scrape.server";
+import { formatPrice, isBlockedHost, safeFetch, scrapeProductPage, shopifyCurrency, upgradeImageResolution } from "./product-scrape.server";
 
 /* EVERY hop, not just the address the merchant typed.
  *
@@ -114,6 +114,10 @@ type ShopifyProduct = {
 
 async function fromShopify(origin: URL, cap: number): Promise<DiscoveredProduct[]> {
   const out: DiscoveredProduct[] = [];
+  // products.json states no currency. The Woo path beside this one reads the
+  // API's own currency fields; this one hardcoded "$", so every EUR, GBP and
+  // JPY store had its whole catalogue imported in dollars.
+  const currency = await shopifyCurrency(origin.origin);
   for (let page = 1; page <= 12 && out.length < cap; page++) {
     const data = (await json(`${origin.origin}/products.json?limit=250&page=${page}`)) as
       | { products?: ShopifyProduct[] }
@@ -127,7 +131,8 @@ async function fromShopify(origin: URL, cap: number): Promise<DiscoveredProduct[
         url: `${origin.origin}/products/${p.handle}`,
         imageUrl: p.images?.[0]?.src ? upgradeImageResolution(p.images[0].src) : undefined,
         handle: p.handle,
-        priceText: p.variants?.[0]?.price ? `$${p.variants[0].price}` : undefined,
+        // products.json quotes a decimal string, not minor units.
+        priceText: formatPrice(p.variants?.[0]?.price, currency),
       });
       if (out.length >= cap) break;
     }

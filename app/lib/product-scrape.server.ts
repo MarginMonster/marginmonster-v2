@@ -27,7 +27,7 @@ export interface ScrapedProduct {
 /** Format a raw price + currency the way a shopper would see it. Falls back to
  *  "CODE amount" for currencies without a well-known symbol rather than
  *  inventing one. */
-function formatPrice(amount: string | number | undefined, currency?: string): string | undefined {
+export function formatPrice(amount: string | number | undefined, currency?: string): string | undefined {
   if (amount === undefined || amount === null || amount === "") return undefined;
   const n = typeof amount === "number" ? amount : parseFloat(String(amount).replace(/[^0-9.]/g, ""));
   if (!isFinite(n) || n <= 0) return undefined;
@@ -206,6 +206,27 @@ export async function isDirectImage(url: string, timeoutMs = 6000): Promise<bool
 
 /** Scrape a storefront page for its product title + hero image. Throws a
  *  human-readable Error the caller can surface verbatim. */
+/* A Shopify storefront states its currency in /cart.js and nowhere in the
+ * product JSON. Resolved once per origin and cached for the process: a
+ * catalogue import scrapes hundreds of pages from the same store, and the
+ * answer cannot change between them. A failure caches `undefined` so a store
+ * that does not answer is not re-asked on every product. */
+const currencyByOrigin = new Map<string, string | undefined>();
+
+export async function shopifyCurrency(origin: string): Promise<string | undefined> {
+  if (currencyByOrigin.has(origin)) return currencyByOrigin.get(origin);
+  let code: string | undefined;
+  try {
+    const res = await safeFetch(`${origin}/cart.js`, { signal: AbortSignal.timeout(6000), headers: { accept: "application/json" } });
+    if (res.ok) {
+      const j = (await res.json()) as { currency?: unknown };
+      if (typeof j?.currency === "string" && /^[A-Za-z]{3}$/.test(j.currency)) code = j.currency.toUpperCase();
+    }
+  } catch { /* unknown currency is better than a wrong one */ }
+  currencyByOrigin.set(origin, code);
+  return code;
+}
+
 export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduct> {
   const raw = (rawInput || "").trim();
   if (!raw) throw new Error("Paste a product link first.");
@@ -229,8 +250,10 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
           return {
             title: pj.title.slice(0, 120),
             image: first ? absolutise(first, u) : undefined,
-            // Shopify's product JSON quotes price in minor units (cents).
-            price: typeof pj.price === "number" ? formatPrice(pj.price / 100) : undefined,
+            // Shopify's product JSON quotes price in minor units (cents) and
+            // states no currency, so this used to default to USD and print a
+            // dollar sign on every non-USD storefront.
+            price: typeof pj.price === "number" ? formatPrice(pj.price / 100, await shopifyCurrency(u.origin)) : undefined,
             url: u.href,
           };
         }
