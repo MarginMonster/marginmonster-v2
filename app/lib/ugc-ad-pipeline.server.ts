@@ -975,7 +975,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
           emotion: delivery.emotion,
           // the fal path is the same take as the Replicate path above and
           // needs the same language, or half the routes speak English anyway
-          lang: contentLang,
+          lang: contentLang ?? null,
         });
       } catch (e) {
         // A DESIGNED VOICE IS PAID-FOR AND IS NOT SUBSTITUTABLE. This used to

@@ -28,13 +28,16 @@ export interface TtsDelivery {
   pitch?: number;
   /** "happy" | "neutral" | … — drives the whole character of the read. */
   emotion?: string;
-  /** The shop's content language. Without it this path hard-coded English,
-   *  so a French script came back read by a model expecting English — and
-   *  english_normalization spoke its numbers and dates by English rules. */
-  lang?: string | null;
+  /** The shop's content language. REQUIRED, not optional: this path used to
+   *  hard-code English, so a French script came back read by a model expecting
+   *  English, with english_normalization speaking its numbers and dates by
+   *  English rules. Optional meant the next caller could reintroduce that by
+   *  simply not thinking about it. Pass the shop's contentLang, or null for
+   *  "no preference" — either way it has to be a decision someone made. */
+  lang: string | null;
 }
 
-export async function falTts(text: string, voiceId: string, speed = 1, delivery: TtsDelivery = {}): Promise<string> {
+export async function falTts(text: string, voiceId: string, speed = 1, delivery: TtsDelivery): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
   // A designed voice is the presenter's IDENTITY — losing it to one transient
   // 429/5xx makes the avatar sound like a different person, which is exactly

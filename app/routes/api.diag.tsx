@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const rows: { avatar: string; voiceId: string; alive: boolean; error?: string }[] = [];
     for (const [avatarId, entry] of Object.entries(ledger.designed)) {
       try {
-        await falTts("Voice check.", entry.voiceId, 1);
+        await falTts("Voice check.", entry.voiceId, 1, { lang: "en" }); // fixed English probe line
         rows.push({ avatar: avatarId, voiceId: entry.voiceId, alive: true });
       } catch (e) {
         rows.push({ avatar: avatarId, voiceId: entry.voiceId, alive: false, error: (e as Error).message.slice(0, 240) });

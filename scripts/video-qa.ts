@@ -1668,7 +1668,7 @@ async function mascotLab(): Promise<string> {
           return `| ${id} | \`${voice.slice(0, 26)}…\` | ❌ **drift** — ledger paid for \`${paid.slice(0, 26)}…\` |`;
         }
         try {
-          await falTts("Hey, quick test of my voice.", voice, CAST[id]?.speed ?? 1);
+          await falTts("Hey, quick test of my voice.", voice, CAST[id]?.speed ?? 1, { lang: "en" });
           return `| ${id} | \`${voice.slice(0, 26)}…\` | ✅ alive |`;
         } catch (e) {
           return `| ${id} | \`${voice.slice(0, 26)}…\` | ❌ ${(e instanceof Error ? e.message : String(e)).slice(0, 90)} |`;
@@ -1856,7 +1856,7 @@ async function mascotLab(): Promise<string> {
       `Paid designed voice: ${delivery.voice.startsWith("ttv-") ? "**yes**" : "no — this presenter is on a stock voice"}`, ``];
     let audioUrl = "";
     try {
-      audioUrl = await falTts(LINE, delivery.voice, delivery.speed, { pitch: delivery.pitch, emotion: delivery.emotion });
+      audioUrl = await falTts(LINE, delivery.voice, delivery.speed, { pitch: delivery.pitch, emotion: delivery.emotion, lang: "en" });
       await download(audioUrl, path2.join(outDir, `take-${who}-voice.mp3`));
       lines.push(`✅ **The paid voice spoke.** No substitution — strict mode would have thrown instead.`);
       lines.push(`Audio: [take-${who}-voice.mp3](frames/take-${who}-voice.mp3)`);
@@ -1899,14 +1899,14 @@ async function mascotLab(): Promise<string> {
       if (designed.startsWith("ttv-")) {
         // A — the designed voice WITH its full delivery signature (the fix)
         try {
-          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1, { pitch: CAST[id]?.pitch, emotion });
+          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1, { pitch: CAST[id]?.pitch, emotion, lang: "en" });
           await download(url, path2.join(outDir, `voice-${id}-designed.mp3`));
           a = `[with signature](frames/voice-${id}-designed.mp3)`;
         } catch (e) { a = `❌ ${(e as Error).message.slice(0, 70)}`; }
         // FLAT — the same voice as production has actually been shipping it:
         // no emotion, no pitch, no english normalization
         try {
-          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1, {});
+          const url = await falTts(LINE, designed, CAST[id]?.speed ?? 1, { lang: "en" });
           await download(url, path2.join(outDir, `voice-${id}-flat.mp3`));
           flat = `[flat — what shipped](frames/voice-${id}-flat.mp3)`;
         } catch (e) { flat = `❌ ${(e as Error).message.slice(0, 70)}`; }
