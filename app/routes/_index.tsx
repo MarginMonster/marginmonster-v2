@@ -114,7 +114,12 @@ export default function Index() {
           </div>
         </header>
 
-        <main className="lz-hero">
+        {/* Only the hero sat inside <main>; the other eight sections were
+            outside every landmark, so "skip to content" and screen-reader
+            rotor navigation reached the headline and nothing else. */}
+        <main>
+
+        <section className="lz-hero">
           <span className="lz-rose lz-rose-hero" aria-hidden="true" />
           <span className="lz-eyebrow">{t.hero.eyebrow}</span>
           <h1>{t.hero.h1a}<span className="lz-grad">{t.hero.h1b}</span></h1>
@@ -164,7 +169,7 @@ export default function Index() {
             <div className="lz-div" />
             <div><b>$19</b><span>{t.stats.start}</span></div>
           </div>
-        </main>
+        </section>
 
         {/* AI trust strip — the engines behind the output, named openly with
             their official brand glyphs (Simple Icons set) so merchants know
@@ -308,6 +313,7 @@ export default function Index() {
           </div>
         </section>
 
+        </main>
         <footer className="lz-foot">
           <div className="lz-brand small">
             <span className="lz-crest" style={{ width: 26, height: 26 }} aria-hidden="true">
@@ -345,13 +351,13 @@ html,body{margin:0;padding:0}
     radial-gradient(46% 34% at 4% 46%,rgba(12,122,70,.075),transparent 66%),
     var(--paper);}
 .lz-nav{display:flex;align-items:center;justify-content:space-between;max-width:1080px;margin:0 auto;padding:22px 26px;}
-.lz-brand{display:flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;color:var(--ink);}
+.lz-brand{display:flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;color:var(--ink);min-width:0;overflow:hidden;white-space:nowrap;}
 .lz-brand b{color:var(--gold);font-weight:800}
 .lz-brand i{color:var(--gold);font-style:normal;font-size:.7em;opacity:.8}
 .lz-brand.small{font-size:15px;opacity:.9}
-.lz-navcta{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;text-decoration:none;padding:10px 18px;border-radius:11px;
+.lz-navcta{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;text-decoration:none;padding:10px 18px;border-radius:11px;white-space:nowrap;flex:0 0 auto;
   background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 5px 14px rgba(12,122,70,.28);transition:filter .12s;}
-.lz-navlink{font-weight:700;font-size:13px;color:var(--ink2);text-decoration:none;}
+.lz-navlink{font-weight:700;font-size:13px;color:var(--ink2);text-decoration:none;white-space:nowrap;flex:0 0 auto;}
 .lz-navlink:hover{color:var(--ink)}
 .lz-lang{display:inline-flex;align-items:center;gap:5px;font-size:14px;}
 .lz-lang select{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;

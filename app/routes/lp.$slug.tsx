@@ -126,16 +126,17 @@ export default function LandingPagePublic() {
 
       <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(244,241,230,0.85)", backdropFilter: "blur(10px)", borderBottom: "1px solid #E4DFCF" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, color: "#14201A", fontSize: 17 }}>{productName}</span>
-          <a href="#buy" style={{ ...cta, padding: "10px 20px", fontSize: 14 }}>{content.ctaText}</a>
+          <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, color: "#14201A", fontSize: 17,
+            flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{productName}</span>
+          <a href="#buy" style={{ ...cta, padding: "10px 20px", fontSize: 14, flex: "0 0 auto", whiteSpace: "nowrap" }}>{content.ctaText}</a>
         </div>
       </header>
 
       <section style={{ position: "relative", overflow: "hidden", color: "#EAF4EE", padding: "90px 24px 80px", textAlign: "center", background: `repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),${darkPanel}` }}>
         <div style={{ maxWidth: 720, margin: "0 auto", position: "relative" }}>
           <div style={{ fontFamily: "Poppins, sans-serif", fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#E7C879", marginBottom: 20 }}>{productName}</div>
-          <h1 style={{ fontFamily: "Poppins, sans-serif", fontSize: 46, fontWeight: 800, margin: "0 0 18px", lineHeight: 1.08, letterSpacing: "-0.03em", color: "#F4EAC8" }}>{content.hero}</h1>
-          <p style={{ fontSize: 19, color: "rgba(220,240,225,0.82)", maxWidth: 560, margin: "0 auto 34px", lineHeight: 1.6 }}>{content.subhead}</p>
+          <h1 style={{ fontFamily: "Poppins, sans-serif", fontSize: "clamp(28px, 8vw, 46px)", fontWeight: 800, margin: "0 0 18px", lineHeight: 1.08, letterSpacing: "-0.03em", color: "#F4EAC8", overflowWrap: "anywhere", textWrap: "balance" }}>{content.hero}</h1>
+          <p style={{ fontSize: "clamp(16px, 4.4vw, 19px)", color: "rgba(220,240,225,0.82)", maxWidth: 560, margin: "0 auto 34px", lineHeight: 1.6 }}>{content.subhead}</p>
           <a href="#buy" className="lp-cta" style={cta}>{content.ctaText}</a>
           <div style={{ marginTop: 22, fontSize: 13, color: "rgba(220,240,225,0.6)" }}>{content.socialProof}</div>
         </div>
@@ -158,13 +159,13 @@ export default function LandingPagePublic() {
       </section>
 
       <section style={{ maxWidth: 820, margin: "0 auto", padding: "0 24px 72px" }}>
-        <div style={{ textAlign: "center", fontFamily: "Poppins, sans-serif", fontSize: 26, fontWeight: 700, fontStyle: "italic", lineHeight: 1.4, color: "#14201A" }}>
+        <div style={{ textAlign: "center", fontFamily: "Poppins, sans-serif", fontSize: "clamp(19px, 5.2vw, 26px)", fontWeight: 700, fontStyle: "italic", lineHeight: 1.4, color: "#14201A", overflowWrap: "anywhere" }}>
           “{content.socialProof}”
         </div>
       </section>
 
       <section id="buy" style={{ color: "#EAF4EE", padding: "72px 24px", textAlign: "center", background: `repeating-linear-gradient(57deg,rgba(255,214,102,.06) 0 1px,transparent 1px 7px),repeating-linear-gradient(123deg,rgba(255,214,102,.05) 0 1px,transparent 1px 7px),${darkPanel}` }}>
-        <h2 style={{ fontFamily: "Poppins, sans-serif", fontSize: 32, fontWeight: 800, margin: "0 0 14px", letterSpacing: "-0.02em", color: "#F4EAC8" }}>{content.hero}</h2>
+        <h2 style={{ fontFamily: "Poppins, sans-serif", fontSize: "clamp(23px, 6.4vw, 32px)", fontWeight: 800, margin: "0 0 14px", letterSpacing: "-0.02em", color: "#F4EAC8", overflowWrap: "anywhere", textWrap: "balance" }}>{content.hero}</h2>
         <p style={{ color: "rgba(220,240,225,0.82)", maxWidth: 480, margin: "0 auto 30px", fontSize: 16 }}>{content.subhead}</p>
         {/* No destination means no button. A CTA that visibly does nothing
             is worse than a page that plainly ends — the visitor concludes the
@@ -178,7 +179,10 @@ export default function LandingPagePublic() {
           background: "rgba(255,255,255,0.06)", border: "1px solid rgba(231,200,121,0.32)",
           color: "rgba(233,247,239,0.72)", fontFamily: "Poppins, sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: "0.02em",
         }}>
-          <span style={{ fontSize: 13 }}>✨</span>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.9"
+               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: "0 0 auto" }}>
+            <path d="M12 3.4 13.6 8 18.2 9.6 13.6 11.2 12 15.8 10.4 11.2 5.8 9.6 10.4 8z" />
+          </svg>
           Made with <b style={{ color: "#E7C879", fontWeight: 800 }}>EasyMode</b>
           <span style={{ color: "rgba(233,247,239,0.5)", fontWeight: 500 }}>— build yours free ›</span>
         </a>
