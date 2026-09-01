@@ -196,7 +196,8 @@ export default function LandingPagePublic() {
  * element, so the browser never decodes them back. The server tree and the
  * client tree then disagree and hydration fails for the whole page. This
  * CSS contains both, in the @import url(...) alone. */
-const LP_CSS = `@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
+const LP_CSS = `/* Font is linked from the document head (app/root.tsx). An @import here
+   cost three sequential round trips before any text rendered in Poppins. */
         a.lp-cta{position:relative;overflow:hidden;isolation:isolate}
         a.lp-cta:hover{transform:translateY(-2px);transition:transform .15s;filter:brightness(1.05)}
         a.lp-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-16px;width:96px;height:96px;margin-top:-48px;border-radius:50%;

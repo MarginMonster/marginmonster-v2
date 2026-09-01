@@ -160,7 +160,8 @@ function Crest({ size }: { size: number }) {
 }
 
 const CSS = `
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap");
+/* Font is linked from the document head (app/root.tsx). An @import here
+   cost three sequential round trips before any text rendered in Poppins. */
 *{box-sizing:border-box} html,body{margin:0;padding:0}
 .wb{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;
   position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,sans-serif;

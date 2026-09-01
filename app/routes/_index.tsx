@@ -146,7 +146,7 @@ export default function Index() {
               />
               <video
                 className="lz-herovid"
-                src="/showcase/hero-cut.mp4?v=1"
+                src="/showcase/hero-cut.mp4?v=2"
                 poster="/showcase/hero-cut-cover.jpg?v=1"
                 autoPlay muted loop playsInline
                 aria-label="Paste a product link, get a wall of finished ads — the EasyMode pipeline in 15 seconds"
@@ -339,7 +339,8 @@ export default function Index() {
 }
 
 const CSS = `
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap");
+/* Font is linked from the document head (app/root.tsx). An @import here
+   cost three sequential round trips before any text rendered in Poppins. */
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 .lz{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E4DFCF;
