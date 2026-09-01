@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { createWebAccount, getWebIdentity, webSessionRedirect, SignupError } from "../lib/web-auth.server";
 import { isValidTimeZone } from "../lib/timezone";
+import { authCopy } from "../lib/auth-i18n";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Start free · EasyMode" }];
@@ -24,8 +25,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // the browser and is used to build instants.
   const rawTz = ((form.get("tz") as string) || "").trim();
   const timezone = isValidTimeZone(rawTz) ? rawTz : undefined;
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "Enter a valid email address." });
-  if (password.length < 8) return json({ error: "Password needs at least 8 characters." });
+  // The form posts the visitor's language, so a Spanish signup fails in Spanish.
+  const c = authCopy(lang);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: c.errEmail });
+  if (password.length < 8) return json({ error: c.errPassword });
 
   // Signing up is free and unverified, and each one creates an Account, a
   // Shop and a Connection, hashes a password on the shared thread pool, and
@@ -35,7 +38,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const gate = rateLimit(`signup:ip:${clientIp(request)}`, 10, 60 * 60_000);
   if (!gate.ok) {
     return json(
-      { error: "Too many accounts created from here recently. Try again a little later." },
+      { error: c.errRate },
       { status: 429, headers: { "Retry-After": String(gate.retryAfterSec) } }
     );
   }
@@ -48,7 +51,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // this endpoint is open to the internet.
     if (e instanceof SignupError) return json({ error: e.message });
     console.error("[signup] failed:", e);
-    return json({ error: "Couldn't create the account just now — try again in a moment." });
+    return json({ error: c.errGeneric });
   }
 };
 
@@ -61,33 +64,36 @@ export default function WebSignup() {
   useEffect(() => { try { setLang(localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
   // Same idea as the language above: ask the browser once, at signup.
   useEffect(() => { try { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); } catch { /* older browser */ } }, []);
+  // Same language the landing page was read in — see auth-i18n.
+  const c = authCopy(lang);
   return (
     <div className="wb-auth wb-card">
-      <h1 className="wb-h1" style={{ marginTop: 0 }}>Create your account</h1>
-      <p className="wb-sub" style={{ marginBottom: 6 }}>7-day free trial on every plan. No Shopify store required.</p>
+      <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.signupH1}</h1>
+      <p className="wb-sub" style={{ marginBottom: 6 }}>{c.signupSub}</p>
       {actionData && "error" in actionData && <div className="wb-err">{actionData.error}</div>}
       <Form method="post">
         <input type="hidden" name="lang" value={lang} />
         <input type="hidden" name="tz" value={tz} />
-        <label className="wb-lbl" htmlFor="su-name">Your name (or brand)</label>
-        <input className="wb-in" id="su-name" name="name" autoComplete="organization" placeholder="Sunny Supply Co." />
-        <label className="wb-lbl" htmlFor="su-email">Email</label>
-        <input className="wb-in" id="su-email" name="email" type="email" required autoComplete="email" placeholder="you@brand.com" />
-        <label className="wb-lbl" htmlFor="su-pw">Password</label>
-        <input className="wb-in" id="su-pw" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8+ characters" />
+        <label className="wb-lbl" htmlFor="su-name">{c.nameLabel}</label>
+        <input className="wb-in" id="su-name" name="name" autoComplete="organization" placeholder={c.namePlaceholder} />
+        <label className="wb-lbl" htmlFor="su-email">{c.emailLabel}</label>
+        <input className="wb-in" id="su-email" name="email" type="email" required autoComplete="email" placeholder={c.emailPlaceholder} />
+        <label className="wb-lbl" htmlFor="su-pw">{c.passwordLabel}</label>
+        <input className="wb-in" id="su-pw" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder={c.passwordPlaceholder} />
         <div style={{ marginTop: 18 }}>
           <button className="wb-btn" type="submit" disabled={nav.state !== "idle"}>
-            {nav.state !== "idle" ? "Creating…" : "Create account →"}
+            {nav.state !== "idle" ? c.creating : c.createBtn}
           </button>
         </div>
       </Form>
       <p className="wb-note" style={{ marginTop: 14 }}>
-        By creating an account you agree to our{" "}
-        <a href="/terms" target="_blank" rel="noreferrer">Terms</a> and{" "}
-        <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+        {c.consentPre}
+        <a href="/terms" target="_blank" rel="noreferrer">{c.consentTerms}</a>
+        {c.consentMid}
+        <a href="/privacy" target="_blank" rel="noreferrer">{c.consentPrivacy}</a>.
       </p>
       <p className="wb-note" style={{ marginTop: 10 }}>
-        Already have one? <Link to="/web/login">Log in</Link>
+        {c.haveOne}<Link to="/web/login">{c.logInLink}</Link>
       </p>
     </div>
   );

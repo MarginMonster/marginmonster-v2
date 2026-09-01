@@ -5,6 +5,7 @@ import { db } from "../db.server";
 import { clientIp, rateLimit, rateLimitReset } from "../lib/rate-limit.server";
 import { isValidTimeZone } from "../lib/timezone";
 import { getWebIdentity, loginWebAccount, webSessionRedirect } from "../lib/web-auth.server";
+import { authCopy } from "../lib/auth-i18n";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Log in · EasyMode" }];
@@ -40,7 +41,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const account = await loginWebAccount(email, password);
-  if (!account) return json({ error: "Email or password didn't match." });
+  // the form posts the browser's language so the failure speaks it too
+  if (!account) return json({ error: authCopy(form.get("lang")).errBadLogin });
   // Someone who got in was never the threat — don't leave them throttled by
   // their own mistyped attempts.
   rateLimitReset(`login:acct:${email}`);
@@ -76,27 +78,32 @@ export default function WebLogin() {
   // Same one-line ask as signup — see the backfill in the action.
   const [tz, setTz] = useState("");
   useEffect(() => { try { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); } catch { /* older browser */ } }, []);
+  // The landing page stores the visitor's choice; honour it here too.
+  const [lang, setLang] = useState("en");
+  useEffect(() => { try { setLang(localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
+  const c = authCopy(lang);
   return (
     <div className="wb-auth wb-card">
-      <h1 className="wb-h1" style={{ marginTop: 0 }}>Log in</h1>
+      <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.loginH1}</h1>
       {actionData && "error" in actionData && <div className="wb-err">{actionData.error}</div>}
       <Form method="post">
         <input type="hidden" name="tz" value={tz} />
-        <label className="wb-lbl" htmlFor="li-email">Email</label>
+        <input type="hidden" name="lang" value={lang} />
+        <label className="wb-lbl" htmlFor="li-email">{c.emailLabel}</label>
         <input className="wb-in" id="li-email" name="email" type="email" required autoComplete="email" />
-        <label className="wb-lbl" htmlFor="li-pw">Password</label>
+        <label className="wb-lbl" htmlFor="li-pw">{c.passwordLabel}</label>
         <input className="wb-in" id="li-pw" name="password" type="password" required autoComplete="current-password" />
         <div style={{ marginTop: 18 }}>
           <button className="wb-btn" type="submit" disabled={nav.state !== "idle"}>
-            {nav.state !== "idle" ? "Logging in…" : "Log in →"}
+            {nav.state !== "idle" ? c.loggingIn : c.loginBtn}
           </button>
         </div>
       </Form>
       <p className="wb-note" style={{ marginTop: 16 }}>
-        <Link to="/web/forgot">Forgot your password?</Link>
+        <Link to="/web/forgot">{c.forgot}</Link>
       </p>
       <p className="wb-note" style={{ marginTop: 8 }}>
-        New here? <Link to="/web/signup">Create an account</Link>
+        {c.newHere}<Link to="/web/signup">{c.createLink}</Link>
       </p>
     </div>
   );
