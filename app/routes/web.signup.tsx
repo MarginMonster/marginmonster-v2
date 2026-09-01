@@ -69,19 +69,24 @@ export default function WebSignup() {
       <Form method="post">
         <input type="hidden" name="lang" value={lang} />
         <input type="hidden" name="tz" value={tz} />
-        <label className="wb-lbl">Your name (or brand)</label>
-        <input className="wb-in" name="name" placeholder="Sunny Supply Co." />
-        <label className="wb-lbl">Email</label>
-        <input className="wb-in" name="email" type="email" required placeholder="you@brand.com" />
-        <label className="wb-lbl">Password</label>
-        <input className="wb-in" name="password" type="password" required minLength={8} placeholder="8+ characters" />
+        <label className="wb-lbl" htmlFor="su-name">Your name (or brand)</label>
+        <input className="wb-in" id="su-name" name="name" autoComplete="organization" placeholder="Sunny Supply Co." />
+        <label className="wb-lbl" htmlFor="su-email">Email</label>
+        <input className="wb-in" id="su-email" name="email" type="email" required autoComplete="email" placeholder="you@brand.com" />
+        <label className="wb-lbl" htmlFor="su-pw">Password</label>
+        <input className="wb-in" id="su-pw" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8+ characters" />
         <div style={{ marginTop: 18 }}>
           <button className="wb-btn" type="submit" disabled={nav.state !== "idle"}>
             {nav.state !== "idle" ? "Creating…" : "Create account →"}
           </button>
         </div>
       </Form>
-      <p className="wb-note" style={{ marginTop: 16 }}>
+      <p className="wb-note" style={{ marginTop: 14 }}>
+        By creating an account you agree to our{" "}
+        <a href="/terms" target="_blank" rel="noreferrer">Terms</a> and{" "}
+        <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+      </p>
+      <p className="wb-note" style={{ marginTop: 10 }}>
         Already have one? <Link to="/web/login">Log in</Link>
       </p>
     </div>

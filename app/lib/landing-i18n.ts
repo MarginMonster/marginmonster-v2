@@ -18,7 +18,7 @@ export const LANG_LABELS: Record<LangKey, string> = {
 export interface LandingCopy {
   nav: { login: string; start: string };
   hero: { eyebrow: string; h1a: string; h1b: string; sub: string; cta: string; note: string };
-  stats: { types: string; channels: string; start: string };
+  stats: { types: string; channels: string; start: string; tap?: string };
   features: { icon: string; title: string; body: string }[];
   show: { eyebrow: string; h2: string; sub: string; cards: { label: string; sub: string }[] };
   price: {
@@ -49,7 +49,7 @@ const EN: LandingCopy = {
     cta: "Start free — 7-day trial",
     note: "Any store, any platform · cancel anytime",
   },
-  stats: { types: "ad formats, one subscription", channels: "posting to TikTok, IG & FB", start: "to start" },
+  stats: { types: "ad formats, one subscription", channels: "posting to TikTok, IG & FB", start: "to start", tap: "1-tap" },
   features: [
     { icon: "video", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
     { icon: "cartoon", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, block build, claymation — or an Anthem your avatar sings on camera." },
@@ -110,7 +110,7 @@ const EN: LandingCopy = {
     h2: "The stuff people ask.",
     items: [
       { q: "How do tokens work?", a: "Your plan unlocks WHICH generators you can use (Starter: images & articles; Studio & Anthem: every generator, video through Anthem). Tokens meter HOW MUCH you generate — every plan refills monthly, and you can top up any time. Tokens never unlock a generator your plan doesn't include." },
-      { q: "What does the free trial include?", a: "7 days with every generator unlocked — real videos, cartoon styles, even your Anthem — on a 400-token play budget. Cancel before day 7 and you pay nothing." },
+      { q: "What does the free trial include?", a: "7 days with every generator unlocked — real videos, cartoon styles, even your Anthem — on your plan's token allowance, up to 400. Cancel before day 7 and you pay nothing." },
       { q: "What happens if I downgrade?", a: "Everything you already generated stays in your archive, postable forever. Only NEW generation is gated by your current plan." },
       { q: "Is the content labeled as AI?", a: "Yes — every post EasyMode publishes carries the #EasyModeAi tag, keeping your store on the right side of AI-disclosure norms and FTC guidance." },
     ],
@@ -141,7 +141,7 @@ const EN: LandingCopy = {
     cta: "Get EasyMode",
   },
   footer: { copy: "AI marketing autopilot for your store." },
-  powered: { eyebrow: "Powered by frontier AI", note: "We don't borrow a big studio's AI stack — we run one. Every ad is built and quality-checked by frontier models, then approved by you before it ships." },
+  powered: { eyebrow: "Powered by frontier AI", note: "Claude, Kling, MiniMax and more, wired into one pipeline and pointed at your catalog. Every ad is built, quality-checked against your real product photo, then approved by you before it ships." },
   autopost: { eyebrow: "Made here. Posted everywhere.", note: "Link your socials once and every approved piece can publish itself — AI caption, per-platform hashtags, and the AI-disclosure tag Meta now requires, handled automatically.", points: ["One-tap posting to TikTok, Instagram & Facebook", "Big-studio output at a budget price — plans from $19/mo", "AI-disclosure compliant captions, so ads don't get rejected"] },
 };
 
@@ -155,12 +155,12 @@ const ES: LandingCopy = {
     cta: "Empieza gratis — prueba de 7 días",
     note: "Cualquier tienda, cualquier plataforma · cancela cuando quieras",
   },
-  stats: { types: "formatos de anuncio, una suscripción", channels: "publicación en TikTok, IG y FB", start: "para empezar" },
+  stats: { types: "formatos de anuncio, una suscripción", channels: "publicación en TikTok, IG y FB", start: "para empezar", tap: "1 toque" },
   features: [
     { icon: "video", title: "Videos UGC que venden", body: "Presentadores de IA sostienen tu producto y lo presentan — en formato vertical para TikTok, Reels y Shorts." },
     { icon: "cartoon", title: "Anuncios cartoon virales", body: "Tu producto en los formatos que internet ya comparte — anime, figura de colección, bloques, claymation — o un Anthem que tu avatar canta a cámara." },
     { icon: "seo", title: "Artículos SEO en piloto automático", body: "Artículos con intención de compra, escritos para ti en HTML listo para pegar, atrayendo tráfico gratuito de Google mes tras mes." },
-    { icon: "post", title: "Publicado por ti", body: "Cada pieza sale a TikTok, Instagram y Facebook según un calendario — con textos y hashtags pensados para viajar." },
+    { icon: "post", title: "Lo publicamos por ti", body: "Cada pieza sale a TikTok, Instagram y Facebook según un calendario — con textos y hashtags pensados para viajar." },
     { icon: "auto", title: "Piloto automático en un toque", body: "Elige un objetivo. EasyMode crea un mes entero de contenido, lo lanza y escala lo que funciona." },
     { icon: "cinema", title: "Anuncios cinematográficos", body: "Un anuncio de varias escenas, con voz en off y un plano final del producto — energía de televisión, creado a partir de una sola foto." },
     { icon: "shield", title: "Fiel a tu producto, garantizado", body: "Cada anuncio se contrasta con la foto real de tu producto — nunca se publica con el arte, el texto o el tamaño equivocados." },
@@ -176,7 +176,7 @@ const ES: LandingCopy = {
       { label: "Anthem", sub: "Tu avatar canta el anuncio" },
       { label: "Anuncios de imagen", sub: "Formatos famosos, tu producto" },
       { label: "Product Highlight", sub: "Movimiento de cine, sin presentador" },
-      { label: "Prueba social", sub: "Reseñas y citas, escritas por ti" },
+      { label: "Prueba social", sub: "Reseñas y citas, escritas para ti" },
       { label: "Post viral", sub: "Nativo del feed — no parece anuncio" },
     ],
   },
@@ -201,7 +201,7 @@ const ES: LandingCopy = {
         "Todo lo de Starter — más TODOS los generadores de video",
         "Avatar AI y Product Highlight — presentador o cinematográfico",
         "Anthem + los 8 estilos de Avatar Cartoon incluidos",
-        "Campaign Autopilot — un mes de contenido, lanzado por ti",
+        "Campaign Autopilot — un mes de contenido, lanzado por nosotros",
       ],
       ANTHEM: [
         "Todos los generadores, casi el doble de tokens (1.600/mes)",
@@ -216,7 +216,7 @@ const ES: LandingCopy = {
     h2: "Lo que todos preguntan.",
     items: [
       { q: "¿Cómo funcionan los tokens?", a: "Tu plan desbloquea QUÉ generadores puedes usar (Starter: imágenes y artículos; Studio y Anthem: todos los generadores). Los tokens miden CUÁNTO generas — cada plan se recarga mensualmente y puedes comprar más cuando quieras. Los tokens nunca desbloquean un generador que tu plan no incluye." },
-      { q: "¿Qué incluye la prueba gratis?", a: "7 días con todos los generadores desbloqueados — videos reales, estilos cartoon e incluso tu Anthem — con un presupuesto de 400 tokens. Cancela antes del día 7 y no pagas nada." },
+      { q: "¿Qué incluye la prueba gratis?", a: "7 días con todos los generadores desbloqueados — videos reales, estilos cartoon e incluso tu Anthem — con la asignación de tokens de tu plan, hasta 400. Cancela antes del día 7 y no pagas nada." },
       { q: "¿Qué pasa si bajo de plan?", a: "Todo lo que ya generaste queda en tu archivo, publicable para siempre. Solo la NUEVA generación depende de tu plan actual." },
       { q: "¿El contenido se marca como IA?", a: "Sí — cada publicación de EasyMode lleva la etiqueta #EasyModeAi, manteniendo tu tienda en regla con las normas de divulgación de IA." },
     ],
@@ -236,7 +236,7 @@ const ES: LandingCopy = {
     ],
     us: [
       "Videos, artículos, imágenes y landing pages en una sola app",
-      "Publica solo en TikTok, Instagram y Facebook según calendario",
+      "Publicación automática en TikTok, Instagram y Facebook según calendario",
       "Una sola cartera de tokens — gástala en lo que quieras",
       "Cada pieza creada a partir de tus productos reales",
     ],
@@ -247,7 +247,7 @@ const ES: LandingCopy = {
     cta: "Consigue EasyMode",
   },
   footer: { copy: "Piloto automático de marketing con IA para tu tienda." },
-  powered: { eyebrow: "Impulsado por IA de frontera", note: "No tomamos prestado el stack de IA de un gran estudio: somos uno. Cada anuncio se crea y verifica con modelos de frontera, y tú lo apruebas antes de publicarse." },
+  powered: { eyebrow: "Impulsado por IA de frontera", note: "Claude, Kling, MiniMax y más, conectados en un solo flujo y apuntando a tu catálogo. Cada anuncio se crea, se verifica contra la foto real de tu producto y lo apruebas tú antes de publicarse." },
   autopost: { eyebrow: "Creado aquí. Publicado en todas partes.", note: "Conecta tus redes una vez y cada pieza aprobada puede publicarse sola: texto con IA, hashtags por plataforma y la etiqueta de divulgación de IA que Meta exige.", points: ["Publicación con un toque en TikTok, Instagram y Facebook", "Calidad de gran estudio a precio económico — planes desde $19/mes", "Textos conformes con la divulgación de IA, sin anuncios rechazados"] },
 };
 
@@ -261,7 +261,7 @@ const FR: LandingCopy = {
     cta: "Essai gratuit — 7 jours",
     note: "Toute boutique, toute plateforme · annulez à tout moment",
   },
-  stats: { types: "formats de pub, un seul abonnement", channels: "publication TikTok, IG & FB", start: "pour commencer" },
+  stats: { types: "formats de pub, un seul abonnement", channels: "publication TikTok, IG & FB", start: "pour commencer", tap: "1 clic" },
   features: [
     { icon: "video", title: "Des vidéos UGC qui vendent", body: "Des présentateurs IA tiennent votre produit et en parlent — au format vertical pour TikTok, Reels et Shorts." },
     { icon: "cartoon", title: "Pubs cartoon virales", body: "Votre produit dans les formats que l'internet partage déjà — anime, figurine en boîte, briques, claymation — ou un Anthem que votre avatar chante face caméra." },
@@ -322,7 +322,7 @@ const FR: LandingCopy = {
     h2: "Ce qu'on nous demande.",
     items: [
       { q: "Comment fonctionnent les tokens ?", a: "Votre formule débloque QUELS générateurs vous pouvez utiliser (Starter : images et articles ; Studio et Anthem : tous les générateurs). Les tokens mesurent COMBIEN vous générez — chaque formule se recharge tous les mois, et vous pouvez en acheter à tout moment. Les tokens ne débloquent jamais un générateur absent de votre formule." },
-      { q: "Que comprend l'essai gratuit ?", a: "7 jours avec tous les générateurs débloqués — vraies vidéos, styles cartoon et même votre Anthem — avec un budget de 400 tokens. Annulez avant le 7e jour et vous ne payez rien." },
+      { q: "Que comprend l'essai gratuit ?", a: "7 jours avec tous les générateurs débloqués — vraies vidéos, styles cartoon et même votre Anthem — avec l'allocation de tokens de votre plan, jusqu'à 400. Annulez avant le 7e jour et vous ne payez rien." },
       { q: "Que se passe-t-il si je rétrograde ?", a: "Tout ce que vous avez déjà généré reste dans vos archives, publiable pour toujours. Seule la NOUVELLE génération dépend de votre formule actuelle." },
       { q: "Le contenu est-il signalé comme IA ?", a: "Oui — chaque publication d'EasyMode porte le tag #EasyModeAi, gardant votre boutique en règle avec les normes de transparence sur l'IA." },
     ],
@@ -353,7 +353,7 @@ const FR: LandingCopy = {
     cta: "Adopter EasyMode",
   },
   footer: { copy: "Le pilote automatique marketing IA de votre boutique." },
-  powered: { eyebrow: "Propulsé par une IA de pointe", note: "Nous n'empruntons pas la stack IA d'un grand studio — nous en sommes un. Chaque publicité est créée et contrôlée par des modèles de pointe, puis validée par vous avant diffusion." },
+  powered: { eyebrow: "Propulsé par une IA de pointe", note: "Claude, Kling, MiniMax et d'autres, réunis en un seul pipeline branché sur votre catalogue. Chaque publicité est créée, vérifiée face à la vraie photo de votre produit, puis validée par vous avant sa diffusion." },
   autopost: { eyebrow: "Créé ici. Publié partout.", note: "Connectez vos réseaux une fois : chaque création approuvée peut se publier seule — légende IA, hashtags par plateforme et mention de divulgation IA exigée par Meta.", points: ["Publication en un geste sur TikTok, Instagram et Facebook", "Qualité grand studio à petit prix — dès 19 $/mois", "Légendes conformes à la divulgation IA, zéro pub rejetée"] },
 };
 
@@ -367,7 +367,7 @@ const DE: LandingCopy = {
     cta: "Kostenlos starten — 7 Tage testen",
     note: "Jeder Shop, jede Plattform · jederzeit kündbar",
   },
-  stats: { types: "Anzeigenformate, ein Abo", channels: "Posting auf TikTok, IG & FB", start: "zum Start" },
+  stats: { types: "Anzeigenformate, ein Abo", channels: "Posting auf TikTok, IG & FB", start: "zum Start", tap: "1 Tipp" },
   features: [
     { icon: "video", title: "UGC-Videos, die verkaufen", body: "KI-Presenter halten dein Produkt in der Hand und stellen es vor — vertikal formatiert für TikTok, Reels & Shorts." },
     { icon: "cartoon", title: "Virale Cartoon-Ads", body: "Dein Produkt in den Formaten, die das Internet schon teilt — Anime, Sammelfigur, Klötzchen-Look, Knetanimation — oder ein Anthem, das dein Avatar vor der Kamera singt." },
@@ -428,7 +428,7 @@ const DE: LandingCopy = {
     h2: "Was alle wissen wollen.",
     items: [
       { q: "Wie funktionieren Tokens?", a: "Dein Plan schaltet frei, WELCHE Generatoren du nutzen kannst (Starter: Bilder & Artikel; Studio & Anthem: alle Generatoren). Tokens messen, WIE VIEL du erzeugst — jeder Plan lädt monatlich auf, und du kannst jederzeit nachkaufen. Tokens schalten nie einen Generator frei, den dein Plan nicht enthält." },
-      { q: "Was ist im Gratis-Test enthalten?", a: "7 Tage mit allen Generatoren freigeschaltet — echte Videos, Cartoon-Styles und sogar dein Anthem — mit 400 Tokens Spielbudget. Kündige vor Tag 7 und zahlst nichts." },
+      { q: "Was ist im Gratis-Test enthalten?", a: "7 Tage mit allen Generatoren freigeschaltet — echte Videos, Cartoon-Styles und sogar dein Anthem — mit dem Token-Guthaben deines Plans, bis zu 400. Kündige vor Tag 7 und zahlst nichts." },
       { q: "Was passiert beim Downgrade?", a: "Alles bereits Erzeugte bleibt in deinem Archiv, für immer postbar. Nur NEUE Generierungen richten sich nach deinem aktuellen Plan." },
       { q: "Wird der Content als KI gekennzeichnet?", a: "Ja — jeder Post von EasyMode trägt den Tag #EasyModeAi und hält deinen Shop damit konform mit KI-Kennzeichnungsnormen." },
     ],
@@ -459,7 +459,7 @@ const DE: LandingCopy = {
     cta: "EasyMode holen",
   },
   footer: { copy: "KI-Marketing-Autopilot für deinen Shop." },
-  powered: { eyebrow: "Angetrieben von Frontier-KI", note: "Wir leihen uns keinen Studio-KI-Stack — wir sind das Studio. Jede Anzeige wird von Frontier-Modellen erstellt und geprüft, und geht erst nach deiner Freigabe live." },
+  powered: { eyebrow: "Angetrieben von Frontier-KI", note: "Claude, Kling, MiniMax und mehr, zu einer Pipeline verbunden und auf deinen Katalog gerichtet. Jede Anzeige wird erstellt, gegen dein echtes Produktfoto geprüft und geht erst nach deiner Freigabe live." },
   autopost: { eyebrow: "Hier erstellt. Überall gepostet.", note: "Einmal verbinden — jedes freigegebene Stück postet sich selbst: KI-Caption, Hashtags pro Plattform und die von Meta geforderte KI-Kennzeichnung inklusive.", points: ["Ein-Tipp-Posting auf TikTok, Instagram & Facebook", "Studio-Qualität zum Budget-Preis — Pläne ab 19 $/Monat", "KI-Kennzeichnung automatisch — keine abgelehnten Anzeigen"] },
 };
 
@@ -473,11 +473,11 @@ const ZH: LandingCopy = {
     cta: "免费开始 — 7 天试用",
     note: "任何店铺、任何平台 · 随时取消",
   },
-  stats: { types: "种广告形式，一份订阅", channels: "键发布到 TikTok、IG 和 FB", start: "起步价" },
+  stats: { types: "种广告形式，一份订阅", channels: "发布到 TikTok、IG 和 FB", start: "起步价", tap: "一键" },
   features: [
     { icon: "video", title: "能带货的 UGC 视频", body: "AI 主播手持你的产品进行讲解 — 竖屏格式，适配 TikTok、Reels 和 Shorts。" },
     { icon: "cartoon", title: "病毒式卡通广告", body: "把你的产品做成全网疯传的风格 — 梦幻动漫、盒装手办、方块世界、黏土动画 — 或者让你的头像出镜演唱产品主题曲 Anthem。" },
-    { icon: "seo", title: "SEO 文章全自动", body: "面向购买意图的文章，自动撰写并发布，月复一月为你带来免费的 Google 流量。" },
+    { icon: "seo", title: "SEO 文章全自动", body: "面向购买意图的文章，自动写成可直接粘贴的 HTML，月复一月为你带来免费的 Google 流量。" },
     { icon: "post", title: "自动发布", body: "每条内容按排期发布到 TikTok、Instagram 和 Facebook — 文案和标签都为传播而写。" },
     { icon: "auto", title: "一键自动驾驶", body: "选一个目标，EasyMode 生成整月内容，自动发布，并放大有效的部分。" },
     { icon: "cinema", title: "电影级广告片", body: "多场景故事广告，配旁白与产品定格收尾 — 只用一张产品图，做出电视广告的质感。" },
@@ -534,7 +534,7 @@ const ZH: LandingCopy = {
     h2: "大家常问的。",
     items: [
       { q: "代币是怎么用的？", a: "套餐决定你能用哪些生成器（Starter：图片和文章；Studio 与 Anthem：全部生成器）。代币决定你能生成多少 — 每月自动补充，也可随时充值。代币永远不能解锁套餐之外的生成器。" },
-      { q: "免费试用包含什么？", a: "7 天全部生成器解锁 — 真正的视频、卡通风格、甚至你的 Anthem — 附 400 代币体验额度。第 7 天前取消则分文不付。" },
+      { q: "免费试用包含什么？", a: "7 天全部生成器解锁 — 真正的视频、卡通风格、甚至你的 Anthem — 按你所选套餐的代币额度，最多 400。第 7 天前取消则分文不付。" },
       { q: "降级会怎样？", a: "你已生成的所有内容都保留在档案库里，永远可以发布。只有新的生成受当前套餐限制。" },
       { q: "内容会标注为 AI 吗？", a: "会 — EasyMode 发布的每条内容都带 #EasyModeAi 标签，让你的店铺符合 AI 披露规范。" },
     ],
@@ -565,7 +565,7 @@ const ZH: LandingCopy = {
     cta: "获取 EasyMode",
   },
   footer: { copy: "你店铺的 AI 营销自动驾驶。" },
-  powered: { eyebrow: "由前沿 AI 驱动", note: "我们不是在借用大工作室的 AI——我们就是那个工作室。每条广告由前沿模型生成并质检，发布前由你亲自审核。" },
+  powered: { eyebrow: "由前沿 AI 驱动", note: "Claude、Kling、MiniMax 等前沿模型接入同一条流水线，直连你的商品目录。每条广告生成后都会与你的真实产品图核对，发布前由你亲自审核。" },
   autopost: { eyebrow: "在这里创作，发布到所有平台", note: "只需绑定一次社交账号，每条通过审核的内容都能自动发布——AI 文案、平台专属话题标签，以及 Meta 要求的 AI 声明标签，全部自动处理。", points: ["一键发布到 TikTok、Instagram 和 Facebook", "大工作室品质，预算价格——每月 $19 起", "AI 声明合规文案，广告不再被拒"] },
 };
 

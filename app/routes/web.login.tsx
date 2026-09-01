@@ -82,10 +82,10 @@ export default function WebLogin() {
       {actionData && "error" in actionData && <div className="wb-err">{actionData.error}</div>}
       <Form method="post">
         <input type="hidden" name="tz" value={tz} />
-        <label className="wb-lbl">Email</label>
-        <input className="wb-in" name="email" type="email" required />
-        <label className="wb-lbl">Password</label>
-        <input className="wb-in" name="password" type="password" required />
+        <label className="wb-lbl" htmlFor="li-email">Email</label>
+        <input className="wb-in" id="li-email" name="email" type="email" required autoComplete="email" />
+        <label className="wb-lbl" htmlFor="li-pw">Password</label>
+        <input className="wb-in" id="li-pw" name="password" type="password" required autoComplete="current-password" />
         <div style={{ marginTop: 18 }}>
           <button className="wb-btn" type="submit" disabled={nav.state !== "idle"}>
             {nav.state !== "idle" ? "Logging in…" : "Log in →"}

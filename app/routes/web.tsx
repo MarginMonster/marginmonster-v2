@@ -279,7 +279,9 @@ const CSS = `
   box-shadow:0 3px 12px rgba(20,32,26,.06),inset 0 1px 0 rgba(255,255,255,.8);}
 .wb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;}
 .wb-lbl{display:block;font-weight:700;font-size:12.5px;margin:14px 0 5px;color:var(--ink);}
-.wb-in,.wb-sel,.wb-ta{width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:#fff;font:inherit;font-size:14px;color:var(--ink);}
+/* 16px, not 14: iOS Safari auto-zooms the page on focus below 16px and
+   never zooms back out, which broke signup and login on iPhone. */
+.wb-in,.wb-sel,.wb-ta{width:100%;padding:12px 13px;border-radius:11px;border:1px solid var(--line);background:#fff;font:inherit;font-size:16px;color:var(--ink);}
 .wb-ta{min-height:76px;resize:vertical}
 /* Green buttons get the app's treatment: a gold hairline ruled inside the
    edge, and the engine-turned rosette turning slowly behind the label where it

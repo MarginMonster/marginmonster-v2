@@ -160,7 +160,7 @@ export default function Index() {
           <div className="lz-stats">
             <div><b>9</b><span>{t.stats.types}</span></div>
             <div className="lz-div" />
-            <div><b>1-tap</b><span>{t.stats.channels}</span></div>
+            <div><b>{t.stats.tap || "1-tap"}</b><span>{t.stats.channels}</span></div>
             <div className="lz-div" />
             <div><b>$19</b><span>{t.stats.start}</span></div>
           </div>
