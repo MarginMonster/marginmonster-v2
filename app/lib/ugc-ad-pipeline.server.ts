@@ -1072,6 +1072,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     && !!params.productImageUrl;
 
   let heldProduct = false;
+  // Hoisted: the gate below needs the same scale the composer was given, or
+  // it cannot tell a correctly-sized case from a palm-sized one.
+  let scaleHint: { sizeClass: string; cm: number; phrase: string } | null = null;
   let animSourceUrl = portraitPublicUrl; // what HeyGen fetches
   let animSourceDataUri = portraitDataUri; // what omni/kling get inline
   {
@@ -1085,7 +1088,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         // A cutout carries no scale, so tell the composer how big this
         // actually is — otherwise a 12-box case comes out palm-sized.
         const { resolveProductScale } = await import("./product-scale.server");
-        const hint = await resolveProductScale({
+        const hint = scaleHint = await resolveProductScale({
           productTitle: params.productTitle,
           productDescription: params.productDescription,
           productImageUrl: params.productImageUrl,
@@ -1102,9 +1105,61 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       try {
         const buf = await downloadBuffer(composedUrl);
         if (buf.length > 10_000) {
-          animSourceUrl = composedUrl;
-          animSourceDataUri = "data:image/jpeg;base64," + buf.toString("base64");
-          heldProduct = true;
+          // "More than 10KB" was the entire check. This frame is the first
+          // frame of the clip and every later frame is animated FROM it, so a
+          // composite holding the wrong product, at the wrong size, or with a
+          // six-fingered hand played for the full twelve seconds. Same gate the
+          // image pipeline uses on the same kind of frame.
+          let ok = true;
+          if (params.productImageUrl) {
+            if (!scaleHint) {
+              // resumed or caller-supplied frame — we never computed the scale
+              try {
+                const { resolveProductScale } = await import("./product-scale.server");
+                scaleHint = await resolveProductScale({
+                  productTitle: params.productTitle,
+                  productDescription: params.productDescription,
+                  productImageUrl: params.productImageUrl,
+                  productSize: params.productSize,
+                });
+              } catch { /* judge without a scale rather than not at all */ }
+            }
+            const { qaPresenterHold } = await import("./image-generation.server");
+            const qa = await qaPresenterHold(
+              params.productImageUrl,
+              composedUrl,
+              scaleHint?.phrase,
+              scaleHint?.sizeClass,
+              scaleHint?.cm,
+              params.wearProduct
+            );
+            // WHAT A FAILURE COSTS DEPENDS ON THE MODE, so the response does too.
+            //
+            // hold: the fallback is the plain portrait, and cutawayMode is on for
+            //   this path — the presenter talks to camera and the b-roll still
+            //   cuts to the merchant's real product photo. Losing the hold costs
+            //   a flourish; animating the wrong product for twelve seconds costs
+            //   them the ad. Drop the frame.
+            //
+            // wear: cutawayMode is DISABLED for apparel (see its definition), so
+            //   the plain portrait is a presenter not wearing the product — an
+            //   apparel ad with no product in it at all. That is worse than an
+            //   imperfect one, so the frame ships and the failure is recorded
+            //   rather than hidden.
+            ok = qa.pass || !!params.wearProduct;
+            if (!qa.pass) {
+              console.error(
+                params.wearProduct
+                  ? `[ugc] composed apparel frame failed the presenter gate (${qa.reason}) — shipping it UNVERIFIED, because the only fallback for wear is a portrait with no product in it`
+                  : `[ugc] composed frame failed the presenter gate (${qa.reason}) — animating the plain portrait instead`
+              );
+            }
+          }
+          if (ok) {
+            animSourceUrl = composedUrl;
+            animSourceDataUri = "data:image/jpeg;base64," + buf.toString("base64");
+            heldProduct = true;
+          }
         }
       } catch { /* composed frame unreachable → plain portrait */ }
     }

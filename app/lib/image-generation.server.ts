@@ -547,12 +547,16 @@ function unanswered(j: Record<string, unknown>, keys: readonly string[]): string
   return keys.filter((k) => typeof j[k] !== "boolean");
 }
 
-/** Vision gate for a presenter-holding still. This rung shipped un-checked,
+/** Vision gate for a presenter-holding still. Exported because the UGC video
+ *  pipeline composes the same kind of frame and was accepting it on file size
+ *  alone — and there every frame of the clip inherits the mistake.
+ *
+ *  This rung shipped un-checked,
  *  which is why a 6-box display case arrived palm-sized with two boxes in it:
  *  the composer both SHRANK the product and simplified it, and nothing looked.
  *  Judges the two failures that actually happen here — wrong scale against the
  *  body, and a product that isn't the same product any more. */
-async function qaPresenterHold(
+export async function qaPresenterHold(
   productUrl: string,
   genUrl: string,
   scalePhrase: string | undefined,
