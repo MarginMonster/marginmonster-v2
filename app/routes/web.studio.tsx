@@ -10,6 +10,7 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { trimToWord } from "../lib/text-trim";
 import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
+import { Ico } from "../lib/icons";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { planTrialing, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
@@ -74,14 +75,14 @@ const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: stri
 const baseOf = (ct: string | null | undefined) => (ct && CT_PRESETS[ct] ? CT_PRESETS[ct].base : ct);
 
 const CARTOON_STYLES = [
-  { key: "dreamanime", name: "Dream Anime", emoji: "🌿", tint: "#6FAF7C", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
-  { key: "toyfigure", name: "Boxed Figure", emoji: "🧍", tint: "#F4B400", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "papercut", name: "Paper Craft", emoji: "✂️", tint: "#E58A4E", blurb: "A handmade layered-paper diorama — the craft style feeds fall in love with" },
-  { key: "pixar", name: "3D Toon", emoji: "🧸", tint: "#34C3E7", blurb: "Big-studio 3D character film — glossy and cinematic" },
-  { key: "retroanime", name: "Retro Anime", emoji: "📼", tint: "#E5397D", blurb: "90s VHS anime — sunset palettes and speed lines" },
-  { key: "vintagetoon", name: "Vintage Toon", emoji: "🎪", tint: "#E7A33C", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
-  { key: "puppet", name: "Felt Puppet", emoji: "🧦", tint: "#8E5BD9", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
-  { key: "clay", name: "Claymation", emoji: "🎭", tint: "#B08526", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  { key: "dreamanime", name: "Dream Anime", tint: "#6FAF7C", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
+  { key: "toyfigure", name: "Boxed Figure", tint: "#F4B400", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
+  { key: "papercut", name: "Paper Craft", tint: "#E58A4E", blurb: "A handmade layered-paper diorama — the craft style feeds fall in love with" },
+  { key: "pixar", name: "3D Toon", tint: "#34C3E7", blurb: "Big-studio 3D character film — glossy and cinematic" },
+  { key: "retroanime", name: "Retro Anime", tint: "#E5397D", blurb: "90s VHS anime — sunset palettes and speed lines" },
+  { key: "vintagetoon", name: "Vintage Toon", tint: "#E7A33C", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
+  { key: "puppet", name: "Felt Puppet", tint: "#8E5BD9", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
+  { key: "clay", name: "Claymation", tint: "#B08526", blurb: "Hand-molded stop-motion, cozy and tactile" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -89,13 +90,13 @@ const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jack
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
 
 // One-tap blog angles — the picker that standardizes what kind of article you get.
-const BLOG_ANGLES: { label: string; prompt: string }[] = [
-  { label: "📋 Buyer's Guide", prompt: "a practical buyer's guide that helps a shopper choose the right option — what to look for, common mistakes to avoid, and why this product fits" },
-  { label: "🔧 How-To", prompt: "a step-by-step how-to that helps the reader get the most out of the product, with clear numbered steps and pro tips" },
-  { label: "⭐ Best-Of List", prompt: "a curated best-of listicle ranking top picks or use-cases, positioning this product as the standout choice" },
-  { label: "❓ FAQ", prompt: "an FAQ-style post answering the real questions shoppers ask before buying, each answer building confidence to purchase" },
-  { label: "📖 Brand Story", prompt: "a short brand-story feature connecting the product to a relatable customer moment and the values behind it" },
-  { label: "🎁 Gift Guide", prompt: "a gift-guide angle framing the product as the perfect gift for specific people and occasions" },
+const BLOG_ANGLES: { icon: string; label: string; prompt: string }[] = [
+  { icon: "clipboard", label: "Buyer's Guide", prompt: "a practical buyer's guide that helps a shopper choose the right option — what to look for, common mistakes to avoid, and why this product fits" },
+  { icon: "wrench", label: "How-To", prompt: "a step-by-step how-to that helps the reader get the most out of the product, with clear numbered steps and pro tips" },
+  { icon: "star", label: "Best-Of List", prompt: "a curated best-of listicle ranking top picks or use-cases, positioning this product as the standout choice" },
+  { icon: "question", label: "FAQ", prompt: "an FAQ-style post answering the real questions shoppers ask before buying, each answer building confidence to purchase" },
+  { icon: "book", label: "Brand Story", prompt: "a short brand-story feature connecting the product to a relatable customer moment and the values behind it" },
+  { icon: "gift", label: "Gift Guide", prompt: "a gift-guide angle framing the product as the perfect gift for specific people and occasions" },
 ];
 
 const decodeEntities = (s: string) => s
@@ -192,7 +193,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { account } = await requireWebIdentity(request);
     const r = await endTrialNow(account.id);
     return r.ok
-      ? json({ trialEnded: "You're on the full plan — your whole allowance just unlocked. 🚀" })
+      ? json({ trialEnded: "You're on the full plan — your whole allowance just unlocked." })
       : json({ error: r.error });
   }
 
@@ -672,9 +673,9 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
               </button>
               <button type="button" className={`ws-samp${playing === c.id ? " on" : ""}${c.designed ? " prem" : ""}`} onClick={() => sample(c)}
                 title={c.designed ? `Watch ${c.name} speak` : `Hear ${c.name}`} aria-label={c.designed ? `Watch ${c.name} speak` : `Hear ${c.name}'s voice`}>
-                {playing === c.id ? "♪" : c.designed ? "▶" : "🔊"}
+                <Ico n={playing === c.id ? "music" : c.designed ? "play" : "sound"} size={15} />
               </button>
-              <span>{bf ? "★ Brand face" : c.name}</span>
+              <span>{bf ? <><Ico n="star" size={12} /> Brand face</> : c.name}</span>
             </div>
           );
         })}
@@ -1017,7 +1018,7 @@ export default function WebStudio() {
     <div>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
       <h1 className="wb-h1">Content Studio</h1>
-      <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: 🪙 {d.tokens.toLocaleString("en-US")}</p>
+      <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: <Ico n="coin" /> {d.tokens.toLocaleString("en-US")}</p>
       {!d.hasBrand && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
       {!d.hasPlan && <div className="wb-err">Pick a <Link to="/web">plan</Link> first — content runs on tokens.</div>}
       {/* Top banner too — a failure must be visible even when the config
@@ -1123,7 +1124,7 @@ export default function WebStudio() {
                   <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}`}
                     onClick={() => (locked ? setUpsell({ name: ct.name, tier: ct.tier, price: ct.price }) : (setContentType(ct.key), setUpsell(null)))}>
                     <span className="ws-tile-img" style={{ backgroundImage: `url(${ct.cover})` }}>
-                      {locked && <span className="ws-lock">🔒 {ct.tier}</span>}
+                      {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {ct.tier}</span>}
                     </span>
                     <b>{ct.name}</b>
                     {/* The description, always. With no plan every tile is
@@ -1141,7 +1142,7 @@ export default function WebStudio() {
             </div>
             {upsell && (
               <div className="ws-upsell">
-                <b>🔒 {upsell.name} is a {upsell.tier} feature</b>
+                <b><Ico n="lock" size={15} /> {upsell.name} is a {upsell.tier} feature</b>
                 <p>Upgrade to {upsell.tier} (${upsell.price}/mo) to unlock it — everything you already have comes along.</p>
                 <div><Link to="/web" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>See plans</Link>
                   <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setUpsell(null)}>Not now</button></div>
@@ -1157,7 +1158,7 @@ export default function WebStudio() {
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
             {contentType === "jingle" && (
-              <p className="ws-note">🎵 <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.</p>
+              <p className="ws-note"><Ico n="music" /> <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.</p>
             )}
             {/* Presenter FIRST — the style tiles below render as the chosen
               * presenter, so picking them in this order explains the art. */}
@@ -1172,43 +1173,43 @@ export default function WebStudio() {
                     <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(null)}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(${d.cast.find((c) => c.id === styleChar)?.img || ""})` }}>{cartoonStyle === null && <span className="ws-chk">✓</span>}</span>
-                      <b>📷 Photoreal</b>
+                      <b><Ico n="camera" /> Photoreal</b>
                     </button>
                   )}
                   {CARTOON_STYLES.map((cs) => (
                     <button type="button" key={cs.key} className={`ws-tile small${cartoonStyle === cs.key ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(cs.key)}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
-                      <b>{cs.emoji} {cs.name}</b>
+                      <b>{cs.name}</b>
                     </button>
                   ))}
                 </div>
                 {contentType === "cartoon" && (cartoonStyle ? (
-                  <p className="ws-note">🎨 <b>{CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name}</b> — {CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb}. Your presenter and product get redrawn in this style, then animated with a narrator.</p>
+                  <p className="ws-note"><Ico n="palette" /> <b>{CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name}</b> — {CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb}. Your presenter and product get redrawn in this style, then animated with a narrator.</p>
                 ) : (
                   <p className="ws-note">Pick the style — your presenter becomes the character, your product stays recognizable.</p>
                 ))}
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
             )}
-            {contentType === "highlight" && <p className="ws-note">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
-            {contentType === "commercial" && <p className="ws-note">🎥 <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
-            {contentType === "review" && <p className="ws-note">🤳 <b>UGC Review</b> — your presenter films it like a real customer review: phone-shot, casual, straight to camera. The kind of post people actually trust.</p>}
-            {contentType === "unboxing" && <p className="ws-note">📦 <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
-            {contentType === "asmr" && <p className="ws-note">🌊 <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
+            {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
+            {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
+            {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>UGC Review</b> — your presenter films it like a real customer review: phone-shot, casual, straight to camera. The kind of post people actually trust.</p>}
+            {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
+            {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {(contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">
                 <input type="checkbox" name="commercial" value="1" checked={commercial}
                   onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
-                <span><b>🎬 Commercial look</b> — big-budget studio spot: color-block set matched to your product, hero-lit</span>
+                <span><b><Ico n="video" /> Commercial look</b> — big-budget studio spot: color-block set matched to your product, hero-lit</span>
               </label>
             )}
             {contentType === "highlight" && (
               <label className="ws-commercial">
                 <input type="checkbox" name="breakout" value="1" checked={breakout}
                   onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
-                <span><b>💥 Breakout</b> — your product bursts out of a social post frame in 3D, the scroll-stopper</span>
+                <span><b><Ico n="burst" /> Breakout</b> — your product bursts out of a social post frame in 3D, the scroll-stopper</span>
               </label>
             )}
             <div className="ws-lbl">Video engine <span className="ws-opt">premium engines add tokens</span></div>
@@ -1257,7 +1258,7 @@ export default function WebStudio() {
                       style={allFormats ? { animationDelay: `${Math.min(i * 22, 550)}ms` } : undefined}
                       onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
-                      <b>{f.emoji} {f.name}</b>
+                      <b>{f.name}</b>
                     </button>
                   ))}
                 </div>
@@ -1275,7 +1276,7 @@ export default function WebStudio() {
                       <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
                         onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setFormatKey(null); }}>
                         <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=10)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
-                        <b>{t.emoji} {t.name}</b>
+                        <b>{t.name}</b>
                         <span className="ws-tile-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
                       </button>
                     ))}
@@ -1300,7 +1301,7 @@ export default function WebStudio() {
             <p className="ws-note">Their outfit rotates each time, so your content never looks stale.</p>
             {avatarId !== d.brandFaceId && (
               <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
-                ★ Make {d.cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face
+                <Ico n="star" size={13} /> Make {d.cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face
               </button>
             )}
           </>
@@ -1341,7 +1342,7 @@ export default function WebStudio() {
                           setPickedUrl(c.url);
                         }}>
                         <span className="ws-cat-img" style={c.imageUrl ? { backgroundImage: `url(${c.imageUrl})` } : undefined}>
-                          {!c.imageUrl && <i>🖼</i>}
+                          {!c.imageUrl && <Ico n="image" size={22} />}
                           {productTitle === c.title && <span className="ws-chk">✓</span>}
                         </span>
                         <b>{c.title}</b>
@@ -1360,7 +1361,7 @@ export default function WebStudio() {
               </>
             ) : (
               <div className="ws-connect">
-                <b>📦 Bring your whole store in</b>
+                <b><Ico n="box" /> Bring your whole store in</b>
                 <p>Paste your store address once and we&rsquo;ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.</p>
                 {!d.catalogSyncing && (
                   <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>
@@ -1438,8 +1439,8 @@ export default function WebStudio() {
               <>
                 <div className="ws-lbl">What are you promoting?</div>
                 <div className="ws-seg">
-                  <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}>📦 Physical product</button>
-                  <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}>✨ Service / offer</button>
+                  <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}><Ico n="box" /> Physical product</button>
+                  <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}><Ico n="burst" /> Service / offer</button>
                 </div>
                 {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
               </>
@@ -1449,8 +1450,8 @@ export default function WebStudio() {
               <>
                 <div className="ws-lbl"><span>How they show it</span>{apparel && <span className="ws-opt">apparel detected</span>}</div>
                 <div className="ws-seg">
-                  <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}>✋ Holding it</button>
-                  <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}>👕 Wearing it <span className="ws-wq">(generally for apparel)</span></button>
+                  <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}><Ico n="figure" /> Holding it</button>
+                  <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}><Ico n="shirt" /> Wearing it <span className="ws-wq">(generally for apparel)</span></button>
                 </div>
               </>
             )}
@@ -1508,7 +1509,7 @@ export default function WebStudio() {
                     <div className="ws-lbl">Pick an angle <span className="ws-opt">optional</span></div>
                     <div className="ws-chips">
                       {BLOG_ANGLES.map((s, i) => (
-                        <button type="button" key={i} className={`ws-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}>{s.label}</button>
+                        <button type="button" key={i} className={`ws-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}><Ico n={s.icon} /> {s.label}</button>
                       ))}
                     </div>
                   </>

@@ -6,6 +6,7 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useState } from "react";
+import { Ico } from "../lib/icons";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { isExpiringUrl } from "../lib/image-generation.server";
 import { db } from "../db.server";
@@ -280,9 +281,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const { refundTokens } = await import("../lib/tokens.server");
         await refundTokens(shop.id, spent, retryFromExtra).catch((e) => console.error("[retry] losing click refund failed:", e));
       }
-      return json({ ok: "Already retrying — hang tight. 🔥" });
+      return json({ ok: "Already retrying — hang tight." });
     }
-    return json({ ok: "Retrying — back in the oven. 🔥" });
+    return json({ ok: "Retrying — back in the oven." });
   }
   if (intent === "dismissJob") {
     const jobId = (form.get("jobId") as string) || "";
@@ -522,7 +523,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // This used to track a single anyOk flag and then report success against
     // `platforms` — the list the merchant ASKED for, not the list that
     // worked. One live account out of two, and the toast still read "Posted
-    // to tiktok · facebook 🎉". The merchant believes it went to Facebook, it
+    // to tiktok · facebook". The merchant believes it went to Facebook, it
     // did not, and nothing ever corrects them. Same defect the questline
     // poster was already fixed for; the manual path kept it.
     let lastErr: string | undefined;
@@ -580,7 +581,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       posted: landed.join(" · "),
       ok: missed.length
         ? `Posted to ${landed.join(" · ")}. ${missed.join(" · ")} didn't go through (${lastErr || "unknown"}) — check that account and try again.`
-        : `Posted to ${landed.join(" · ")} 🎉`,
+        : `Posted to ${landed.join(" · ")}`,
       postedUrls,
     });
   }
@@ -841,7 +842,7 @@ export default function WebArchive() {
         </div>
       )}
       <div className="ws-tabs" style={{ marginBottom: 16 }}>
-        {([["video", "🎬 Videos"], ["image", "🖼 Images"], ["blog", "✍️ Articles"]] as [ATab, string][]).map(([k, label]) => {
+        {([["video", "video", "Videos"], ["image", "image", "Images"], ["blog", "article", "Articles"]] as [ATab, string, string][]).map(([k, icon, label]) => {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
           // how much the merchant actually owned.
@@ -849,7 +850,7 @@ export default function WebArchive() {
             + cookingCards.filter((j) => j.kind === k).length;
           return (
             <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>
-              {label}{n > 0 ? ` · ${n}` : ""}
+              <Ico n={icon} /> {label}{n > 0 ? ` · ${n}` : ""}
             </button>
           );
         })}
@@ -911,7 +912,7 @@ export default function WebArchive() {
                   {a.snippet && <p>{a.snippet}…</p>}
                   <span className={`wa-chip ${cc}`}>{cl}</span>
                 </button>
-                <button type="button" className="wa-icon" title="Delete this article" disabled={busy} onClick={() => deleteAsset(a.id)}>🗑</button>
+                <button type="button" className="wa-icon" title="Delete this article" disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
               </div>
             );
           })}
@@ -927,7 +928,7 @@ export default function WebArchive() {
                   {!a.isVideo && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
                   {!a.media && (
                     <div style={{ height: 220, display: "grid", placeItems: "center", gap: 6, textAlign: "center", color: "#E7C879" }}>
-                      <span style={{ fontSize: 34 }}>{a.isVideo ? "🎬" : "🖼"}</span>
+                      <span style={{ display: "grid", placeItems: "center", opacity: .5 }}><Ico n={a.isVideo ? "video" : "image"} size={32} /></span>
                       {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>The render for this one is gone — make it again.</span>}
                     </div>
                   )}
@@ -952,7 +953,7 @@ export default function WebArchive() {
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo)} title="Download">⬇</a>}
-                    <button type="button" className="wa-icon" title="Delete" disabled={busy} onClick={() => deleteAsset(a.id)}>🗑</button>
+                    <button type="button" className="wa-icon" title="Delete" disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
                   </div>
                 </div>
               </div>
@@ -1016,14 +1017,14 @@ export default function WebArchive() {
             <div className="wa-vmeta">
               <div className="wa-vtitle">
                 <b>{viewer.title}</b>
-                {viewer.recipe && <span className="wa-recipe" title="The recipe this ad was built with">🎛 {viewer.recipe}</span>}
+                {viewer.recipe && <span className="wa-recipe" title="The recipe this ad was built with"><Ico n="sliders" /> {viewer.recipe}</span>}
                 {posted && postedAssetId === viewer.id ? <span className="wa-vok">Posted to {posted} ✓</span>
                   : err ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>
               {viewer.missed && (
                 <span className="wa-vmissed">
-                  ⚠ The <b>{viewer.missed}</b> layout didn&apos;t render cleanly, so this went out as a plain product ad instead. <b>Remix</b> re-rolls it.
+                  <Ico n="warning" /> The <b>{viewer.missed}</b> layout didn&apos;t render cleanly, so this went out as a plain product ad instead. <b>Remix</b> re-rolls it.
                 </span>
               )}
               {/* Post tracking + the Boost Bridge. Clicks come from the /go/a
@@ -1032,9 +1033,9 @@ export default function WebArchive() {
                   the SMB way to put spend behind a winner, no ads API needed. */}
               {(viewer.clicks > 0 || viewer.postedUrls) && (
                 <div className="wa-track">
-                  <span className="wa-clicks" title="Shoppers who tapped the link in this post's caption">🔗 {viewer.clicks} click{viewer.clicks === 1 ? "" : "s"}</span>
+                  <span className="wa-clicks" title="Shoppers who tapped the link in this post's caption"><Ico n="link" /> {viewer.clicks} click{viewer.clicks === 1 ? "" : "s"}</span>
                   {viewer.postedUrls && Object.entries(viewer.postedUrls).map(([p, u]) => (
-                    <a key={p} className="wa-boost" href={u} target="_blank" rel="noreferrer">⚡ Boost on {p.charAt(0).toUpperCase() + p.slice(1)} ↗</a>
+                    <a key={p} className="wa-boost" href={u} target="_blank" rel="noreferrer"><Ico n="bolt" /> Boost on {p.charAt(0).toUpperCase() + p.slice(1)} ↗</a>
                   ))}
                   {viewer.postedUrls && (
                     <span className="wa-boosthint">Open the post → tap <b>⋯ / Boost</b>. Suggested start: $10/day × 3 days, Advantage+ audience. Clicks above tell you which piece earned the spend.</span>

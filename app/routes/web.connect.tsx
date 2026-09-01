@@ -7,6 +7,7 @@ import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { connectUrl, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { externalOrigin } from "../lib/origin.server";
+import { Ico } from "../lib/icons";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
@@ -59,7 +60,7 @@ export default function WebConnect() {
           })}
         </div>
         {linkedNames.length > 0 ? (
-          <p className="wc-armed">⚡ Armed on {linkedNames.join(linkedNames.length === 2 ? " and " : ", ")} — pieces can post themselves from the Archive.</p>
+          <p className="wc-armed"><Ico n="bolt" /> Armed on {linkedNames.join(linkedNames.length === 2 ? " and " : ", ")} — pieces can post themselves from the Archive.</p>
         ) : (
           <p className="wb-note" style={{ margin: "10px 0 14px" }}>Nothing linked yet.</p>
         )}

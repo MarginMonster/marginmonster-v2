@@ -24,6 +24,7 @@ import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { CATALOG_CAP } from "../lib/catalog-import.server";
+import { Ico } from "../lib/icons";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Campaigns · EasyMode" }];
@@ -696,7 +697,7 @@ export default function WebCampaigns() {
               <button type="button" key={c.id} className={`wc-face${avatarId === c.id ? " sel" : ""}`}
                 onClick={() => setAvatarId(c.id)} aria-pressed={avatarId === c.id}>
                 <span className="wc-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
-                <span>{c.id === d.brandFaceId ? "★ Brand face" : c.name}</span>
+                <span>{c.id === d.brandFaceId ? <><Ico n="star" size={12} /> Brand face</> : c.name}</span>
               </button>
             ))}
           </div>

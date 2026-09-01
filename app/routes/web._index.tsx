@@ -6,6 +6,7 @@ import { Form, useActionData, useLoaderData, useNavigation, useSearchParams, use
 import { useEffect, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
+import { Ico } from "../lib/icons";
 import {
   PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
   annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
@@ -341,7 +342,7 @@ export default function WebDashboard() {
         <div className="ws-scrim" role="dialog" aria-label="Purchase confirmed" onClick={closeSuccess}>
           <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
             <span className="ws-mrose" aria-hidden="true" />
-            <div className="ws-mi">{success.kind === "plan" ? "🎉" : "🪙"}</div>
+            <div className="ws-mi"><Ico n={success.kind === "plan" ? "check" : "coin"} size={30} /></div>
             {success.kind === "plan" ? (
               <>
                 <b className="ws-mh">{PLAN_BY_KEY[success.key]?.name ?? "Your plan"} is live</b>
@@ -354,7 +355,7 @@ export default function WebDashboard() {
                   {d.trialing
                     ? <>your 7-day free trial starts now, with </>
                     : <>you&apos;re on {PLAN_BY_KEY[success.key]?.name}, with </>}
-                  {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} 🪙 tokens loading every month.
+                  {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} <Ico n="coin" /> tokens loading every month.
                 </p>
               </>
             ) : (
@@ -377,7 +378,7 @@ export default function WebDashboard() {
       {!allDone && !launchHidden && (
         <div className="wd-launch">
           <div className="wdl-top">
-            <div className="wdl-title">🚀 Launch tracker <span>{doneCount}/{steps.length}</span></div>
+            <div className="wdl-title"><Ico n="rocket" /> Launch tracker <span>{doneCount}/{steps.length}</span></div>
             <button type="button" className="wdl-x" onClick={dismissLaunch} aria-label="Dismiss">✕</button>
           </div>
           <div className="wdl-bar"><i style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
@@ -432,7 +433,7 @@ export default function WebDashboard() {
         ].filter(Boolean).slice(0, 4) as { n: number; k: string }[];
         return (
           <div className="wd-wins">
-            <div className="wdn-tag" style={{ marginBottom: 8 }}>📈 Your content is working</div>
+            <div className="wdn-tag" style={{ marginBottom: 8 }}><Ico n="trend" /> Your content is working</div>
             <div className="wdw-grid">
               {tiles.map((t) => (
                 <div className="wdw-tile" key={t.k}><b>{fmtK(t.n)}</b><span>{t.k}</span></div>
@@ -447,7 +448,7 @@ export default function WebDashboard() {
         <Link className="wd-next" to="/web/studio">
           <div className="wdn-tag">Your next move</div>
           <div className="wdn-row">
-            <span className="wdn-kind">{d.nextMove.kind === "video" ? "🎬" : d.nextMove.kind === "image" ? "🖼" : "✍️"}</span>
+            <span className="wdn-kind"><Ico n={d.nextMove.kind === "video" ? "video" : d.nextMove.kind === "image" ? "image" : "article"} size={22} /></span>
             <div className="wdn-body">
               <b>Make {d.nextMove.kind === "video" ? "a product video" : d.nextMove.kind === "image" ? "an image ad" : "an article"}</b>
               <p>{d.nextMove.reason}</p>
@@ -505,7 +506,7 @@ export default function WebDashboard() {
               {annual ? <>${t.yearly.toLocaleString("en-US")}<small>/yr</small></> : <>${t.price}<small>/mo</small></>}
             </div>
             <div className="wb-note">{annual ? `Just $${Math.round((t.price * 10) / 12)}/mo, billed yearly · 2 months free` : "billed monthly"}</div>
-            <div className="wb-note">🪙 {t.tokens.toLocaleString("en-US")} tokens/mo</div>
+            <div className="wb-note"><Ico n="coin" /> {t.tokens.toLocaleString("en-US")} tokens/mo</div>
             <div className="wb-note">{t.capacity}</div>
             <ul className="wb-feats">{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
             {/* Flipping to Annual re-prices every card, including the one the
@@ -632,7 +633,7 @@ export default function WebDashboard() {
           {/* Sharing pays only once this store is itself on a plan. */}
           {d.referral.canEarn && (
             <div className="wdr-main">
-              <b>Refer a friend — you both get {d.referral.reward} 🪙</b>
+              <b>Refer a friend — you both get {d.referral.reward} <Ico n="coin" /></b>
               <span>Share your code; tokens land in both wallets when they start a paid plan.</span>
               <div className="wdr-act">
                 <span className="wdr-code">{d.referral.code}</span>
@@ -657,7 +658,7 @@ export default function WebDashboard() {
             </div>
           )}
           {d.referral.referredBy && (
-            <div className="wdr-enter"><div className="wb-note">You joined with a referral — enjoy your bonus tokens 🪙</div></div>
+            <div className="wdr-enter"><div className="wb-note">You joined with a referral — enjoy your bonus tokens.</div></div>
           )}
         </div>
       )}

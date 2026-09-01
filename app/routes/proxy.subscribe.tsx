@@ -1,4 +1,4 @@
-/* 📥 Public email-capture endpoint — the storefront signup popup POSTs here
+/* Public email-capture endpoint — the storefront signup popup POSTs here
  * through the Shopify app proxy (/apps/easymode/subscribe → /proxy/subscribe).
  * authenticate.public.appProxy verifies the request's Shopify signature, so
  * only the merchant's own storefront can add subscribers.

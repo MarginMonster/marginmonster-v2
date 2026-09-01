@@ -17,6 +17,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
+import { Ico } from "../lib/icons";
 
 /** Constant-time compare, so the 404 tells an attacker nothing about how much
  *  of the key they guessed right. Same reasoning as the DUMMY_HASH in
@@ -88,7 +89,7 @@ export default function WebDev() {
   const a = useActionData<typeof action>() as { ok?: string; error?: string; balance?: number } | undefined;
   return (
     <div className="wb-card" style={{ maxWidth: 520, margin: "18px auto" }}>
-      <h1 className="wb-h1" style={{ fontSize: 22, marginTop: 0 }}>🔧 Token grant</h1>
+      <h1 className="wb-h1" style={{ fontSize: 22, marginTop: 0 }}><Ico n="sliders" /> Token grant</h1>
       <p className="wb-sub" style={{ marginBottom: 14 }}>
         Testing tool for <b>{d.email}</b>. Grants land on this account only.
       </p>

@@ -8,6 +8,7 @@ import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { totalXpForLevel } from "../lib/achievements";
+import { Ico } from "../lib/icons";
 
 const EMPTY_HUD = {
   name: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
@@ -98,7 +99,7 @@ export default function WebLayout() {
               >
                 <Crest size={22} />
                 <span className="wb-hud-lvl">LVL {hud.level}</span>
-                <span className="wb-hud-mini-tok">🪙 {hud.tokens.toLocaleString()}</span>
+                <span className="wb-hud-mini-tok"><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
                 <span className="wb-hud-caret">▾</span>
               </button>
             ) : (
@@ -124,7 +125,7 @@ export default function WebLayout() {
 
                 <div className="wb-hud-stats">
                   <Link to="/web#plans" className="wb-hud-topup" title="Get more tokens">
-                    <span>🪙 {hud.tokens.toLocaleString()}</span><b>Add tokens</b>
+                    <span><Ico n="coin" /> {hud.tokens.toLocaleString()}</span><b>Add tokens</b>
                   </Link>
                   {/* These are what the BALANCE AFFORDS, not what the merchant
                       owns — but the label said "3 Videos", which on the Archive
@@ -132,8 +133,8 @@ export default function WebLayout() {
                       reads as a count of their library. The only thing
                       distinguishing them was a title attribute, which does not
                       exist on touch. Say what the number means. */}
-                  <span className="wb-hud-stat" title="How many product videos your balance covers">🎬 {hud.videos} videos&apos; worth</span>
-                  <span className="wb-hud-stat" title="How many image ads your balance covers">🖼 {hud.ads} images&apos; worth</span>
+                  <span className="wb-hud-stat" title="How many product videos your balance covers"><Ico n="video" /> {hud.videos} videos&apos; worth</span>
+                  <span className="wb-hud-stat" title="How many image ads your balance covers"><Ico n="image" /> {hud.ads} images&apos; worth</span>
                 </div>
               </>
             )}
