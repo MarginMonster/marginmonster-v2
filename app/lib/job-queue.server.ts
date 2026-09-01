@@ -680,6 +680,7 @@ async function runJob(
         productTitle: items[0]?.title,
         storeName: s.domain.replace(/\.myshopify\.com$/, ""),
         ctaUrl: ac.recoveryUrl || undefined,
+        contentLang: s.contentLang,
       });
       const res = await sendEmail({ to: ac.email, subject: email.subject, html: email.html });
       await db.abandonedCheckout.update({ where: { id }, data: { status: res.ok ? "emailed" : "skipped" } });

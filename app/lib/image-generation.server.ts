@@ -539,6 +539,13 @@ async function qaFidelity(productUrl: string, genUrl: string, wantBright: boolea
   }
 }
 
+/** The keys a vision verdict MUST answer with a real boolean. Anything else
+ *  — omitted, null, 0/1, the string "false" — means that question was not
+ *  answered, and an unanswered question is not a pass. */
+function unanswered(j: Record<string, unknown>, keys: readonly string[]): string[] {
+  return keys.filter((k) => typeof j[k] !== "boolean");
+}
+
 /** Vision gate for a presenter-holding still. This rung shipped un-checked,
  *  which is why a 6-box display case arrived palm-sized with two boxes in it:
  *  the composer both SHRANK the product and simplified it, and nothing looked.
@@ -672,8 +679,14 @@ async function qaPresenterHold(
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     // HARD fails block the frame: these are lies about the merchant's product
     // or anatomy a viewer would flinch at. Everything else is a soft note.
-    const bad = (["artworkMatches", "sameObject", "notSimplified", "singleProduct", "textFaithful", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const)
-      .filter((k) => j[k] === false) as string[];
+    const HARD = ["artworkMatches", "sameObject", "notSimplified", "singleProduct", "textFaithful", "noSourceText", "handsOk", "handsHuman", "faceVisible", "notSelfie"] as const;
+    // A question the judge did not answer is not an answer of "fine".
+    const skipped = unanswered(j, HARD);
+    if (skipped.length) {
+      console.warn(`[presenter:gate] verdict left ${skipped.join("/")} unanswered — treating as a failure`);
+      return { pass: false, reason: `gate did not answer: ${skipped.join(", ")}`, bad: skipped, soft: [] };
+    }
+    const bad = HARD.filter((k) => j[k] === false) as string[];
     const soft: string[] = [];
     if (j.finePrintFaithful === false) soft.push("finePrint");
     // Size-class distance, DIRECTION-AWARE. Two or more bands off blocks in
@@ -2118,8 +2131,13 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
       return { pass: false, reason: "qa-unparseable", degraded: true };
     }
     const j = JSON.parse(m[0]) as Record<string, unknown>;
-    const bad = (["productIntact", "textSensible", "textMatches", "noSourceText"] as const)
-      .filter((k) => j[k] === false);
+    const HARD_FMT = ["productIntact", "textSensible", "textMatches", "noSourceText"] as const;
+    const skippedFmt = unanswered(j, HARD_FMT);
+    if (skippedFmt.length) {
+      console.warn(`[image-ad] qaFormat verdict left ${skippedFmt.join("/")} unanswered`);
+      return { pass: false, reason: "qa-unparseable", degraded: true };
+    }
+    const bad = HARD_FMT.filter((k) => j[k] === false);
 
     // Mechanical spell-check of the RENDERED words against the words we asked
     // for. Only flags a word that is a near-miss of an expected word — same

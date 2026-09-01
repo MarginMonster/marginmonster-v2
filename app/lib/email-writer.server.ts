@@ -5,6 +5,7 @@
 
 import { anthropicText } from "./anthropic.server";
 import type { EmailKind } from "./email-kinds";
+import { langDirective } from "./content-lang";
 
 export type { EmailKind };
 
@@ -44,6 +45,10 @@ export async function writeMarketingEmail(
      *  which case the footer says "Unsubscribe" as plain text rather than
      *  linking nowhere. sendBrandEmail always supplies one. */
     unsubscribeUrl?: string;
+    /** The shop content language. Every other text generator threads this;
+     *  this one did not, so a merchant whose whole store generates in Spanish
+     *  got Spanish ads, Spanish articles — and English email. */
+    contentLang?: string | null;
   }
 ): Promise<WrittenEmail> {
   let voice: { tone?: string; values?: string; samplePhrases?: string[] } = {};
@@ -57,7 +62,7 @@ ${input.topic ? `Angle / topic: ${input.topic}` : ""}
 
 Return STRICT JSON only (no markdown, no prose around it):
 {"subject":"under 50 chars, high open-rate, no emojis","preheader":"under 90 chars","body_sections":[{"heading":"short heading or empty","text":"1-3 sentences"}],"cta_text":"button label under 22 chars"}
-Rules: 2 to 4 body sections, tight and scannable, on-brand, no fake discounts or claims.`;
+Rules: 2 to 4 body sections, tight and scannable, on-brand, no fake discounts or claims.${langDirective(input.contentLang)}`;
 
   let raw = "";
   try {

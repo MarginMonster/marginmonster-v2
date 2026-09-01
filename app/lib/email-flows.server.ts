@@ -79,6 +79,7 @@ export async function sendBrandEmail(
       storeName: shop.domain.replace(/\.myshopify\.com$/, ""),
       ctaUrl: opts.ctaUrl,
       unsubscribeUrl: optOutLink,
+      contentLang: shop.contentLang,
     });
     const res = await sendEmail({
       to,
