@@ -1776,8 +1776,10 @@ const WS_STYLE = `
 /* Burst — make several at once rather than tapping generate over and over. */
 .ws-burst{margin-top:14px;padding:11px 13px;border-radius:13px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-burst-lbl{display:block;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2,#4A554E);margin-bottom:7px}
-.ws-burst-steps{display:flex;gap:7px;flex-wrap:wrap}
-.ws-burst-steps button{padding:7px 14px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.ws-burst-steps{display:flex;gap:10px;flex-wrap:wrap}
+/* 44px min target — these pick how many PAID renders fire, so a mis-tap on a
+   phone costs real tokens; they were 31px tall and 7px apart. */
+.ws-burst-steps button{min-height:44px;min-width:56px;padding:11px 18px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .ws-burst-steps button.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
 .ws-burst-note{margin:8px 0 0;font-size:12px;color:var(--ink2,#4A554E)}
 /* Import tab: the setup surface — pull the catalogue in, forge a presenter. */

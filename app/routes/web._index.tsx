@@ -99,7 +99,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
 
   return json({
-    name: account.name || account.email,
+    // Local-part, not the whole address, when no name is set — "Welcome,
+    // daniel." reads better than a full email, and a long email with no space
+    // to wrap pushed the dashboard H1 into horizontal scroll at phone width.
+    // (The HUD in web.tsx already greets this way.) The H1 also gets
+    // overflow-wrap as a belt-and-braces guard for a very long display name.
+    name: account.name?.trim() || account.email.split("@")[0],
     hasBrand: !!shop.brandProfile,
     brand: brandVoice,
     contentLang: normalizeContentLang(shop.contentLang),

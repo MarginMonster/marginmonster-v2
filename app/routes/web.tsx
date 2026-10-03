@@ -273,7 +273,7 @@ const CSS = `
   .wb-hud-barlabel span:last-child{font-size:10.5px;}
   .wb-hud-stats{font-size:11.5px;gap:8px;}
 }
-.wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;}
+.wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;overflow-wrap:anywhere;}
 .wb-sub{color:var(--ink2);font-size:14.5px;line-height:1.55;margin:0 0 24px;max-width:60ch;}
 /* Cards were flat white inside a flat cream border. Now they carry a faint
    top-to-bottom warmth, a greener border line, and a hairline of white along
