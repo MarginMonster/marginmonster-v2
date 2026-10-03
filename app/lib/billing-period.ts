@@ -73,6 +73,37 @@ export function checkoutSessionVerdict(
   return { state: "paid", tierKey: meta.tierKey };
 }
 
+/** Did this Checkout Session actually collect money?
+ *
+ *  THE TRIAL-SWITCH LEAK. A completed checkout is normally "fresh-payment",
+ *  which rolls the wallet to a clean period — right for a first paid plan or a
+ *  resubscribe. But a trialist who SWITCHES tiers also completes a checkout,
+ *  and no money moves during a trial. Treating that as fresh-payment rolled
+ *  tokensUsed back to 0, so a merchant could reset the 400-token trial ceiling
+ *  simply by flipping Starter ⇄ Studio ⇄ Legend, over and over, inside the one
+ *  free week — unlimited trial generation, which is real COGS.
+ *
+ *  A trial checkout completes with payment_status "no_payment_required" and a
+ *  zero (or absent) amount_total; a genuine charge is "paid" with a positive
+ *  amount. So only a session that actually took money is fresh-payment. A
+ *  brand-new trial still starts clean because it has no prior plan row to roll
+ *  (the create branch owns its period); a trial tier-switch now carries its
+ *  existing spend; and the real conversion rolls later via subscription.updated
+ *  when Stripe's period anchor advances. */
+export function sessionCollectedMoney(session: unknown): boolean {
+  if (!session || typeof session !== "object") return false;
+  const s = session as Record<string, unknown>;
+  if (s.payment_status !== "paid") return false;
+  const total = typeof s.amount_total === "number" ? s.amount_total : Number(s.amount_total ?? 0);
+  return Number.isFinite(total) && total > 0;
+}
+
+/** The ActivationPeriod a completed checkout session implies: a real payment
+ *  opens a fresh period; a $0 trial checkout rolls nothing. */
+export function checkoutActivationPeriod(session: unknown): ActivationPeriod {
+  return sessionCollectedMoney(session) ? { kind: "fresh-payment" } : { kind: "stripe-anchor", startsAt: null };
+}
+
 /** Read Stripe's current_period_start off a subscription object, in seconds,
  *  from EITHER place it lives.
  *

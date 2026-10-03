@@ -427,6 +427,13 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // file that did — and it quietly converted tokens the merchant bought
       // into allowance tokens, which refreshPeriod zeroes on the next roll.
       await refundTokens(shopId, owedBack, params.chargedFromExtra);
+      // Record what landed, AFTER the credit. refundPrepaidOnce pays back
+      // chargedTokens on a terminal failure, so without this a video that
+      // downgraded here and then failed in assembly would refund the surcharge
+      // twice. Written after the credit (not in the claim) so a throw above
+      // leaves it unset and the terminal refund correctly covers the whole
+      // charge — the surcharge never actually left the wallet in that case.
+      await ckpt({ ckEngineRefundedAmount: owedBack });
       console.warn(`[video] ${downgradeNote(params.videoEngine, ranModel)}`);
     } catch (e) {
       console.error(

@@ -77,16 +77,23 @@ function add(key: string, w: Window): void {
   nsCounts.set(ns, (nsCounts.get(ns) || 0) + 1);
 }
 
-/** Evict the oldest-inserted bucket of one purpose. Map iteration is insertion
- *  ordered, so the first match is the oldest — and under a flood the flooding
- *  purpose dominates the table, so this finds one almost immediately. */
-function evictOldestOf(ns: string): boolean {
-  for (const k of buckets.keys()) {
-    if (nsOf(k) === ns) {
-      drop(k);
-      return true;
-    }
+/** Evict one bucket of a purpose to make room, preferring an EXPIRED one.
+ *
+ *  Map iteration is insertion-ordered, so the first match is the oldest. But
+ *  evicting a still-LIVE bucket throws away a count that is actively limiting
+ *  someone — under a flood on a shared purpose (e.g. many login:acct keys) that
+ *  could drop the very bucket holding a brute-force attempt back at zero. So
+ *  take an expired bucket of this purpose first; only when none has expired
+ *  (a genuine live flood) fall back to the oldest, which is the documented
+ *  degradation — a floor, not a WAF. */
+function evictOldestOf(ns: string, now: number): boolean {
+  let oldestLive: string | null = null;
+  for (const [k, w] of buckets) {
+    if (nsOf(k) !== ns) continue;
+    if (w.resetAt <= now) { drop(k); return true; } // expired — free it, cost nobody
+    if (oldestLive === null) oldestLive = k;
   }
+  if (oldestLive !== null) { drop(oldestLive); return true; }
   return false;
 }
 
@@ -108,12 +115,12 @@ export function rateLimit(key: string, limit: number, windowMs: number): { ok: b
     // Keep this purpose inside its own allowance, so a flood against one public
     // route evicts that route's buckets and never the front door's.
     while ((nsCounts.get(ns) || 0) >= MAX_KEYS_PER_PURPOSE) {
-      if (!evictOldestOf(ns)) break;
+      if (!evictOldestOf(ns, now)) break;
     }
     // Global backstop. Make room — preferably from this purpose, otherwise from
     // the oldest bucket there is — but never answer "refused" just because the
     // table is full, which is what turned a memory guard into a lockout.
-    if (buckets.size >= MAX_KEYS && !evictOldestOf(ns)) {
+    if (buckets.size >= MAX_KEYS && !evictOldestOf(ns, now)) {
       const oldest = buckets.keys().next();
       if (!oldest.done) drop(oldest.value);
     }

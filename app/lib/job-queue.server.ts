@@ -126,12 +126,22 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
       data: { payload: JSON.stringify(p) },
     });
     if (claimed.count !== 1) return; // someone else is refunding this one
-    // Refund what was ACTUALLY charged (engine surcharges ride in chargedTokens).
-    const amount = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
+    // Refund what was ACTUALLY charged (engine surcharges ride in chargedTokens)
+    // MINUS anything a mid-run engine-downgrade reconcile already paid back.
+    // That reconcile records ckEngineRefundedAmount only after its credit
+    // lands, so subtracting it here is exactly the amount still owed — without
+    // it, a job that downgraded its engine and then failed terminally refunded
+    // the surcharge a second time (chargedTokens AND the 75 already returned).
+    const charged = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
+    const alreadyRefunded = typeof p.ckEngineRefundedAmount === "number" && p.ckEngineRefundedAmount > 0 ? p.ckEngineRefundedAmount : 0;
+    const amount = Math.max(0, charged - alreadyRefunded);
     try {
       // chargedFromExtra records which bucket the spend came out of, so the
-      // refund lands back where the money actually was.
-      const backToExtra = typeof p.chargedFromExtra === "number" ? p.chargedFromExtra : undefined;
+      // refund lands back where the money actually was. Reduced by the engine
+      // reconcile's share: refundTokens credits the purchased bucket first, so
+      // whatever the reconcile already returned came out of this figure.
+      const chargedFromExtra = typeof p.chargedFromExtra === "number" ? p.chargedFromExtra : 0;
+      const backToExtra = Math.max(0, chargedFromExtra - alreadyRefunded);
       await refundTokens(job.shopId, amount, backToExtra);
     } catch (e) {
       // The flags are written BEFORE the refund on purpose (see above) so a

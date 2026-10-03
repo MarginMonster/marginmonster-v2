@@ -5,7 +5,7 @@
 
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { db } from "../db.server";
-import { stripeAnchorFrom } from "../lib/billing-period";
+import { checkoutActivationPeriod, stripeAnchorFrom } from "../lib/billing-period";
 import {
   activateStripePlan,
   creditStripePack,
@@ -49,16 +49,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return new Response("Unfulfillable session", { status: 500 }); // Stripe retries; it also shows up as failing
       }
       if (accountId && meta.tierKey) {
-        // A completed, PAID checkout session is always a period the merchant
-        // just bought — first subscription, resubscribe after a lapse, or a
-        // tier change (which opens a fresh subscription and cancels the old).
-        // The session object carries no period fields, which is why this says
-        // "fresh-payment" rather than passing an anchor. It cannot be farmed:
-        // getting here required payment_status "paid" on a new full-price
-        // session, checked above.
+        // Roll the wallet to a clean period only when this checkout actually
+        // took money. A real plan purchase or resubscribe does; a trialist
+        // SWITCHING tiers completes a checkout too, with no charge, and
+        // treating that as a fresh payment let them reset the 400-token trial
+        // ceiling by flipping tiers all week. checkoutActivationPeriod reads
+        // payment_status/amount_total to tell them apart — a $0 trial switch
+        // carries its existing spend, and the real conversion rolls later via
+        // subscription.updated when Stripe's anchor advances.
         await activateStripePlan(
           accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null,
-          false, { kind: "fresh-payment" },
+          false, checkoutActivationPeriod(obj),
         );
       } else if (accountId && meta.packTokens) {
         // The checkout session id is the natural idempotency key — Stripe

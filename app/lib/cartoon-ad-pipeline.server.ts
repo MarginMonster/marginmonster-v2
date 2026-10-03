@@ -869,7 +869,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     requestedKey: params.videoEngine,
     deliveredModels: [animModel],
     alreadyRefunded: resume.engineRefunded === true,
-    claim: () => ckpt({ ckEngineRefunded: true }),
+    checkpoint: (patch) => ckpt(patch),
     chargedFromExtra: params.chargedFromExtra,
     tag: "cartoon",
   });

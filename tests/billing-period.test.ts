@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkoutSessionVerdict, decidePeriodRoll, stripeAnchorFrom, ANCHOR_EPSILON_MS } from "../app/lib/billing-period.ts";
+import { checkoutSessionVerdict, checkoutActivationPeriod, sessionCollectedMoney, decidePeriodRoll, stripeAnchorFrom, ANCHOR_EPSILON_MS } from "../app/lib/billing-period.ts";
 
 /* activateStripePlan's UPDATE branch never rolled the wallet, so every
  * RETURNING customer inherited the previous period's spend. The fix must roll
@@ -136,6 +136,51 @@ test("paid but carrying no tierKey is never fulfilled on a guess", () => {
 test("junk is stale, never paid", () => {
   for (const junk of [null, undefined, "", 0, "complete", [], {}]) {
     assert.equal(checkoutSessionVerdict(junk).state, "stale", JSON.stringify(junk));
+  }
+});
+
+/* THE TRIAL-SWITCH LEAK. A completed checkout is fresh-payment and rolls the
+ * wallet clean — but a trialist switching tiers also completes a checkout, with
+ * no charge. Rolling there reset the 400-token trial ceiling, so flipping tiers
+ * all week was unlimited free generation. Only a session that took money rolls. */
+
+test("a real paid checkout collected money → fresh-payment → rolls", () => {
+  const s = { payment_status: "paid", amount_total: 3900 };
+  assert.equal(sessionCollectedMoney(s), true);
+  assert.equal(checkoutActivationPeriod(s).kind, "fresh-payment");
+});
+
+test("THE LEAK: a $0 trial checkout did NOT collect money → no roll", () => {
+  // Stripe completes a trialing subscription checkout with no_payment_required
+  // and a zero total.
+  for (const s of [
+    { payment_status: "no_payment_required", amount_total: 0 },
+    { payment_status: "no_payment_required" },
+    { payment_status: "paid", amount_total: 0 },
+    { payment_status: "paid", amount_total: null },
+  ]) {
+    assert.equal(sessionCollectedMoney(s), false, JSON.stringify(s));
+    const period = checkoutActivationPeriod(s);
+    assert.equal(period.kind, "stripe-anchor");
+    assert.ok(period.kind === "stripe-anchor" && period.startsAt === null);
+  }
+});
+
+test("a trial tier-switch preserves the trialist's spend (no roll on a prior plan)", () => {
+  // prior plan exists (a switch, not a first signup), $0 trial checkout.
+  const stored = new Date("2026-10-01T00:00:00Z");
+  const period = checkoutActivationPeriod({ payment_status: "no_payment_required", amount_total: 0 });
+  assert.equal(decidePeriodRoll(stored, period).roll, false);
+});
+
+test("a first-time trial still starts clean — no prior plan, the create branch owns the period", () => {
+  const period = checkoutActivationPeriod({ payment_status: "no_payment_required", amount_total: 0 });
+  assert.equal(decidePeriodRoll(null, period).roll, false); // create branch sets tokensUsed:0 itself
+});
+
+test("junk sessions never count as a payment", () => {
+  for (const j of [null, undefined, "", 0, [], {}, { amount_total: 3900 }]) {
+    assert.equal(sessionCollectedMoney(j), false, JSON.stringify(j));
   }
 });
 

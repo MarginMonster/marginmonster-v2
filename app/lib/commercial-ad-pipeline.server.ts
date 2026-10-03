@@ -769,7 +769,12 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
         slots[k] = clip;
         const done: string[] = [];
         for (const s of slots) { if (!s) break; done.push(s); }
-        if (done.length) await ckpt({ ckCommercialClips: JSON.stringify([...prior, ...done]) });
+        // Bank the models beside the clips, in the SAME checkpoint. Clips were
+        // banked per-clip but models only once after the loop, so a restart
+        // mid-render resumed the clips while losing the record of which engine
+        // rendered them — and the surcharge reconcile then judged only the
+        // post-restart beats, missing a downgrade and overcharging.
+        if (done.length) await ckpt({ ckCommercialClips: JSON.stringify([...prior, ...done]), ckCommercialClipModels: JSON.stringify(engines.models()) });
       })())
     );
     clipUrls = [...prior, ...(slots as string[])];
@@ -791,7 +796,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     requestedKey: params.videoEngine,
     deliveredModels: engines.models(),
     alreadyRefunded: params.resume?.engineRefunded === true,
-    claim: () => ckpt({ ckEngineRefunded: true }),
+    checkpoint: (patch) => ckpt(patch),
     chargedFromExtra: params.chargedFromExtra,
     tag: "commercial",
   });
