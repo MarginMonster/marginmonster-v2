@@ -76,17 +76,23 @@ export default function Privacy() {
 
         <h2>Who we share it with</h2>
         <p>
-          Your product information and prompts are sent to the AI providers that generate the
-          content — Anthropic (Claude), Google, ByteDance, Kuaishou and MiniMax — and to the
-          social platform you chose to publish on. Stripe handles payment. Each receives only
-          what that specific action requires. We do not share your data with anyone else.
+          To generate a piece, your product photo and the prompt for it are sent to the AI
+          providers that make it: <strong>Anthropic</strong> (Claude) for writing, and{" "}
+          <strong>fal.ai</strong> and <strong>Replicate</strong>, which run the image and video
+          models (from Google, ByteDance, Kuaishou and MiniMax) we use. Publishing to your social
+          accounts is handled by our posting provider, <strong>upload-post.com</strong>: it holds
+          the connection to each account you link and receives the finished media and caption to
+          post. Payment is processed by <strong>Stripe</strong>, and finished renders are kept
+          with our cloud storage provider so you can download and post them. Each receives only
+          what its task needs; we do not sell your data, and we do not share it for anyone else's
+          purposes.
         </p>
 
         <h2>How we protect it</h2>
         <ul>
           <li>Everything travels over encrypted connections (HTTPS).</li>
           <li>Passwords are stored as salted hashes, never in readable form.</li>
-          <li>Platform access tokens are stored encrypted and scoped to your account alone.</li>
+          <li>Your social-account connections are held by our posting provider (upload-post.com) through its secure hosted flow — we keep only a reference to your profile, scoped to your account, and never hold your social passwords or tokens ourselves.</li>
         </ul>
 
         <h2>How long we keep it</h2>

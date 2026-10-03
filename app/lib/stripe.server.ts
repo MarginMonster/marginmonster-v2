@@ -294,7 +294,10 @@ export async function createPackCheckout(opts: {
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": String(pack.price * 100),
     "line_items[0][price_data][product_data][name]": `EasyMode ${pack.tokens.toLocaleString()} token pack`,
-    "line_items[0][price_data][product_data][description]": "Tokens land in your balance instantly — spend them on any generator.",
+    // "any generator your plan includes" — tokens meter HOW MUCH you make, the
+    // plan gates WHICH generators, and the app enforces exactly that. The bare
+    // "any generator" promised video to a Starter buyer topping up.
+    "line_items[0][price_data][product_data][description]": "Tokens land in your balance instantly — spend them on any generator your plan includes.",
     "line_items[0][price_data][product_data][images][0]": `${opts.baseUrl}/ad-templates/phcover.jpg`,
     "custom_text[submit][message]": "⚡ Instant top-up — your tokens hit the balance the second this clears. Straight back to creating.",
     "metadata[accountId]": opts.accountId,

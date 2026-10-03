@@ -511,7 +511,7 @@ const ZH: LandingCopy = {
     tiers: {
       STARTER: [
         "基于经典广告版式的 AI 广告图",
-        "SEO 文章，自动撰写并发布",
+        "SEO 文章，自动撰写，HTML 可直接粘贴",
         "文案 + 标签，自动发布到 TikTok、IG 和 Facebook",
         "AI 产品文案与广告文案",
       ],

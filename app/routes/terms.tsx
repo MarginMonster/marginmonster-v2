@@ -94,8 +94,10 @@ export default function Terms() {
           You keep ownership of your products, your brand and everything EasyMode generates
           for you, and you may use it commercially. You give us permission to process your
           product information for the purpose of generating that content. You are responsible
-          for reviewing anything before it is published — AI gets things wrong, which is why
-          nothing publishes without your approval.
+          for reviewing anything before it is published — AI gets things wrong, so by default
+          nothing publishes without your approval. If you switch on automatic posting for a
+          campaign, pieces in it publish on their schedule without a per-piece review; that is
+          your choice, you stay responsible for what goes out, and you can turn it off at any time.
         </p>
 
         <h2>AI disclosure</h2>
