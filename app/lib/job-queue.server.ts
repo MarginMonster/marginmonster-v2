@@ -496,6 +496,9 @@ async function runJob(
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
           videoEngine: payload.videoEngine as string | undefined,
+          // So an engine-downgrade refund credits the bucket the spend came
+          // out of, rather than turning purchased tokens into expiring ones.
+          chargedFromExtra: typeof payload.chargedFromExtra === "number" ? payload.chargedFromExtra : undefined,
           productSize: payload.productSize as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
@@ -505,6 +508,11 @@ async function runJob(
             keyframeUrl: payload.ckKeyframeUrl as string | undefined,
             klingPredictionId: payload.ckKlingId as string | undefined,
             animUrl: payload.ckAnimUrl as string | undefined,
+            // Which MODEL animated it, so a resumed run can still reconcile a
+            // premium-engine surcharge, plus the claim flag so it cannot pay
+            // that refund twice.
+            animModel: payload.ckAnimModel as string | undefined,
+            engineRefunded: payload.ckEngineRefunded === true,
             // Which engine made that clip — a baked lip-sync must not be
             // reassembled as if it were silent motion after a restart.
             animLipSynced: payload.ckAnimLipSynced as boolean | undefined,
@@ -524,6 +532,7 @@ async function runJob(
           productImageUrl: payload.productImageUrl as string | undefined,
           serviceMode: payload.serviceMode === true,
           videoEngine: payload.videoEngine as string | undefined,
+          chargedFromExtra: typeof payload.chargedFromExtra === "number" ? payload.chargedFromExtra : undefined,
           direction: payload.customPrompt as string | undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
@@ -531,6 +540,8 @@ async function runJob(
             plan: payload.ckCommercialPlan as string | undefined,
             keyframeUrls: payload.ckCommercialKeyframes as string | undefined,
             clipUrls: payload.ckCommercialClips as string | undefined,
+            clipModels: payload.ckCommercialClipModels as string | undefined,
+            engineRefunded: payload.ckEngineRefunded === true,
             audioUrl: payload.ckCommercialAudio as string | undefined,
             endcardUrl: payload.ckCommercialEndcard as string | undefined,
           },
@@ -551,6 +562,7 @@ async function runJob(
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
           videoEngine: payload.videoEngine as string | undefined,
+          chargedFromExtra: typeof payload.chargedFromExtra === "number" ? payload.chargedFromExtra : undefined,
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
@@ -563,6 +575,8 @@ async function runJob(
             singEngine: payload.ckSingEngine as string | undefined,
             keyframeUrl: payload.ckKeyframeUrl as string | undefined,
             klingPredictionId: payload.ckKlingId as string | undefined,
+            animModel: payload.ckAnimModel as string | undefined,
+            engineRefunded: payload.ckEngineRefunded === true,
             animUrl: payload.ckAnimUrl as string | undefined,
           },
         });

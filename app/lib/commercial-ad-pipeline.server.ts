@@ -40,6 +40,8 @@ import {
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
+import { engineLedger } from "./engine-ledger.ts";
+import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
 
 function ffmpegBin(): string | null {
@@ -537,16 +539,25 @@ export async function assembleCommercial(opts: {
 export async function renderMotionClip(
   engineKey: string | undefined,
   opts: { startImage: string; prompt: string; negativePrompt?: string },
-  tag: string
+  tag: string,
+  /** Optional: told which model actually rendered this clip, so the caller can
+   *  reconcile a premium-engine surcharge the merchant paid for. OPTIONAL on
+   *  purpose — this function has a dozen callers in scripts/video-qa.ts, and
+   *  changing its return type to fix a billing bug would be the wrong trade.
+   *  Note the fallback below deliberately renders on the DEFAULT engine, so a
+   *  multi-beat commercial can legitimately be a mix. */
+  onModel?: (model: string) => void
 ): Promise<string> {
   try {
-    const { id } = await animateCreate(engineKey, opts);
+    const { id, model } = await animateCreate(engineKey, opts);
+    onModel?.(model);
     return await animatePoll(id, 8 * 60_000, tag);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!engineKey || engineKey === "kling" || !/sensitive|E005/i.test(msg)) throw e;
     console.log(`[commercial] ${tag} flagged by ${engineKey}'s safety filter — retrying on the default engine`);
     const fb = await animateCreate(undefined, opts);
+    onModel?.(fb.model);
     return await animatePoll(fb.id, 8 * 60_000, `${tag}-fallback`);
   }
 }
@@ -611,6 +622,9 @@ export interface CommercialAdParams {
   /** Engine key for the motion stage ("kling"|"seedance"|"hailuo"|"veo") —
    *  the studio's picker choice. Undefined = the default animator. */
   videoEngine?: string;
+  /** How much of this piece's charge came from the purchased top-up bucket, so
+   *  an engine-downgrade refund unwinds in the opposite order to the spend. */
+  chargedFromExtra?: number;
   direction?: string;
   origin?: string;
   jobId?: string;
@@ -620,6 +634,13 @@ export interface CommercialAdParams {
     clipUrls?: string;
     audioUrl?: string;
     endcardUrl?: string;
+    /** Which models actually rendered the checkpointed clips (JSON array). A
+     *  resumed run renders only the missing beats, so without this it would
+     *  reconcile the engine surcharge against a partial picture. */
+    clipModels?: string;
+    /** Set once the engine-downgrade refund has been CLAIMED, so a resume does
+     *  not pay it twice. */
+    engineRefunded?: boolean;
   };
 }
 
@@ -699,6 +720,13 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   // Beats are independent — render them ALL at once. Sequential clips made
   // a five-beat spot take 5× the slowest clip; parallel makes it take 1×.
   let clipUrls: string[] = await livePrefix(params.resume?.clipUrls ? JSON.parse(params.resume.clipUrls) : []);
+  // Which engines actually rendered. Seeded from the checkpoint because a
+  // resumed run only renders the MISSING beats, and reconciling the surcharge
+  // against a partial picture would refund a premium render that succeeded.
+  const engines = engineLedger();
+  try {
+    if (params.resume?.clipModels) (JSON.parse(params.resume.clipModels) as unknown[]).forEach((m) => engines.note(String(m)));
+  } catch { /* unreadable checkpoint — the blind path below logs a skip rather than refunding */ }
   if (clipUrls.length < plan.beats.length) {
     // BANK EACH CLIP AS IT LANDS. This used to checkpoint once, after
     // Promise.all resolved — so if the fifth beat threw, or the container
@@ -714,7 +742,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     await Promise.all(
       slots.map((_, k) => (async () => {
         const i = prior.length + k;
-        let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`);
+        let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`, engines.note);
         const gate = await motionGate(clip, serviceMode);
         if (!gate.ok && gate.degraded) {
           // Judged nothing. Re-buying a clip on no information is the exact
@@ -723,7 +751,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
         } else if (!gate.ok) {
           console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
           try {
-            clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`);
+            clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`, engines.note);
           } catch (e) {
             // KEEP THE FIRST TAKE. The gate verdict is a vision judge's
             // subjective call, and the clip that failed it is paid for and
@@ -745,8 +773,28 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
       })())
     );
     clipUrls = [...prior, ...(slots as string[])];
-    await ckpt({ ckCommercialClips: JSON.stringify(clipUrls) });
+    await ckpt({ ckCommercialClips: JSON.stringify(clipUrls), ckCommercialClipModels: JSON.stringify(engines.models()) });
   }
+
+  // THE MERCHANT PAID FOR AN ENGINE; REFUND IT IF SOMETHING CHEAPER RAN.
+  //
+  // Commercial is the format this bit most: the Studio charges the +25/+75 fee
+  // for it ALWAYS, because needsPresenterField excludes "commercial" so no
+  // avatarId is ever submitted and engineDrivesRender is always true. And this
+  // pipeline has two documented ways to land on the free default — animateCreate
+  // falling back through fal then Replicate, and renderMotionClip deliberately
+  // re-rendering a safety-filtered beat on the default engine. The fee was kept
+  // either way. One miss across the beats owes the whole surcharge: they bought
+  // the engine for the spot, not for a majority of it.
+  await reconcileEngineSurcharge({
+    shopId: params.shopId,
+    requestedKey: params.videoEngine,
+    deliveredModels: engines.models(),
+    alreadyRefunded: params.resume?.engineRefunded === true,
+    claim: () => ckpt({ ckEngineRefunded: true }),
+    chargedFromExtra: params.chargedFromExtra,
+    tag: "commercial",
+  });
 
   // 4) VOICE — one TTS read PER LINE (plus the tagline), so assembly can
   // place each line over its own beat. A single fast read used to finish at

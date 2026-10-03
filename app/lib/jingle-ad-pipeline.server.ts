@@ -42,6 +42,7 @@ import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 import { capScript } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
+import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
 // on a between-line gap in the vocal (found via silencedetect), never mid-word.
@@ -83,6 +84,9 @@ interface JingleAdParams {
   avatarVariant?: number;
   cartoonStyle?: string; // singer redrawn in a cartoon style first (optional)
   videoEngine?: string; // engine-picker key for the product-visual path
+  /** How much of this piece's charge came from the purchased top-up bucket, so
+   *  an engine-downgrade refund unwinds in the opposite order to the spend. */
+  chargedFromExtra?: number;
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean;
   origin?: string;
@@ -97,6 +101,13 @@ interface JingleAdParams {
     singEngine?: string;
     keyframeUrl?: string;
     klingPredictionId?: string; // re-attach to a live animate run — never re-buy it
+    /** Which model actually animated the checkpointed clip. A resumed run never
+     *  re-enters the create block, so without this it could not tell whether
+     *  the engine the merchant paid for had run. */
+    animModel?: string;
+    /** Set once the engine-downgrade refund has been CLAIMED, so a resume does
+     *  not pay it twice. */
+    engineRefunded?: boolean;
     animUrl?: string;
   };
 }
@@ -569,15 +580,40 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     animUrl = "";
     await ckpt({ ckAnimUrl: "", ckKlingId: "" });
   }
+  // Which model actually animated. Checkpointed because a resumed run skips the
+  // create block entirely and would otherwise have no idea whether the engine
+  // the merchant was charged for ever ran.
+  let animModel = resume.animModel || "";
   if (!talkingUrl && !animUrl) {
-    const { id: animId } = await animateCreate(params.videoEngine, {
+    const created = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
       prompt: `Upbeat retro TV-commercial hero shot: the product stays the clear star, slow confident camera push-in, gentle sparkle and shine sweeps, bright cheerful energy, vertical video.`,
       negativePrompt: "morphing, distortion, extra objects, people appearing, text, watermark, blur, style change",
     });
-    await ckpt({ ckKlingId: animId });
-    animUrl = await animatePoll(animId, 12 * 60_000, "jingle-animate");
+    animModel = created.model;
+    await ckpt({ ckKlingId: created.id, ckAnimModel: animModel });
+    animUrl = await animatePoll(created.id, 12 * 60_000, "jingle-animate");
     await ckpt({ ckAnimUrl: animUrl });
+  }
+
+  // THE MERCHANT PAID FOR AN ENGINE; REFUND IT IF SOMETHING CHEAPER RAN.
+  //
+  // animateCreate falls back to Replicate when fal rejects and then to the
+  // default model when the premium Replicate model rejects, so a +75 pick can
+  // silently render on the free engine. This pipeline kept the fee — only
+  // generateVideoAd ever reconciled. Nothing to reconcile on the lipsync path:
+  // a singer means the Studio charged "auto" (engineDrivesRender is false), so
+  // surchargeOwed returns 0 there anyway.
+  if (!talkingUrl) {
+    await reconcileEngineSurcharge({
+      shopId: params.shopId,
+      requestedKey: params.videoEngine,
+      deliveredModels: [animModel],
+      alreadyRefunded: resume.engineRefunded === true,
+      claim: () => ckpt({ ckEngineRefunded: true }),
+      chargedFromExtra: params.chargedFromExtra,
+      tag: "anthem",
+    });
   }
 
   // 4) ASSEMBLY — trim long songs to ad length (with a fade), then loop the

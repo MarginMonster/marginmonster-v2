@@ -40,6 +40,7 @@ import { langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
+import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 
 /* ---- Resume plumbing: never re-BUY what a restart interrupted ------------
  * Two failure modes here cost merchants real money:
@@ -324,6 +325,9 @@ interface CartoonAdParams {
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean; // intangible offer — draw the OUTCOME, not an object
   videoEngine?: string; // engine-picker key (video-engines.ts); undefined = default
+  /** How much of this piece's charge came from the purchased top-up bucket, so
+   *  an engine-downgrade refund unwinds in the opposite order to the spend. */
+  chargedFromExtra?: number;
   productSize?: string; // merchant's explicit size class — beats inference
   origin?: string; // provenance label for the finished card
   jobId?: string; // enables stage checkpointing
@@ -332,6 +336,13 @@ interface CartoonAdParams {
     composedUrl?: string; // photoreal presenter-holding-product frame
     keyframeUrl?: string;
     klingPredictionId?: string; // re-attach to a live animate run — never re-buy it
+    /** Which model actually animated the checkpointed clip. A resumed run never
+     *  re-enters the create block, so without this it could not tell whether
+     *  the engine the merchant paid for had run. */
+    animModel?: string;
+    /** Set once the engine-downgrade refund has been CLAIMED, so a resume does
+     *  not pay it twice. */
+    engineRefunded?: boolean;
     animUrl?: string;
     /** true when animUrl came from omni-human (narration baked in) rather than
      *  the silent kling fallback. Assembly treats the two differently. */
@@ -806,6 +817,10 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // replicate.delivery URL (same provider), so it's passed directly — no
   // multi-MB base64 body. A restart mid-poll re-attaches to the SAME paid
   // prediction (omni-human pattern) instead of buying a second render.
+  // Which model actually animated. Checkpointed because a resumed run skips the
+  // create block entirely and would otherwise have no idea whether the engine
+  // the merchant was charged for ever ran.
+  let animModel = resume.animModel || "";
   if (!animUrl && resume.klingPredictionId) {
     try {
       animUrl = await animatePoll(resume.klingPredictionId, 12 * 60_000, "cartoon-animate(resumed)");
@@ -827,7 +842,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       console.log("[cartoon] checkpointed keyframe URL has expired — redrawing before animating");
       keyframeUrl = await forgeKeyframe();
     }
-    const { id: animId } = await animateCreate(params.videoEngine, {
+    const created = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
       // This pipeline has NO lipsync — the voice-over is a separate track laid
       // over the animation. So a character animated as though talking can only
@@ -836,10 +851,28 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible. The character does NOT speak: no talking, no mouth opening and closing, no lip movement — the voice is a narrator off-screen, so keep the mouth closed or in a natural smile throughout" : "the product stays the clear hero"}, vertical video.`,
       negativePrompt: "talking, speaking, mouth opening, lip movement, photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
     });
-    await ckpt({ ckKlingId: animId });
-    animUrl = await animatePoll(animId, 12 * 60_000, "cartoon-animate");
+    animModel = created.model;
+    await ckpt({ ckKlingId: created.id, ckAnimModel: animModel });
+    animUrl = await animatePoll(created.id, 12 * 60_000, "cartoon-animate");
     await ckpt({ ckAnimUrl: animUrl });
   }
+
+  // THE MERCHANT PAID FOR AN ENGINE; REFUND IT IF SOMETHING CHEAPER RAN.
+  // animateCreate falls back to Replicate when fal rejects, then to the default
+  // model when the premium Replicate model rejects — so a +75 pick can render
+  // on the free engine while the fee is kept. Only generateVideoAd reconciled
+  // this; cartoon never did. A cartoon WITH a presenter is charged "auto"
+  // (engineDrivesRender is false in the Studio), so surchargeOwed returns 0
+  // there and this is a no-op rather than a wrong refund.
+  await reconcileEngineSurcharge({
+    shopId: params.shopId,
+    requestedKey: params.videoEngine,
+    deliveredModels: [animModel],
+    alreadyRefunded: resume.engineRefunded === true,
+    claim: () => ckpt({ ckEngineRefunded: true }),
+    chargedFromExtra: params.chargedFromExtra,
+    tag: "cartoon",
+  });
 
 
   // 6) ASSEMBLY — loop the animation to the narration, captions on, no photo
