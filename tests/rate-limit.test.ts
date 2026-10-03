@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rateLimit, rateLimitReset, clientIp } from "../app/lib/rate-limit.server.ts";
+import { rateLimit, rateLimitReset, clientIp, rateLimitStats } from "../app/lib/rate-limit.server.ts";
 
 // Every test uses its own key prefix — the buckets are module state.
 let n = 0;
@@ -58,6 +58,68 @@ test("staying under the limit forever is never refused", () => {
   for (let i = 0; i < 200; i++) {
     assert.equal(rateLimit(k, 200, 60_000).ok, true, `refused at ${i}, under the limit`);
   }
+});
+
+/* THE OTHER HALF OF THE KEY.
+ *
+ * The IP half is covered above — clientIp() can only ever yield a real address
+ * or "unknown". But /go and /lp append URL PATH segments after it
+ * (`click:<ip>:q:<qid>:<idx>`, `lpview:<ip>:<slug>`), neither validated before
+ * the key is built, so one machine on one address can mint unlimited keys. When
+ * the table filled, the limiter refused every key it had not already seen —
+ * which is every new signup and every new login. */
+
+test("THE LOCKOUT: a flood of click keys cannot refuse a brand-new signup", () => {
+  // One address, 20k distinct quest ids — exactly what /go accepts today
+  // without looking anything up first.
+  for (let i = 0; i < 20_000; i++) {
+    rateLimit(`click:203.0.113.9:q:flood${i}:0`, 5, 10 * 60_000);
+  }
+  // A stranger arrives at the front door. Before the per-purpose cap this
+  // answered { ok: false } with Retry-After 3600.
+  const fresh = rateLimit(`signup:ip:198.51.100.77`, 10, 60 * 60_000);
+  assert.equal(fresh.ok, true, "a flood on a public redirect locked out new signups");
+  assert.equal(rateLimit(`login:ip:198.51.100.78`, 20, 10 * 60_000).ok, true);
+  assert.equal(rateLimit(`forgot:ip:198.51.100.79`, 5, 60 * 60_000).ok, true);
+  assert.equal(rateLimit(`reset:ip:198.51.100.80`, 20, 10 * 60_000).ok, true);
+});
+
+test("the flooding purpose is the one that gets evicted, and stays inside its allowance", () => {
+  for (let i = 0; i < 12_000; i++) rateLimit(`lpview:203.0.113.10:slug${i}`, 3, 10 * 60_000);
+  const s = rateLimitStats();
+  assert.ok(
+    (s.perPurpose.lpview || 0) <= s.maxPerPurpose,
+    `lpview held ${s.perPurpose.lpview} buckets, over its ${s.maxPerPurpose} allowance`,
+  );
+  // ...and the front door's own buckets were not the ones sacrificed.
+  assert.equal(rateLimit(`signup:ip:198.51.100.81`, 10, 60 * 60_000).ok, true);
+});
+
+test("a real limit still bites while the table is under pressure", () => {
+  // Degrading to "stops counting" is acceptable for the flooded purpose; it is
+  // NOT acceptable for an untouched one. A genuine brute-force on one login
+  // must still be refused with 20k click buckets resident.
+  for (let i = 0; i < 20_000; i++) rateLimit(`click:203.0.113.11:q:x${i}:0`, 5, 10 * 60_000);
+  const k = `login:acct:victim@example.test`;
+  for (let i = 0; i < 8; i++) {
+    assert.equal(rateLimit(k, 8, 10 * 60_000).ok, true, `attempt ${i + 1} should be allowed`);
+  }
+  assert.equal(rateLimit(k, 8, 10 * 60_000).ok, false, "the 9th attempt on one account was not refused");
+});
+
+test("the total never grows without bound, however many purposes flood", () => {
+  // Just past the per-purpose allowance on each — enough to exercise every
+  // eviction path without making the suite crawl.
+  for (const p of ["click", "lpview", "signup", "login", "forgot", "reset"]) {
+    for (let i = 0; i < 4_200; i++) rateLimit(`${p}:198.51.100.5:k${i}`, 5, 10 * 60_000);
+  }
+  const s = rateLimitStats();
+  for (const [ns, n] of Object.entries(s.perPurpose)) {
+    assert.ok(n <= s.maxPerPurpose, `${ns} held ${n}, over the ${s.maxPerPurpose} allowance`);
+  }
+  // 6 purposes x 4,000 is the ceiling the design admits to; assert it is not
+  // silently exceeded by the eviction paths.
+  assert.ok(s.total <= 7 * s.maxPerPurpose, `table grew to ${s.total}`);
 });
 
 const req = (h: Record<string, string>) => new Request("https://x.test/", { headers: h });

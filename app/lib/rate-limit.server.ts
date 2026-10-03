@@ -23,8 +23,75 @@ type Window = { count: number; resetAt: number };
 const buckets = new Map<string, Window>();
 const MAX_KEYS = 20_000; // a hard ceiling so the limiter cannot itself leak
 
+/* THE SITE-WIDE LOCKOUT THIS AVOIDS.
+ *
+ * When the table was full and a sweep freed nothing — every window still live —
+ * this REFUSED the incoming key. That is fail-closed on memory and fail-closed
+ * on the front door at the same time: whoever fills the table denies service to
+ * every key not already in it, which is every fresh signup, login, password
+ * reset and reset-link visit.
+ *
+ * The "nothing that is not an IP is ever used as a bucket key" test below
+ * already closed half of this, and names this exact risk: clientIp() can only
+ * return a real address or "unknown", so the IP half of a key is not
+ * attacker-chosen. The other half stayed open. /go and /lp build their keys
+ * from URL PATH SEGMENTS — `click:<ip>:q:<qid>:<idx>`, `lpview:<ip>:<slug>` —
+ * and neither is validated before the key is made, so one machine on one
+ * address can mint unlimited distinct keys.
+ *
+ * The fix is to bound each PURPOSE separately. Key prefixes are literals in the
+ * calling code (click, lpview, signup, login, forgot, reset), so the set of
+ * purposes is fixed by this repo and not by callers. A flood of click: keys now
+ * evicts click: keys and can never starve signup:.
+ *
+ * Within one purpose, a flood now degrades the limit toward "stops counting"
+ * instead of "refuses everyone". That is the right direction for something this
+ * file already calls a floor rather than a substitute for a WAF: the worst case
+ * becomes the behaviour from before the limiter existed, not an outage of the
+ * two paths that take the money. */
+const MAX_KEYS_PER_PURPOSE = 4_000;
+
+/** Live bucket count per purpose. Kept in step with `buckets` by routing every
+ *  removal through drop() and every insert through add(). */
+const nsCounts = new Map<string, number>();
+
+/** The purpose half of a key — the literal prefix the calling code chose.
+ *  Keys with no prefix (only tests have these) share one bucket, so they
+ *  cannot grow the set of purposes without bound either. */
+function nsOf(key: string): string {
+  const i = key.indexOf(":");
+  return i > 0 ? key.slice(0, i) : "-";
+}
+
+function drop(key: string): void {
+  if (!buckets.delete(key)) return;
+  const ns = nsOf(key);
+  const n = (nsCounts.get(ns) || 0) - 1;
+  if (n > 0) nsCounts.set(ns, n);
+  else nsCounts.delete(ns);
+}
+
+function add(key: string, w: Window): void {
+  buckets.set(key, w);
+  const ns = nsOf(key);
+  nsCounts.set(ns, (nsCounts.get(ns) || 0) + 1);
+}
+
+/** Evict the oldest-inserted bucket of one purpose. Map iteration is insertion
+ *  ordered, so the first match is the oldest — and under a flood the flooding
+ *  purpose dominates the table, so this finds one almost immediately. */
+function evictOldestOf(ns: string): boolean {
+  for (const k of buckets.keys()) {
+    if (nsOf(k) === ns) {
+      drop(k);
+      return true;
+    }
+  }
+  return false;
+}
+
 function sweep(now: number): void {
-  for (const [k, w] of buckets) if (w.resetAt <= now) buckets.delete(k);
+  for (const [k, w] of buckets) if (w.resetAt <= now) drop(k);
 }
 
 /** Count one hit against `key`. Returns whether it is allowed and how long the
@@ -35,11 +102,22 @@ export function rateLimit(key: string, limit: number, windowMs: number): { ok: b
   const existing = buckets.get(key);
 
   if (!existing || existing.resetAt <= now) {
+    if (existing) drop(key); // expired: re-insert so the per-purpose count stays exact
+    const ns = nsOf(key);
     if (buckets.size >= MAX_KEYS) sweep(now);
-    // Still full after a sweep: every key is live, which means we are under a
-    // distributed flood. Refuse rather than grow without bound.
-    if (buckets.size >= MAX_KEYS) return { ok: false, retryAfterSec: Math.ceil(windowMs / 1000) };
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
+    // Keep this purpose inside its own allowance, so a flood against one public
+    // route evicts that route's buckets and never the front door's.
+    while ((nsCounts.get(ns) || 0) >= MAX_KEYS_PER_PURPOSE) {
+      if (!evictOldestOf(ns)) break;
+    }
+    // Global backstop. Make room — preferably from this purpose, otherwise from
+    // the oldest bucket there is — but never answer "refused" just because the
+    // table is full, which is what turned a memory guard into a lockout.
+    if (buckets.size >= MAX_KEYS && !evictOldestOf(ns)) {
+      const oldest = buckets.keys().next();
+      if (!oldest.done) drop(oldest.value);
+    }
+    add(key, { count: 1, resetAt: now + windowMs });
     return { ok: true, retryAfterSec: 0 };
   }
 
@@ -124,5 +202,10 @@ export function clientIp(request: Request): string {
   return "unknown";
 }
 export function rateLimitReset(key: string): void {
-  buckets.delete(key);
+  drop(key);
+}
+
+/** Test/diagnostic view of the per-purpose occupancy. Not used in app code. */
+export function rateLimitStats(): { total: number; perPurpose: Record<string, number>; maxPerPurpose: number } {
+  return { total: buckets.size, perPurpose: Object.fromEntries(nsCounts), maxPerPurpose: MAX_KEYS_PER_PURPOSE };
 }
