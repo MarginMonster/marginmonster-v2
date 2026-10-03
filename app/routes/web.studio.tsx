@@ -1079,7 +1079,16 @@ export default function WebStudio() {
   // photo (upload OR url) for anything that should SHOW the product; services
   // legitimately have nothing to photograph.
   const needsPhoto = tab !== "blog" && !serviceOn && !hasFile && !imageUrl.trim();
-  const ctaDisabled = busy || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle);
+  // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
+  // (title, photo, presenter, cartoon style) disabled the button; the one that
+  // bites a brand-new trialist first did not. A Studio trial spends from a
+  // 400-token ceiling, and "×3" on a Veo pick is 675 — the button read
+  // "Generate 3 videos — 675 tokens" directly above "Wallet: 400 tokens" and
+  // was live. The server refused it, correctly, so no money moved — but the
+  // very first thing many merchants would try answered with an error instead
+  // of the number they were short by and where to get it.
+  const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
+  const ctaDisabled = busy || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || shortBy > 0;
 
   return (
     <div>
@@ -1663,11 +1672,19 @@ export default function WebStudio() {
               <button className="wb-btn" name="intent" value={tab} disabled={ctaDisabled}>
                 {busy
                   ? "Sending to the studio…"
+                  : shortBy > 0
+                    ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
                   : burst > 1
                     ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens`
                     : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`}
               </button>
-              <p className="ws-wallet">{d.hasPlan ? `Wallet: ${d.tokens.toLocaleString("en-US")} tokens` : "Choose a plan to generate."}</p>
+              <p className="ws-wallet">
+                {!d.hasPlan
+                  ? "Choose a plan to generate."
+                  : shortBy > 0
+                    ? <>Wallet: {d.tokens.toLocaleString("en-US")} tokens · <Link to="/web#plans">Add tokens</Link>{burst > 1 ? " or make fewer at once" : ""}</>
+                    : `Wallet: ${d.tokens.toLocaleString("en-US")} tokens`}
+              </p>
             </div>
           </>
         )}

@@ -133,8 +133,10 @@ export default function WebLayout() {
                       reads as a count of their library. The only thing
                       distinguishing them was a title attribute, which does not
                       exist on touch. Say what the number means. */}
-                  <span className="wb-hud-stat" title="How many product videos your balance covers"><Ico n="video" /> {hud.videos} videos&apos; worth</span>
-                  <span className="wb-hud-stat" title="How many image ads your balance covers"><Ico n="image" /> {hud.ads} images&apos; worth</span>
+                  {/* "1 videos' worth" was live in the HUD the moment a trialist
+                      made one 225-token video. Pluralise on the count. */}
+                  <span className="wb-hud-stat" title="How many product videos your balance covers"><Ico n="video" /> {hud.videos} {hud.videos === 1 ? "video’s" : "videos’"} worth</span>
+                  <span className="wb-hud-stat" title="How many image ads your balance covers"><Ico n="image" /> {hud.ads} {hud.ads === 1 ? "image’s" : "images’"} worth</span>
                 </div>
               </>
             )}
