@@ -623,6 +623,9 @@ async function runJob(
           // jobId + resume: without these the prediction id is never
           // checkpointed, so each of the 3 attempts bought a BRAND-NEW video
           jobId: payload.__jobId as string | undefined,
+          // The engine-downgrade refund needs the bucket split, exactly as the
+          // terminal-failure refund above already uses it.
+          chargedFromExtra: typeof payload.chargedFromExtra === "number" ? payload.chargedFromExtra : undefined,
           resume: {
             predictionId: payload.ckVideoPredId as string | undefined,
             engineRefunded: payload.ckEngineRefunded === true,

@@ -180,6 +180,12 @@ interface GenerateVideoParams {
   commercial?: boolean; // big-budget studio-commercial look (color-block cyc, hero lighting)
   breakout?: boolean; // the product bursts OUT of a mock social post card, in motion
   jobId?: string; // enables prediction checkpointing (see resume)
+  /** How much of THIS piece's charge came out of the purchased top-up bucket
+   *  rather than the monthly allowance. Needed by the engine-downgrade refund:
+   *  spending takes allowance first and top-up second, so a refund has to
+   *  unwind in the opposite order or tokens the merchant paid cash for come
+   *  back as allowance tokens that the next period roll deletes. */
+  chargedFromExtra?: number;
   resume?: {
     /** A prediction that a previous attempt already CREATED — and therefore
      *  already paid for. Without this, a restart (or any retry) mid-poll bought
@@ -415,7 +421,12 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     // the claim pays it again on every resume.
     await ckpt({ ckEngineRefunded: true });
     try {
-      await refundTokens(shopId, owedBack);
+      // Pass the bucket split. refundTokens clamps to min(fromExtra, amount),
+      // so this credits the purchased bucket first, up to what this piece
+      // actually took from it. Omitting it was the one refundTokens call in the
+      // file that did — and it quietly converted tokens the merchant bought
+      // into allowance tokens, which refreshPeriod zeroes on the next roll.
+      await refundTokens(shopId, owedBack, params.chargedFromExtra);
       console.warn(`[video] ${downgradeNote(params.videoEngine, ranModel)}`);
     } catch (e) {
       console.error(
