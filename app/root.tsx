@@ -27,6 +27,12 @@ export const meta: MetaFunction = () => [
 
 // Branded favicon — without it browsers show the cheap generic globe.
 export const links: LinksFunction = () => [
+  // A real /favicon.ico as well as the PNG: browsers, link unfurlers and
+  // uptime checkers request the bare path regardless of any <link>, and
+  // without the file Remix logged a full router stack trace for every page
+  // view ("No route matches URL /favicon.ico") while the tab stayed blank in
+  // anything that ignores the PNG hint. 32px, made from easymode-head.png.
+  { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
   { rel: "icon", type: "image/png", href: "/easymode-head.png" },
   { rel: "apple-touch-icon", href: "/easymode-head.png" },
   // Open the font connections before the CSS that needs them is parsed.
