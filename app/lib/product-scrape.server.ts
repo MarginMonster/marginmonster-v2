@@ -161,8 +161,15 @@ export function upgradeImageResolution(url: string): string {
 /** Storefront <title>/og:title usually carries a site-name suffix
  *  ("Product | Store"). Merchants want the product, not our best guess at
  *  their SEO template. */
-export function cleanProductTitle(raw: string, siteName?: string): string {
+export function cleanProductTitle(raw: string, siteName?: string, exact = false): string {
   let t = decodeEntities(raw).trim();
+  // An EXACT name (JSON-LD `name`, Shopify product JSON) is the real product
+  // title \u2014 "Hoodie \u2013 Forest Green" is a variant line, not "Hoodie" with a site
+  // suffix. Decode and length-cap it, but never strip a trailing segment: doing
+  // so collapsed distinct variants to one title and misrouted the /go links
+  // built from it. The suffix trims below are only for <title>/og:title, which
+  // really do carry a " | Store Name" tail.
+  if (exact) return t.slice(0, 120);
   if (siteName) {
     const esc = siteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     t = t.replace(new RegExp(`\\s*[|\u2013\u2014-]\\s*${esc}\\s*$`, "i"), "");
@@ -266,6 +273,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
   const html = (await res.text()).slice(0, 900_000);
 
   let title: string | undefined;
+  let titleFromLd = false; // a JSON-LD name is the EXACT product name — never suffix-trim it
   let image: string | undefined;
   let price: string | undefined;
 
@@ -282,7 +290,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
         return t === "Product" || (Array.isArray(t) && (t as unknown[]).includes("Product"));
       });
       if (prod) {
-        title = typeof prod.name === "string" ? prod.name : title;
+        if (typeof prod.name === "string") { title = prod.name; titleFromLd = true; }
         const im = Array.isArray(prod.image) ? prod.image[0] : prod.image;
         const src = typeof im === "object" && im
           ? ((im as { url?: string; contentUrl?: string; "@id"?: string }).contentUrl
@@ -341,7 +349,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
   if (!title && !image) throw new Error("Couldn't find product info on that page.");
   const siteName = meta("og:site_name");
   return {
-    title: title ? cleanProductTitle(title, siteName) : undefined,
+    title: title ? cleanProductTitle(title, siteName, titleFromLd) : undefined,
     image: image ? upgradeImageResolution(image) : undefined,
     price,
     url: u.href,
