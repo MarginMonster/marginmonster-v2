@@ -37,9 +37,17 @@ export function tokensRemaining(plan: Pick<Plan, "tokensIncluded" | "tokensUsed"
  * for the gap between period-end and the next spend. Pure — never writes.
  */
 export function tokensRemainingLive(
-  plan: (Pick<Plan, "type" | "tokensIncluded" | "tokensUsed" | "tokensExtra" | "periodStart"> & { trialEndsAt?: Date | string | null }) | null | undefined
+  plan: (Pick<Plan, "type" | "active" | "tokensIncluded" | "tokensUsed" | "tokensExtra" | "periodStart"> & { trialEndsAt?: Date | string | null }) | null | undefined
 ): number {
   if (!plan) return 0;
+  // An INACTIVE plan (cancelled, paused, churned) has nothing to spend — the
+  // spend path throws "your subscription is paused" for exactly this state. The
+  // display must agree, or a churned merchant sees a balance the app refuses.
+  // This bit most when the period had also elapsed: the elapsed branch below
+  // returns the would-roll monthly amount, so a lapsed account showed a phantom
+  // full allowance ("900") next to a zeroed max ("/ 0"), since the HUD's max
+  // already honoured active and this number did not.
+  if (!plan.active) return 0;
   const elapsed = Date.now() - new Date(plan.periodStart).getTime() >= PERIOD_MS;
   const tier = resolveTierKey(plan.type);
   const included = elapsed ? (tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded) : plan.tokensIncluded;
