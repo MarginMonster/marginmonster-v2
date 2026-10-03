@@ -184,7 +184,11 @@ export async function createPlanCheckout(opts: {
     "line_items[0][price_data][unit_amount]": String(amount),
     "line_items[0][price_data][recurring][interval]": opts.annual ? "year" : "month",
     "line_items[0][price_data][product_data][name]": `EasyMode ${tier.name} plan${opts.annual ? " (annual)" : ""}`,
-    "line_items[0][price_data][product_data][description]": `${tier.monthlyTokens.toLocaleString()} tokens every month — AI videos, image ads, articles & auto-posting for your store.`,
+    // Say what the TIER actually makes. Starter is videoQuota 0 — it cannot
+    // make videos — so a fixed "AI videos, image ads, articles & auto-posting"
+    // string promised video on the Stripe checkout page for a plan that does
+    // not include it. Lead with video only when the tier has it.
+    "line_items[0][price_data][product_data][description]": `${tier.monthlyTokens.toLocaleString()} tokens every month — ${tier.videoQuota > 0 ? "AI videos, image ads, articles & auto-posting" : "image ads, SEO articles, ad copy & auto-posting"} for your store.`,
     "line_items[0][price_data][product_data][images][0]": `${opts.baseUrl}/ad-templates/phcover.jpg`,
     // Say what will actually happen. Promising "7 days free" to someone who
     // has already used the trial and is about to be charged today is the kind

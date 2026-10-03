@@ -133,8 +133,13 @@ function assertTrialCap(plan: Plan, amount: number): void {
   if (!planTrialing(plan)) return;
   const spendable = spendableNow(plan);
   if (spendable < amount) {
+    // The cap this merchant actually has is min(their allowance, 400) — the
+    // ceiling is a CEILING, so a Starter trial releases 300, not 400. Saying a
+    // flat "400 tokens" to a Starter trialist overstated it by a third, the
+    // same mismatch that was fixed on the plan card but left in this string.
+    const trialCap = Math.min(Math.max(0, plan.tokensIncluded), TRIAL_TOKEN_CAP);
     const e = new Error(
-      `Free trials include ${TRIAL_TOKEN_CAP} tokens and you have ${spendable} left. Your full monthly allowance${plan.tokensExtra > 0 ? " (and your purchased tokens)" : ""} unlocks the moment the trial converts.`
+      `Your free trial includes ${trialCap} tokens and you have ${spendable} left. Your full monthly allowance${plan.tokensExtra > 0 ? " (and your purchased tokens)" : ""} unlocks the moment the trial converts.`
     );
     e.name = "InsufficientTokensError";
     throw e;
