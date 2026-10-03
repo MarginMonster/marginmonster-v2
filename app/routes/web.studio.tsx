@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
-import { planTrialing, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
+import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
@@ -327,20 +327,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ avatarError: e instanceof Error ? e.message : "Not enough tokens to forge a presenter." });
     }
 
-    const row = await db.customAvatar.create({
-      data: {
-        shopId: shop.id, name, gender,
-        desc: ((form.get("avatarDesc") as string) || "").trim().slice(0, 200) || `${name}, the brand's own presenter character`,
-        refFile: fileName,
-      },
-    });
-    await enqueueJob(shop.id, "FORGE_CUSTOM_AVATAR", {
-      customAvatarId: row.id,
-      prePaid: true,
-      chargedTokens: TOKEN_COST.avatarForge,
-      chargedFromExtra: forgeFromExtra,
-    });
-    return json({ avatarQueued: name });
+    // The spend above is committed, so everything after it has to either queue
+    // the work or give the tokens back. Unguarded, a failure here escaped the
+    // action as a 500 error page with the forge fee gone and no job to refund
+    // it — refundPrepaidOnce needs a job row, and there is none until the
+    // enqueue below succeeds.
+    try {
+      const row = await db.customAvatar.create({
+        data: {
+          shopId: shop.id, name, gender,
+          desc: ((form.get("avatarDesc") as string) || "").trim().slice(0, 200) || `${name}, the brand's own presenter character`,
+          refFile: fileName,
+        },
+      });
+      await enqueueJob(shop.id, "FORGE_CUSTOM_AVATAR", {
+        customAvatarId: row.id,
+        prePaid: true,
+        chargedTokens: TOKEN_COST.avatarForge,
+        chargedFromExtra: forgeFromExtra,
+      });
+      return json({ avatarQueued: name });
+    } catch (e) {
+      try {
+        await refundTokens(shop.id, TOKEN_COST.avatarForge, forgeFromExtra);
+        console.warn(`[studio] forge failed before queueing — refunded ${TOKEN_COST.avatarForge} tokens to shop ${shop.id}`);
+      } catch (re) {
+        console.error(
+          `[studio] FORGE REFUND FAILED — shop ${shop.id} is owed ${TOKEN_COST.avatarForge} tokens: `,
+          re instanceof Error ? re.message.slice(0, 200) : re,
+        );
+      }
+      return json({ avatarError: e instanceof Error ? e.message : "Couldn't start the forge — your tokens were returned." });
+    }
   }
 
   if (!shop.brandProfile) return json({ error: "Set your brand voice on the Dashboard first." });
@@ -419,6 +437,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Add a product photo — upload one or paste an image URL. Without it we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
   }
 
+  // TOKENS CHARGED BUT NOT YET BACKED BY A QUEUED JOB.
+  //
+  // Every branch below spends FIRST and enqueues after, which is the right
+  // order — it is what makes the spend atomic and the burst share recordable
+  // per piece. But if a db.job.create threw between the two (a pool timeout,
+  // the connection drop that follows a deploy), the catch returned an error and
+  // the debit stayed: there is no job row for refundPrepaidOnce to find, so
+  // nothing anywhere gives those tokens back. A Veo x3 burst is 675 tokens.
+  //
+  // Tracked here rather than in each branch so a new branch cannot forget it:
+  // charge sets the debt, each successful enqueue retires its share, and the
+  // catch refunds whatever is left.
+  let unbackedTokens = 0;
+  let unbackedFromExtra = 0;
+  const charged = (total: number, fromExtra: number) => { unbackedTokens = total; unbackedFromExtra = fromExtra; };
+  const backed = (tokens: number, fromExtra: number) => {
+    unbackedTokens = Math.max(0, unbackedTokens - tokens);
+    unbackedFromExtra = Math.max(0, unbackedFromExtra - fromExtra);
+  };
+
   try {
     if (intent === "video") {
       let contentType = ((form.get("contentType") as string) || "").trim() || undefined;
@@ -457,6 +495,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // top-up, and a single failed piece must refund only its own share.
       const burstFromExtra = (await spendTokens(shop.id, each * n)).fromExtra;
       const perPieceFromExtra = Math.floor(burstFromExtra / n);
+      charged(each * n, burstFromExtra);
       for (let i = 0; i < n; i++) {
         // Services: the presenter explains the offer to camera — nothing to hold.
         await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
@@ -470,6 +509,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           serviceMode: service, scene,
           videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra, prePaid: true, initiator: "web",
         }, burstRunAt(i));
+        backed(each, perPieceFromExtra);
       }
       return json({ ok: true, queued: "video", count: n });
     }
@@ -497,6 +537,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // period roll — the merchant paid cash for those.
       const imgFromExtra = (await spendTokens(shop.id, TOKEN_COST.image * n)).fromExtra;
       const imgPerPieceFromExtra = Math.floor(imgFromExtra / n);
+      charged(TOKEN_COST.image * n, imgFromExtra);
       // A burst exists to give the merchant a SPREAD to choose from, so when
       // they haven't pinned a template or format, walk the format list instead
       // of rendering the same composition n times. Pin one and every shot in
@@ -537,19 +578,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           serviceMode: service, scene, prePaid: true,
           chargedTokens: TOKEN_COST.image, chargedFromExtra: imgPerPieceFromExtra,
         }, burstRunAt(i));
+        backed(TOKEN_COST.image, imgPerPieceFromExtra);
       }
       return json({ ok: true, queued: "image", count: n });
     }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
       const blogFromExtra = (await spendTokens(shop.id, TOKEN_COST.blog)).fromExtra;
+      charged(TOKEN_COST.blog, blogFromExtra);
       await enqueueJob(shop.id, "GENERATE_BLOG_POST", {
         productTitle, productUrl, productDescription: direction, serviceMode: service,
         prePaid: true, chargedTokens: TOKEN_COST.blog, chargedFromExtra: blogFromExtra,
       });
+      backed(TOKEN_COST.blog, blogFromExtra);
       return json({ ok: true, queued: "article" });
     }
   } catch (e) {
+    // Give back anything charged that no job will ever run. spendTokens itself
+    // throwing (insufficient balance) leaves the debt at 0, so this cannot
+    // refund a spend that never happened, and a partially-queued burst refunds
+    // only the pieces that did not make it.
+    if (unbackedTokens > 0) {
+      try {
+        await refundTokens(shop.id, unbackedTokens, unbackedFromExtra);
+        console.warn(`[studio] refunded ${unbackedTokens} token(s) for ${intent} pieces that were charged but never queued`);
+      } catch (re) {
+        console.error(
+          `[studio] REFUND FAILED — shop ${shop.id} is owed ${unbackedTokens} token(s) for an unqueued ${intent}: `,
+          re instanceof Error ? re.message.slice(0, 200) : re,
+        );
+      }
+    }
     return json({ error: e instanceof Error ? e.message : "Couldn't queue that." });
   }
   return json({});
