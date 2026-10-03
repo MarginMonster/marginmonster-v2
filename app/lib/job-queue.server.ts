@@ -327,16 +327,25 @@ export async function processNextJob(): Promise<boolean> {
     // ceiling) and already refunded it. Don't silently un-refund a job it
     // marked FAILED — but DO force a row it bounced back to PENDING to
     // COMPLETED, otherwise the finished, fully-paid render gets bought again.
+    // ATTEMPT-SCOPED, not status-only. A claim increments attempts, so this
+    // run's row carries attempts = job.attempts + 1. Past the 25-min reaper
+    // ceiling a SECOND run can re-claim the row (incrementing again), and a
+    // status-only guard let this stale run write over that newer attempt's
+    // live row — the cascade that left a PENDING row at attempts = MAX, which
+    // the candidate query (attempts < MAX) never picks up again: a zombie with
+    // spent tokens, no render, no refund and no Retry. Pinning attempts means
+    // only the run that currently owns the row can complete or fail it.
+    const myAttempt = job.attempts + 1;
     const done = await db.job.updateMany({
-      where: { id: job.id, status: "IN_PROGRESS" },
+      where: { id: job.id, status: "IN_PROGRESS", attempts: myAttempt },
       data: { status: "COMPLETED", processedAt: new Date() },
     });
     if (done.count !== 1) {
       const now = await db.job.findUnique({ where: { id: job.id }, select: { status: true } });
       console.warn(`[worker] job ${job.id} finished but was reclaimed (now ${now?.status}) — not re-running it`);
-      if (now?.status === "PENDING") {
-        await db.job.update({ where: { id: job.id }, data: { status: "COMPLETED", processedAt: new Date() } });
-      }
+      // Only force-complete the row WE were reclaimed on (same attempt), never
+      // one a newer run has already taken back to IN_PROGRESS.
+      await db.job.updateMany({ where: { id: job.id, status: "PENDING", attempts: myAttempt }, data: { status: "COMPLETED", processedAt: new Date() } });
     }
   } catch (e: unknown) {
     const lastError = e instanceof Error ? e.message : String(e);
@@ -352,7 +361,7 @@ export async function processNextJob(): Promise<boolean> {
     // into an asset nobody paid for.
     const won =
       (await db.job.updateMany({
-        where: { id: job.id, status: "IN_PROGRESS" },
+        where: { id: job.id, status: "IN_PROGRESS", attempts: job.attempts + 1 },
         data: { status: nextStatus, lastError },
       })).count === 1;
     if (!won) {
