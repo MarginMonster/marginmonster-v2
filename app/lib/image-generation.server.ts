@@ -2672,7 +2672,19 @@ export async function generateImageAd(
   // path). Uses the same two-image compose engine as UGC video frames. Needs a
   // real product photo; falls through to the product still if unavailable.
   // Services have nothing to hold → skip straight to the outcome scene.
+  //
+  // WHY THE MISS IS RECORDED. Falling back to a plain product still is the
+  // right call — the merchant paid 5 tokens for an image ad and a good product
+  // ad beats nothing, and deleting it to refund would leave them with neither.
+  // What was wrong is that it arrived INDISTINGUISHABLE from a deliberate
+  // product ad: titled "Ad image for X", no avatarId in metaJson, and the only
+  // trace a console.error they never see. The merchant read "The presenter will
+  // hold your product in the shot", got a poster with no presenter, and had no
+  // way to tell a failure from the normal result — so they paid again for the
+  // same silent outcome. Carried into the asset below instead.
+  let presenterMiss: string | null = null;
   if (!serviceMode && avatarId && productImageUrl && /^https?:\/\//.test(productImageUrl)) {
+    presenterMiss = "the presenter compose did not complete";
     try {
       const { falImageEnabled } = await import("./fal-image.server");
       if (falImageEnabled()) {
@@ -2863,9 +2875,12 @@ export async function generateImageAd(
           });
           return asset.id;
         }
+      } else {
+        presenterMiss = "image compose is not configured on this deployment";
       }
     } catch (e) {
-      console.error("[image-ad] presenter compose failed, falling back to product still:", e instanceof Error ? e.message : e);
+      presenterMiss = e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200);
+      console.error("[image-ad] presenter compose failed, falling back to product still:", presenterMiss);
     }
     // fall through to a normal product still if compose is unavailable/failed
   }
@@ -3246,7 +3261,11 @@ export async function generateImageAd(
       shopId,
       type: "IMAGE_AD",
       status: "PENDING",
-      title: `Ad image for ${productTitle}`,
+      // Say so when a presenter was asked for and could not be delivered. The
+      // image is still a good product ad, but it must not masquerade as the one
+      // that was ordered — otherwise the merchant pays again for the same
+      // result, having no way to tell this apart from a deliberate product ad.
+      title: presenterMiss ? `${productTitle} — product only (presenter unavailable)` : `Ad image for ${productTitle}`,
       bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: imageUrl, prompt: usedPrompt, ...genMeta }),
       // Everything a REMIX needs to rebuild this ad. Without the photo here,
       // remixing regenerated from the title alone — which is the AI-slop path
@@ -3260,6 +3279,12 @@ export async function generateImageAd(
         direction: stylePrompt || null,
         serviceMode: !!serviceMode,
         styleMode: styleMode || null,
+        // A remix of this ad should ask for the presenter again rather than
+        // inheriting the degraded result, and support needs to be able to tell
+        // why one is missing without reading a container log.
+        ...(presenterMiss
+          ? { presenterRequested: avatarId || null, presenterVariant: avatarVariant ?? 0, presenterMissed: presenterMiss }
+          : {}),
       }),
     },
   });
