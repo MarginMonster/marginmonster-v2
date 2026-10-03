@@ -233,7 +233,12 @@ const CAPACITY_NOUN: Partial<Record<TokenAction, string>> = {
 export function planCapacity(tier: PlanTier): { action: TokenAction; count: number; noun: string }[] {
   return PLAN_SHOWCASE[tier.key].map((action) => ({
     action,
-    count: Math.round(tier.monthlyTokens / TOKEN_COST[action]),
+    // FLOOR, not round: this answers "how many can I make", and a merchant on
+    // Legend cannot make 11 videos with 1,600 tokens — the eleventh costs 150 and
+    // they would have 100 left. round() advertised 11 on the plan card; the wallet
+    // stops at 10. Every other tier/action pair divides evenly, so only that one
+    // number was inflated — but it was the headline number on the top plan.
+    count: Math.floor(tier.monthlyTokens / TOKEN_COST[action]),
     noun: CAPACITY_NOUN[action] || action,
   }));
 }
