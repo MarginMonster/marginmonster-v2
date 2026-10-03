@@ -81,6 +81,10 @@ export default function WebLogin() {
   // The landing page stores the visitor's choice; honour it here too.
   const [lang, setLang] = useState("en");
   useEffect(() => { try { setLang(localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
+  // The copy swaps client-side, so the DOCUMENT has to follow it: a screen
+  // reader given Spanish text inside lang="en" reads it with English rules,
+  // and the tab kept the English title. The landing already does this.
+  useEffect(() => { try { document.documentElement.lang = lang; document.title = authCopy(lang).loginTitle; } catch { /* SSR */ } }, [lang]);
   const c = authCopy(lang);
   return (
     <div className="wb-auth wb-card">

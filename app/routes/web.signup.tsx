@@ -64,6 +64,10 @@ export default function WebSignup() {
   useEffect(() => { try { setLang(localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
   // Same idea as the language above: ask the browser once, at signup.
   useEffect(() => { try { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); } catch { /* older browser */ } }, []);
+  // The copy swaps client-side, so the DOCUMENT has to follow it: a screen
+  // reader given Spanish text inside lang="en" reads it with English rules,
+  // and the tab kept the English title. The landing already does this.
+  useEffect(() => { try { document.documentElement.lang = lang; document.title = authCopy(lang).signupTitle; } catch { /* SSR */ } }, [lang]);
   // Same language the landing page was read in — see auth-i18n.
   const c = authCopy(lang);
   return (
