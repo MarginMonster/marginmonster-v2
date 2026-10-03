@@ -77,7 +77,8 @@ export default function Terms() {
         <p>
           You can cancel at any time from your account. Cancelling stops the next renewal —
           your plan stays active for the rest of the period you have already paid for, and we
-          do not cut it short. Everything you generated stays yours after cancellation.
+          do not cut it short. Everything you have kept or posted stays yours after cancellation
+          (un-kept drafts are cleared after 30 days — Keep the ones you want).
         </p>
 
         <h2>Refunds</h2>

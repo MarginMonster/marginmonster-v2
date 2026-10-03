@@ -97,10 +97,12 @@ export default function Privacy() {
 
         <h2>How long we keep it</h2>
         <p>
-          We keep your account data for as long as your account exists, so that cancelling a
-          plan never destroys the work you generated. We do not delete it on a timer. When you
-          ask us to delete your account we remove it and the content in it, except billing
-          records we are required to keep for tax and accounting.
+          We keep your account data for as long as your account exists, so cancelling a plan
+          never destroys work you have kept. Content you Keep or Post stays in your archive until
+          you remove it; a generated video or image you neither keep nor post is a draft, and we
+          clear un-kept drafts after 30 days so unused renders don&rsquo;t pile up — so Keep the
+          ones you want. When you ask us to delete your account we remove it and the content in
+          it, except billing records we are required to keep for tax and accounting.
         </p>
 
         <h2>Your rights</h2>
