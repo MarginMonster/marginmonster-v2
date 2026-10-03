@@ -6,6 +6,7 @@
 import { createCookieSessionStorage, redirect } from "@remix-run/node";
 import crypto from "node:crypto";
 import { db } from "../db.server";
+import { signingSecrets } from "./signing-secrets.ts";
 import type { Account, Shop, Plan, BrandProfile } from "@prisma/client";
 
 /** The key every session cookie is signed with.
@@ -16,17 +17,10 @@ import type { Account, Shop, Plan, BrandProfile } from "@prisma/client";
  *  logged in as that merchant. Production has SHOPIFY_API_SECRET set, so this
  *  was latent rather than live, but a silent fallback to a published constant
  *  is not something to leave lying in an auth path. Refuse to boot instead. */
-function sessionSecret(): string {
-  const real = process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET;
-  if (real) return real;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "Refusing to start: neither SESSION_SECRET nor SHOPIFY_API_SECRET is set, so web session cookies " +
-        "would be signed with a key that is published in the source. Set SESSION_SECRET in the environment."
-    );
-  }
-  return "em-dev-secret"; // local development only — never reached in production
-}
+//  The refuse-to-boot rule now lives in signing-secrets.ts, shared with the
+//  reset / unsubscribe / OAuth-state signers — and it returns a LIST. Remix
+//  signs with the first entry and verifies against all of them, which is what
+//  lets the owner set SESSION_SECRET later without logging every merchant out.
 
 const storage = createCookieSessionStorage({
   cookie: {
@@ -35,7 +29,7 @@ const storage = createCookieSessionStorage({
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    secrets: [sessionSecret()],
+    secrets: signingSecrets(),
     maxAge: 60 * 60 * 24 * 30,
   },
 });
@@ -150,8 +144,32 @@ export async function loginWebAccount(email: string, password: string): Promise<
  * rides in every request's cookie and only needs to distinguish, not to
  * withstand a preimage search of a value the holder would have to already
  * know. */
+function pwFingerprintWith(secret: string, passwordHash: string | null): string {
+  return crypto.createHmac("sha256", secret).update(`pwv|${passwordHash ?? ""}`).digest("base64url").slice(0, 16);
+}
+
+/** Minted with the CURRENT signing key. */
 function pwFingerprint(passwordHash: string | null): string {
-  return crypto.createHmac("sha256", sessionSecret()).update(`pwv|${passwordHash ?? ""}`).digest("base64url").slice(0, 16);
+  return pwFingerprintWith(signingSecrets()[0], passwordHash);
+}
+
+/** Does this cookie's fingerprint match the password under ANY current key?
+ *
+ *  This is the half of key rotation that is easy to miss. Making the cookie
+ *  SIGNATURE rotation-safe (Remix verifies against every entry in `secrets`)
+ *  is not enough on its own: the pwv inside the cookie is keyed too, and a
+ *  strict compare against the fingerprint under the NEW key would reject every
+ *  session minted under the old one — logging every merchant out on the very
+ *  deploy that set SESSION_SECRET, which is the outcome the list was meant to
+ *  prevent. Timing-safe and no short-circuit, same as signing-secrets.ts. */
+function pwFingerprintMatches(passwordHash: string | null, pwv: string): boolean {
+  const got = Buffer.from(pwv);
+  let ok = false;
+  for (const s of signingSecrets()) {
+    const want = Buffer.from(pwFingerprintWith(s, passwordHash));
+    if (got.length === want.length && crypto.timingSafeEqual(got, want)) ok = true;
+  }
+  return ok;
 }
 
 /** Redirect that sets the session cookie. Takes the account rather than an id
@@ -186,7 +204,10 @@ export async function getWebIdentity(request: Request): Promise<WebIdentity | nu
   // is real and worth naming: a password changed in the next month does not
   // yet evict a session that predates this deploy.
   const pwv = session.get("pwv") as string | undefined;
-  if (pwv && pwv !== pwFingerprint(account.passwordHash)) return null;
+  // Any current key, not a strict compare against the newest — otherwise the
+  // deploy that sets SESSION_SECRET logs every merchant out through this line
+  // even though Remix accepted the cookie's signature under the old key.
+  if (pwv && !pwFingerprintMatches(account.passwordHash, pwv)) return null;
 
   const conn = await db.connection.findFirst({ where: { accountId, kind: "web" } });
   if (!conn) return null;

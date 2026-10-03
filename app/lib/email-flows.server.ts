@@ -7,6 +7,7 @@ import { db } from "../db.server";
 import { emailEnabled, sendEmail } from "./email-provider.server";
 import { writeMarketingEmail } from "./email-writer.server";
 import { unsubscribeUrl } from "./unsubscribe.server";
+import { publicWebUrl } from "./public-url.ts";
 import type { EmailKind } from "./email-kinds";
 
 export async function sendBrandEmail(
@@ -29,11 +30,13 @@ export async function sendBrandEmail(
   // An email that cannot carry a working opt-out must not go out at all. If
   // the signing secret or the public URL is missing, that is a misconfiguration
   // to fix, not a reason to send unlawful mail.
-  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  // publicWebUrl(), not SHOPIFY_APP_URL: the latter is the Shopify app's
+  // registered Render hostname, and an opt-out link to a domain that is not the
+  // brand is the kind of thing spam filters and recipients both distrust.
+  const base = publicWebUrl();
   let optOutLink = "";
   try {
-    if (!base) throw new Error("SHOPIFY_APP_URL unset");
-    optOutLink = unsubscribeUrl(base, shopId, to);
+    optOutLink = unsubscribeUrl(base, shopId, to); // throws only if no signing secret is configured
   } catch (e) {
     console.error("[email] refusing to send without a working unsubscribe link:", (e as Error).message);
     return { ok: false, reason: "no-optout" };

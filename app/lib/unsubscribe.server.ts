@@ -16,17 +16,15 @@
  * keep working in a mailbox for as long as the mail sits there.
  */
 
-import crypto from "node:crypto";
-
-function secret(): string {
-  const s = process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET;
-  if (!s) throw new Error("Cannot sign an unsubscribe link: set SESSION_SECRET or SHOPIFY_API_SECRET.");
-  return s;
-}
+// Unsubscribe tokens never expire and there is no token table, so these are
+// the links a key rotation would have killed PERMANENTLY. signing-secrets.ts
+// verifies against every listed key, so rotating the signer keeps every link
+// in every mailbox working.
+import { signInput, verifyInput } from "./signing-secrets.ts";
 
 export function signUnsubscribe(shopId: string, email: string): string {
   const payload = `${shopId}|${email.toLowerCase()}`;
-  const mac = crypto.createHmac("sha256", secret()).update(payload).digest("base64url");
+  const mac = signInput(payload); // throws if no secret is configured
   return `${Buffer.from(payload, "utf8").toString("base64url")}.${mac}`;
 }
 
@@ -44,15 +42,16 @@ export function verifyUnsubscribe(token: string | null | undefined): { shopId: s
     return null;
   }
 
-  let expected: string;
+  // Checked against EVERY current key (timing-safe, no short-circuit) so a
+  // rotation of the signing key does not kill a link sitting in a mailbox.
+  // No secret configured makes this throw — trust nothing in that case.
+  let ok = false;
   try {
-    expected = crypto.createHmac("sha256", secret()).update(payload).digest("base64url");
+    ok = verifyInput(payload, token.slice(dot + 1));
   } catch {
-    return null; // no secret configured — trust nothing
+    return null;
   }
-  const got = Buffer.from(token.slice(dot + 1));
-  const want = Buffer.from(expected);
-  if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
+  if (!ok) return null;
 
   const sep = payload.indexOf("|");
   if (sep <= 0) return null;

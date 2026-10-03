@@ -2,10 +2,9 @@
  * email helpers are pure and live in password-reset.ts, which this re-exports
  * so callers only ever import from one place. */
 
-import crypto from "node:crypto";
 import type { Account } from "@prisma/client";
 import { db } from "../db.server";
-import { RESET_TTL_MS, resetMac } from "./password-reset.ts";
+import { RESET_TTL_MS, verifyResetMac } from "./password-reset.ts";
 
 export { signPasswordReset, resetUrl, resetEmailHtml } from "./password-reset.ts";
 
@@ -36,14 +35,14 @@ export async function verifyPasswordReset(token: string | null | undefined): Pro
   const account = await db.account.findUnique({ where: { id: accountId } });
   if (!account) return null;
 
-  let expected: string;
+  // Against every current signing key, timing-safe — see signing-secrets.ts.
+  // No secret configured makes this throw: trust nothing in that case.
+  let ok = false;
   try {
-    expected = resetMac(payload, account.passwordHash);
+    ok = verifyResetMac(payload, account.passwordHash, token.slice(dot + 1));
   } catch {
-    return null; // no secret configured — trust nothing
+    return null;
   }
-  const got = Buffer.from(token.slice(dot + 1));
-  const want = Buffer.from(expected);
-  if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
+  if (!ok) return null;
   return account;
 }

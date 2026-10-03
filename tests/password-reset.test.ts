@@ -85,17 +85,35 @@ test("the link is built from SHOPIFY_APP_URL, never from request headers", () =>
 });
 
 test("a trailing slash on the base does not double up", () => {
-  const prev = process.env.SHOPIFY_APP_URL;
-  process.env.SHOPIFY_APP_URL = "https://easymodeapp.com/";
+  const prev = process.env.PUBLIC_WEB_URL;
+  process.env.PUBLIC_WEB_URL = "https://easymodeapp.com/";
   assert.equal(resetUrl("t"), "https://easymodeapp.com/web/reset/t");
-  process.env.SHOPIFY_APP_URL = prev;
+  if (prev === undefined) delete process.env.PUBLIC_WEB_URL; else process.env.PUBLIC_WEB_URL = prev;
 });
 
-test("no link is minted at all when the public URL is unset", () => {
-  const prev = process.env.SHOPIFY_APP_URL;
-  process.env.SHOPIFY_APP_URL = "";
-  assert.throws(() => resetUrl("t"), /SHOPIFY_APP_URL/);
-  process.env.SHOPIFY_APP_URL = prev;
+test("THE BUG: the link is the BRAND's domain, never the Shopify app's Render hostname", () => {
+  // shopify.app.toml pins application_url to marginmonster-fiew.onrender.com,
+  // so that is what SHOPIFY_APP_URL is in production. A reset link built from it
+  // sent the merchant to a hostname that is not the brand, and the session cookie
+  // set there does not apply on easymodeapp.com.
+  const prevS = process.env.SHOPIFY_APP_URL, prevP = process.env.PUBLIC_WEB_URL;
+  process.env.SHOPIFY_APP_URL = "https://marginmonster-fiew.onrender.com";
+  delete process.env.PUBLIC_WEB_URL;
+  assert.equal(resetUrl("t"), "https://easymodeapp.com/web/reset/t");
+  assert.doesNotMatch(resetUrl("t"), /onrender/);
+  process.env.SHOPIFY_APP_URL = prevS;
+  if (prevP === undefined) delete process.env.PUBLIC_WEB_URL; else process.env.PUBLIC_WEB_URL = prevP;
+});
+
+test("a staging override is honoured, and an unset one falls back to the canonical domain rather than refusing", () => {
+  const prev = process.env.PUBLIC_WEB_URL;
+  process.env.PUBLIC_WEB_URL = "https://staging.easymodeapp.com";
+  assert.equal(resetUrl("t"), "https://staging.easymodeapp.com/web/reset/t");
+  delete process.env.PUBLIC_WEB_URL;
+  // There is exactly one public address; a missing override must not turn
+  // into a merchant who cannot reset their password.
+  assert.equal(resetUrl("t"), "https://easymodeapp.com/web/reset/t");
+  if (prev === undefined) delete process.env.PUBLIC_WEB_URL; else process.env.PUBLIC_WEB_URL = prev;
 });
 
 test("tokens are URL-safe, so nothing in the path is mangled in a mail client", () => {

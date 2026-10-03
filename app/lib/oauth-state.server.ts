@@ -18,23 +18,17 @@
  * that a captured URL stops working.
  */
 
-import crypto from "node:crypto";
+// Signing goes through signing-secrets.ts so a key rotation does not kill a
+// handshake that is mid-flight: [0] signs, every listed key verifies.
+import { signInput, verifyInput } from "./signing-secrets.ts";
 
 const STATE_TTL_MS = 15 * 60_000;
 
-function stateSecret(): string {
-  const s = process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET;
-  if (!s) {
-    // Refuse rather than fall back to a constant: an unsigned or
-    // predictably-signed state is the whole vulnerability.
-    throw new Error("Cannot sign an OAuth state: set SESSION_SECRET or SHOPIFY_API_SECRET.");
-  }
-  return s;
-}
-
 export function signOAuthState(shop: string): string {
   const payload = `${shop}|${Date.now().toString(36)}`;
-  const mac = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+  // Throws if no secret is configured — refuse rather than fall back to a
+  // constant: an unsigned or predictably-signed state is the whole vulnerability.
+  const mac = signInput(payload);
   return `${Buffer.from(payload, "utf8").toString("base64url")}.${mac}`;
 }
 
@@ -54,16 +48,15 @@ export function verifyOAuthState(state: string | null): string | null {
     return null;
   }
 
-  let expected: string;
+  // Against every current signing key, timing-safe — see signing-secrets.ts.
+  // No secret configured makes this throw: nothing can be trusted then.
+  let ok = false;
   try {
-    expected = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+    ok = verifyInput(payload, mac);
   } catch {
-    return null; // no secret configured — nothing can be trusted
+    return null;
   }
-
-  const got = Buffer.from(mac);
-  const want = Buffer.from(expected);
-  if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
+  if (!ok) return null;
 
   const sep = payload.lastIndexOf("|");
   if (sep <= 0) return null;

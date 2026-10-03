@@ -1,5 +1,6 @@
 import { db } from "../db.server";
 import { emailEnabled, sendEmail } from "./email-provider.server";
+import { publicWebUrl } from "./public-url.ts";
 
 /* Monthly "here's what we made you" digest — a warm recap of the content
  * EasyMode produced, sent to engaged (paying) merchants who've connected an
@@ -56,7 +57,8 @@ export async function sendMonthlyDigests(): Promise<void> {
     });
     if (!shops.length) return;
 
-    const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    // The brand's own domain, not the Shopify app's Render hostname.
+    const appUrl = publicWebUrl();
     for (const s of shops) {
       if (!s.contactEmail) continue;
       const made = await db.asset.findMany({

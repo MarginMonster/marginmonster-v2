@@ -26,18 +26,23 @@
  *   or an access log.
  */
 
-import crypto from "node:crypto";
+import { publicWebUrl } from "./public-url.ts";
+import { signInput, verifyInput } from "./signing-secrets.ts";
 
 export const RESET_TTL_MS = 60 * 60_000;
 
-function secret(): string {
-  const s = process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET;
-  if (!s) throw new Error("Cannot sign a password-reset link: set SESSION_SECRET or SHOPIFY_API_SECRET.");
-  return s;
-}
+/** What the MAC covers: the payload AND the current password hash, which is
+ *  what makes a link single-use without a token table — the hash changes the
+ *  moment it is used, and no later link verifies against the old one. */
+const resetInput = (payload: string, passwordHash: string | null): string => `${payload}|${passwordHash ?? ""}`;
 
-export const resetMac = (payload: string, passwordHash: string | null): string =>
-  crypto.createHmac("sha256", secret()).update(`${payload}|${passwordHash ?? ""}`).digest("base64url");
+/** Signed with the CURRENT key. Throws if no secret is configured. */
+export const resetMac = (payload: string, passwordHash: string | null): string => signInput(resetInput(payload, passwordHash));
+
+/** Verified against EVERY current key, so rotating the signing key does not
+ *  dead-end a merchant who requested a reset a minute before the deploy. */
+export const verifyResetMac = (payload: string, passwordHash: string | null, mac: string | null | undefined): boolean =>
+  verifyInput(resetInput(payload, passwordHash), mac);
 
 export function signPasswordReset(account: { id: string; passwordHash: string | null }): string {
   const payload = `${account.id}|${Date.now().toString(36)}`;
@@ -53,9 +58,12 @@ export function signPasswordReset(account: { id: string; passwordHash: string | 
  *  clicked it. Same rule email-flows.server.ts and digest.server.ts already
  *  follow for the same reason. */
 export function resetUrl(token: string): string {
-  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  if (!base) throw new Error("Cannot build a password-reset link: SHOPIFY_APP_URL is unset.");
-  return `${base}/web/reset/${token}`;
+  // publicWebUrl(), NOT SHOPIFY_APP_URL. That variable is the Shopify app's
+  // registered URL — in production the Render hostname — so every reset email
+  // would have sent the merchant to marginmonster-fiew.onrender.com, where the
+  // session cookie the reset sets does not apply on easymodeapp.com. The
+  // host-header reasoning above still holds: this is a constant, not a header.
+  return `${publicWebUrl()}/web/reset/${token}`;
 }
 
 const esc = (s: string) =>
