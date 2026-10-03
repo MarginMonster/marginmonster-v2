@@ -7,6 +7,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import path from "node:path";
 import { artLogEntries } from "../lib/art-log.server";
+import { emailEnabled } from "../lib/email-provider.server";
 import { stripeWebhookReady } from "../lib/stripe.server";
 
 /** Upload-directory health WITHOUT naming the files. See the call site. */
@@ -25,6 +26,22 @@ function uploadHealth(dir: string): { count: number; emptyFiles: number; totalKb
     return { count: files.length, emptyFiles, totalKb, newest: newest ? new Date(newest).toISOString() : null };
   } catch {
     return { count: 0, emptyFiles: 0, totalKb: 0, newest: null };
+  }
+}
+
+/** File COUNT only — one readdir, and NO per-file stat. listDir below stats
+ *  every entry, and these two directories hold ~1,000 of the app's own art
+ *  files, so serving the full listing to anonymous callers meant ~968
+ *  synchronous statSync calls per request on a single-instance web service.
+ *  That is the same event-loop starvation that already got this instance
+ *  killed once by Render's 5-second health check, except anyone who knows the
+ *  URL can trigger it. The health question ("did the art build?") needs the
+ *  count; only the names need the diagnostics key. */
+function countDir(dir: string): { count: number } {
+  try {
+    return { count: fs.readdirSync(dir).filter((f) => !f.startsWith(".")).length };
+  } catch {
+    return { count: 0 };
   }
 }
 
@@ -92,6 +109,7 @@ function hasDiagKey(request: Request): boolean {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cwd = process.cwd();
+  const keyed = hasDiagKey(request);
   const body = {
     now: new Date().toISOString(),
     env: {
@@ -105,7 +123,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       STRIPE_WEBHOOK: await stripeWebhookReady().catch(() => false),
       SESSION_SECRET: !!process.env.SESSION_SECRET,
       UPLOADPOST_API_KEY: !!process.env.UPLOADPOST_API_KEY,
-      RESEND_API_KEY: !!process.env.RESEND_API_KEY,
+      // Was RESEND_API_KEY — a variable NO code in the app reads, so it
+      // answered a question nobody asked while the one that matters went
+      // unreported. Email is gated on EMAIL_API_KEY *and* EMAIL_FROM
+      // (email-provider.server.ts), and when it is off /web/forgot renders no
+      // form at all, so this flag is the difference between "a locked-out
+      // merchant can reset" and "a locked-out merchant is gone".
+      EMAIL_READY: emailEnabled(),
       // DEV_GRANT_KEY is deliberately NOT reported. This route is public — no
       // authentication anywhere in it — and that flag answers "is the
       // token-granting route armed right now?" for anyone who asks. Knowing
@@ -123,20 +147,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // The diagnostic this was for — "are uploads present and non-empty, or is
     // the upload path broken" — needs counts, not names.
     uploads: uploadHealth(path.join(cwd, "data", "renders", "uploads")),
-    styleTiles: listDir(path.join(cwd, "data", "renders", "style-tiles")),
-    adTemplates: listDir(path.join(cwd, "data", "renders", "ad-templates")),
+    // Names (and the ~968 stat calls it takes to size them) only for a keyed
+    // caller — see countDir. Anonymous callers still get the count, which is
+    // what answers "are the tiles on disk at all?".
+    styleTiles: keyed
+      ? listDir(path.join(cwd, "data", "renders", "style-tiles"))
+      : countDir(path.join(cwd, "data", "renders", "style-tiles")),
+    adTemplates: keyed
+      ? listDir(path.join(cwd, "data", "renders", "ad-templates"))
+      : countDir(path.join(cwd, "data", "renders", "ad-templates")),
     // FAILURE TEXT NAMES FILES. A pipeline error carries the render it was
     // working on, and /renders is public by necessity — so an anonymous
     // caller could read a failure here, lift the filename out of it, and
     // fetch another merchant's forged presenter or paid video. The aggregate
     // counts are safe and stay public; the messages need the same diagnostics
     // key the activity log already requires.
-    generation: await generationHealth(hasDiagKey(request)),
+    generation: await generationHealth(keyed),
     // Merchant-specific render activity only with the diagnostics key — the
     // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
     // answers the question it exists for ("did the app's own art build?")
     // but stops publishing other shops' product names and ad copy.
-    activity: artLogEntries(hasDiagKey(request)),
+    activity: artLogEntries(keyed),
   };
   return new Response(JSON.stringify(body, null, 2), {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
