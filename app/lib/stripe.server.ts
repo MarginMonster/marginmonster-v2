@@ -392,11 +392,14 @@ export async function activateStripePlan(
       stripeSubId: subId,
       stripeCustomerId: customerId,
       ...(firstEver ? { trialUsedAt: new Date() } : {}),
-      // Whatever was in flight has now resolved, so stop guarding on it. Left
-      // set, it would make the merchant's NEXT genuine checkout take the
-      // resolve path against a session that is already spent.
-      pendingCheckoutId: null,
-      pendingCheckoutAt: null,
+      // NOTE: pendingCheckoutId is deliberately NOT cleared here. This runs for
+      // ordinary subscription.updated events too (a renewal, a cancel toggle),
+      // and clearing on those would drop the guard on a DIFFERENT checkout the
+      // merchant has open right now — re-opening the very double-charge window
+      // this field closes. The pending marker is cleared by the two things that
+      // actually resolve a checkout: resolvePendingCheckout (reads the session)
+      // and the webhook's checkout.session.completed handler (clears the exact
+      // session id it just fulfilled).
     },
   }).catch(() => { /* non-fatal */ });
 

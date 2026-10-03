@@ -52,7 +52,7 @@ const EN: LandingCopy = {
   stats: { types: "ad formats, one subscription", channels: "posting to TikTok, IG & FB", start: "to start", tap: "1-tap" },
   features: [
     { icon: "video", title: "UGC videos that sell", body: "AI presenters hold your product and talk it up — vertical-formatted for TikTok, Reels & Shorts." },
-    { icon: "cartoon", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, block build, claymation — or an Anthem your avatar sings on camera." },
+    { icon: "cartoon", title: "Viral-style cartoon ads", body: "Your product in the formats the internet already shares — dream anime, boxed action figure, paper craft, claymation — or an Anthem your avatar sings on camera." },
     { icon: "seo", title: "SEO articles on autopilot", body: "Buyer-intent articles written for you as ready-to-paste HTML, pulling in free Google traffic month after month." },
     { icon: "post", title: "Auto-posted for you", body: "Every drop goes out to TikTok, Instagram & Facebook on a schedule — captions and hashtags written to travel." },
     { icon: "auto", title: "One-tap autopilot", body: "Pick a goal. EasyMode builds a full month of content, launches it, and scales what works." },
@@ -158,7 +158,7 @@ const ES: LandingCopy = {
   stats: { types: "formatos de anuncio, una suscripción", channels: "publicación en TikTok, IG y FB", start: "para empezar", tap: "1 toque" },
   features: [
     { icon: "video", title: "Videos UGC que venden", body: "Presentadores de IA sostienen tu producto y lo presentan — en formato vertical para TikTok, Reels y Shorts." },
-    { icon: "cartoon", title: "Anuncios cartoon virales", body: "Tu producto en los formatos que internet ya comparte — anime, figura de colección, bloques, claymation — o un Anthem que tu avatar canta a cámara." },
+    { icon: "cartoon", title: "Anuncios cartoon virales", body: "Tu producto en los formatos que internet ya comparte — anime, figura de colección, papel recortado, claymation — o un Anthem que tu avatar canta a cámara." },
     { icon: "seo", title: "Artículos SEO en piloto automático", body: "Artículos con intención de compra, escritos para ti en HTML listo para pegar, atrayendo tráfico gratuito de Google mes tras mes." },
     { icon: "post", title: "Lo publicamos por ti", body: "Cada pieza sale a TikTok, Instagram y Facebook según un calendario — con textos y hashtags pensados para viajar." },
     { icon: "auto", title: "Piloto automático en un toque", body: "Elige un objetivo. EasyMode crea un mes entero de contenido, lo lanza y escala lo que funciona." },
@@ -264,7 +264,7 @@ const FR: LandingCopy = {
   stats: { types: "formats de pub, un seul abonnement", channels: "publication TikTok, IG & FB", start: "pour commencer", tap: "1 clic" },
   features: [
     { icon: "video", title: "Des vidéos UGC qui vendent", body: "Des présentateurs IA tiennent votre produit et en parlent — au format vertical pour TikTok, Reels et Shorts." },
-    { icon: "cartoon", title: "Pubs cartoon virales", body: "Votre produit dans les formats que l'internet partage déjà — anime, figurine en boîte, briques, claymation — ou un Anthem que votre avatar chante face caméra." },
+    { icon: "cartoon", title: "Pubs cartoon virales", body: "Votre produit dans les formats que l'internet partage déjà — anime, figurine en boîte, papier découpé, claymation — ou un Anthem que votre avatar chante face caméra." },
     { icon: "seo", title: "Articles SEO en pilote auto", body: "Des articles à intention d'achat, rédigés pour vous en HTML prêt à coller, qui attirent du trafic Google gratuit mois après mois." },
     { icon: "post", title: "Publication automatique", body: "Chaque création part sur TikTok, Instagram et Facebook selon un calendrier — légendes et hashtags pensés pour voyager." },
     { icon: "auto", title: "Pilote auto en un geste", body: "Choisissez un objectif. EasyMode crée un mois entier de contenu, le lance et amplifie ce qui marche." },
@@ -370,7 +370,7 @@ const DE: LandingCopy = {
   stats: { types: "Anzeigenformate, ein Abo", channels: "Posting auf TikTok, IG & FB", start: "zum Start", tap: "1 Tipp" },
   features: [
     { icon: "video", title: "UGC-Videos, die verkaufen", body: "KI-Presenter halten dein Produkt in der Hand und stellen es vor — vertikal formatiert für TikTok, Reels & Shorts." },
-    { icon: "cartoon", title: "Virale Cartoon-Ads", body: "Dein Produkt in den Formaten, die das Internet schon teilt — Anime, Sammelfigur, Klötzchen-Look, Knetanimation — oder ein Anthem, das dein Avatar vor der Kamera singt." },
+    { icon: "cartoon", title: "Virale Cartoon-Ads", body: "Dein Produkt in den Formaten, die das Internet schon teilt — Anime, Sammelfigur, Papierbastelei, Knetanimation — oder ein Anthem, das dein Avatar vor der Kamera singt." },
     { icon: "seo", title: "SEO-Artikel auf Autopilot", body: "Kaufintention-Artikel, für dich als fertiges HTML zum Einfügen geschrieben — kostenloser Google-Traffic, Monat für Monat." },
     { icon: "post", title: "Automatisch gepostet", body: "Jeder Drop geht nach Zeitplan auf TikTok, Instagram & Facebook — mit Captions und Hashtags, die reisen." },
     { icon: "auto", title: "Autopilot mit einem Tipp", body: "Wähle ein Ziel. EasyMode baut einen ganzen Content-Monat, startet ihn und skaliert, was funktioniert." },
@@ -476,7 +476,7 @@ const ZH: LandingCopy = {
   stats: { types: "种广告形式，一份订阅", channels: "发布到 TikTok、IG 和 FB", start: "起步价", tap: "一键" },
   features: [
     { icon: "video", title: "能带货的 UGC 视频", body: "AI 主播手持你的产品进行讲解 — 竖屏格式，适配 TikTok、Reels 和 Shorts。" },
-    { icon: "cartoon", title: "病毒式卡通广告", body: "把你的产品做成全网疯传的风格 — 梦幻动漫、盒装手办、方块世界、黏土动画 — 或者让你的头像出镜演唱产品主题曲 Anthem。" },
+    { icon: "cartoon", title: "病毒式卡通广告", body: "把你的产品做成全网疯传的风格 — 梦幻动漫、盒装手办、纸艺手工、黏土动画 — 或者让你的头像出镜演唱产品主题曲 Anthem。" },
     { icon: "seo", title: "SEO 文章全自动", body: "面向购买意图的文章，自动写成可直接粘贴的 HTML，月复一月为你带来免费的 Google 流量。" },
     { icon: "post", title: "自动发布", body: "每条内容按排期发布到 TikTok、Instagram 和 Facebook — 文案和标签都为传播而写。" },
     { icon: "auto", title: "一键自动驾驶", body: "选一个目标，EasyMode 生成整月内容，自动发布，并放大有效的部分。" },

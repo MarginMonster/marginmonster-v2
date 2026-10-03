@@ -61,6 +61,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null,
           false, checkoutActivationPeriod(obj),
         );
+        // This checkout resolved — clear the pending marker, but ONLY if it is
+        // still THIS session's id. Keyed to obj.id so a later checkout the
+        // merchant opened (which overwrote the marker) is left guarding itself.
+        await db.account
+          .updateMany({ where: { id: accountId, pendingCheckoutId: (obj.id as string) || "" }, data: { pendingCheckoutId: null, pendingCheckoutAt: null } })
+          .catch(() => { /* non-fatal */ });
       } else if (accountId && meta.packTokens) {
         // The checkout session id is the natural idempotency key — Stripe
         // retries this webhook, and a replay used to credit the pack twice.
