@@ -346,11 +346,19 @@ export async function activateStripePlan(
   const shopId = await webShopIdFor(accountId);
   if (!shopId) return;
   // Read the period we last granted BEFORE the upsert touches the row, so the
-  // roll below can be pinned to it.
+  // roll below can be pinned to it. trialEndsAt distinguishes a trial
+  // CONVERSION (must roll, to clear the trial's spend) from an ordinary renewal
+  // (defers to refreshPeriod) — a conversion is an advance whose prior plan was
+  // still in, or has only just left, its trial window.
   const priorPlan = await db.plan
-    .findUnique({ where: { shopId }, select: { periodStart: true } })
+    .findUnique({ where: { shopId }, select: { periodStart: true, trialEndsAt: true } })
     .catch(() => null);
-  const rollDecision = decidePeriodRoll(priorPlan?.periodStart ?? null, period);
+  const trialEndsMs = priorPlan?.trialEndsAt ? new Date(priorPlan.trialEndsAt).getTime() : null;
+  // "Was trialing" = the trial is in the future or ended within the last couple
+  // of days (the conversion event can arrive a touch after trial_end). An
+  // ordinary renewal months later has a trialEndsAt long past, so this is false.
+  const wasTrialing = trialEndsMs != null && trialEndsMs > Date.now() - 2 * 24 * 60 * 60 * 1000;
+  const rollDecision = decidePeriodRoll(priorPlan?.periodStart ?? null, period, new Date(), { wasTrialing });
   // A TIER CHANGE MUST END THE OLD SUBSCRIPTION.
   //
   // createPlanCheckout always opens a FRESH subscription session — no

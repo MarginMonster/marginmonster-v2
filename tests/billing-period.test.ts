@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkoutSessionVerdict, checkoutActivationPeriod, sessionCollectedMoney, decidePeriodRoll, stripeAnchorFrom, ANCHOR_EPSILON_MS } from "../app/lib/billing-period.ts";
+import { checkoutSessionVerdict, checkoutActivationPeriod, sessionCollectedMoney, decidePeriodRoll, stripeAnchorFrom, ANCHOR_EPSILON_MS, RENEWAL_GRACE_MS } from "../app/lib/billing-period.ts";
 
 /* activateStripePlan's UPDATE branch never rolled the wallet, so every
  * RETURNING customer inherited the previous period's spend. The fix must roll
@@ -33,20 +33,61 @@ test("a plain subscription edit rolls NOTHING — this is the farm the old comme
   }
 });
 
-test("a renewal rolls, because Stripe's anchor advanced", () => {
+test("a renewal the monthly roller MISSED (stored period old) rolls", () => {
+  // Inactive merchant: refreshPeriod never fired, so the renewal must refill.
   const stored = new Date(now.getTime() - 30 * DAY);
   const anchor = new Date(now.getTime() - 1 * DAY);
   const d = decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: anchor }, now);
   assert.equal(d.roll, true);
-  // The new period starts when STRIPE says it did, not when the webhook landed.
   assert.ok(d.roll && d.rollTo.getTime() === anchor.getTime());
   assert.ok(d.roll && d.pinnedTo.getTime() === stored.getTime());
 });
 
-test("a trial converting on Stripe's own schedule rolls — the other half of the same defect", () => {
-  // Trial period started 7 days ago; the paid period starts now.
+/* THE TWO-ROLLER DOUBLE-GRANT. refreshPeriod rolls the monthly allowance on a
+ * 30-day clock; a monthly Stripe renewal's anchor advances ~a day later. Both
+ * rolling granted two allowances per cycle. The renewal now defers when the
+ * period was refreshed inside the monthly window. */
+
+test("THE LEAK: a renewal right after refreshPeriod already rolled does NOT roll again", () => {
+  // refreshPeriod rolled at day 30, setting periodStart to ~now; the renewal
+  // lands a day later with an advanced anchor.
+  const stored = new Date(now.getTime() - 1 * DAY);          // refreshPeriod just rolled
+  const anchor = new Date(now.getTime());                    // Stripe renewal moment
+  const d = decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: anchor }, now);
+  assert.equal(d.roll, false, "the renewal double-granted on top of refreshPeriod");
+});
+
+test("a trial conversion rolls even though its period is recent (shorter than the grace window)", () => {
+  // 7-day trial: periodStart is 7 days old, well inside the grace window, so a
+  // plain renewal would skip — but a conversion must clear the trial's spend.
   const stored = new Date(now.getTime() - 7 * DAY);
-  const d = decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: now }, now);
+  const anchor = new Date(now.getTime());
+  assert.equal(decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: anchor }, now, {}).roll, false);
+  assert.equal(decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: anchor }, now, { wasTrialing: true }).roll, true);
+});
+
+test("exactly one roller fires across a monthly cycle, active OR inactive merchant", () => {
+  // Active: refreshPeriod rolled (stored recent) → renewal defers.
+  const activeStored = new Date(now.getTime() - 1 * DAY);
+  assert.equal(decidePeriodRoll(activeStored, { kind: "stripe-anchor", startsAt: now }, now).roll, false);
+  // Inactive: refreshPeriod never ran (stored a full cycle old) → renewal rolls.
+  const inactiveStored = new Date(now.getTime() - 31 * DAY);
+  assert.equal(decidePeriodRoll(inactiveStored, { kind: "stripe-anchor", startsAt: now }, now).roll, true);
+});
+
+test("the grace window boundary", () => {
+  const anchor = new Date(now.getTime());
+  const justInside = new Date(now.getTime() - (RENEWAL_GRACE_MS - DAY));
+  const justOutside = new Date(now.getTime() - (RENEWAL_GRACE_MS + DAY));
+  assert.equal(decidePeriodRoll(justInside, { kind: "stripe-anchor", startsAt: anchor }, now).roll, false);
+  assert.equal(decidePeriodRoll(justOutside, { kind: "stripe-anchor", startsAt: anchor }, now).roll, true);
+});
+
+test("a trial converting on Stripe's own schedule rolls — the other half of the same defect", () => {
+  // Trial period started 7 days ago; the paid period starts now. activateStripePlan
+  // passes wasTrialing for a conversion, which rolls despite the recent period.
+  const stored = new Date(now.getTime() - 7 * DAY);
+  const d = decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: now }, now, { wasTrialing: true });
   assert.equal(d.roll, true);
   // Previously only the Studio's own end-trial button did this (endTrialNow),
   // so two merchants paying the same invoice got different allowances.
@@ -59,7 +100,9 @@ test("an out-of-order delivery for an OLD period never rolls backwards", () => {
 });
 
 test("anchors inside the epsilon are the same period", () => {
-  const stored = new Date(now.getTime() - 10 * DAY);
+  // Stored period is well past the renewal grace window, so the recency guard
+  // stands aside and the epsilon alone decides — which is what this probes.
+  const stored = new Date(now.getTime() - 40 * DAY);
   const jitter = new Date(stored.getTime() + ANCHOR_EPSILON_MS - 1);
   assert.equal(decidePeriodRoll(stored, { kind: "stripe-anchor", startsAt: jitter }, now).roll, false);
   const past = new Date(stored.getTime() + ANCHOR_EPSILON_MS + 1);

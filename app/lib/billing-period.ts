@@ -159,10 +159,23 @@ export type PeriodRoll =
  *         there is no Plan row yet (the create branch writes its own).
  *  @param period           what the caller knows about Stripe's period.
  *  @param now              injected for tests. */
+/** How recently a period must have been refreshed for a Stripe RENEWAL to defer
+ *  to it. tokens.server's refreshPeriod rolls the monthly allowance on a 30-day
+ *  clock (for annual plans too — the allowance is monthly even when billing is
+ *  yearly). A monthly Stripe renewal's anchor advances ~a day after that clock
+ *  fires, so without this the two grant two allowances for one cycle. Anything
+ *  newer than this came from (or will come from) the monthly roller, so the
+ *  renewal stands down; anything older means the monthly roller has not fired
+ *  (an inactive merchant), so the renewal does the roll itself. Comfortably
+ *  below refreshPeriod's 30 days and far above the ~1-day refreshPeriod→renewal
+ *  gap, so exactly one of the two ever rolls a given cycle. */
+export const RENEWAL_GRACE_MS = 25 * 24 * 60 * 60 * 1000;
+
 export function decidePeriodRoll(
   storedPeriodStart: Date | string | null | undefined,
   period: ActivationPeriod,
   now: Date = new Date(),
+  opts: { wasTrialing?: boolean } = {},
 ): PeriodRoll {
   // No existing row: the upsert's create branch sets the period itself.
   if (storedPeriodStart == null) return { roll: false, reason: "no existing plan row — create branch owns the period" };
@@ -182,10 +195,22 @@ export function decidePeriodRoll(
   const anchor = new Date(period.startsAt);
   if (Number.isNaN(anchor.getTime())) return { roll: false, reason: "Stripe anchor is not a date" };
 
-  // Strictly newer, past the epsilon. Equal (a plain edit) or older (an
-  // out-of-order delivery for a period we already moved past) rolls nothing.
-  if (anchor.getTime() > stored.getTime() + ANCHOR_EPSILON_MS) {
-    return { roll: true, rollTo: anchor, pinnedTo: stored, reason: "Stripe's current_period_start advanced" };
+  // Not newer than what we hold: a plain edit, or an out-of-order delivery for
+  // a period we already moved past. Rolls nothing.
+  if (anchor.getTime() <= stored.getTime() + ANCHOR_EPSILON_MS) {
+    return { roll: false, reason: "same billing period — a subscription edit, not a renewal" };
   }
-  return { roll: false, reason: "same billing period — a subscription edit, not a renewal" };
+
+  // The anchor advanced — a renewal or a trial conversion. A trial converting
+  // to paid MUST roll (the trial's spend has to clear, and the monthly roller
+  // will not fire for a trial shorter than its clock). An ordinary renewal
+  // defers to the monthly roller when that roller refreshed the period
+  // recently — otherwise both grant an allowance for one cycle.
+  if (opts.wasTrialing) {
+    return { roll: true, rollTo: anchor, pinnedTo: stored, reason: "trial converted to paid" };
+  }
+  if (now.getTime() - stored.getTime() < RENEWAL_GRACE_MS) {
+    return { roll: false, reason: "renewal inside the monthly-refill window — refreshPeriod owns this cycle's roll" };
+  }
+  return { roll: true, rollTo: anchor, pinnedTo: stored, reason: "Stripe period advanced and the monthly roller had not refreshed it" };
 }
