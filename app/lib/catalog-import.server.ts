@@ -69,6 +69,11 @@ export const CATALOG_CAP = 300;
 /** Sitemap crawling only: how many product pages we fetch at once. Deliberately
  *  small — this is someone's live storefront, not a scraping target. */
 const CRAWL_CONCURRENCY = 4;
+/** Total wall-clock budget for one discovery, enforced in the crawl loop. The
+ *  job drain is serial on a single instance, so an import that runs for many
+ *  minutes parks every other tenant's renders behind it. Past this we return a
+ *  partial catalogue (re-importable) rather than hold the worker. */
+const CRAWL_BUDGET_MS = 6 * 60_000;
 
 const UA: Record<string, string> = {
   "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
@@ -261,13 +266,36 @@ async function productUrlsFromSitemaps(origin: URL, cap: number): Promise<string
 }
 
 /** Scrape a list of product pages with a small worker pool. */
-async function crawlProductPages(urls: string[], onProgress?: (n: number) => void): Promise<DiscoveredProduct[]> {
+/** An image URL safe to STORE and later hand to the image pipeline's fetch.
+ *  A scraped og:image is attacker-influenced — the page is the merchant's, but
+ *  its markup can name any host — and crawled image URLs are fetched server
+ *  side by the campaigns/image path, so one pointing at an internal address is
+ *  an SSRF vector. Drop the image (keep the product) unless it is a public
+ *  http(s) host. */
+function safeImageUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw);
+    if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) return undefined;
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
+
+async function crawlProductPages(urls: string[], deadline: number, onProgress?: (n: number) => void): Promise<DiscoveredProduct[]> {
   const out: DiscoveredProduct[] = [];
   let i = 0;
   const worker = async () => {
     for (;;) {
       const idx = i++;
       if (idx >= urls.length) return;
+      // TOTAL wall-clock bound. Each fetch is already capped, but a big catalog
+      // of slow pages could still run this for many minutes on the single
+      // serial worker, parking every other tenant's jobs. Past the budget we
+      // stop and keep what we have — a partial catalogue the merchant can top
+      // up by re-importing beats an import that never returns.
+      if (Date.now() >= deadline) return;
       const url = urls[idx];
       try {
         const p = await scrapeProductPage(url);
@@ -275,7 +303,7 @@ async function crawlProductPages(urls: string[], onProgress?: (n: number) => voi
           // priceText comes through here too — the Shopify and Woo feeds carry
           // a price, and a crawled store has one in its JSON-LD/OG tags, so a
           // sitemap-imported catalogue is no longer priceless.
-          out.push({ title: p.title.slice(0, 200), url, imageUrl: p.image, handle: undefined, priceText: p.price });
+          out.push({ title: p.title.slice(0, 200), url, imageUrl: safeImageUrl(p.image), handle: undefined, priceText: p.price });
         }
       } catch { /* one dead product page never kills the import */ }
       onProgress?.(out.length);
@@ -295,6 +323,10 @@ export interface DiscoverResult {
 /** Find as much of a storefront's catalogue as we reasonably can. */
 export async function discoverCatalog(rawUrl: string, cap = CATALOG_CAP): Promise<DiscoverResult> {
   const origin = storeOrigin(rawUrl);
+  // One wall-clock budget for the whole discovery, so a slow store cannot hold
+  // the serial worker indefinitely. The feed paths (Shopify/Woo) are quick; the
+  // budget mainly bounds the sitemap crawl below.
+  const deadline = Date.now() + CRAWL_BUDGET_MS;
 
   const shopify = await fromShopify(origin, cap);
   if (shopify.length) return { products: shopify, source: "shopify" };
@@ -308,7 +340,7 @@ export async function discoverCatalog(rawUrl: string, cap = CATALOG_CAP): Promis
       "We couldn't find a product list on that site. Double-check the address — or keep pasting individual product links, which always works."
     );
   }
-  const crawled = await crawlProductPages(urls);
+  const crawled = await crawlProductPages(urls, deadline);
   if (!crawled.length) throw new Error("We found product pages but couldn't read any of them.");
   return { products: crawled, source: "sitemap" };
 }
