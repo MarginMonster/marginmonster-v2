@@ -109,7 +109,7 @@ const EN: LandingCopy = {
     eyebrow: "Questions",
     h2: "The stuff people ask.",
     items: [
-      { q: "How do tokens work?", a: "Your plan unlocks WHICH generators you can use (Starter: images & articles; Studio & Anthem: every generator, video through Anthem). Tokens meter HOW MUCH you generate — every plan refills monthly, and you can top up any time. Tokens never unlock a generator your plan doesn't include." },
+      { q: "How do tokens work?", a: "Your plan unlocks WHICH generators you can use (Starter: images & articles; Studio & Legend: every generator, video through Anthem). Tokens meter HOW MUCH you generate — every plan refills monthly, and you can top up any time. Tokens never unlock a generator your plan doesn't include." },
       { q: "What does the free trial include?", a: "7 days with every generator unlocked — real videos, cartoon styles, even your Anthem — on your plan's token allowance, up to 400. Cancel before day 7 and you pay nothing." },
       { q: "What happens if I downgrade?", a: "Everything you already generated stays in your archive, postable forever. Only NEW generation is gated by your current plan." },
       { q: "Is the content labeled as AI?", a: "Yes — every post EasyMode publishes carries the #EasyModeAi tag, keeping your store on the right side of AI-disclosure norms and FTC guidance." },
@@ -215,7 +215,7 @@ const ES: LandingCopy = {
     eyebrow: "Preguntas",
     h2: "Lo que todos preguntan.",
     items: [
-      { q: "¿Cómo funcionan los tokens?", a: "Tu plan desbloquea QUÉ generadores puedes usar (Starter: imágenes y artículos; Studio y Anthem: todos los generadores). Los tokens miden CUÁNTO generas — cada plan se recarga mensualmente y puedes comprar más cuando quieras. Los tokens nunca desbloquean un generador que tu plan no incluye." },
+      { q: "¿Cómo funcionan los tokens?", a: "Tu plan desbloquea QUÉ generadores puedes usar (Starter: imágenes y artículos; Studio y Legend: todos los generadores). Los tokens miden CUÁNTO generas — cada plan se recarga mensualmente y puedes comprar más cuando quieras. Los tokens nunca desbloquean un generador que tu plan no incluye." },
       { q: "¿Qué incluye la prueba gratis?", a: "7 días con todos los generadores desbloqueados — videos reales, estilos cartoon e incluso tu Anthem — con la asignación de tokens de tu plan, hasta 400. Cancela antes del día 7 y no pagas nada." },
       { q: "¿Qué pasa si bajo de plan?", a: "Todo lo que ya generaste queda en tu archivo, publicable para siempre. Solo la NUEVA generación depende de tu plan actual." },
       { q: "¿El contenido se marca como IA?", a: "Sí — cada publicación de EasyMode lleva la etiqueta #EasyModeAi, manteniendo tu tienda en regla con las normas de divulgación de IA." },
@@ -321,7 +321,7 @@ const FR: LandingCopy = {
     eyebrow: "Questions",
     h2: "Ce qu'on nous demande.",
     items: [
-      { q: "Comment fonctionnent les tokens ?", a: "Votre formule débloque QUELS générateurs vous pouvez utiliser (Starter : images et articles ; Studio et Anthem : tous les générateurs). Les tokens mesurent COMBIEN vous générez — chaque formule se recharge tous les mois, et vous pouvez en acheter à tout moment. Les tokens ne débloquent jamais un générateur absent de votre formule." },
+      { q: "Comment fonctionnent les tokens ?", a: "Votre formule débloque QUELS générateurs vous pouvez utiliser (Starter : images et articles ; Studio et Legend : tous les générateurs). Les tokens mesurent COMBIEN vous générez — chaque formule se recharge tous les mois, et vous pouvez en acheter à tout moment. Les tokens ne débloquent jamais un générateur absent de votre formule." },
       { q: "Que comprend l'essai gratuit ?", a: "7 jours avec tous les générateurs débloqués — vraies vidéos, styles cartoon et même votre Anthem — avec l'allocation de tokens de votre plan, jusqu'à 400. Annulez avant le 7e jour et vous ne payez rien." },
       { q: "Que se passe-t-il si je rétrograde ?", a: "Tout ce que vous avez déjà généré reste dans vos archives, publiable pour toujours. Seule la NOUVELLE génération dépend de votre formule actuelle." },
       { q: "Le contenu est-il signalé comme IA ?", a: "Oui — chaque publication d'EasyMode porte le tag #EasyModeAi, gardant votre boutique en règle avec les normes de transparence sur l'IA." },
@@ -427,7 +427,7 @@ const DE: LandingCopy = {
     eyebrow: "Fragen",
     h2: "Was alle wissen wollen.",
     items: [
-      { q: "Wie funktionieren Tokens?", a: "Dein Plan schaltet frei, WELCHE Generatoren du nutzen kannst (Starter: Bilder & Artikel; Studio & Anthem: alle Generatoren). Tokens messen, WIE VIEL du erzeugst — jeder Plan lädt monatlich auf, und du kannst jederzeit nachkaufen. Tokens schalten nie einen Generator frei, den dein Plan nicht enthält." },
+      { q: "Wie funktionieren Tokens?", a: "Dein Plan schaltet frei, WELCHE Generatoren du nutzen kannst (Starter: Bilder & Artikel; Studio & Legend: alle Generatoren). Tokens messen, WIE VIEL du erzeugst — jeder Plan lädt monatlich auf, und du kannst jederzeit nachkaufen. Tokens schalten nie einen Generator frei, den dein Plan nicht enthält." },
       { q: "Was ist im Gratis-Test enthalten?", a: "7 Tage mit allen Generatoren freigeschaltet — echte Videos, Cartoon-Styles und sogar dein Anthem — mit dem Token-Guthaben deines Plans, bis zu 400. Kündige vor Tag 7 und zahlst nichts." },
       { q: "Was passiert beim Downgrade?", a: "Alles bereits Erzeugte bleibt in deinem Archiv, für immer postbar. Nur NEUE Generierungen richten sich nach deinem aktuellen Plan." },
       { q: "Wird der Content als KI gekennzeichnet?", a: "Ja — jeder Post von EasyMode trägt den Tag #EasyModeAi und hält deinen Shop damit konform mit KI-Kennzeichnungsnormen." },
@@ -533,7 +533,7 @@ const ZH: LandingCopy = {
     eyebrow: "常见问题",
     h2: "大家常问的。",
     items: [
-      { q: "代币是怎么用的？", a: "套餐决定你能用哪些生成器（Starter：图片和文章；Studio 与 Anthem：全部生成器）。代币决定你能生成多少 — 每月自动补充，也可随时充值。代币永远不能解锁套餐之外的生成器。" },
+      { q: "代币是怎么用的？", a: "套餐决定你能用哪些生成器（Starter：图片和文章；Studio 与 Legend：全部生成器）。代币决定你能生成多少 — 每月自动补充，也可随时充值。代币永远不能解锁套餐之外的生成器。" },
       { q: "免费试用包含什么？", a: "7 天全部生成器解锁 — 真正的视频、卡通风格、甚至你的 Anthem — 按你所选套餐的代币额度，最多 400。第 7 天前取消则分文不付。" },
       { q: "降级会怎样？", a: "你已生成的所有内容都保留在档案库里，永远可以发布。只有新的生成受当前套餐限制。" },
       { q: "内容会标注为 AI 吗？", a: "会 — EasyMode 发布的每条内容都带 #EasyModeAi 标签，让你的店铺符合 AI 披露规范。" },
