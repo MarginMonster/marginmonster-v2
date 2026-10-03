@@ -5,6 +5,7 @@
 
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { db } from "../db.server";
+import { stripeAnchorFrom } from "../lib/billing-period";
 import {
   activateStripePlan,
   creditStripePack,
@@ -48,7 +49,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return new Response("Unfulfillable session", { status: 500 }); // Stripe retries; it also shows up as failing
       }
       if (accountId && meta.tierKey) {
-        await activateStripePlan(accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null);
+        // A completed, PAID checkout session is always a period the merchant
+        // just bought — first subscription, resubscribe after a lapse, or a
+        // tier change (which opens a fresh subscription and cancels the old).
+        // The session object carries no period fields, which is why this says
+        // "fresh-payment" rather than passing an anchor. It cannot be farmed:
+        // getting here required payment_status "paid" on a new full-price
+        // session, checked above.
+        await activateStripePlan(
+          accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null,
+          false, { kind: "fresh-payment" },
+        );
       } else if (accountId && meta.packTokens) {
         // The checkout session id is the natural idempotency key — Stripe
         // retries this webhook, and a replay used to credit the pack twice.
@@ -85,7 +96,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             // and a cancellation that only appears in one of them must still
             // reach the merchant's dashboard.
             const willCancel = obj.cancel_at_period_end === true || !!obj.cancel_at;
-            await activateStripePlan(accountId, meta.tierKey, subId, (obj.customer as string) || null, willCancel);
+            // This event fires on RENEWALS and on plain edits alike, so the
+            // wallet roll is decided from Stripe's own period anchor rather
+            // than from the fact that we got an event: a renewal advances it
+            // and rolls, a cancel-at-period-end toggle leaves it alone and
+            // rolls nothing. Also the fix for a trial converting on Stripe's
+            // schedule, which used to grant less than the Studio's own
+            // end-trial button. See billing-period.ts.
+            await activateStripePlan(
+              accountId, meta.tierKey, subId, (obj.customer as string) || null, willCancel,
+              { kind: "stripe-anchor", startsAt: stripeAnchorFrom(obj) },
+            );
           }
         } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
           await deactivateStripePlan(accountId, (obj.id as string) || null);

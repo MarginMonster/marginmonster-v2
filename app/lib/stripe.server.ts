@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { artLog } from "./art-log.server";
+import { decidePeriodRoll, type ActivationPeriod } from "./billing-period";
 import { PLAN_BY_KEY, TOKEN_PACKS, annualPrice, type PlanKey } from "./plan-config";
 
 const API = "https://api.stripe.com/v1";
@@ -255,11 +256,27 @@ async function webShopIdFor(accountId: string): Promise<string | null> {
 /** @param cancelAtPeriodEnd  What STRIPE currently says about renewal. Only
  *  the subscription.updated path has an opinion here; a fresh checkout never
  *  does, so it keeps the default. */
-export async function activateStripePlan(accountId: string, tierKey: string, subId: string | null, customerId: string | null, cancelAtPeriodEnd = false): Promise<void> {
+export async function activateStripePlan(
+  accountId: string,
+  tierKey: string,
+  subId: string | null,
+  customerId: string | null,
+  cancelAtPeriodEnd = false,
+  /** Which billing period this activation belongs to. Defaults to the
+   *  conservative case — an unknown anchor rolls nothing. See billing-period.ts
+   *  for why this is a decision and not a one-line reset. */
+  period: ActivationPeriod = { kind: "stripe-anchor", startsAt: null },
+): Promise<void> {
   const tier = PLAN_BY_KEY[tierKey as PlanKey];
   if (!tier) return;
   const shopId = await webShopIdFor(accountId);
   if (!shopId) return;
+  // Read the period we last granted BEFORE the upsert touches the row, so the
+  // roll below can be pinned to it.
+  const priorPlan = await db.plan
+    .findUnique({ where: { shopId }, select: { periodStart: true } })
+    .catch(() => null);
+  const rollDecision = decidePeriodRoll(priorPlan?.periodStart ?? null, period);
   // A TIER CHANGE MUST END THE OLD SUBSCRIPTION.
   //
   // createPlanCheckout always opens a FRESH subscription session — no
@@ -340,14 +357,48 @@ export async function activateStripePlan(accountId: string, tierKey: string, sub
       // account's one trial, createPlanCheckout carries the same date onto
       // any later subscription, and moving it forward on a plan edit is
       // exactly how the trial ceiling used to come unstuck.
-      // NOT tokensUsed:0 / periodStart:now. This runs on every
-      // customer.subscription.updated (api.stripe-webhook.tsx:38), not just on
-      // first activation, so resetting here handed back a full monthly
-      // allowance on any subscription edit — repeatable, and real COGS.
-      // refreshPeriod() in tokens.server.ts owns the monthly roll and is
-      // correctly guarded on PERIOD_MS having actually elapsed.
+      // STILL NOT tokensUsed:0 / periodStart:now HERE. This runs on every
+      // customer.subscription.updated, not just on first activation, so
+      // resetting unconditionally handed back a full monthly allowance on any
+      // subscription edit — repeatable, and real COGS. The roll is done below
+      // instead, as a CONDITIONAL write, and only when the period actually
+      // changed; see billing-period.ts.
     },
   });
+  // THE RETURNING CUSTOMER'S WALLET.
+  //
+  // Everything above is the same for a first subscription and a resubscribe,
+  // and that was the bug: only the create branch ever set periodStart /
+  // tokensUsed, so a merchant who spent a month, lapsed and paid again
+  // inherited the old period's spend and could start a month they had just
+  // bought with a zero balance. The same gap made a trial converting on
+  // Stripe's schedule worth less than clicking the Studio's own end-trial
+  // button, which has always rolled the period (endTrialNow, below).
+  //
+  // Conditional on the value we read: pinning `periodStart` means a concurrent
+  // refreshPeriod, or Stripe redelivering this webhook, matches zero rows and
+  // re-reads rather than granting a second allowance. That is the house rule
+  // from tests/no-blind-writes.test.ts.
+  if (rollDecision.roll) {
+    const rolled = await db.plan.updateMany({
+      where: { shopId, periodStart: rollDecision.pinnedTo },
+      data: {
+        periodStart: rollDecision.rollTo,
+        tokensUsed: 0,
+        tokensIncluded: tier.monthlyTokens,
+        blogUsed: 0,
+        videoUsed: 0,
+      },
+    });
+    if (rolled.count) {
+      console.log(`[stripe] account ${accountId}: new billing period (${rollDecision.reason}) — wallet rolled to ${tier.monthlyTokens} tokens`);
+    } else {
+      // Not an error: something else rolled it first, which is the outcome we
+      // wanted anyway. Logged because a persistent miss would mean the pin is
+      // wrong rather than contended.
+      console.log(`[stripe] account ${accountId}: period roll skipped — the row moved under us (${rollDecision.reason})`);
+    }
+  }
   // Post-activation hooks — same rituals the Shopify billing return-leg runs
   // (app.plans loader). All shop-keyed, all idempotent, all non-fatal:
   // INSERT_COIN unlocks once (unique key), referral credit is one-shot
