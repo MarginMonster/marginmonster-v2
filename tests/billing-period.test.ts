@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decidePeriodRoll, stripeAnchorFrom, ANCHOR_EPSILON_MS } from "../app/lib/billing-period.ts";
+import { checkoutSessionVerdict, decidePeriodRoll, stripeAnchorFrom, ANCHOR_EPSILON_MS } from "../app/lib/billing-period.ts";
 
 /* activateStripePlan's UPDATE branch never rolled the wallet, so every
  * RETURNING customer inherited the previous period's spend. The fix must roll
@@ -87,6 +87,56 @@ test("a stored ISO string works as well as a Date — Prisma hands back either",
   const d = decidePeriodRoll(stored.toISOString(), { kind: "fresh-payment" }, now);
   assert.equal(d.roll, true);
   assert.ok(d.roll && d.pinnedTo.getTime() === stored.getTime());
+});
+
+/* THE DOUBLE-CHARGE WINDOW. Stripe redirects back the instant checkout
+ * completes, but only the webhook writes plan state — so for a few seconds the
+ * dashboard reads "no plan" under a modal saying the plan is live, and a second
+ * click bought a second full-price subscription whose invoice nothing refunds.
+ * This is the decision made before opening another checkout. */
+
+test("a paid, complete session is fulfilled rather than charged again", () => {
+  const v = checkoutSessionVerdict({
+    status: "complete", payment_status: "paid", metadata: { accountId: "a1", tierKey: "STUDIO" },
+  });
+  assert.equal(v.state, "paid");
+  assert.ok(v.state === "paid" && v.tierKey === "STUDIO");
+});
+
+test("no_payment_required counts as paid — a 100%-off or trial-only session", () => {
+  const v = checkoutSessionVerdict({
+    status: "complete", payment_status: "no_payment_required", metadata: { tierKey: "STARTER" },
+  });
+  assert.equal(v.state, "paid");
+});
+
+test("an ABANDONED session never blocks a new checkout", () => {
+  // The whole reason this is not a timed lockout: someone who closed the Stripe
+  // tab must be able to try again immediately.
+  const v = checkoutSessionVerdict({ status: "open", payment_status: "unpaid", metadata: { tierKey: "STUDIO" } });
+  assert.equal(v.state, "stale");
+  assert.equal(checkoutSessionVerdict({ status: "expired", payment_status: "unpaid", metadata: {} }).state, "stale");
+});
+
+test("a delayed bank method still settling is left to the async webhook", () => {
+  // checkout.session.async_payment_succeeded fulfils these. Granting here on an
+  // unpaid session is how a plan gets handed out before money lands.
+  const v = checkoutSessionVerdict({ status: "complete", payment_status: "unpaid", metadata: { tierKey: "STUDIO" } });
+  assert.equal(v.state, "stale");
+  assert.ok(v.state === "stale" && /settling/.test(v.why));
+});
+
+test("paid but carrying no tierKey is never fulfilled on a guess", () => {
+  const v = checkoutSessionVerdict({ status: "complete", payment_status: "paid", metadata: {} });
+  assert.equal(v.state, "stale");
+  assert.ok(v.state === "stale" && /no tierKey/.test(v.why));
+  assert.equal(checkoutSessionVerdict({ status: "complete", payment_status: "paid" }).state, "stale");
+});
+
+test("junk is stale, never paid", () => {
+  for (const junk of [null, undefined, "", 0, "complete", [], {}]) {
+    assert.equal(checkoutSessionVerdict(junk).state, "stale", JSON.stringify(junk));
+  }
 });
 
 /* Stripe moved current_period_start onto subscription items in the 2025 API

@@ -39,6 +39,40 @@ export type ActivationPeriod =
    *  only when it is genuinely newer than what we granted. */
   | { kind: "stripe-anchor"; startsAt: Date | null };
 
+/** Is a Checkout Session one we should fulfil, or one to discard?
+ *
+ *  The pure half of resolvePendingCheckout. Asked when a merchant clicks
+ *  "subscribe" while an earlier session of theirs is still unresolved, which is
+ *  the double-charge window: Stripe redirects back the instant checkout
+ *  completes, but only the webhook writes plan state, so the dashboard still
+ *  reads "no plan" for a few seconds and a second click bought a second
+ *  full-price subscription.
+ *
+ *  "paid" must be fulfilled rather than re-charged. Everything else — open,
+ *  expired, or complete but still settling on a delayed bank method — is
+ *  discarded so the merchant can start a fresh checkout immediately. Locking
+ *  them out for a fixed window instead would punish anyone who merely abandoned
+ *  one, and refusing to sell is worse than the narrow window we are closing.
+ *
+ *  A delayed method that later settles is fulfilled by
+ *  checkout.session.async_payment_succeeded, not here — which is why
+ *  complete-but-unpaid is "stale" and not an error. */
+export function checkoutSessionVerdict(
+  session: unknown,
+): { state: "paid"; tierKey: string } | { state: "stale"; why: string } {
+  if (!session || typeof session !== "object") return { state: "stale", why: "no session" };
+  const s = session as Record<string, unknown>;
+  const meta = (s.metadata as Record<string, string> | null) || {};
+  const paid = s.payment_status === "paid" || s.payment_status === "no_payment_required";
+
+  if (s.status !== "complete") return { state: "stale", why: `status ${String(s.status)}` };
+  if (!paid) return { state: "stale", why: `payment_status ${String(s.payment_status)} — a delayed method still settling` };
+  // Paid but unattributable: fulfilling it would mean guessing a tier, and the
+  // webhook's own handler refuses the same case loudly rather than guess.
+  if (!meta.tierKey) return { state: "stale", why: "paid but carries no tierKey" };
+  return { state: "paid", tierKey: meta.tierKey };
+}
+
 /** Read Stripe's current_period_start off a subscription object, in seconds,
  *  from EITHER place it lives.
  *

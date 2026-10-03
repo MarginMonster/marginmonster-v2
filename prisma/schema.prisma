@@ -40,6 +40,19 @@ model Account {
   /// granted once per account; without this, every tier change opened a
   /// fresh checkout with another 7 free days attached.
   trialUsedAt      DateTime?
+  /// The Stripe Checkout Session this account most recently OPENED and that we
+  /// have not yet seen resolve. Written before the merchant is redirected to
+  /// Stripe, which is the whole point: every other signal of "is a purchase in
+  /// flight" — plan.active, stripeSubId — is written by the webhook, and the
+  /// gap between Stripe's redirect back and that webhook arriving was a window
+  /// in which the dashboard still said "No plan" under a modal saying the plan
+  /// was live. Re-clicking there opened a second full-price checkout, and
+  /// activateStripePlan cancels the superseded subscription but cannot refund
+  /// the invoice Stripe already raised on it.
+  pendingCheckoutId String?
+  /// When that session was opened — for logging and for ignoring anything old
+  /// enough that Stripe has expired it.
+  pendingCheckoutAt DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   connections      Connection[]

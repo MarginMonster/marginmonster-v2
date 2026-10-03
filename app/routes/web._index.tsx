@@ -12,7 +12,7 @@ import {
   annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
 } from "../lib/plan-config";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
-import { createPackCheckout, createPlanCheckout, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
+import { createPackCheckout, createPlanCheckout, resolvePendingCheckout, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
@@ -195,6 +195,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // through — this only blocks the pure duplicate.
     if (shop.activePlan?.active && resolveTierKey(shop.activePlan.type) === tierKey) {
       return json({ error: `You're already on ${PLAN_BY_KEY[tierKey].name}.` });
+    }
+    // ...but that guard can only read what the WEBHOOK writes, and Stripe
+    // redirects the merchant back the instant checkout completes. For the first
+    // seconds after paying, plan.active is still false, the HUD still says "No
+    // plan", and the success modal above is drawn from the ?welcome= parameter
+    // alone — so re-reading that screen and clicking again passed this check
+    // and opened a SECOND full-price subscription. activateStripePlan then
+    // cancels the superseded one, but Stripe has already raised its invoice and
+    // nothing refunds it.
+    //
+    // So ask Stripe about the checkout we know is in flight before opening
+    // another. An abandoned or expired session is cleared and we fall straight
+    // through, so nobody is locked out of subscribing; a PAID one activates
+    // here and tells the merchant the truth instead of charging them twice.
+    try {
+      const pending = await resolvePendingCheckout(account.id);
+      if (pending.state === "paid") {
+        const name = PLAN_BY_KEY[(pending.tierKey || tierKey) as PlanKey]?.name || "Your plan";
+        return json({ error: `${name} is already active — that last payment just took a moment to land. Reload to see it.` });
+      }
+    } catch (e) {
+      // Never block a checkout on the guard itself failing: the window this
+      // closes is narrow, and refusing to sell is worse than re-opening it.
+      console.error("[web] pending-checkout resolve failed (continuing):", e instanceof Error ? e.message : e);
     }
     const annual = form.get("annual") === "1";
     try {

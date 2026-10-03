@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { artLog } from "./art-log.server";
-import { decidePeriodRoll, type ActivationPeriod } from "./billing-period";
+import { checkoutSessionVerdict, decidePeriodRoll, type ActivationPeriod } from "./billing-period";
 import { PLAN_BY_KEY, TOKEN_PACKS, annualPrice, type PlanKey } from "./plan-config";
 
 const API = "https://api.stripe.com/v1";
@@ -201,7 +201,77 @@ export async function createPlanCheckout(opts: {
     success_url: `${opts.baseUrl}/web?welcome=${opts.tierKey}`,
     cancel_url: `${opts.baseUrl}/web`,
   });
+  // Record the session BEFORE the merchant leaves for Stripe. Nothing else
+  // marks a purchase as in flight until the webhook lands, which is what made
+  // the return-leg a double-charge window — see pendingCheckoutId on Account
+  // and resolvePendingCheckout below. Non-fatal: failing to record it must not
+  // cost the merchant a checkout they are trying to start.
+  await db.account
+    .update({
+      where: { id: opts.accountId },
+      data: { pendingCheckoutId: (session.id as string) || null, pendingCheckoutAt: new Date() },
+    })
+    .catch((e) => console.error("[stripe] could not record the pending checkout (non-fatal):", e));
   return session.url as string;
+}
+
+/** Has the checkout this account last opened already been paid for?
+ *
+ *  The duplicate-subscription guard on the dashboard can only read state the
+ *  WEBHOOK writes, so for the first seconds after Stripe redirects back it
+ *  still reports "no plan" — and a merchant who re-reads that screen and clicks
+ *  again buys a second full-price subscription. The superseded one is then
+ *  cancelled, but Stripe has already raised its invoice and nothing refunds it.
+ *
+ *  So before opening another checkout, ask Stripe about the one in flight. This
+ *  deliberately does NOT lock the merchant out for a fixed window: someone who
+ *  simply abandoned a checkout must be able to start another immediately, so an
+ *  unpaid or expired session is cleared and reported as stale.
+ *
+ *  It also repairs a webhook that never arrives at all: a completed, paid
+ *  session activates the plan here, on the merchant's own next click. */
+export async function resolvePendingCheckout(
+  accountId: string,
+): Promise<{ state: "none" | "stale" | "paid"; tierKey?: string }> {
+  if (!stripeEnabled()) return { state: "none" };
+  const acct = await db.account
+    .findUnique({ where: { id: accountId }, select: { pendingCheckoutId: true } })
+    .catch(() => null);
+  const id = acct?.pendingCheckoutId;
+  if (!id) return { state: "none" };
+
+  const clear = () =>
+    db.account
+      .updateMany({ where: { id: accountId, pendingCheckoutId: id }, data: { pendingCheckoutId: null, pendingCheckoutAt: null } })
+      .catch(() => { /* non-fatal */ });
+
+  let session: Record<string, unknown>;
+  try {
+    session = await stripeReq("GET", `/checkout/sessions/${encodeURIComponent(id)}`);
+  } catch (e) {
+    // A session Stripe will not tell us about (deleted, wrong mode, a key
+    // rotation) must not wedge the merchant out of subscribing. Treat it as
+    // stale and let them proceed — the worst case is the window we already had.
+    console.error(`[stripe] could not read pending session ${id} — treating as stale:`, e instanceof Error ? e.message : e);
+    await clear();
+    return { state: "stale" };
+  }
+
+  const verdict = checkoutSessionVerdict(session);
+  if (verdict.state === "paid") {
+    console.log(`[stripe] account ${accountId}: pending session ${id} is already paid — activating here instead of charging again`);
+    // Idempotent: activateStripePlan upserts the plan and the period roll is a
+    // conditional write, so this and a late webhook cannot both grant.
+    await activateStripePlan(accountId, verdict.tierKey, (session.subscription as string) || null, (session.customer as string) || null, false, {
+      kind: "fresh-payment",
+    });
+    await clear();
+    return { state: "paid", tierKey: verdict.tierKey };
+  }
+
+  console.log(`[stripe] account ${accountId}: pending session ${id} discarded — ${verdict.why}`);
+  await clear();
+  return { state: "stale" };
 }
 
 /** One-time token pack checkout. */
@@ -307,6 +377,11 @@ export async function activateStripePlan(
       stripeSubId: subId,
       stripeCustomerId: customerId,
       ...(firstEver ? { trialUsedAt: new Date() } : {}),
+      // Whatever was in flight has now resolved, so stop guarding on it. Left
+      // set, it would make the merchant's NEXT genuine checkout take the
+      // resolve path against a session that is already spent.
+      pendingCheckoutId: null,
+      pendingCheckoutAt: null,
     },
   }).catch(() => { /* non-fatal */ });
 
