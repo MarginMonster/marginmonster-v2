@@ -259,7 +259,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // serial, and the good import lands second and wins.
       await enqueueJob(shop.id, "IMPORT_CATALOG", { storeUrl, cap: CATALOG_CAP });
     }
-    await db.shop.update({ where: { id: shop.id }, data: { storeUrl } }).catch(() => { /* column is optional */ });
+    // Store the NORMALIZED origin, never the raw field. The placeholder reads
+    // "yourstore.com" and the button is type="button", so type="url" never
+    // validates — a merchant typing exactly what is shown saved a schemeless
+    // value. catalog-import rewrites it the same way, but only AFTER a
+    // successful discoverCatalog(), so every merchant whose import failed kept
+    // it forever: lp.$slug blanked the buy button (a paid landing page with
+    // nothing to click) and both /go turnstiles threw on new URL() and sent
+    // their shoppers to easymodeapp.com instead of the merchant's store.
+    await db.shop.update({ where: { id: shop.id }, data: { storeUrl: storeOrigin(storeUrl).origin } }).catch(() => { /* column is optional */ });
     return json({ catalogQueued: true });
   }
 
