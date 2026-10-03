@@ -581,6 +581,16 @@ export default function WebCampaigns() {
         <section className="wc-sec">
           <div className="wc-lbl">Start a campaign</div>
 
+          {/* Without a plan every "make a month" card reads "unlocks on the
+              Studio plan" with a dead Start button and no way forward. Say where
+              to go, and that scheduling what they already made is free. */}
+          {!d.hasPlan && (
+            <p className="wc-hint">
+              A created-and-posted campaign runs on a plan — <Link to="/web#plans">start your 7-day free trial</Link> to launch one.
+              Scheduling pieces you&rsquo;ve already made is always free.
+            </p>
+          )}
+
           <div className="wc-modes">
             <button type="button" className={mode === "new" ? "sel" : ""} onClick={() => setMode("new")} aria-pressed={mode === "new"}>
               <b>Make a month of content</b>

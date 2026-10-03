@@ -1088,7 +1088,7 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || shortBy > 0;
 
   return (
     <div>
@@ -1439,6 +1439,12 @@ export default function WebStudio() {
               <div className="ws-connect">
                 <b><Ico n="box" /> Bring your whole store in</b>
                 <p>Paste your store address once and we&rsquo;ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.</p>
+                {/* A failed import otherwise showed only on the Import tab, so a
+                    merchant who came straight here to generate had no idea why
+                    their store never appeared. */}
+                {!d.catalogSyncing && d.catalogFailed && (
+                  <div className="wb-err" style={{ marginBottom: 8 }}><b>That import didn&apos;t work.</b> {d.catalogFailed} You can paste a single product link below instead.</div>
+                )}
                 {!d.catalogSyncing && (
                   <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>
                 )}
@@ -1672,6 +1678,8 @@ export default function WebStudio() {
               <button className="wb-btn" name="intent" value={tab} disabled={ctaDisabled}>
                 {busy
                   ? "Sending to the studio…"
+                  : !d.hasPlan
+                    ? "Pick a plan to start"
                   : shortBy > 0
                     ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
                   : burst > 1
@@ -1680,7 +1688,7 @@ export default function WebStudio() {
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
-                  ? "Choose a plan to generate."
+                  ? <>Your 7-day free trial unlocks every generator — <Link to="/web#plans">pick a plan</Link> to begin.</>
                   : shortBy > 0
                     ? <>Wallet: {d.tokens.toLocaleString("en-US")} tokens · <Link to="/web#plans">Add tokens</Link>{burst > 1 ? " or make fewer at once" : ""}</>
                     : `Wallet: ${d.tokens.toLocaleString("en-US")} tokens`}
