@@ -1321,6 +1321,141 @@ async function renderCalloutComposite(opts: {
   }
 }
 
+/** THE DETERMINISTIC NUMBER FLEX (stat) — the callout composite's twin, for the
+ *  one-big-number format. Same root problem: the generative render re-letters the
+ *  product's own brand wordmark ("HERO" -> "AEERD") and can mangle the hero
+ *  number's unit, and a stat ad lives or dies on that number being exactly right.
+ *  So we composite the REAL product cutout on a clean, text-free backdrop and
+ *  draw the huge number, its label, the headline and the CTA ourselves — number,
+ *  every word and the brand are then always perfect. The model only renders an
+ *  empty backdrop. Returns the finished file, or null on any failure (the caller
+ *  then falls straight through to the generative render, exactly as before). */
+async function renderStatComposite(opts: {
+  productImageUrl: string;
+  stat: string;
+  statlabel: string;
+  headline: string;
+  cta: string;
+  contentLang?: string | null;
+  styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const statRaw = (opts.stat || "").trim();
+  if (!statRaw || !/\d/.test(statRaw)) return null; // Number Flex needs a real number
+
+  const cutout = await removeBackground(opts.productImageUrl);
+  if (!cutout) return null;
+
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.sb-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.sc-${stamp}.png`);
+  const tmpStill = path.join(dir, `.ss-${stamp}.jpg`);
+  const fileName = `img-${stamp}.jpg`;
+  const out = path.join(dir, fileName);
+  try {
+    // 1) A clean, EMPTY, text-free backdrop (flux), warm-cream ffmpeg fallback —
+    //    identical to the callout composite so a flux hiccup never loses the ad.
+    let gotBg = false;
+    try {
+      const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`;
+      const bgUrl = await fluxDevStill(bgPrompt, "stat-backdrop");
+      if (bgUrl) {
+        const res = await fetch(bgUrl);
+        if (res.ok) { fs.writeFileSync(tmpBg, Buffer.from(await res.arrayBuffer())); gotBg = true; }
+      }
+    } catch { /* fall back to a solid colour */ }
+    {
+      const r = await fetch(cutout);
+      if (!r.ok) return null;
+      fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer()));
+    }
+
+    // 2) Composite the cutout in the LOWER-CENTER — the hero number owns the top
+    //    half, so the product sits below it with a soft drop shadow.
+    const cut = headerSize(tmpCut);
+    const boxW = 360, boxH = 360;
+    const cx = W / 2, cy = Math.round(H * 0.63);
+    let pw = boxW, ph = boxH;
+    if (cut) {
+      const s = Math.min(boxW / cut.w, boxH / cut.h);
+      pw = Math.round(cut.w * s); ph = Math.round(cut.h * s);
+    }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xEFE7DA:s=${W}x${H}`];
+    const composite =
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];` +
+      `[1:v]scale=${pw}:${ph}[cut];` +
+      `[cut]split[c1][c2];` +
+      `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=12,colorchannelmixer=aa=0.33[sh];` +
+      `[bg][sh]overlay=x=${px}+8:y=${py}+14[b1];` +
+      `[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    const comp = await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", composite, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill]);
+    if (!comp.ok || !fs.existsSync(tmpStill)) return null;
+
+    // 3) Draw the number, its label, the headline and the CTA ourselves.
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try {
+      const { resolveTextFont } = await import("./ugc-ad-pipeline.server");
+      fontFile = await resolveTextFont(`${statRaw} ${opts.statlabel} ${opts.headline} ${opts.cta}`);
+    } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+
+    const statTxt = dt(statRaw).toUpperCase();
+    const labelTxt = dt(opts.statlabel).toUpperCase();
+    const hlTxt = dt(opts.headline).toUpperCase();
+    const ct = dt(opts.cta).toUpperCase();
+    if (!statTxt) return null;
+
+    // Hero number: as big as fits ~86% of the width, capped so a single digit
+    // stays dramatic without overflowing. It grows UPWARD from a fixed label
+    // line, so the number+label block sits in the same place for any value.
+    const sg = hasCJK(statTxt) ? 1.05 : 0.60;
+    const statSize = Math.max(90, Math.min(230, Math.floor((W * 0.86) / (Math.max(1, statTxt.length) * sg))));
+    const labelY = 300;
+    const statY = Math.max(40, labelY - statSize - 8);
+
+    // Label and headline are width-capped single lines, so neither can overflow.
+    const lg = hasCJK(labelTxt) ? 1.05 : 0.52;
+    const labelSize = labelTxt ? Math.max(20, Math.min(46, Math.floor((W * 0.80) / (Math.max(1, labelTxt.length) * lg)))) : 0;
+    const hg = hasCJK(hlTxt) ? 1.05 : 0.52;
+    const hlSize = hlTxt ? Math.max(20, Math.min(36, Math.floor((W * 0.84) / (Math.max(1, hlTxt.length) * hg)))) : 0;
+    const hlY = Math.round(H * 0.82);
+
+    // Auto-contrast, sampled where each block actually sits.
+    const topLuma = (await bandLuma(bin, tmpStill, 0, 0.30)) ?? 180;
+    const topDark = topLuma > 150; // dark text on a light top
+    const statColor = topDark ? "0x141414" : "white";
+    const statShadow = topDark ? "shadowcolor=white@0.35:shadowx=0:shadowy=2" : "shadowcolor=black@0.5:shadowx=0:shadowy=3";
+    const hlLuma = (await bandLuma(bin, tmpStill, 0.78, 0.10)) ?? 180;
+    const hlDark = hlLuma > 150;
+    const hlColor = hlDark ? "0x141414" : "white";
+    const hlShadow = hlDark ? "shadowcolor=white@0.35:shadowx=0:shadowy=2" : "shadowcolor=black@0.5:shadowx=0:shadowy=3";
+
+    const vf = [
+      // lift a bright top a touch so a white number still reads (mirrors callout)
+      topDark ? "" : "drawbox=x=0:y=0:w=iw:h=360:color=black@0.16:t=fill",
+      `drawtext=fontfile='${font}':text='${statTxt}':fontsize=${statSize}:fontcolor=${statColor}:${statShadow}:x=(w-text_w)/2:y=${statY}`,
+      labelTxt ? `drawtext=fontfile='${font}':text='${labelTxt}':fontsize=${labelSize}:fontcolor=${statColor}:${statShadow}:x=(w-text_w)/2:y=${labelY}` : "",
+      hlTxt ? `drawtext=fontfile='${font}':text='${hlTxt}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${hlY}` : "",
+      ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x141414@0.92:boxborderw=18:x=(w-text_w)/2:y=h-92` : "",
+    ].filter(Boolean).join(",");
+
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpStill, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch {
+    return null;
+  } finally {
+    for (const f of [tmpBg, tmpCut, tmpStill]) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } }
+  }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -2512,6 +2647,38 @@ export async function runFormatRung(opts: {
         console.log(`[image-ad] format callout: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
       } else {
         console.log(`[image-ad] format callout: deterministic (primary) not produced — trying generative`);
+      }
+    }
+  }
+
+  // NUMBER FLEX (stat) → DETERMINISTIC FIRST, same reasoning as callout: the
+  // generative render re-letters the product's brand wordmark and can mangle the
+  // hero number's unit — and a stat ad is nothing if the number is wrong.
+  // Drawing the number/label/headline on the real cutout makes the number and
+  // brand exact. The generative path below stays the safety net: a null composite
+  // or a re-QA failure falls straight through, so a bug here can't break stat ads.
+  if (opts.formatKey === "stat") {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    if (base && (copy.stat || "").trim()) {
+      const det = await renderStatComposite({
+        productImageUrl: opts.productImageUrl,
+        stat: copy.stat || "",
+        statlabel: copy.statlabel || "",
+        headline: copy.headline || "",
+        cta: copy.cta || "",
+        contentLang: opts.contentLang,
+        styleDesc: pickBackdrop(),
+      });
+      if (det) {
+        const detUrl = `${base}/renders/${det.file}`;
+        const qaD = await qaFormat(detUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+        if (qaD.pass) {
+          console.log(`[image-ad] format stat: deterministic number-flex (primary) — perfect number + real product`);
+          return { imageUrl: detUrl, copy, prompt: "deterministic-stat", qaPass: true, qaReason: "clean (deterministic stat)", retried: false, fallback: null };
+        }
+        console.log(`[image-ad] format stat: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
+      } else {
+        console.log(`[image-ad] format stat: deterministic (primary) not produced — trying generative`);
       }
     }
   }
