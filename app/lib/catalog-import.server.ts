@@ -16,7 +16,7 @@
  * SSRF: every host goes through isBlockedHost before we fetch it. */
 
 import { db } from "../db.server";
-import { formatPrice, isBlockedHost, safeFetch, scrapeProductPage, shopifyCurrency, upgradeImageResolution } from "./product-scrape.server";
+import { formatPrice, htmlToText, isBlockedHost, safeFetch, scrapeProductPage, shopifyCurrency, upgradeImageResolution } from "./product-scrape.server";
 
 /* EVERY hop, not just the address the merchant typed.
  *
@@ -61,6 +61,9 @@ export interface DiscoveredProduct {
   imageUrl?: string;
   handle?: string;
   priceText?: string;
+  /** Plain-text product description, captured from the feed/page. Grounds ad
+   *  copy so specs are real and copy is product-specific. */
+  description?: string;
 }
 
 /** Hard ceiling on ONE import. A crawl costs the merchant's own server a
@@ -113,6 +116,7 @@ const json = async (url: string, timeoutMs = 12_000): Promise<unknown | null> =>
 type ShopifyProduct = {
   title?: string;
   handle?: string;
+  body_html?: string;
   images?: { src?: string }[];
   variants?: { price?: string }[];
 };
@@ -138,6 +142,7 @@ async function fromShopify(origin: URL, cap: number): Promise<DiscoveredProduct[
         handle: p.handle,
         // products.json quotes a decimal string, not minor units.
         priceText: formatPrice(p.variants?.[0]?.price, currency),
+        description: htmlToText(p.body_html),
       });
       if (out.length >= cap) break;
     }
@@ -152,6 +157,8 @@ type WooProduct = {
   name?: string;
   permalink?: string;
   slug?: string;
+  short_description?: string;
+  description?: string;
   images?: { src?: string }[];
   prices?: {
     price?: string;
@@ -201,6 +208,9 @@ async function fromWoo(origin: URL, cap: number): Promise<DiscoveredProduct[]> {
         imageUrl: p.images?.[0]?.src ? upgradeImageResolution(p.images[0].src) : undefined,
         handle: p.slug,
         priceText: wooPriceText(p.prices),
+        // short_description is the punchy marketing blurb; fall back to the full
+        // description when a store leaves the short one empty.
+        description: htmlToText(p.short_description) || htmlToText(p.description),
       });
       if (out.length >= cap) break;
     }
@@ -303,7 +313,7 @@ async function crawlProductPages(urls: string[], deadline: number, onProgress?: 
           // priceText comes through here too — the Shopify and Woo feeds carry
           // a price, and a crawled store has one in its JSON-LD/OG tags, so a
           // sitemap-imported catalogue is no longer priceless.
-          out.push({ title: p.title.slice(0, 200), url, imageUrl: safeImageUrl(p.image), handle: undefined, priceText: p.price });
+          out.push({ title: p.title.slice(0, 200), url, imageUrl: safeImageUrl(p.image), handle: undefined, priceText: p.price, description: p.description });
         }
       } catch { /* one dead product page never kills the import */ }
       onProgress?.(out.length);
@@ -404,6 +414,7 @@ export async function importCatalog(
       imageUrl: p.imageUrl || null,
       handle: p.handle || null,
       priceText: p.priceText || null,
+      description: p.description || null,
       position: position++,
       lastSeenAt: startedAt,
     };

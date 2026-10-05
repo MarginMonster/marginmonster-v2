@@ -574,6 +574,11 @@ model CatalogProduct {
   imageUrl   String?
   handle     String?
   priceText  String?
+  /// Plain-text product description/specs captured at import. Grounds ad copy
+  /// so the copywriter states REAL facts instead of inventing specs, and writes
+  /// copy specific to THIS product instead of generic lines. Null until the
+  /// product is (re-)imported after this field shipped.
+  description String?
   position   Int      @default(0)
   // Refreshes re-stamp this; anything not seen in the newest sync is stale
   // (delisted upstream) and gets swept, so the picker never offers a dead SKU.

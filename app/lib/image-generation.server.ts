@@ -1896,12 +1896,19 @@ async function formatCopy(
   /** The merchant's ACTUAL price for this product, verbatim from the
    *  catalogue. Undefined when we do not know it — in which case no format
    *  may print a number. */
-  productPrice?: string | null
+  productPrice?: string | null,
+  /** The merchant's own product description, verbatim from the catalogue/scrape.
+   *  The ONLY source the copywriter may draw specs from; null when unknown, in
+   *  which case the copy stays on benefits rather than inventing specifics. */
+  productDetails?: string | null
 ): Promise<Record<string, string> | null> {
   try {
     const prompt = [
       `You write short, punchy copy for a "${formatKey}" style e-commerce static ad.${langDirective(contentLang)}`,
       `Product: "${productTitle}".`,
+      productDetails
+        ? `The merchant's own description of this product — the ONLY facts you may treat as true, so draw the real specifics from here:\n"${productDetails}"`
+        : "",
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
       `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
@@ -1924,6 +1931,12 @@ async function formatCopy(
       productPrice
         ? `The product’s REAL price is "${productPrice}". Wherever a price appears, reproduce that string EXACTLY — never round it, never restate it in another currency, never make up a different one. Any per-use or per-serving figure must be arithmetic on that number and nothing else.`
         : `You do NOT know this product’s price. Never write a currency amount anywhere — no price, no cost-per-use, no per-serving figure, no “from $…”. Sell it on what it is instead.`,
+      // GROUND EVERY SPEC, AND MAKE IT SPECIFIC. The copy prints on a paid ad
+      // the merchant runs as fact: an invented spec ("14-day battery", "2%
+      // hyaluronic acid") is a false-advertising claim they are liable for, and
+      // generic copy that would fit any product is why a catalogue's ads all
+      // read alike. Real description text fixes both at once.
+      `Only state a concrete spec, measurement, material, ingredient, capacity, battery life, size, certification, award or number if it appears in the product details above${productDetails ? "" : " — and NONE were provided for this product"}. If a specific is not given, do NOT invent one: write a benefit, feeling or use-case instead. Invent no customer counts, star ratings, "#1"/"best-seller" claims, press quotes, awards or scarcity figures. Make every line SPECIFIC to THIS product's real details — never a generic line that would fit any product.`,
       // From a full 49-template sweep: every remaining defect was text. Two of
       // them were written wrong before anything was rendered — an apostrophe
       // dropped ("thats"), and a Versus ad whose two columns contradicted each
@@ -2007,14 +2020,17 @@ export async function runFormatRung(opts: {
   merchantOffer?: string | null;
   /** The merchant's real price, when the catalogue has one. */
   productPrice?: string | null;
+  /** The merchant's real product description — the only source of truth for
+   *  specs. Null when unknown; copy then avoids specifics. */
+  productDetails?: string | null;
 }): Promise<FormatRunResult> {
   const nil = (fallback: string): FormatRunResult =>
     ({ imageUrl: null, copy: null, prompt: null, qaPass: false, qaReason: "", retried: false, fallback });
 
   // The merchant PICKED this format. Losing it silently and shipping a generic
   // scene instead is the worst possible outcome, so copy gets a second chance.
-  let copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice);
-  if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice);
+  let copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice, opts.productDetails);
+  if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice, opts.productDetails);
   if (!copy) {
     // Two formats need real money on the canvas. With no price in the
     // catalogue for this product the copywriter is forbidden to write one, so
@@ -2986,21 +3002,33 @@ export async function generateImageAd(
           // ROTATION questline drops, onboarding, the archive remix and the
           // webhooks), and the auto-posting path is precisely the one that
           // would have been missed.
-          const productPrice = await (async () => {
+          // The real price AND the real description, resolved together from the
+          // catalogue by title — the same single-lookup pattern the price note
+          // above describes, so grounding reaches every entry point (studio,
+          // questline drops, onboarding, remix, webhooks) without threading a
+          // new field through each payload.
+          const row = await (async () => {
             try {
-              const row = await db.catalogProduct.findFirst({
+              return await db.catalogProduct.findFirst({
                 where: { shopId, title: productTitle },
-                select: { priceText: true },
+                select: { priceText: true, description: true },
               });
-              const p = (row?.priceText || "").trim();
-              // A price has to look like one. A blank, a “Sold out” or a
-              // scrape artefact must read as “we do not know”, not as money.
-              return /[0-9]/.test(p) && p.length <= 24 ? p : null;
             } catch { return null; }
           })();
+          const productPrice = (() => {
+            const p = (row?.priceText || "").trim();
+            // A price has to look like one. A blank, a “Sold out” or a
+            // scrape artefact must read as “we do not know”, not as money.
+            return /[0-9]/.test(p) && p.length <= 24 ? p : null;
+          })();
+          // The merchant's own listing copy — the ONLY source of truth for
+          // specs. Null when the catalogue has none (not imported since the
+          // field shipped, or a single-URL product); the copywriter then falls
+          // back to benefit language instead of inventing specifics.
+          const productDetails = (row?.description || "").trim() || null;
           const r = await runFormatRung({
             formatKey: f.key, fields: f.fields, productTitle, productImageUrl: productImageUrl!,
-            tone: voiceTone, direction: stylePrompt, contentLang, merchantOffer, productPrice,
+            tone: voiceTone, direction: stylePrompt, contentLang, merchantOffer, productPrice, productDetails,
           });
           if (r.qaPass && r.imageUrl) {
             imageUrl = r.imageUrl;

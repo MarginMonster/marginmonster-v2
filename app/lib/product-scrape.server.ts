@@ -21,7 +21,29 @@ export interface ScrapedProduct {
    *  states one — we never guess, because a wrong price in an ad is worse
    *  than no price at all. */
   price?: string;
+  /** Plain-text product description, from JSON-LD / og:description / meta. Lets
+   *  the ad copywriter state REAL specs instead of inventing them. */
+  description?: string;
   url: string;
+}
+
+/** HTML (or plain) product description → clean plain text for the copywriter.
+ *  Strips script/style with content, drops all tags, decodes common entities,
+ *  collapses whitespace and caps the length. Returns undefined for nothing
+ *  useful so an empty description is never stored as "". Shared by the catalog
+ *  importer, which reads product-scrape (one-way, no cycle). */
+export function htmlToText(input: string | undefined | null, max = 600): string | undefined {
+  if (!input) return undefined;
+  const text = String(input)
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"').replace(/&#0*39;|&apos;|&rsquo;|&#8217;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => { const c = parseInt(n, 10); return c ? String.fromCharCode(c) : " "; })
+    .replace(/\s+/g, " ")
+    .trim();
+  return text ? text.slice(0, max) : undefined;
 }
 
 /** Format a raw price + currency the way a shopper would see it. Falls back to
@@ -251,7 +273,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
     try {
       const jres = await safeFetch(`${u.origin}${u.pathname.replace(/\/$/, "")}.js`, { signal: AbortSignal.timeout(8000), headers: UA });
       if (jres.ok) {
-        const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[]; price?: number };
+        const pj = (await jres.json()) as { title?: string; featured_image?: string; images?: string[]; price?: number; description?: string };
         if (pj?.title) {
           const first = pj.featured_image || pj.images?.[0];
           return {
@@ -261,6 +283,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
             // states no currency, so this used to default to USD and print a
             // dollar sign on every non-USD storefront.
             price: typeof pj.price === "number" ? formatPrice(pj.price / 100, await shopifyCurrency(u.origin)) : undefined,
+            description: htmlToText(pj.description),
             url: u.href,
           };
         }
@@ -276,6 +299,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
   let titleFromLd = false; // a JSON-LD name is the EXACT product name — never suffix-trim it
   let image: string | undefined;
   let price: string | undefined;
+  let description: string | undefined;
 
   // 1) JSON-LD Product — the richest, most reliable source when present.
   const ldBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
@@ -291,6 +315,7 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
       });
       if (prod) {
         if (typeof prod.name === "string") { title = prod.name; titleFromLd = true; }
+        if (!description && typeof prod.description === "string") description = htmlToText(prod.description);
         const im = Array.isArray(prod.image) ? prod.image[0] : prod.image;
         const src = typeof im === "object" && im
           ? ((im as { url?: string; contentUrl?: string; "@id"?: string }).contentUrl
@@ -346,12 +371,17 @@ export async function scrapeProductPage(rawInput: string): Promise<ScrapedProduc
     );
   }
 
+  // A product description where the page ships no JSON-LD one — og:description
+  // is what Wix/Squarespace/Woo render server-side.
+  description = description || htmlToText(meta("og:description")) || htmlToText(meta("twitter:description")) || htmlToText(meta("description"));
+
   if (!title && !image) throw new Error("Couldn't find product info on that page.");
   const siteName = meta("og:site_name");
   return {
     title: title ? cleanProductTitle(title, siteName, titleFromLd) : undefined,
     image: image ? upgradeImageResolution(image) : undefined,
     price,
+    description,
     url: u.href,
   };
 }
