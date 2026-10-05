@@ -45,10 +45,11 @@ const CONTENT_TYPES = [
 // creative direction — translated at submit so the queue, the capability
 // gate and the pipelines never learn new keys.
 /* BURST — make several at once instead of tapping generate over and over.
- * Generation is a numbers game: you pick the one you like out of a handful,
- * you don't get it first try. Caps differ because the money does — an image
- * is 5 tokens, a video is 60+, so a ten-video burst would empty most wallets
- * on a single tap. Shared by the picker UI and the action that charges. */
+ * It gives the merchant a set of usable variations to post or test in one go,
+ * not "pick one, bin the rest" — every take should be good. Caps differ because
+ * the money does — an image is 5 tokens, a video is 60+, so a ten-video burst
+ * would empty most wallets on a single tap. Shared by the picker UI and the
+ * action that charges. */
 const MAX_BURST = { image: 10, video: 3 } as const;
 const BURST_STEPS = { image: [1, 3, 5, 10], video: [1, 2, 3] } as const;
 /** Stagger a burst across the queue instead of dropping ten jobs in at once.
@@ -1682,8 +1683,9 @@ export default function WebStudio() {
             {(actionData as { trialEnded?: string } | null)?.trialEnded && (
               <div className="wb-ok" style={{ marginTop: 8 }}>{(actionData as { trialEnded?: string }).trialEnded}</div>
             )}
-            {/* BURST — you pick the one you like out of a handful; you don't
-                get it first try. Blog has no burst: nobody wants five near
+            {/* BURST — a handful of usable variations in one go, so the merchant
+                has options to post or test, not "pick one, bin the rest" (every
+                take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
             {tab !== "blog" && (
               <div className="ws-burst">
@@ -1699,8 +1701,8 @@ export default function WebStudio() {
                 {burst > 1 && (
                   <p className="ws-burst-note">
                     {tab === "image" && !templateKey && !formatKey && imageMode !== "presenter" && !service
-                      ? `${burst} different ad layouts at once — pick your favourite from the Archive.`
-                      : `${burst} takes at once — same setup, pick the best one.`}
+                      ? `${burst} different ad layouts at once — a full set, all ready to post.`
+                      : `${burst} takes at once — same setup, different angles, all yours to use.`}
                   </p>
                 )}
               </div>
@@ -1743,7 +1745,7 @@ export default function WebStudio() {
               <span className="ws-flex-rule" />
             </div>
             <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued} is being made`}</b>
-            <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>Archive</b> over the next few minutes — pick the one you like best and bin the rest.</> : <>It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
+            <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>Archive</b> over the next few minutes — a set of different takes, all ready to post.</> : <>It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
             <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}`}>View Archive ›</Link>
             <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
           </div>
