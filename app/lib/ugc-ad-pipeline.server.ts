@@ -435,7 +435,7 @@ function ffprobeBin(): string {
  *  mapping "N:a" on a SILENT clip makes ffmpeg fail hard, and the only way that
  *  happens is a mislabelled engine on a resumed job (a kling clip resumed as
  *  omni-human). Cheap probe beats burning a paid render on every retry. */
-function hasAudioStream(file: string): boolean {
+export function hasAudioStream(file: string): boolean {
   const out = spawnSync(
     ffprobeBin(),
     ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", file],
@@ -520,6 +520,23 @@ export function ffprobeDuration(file: string): number {
   const d = parseFloat((out.stdout || "").trim());
   if (!d || Number.isNaN(d)) throw new Error(`[ugc:assemble] couldn't probe duration (${out.stderr?.slice(0, 120)})`);
   return d;
+}
+
+/** The pixel dimensions of a video's first video stream, or null if it can't be
+ *  measured. Used by the output aspect-ratio QA — a square render shipping as a
+ *  "vertical" ad is a paid-for defect we must catch. Same ffprobe+spawnSync
+ *  pattern as ffprobeDuration above. */
+export function probeVideoDims(file: string): { w: number; h: number } | null {
+  try {
+    const out = spawnSync(
+      ffprobeBin(),
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file],
+      { encoding: "utf8", timeout: 15_000 }
+    );
+    const [w, h] = String(out.stdout || "").trim().split("x").map(Number);
+    if (!(w > 0) || !(h > 0)) return null;
+    return { w, h };
+  } catch { return null; }
 }
 
 /** Caption-safe text: bold UGC style is ALL CAPS; strip anything that fights

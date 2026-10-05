@@ -133,7 +133,12 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     // it, a job that downgraded its engine and then failed terminally refunded
     // the surcharge a second time (chargedTokens AND the 75 already returned).
     const charged = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[job.type];
-    const alreadyRefunded = typeof p.ckEngineRefundedAmount === "number" && p.ckEngineRefundedAmount > 0 ? p.ckEngineRefundedAmount : 0;
+    const alreadyRefunded =
+      (typeof p.ckEngineRefundedAmount === "number" && p.ckEngineRefundedAmount > 0 ? p.ckEngineRefundedAmount : 0) +
+      // Same subtraction for the aspect-ratio reconcile (video-generation.ts):
+      // it also records its amount only after the credit lands, so a video that
+      // aspect-refunded and then terminal-failed must not refund it twice.
+      (typeof p.ckAspectRefundedAmount === "number" && p.ckAspectRefundedAmount > 0 ? p.ckAspectRefundedAmount : 0);
     const amount = Math.max(0, charged - alreadyRefunded);
     try {
       // chargedFromExtra records which bucket the spend came out of, so the
@@ -683,6 +688,7 @@ async function runJob(
           resume: {
             predictionId: payload.ckVideoPredId as string | undefined,
             engineRefunded: payload.ckEngineRefunded === true,
+            aspectRefunded: payload.ckAspectRefunded === true,
           },
         });
       }

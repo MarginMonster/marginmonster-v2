@@ -9,7 +9,7 @@ import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { trimToWord } from "./text-trim";
-import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, probeVideoDims, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import fs from "node:fs";
 import path from "node:path";
 import { mirrorRender, storageEnabled } from "./object-storage.server";
@@ -195,6 +195,9 @@ interface GenerateVideoParams {
      *  re-reaches the reconcile below, and paying a refund twice is the worse
      *  bug — see the no-blind-writes rule. */
     engineRefunded?: boolean;
+    /** Set once the aspect-ratio refund has been CLAIMED, so a resumed job
+     *  never pays it twice — same guard as engineRefunded above. */
+    aspectRefunded?: boolean;
   };
 }
 
@@ -206,6 +209,14 @@ const VIDEO_POLL_MS = 12 * 60_000;
 import { surchargeShortfall, downgradeNote } from "./engine-delivery";
 import { engineSurcharge } from "./video-engines";
 import { refundTokens } from "./tokens.server";
+import { TOKEN_COST } from "./plan-config";
+
+// A video sold as a vertical social ad that renders square/landscape is a
+// paid-for defect that auto-posts wrong. Refund the FULL video price when that
+// happens: the render COGS is already spent and the fault is ours, so making
+// the merchant whole on a rare bad shape buys more trust than it costs — and
+// they keep the (honestly-labelled) asset. (Owner decision, 2026-10-04.)
+const ASPECT_REFUND = TOKEN_COST.video;
 
 export async function generateVideoAd(params: GenerateVideoParams): Promise<string> {
   const {
@@ -445,6 +456,36 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
 
   const storedUrl = await persistRemoteVideo(videoUrl);
 
+  // OUTPUT QA (v1): ASPECT RATIO. toVerticalFrame pads to 720x1280, but it FALLS
+  // BACK to the raw provider bytes when ffmpeg is unavailable or errors, and an
+  // image-to-video model returns the shape of its SEED FRAME — so a square
+  // product photo can ship a square clip that auto-posts as a "vertical" ad.
+  // That shipped silently, charged in full. Probe the file we actually serve;
+  // a probe we cannot run leaves the default assumption alone.
+  let qaAspect: { ok: boolean; w: number; h: number } | null = null;
+  if (storedUrl.startsWith("/renders/")) {
+    try {
+      const dims = probeVideoDims(path.join(process.cwd(), "data", "renders", path.basename(storedUrl)));
+      // 9:16 = 0.5625; 0.9 tolerates a near-square portrait but fails a true
+      // square (1.0) or landscape — the shapes that are actually wrong.
+      if (dims) qaAspect = { ok: dims.w / dims.h <= 0.9, w: dims.w, h: dims.h };
+    } catch { /* probe unavailable — assume fine */ }
+  }
+  // Refund the shape failure ONCE, modelled exactly on the engine-downgrade
+  // refund above: CLAIM before crediting, record the amount AFTER. The job still
+  // COMPLETES (we ship the usable, honestly-labelled asset), so refundPrepaidOnce
+  // never runs for it; the ckpt guard stops a RESUMED attempt paying twice.
+  if (qaAspect && !qaAspect.ok && !params.resume?.aspectRefunded) {
+    await ckpt({ ckAspectRefunded: true });
+    try {
+      await refundTokens(shopId, ASPECT_REFUND, params.chargedFromExtra);
+      await ckpt({ ckAspectRefundedAmount: ASPECT_REFUND });
+      console.warn(`[video] shipped ${qaAspect.w}x${qaAspect.h} (not vertical) — refunded ${ASPECT_REFUND} and labelled it honestly`);
+    } catch (e) {
+      console.error(`[video] ASPECT REFUND FAILED after claim — shop ${shopId} is owed ${ASPECT_REFUND}:`, e instanceof Error ? e.message.slice(0, 200) : e);
+    }
+  }
+
   const asset = await db.asset.create({
     data: {
       shopId,
@@ -455,7 +496,8 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       bodyJson: JSON.stringify({ style, videoUrl: storedUrl, sourceUrl: videoUrl, prompt }),
       // productImageUrl is what a REMIX rebuilds from. Without it the remix
       // regenerates the product from its name — 150 tokens of something else.
-      metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null, productImageUrl: params.productImageUrl || null, serviceMode: !!params.serviceMode }),
+      metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null, productImageUrl: params.productImageUrl || null, serviceMode: !!params.serviceMode,
+        aspect: qaAspect ? (qaAspect.ok ? "vertical" : "nonvertical") : "unverified", qa: qaAspect ? { aspect: qaAspect } : undefined }),
     },
   });
   return asset.id;
