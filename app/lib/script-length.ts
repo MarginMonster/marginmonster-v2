@@ -57,7 +57,17 @@ export function capScript(raw: string, maxWords: number, maxCjkChars = MAX_CJK_C
     return (stop >= maxCjkChars * 0.6 ? cut.slice(0, stop) : cut).trim();
   }
   const w = s.split(" ").filter(Boolean);
-  return w.length > maxWords ? w.slice(0, maxWords).join(" ") : s;
+  if (w.length <= maxWords) return s;
+  // A bare word-slice ends mid-sentence: a 35-word script capped at 34 shipped
+  // "...grab the set before it's", endStop() stamped a period on it, and the
+  // video's call to action died mid-phrase ("before it's.") on screen and in
+  // the voice-over. Mirror the CJK branch — prefer to end on the last sentence
+  // boundary inside the kept words, and only fall back to the raw slice when
+  // trimming to it would throw away more than ~40% of the budget.
+  const cut = w.slice(0, maxWords).join(" ");
+  const m = cut.match(/^[\s\S]*[.!?](?=\s|$)/);
+  if (m && m[0].split(/\s+/).filter(Boolean).length >= Math.ceil(maxWords * 0.6)) return m[0].trim();
+  return cut;
 }
 
 /** Give the voice model a clean final stop so it does not rush or trail off. */
