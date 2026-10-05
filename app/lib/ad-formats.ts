@@ -30,12 +30,18 @@ export interface AdFormat {
   /** "statue" = the preview must composite the canonical EASYMODE bottle
    * render (never a text-described bottle — one bottle everywhere). */
   heroRef?: "statue";
-  /** Retired from the picker AND the campaign rotation — currently the
-   *  fabricated-testimonial formats (review/chat/tweet/testimonialwall), pulled
-   *  because they manufacture fake named consumer endorsements (FTC 16 CFR 465)
-   *  and we have no real review data to ground them. Kept in AD_FORMAT_BY_KEY
-   *  so remixing an older asset and the per-format layout switch never hit an
-   *  undefined key. Re-enable one here if real customer reviews ever back it. */
+  /** Retired from the picker AND the campaign rotation. Two waves, same reason:
+   *  the copy slot manufactures a claim a reseller can't substantiate (FTC 16
+   *  CFR 465), and grounding/CLAIMS_GUARDRAIL structurally can't reach it.
+   *    Wave 1 — fake consumer reviews: review/chat/tweet/testimonialwall.
+   *    Wave 2 (2026-10-05 prompt audit) — fake endorsement/persona/promise:
+   *      press (invented outlet), founder (fake maker), ugcframe (fake customer
+   *      caption), tierlist (rank baked into the layout), guarantee (invented
+   *      warranty — also outside grounding + the guardrail entirely).
+   *  Each wave-2 entry carries a note on how popular/viral it is and what it
+   *  would take to re-enable, because several are worth reworking (see below).
+   *  Kept in AD_FORMAT_BY_KEY so remixing an older asset and the per-format
+   *  layout switch never hit an undefined key. */
   retired?: boolean;
 }
 
@@ -83,7 +89,11 @@ const ALL_AD_FORMATS: AdFormat[] = [
     preview: { headline: "Silence, upgraded.", offer: "$40 OFF this week", cta: "Claim it" },
   },
   {
-    key: "ugcframe", name: "Feed Native", emoji: "📱",
+    // HIGH-VALUE / VERY VIRAL — the native-feed UGC look is one of the best
+    // converting formats and worth reworking: re-enable once `caption` is the
+    // BRAND's own voice (or a clearly-labelled ad), not a fabricated first-
+    // person customer rave in an undisclosed-ad wrapper.
+    key: "ugcframe", name: "Feed Native", emoji: "📱", retired: true, // fake-customer caption
     blurb: "Looks like a viral post, not an ad — caption bar, real-photo energy",
     fields: ["caption"],
     hero: "a lit hand-poured soy candle in an amber glass jar with a minimalist label",
@@ -125,7 +135,10 @@ const ALL_AD_FORMATS: AdFormat[] = [
     preview: { headline: "Everything you get", i1: "Weighted precision razor", i2: "Magnetic stand", i3: "A year of blades" },
   },
   {
-    key: "founder", name: "Founder's Note", emoji: "✍️",
+    // MODERATE value, not especially viral — a trust/credibility format that
+    // works for real DTC brands. Re-enable for merchants who supply a REAL
+    // founder name + story; it can't be truthful for a reseller/dropshipper.
+    key: "founder", name: "Founder's Note", emoji: "✍️", retired: true, // fabricated maker + signature
     blurb: "A sincere handwritten note from the maker — trust in one card",
     fields: ["note", "founder"],
     hero: "a small-batch hot sauce bottle with a hand-applied kraft paper label",
@@ -195,7 +208,10 @@ const ALL_AD_FORMATS: AdFormat[] = [
     preview: { question: "Does it actually work?", answer: "Droopy monstera to brand-new leaf in two weeks. Yes." },
   },
   {
-    key: "press", name: "Pull Quote", emoji: "🗞️",
+    // LOWER priority — a credibility format, not viral; the invented outlet +
+    // editorial quote reads as a real press endorsement. Re-enable only with a
+    // REAL, attributable press quote the merchant can point to.
+    key: "press", name: "Pull Quote", emoji: "🗞️", retired: true, // invented press/outlet
     blurb: "An editorial pull quote with big serif type — instant credibility",
     fields: ["praise", "outlet"],
     hero: "a minimalist brass desk lamp with a warm glowing shade",
@@ -328,7 +344,12 @@ const ALL_AD_FORMATS: AdFormat[] = [
     preview: { headline: "From one tree, one workshop", origin: "Carved, sanded and oiled by hand" },
   },
   {
-    key: "guarantee", name: "The Promise", emoji: "🛡️",
+    // MODERATE-HIGH value (risk-reversal converts well), not viral. HIGHEST
+    // single liability while live — a guarantee is a binding contract and is in
+    // NEITHER grounding NOR CLAIMS_GUARDRAIL, so an invented "lifetime/money-
+    // back" promise ships unchecked. Re-enable once the copy can only state a
+    // guarantee the merchant actually offers (grounded in productDetails).
+    key: "guarantee", name: "The Promise", emoji: "🛡️", retired: true, // invented binding warranty
     blurb: "A bold guarantee badge — risk reversal in one card",
     fields: ["headline", "badge", "sub"],
     hero: "a forged chef's knife with a walnut handle on dark slate",
@@ -363,7 +384,11 @@ const ALL_AD_FORMATS: AdFormat[] = [
     preview: { headline: "Best money I've spent", item: "Storm umbrella", price: "$29", memo: "survived three winters" },
   },
   {
-    key: "tierlist", name: "S-Tier", emoji: "🏆",
+    // VIRAL / internet-native (tier-list meme format) — worth reworking: the
+    // S-tier rank is hardcoded into the LAYOUT so copy rules can't touch it.
+    // Re-enable by reframing to a grounded self-claim ("our best-seller") or a
+    // real cited ranking, not an implied external S-tier verdict.
+    key: "tierlist", name: "S-Tier", emoji: "🏆", retired: true, // rank baked into the layout
     blurb: "Ranked S-tier card — internet-native flex",
     fields: ["headline", "tagline"],
     hero: "a low-profile mechanical keyboard with cream and sage keycaps",
