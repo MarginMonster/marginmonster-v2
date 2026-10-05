@@ -28,6 +28,7 @@ import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRen
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
+import { CLAIMS_GUARDRAIL } from "./ad-claims";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
@@ -926,6 +927,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
     params.productDescription ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.` : "",
+    // A spoken ad carries the same claim liability as a printed one: no invented
+    // endorsement, authenticity or scarcity built on the real brand/tag names.
+    CLAIMS_GUARDRAIL,
+    // The last line is the call to action and it must land whole — a capped
+    // script once ended "...grab the set before it's" (see capScript). Keep the
+    // final sentence a COMPLETE call to action; never trail off mid-phrase.
+    `The final sentence must be a COMPLETE call to action — finish it; never stop mid-phrase.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -952,9 +960,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       // this check forever and could not make a UGC ad at all.
       return scriptTooShort(raw) ? "" : raw;
     }, params.productTitle, "ugc:script", params.productDescription);
-    // 12s budget — hard cap so it never runs past the lip-sync sweet spot.
-    // In characters for CJK, where the old word cap could never fire.
-    script = capScript(script, 34);
+    // ~12-13s budget — hard cap so it never runs past the lip-sync sweet spot.
+    // In characters for CJK, where the old word cap could never fire. 36, not
+    // 34: the spec is "26-32 words incl. the CTA" but the model routinely lands
+    // at 33-35, and a 35-word script cut at 34 chopped the CTA's last word
+    // ("...before it's") — the extra slack lets a normal script finish whole,
+    // and capScript now backstops any real overrun at a sentence boundary.
+    script = capScript(script, 36);
     // give the voice model a clean final stop so it doesn't rush/trail the
     // ending — 。for CJK, where a Latin full stop reads as a typo
     script = endStop(script);

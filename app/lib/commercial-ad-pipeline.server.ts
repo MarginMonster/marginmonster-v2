@@ -28,6 +28,7 @@ import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { composeResolution } from "./feature-flags.server";
+import { CLAIMS_GUARDRAIL } from "./ad-claims";
 import { trimToWord } from "./text-trim";
 import { mirrorRender } from "./object-storage.server";
 import {
@@ -132,6 +133,9 @@ export async function planCommercial(
       `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
       `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
       productDescription ? `Every spoken claim in "narration" must come from the ${serviceMode ? "offer" : "product"} details above — do not invent numbers, materials or results.` : "",
+      // Narration and tagline are spoken claims — no invented endorsement,
+      // authenticity or scarcity built on a real brand/tag name either.
+      `This applies to "narration" and "tagline": ${CLAIMS_GUARDRAIL}`,
       serviceMode ? `Then tagline: 3-6 punchy words for the closing brand card.` : `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,

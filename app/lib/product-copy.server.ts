@@ -1,6 +1,7 @@
 import type { BrandProfile } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { brandBlock } from "./brand-prompt";
+import { CLAIMS_GUARDRAIL } from "./ad-claims";
 
 export interface ProductCopy {
   seoTitle: string;
@@ -35,7 +36,10 @@ Return ONLY a JSON object:
   "bullets": ["scannable selling point 1", "point 2", "point 3", "point 4", "point 5"]
 }
 
-Every line must sound like this brand — never generic.`;
+Every line must sound like this brand — never generic.
+
+${CLAIMS_GUARDRAIL}
+Use only the product name and the merchant's notes as fact — invent no specs, measurements, materials or prices that were not given.`;
 
   const strict =
     prompt +

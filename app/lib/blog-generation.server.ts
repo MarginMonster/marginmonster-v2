@@ -4,6 +4,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { langDirective } from "./content-lang";
 import { brandBlock } from "./brand-prompt";
+import { CLAIMS_GUARDRAIL } from "./ad-claims";
 
 // Blog posts are the SEO Autopilot product: the goal is always organic
 // search traffic — rank for buyer-intent keywords, then convert.
@@ -44,6 +45,8 @@ Write a COMPLETE blog post of 550-750 words. Follow this exact structure every t
 CRITICAL: The article MUST be fully finished — a complete final sentence and a closing CTA paragraph. Never stop mid-sentence or mid-tag. Stay within the word count so you finish cleanly.
 
 CRITICAL: Never invent an expansion for an abbreviation, edition marker or product code in the product title. Product names are full of them — "S-Chinese", "CSV8C", "V4", "SV8A" — and guessing produces confident, wrong copy that makes the store look like it does not know its own catalogue. (A real article rendered "S-Chinese" as "South-Chinese"; it means Simplified Chinese.) If the meaning is not given in the product details above, use the abbreviation exactly as written, or write around it. Do the same with numbers: never state a price, a discount, a stock level, a release date or a pull rate that was not supplied to you.
+
+CRITICAL: ${CLAIMS_GUARDRAIL} (A live FAQ inflated a "Comic-Con Pick" tag into "convention-level exclusivity" and stated "one of the strongest-performing categories in pop culture retail" as fact — neither was given. Do neither.)
 
 Return ONLY the HTML body content (h1, h2, p, ul, li, strong tags only — no html/head/body tags, no markdown fences).`;
 

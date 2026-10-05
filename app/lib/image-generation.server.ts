@@ -7,6 +7,7 @@ import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { trimToWord } from "./text-trim";
+import { CLAIMS_GUARDRAIL } from "./ad-claims";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
@@ -1886,6 +1887,20 @@ function formatLayoutPrompt(
   }
 }
 
+// With no merchant direction, every ×N take and every catalogue product reaches
+// for the same hook — the live-QA sweep saw a "{N} {items}. ZERO/ONE..."
+// skeleton on 5 of 8 outputs and the exact phrase "ZERO GUARANTEES" on two ads
+// for one product. Rotating a lead angle per generation spreads them apart
+// without touching grounding (it steers the ANGLE, never the facts).
+const AD_ANGLE_LENSES = [
+  "lead with the single biggest benefit of owning it",
+  "open with a curiosity gap or a question already in the buyer's head",
+  "lead with the exact moment or use-case where it earns its place",
+  "lead with what sets it apart from the obvious alternative",
+  "lead with the feeling of owning it, not a feature list",
+  "lead with who it's perfect for",
+];
+
 async function formatCopy(
   formatKey: string,
   fields: string[],
@@ -1904,6 +1919,9 @@ async function formatCopy(
   productDetails?: string | null
 ): Promise<Record<string, string> | null> {
   try {
+    const angleLens = direction
+      ? null
+      : AD_ANGLE_LENSES[Math.floor(Math.random() * AD_ANGLE_LENSES.length)];
     const prompt = [
       `You write short, punchy copy for a "${formatKey}" style e-commerce static ad.${langDirective(contentLang)}`,
       `Product: "${productTitle}".`,
@@ -1911,7 +1929,7 @@ async function formatCopy(
         ? `The merchant's own description of this product — the ONLY facts you may treat as true, so draw the real specifics from here:\n"${productDetails}"`
         : "",
       tone ? `Brand tone: ${tone}.` : "",
-      direction ? `Angle: ${direction.slice(0, 160)}.` : "",
+      direction ? `Angle: ${direction.slice(0, 160)}.` : `Lead angle for THIS take: ${angleLens}.`,
       `Return ONLY JSON with exactly these string fields: ${fields.map((f) => `"${f}"`).join(", ")}.`,
       `Field guide: headline ≤ 6 words (a confident statement); c1-c4 are benefit labels of 2-3 words each; cta ≤ 3 words; quote is a believable customer review of 8-13 words (first person, specific, no hype-words like "amazing"); name is a first name + last initial; m1-m4 are casual lowercase text messages of 4-12 words that read like real friends (m2 and m4 are from the person who owns the product); r1-r3 are 2-4 word advantages, t1-t3 the competitor's matching 2-4 word weaknesses; before/after are 3-6 word captions, each a natural phrase a person would say out loud, not a keyword string; offer is a benefit or invitation flash of 2-4 words ("Own the set", "New arrival") and MUST NOT contain a number, a percentage, a currency amount, or the words sale/off/free/save/deal/discount; caption is a lowercase social caption of 6-11 words; sub ≤ 8 words; stat is a REAL product fact as a short number ("300mg", "12", "10 sec") with statlabel 2-4 words — NEVER an invented customer statistic, survey result or percentage of buyers; masthead is the brand or product name, one or two words; cover1/cover2 are witty magazine cover lines ≤ 7 words; d1-d3 are 2-3 word sensory detail labels; i1-i3 are 2-4 word included-item or benefit labels; note is a sincere founder note of 12-16 words, one or two short sentences, with zero hype; founder is "FirstName, founder"; question ≤ 6 words and playful; left is the boring generic alternative in 2-3 words; right is the product's short name; tweet is a casual lowercase first-person post of 10-16 words, specific and funny, no hashtags; handle for the tweet format is @ plus a short lowercase invented username (never a real person); query is a "best <category> for <need>" search of 3-6 words; s1-s3 are autocomplete suggestions that extend the query, 3-6 words; title is a lowercase notes-list title ≤ 6 words; n1-n4 are lowercase checklist items of 3-6 words; alerttitle is the brand or product name; alertbody is a friendly ≤ 10 word nudge; w1-w3 are full reasons of 3-6 words; math is a simple real cost-per-use line like "$0.40 per serving" derived from plausible pricing; punchline ≤ 7 words; answer is a confident specific 6-12 word answer; praise is an editorial one-liner ≤ 12 words in third person; outlet is an INVENTED tasteful publication name of 2-3 words — NEVER a real magazine, newspaper or website; step1-3 are 2-5 word action steps in order; badge is 2-3 words like "Editor's Pick"; urgency is a truthful availability line like "Limited run" or "Restocked today" — NEVER an invented sales number or count; g1-g3 are real ingredient or component names of 1-3 words; k1-k4 are lowercase relatable "that's me" moments of 3-5 words; f1-f3 are punchy truthful product facts of 3-7 words; am starts "Morning:" and pm starts "Night:", each ≤ 6 words after the colon; tq1-tq3 are mini review quotes of 3-6 words with tn1-tn3 as first name + last initial; pov starts "POV:" and is 5-9 words; b1-b3 are included-item lines of 2-5 words; word is ONE powerful word ending in a period; line1/line2 are warm chalkboard lines of 3-6 words; bubble is the product playfully "speaking" in 2-6 words — it must be a natural, grammatical phrase a person would actually say; never force a pun that breaks the sentence; v1/v2 are REAL product spec numbers with l1/l2 as their 2-4 word labels — never invented customer stats; origin is one truthful craft or materials line of 5-10 words (no fake place claims); tagline is a witty 4-8 word line; pair1/pair2 are short names for the two paired items; item is the product's short name, price a plausible price like "$29", memo a lowercase 3-5 word aside; sw1-sw4 are one-or-two-word names for colours that are ACTUALLY PRESENT IN THE PRODUCT PHOTO — they label a palette drawn from the product itself, NEVER alternative colourways or variants, which the store may not sell; handle for the breakout format is the brand name in caps, no @ and no invented engagement numbers; caption for the breakout format is a scroll-stopping 5-10 word line.`,
       // The merchant is the ONLY source of a discount. Anything we invent is a
@@ -1938,6 +1956,16 @@ async function formatCopy(
       // generic copy that would fit any product is why a catalogue's ads all
       // read alike. Real description text fixes both at once.
       `Only state a concrete spec, measurement, material, ingredient, capacity, battery life, size, certification, award or number if it appears in the product details above${productDetails ? "" : " — and NONE were provided for this product"}. If a specific is not given, do NOT invent one: write a benefit, feeling or use-case instead. Invent no customer counts, star ratings, "#1"/"best-seller" claims, press quotes, awards or scarcity figures. Make every line SPECIFIC to THIS product's real details — never a generic line that would fit any product.`,
+      // The sweep's "sameness" finding: with grounding on, the copy was accurate
+      // but every blind-box product got the same "{N} {items}. ZERO/ONE..."
+      // headline shape, so a feed of them reads as one duplicated ad.
+      `VARY THE STRUCTURE. Do not default to a numeral-count opener ("Nine heroes", "Six dolls") or a "{Number} X. One/Zero Y." template — that one skeleton makes a catalogue's ads read alike. Pick a different headline shape: a question, a benefit claim, a use-case, a contrast, or the feeling of owning it. Never reuse hook words you would put on a different product.`,
+      // Grounding stopped invented SPECS; the live-QA sweep then caught invented
+      // CLAIMS built on the real nouns — a "Comic-Con Pick" tag rewritten as
+      // "COMIC-CON'S MOST-HUNTED" (implied endorsement) and a Chinese Pokémon
+      // pack sold as "Authentic Pokémon TCG" (unverifiable provenance). Same
+      // paid-ad liability as a false spec; shared rule so every generator agrees.
+      CLAIMS_GUARDRAIL,
       // From a full 49-template sweep: every remaining defect was text. Two of
       // them were written wrong before anything was rendered — an apostrophe
       // dropped ("thats"), and a Versus ad whose two columns contradicted each
