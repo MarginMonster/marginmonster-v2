@@ -195,7 +195,7 @@ export async function acceptQuestline(params: {
   const { capabilitiesFor } = await import("./capabilities.server");
   const caps = capabilitiesFor(shop.activePlan);
   if (def.objectives.some((o) => o.type === "video" && o.target > 0) && !caps.has("video")) {
-    return { ok: false, error: "This plan includes videos, which unlock on the Studio plan ($59/mo). Run Get Found on Starter, or upgrade to launch this one." };
+    return { ok: false, error: "This plan includes videos, which unlock on the Studio plan ($39/mo). Run Get Found on Starter, or upgrade to launch this one." };
   }
 
   const excluded = params.excludeTypes || [];

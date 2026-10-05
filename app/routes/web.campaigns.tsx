@@ -289,7 +289,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       templateKey: (form.get("plan") as string) || "",
       avatarId: ((form.get("avatarId") as string) || "").trim() || null,
       avatarVariant: 0,
-      reviewMode: (form.get("reviewMode") as "REVIEW_FIRST" | "SET_AND_FORGET") || "REVIEW_FIRST",
+      // Default SET_AND_FORGET to match what this page sells ("campaigns post
+      // themselves"). The Shopify campaign routes already default this way; the
+      // web route had been left on REVIEW_FIRST, so a merchant who linked an
+      // account and left the default got zero auto-posts. The UI toggle below
+      // also defaults to "Post automatically"; this is the server-side guard.
+      reviewMode: (form.get("reviewMode") as "REVIEW_FIRST" | "SET_AND_FORGET") || "SET_AND_FORGET",
       bag,
       platforms: (() => { try { return JSON.parse((form.get("platforms") as string) || "[]"); } catch { return []; } })(),
       // Articles can't publish from the web app — there is no Online Store
@@ -341,7 +346,7 @@ export default function WebCampaigns() {
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
   const [castQ, setCastQ] = useState("");
   const [picked, setPicked] = useState<number[]>(d.catalog.length ? [0] : []);
-  const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("REVIEW_FIRST");
+  const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("SET_AND_FORGET");
   const [showLaunch, setShowLaunch] = useState(d.campaigns.length === 0);
   // Two ways to start: pay to make a month of content, or schedule the month
   // you already made. The second costs nothing, so it leads when there's a

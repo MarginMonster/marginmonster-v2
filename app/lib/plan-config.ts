@@ -177,10 +177,18 @@ export const TOKEN_COST = {
   // ad spend; this is our fee for building and launching the campaign. It lives
   // here, not in a route, because the refund table has to know it too.
   boost: 25,
-  // AI product video — real COGS ~$2-3.5 (lip-sync + TTS + image, anthems the
-  // priciest). Priced so an all-video month stays margin-positive per tier:
-  // Studio 900/150 = 6 ≈ $18 COGS on $59 (~65%); Anthem 1600/150 ≈ 10 ≈ $35
-  // COGS on $99 (~55% after Shopify's cut). The margin lever — raise if COGS climbs.
+  // AI product video. DEFAULT-engine (Kling) COGS ~$1.2-3.5 (lip-sync + TTS +
+  // image; anthem/jingle the priciest). On the default engine every tier stays
+  // margin-positive at full utilization: Studio 900/150 = 6 videos ≈ 44-81%
+  // gross on $39 (Stripe-billed), Legend 1600/150 ≈ 10 ≈ 48-82% on $69.
+  // CAVEATS (econ analysis 2026-10-04 — prices are $39/$69 via Stripe, NOT the
+  // old $59/$99 Shopify figures, so the real cushion is ~1.5-2x thinner than
+  // once documented): (1) the +75 Veo surcharge UNDER-prices a true Veo-3 clip
+  // ($3.5-$10) — a single premium Veo video can be break-even-to-loss; (2) a
+  // Commercial rendered on a premium engine fires UP TO 5 clips for ONE flat
+  // surcharge (commercial-ad-pipeline.server.ts:745) and can lose ~$7-24 per
+  // video — cap clip count / charge per-clip / force the default engine before
+  // scaling Commercial. The margin lever — raise if COGS climbs.
   video: 150,
   // Forging a custom presenter renders one portrait per wardrobe outfit —
   // four paid image generations in parallel — so it is priced as what it is.
