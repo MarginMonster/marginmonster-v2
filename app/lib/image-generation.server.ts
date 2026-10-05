@@ -1064,6 +1064,104 @@ async function overlayRealProduct(
   }
 }
 
+// Formats where the product is a single hero object with ONE clear bounding box
+// — safe to swap the model's redrawn product for the real one without disturbing
+// the surrounding layout. Multi-panel / multi-product / card formats (versus,
+// beforeafter, splitpanel, duo, bundle, unbox, steps, routine, review, faq …)
+// are excluded: there is no single box to cover, or the product is incidental.
+const PASTE_SAFE = new Set([
+  "callout", "offer", "stat", "breakout", "poster", "gift", "restock",
+  "seasonal", "minimal", "neon", "chalkboard", "speech", "origin", "weather",
+  "swatch", "pov",
+]);
+
+/** THE REAL FIX for a garbled brand on a format ad: keep the LAYOUT the merchant
+ *  picked, but swap the model's redrawn product for the REAL one, so a wordmark
+ *  the generator mangles ("HERO"->"MERO", "Blokees"->"Blokes") ships
+ *  pixel-faithful. Finds the product's box in the FINISHED ad, removes the real
+ *  product's background, and pastes it to COVER that box (so no drawn edge peeks
+ *  out) with a soft contact shadow. Returns null on any failure — a bad paste is
+ *  worse than falling to the scene ad, which is exactly what the caller does. */
+async function pasteProductIntoAd(frameUrl: string, productImageUrl: string): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  // Where is the product in the finished ad? Percentages, so resolution-free.
+  let box: { x: number; y: number; w: number; h: number } | null = null;
+  try {
+    const raw = await anthropicVision(
+      [
+        `This is a product advertisement. Find the single main PRODUCT being advertised (its box, package or item) — NOT any headline, annotation line, text label, chip, button or badge drawn around it.`,
+        `Return the bounding box of the ENTIRE product as it appears — its full outer silhouette, every face or panel visible, from its leftmost to its rightmost edge and from its highest point to where it meets the surface.`,
+        `Use percentages of the image dimensions, where x,y is the TOP-LEFT corner. Be tight to the product's outer edges.`,
+        `Reply ONLY JSON: {"x":number,"y":number,"w":number,"h":number}`,
+      ].join(" "),
+      [frameUrl],
+      { maxTokens: 120 }
+    );
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) {
+      const b = JSON.parse(m[0]) as Record<string, unknown>;
+      if (["x", "y", "w", "h"].every((k) => typeof b[k] === "number")) {
+        box = { x: b.x as number, y: b.y as number, w: b.w as number, h: b.h as number };
+      }
+    }
+  } catch { /* fall through to the null guard */ }
+  // A box that is nearly the whole frame (the reader grabbed everything) or a
+  // sliver (it grabbed a chip) is a bad read — never paste on a guess.
+  if (!box || box.w < 8 || box.h < 8 || box.w > 96 || box.h > 96) return null;
+
+  const cutout = await removeBackground(productImageUrl);
+  if (!cutout) return null;
+
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpFrame = path.join(dir, `.af-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.ac-${stamp}.png`);
+  const fileName = `img-${stamp}.jpg`;
+  const out = path.join(dir, fileName);
+  try {
+    for (const [src, file] of [[frameUrl, tmpFrame], [cutout, tmpCut]] as const) {
+      const res = await fetch(src);
+      if (!res.ok) return null;
+      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    }
+    const W = await probeWidth(bin, tmpFrame);
+    const H = await probeHeight(bin, tmpFrame);
+    if (!W || !H) return null;
+    // Inflate the reported box a little so the paste swallows the drawn outline.
+    const pad = 1.08;
+    const bw = (box.w / 100) * W * pad;
+    const bh = (box.h / 100) * H * pad;
+    const bcx = ((box.x + box.w / 2) / 100) * W; // box centre
+    const bcy = ((box.y + box.h / 2) / 100) * H;
+    const cut = headerSize(tmpCut);
+    // Cover the drawn product in BOTH dimensions from the cutout's own aspect,
+    // so no drawn edge peeks out around the real one; centre it on the box.
+    let tw = Math.round(bw);
+    let th = Math.round(bh);
+    if (cut) {
+      tw = Math.round(Math.max(bw, (bh * cut.w) / cut.h));
+      th = Math.round((tw * cut.h) / cut.w);
+    }
+    const ox = Math.round(bcx - tw / 2);
+    const oy = Math.round(bcy - th / 2);
+    const filters =
+      `[1:v]scale=${tw}:${th}[cut];` +
+      `[cut]split[c1][c2];` +
+      `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=10,colorchannelmixer=aa=0.30[sh];` +
+      `[0:v][sh]overlay=x=${ox}+6:y=${oy}+8[b1];` +
+      `[b1][c1]overlay=x=${ox}:y=${oy}[outv]`;
+    const { ok } = await runFfmpegStill(bin, ["-y", "-i", tmpFrame, "-i", tmpCut, "-filter_complex", filters, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", out]);
+    if (ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch {
+    return null;
+  } finally {
+    try { fs.rmSync(tmpFrame, { force: true }); fs.rmSync(tmpCut, { force: true }); } catch { /* best-effort */ }
+  }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -2222,12 +2320,36 @@ export async function runFormatRung(opts: {
     imageUrl = await renderOnce(qa.reason);
     qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
   }
+  // LAST-RESORT REPAIR before the scene fallback. The format rendered but the
+  // gate still rejects it — and on a single-hero-product format that is most
+  // often the PRODUCT itself (a re-lettered brand wordmark the generator can't
+  // spell, a warped box), not the layout text. So keep the format the merchant
+  // picked and swap the model's redrawn product for the REAL one, then let the
+  // gate judge the result: the re-QA rejects a paste that covered required text
+  // or didn't actually help, so only a genuinely-repaired ad ships. Anything
+  // else falls through to the scene ad exactly as before. Only on a real
+  // rejection (not an outage) and only where a single product box exists.
+  let pasteRepaired = false;
+  if (!qa.pass && !qa.degraded && PASTE_SAFE.has(opts.formatKey)) {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const pasted = base ? await pasteProductIntoAd(imageUrl, opts.productImageUrl) : null;
+    if (pasted) {
+      const pastedUrl = `${base}/renders/${pasted.file}`;
+      const qa2 = await qaFormat(pastedUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+      if (qa2.pass) {
+        console.log(`[image-ad] format ${opts.formatKey}: real-product paste kept the format past a product-fidelity reject (${qa.reason})`);
+        imageUrl = pastedUrl;
+        qa = qa2;
+        pasteRepaired = true;
+      }
+    }
+  }
   return {
     imageUrl,
     copy,
     prompt,
     qaPass: qa.pass,
-    qaReason: qa.reason,
+    qaReason: pasteRepaired ? "clean (real-product paste)" : qa.reason,
     retried,
     fallback: qa.pass ? null : `qa-failed: ${qa.reason}`,
   };
