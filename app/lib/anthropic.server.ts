@@ -10,6 +10,14 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 export interface AnthropicOptions {
   model?: string;
   maxTokens?: number;
+  /** Seed the assistant turn so the model MUST continue from this exact text.
+   *  The classic cure for "return ONLY JSON" being ignored: prefill "{" and the
+   *  model can only emit the rest of a JSON object — no prose preamble, no code
+   *  fence. The returned string already has the prefill prepended, so callers
+   *  parse it unchanged. Must not end in whitespace (the API rejects that), and
+   *  is incompatible with extended thinking — fine here, sonnet-5 has it
+   *  disabled above. */
+  prefill?: string;
 }
 
 /** claude-sonnet-5 runs ADAPTIVE THINKING by default when the request has no
@@ -68,7 +76,12 @@ export async function anthropicText(
           model,
           max_tokens: maxTokens,
           ...thinkingFieldFor(model),
-          messages: [{ role: "user", content: prompt }],
+          messages: opts.prefill
+            ? [
+                { role: "user", content: prompt },
+                { role: "assistant", content: opts.prefill },
+              ]
+            : [{ role: "user", content: prompt }],
         }),
       },
       { label: "anthropic", attempts: 5, totalCapMs: 90_000 }
@@ -92,7 +105,9 @@ export async function anthropicText(
   }
 
   const block = json.content?.find((c) => c.type === "text");
-  return block?.text || "";
+  // The API's response continues FROM the prefill but doesn't echo it, so
+  // prepend it to hand the caller the complete string it expects.
+  return (opts.prefill || "") + (block?.text || "");
 }
 
 /** Shopify CDN serves ORIGINALS — routinely past the API's 8000px image

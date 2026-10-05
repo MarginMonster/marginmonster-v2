@@ -2314,7 +2314,12 @@ async function formatCopy(
       // copy-failed); 600 is still tiny for a 6-field callout but gives the
       // longer templates headroom. Output is billed on tokens actually emitted,
       // so the ceiling costs nothing when the answer is short.
-      raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 600 });
+      // Prefill "{" so the model can only continue a JSON object. The live logs
+      // showed the real copy-failed cause was sonnet-5 returning ~1300 chars of
+      // PROSE with no JSON at all ~3 attempts in 4; forcing the first character
+      // to "{" removes the prose-preamble/refusal path the retries were papering
+      // over. raw comes back already including the leading "{".
+      raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 600, prefill: "{" });
     } catch (e) {
       // anthropicText THROWS on a 4xx/5xx that outlived its retries (a 429 in a
       // ×N burst is the usual one). That throw used to be swallowed as a bare
