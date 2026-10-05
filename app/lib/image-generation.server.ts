@@ -2308,10 +2308,36 @@ async function formatCopy(
       `Keep every value SHORT. Long strings get cut off mid-word when drawn into the layout, so prefer the low end of each range and never exceed it.`,
       `No emoji, no hashtags, no quotes inside values.`,
     ].filter(Boolean).join("\n");
-    const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 300 });
+    let raw: string;
+    try {
+      // 300 tokens truncated a few many-field formats mid-JSON (→ unparseable →
+      // copy-failed); 600 is still tiny for a 6-field callout but gives the
+      // longer templates headroom. Output is billed on tokens actually emitted,
+      // so the ceiling costs nothing when the answer is short.
+      raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 600 });
+    } catch (e) {
+      // anthropicText THROWS on a 4xx/5xx that outlived its retries (a 429 in a
+      // ×N burst is the usual one). That throw used to be swallowed as a bare
+      // "copy-failed", indistinguishable from the model returning unusable copy.
+      // Name it so the logs separate an API outage from a real copy problem.
+      console.log(`[image-ad] formatCopy ${formatKey} api-error: ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+      return null;
+    }
     const m = raw && raw.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    const j = JSON.parse(m[0]) as Record<string, unknown>;
+    if (!m) {
+      console.log(`[image-ad] formatCopy ${formatKey} no-json (len=${(raw || "").length})`);
+      return null;
+    }
+    // Tolerate the one well-formed-but-unparseable quirk the {…} slice doesn't
+    // already handle: a trailing comma before a closing brace/bracket. (A ```json
+    // fence is harmless — the slice starts at the first "{".)
+    let j: Record<string, unknown>;
+    try {
+      j = JSON.parse(m[0].replace(/,\s*([}\]])/g, "$1")) as Record<string, unknown>;
+    } catch (e) {
+      console.log(`[image-ad] formatCopy ${formatKey} parse-error: ${(e instanceof Error ? e.message : "").slice(0, 80)}`);
+      return null;
+    }
     const out: Record<string, string> = {};
     // Some label slots are OPTIONAL — losing one should degrade the format, not
     // kill it. A callout with 2-3 benefit chips is a fine ad; the layout is
@@ -2336,6 +2362,7 @@ async function formatCopy(
       const v = dropOrgEndorsementPossessive(tidyAdCopy(typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "") : ""));
       if (!v) {
         if (optional.has(f)) continue; // drop an optional empty chip; don't fail the format
+        console.log(`[image-ad] formatCopy ${formatKey} empty-required-field: ${f}`);
         return null;
       }
       out[f] = v;
@@ -2385,7 +2412,12 @@ async function formatCopy(
       }
     }
     return out;
-  } catch { return null; }
+  } catch (e) {
+    // The field-processing path (tidyAdCopy, the guardrail scrubs) threw. Rare,
+    // but it was silent; name it so no copy-failed cause stays invisible.
+    console.log(`[image-ad] formatCopy ${formatKey} threw: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    return null;
+  }
 }
 
 /** The format rung, end to end: copy → layout → render → QA → one corrective
