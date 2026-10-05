@@ -8,6 +8,7 @@
  * back to the plain portrait so a bad compose never blocks a render. */
 
 import { hasCJK } from "./content-lang";
+import { composeResolution } from "./feature-flags.server";
 
 /** The compose engine. Overridable because "would a different model fix
  *  this?" is a question with a measurable answer, and swapping one should not
@@ -289,6 +290,7 @@ export async function submitCompose(
         `${integrity}${relight}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
         `${camera.trim()} ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
+  const composeRes = composeResolution();
   const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },
@@ -302,7 +304,7 @@ export async function submitCompose(
       // lettering to resolve instead of scramble. Opt-in per environment
       // (e.g. "4K" doubles Nano Banana Pro's per-edit price); engines that
       // don't know the field ignore it.
-      ...(process.env.COMPOSE_RESOLUTION?.trim() ? { resolution: process.env.COMPOSE_RESOLUTION.trim() } : {}),
+      ...(composeRes ? { resolution: composeRes } : {}),
       num_images: numImages,
       max_images: numImages,
     }),

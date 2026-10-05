@@ -508,7 +508,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // generateUgcAd never even receives videoEngine — and a cartoon with a
       // presenter now lipsyncs too. Charging the Seedance or Veo surcharge on
       // those was billing for an engine that never ran.
-      const engineDrivesRender = !avatarId;
+      // Commercial renders one clip PER BEAT (up to 5) for a SINGLE engine
+      // surcharge, so a premium engine there loses money on every spot (and
+      // every burst multiplies it). Pin Commercial to the default animator:
+      // no surcharge billed, default-engine COGS stays inside the flat price.
+      const engineDrivesRender = !avatarId && contentType !== "commercial";
       const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
       const each = TOKEN_COST.video + engineSurcharge(effectiveEngine);
       // Video bursts cap lower than image bursts — one video is 60+ tokens, so
@@ -1007,7 +1011,8 @@ export default function WebStudio() {
   // Same condition as the hidden field, so the quote and the charge cannot
   // disagree again.
   const presenterWillBeSent = !!avatarId && needsPresenterField(contentType);
-  const engineApplies = tab === "video" && !presenterWillBeSent;
+  const engineForcedDefault = contentType === "commercial";
+  const engineApplies = tab === "video" && !presenterWillBeSent && !engineForcedDefault;
   const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
   // Re-clamp on every render rather than in an effect: switching from a ×10
   // image burst to the video tab must not quote — or charge — ten videos.
@@ -1316,7 +1321,9 @@ export default function WebStudio() {
             <div className="ws-lbl">Video engine <span className="ws-opt">premium engines add tokens</span></div>
             {!engineApplies && (
               <p className="ws-enginenote">
-                Presenter ads are rendered by our lip-sync engine, so the engine choice and its surcharge don&apos;t apply here.
+                {engineForcedDefault
+                  ? "Commercials are built from several scenes, so they always render on our standard engine — no engine surcharge."
+                  : "Presenter ads are rendered by our lip-sync engine, so the engine choice and its surcharge don't apply here."}
               </p>
             )}
             <div className={`ws-engines${engineApplies ? "" : " off"}`}>

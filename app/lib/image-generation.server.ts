@@ -15,6 +15,7 @@ import { hasCJK, langDirective } from "./content-lang";
 import { tidyAdCopy } from "./ad-copy-tidy";
 import { occupiedPlate } from "./plate-scene";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
+import { presenterSprayEnabled } from "./feature-flags.server";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
  * A high-quality still isn't a finished ad — real creatives carry a headline
@@ -1390,7 +1391,7 @@ export async function runPresenterHold(opts: {
   // one compose, gates it on hard fails only, retries once on a hard fail and
   // then falls back to the product still. PRESENTER_SPRAY=1 resurrects the
   // spray for CI experiments.
-  if (!opts.wear && process.env.PRESENTER_SPRAY === "1") {
+  if (!opts.wear && presenterSprayEnabled()) {
     const aspect = await productAspect(opts.productImageUrl);
     // Order = preference when both pass. A real photograph beats a drawn one
     // for a large product, where the drawing has the most to get wrong; a

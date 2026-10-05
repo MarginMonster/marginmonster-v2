@@ -248,7 +248,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // generateUgcAd never even receives videoEngine. Charging the Seedance or
     // Veo surcharge on those was billing for an engine that never ran. The web
     // Studio already guarded this; the embedded one did not.
-    const engineDrivesRender = !avatarId;
+    // Commercial renders ONE clip PER BEAT (up to 5) but is charged the engine
+    // surcharge only ONCE — a premium engine there paints up to 5 premium clips
+    // for a single +75 fee and loses money on every spot (plan-config.ts econ
+    // note). Pin it to the default animator: no surcharge billed, default-engine
+    // COGS stays inside the flat 150-token price. Anthem/Cartoon render a single
+    // clip, so the picker still drives them.
+    const engineDrivesRender = !avatarId && contentType !== "commercial";
     const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
     const charged = TOKEN_COST.video + engineSurcharge(effectiveEngine);
     // Without a photo the engines invent a product from the title — generic AI
@@ -554,7 +560,7 @@ export default function Studio() {
 
   // Mirror the server rule exactly, or the quote and the charge diverge:
   // a presenter video ignores the engine picker, so it carries no surcharge.
-  const engineApplies = tab === "video" && !avatarId;
+  const engineApplies = tab === "video" && !avatarId && contentType !== "commercial";
   const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
   const costLabel = `${meta.cost + engineFee} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`;
 

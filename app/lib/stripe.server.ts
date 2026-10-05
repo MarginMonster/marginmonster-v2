@@ -175,6 +175,15 @@ export async function createPlanCheckout(opts: {
 
   const session = await stripePost("/checkout/sessions", {
     mode: "subscription",
+    // PIN THE TRIAL CARD GATE. 'always' is Stripe's current subscription-mode
+    // default, but default is not the same as pinned: Stripe collects no card
+    // when the amount due today is 0, which is EXACTLY the trial case — the
+    // trial_period_days / trial_end params above make today's total $0. If this
+    // were ever flipped to 'if_required' (or Stripe changed its default), the
+    // 400-token free trial would go cardless and the whole trial-abuse story
+    // this file guards against reopens. State it explicitly so no future tweak
+    // can silently make the trial cardless. Valid only in subscription mode.
+    payment_method_collection: "always",
     // Reuse the account's Stripe customer when we have one. A new customer per
     // checkout scattered one merchant's subscriptions across several records
     // and hid the duplicate from Stripe's own trial handling.

@@ -27,6 +27,7 @@ import os from "node:os";
 import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
+import { composeResolution } from "./feature-flags.server";
 import { trimToWord } from "./text-trim";
 import { mirrorRender } from "./object-storage.server";
 import {
@@ -227,7 +228,7 @@ const CINE_STYLE =
  *  later beats carry the protagonist via the previous frame alone. */
 export async function sceneKeyframe(productImageUrl: string | undefined, scene: string, prevFrameUrl?: string): Promise<string> {
   const refs = [productImageUrl, prevFrameUrl].filter((u): u is string => !!u);
-  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  const res = composeResolution();
   if (refs.length === 0) {
     return falQueueImage(t2iModel(), {
       prompt: `${scene} ${CINE_STYLE}`,
@@ -259,7 +260,7 @@ export async function sceneKeyframe(productImageUrl: string | undefined, scene: 
  *  compose engine — pack shots, brand stills. Exported for the QA harness'
  *  Brand Lab (forging EasyMode hero products before a commercial spends). */
 export async function brandImage(prompt: string): Promise<string> {
-  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  const res = composeResolution();
   return falQueueImage(t2iModel(), {
     prompt,
     aspect_ratio: "3:4",
@@ -272,7 +273,7 @@ export async function brandImage(prompt: string): Promise<string> {
  *  when one is given (recolours, wardrobe swaps, prop changes that keep the
  *  character). Exported for the QA harness' Mascot Lab. */
 export async function brandStill(prompt: string, refUrl?: string | string[], portrait = false): Promise<string> {
-  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  const res = composeResolution();
   const refs = (Array.isArray(refUrl) ? refUrl : refUrl ? [refUrl] : []).filter(Boolean);
   if (refs.length === 0) {
     return falQueueImage(t2iModel(), {
@@ -301,7 +302,7 @@ export async function commercialEndCard(offerTitle: string, tagline: string, vis
     const v = JSON.parse(visualJson || "{}") as { primaryColor?: string; accentColor?: string };
     if (v.primaryColor) palette = `a ${v.primaryColor} background with ${v.accentColor ? `${v.accentColor} accents` : "elegant contrasting accents"}`;
   } catch { /* keep the generic palette */ }
-  const res = process.env.COMPOSE_RESOLUTION?.trim();
+  const res = composeResolution();
   // 9:16 native — the packshot slot cover-crops to 9:16, and a 3:4 card
   // loses the edges of its own tagline to that crop.
   return falQueueImage(t2iModel(), {
@@ -738,12 +739,22 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     // Only the contiguous run from the front can be banked: resume uses the
     // array length as its cursor, so a gap would shift every later clip onto
     // the wrong beat.
+    // Commercial is capped to the DEFAULT animator: one clip per beat (up to 5)
+    // for a single flat charge, so a premium per-clip engine loses $7-24 a spot
+    // (plan-config.ts econ note). Render every beat on the default engine
+    // regardless of the picker — defense-in-depth behind the route guards that
+    // already force engine "auto" for Commercial. reconcileEngineSurcharge below
+    // still runs against params.videoEngine, so any surcharge a caller DID
+    // charge is refunded by the existing machinery. undefined also disables
+    // renderMotionClip's safety-filter fallback, which only existed to escape a
+    // premium engine's content filter.
+    const motionEngine: string | undefined = undefined;
     const prior = clipUrls.slice();
     const slots: (string | null)[] = new Array(plan.beats.length - prior.length).fill(null);
     await Promise.all(
       slots.map((_, k) => (async () => {
         const i = prior.length + k;
-        let clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}`, engines.note);
+        let clip = await renderMotionClip(motionEngine, animOpts(i), `commercial-beat-${i + 1}`, engines.note);
         const gate = await motionGate(clip, serviceMode);
         if (!gate.ok && gate.degraded) {
           // Judged nothing. Re-buying a clip on no information is the exact
@@ -752,7 +763,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
         } else if (!gate.ok) {
           console.log(`[commercial] beat ${i + 1} failed motion gate (${gate.why}) — re-rolling once`);
           try {
-            clip = await renderMotionClip(params.videoEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`, engines.note);
+            clip = await renderMotionClip(motionEngine, animOpts(i), `commercial-beat-${i + 1}-reroll`, engines.note);
           } catch (e) {
             // KEEP THE FIRST TAKE. The gate verdict is a vision judge's
             // subjective call, and the clip that failed it is paid for and
