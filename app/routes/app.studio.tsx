@@ -32,7 +32,7 @@ type CType = "avatar" | "highlight" | "cartoon" | "jingle" | "commercial" | "rev
 // creative direction — translated at submit so the queue, the capability
 // gate and the pipelines never learn new keys. (web.studio.tsx mirrors this.)
 const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: string }> = {
-  review: { base: "avatar", direction: "Film it like a real customer review shot on a phone for social: casual selfie framing, natural light, honest conversational tone — a viral organic review, not a polished ad." },
+  review: { base: "avatar", direction: "Film it like a creator's phone-shot product demo for social: casual selfie framing, natural light, upbeat first-person walkthrough of what the product does and why it's cool — organic UGC energy, not a polished ad. Do NOT claim to be a customer or to have bought or owned it." },
   unboxing: { base: "avatar", direction: "An excited first-impressions unboxing: they open the package on camera, lift the product out, react genuinely, and show it close to the lens." },
   asmr: { base: "highlight", direction: "An oddly-satisfying ASMR-style macro edit: extreme close-ups, slow luxurious motion, rich textures, droplets and light play — a mesmerizing loop that stops the scroll." },
 };
@@ -46,7 +46,7 @@ const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; su
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", live: true },
   { key: "commercial", name: "Commercial", icon: "🎥", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", live: true },
-  { key: "review", name: "UGC Review", icon: "🤳", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's honest phone-shot review — social-feed real", live: true },
+  { key: "review", name: "Creator Demo", icon: "🤳", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's phone-shot product demo — social-feed real", live: true },
   { key: "unboxing", name: "Unboxing", icon: "📦", cover: "/ad-templates/ctcover-unboxing.jpg?v=1", sub: "The box opens on camera — first impressions, real reactions", live: true },
   { key: "asmr", name: "Satisfying Close-Up", icon: "🌊", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", live: true },
 ];
@@ -632,7 +632,7 @@ export default function Studio() {
               <button type="button" className="cs-back" onClick={() => setContentType(null)}>‹ Content type</button>
               {baseOf(contentType) === "avatar" && <PresenterPicker cast={cast} value={avatarId} onChange={setAvatarId} allowNone={false} brandFaceId={brandFaceId} />}
               {contentType === "highlight" && <p className="cfg-note cs-ctnote">🎬 <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
-              {contentType === "review" && <p className="cfg-note cs-ctnote">🤳 <b>UGC Review</b> — your presenter films it like a real customer review: phone-shot, casual, straight to camera. The kind of post people actually trust.</p>}
+              {contentType === "review" && <p className="cfg-note cs-ctnote">🤳 <b>Creator Demo</b> — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.</p>}
               {contentType === "unboxing" && <p className="cfg-note cs-ctnote">📦 <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
               {contentType === "asmr" && <p className="cfg-note cs-ctnote">🌊 <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
               {contentType === "cartoon" && (

@@ -20,6 +20,14 @@ export const VIDEO_ENGINES: VideoEngine[] = [
   { key: "kling25fal", name: "Kling 2.5 Turbo", blurb: "Fast and dependable — the safe pick", surcharge: 0 },
   { key: "hailuo", name: "Hailuo 2", blurb: "Cinematic lighting, lush color", surcharge: 25 },
   { key: "seedance", name: "Seedance 1 Pro", blurb: "Punchy, dynamic, TikTok-native energy", surcharge: 25 },
+  // KEEP VEO ON THE *FAST* VARIANTS. +75 tokens (~$7.50) covers a Veo-FAST clip
+  // with margin, but a true full-quality Veo-3 clip costs $8-10 and would be
+  // break-even-to-loss at this surcharge. The server adapter (animateModelFor in
+  // ugc-ad-pipeline.server.ts) maps both keys to the fal/Google *fast* models;
+  // never repoint them at full-quality Veo, and never add a non-fast Veo SKU,
+  // without also raising its surcharge. (Owner decision 2026-10-04: no price
+  // change — the real Veo loss, a Commercial firing 5 clips for one surcharge,
+  // is fixed by pinning Commercial to the default engine.)
   { key: "veo31", name: "Veo 3.1 Fast", blurb: "Google's latest — premium realism", surcharge: 75 },
   { key: "veo", name: "Veo 3 Fast", blurb: "Google's previous generation", surcharge: 75 },
 ];

@@ -36,7 +36,7 @@ const CONTENT_TYPES = [
   { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
   { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
-  { key: "review", name: "UGC Review", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's honest phone-shot review — social-feed real", cap: "video", tier: "Studio", price: 39 },
+  { key: "review", name: "Creator Demo", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's phone-shot product demo — social-feed real", cap: "video", tier: "Studio", price: 39 },
   { key: "unboxing", name: "Unboxing", cover: "/ad-templates/ctcover-unboxing.jpg?v=1", sub: "The box opens on camera — first impressions, real reactions", cap: "video", tier: "Studio", price: 39 },
   { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
 ] as const;
@@ -67,7 +67,7 @@ function burstCount(form: FormData, max: number): number {
 }
 
 const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: string }> = {
-  review: { base: "avatar", direction: "Film it like a real customer review shot on a phone for social: casual selfie framing, natural light, honest conversational tone — a viral organic review, not a polished ad." },
+  review: { base: "avatar", direction: "Film it like a creator's phone-shot product demo for social: casual selfie framing, natural light, upbeat first-person walkthrough of what the product does and why it's cool — organic UGC energy, not a polished ad. Do NOT claim to be a customer or to have bought or owned it." },
   unboxing: { base: "avatar", direction: "An excited first-impressions unboxing: they open the package on camera, lift the product out, react genuinely, and show it close to the lens." },
   asmr: { base: "highlight", direction: "An oddly-satisfying ASMR-style macro edit: extreme close-ups, slow luxurious motion, rich textures, droplets and light play — a mesmerizing loop that stops the scroll." },
 };
@@ -1300,7 +1300,7 @@ export default function WebStudio() {
             )}
             {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
             {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
-            {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>UGC Review</b> — your presenter films it like a real customer review: phone-shot, casual, straight to camera. The kind of post people actually trust.</p>}
+            {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>Creator Demo</b> — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.</p>}
             {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
             {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
