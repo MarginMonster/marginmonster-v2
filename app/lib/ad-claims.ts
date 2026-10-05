@@ -20,7 +20,9 @@ export const CLAIMS_GUARDRAIL =
   "(1) Never call the product authentic, official, genuine, licensed, original or a 'real' branded item — we cannot verify provenance; say what it is without an authenticity or licensing claim. " +
   "(2) A brand, franchise, event, publication, retailer or person named on the product (for example a 'Comic-Con Pick' tag) is the STORE's own reference, NEVER a third-party endorsement: never write it as a possessive or approval ('Comic-Con's pick', 'chosen by', 'X-approved', 'as seen at X'), and never claim that third party endorses, stocks, awarded, licensed or is associated with it. " +
   "(3) Invent no scarcity or exclusivity — no 'limited', 'exclusive', 'rare', 'most-hunted', 'only at', 'event-exclusive', 'while supplies last' or 'selling fast' — unless the merchant's own details state it. " +
-  "(4) State no superlative, ranking or market/category-performance claim as fact — no '#1', 'best', 'most-loved', 'top-rated', 'strongest-performing', 'fastest-growing' — unless the merchant's details support it. " +
+  "(4) State no superlative, ranking or market/category-performance claim as fact — no '#1', 'best', 'most-loved', 'top-rated', 'strongest-performing', 'fastest-growing', no 'S-tier'/tier ranking — unless the merchant's details support it. " +
+  "(5) Promise no guarantee, warranty, refund, return or replacement — no 'lifetime', 'money-back', 'free replacement', 'satisfaction guaranteed', 'X-year warranty' — unless the merchant's details state that exact promise (it is a binding contract). " +
+  "(6) In any comparison, state no specific factual claim about a competitor, rival brand or the category — contrast only on your product's own real, given strengths; never invent a rival's weakness or a 'most people…' statistic. " +
   "You MAY still name the product and its franchise descriptively and sell it on its real, given features.";
 
 // Merchants append store-internal curation/marketing labels to product titles —
