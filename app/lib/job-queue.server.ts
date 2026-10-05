@@ -487,6 +487,27 @@ async function runJob(
         const { assertCapability, videoCapabilityFor } = await import("./capabilities.server");
         assertCapability(shop.activePlan, videoCapabilityFor((payload.contentType as string) || undefined));
       }
+      // GROUND THE SCRIPT IN REAL FACTS — the same win generateImageAd gets.
+      // Every video script/VO/lyric writer takes productDescription as its
+      // source of product specifics, but the Studio/Archive/Questline payloads
+      // set it to the merchant's free-text DIRECTION (also carried as
+      // customPrompt), so the writers were told the direction was product fact.
+      // Resolve the merchant's own catalogue description by title — the same
+      // single lookup generateImageAd uses, so grounding reaches every entry
+      // point and all five pipelines without threading a new payload field — and
+      // prefer it. This runs on an ALREADY-PAID job, so the lookup must NEVER
+      // throw (a DB hiccup must not terminal-fail a paid render); on any miss it
+      // falls back to whatever the payload carried.
+      const groundedDescription =
+        (await (async () => {
+          try {
+            const row = await db.catalogProduct.findFirst({
+              where: { shopId, title: payload.productTitle as string },
+              select: { description: true },
+            });
+            return (row?.description || "").trim() || null;
+          } catch { return null; }
+        })()) ?? (payload.productDescription as string | undefined);
       // Provenance label for the finished take's card in the Studio.
       let origin: string | undefined;
       if (payload.questlineId) {
@@ -507,7 +528,7 @@ async function runJob(
           shopId,
           brandProfile: shop.brandProfile,
           productTitle: payload.productTitle as string,
-          productDescription: payload.productDescription as string | undefined,
+          productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
           styleKey: (payload.cartoonStyle as string) || "dreamanime",
           avatarId: payload.avatarId as string | undefined,
@@ -547,7 +568,7 @@ async function runJob(
           shopId,
           brandProfile: shop.brandProfile,
           productTitle: payload.productTitle as string,
-          productDescription: payload.productDescription as string | undefined,
+          productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
           serviceMode: payload.serviceMode === true,
           videoEngine: payload.videoEngine as string | undefined,
@@ -573,7 +594,7 @@ async function runJob(
           shopId,
           brandProfile: shop.brandProfile,
           productTitle: payload.productTitle as string,
-          productDescription: payload.productDescription as string | undefined,
+          productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
           avatarId: payload.avatarId as string | undefined,
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
@@ -606,7 +627,7 @@ async function runJob(
           shopId,
           brandProfile: shop.brandProfile,
           productTitle: payload.productTitle as string,
-          productDescription: payload.productDescription as string | undefined,
+          productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
           avatarId: payload.avatarId as string,
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
@@ -645,7 +666,7 @@ async function runJob(
           brandProfile: shop.brandProfile,
           plan: shop.activePlan,
           productTitle: payload.productTitle as string,
-          productDescription: payload.productDescription as string | undefined,
+          productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
           style: "PRODUCT_HIGHLIGHT",
           serviceMode: payload.serviceMode === true,

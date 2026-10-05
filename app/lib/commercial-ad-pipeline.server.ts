@@ -130,6 +130,7 @@ export async function planCommercial(
       `CRITICAL: every scene sentence MUST restate the protagonist's appearance (gender, age, hair, wardrobe) in full — each scene is rendered by an image model that sees ONLY that sentence, and any detail you drop gets re-invented differently, breaking the character between shots.`,
       `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
       `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
+      productDescription ? `Every spoken claim in "narration" must come from the ${serviceMode ? "offer" : "product"} details above — do not invent numbers, materials or results.` : "",
       serviceMode ? `Then tagline: 3-6 punchy words for the closing brand card.` : `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,

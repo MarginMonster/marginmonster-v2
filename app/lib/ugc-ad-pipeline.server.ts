@@ -908,6 +908,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     `like recommending to a friend. End with a short call to action.`,
     `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
+    params.productDescription ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.` : "",
   ]
     .filter(Boolean)
     .join("\n");

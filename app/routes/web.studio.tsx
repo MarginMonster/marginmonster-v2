@@ -276,6 +276,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "importUrl") {
     try {
       const p = await scrapeProductPage((form.get("url") as string) || "");
+      // GROUND THE ONE-OFF PRODUCT, TOO. A pasted single URL never reached the
+      // catalogue, so generateImageAd's by-title lookup (description, price,
+      // buy-link) all missed and the copywriter fell back to invented specs.
+      // Mirror this one product exactly as importCatalog mirrors each (keyed by
+      // shopId_url) so the existing by-title grounding just works — no new field
+      // threaded through the generate payload. Best-effort: a failed mirror must
+      // never break the import the merchant actually asked for.
+      if (p.title) {
+        try {
+          const data = {
+            title: p.title.slice(0, 200),
+            imageUrl: p.image || null,
+            priceText: p.price || null,
+            description: p.description || null,
+            lastSeenAt: new Date(),
+          };
+          await db.catalogProduct.upsert({
+            where: { shopId_url: { shopId: shop.id, url: p.url } },
+            create: { shopId: shop.id, url: p.url, ...data },
+            update: data,
+          });
+        } catch (e) {
+          console.warn("[studio] single-URL catalogue mirror failed (non-fatal):", e instanceof Error ? e.message.slice(0, 120) : e);
+        }
+      }
       return json({ imported: { title: p.title || "", image: p.image || null, url: p.url } });
     } catch (e) {
       return json({ importError: e instanceof Error ? e.message : "Couldn't import from that URL." });
