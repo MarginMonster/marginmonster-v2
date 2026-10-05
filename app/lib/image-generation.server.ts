@@ -1377,8 +1377,11 @@ async function renderStatComposite(opts: {
     // 2) Composite the cutout in the LOWER-CENTER — the hero number owns the top
     //    half, so the product sits below it with a soft drop shadow.
     const cut = headerSize(tmpCut);
-    const boxW = 360, boxH = 360;
-    const cx = W / 2, cy = Math.round(H * 0.63);
+    // Bigger product, pulled up so it reads as the hero — the first cut sat small
+    // and floating with a dead band under the number. Box grows 360² → 450×420
+    // (~1.4× area) and the center rises so the product tucks just under the label.
+    const boxW = 450, boxH = 420;
+    const cx = W / 2, cy = Math.round(H * 0.575);
     let pw = boxW, ph = boxH;
     if (cut) {
       const s = Math.min(boxW / cut.w, boxH / cut.h);
@@ -1387,12 +1390,17 @@ async function renderStatComposite(opts: {
     const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
 
     const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xEFE7DA:s=${W}x${H}`];
+    // GROUNDED contact shadow (not an offset drop shadow): squash the product's
+    // own silhouette into a flat, heavily-blurred dark blob at its base, so the
+    // product sits ON the surface instead of floating in front of it.
+    const shW = Math.round(pw * 0.94), shH = Math.max(10, Math.round(ph * 0.13));
+    const shX = px + Math.round((pw - shW) / 2), shY = py + ph - Math.round(ph * 0.06);
     const composite =
       `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];` +
       `[1:v]scale=${pw}:${ph}[cut];` +
       `[cut]split[c1][c2];` +
-      `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=12,colorchannelmixer=aa=0.33[sh];` +
-      `[bg][sh]overlay=x=${px}+8:y=${py}+14[b1];` +
+      `[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.42[sh];` +
+      `[bg][sh]overlay=x=${shX}:y=${shY}[b1];` +
       `[b1][c1]overlay=x=${px}:y=${py}[outv]`;
     const comp = await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", composite, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill]);
     if (!comp.ok || !fs.existsSync(tmpStill)) return null;
@@ -1417,8 +1425,8 @@ async function renderStatComposite(opts: {
     // line, so the number+label block sits in the same place for any value.
     const sg = hasCJK(statTxt) ? 1.05 : 0.60;
     const statSize = Math.max(90, Math.min(230, Math.floor((W * 0.86) / (Math.max(1, statTxt.length) * sg))));
-    const labelY = 300;
-    const statY = Math.max(40, labelY - statSize - 8);
+    const labelY = 312; // sits just above the (now larger, higher) product
+    const statY = Math.max(40, labelY - statSize - 10);
 
     // Label and headline are width-capped single lines, so neither can overflow.
     const lg = hasCJK(labelTxt) ? 1.05 : 0.52;
@@ -1428,22 +1436,22 @@ async function renderStatComposite(opts: {
     const hlY = Math.round(H * 0.82);
 
     // Auto-contrast, sampled where each block actually sits.
-    const topLuma = (await bandLuma(bin, tmpStill, 0, 0.30)) ?? 180;
+    const topLuma = (await bandLuma(bin, tmpStill, 0, 0.32)) ?? 180;
     const topDark = topLuma > 150; // dark text on a light top
     const statColor = topDark ? "0x141414" : "white";
     const statShadow = topDark ? "shadowcolor=white@0.35:shadowx=0:shadowy=2" : "shadowcolor=black@0.5:shadowx=0:shadowy=3";
-    const hlLuma = (await bandLuma(bin, tmpStill, 0.78, 0.10)) ?? 180;
+    const hlLuma = (await bandLuma(bin, tmpStill, 0.80, 0.14)) ?? 180;
     const hlDark = hlLuma > 150;
     const hlColor = hlDark ? "0x141414" : "white";
     const hlShadow = hlDark ? "shadowcolor=white@0.35:shadowx=0:shadowy=2" : "shadowcolor=black@0.5:shadowx=0:shadowy=3";
 
     const vf = [
       // lift a bright top a touch so a white number still reads (mirrors callout)
-      topDark ? "" : "drawbox=x=0:y=0:w=iw:h=360:color=black@0.16:t=fill",
+      topDark ? "" : "drawbox=x=0:y=0:w=iw:h=380:color=black@0.16:t=fill",
       `drawtext=fontfile='${font}':text='${statTxt}':fontsize=${statSize}:fontcolor=${statColor}:${statShadow}:x=(w-text_w)/2:y=${statY}`,
       labelTxt ? `drawtext=fontfile='${font}':text='${labelTxt}':fontsize=${labelSize}:fontcolor=${statColor}:${statShadow}:x=(w-text_w)/2:y=${labelY}` : "",
       hlTxt ? `drawtext=fontfile='${font}':text='${hlTxt}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${hlY}` : "",
-      ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x141414@0.92:boxborderw=18:x=(w-text_w)/2:y=h-92` : "",
+      ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x141414@0.92:boxborderw=18:x=(w-text_w)/2:y=h-84` : "",
     ].filter(Boolean).join(",");
 
     const fin = await runFfmpegStill(bin, ["-y", "-i", tmpStill, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
