@@ -10,14 +10,13 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 export interface AnthropicOptions {
   model?: string;
   maxTokens?: number;
-  /** Seed the assistant turn so the model MUST continue from this exact text.
-   *  The classic cure for "return ONLY JSON" being ignored: prefill "{" and the
-   *  model can only emit the rest of a JSON object — no prose preamble, no code
-   *  fence. The returned string already has the prefill prepended, so callers
-   *  parse it unchanged. Must not end in whitespace (the API rejects that), and
-   *  is incompatible with extended thinking — fine here, sonnet-5 has it
-   *  disabled above. */
-  prefill?: string;
+  /** Force a structured-JSON answer via one forced tool call. The Claude-5
+   *  family REJECTS assistant-message prefill (the old "{" trick → 400), and
+   *  left to free text sonnet-5 often answers in prose; a forced tool_choice is
+   *  the supported way to guarantee a JSON object. Pass the field schema; the
+   *  model is compelled to call the tool, and anthropicText returns
+   *  JSON.stringify(tool input) so callers parse the string exactly as before. */
+  jsonSchema?: { name?: string; schema: Record<string, unknown> };
 }
 
 /** claude-sonnet-5 runs ADAPTIVE THINKING by default when the request has no
@@ -76,12 +75,19 @@ export async function anthropicText(
           model,
           max_tokens: maxTokens,
           ...thinkingFieldFor(model),
-          messages: opts.prefill
-            ? [
-                { role: "user", content: prompt },
-                { role: "assistant", content: opts.prefill },
-              ]
-            : [{ role: "user", content: prompt }],
+          ...(opts.jsonSchema
+            ? {
+                tools: [
+                  {
+                    name: opts.jsonSchema.name || "emit",
+                    description: "Return the requested ad-copy fields as structured JSON.",
+                    input_schema: opts.jsonSchema.schema,
+                  },
+                ],
+                tool_choice: { type: "tool", name: opts.jsonSchema.name || "emit" },
+              }
+            : {}),
+          messages: [{ role: "user", content: prompt }],
         }),
       },
       { label: "anthropic", attempts: 5, totalCapMs: 90_000 }
@@ -97,17 +103,22 @@ export async function anthropicText(
     throw new Error(`Anthropic API ${res.status}: ${bodyText.slice(0, 400)}`);
   }
 
-  let json: { content?: Array<{ type: string; text?: string }> };
+  let json: { content?: Array<{ type: string; text?: string; input?: unknown }> };
   try {
     json = JSON.parse(bodyText);
   } catch {
     throw new Error("Anthropic returned invalid JSON");
   }
 
+  // Forced tool call: the structured object is the tool_use block's `input`.
+  // Hand it back as a JSON string so callers' existing parse path is unchanged.
+  if (opts.jsonSchema) {
+    const tu = json.content?.find((c) => c.type === "tool_use");
+    return tu && tu.input !== undefined ? JSON.stringify(tu.input) : "";
+  }
+
   const block = json.content?.find((c) => c.type === "text");
-  // The API's response continues FROM the prefill but doesn't echo it, so
-  // prepend it to hand the caller the complete string it expects.
-  return (opts.prefill || "") + (block?.text || "");
+  return block?.text || "";
 }
 
 /** Shopify CDN serves ORIGINALS — routinely past the API's 8000px image

@@ -2308,18 +2308,25 @@ async function formatCopy(
       `Keep every value SHORT. Long strings get cut off mid-word when drawn into the layout, so prefer the low end of each range and never exceed it.`,
       `No emoji, no hashtags, no quotes inside values.`,
     ].filter(Boolean).join("\n");
+    // Which label slots may be empty without failing the format (reused in the
+    // field loop below). Defined up here so the tool schema can mark them
+    // non-required: c1 and c2 are needed (a callout needs two points), c3/c4 may
+    // drop out. A model that cannot fill an optional chip still returns valid copy.
+    const OPTIONAL: Record<string, Set<string>> = { callout: new Set(["c3", "c4"]) };
+    const optional = OPTIONAL[formatKey] || new Set<string>();
     let raw: string;
     try {
-      // 300 tokens truncated a few many-field formats mid-JSON (→ unparseable →
-      // copy-failed); 600 is still tiny for a 6-field callout but gives the
-      // longer templates headroom. Output is billed on tokens actually emitted,
-      // so the ceiling costs nothing when the answer is short.
-      // Prefill "{" so the model can only continue a JSON object. The live logs
-      // showed the real copy-failed cause was sonnet-5 returning ~1300 chars of
-      // PROSE with no JSON at all ~3 attempts in 4; forcing the first character
-      // to "{" removes the prose-preamble/refusal path the retries were papering
-      // over. raw comes back already including the leading "{".
-      raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 600, prefill: "{" });
+      // sonnet-5, left to free text on this huge prompt, answered in PROSE ~3 of
+      // every 4 tries (live logs: "no-json len≈1300") and it 400s on the "{"
+      // prefill trick. A FORCED tool call is the supported way to compel a JSON
+      // object; anthropicText returns JSON.stringify(tool input), so the parse
+      // path below is unchanged. maxTokens 600 is ample; output is billed as used.
+      const schema = {
+        type: "object",
+        properties: Object.fromEntries(fields.map((f) => [f, { type: "string" }])),
+        required: fields.filter((f) => !optional.has(f)),
+      };
+      raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 600, jsonSchema: { name: "ad_copy", schema } });
     } catch (e) {
       // anthropicText THROWS on a 4xx/5xx that outlived its retries (a 429 in a
       // ×N burst is the usual one). That throw used to be swallowed as a bare
@@ -2344,15 +2351,8 @@ async function formatCopy(
       return null;
     }
     const out: Record<string, string> = {};
-    // Some label slots are OPTIONAL — losing one should degrade the format, not
-    // kill it. A callout with 2-3 benefit chips is a fine ad; the layout is
-    // count-adaptive and draws one line per chip that survives. The live logs
-    // showed "copy-failed" was a leading callout reject, much of it the model
-    // simply not returning a 4th chip — which used to fail the WHOLE format to a
-    // generic scene. c1 and c2 stay required (a callout needs at least two
-    // points); c3 and c4 may drop out.
-    const OPTIONAL: Record<string, Set<string>> = { callout: new Set(["c3", "c4"]) };
-    const optional = OPTIONAL[formatKey] || new Set<string>();
+    // (OPTIONAL / optional defined above, before the tool call, so the schema and
+    // this loop agree on which slots may drop out.)
     for (const f of fields) {
       // tidyAdCopy is a DETERMINISTIC repair, not a second opinion. Once this
       // string reaches the image model it is baked into pixels, so a dropped
