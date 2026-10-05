@@ -949,9 +949,18 @@ export default function WebStudio() {
   // that the search box was how to reach them. The count was true about the
   // database and false about the page.
   const CAT_TILES = 60;
-  const catFiltered = d.catalog.filter(
-    (c) => !catQuery.trim() || c.title.toLowerCase().includes(catQuery.trim().toLowerCase())
-  );
+  // Token-AND search, not one contiguous substring. A contiguous match drops a
+  // real product the moment any token sits between the words you typed: searching
+  // "Grumpipi Whispers to Dreamland" returned 0 rows for the title
+  // "Grumpipi V2 Whispers to Dreamland" because the run is broken by "V2".
+  // Match every whitespace-separated token somewhere in the title instead, so
+  // word order and interspersed tokens (versions, sizes, pack counts) still hit.
+  const catNeedles = catQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const catFiltered = d.catalog.filter((c) => {
+    if (!catNeedles.length) return true;
+    const hay = c.title.toLowerCase();
+    return catNeedles.every((n) => hay.includes(n));
+  });
   const catShown = catFiltered.slice(0, CAT_TILES);
   const [productSize, setProductSize] = useState("");
   const [showConnect, setShowConnect] = useState(false);
@@ -1557,7 +1566,7 @@ export default function WebStudio() {
                   <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}><Ico n="box" /> Physical product</button>
                   <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}><Ico n="burst" /> Service / offer</button>
                 </div>
-                {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
+                {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : tab === "image" ? <>We build a lifestyle scene that sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
               </>
             )}
 

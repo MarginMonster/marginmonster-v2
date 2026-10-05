@@ -29,9 +29,18 @@ import { presenterSprayEnabled } from "./feature-flags.server";
  *  an optional small support line, and a short CTA. */
 async function adCopy(productTitle: string, tone: string | undefined, direction: string | undefined, serviceMode: boolean, contentLang?: string | null): Promise<{ headline: string; sub: string; cta: string } | null> {
   try {
+    // This poster/scene path is the fallback the whole studio lands on — every
+    // format null-gates to it, so it must carry the SAME grounding discipline as
+    // formatCopy, not less. It did not, and a prod QA sweep showed the gap: a
+    // "– Comic-Con Pick" curation tag in the title came back as "COMIC-CON'S
+    // PICK", "COMIC-CON'S FAVORITE", "COMIC-CON'S MOST WANTED" on 9 of 14 texted
+    // renders — an invented event endorsement + superlative on a reseller item.
+    // Strip the store's promo tag from the title BEFORE the model sees it (so it
+    // never has "Comic-Con" to inflate), and attach the shared claims guardrail.
+    const title = stripPromoTag(productTitle);
     const prompt = [
       `Write poster-style ad copy to overlay on a ${serviceMode ? "service/offer" : "product"} image ad — think award-winning print ads: a bold STATEMENT headline that stops the scroll, not a generic tagline.${langDirective(contentLang)}`,
-      `${serviceMode ? "Offer" : "Product"}: "${productTitle}".`,
+      `${serviceMode ? "Offer" : "Product"}: "${title}".`,
       tone ? `Brand tone: ${tone}.` : "",
       direction ? `Angle: ${direction.slice(0, 160)}.` : "",
       `Return ONLY JSON: {"headline":"...","sub":"...","cta":"..."}.`,
@@ -39,6 +48,7 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
       `sub: MAX 8 words, one small supporting line that lands the benefit — or "" if the headline says it all.`,
       `cta: MAX 3 words (e.g. "Shop now", "Get yours", "Start free").`,
       `NEVER invent a discount, percentage, sale, coupon or saving — we do not know whether this merchant is running one, and a made-up offer is a promise their shop never agreed to honour.`,
+      CLAIMS_GUARDRAIL,
       `No quotes, emoji, or hashtags inside the values.`,
     ].filter(Boolean).join("\n");
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 160 });
@@ -60,14 +70,16 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
     // The word cap is a cap, not a chop: slicing a sentence at N words ships
     // half a thought onto a finished ad.
     const clean = (s: string | undefined, n: number) =>
-      tidyAdCopy(
-        (s || "")
-          .replace(/["“”]/g, "")
-          .replace(/[‘’]/g, "'")
-          .trim()
-          .split(/\s+/)
-          .slice(0, n)
-          .join(" ")
+      dropOrgEndorsementPossessive(
+        tidyAdCopy(
+          (s || "")
+            .replace(/["“”]/g, "")
+            .replace(/[‘’]/g, "'")
+            .trim()
+            .split(/\s+/)
+            .slice(0, n)
+            .join(" ")
+        )
       );
     const headline = clean(j.headline, 8);
     const sub = clean(j.sub, 9);
