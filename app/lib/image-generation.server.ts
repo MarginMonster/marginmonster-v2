@@ -1162,6 +1162,165 @@ async function pasteProductIntoAd(frameUrl: string, productImageUrl: string): Pr
   }
 }
 
+/** THE DETERMINISTIC CALLOUT — the only sure cure for the image model misspelling
+ *  its OWN overlay text ("Buildable" -> "Buidlable", "Collector" -> "Sollector"),
+ *  which the prod logs showed is the real reason callouts collapse to a scene ad.
+ *  Instead of asking the model to draw the chips/headline/lines, we composite the
+ *  REAL product cutout onto a clean, text-free backdrop and draw EVERY word
+ *  ourselves with ffmpeg — so the text is ALWAYS perfectly spelled and the brand
+ *  is ALWAYS pixel-faithful. The model only renders an empty backdrop, which it
+ *  does flawlessly. Returns the finished file, or null on any failure (the caller
+ *  then falls back to the paste / scene ad, exactly as before). */
+async function renderCalloutComposite(opts: {
+  productImageUrl: string;
+  headline: string;
+  cta: string;
+  chips: string[];
+  contentLang?: string | null;
+  styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const chips = opts.chips.map((s) => (s || "").trim()).filter(Boolean).slice(0, 4);
+  if (chips.length < 2) return null; // a callout needs at least two points
+
+  const cutout = await removeBackground(opts.productImageUrl);
+  if (!cutout) return null;
+
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.cb-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.cc-${stamp}.png`);
+  const tmpStill = path.join(dir, `.cs-${stamp}.jpg`);
+  const fileName = `img-${stamp}.jpg`;
+  const out = path.join(dir, fileName);
+  try {
+    // 1) A clean, EMPTY, text-free backdrop — generated for a premium look, with
+    //    a warm-cream ffmpeg fallback so a flux hiccup never loses the ad.
+    let gotBg = false;
+    try {
+      const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`;
+      const bgUrl = await fluxDevStill(bgPrompt, "callout-backdrop");
+      if (bgUrl) {
+        const res = await fetch(bgUrl);
+        if (res.ok) { fs.writeFileSync(tmpBg, Buffer.from(await res.arrayBuffer())); gotBg = true; }
+      }
+    } catch { /* fall back to a solid colour */ }
+    {
+      const r = await fetch(cutout);
+      if (!r.ok) return null;
+      fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer()));
+    }
+
+    // 2) Composite the cutout CENTERED at a KNOWN rect, so the leader lines can
+    //    aim at it deterministically.
+    const cut = headerSize(tmpCut);
+    const boxW = 430, boxH = 470;
+    const cx = W / 2, cy = Math.round(H * 0.52);
+    let pw = boxW, ph = boxH;
+    if (cut) {
+      const s = Math.min(boxW / cut.w, boxH / cut.h);
+      pw = Math.round(cut.w * s); ph = Math.round(cut.h * s);
+    }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+    const pLeft = px, pRight = px + pw;
+
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xEFE7DA:s=${W}x${H}`];
+    const composite =
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];` +
+      `[1:v]scale=${pw}:${ph}[cut];` +
+      `[cut]split[c1][c2];` +
+      `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=12,colorchannelmixer=aa=0.33[sh];` +
+      `[bg][sh]overlay=x=${px}+8:y=${py}+14[b1];` +
+      `[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    const comp = await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", composite, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill]);
+    if (!comp.ok || !fs.existsSync(tmpStill)) return null;
+
+    // 3) Draw EVERY word ourselves — perfect spelling, always.
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try {
+      const { resolveTextFont } = await import("./ugc-ad-pipeline.server");
+      fontFile = await resolveTextFont(`${opts.headline} ${opts.cta} ${chips.join(" ")}`);
+    } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+
+    const hl = dt(opts.headline).toUpperCase();
+    const ct = dt(opts.cta).toUpperCase();
+    if (!hl) return null;
+
+    const words = hl.split(" ");
+    let line1 = hl, line2 = "";
+    if (hl.length > 16 && words.length > 2) {
+      let best = 1, bestDiff = Infinity;
+      for (let i = 1; i < words.length; i++) {
+        const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length;
+        const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 18) * 4;
+        if (d < bestDiff) { bestDiff = d; best = i; }
+      }
+      line1 = words.slice(0, best).join(" "); line2 = words.slice(best).join(" ");
+    }
+    const glyph = hasCJK(hl) ? 1.05 : 0.62;
+    const longestChars = Math.max(line1.length, line2.length, 1);
+    const hlSize = Math.min((longestChars * (glyph / 0.62)) > 18 ? 54 : 66, Math.floor((W * 0.9) / (longestChars * glyph)));
+    const topY = 72;
+    const line2Y = topY + Math.round(hlSize * 1.14);
+
+    const topLuma = (await bandLuma(bin, tmpStill, 0, 0.22)) ?? 180;
+    const darkText = topLuma > 150;
+    const hlColor = darkText ? "0x1A1A1A" : "white";
+    const hlShadow = darkText ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+
+    // Chips: left chips right-aligned to RX, right chips left-aligned to LX, each
+    // with a horizontal leader line + a dot at the product edge at the chip's row.
+    // Per-chip font is sized DOWN to the room available on that side so a long
+    // label can never run off the frame edge (a fixed size overflowed "NINE
+    // BLIND BOXES" off the left in local testing).
+    const RX = pLeft - 52;
+    const LX = pRight + 52;
+    const rows = chips.length <= 2 ? [Math.round(H * 0.5)]
+      : chips.length === 3 ? [Math.round(H * 0.4), Math.round(H * 0.63)]
+        : [Math.round(H * 0.38), Math.round(H * 0.64)];
+    const chipFilters: string[] = [];
+    chips.forEach((label, i) => {
+      const lab = dt(label); if (!lab) return;
+      const left = i % 2 === 0;
+      const avail = (left ? RX : (W - LX)) - 44; // usable width on that side
+      const gf = hasCJK(lab) ? 1.05 : 0.62;
+      const cs = Math.max(17, Math.min(30, Math.floor(avail / (Math.max(1, lab.length) * gf))));
+      const rowY = rows[Math.floor(i / 2)] ?? Math.round(H * 0.5);
+      const ty = rowY - Math.round(cs * 0.7);
+      if (left) {
+        chipFilters.push(`drawtext=fontfile='${font}':text='${lab}':fontsize=${cs}:fontcolor=0x141414:box=1:boxcolor=white@0.92:boxborderw=12:x=${RX}-text_w:y=${ty}`);
+        chipFilters.push(`drawbox=x=${RX + 14}:y=${rowY - 2}:w=${Math.max(10, pLeft - (RX + 14) - 8)}:h=4:color=0x141414@0.85:t=fill`);
+        chipFilters.push(`drawbox=x=${pLeft - 6}:y=${rowY - 6}:w=12:h=12:color=0x141414:t=fill`);
+      } else {
+        chipFilters.push(`drawtext=fontfile='${font}':text='${lab}':fontsize=${cs}:fontcolor=0x141414:box=1:boxcolor=white@0.92:boxborderw=12:x=${LX}:y=${ty}`);
+        chipFilters.push(`drawbox=x=${pRight + 8}:y=${rowY - 2}:w=${Math.max(10, (LX - 14) - (pRight + 8))}:h=4:color=0x141414@0.85:t=fill`);
+        chipFilters.push(`drawbox=x=${pRight - 6}:y=${rowY - 6}:w=12:h=12:color=0x141414:t=fill`);
+      }
+    });
+
+    const vf = [
+      darkText ? "" : "drawbox=x=0:y=0:w=iw:h=210:color=black@0.16:t=fill",
+      `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${topY}`,
+      line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${line2Y}` : "",
+      ...chipFilters,
+      ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x141414@0.92:boxborderw=18:x=(w-text_w)/2:y=h-96` : "",
+    ].filter(Boolean).join(",");
+
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpStill, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch {
+    return null;
+  } finally {
+    for (const f of [tmpBg, tmpCut, tmpStill]) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } }
+  }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -2356,25 +2515,59 @@ export async function runFormatRung(opts: {
   // or didn't actually help, so only a genuinely-repaired ad ships. Anything
   // else falls through to the scene ad exactly as before. Only on a real
   // rejection (not an outage) and only where a single product box exists.
-  let pasteRepaired = false;
-  if (!qa.pass && !qa.degraded && PASTE_SAFE.has(opts.formatKey)) {
+  let repairedBy = "";
+  if (!qa.pass && !qa.degraded) {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    const pasted = base ? await pasteProductIntoAd(imageUrl, opts.productImageUrl) : null;
-    if (!pasted) {
-      console.log(`[image-ad] format ${opts.formatKey}: paste-repair not applied (no product box or paste failed); reject was "${qa.reason}"`);
-    } else {
-      const pastedUrl = `${base}/renders/${pasted.file}`;
-      const qa2 = await qaFormat(pastedUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
-      if (qa2.pass) {
-        console.log(`[image-ad] format ${opts.formatKey}: real-product paste kept the format past a product-fidelity reject (${qa.reason})`);
-        imageUrl = pastedUrl;
-        qa = qa2;
-        pasteRepaired = true;
+    // DETERMINISTIC CALLOUT first. The generative render's TEXT is garbled and no
+    // re-roll fixed it (the prod logs proved that is the dominant reject — the
+    // model mangling its own chip words), so stop trusting the model to draw
+    // words: composite the real product and draw the chips/headline/CTA
+    // ourselves. Perfect text, pixel-faithful brand. Re-QA confirms (it will: the
+    // exact requested strings are drawn on the real cutout) and a broken
+    // composite still falls through to the paste / scene.
+    if (opts.formatKey === "callout" && base) {
+      const chips = [copy.c1, copy.c2, copy.c3, copy.c4].map((c) => (c || "").trim()).filter(Boolean);
+      const det = chips.length >= 2
+        ? await renderCalloutComposite({
+            productImageUrl: opts.productImageUrl,
+            headline: copy.headline || "",
+            cta: copy.cta || "",
+            chips,
+            contentLang: opts.contentLang,
+            styleDesc: pickBackdrop(),
+          })
+        : null;
+      if (det) {
+        const detUrl = `${base}/renders/${det.file}`;
+        const qa2 = await qaFormat(detUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+        if (qa2.pass) {
+          console.log(`[image-ad] format callout: deterministic text-overlay kept the format (generative reject was "${qa.reason}")`);
+          imageUrl = detUrl; qa = qa2; repairedBy = "deterministic callout";
+        } else {
+          console.log(`[image-ad] format callout: deterministic overlay re-QA failed (${qa2.reason}) — trying paste/scene`);
+        }
       } else {
-        // The paste fixed the product but the gate still rejects — almost always
-        // because the ad's OWN overlay text is garbled (which a product swap
-        // cannot fix). Logged so the recovery ceiling is visible, not a mystery.
-        console.log(`[image-ad] format ${opts.formatKey}: paste fixed the product but re-QA still rejects (${qa2.reason}) — falling to scene`);
+        console.log(`[image-ad] format callout: deterministic overlay not produced (backdrop/cutout/ffmpeg failed) — trying paste/scene`);
+      }
+    }
+    // PASTE for the other single-hero formats (and callout if the deterministic
+    // path could not run): swap the model's redrawn product for the real one.
+    if (!repairedBy && PASTE_SAFE.has(opts.formatKey) && base) {
+      const pasted = await pasteProductIntoAd(imageUrl, opts.productImageUrl);
+      if (!pasted) {
+        console.log(`[image-ad] format ${opts.formatKey}: paste-repair not applied (no product box or paste failed); reject was "${qa.reason}"`);
+      } else {
+        const pastedUrl = `${base}/renders/${pasted.file}`;
+        const qa2 = await qaFormat(pastedUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+        if (qa2.pass) {
+          console.log(`[image-ad] format ${opts.formatKey}: real-product paste kept the format past a product-fidelity reject (${qa.reason})`);
+          imageUrl = pastedUrl; qa = qa2; repairedBy = "real-product paste";
+        } else {
+          // The paste fixed the product but the gate still rejects — almost always
+          // because the ad's OWN overlay text is garbled (which a product swap
+          // cannot fix). Logged so the recovery ceiling is visible, not a mystery.
+          console.log(`[image-ad] format ${opts.formatKey}: paste fixed the product but re-QA still rejects (${qa2.reason}) — falling to scene`);
+        }
       }
     }
   }
@@ -2383,7 +2576,7 @@ export async function runFormatRung(opts: {
     copy,
     prompt,
     qaPass: qa.pass,
-    qaReason: pasteRepaired ? "clean (real-product paste)" : qa.reason,
+    qaReason: repairedBy ? `clean (${repairedBy})` : qa.reason,
     retried,
     fallback: qa.pass ? null : `qa-failed: ${qa.reason}`,
   };
