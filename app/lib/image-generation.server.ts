@@ -7,7 +7,7 @@ import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { trimToWord } from "./text-trim";
-import { CLAIMS_GUARDRAIL } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
@@ -1922,9 +1922,13 @@ async function formatCopy(
     const angleLens = direction
       ? null
       : AD_ANGLE_LENSES[Math.floor(Math.random() * AD_ANGLE_LENSES.length)];
+    // Drop the merchant's "– Comic-Con Pick" / "– Hot Deal" promo suffix so the
+    // copywriter writes from the real product, not a store label it would inflate
+    // into "COMIC-CON'S PICK" or just echo (also frees it to vary the hook).
+    const title = stripPromoTag(productTitle);
     const prompt = [
       `You write short, punchy copy for a "${formatKey}" style e-commerce static ad.${langDirective(contentLang)}`,
-      `Product: "${productTitle}".`,
+      `Product: "${title}".`,
       productDetails
         ? `The merchant's own description of this product — the ONLY facts you may treat as true, so draw the real specifics from here:\n"${productDetails}"`
         : "",
@@ -1997,7 +2001,10 @@ async function formatCopy(
       // reading "FINALLY A CAKE THAT WONT CRUMBLE" despite the instruction
       // below spelling out the rule. Instructions lower the rate; this takes
       // the mechanically-decidable part of it to zero.
-      const v = tidyAdCopy(typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "") : "");
+      // dropOrgEndorsementPossessive is the deterministic backstop to the claims
+      // guardrail: "COMIC-CON'S PICK" -> "COMIC-CON PICK" even when the model
+      // ignores the prompt rule (it did, when the tag sat in the product title).
+      const v = dropOrgEndorsementPossessive(tidyAdCopy(typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "") : ""));
       if (!v) return null;
       out[f] = v;
     }

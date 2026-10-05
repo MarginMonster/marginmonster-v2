@@ -4,7 +4,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { langDirective } from "./content-lang";
 import { brandBlock } from "./brand-prompt";
-import { CLAIMS_GUARDRAIL } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag } from "./ad-claims";
 
 // Blog posts are the SEO Autopilot product: the goal is always organic
 // search traffic — rank for buyer-intent keywords, then convert.
@@ -29,7 +29,7 @@ export async function generateBlogPost(
 
 ${brand}
 
-Product to feature: ${productTitle}
+Product to feature: ${stripPromoTag(productTitle)}
 Product details: ${productDescription?.slice(0, 400) || ""}
 
 Marketing goal: ${intent}

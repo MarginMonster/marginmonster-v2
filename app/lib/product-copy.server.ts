@@ -1,7 +1,7 @@
 import type { BrandProfile } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { brandBlock } from "./brand-prompt";
-import { CLAIMS_GUARDRAIL } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag } from "./ad-claims";
 
 export interface ProductCopy {
   seoTitle: string;
@@ -22,7 +22,7 @@ export async function generateProductCopy(
 
 ${brand}
 
-Product: ${productName}
+Product: ${stripPromoTag(productName)}
 Extra notes from the merchant: ${notes || "none"}
 
 Return ONLY a JSON object:
