@@ -2444,6 +2444,41 @@ export async function runFormatRung(opts: {
     return nil("copy-failed");
   }
 
+  // CALLOUT → DETERMINISTIC FIRST. A prod burst showed the generative callout,
+  // even when the short-word steering lets its text pass the gate, still (a)
+  // lets the image model add a DUPLICATE chip it was never asked for and (b)
+  // re-letters the brand ("HERO" -> "ARERO"). Drawing the chips/headline
+  // ourselves on the real cutout fixes BOTH and guarantees perfect spelling, so
+  // for callout we prefer it outright rather than only as a failure repair. The
+  // generative path below is the safety net: if the composite can't be produced
+  // or its re-QA fails, we fall straight through to it, so a bug here can never
+  // break callouts.
+  if (opts.formatKey === "callout") {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const chips = [copy.c1, copy.c2, copy.c3, copy.c4].map((c) => (c || "").trim()).filter(Boolean);
+    if (base && chips.length >= 2) {
+      const det = await renderCalloutComposite({
+        productImageUrl: opts.productImageUrl,
+        headline: copy.headline || "",
+        cta: copy.cta || "",
+        chips,
+        contentLang: opts.contentLang,
+        styleDesc: pickBackdrop(),
+      });
+      if (det) {
+        const detUrl = `${base}/renders/${det.file}`;
+        const qaD = await qaFormat(detUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+        if (qaD.pass) {
+          console.log(`[image-ad] format callout: deterministic text-overlay (primary) — perfect text + real product`);
+          return { imageUrl: detUrl, copy, prompt: "deterministic-callout", qaPass: true, qaReason: "clean (deterministic callout)", retried: false, fallback: null };
+        }
+        console.log(`[image-ad] format callout: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
+      } else {
+        console.log(`[image-ad] format callout: deterministic (primary) not produced — trying generative`);
+      }
+    }
+  }
+
   const prompt = formatLayoutPrompt(opts.formatKey, copy, undefined, undefined, pickBackdrop());
   // The rejection reason goes into an IMAGE prompt, and the QA reply often
   // quotes the offending words back ('repeated word "still"'). Handing quoted
