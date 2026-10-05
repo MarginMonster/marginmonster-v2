@@ -79,6 +79,57 @@ async function toVerticalFrame(buf: Buffer, dir: string, outPath: string): Promi
   }
 }
 
+/** Build a 9:16 SEED FRAME from a product photo, and return the public URL to
+ *  hand the image-to-video model.
+ *
+ *  WHY, not just toVerticalFrame afterwards. Image-to-video engines return the
+ *  aspect ratio of the seed, so a square product photo yields a square clip
+ *  that toVerticalFrame can only FIT into 9:16 — the product ends up in a
+ *  centre band with blurred bars above and below. Live QA flagged that as
+ *  letterboxing. Give the model a frame that is ALREADY 720x1280 and it renders
+ *  natively vertical: the product sits whole and centred over a heavily-blurred
+ *  zoom of itself (sigma high enough that it's a soft colour wash with nothing
+ *  recognisable to morph as the clip animates), and the WHOLE frame is in play.
+ *
+ *  Needs a public base URL the provider can fetch; returns undefined without one
+ *  or on any failure, so the caller falls back to the bare photo (then
+ *  toVerticalFrame still pads it — a banded clip beats no clip). */
+async function prepareVerticalSeed(imageUrl: string): Promise<string | undefined> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!base) return undefined;
+  const rendersDir = path.join(process.cwd(), "data", "renders");
+  const tmp = path.join(rendersDir, `.seed-src-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`);
+  try {
+    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) return undefined;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 512) return undefined;
+    fs.mkdirSync(rendersDir, { recursive: true });
+    fs.writeFileSync(tmp, buf);
+    const name = `seed-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
+    const outPath = path.join(rendersDir, name);
+    const { status } = await runFfmpeg([
+      "-y", "-i", tmp,
+      "-filter_complex",
+      // sigma 55: a near-solid blurred wash, so the model has no detail to
+      // hallucinate motion into behind the product as it animates.
+      "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280," +
+        "gblur=sigma=55,eq=brightness=-0.05:saturation=0.9[bg];" +
+        "[0:v]scale=720:1280:force_original_aspect_ratio=decrease[fg];" +
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuvj420p[v]",
+      "-map", "[v]", "-frames:v", "1", "-q:v", "3",
+      outPath,
+    ]);
+    if (status !== 0 || !fs.existsSync(outPath) || fs.statSync(outPath).size < 512) return undefined;
+    try { if (storageEnabled()) await mirrorRender(name, fs.readFileSync(outPath)); } catch { /* disk copy is enough */ }
+    return `${base}/renders/${name}`;
+  } catch {
+    return undefined;
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
+  }
+}
+
 /** Download a provider render onto our own disk (and durable object storage)
  *  and return the /renders/ URL we serve it from.
  *
@@ -301,6 +352,13 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     if (base) seedImage = `${base}/avatars/${avatar.id}_${variant}.jpg`;
   } else if (style === "PRODUCT_HIGHLIGHT" && productImageUrl) {
     seedImage = productImageUrl;
+    // Render natively vertical: a 720x1280 seed yields a 720x1280 clip that
+    // fills the frame, instead of a square clip fit into bars by toVerticalFrame.
+    // Not for breakout — that composes its own full-frame seed just below.
+    if (!params.breakout) {
+      const vseed = await prepareVerticalSeed(productImageUrl);
+      if (vseed) seedImage = vseed;
+    }
     // Breakout animates a COMPOSED frame, not the bare product photo: the
     // still renderer already knows how to build the mock card + pop-out, so
     // the video and image versions of this style stay identical. Any failure
