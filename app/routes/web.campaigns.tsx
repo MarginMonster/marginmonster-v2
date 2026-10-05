@@ -16,7 +16,7 @@ import { Link, useActionData, useLoaderData, useNavigation, useSubmit } from "@r
 import { useState } from "react";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
-import { AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
+import { LIVE_AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
 import { parseSchedule } from "../lib/questlines";
 import { SOCIAL_PLAN_DEFS, questlineCostFor } from "../lib/questlines";
 import { acceptQuestline, abandonQuestline } from "../lib/questlines.server";
@@ -187,7 +187,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   })();
   const cast = [
     ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img })),
-    ...[...privateCastFor(account.email, shop.id, shop.domain), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) })),
+    ...[...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0) })),
   ];
 
   // THE ARCHIVE, as campaign material. Merchants accumulate a library — the

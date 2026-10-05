@@ -72,6 +72,17 @@ export const AVATARS: Avatar[] = [
   ...ALL_AVATARS.filter((a) => !DESIGNED_VOICES.has(a.id)),
 ];
 
+/* LAUNCH GATE — the public picker shows ONLY presenters with a hand-designed,
+ * accent/ethnicity-matched voice. The other ~79 "pending" avatars fall back to
+ * a generic stock voice selected by derived gender/age/energy, which does NOT
+ * match the face — a presenter that looks one way and sounds wrong reads as
+ * broken, so none of those ships live until its voice is designed (owner call,
+ * 2026-10-05). Self-healing: this keys off DESIGNED_VOICES, so designing a
+ * voice ($3 via api.voicedesign) makes that presenter reappear with no code
+ * change. AVATAR_BY_ID still resolves EVERY id, so an in-flight job or a saved
+ * campaign that named a pending avatar keeps working on its fallback voice. */
+export const LIVE_AVATARS: Avatar[] = AVATARS.filter((a) => DESIGNED_VOICES.has(a.id));
+
 /* ---- Private cast ----
  * Presenters visible ONLY to the accounts listed as owners — the founder's
  * Magic Monster brand advocate lives here, not in the public cast. An owner

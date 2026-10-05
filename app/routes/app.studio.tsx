@@ -10,7 +10,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { spendTokens } from "../lib/tokens.server";
 import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
-import { AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
+import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge } from "../lib/video-engines";
@@ -115,7 +115,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const forged = shop ? await customCastFor(shop.id) : [];
   const cast = [
     ...forged.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
-    ...[...privateCastFor(session.shop, shop?.id), ...AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
+    ...[...privateCastFor(session.shop, shop?.id), ...LIVE_AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
   ];
   const brandFaceId = shop?.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
 
