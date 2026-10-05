@@ -30,9 +30,16 @@ export interface AdFormat {
   /** "statue" = the preview must composite the canonical EASYMODE bottle
    * render (never a text-described bottle — one bottle everywhere). */
   heroRef?: "statue";
+  /** Retired from the picker AND the campaign rotation — currently the
+   *  fabricated-testimonial formats (review/chat/tweet/testimonialwall), pulled
+   *  because they manufacture fake named consumer endorsements (FTC 16 CFR 465)
+   *  and we have no real review data to ground them. Kept in AD_FORMAT_BY_KEY
+   *  so remixing an older asset and the per-format layout switch never hit an
+   *  undefined key. Re-enable one here if real customer reviews ever back it. */
+  retired?: boolean;
 }
 
-export const AD_FORMATS: AdFormat[] = [
+const ALL_AD_FORMATS: AdFormat[] = [
   {
     key: "callout", name: "Callouts", emoji: "🎯",
     blurb: "Your product with benefit callouts — the highest-converting static format",
@@ -41,14 +48,14 @@ export const AD_FORMATS: AdFormat[] = [
     preview: { headline: "Glass skin, minus the 12 steps.", c1: "2% hyaluronic acid", c2: "Vitamin C boost", c3: "Fragrance free", c4: "Recyclable glass", cta: "Shop now" },
   },
   {
-    key: "review", name: "Review Card", emoji: "⭐",
+    key: "review", name: "Review Card", emoji: "⭐", retired: true, // fabricated testimonial
     blurb: "A glowing 5-star review as the creative — social proof sells",
     fields: ["quote", "name"],
     hero: "a matte-black resealable bag of specialty coffee beans with a modern minimalist label",
     preview: { quote: "My kitchen makes better coffee than the cafe now. Not even close.", name: "Jordan M." },
   },
   {
-    key: "chat", name: "Text Convo", emoji: "💬",
+    key: "chat", name: "Text Convo", emoji: "💬", retired: true, // fabricated testimonial
     blurb: "An iMessage conversation raving about it — the format that feels native",
     fields: ["m1", "m2", "m3", "m4"],
     hero: "a pair of clean minimalist white-and-sage running sneakers",
@@ -132,7 +139,7 @@ export const AD_FORMATS: AdFormat[] = [
     preview: { question: "Carry-on essentials only", left: "The saggy old duffel", right: "EASYMODE" },
   },
   {
-    key: "tweet", name: "Viral Post", emoji: "🐦",
+    key: "tweet", name: "Viral Post", emoji: "🐦", retired: true, // fabricated testimonial
     blurb: "A social post raving about it — screenshot energy that stops the scroll",
     fields: ["name", "handle", "tweet"],
     hero: "a brushed stainless-steel insulated tumbler with a clear sliding lid",
@@ -244,7 +251,7 @@ export const AD_FORMATS: AdFormat[] = [
     preview: { headline: "The two-step ritual", am: "Morning: wash and protect", pm: "Night: repair while you sleep" },
   },
   {
-    key: "testimonialwall", name: "Review Wall", emoji: "🧱",
+    key: "testimonialwall", name: "Review Wall", emoji: "🧱", retired: true, // fabricated testimonial
     blurb: "Three stacked mini-reviews — proof in volume",
     fields: ["tq1", "tn1", "tq2", "tn2", "tq3", "tn3"],
     hero: "a neatly folded grey weighted blanket",
@@ -382,6 +389,12 @@ export const AD_FORMATS: AdFormat[] = [
   },
 ];
 
+// What every picker and the campaign rotation see: retired formats (the
+// fabricated-testimonial ones) are excluded here so they can never be offered
+// or auto-selected. AD_FORMAT_BY_KEY below keeps the full set so remixing an
+// older asset and the per-format layout switch still resolve their key.
+export const AD_FORMATS: AdFormat[] = ALL_AD_FORMATS.filter((f) => !f.retired);
+
 export const AD_FORMAT_BY_KEY: Record<string, AdFormat> = Object.fromEntries(
-  AD_FORMATS.map((f) => [f.key, f])
+  ALL_AD_FORMATS.map((f) => [f.key, f])
 );

@@ -2970,7 +2970,11 @@ export async function generateImageAd(
       try {
         const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
         const f = AD_FORMAT_BY_KEY[formatKey];
-        if (f) {
+        // A RETIRED format (the fabricated-testimonial formats pulled for FTC
+        // compliance) must never render, even when its key is re-reached via a
+        // remix of an older asset or a stale queued job — fall through to the
+        // normal scene ladder and ship a real product ad instead.
+        if (f && !f.retired) {
           const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
           // THE REAL PRICE, RESOLVED ONCE.
           //

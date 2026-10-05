@@ -247,9 +247,12 @@ export async function acceptQuestline(params: {
   // FORMAT VARIETY — campaign image drops rotate through the proven ad
   // formats instead of defaulting to the same poster every time. Variety is
   // what makes a month of content feel hand-made (and keeps feeds fresh).
+  // NB: the fabricated-testimonial formats (review/chat/tweet) were removed from
+  // this rotation alongside their picker retirement — a campaign must never
+  // auto-post a fake named customer review.
   const FORMAT_ROTATION = [
-    "callout", "review", "chat", "versus", "offer", "ugcframe", "beforeafter", "stat",
-    "tweet", "notes", "search", "threereasons", "pricemath", "faq", "ingredients", "handheld", "breakout",
+    "callout", "versus", "offer", "ugcframe", "beforeafter", "stat",
+    "notes", "search", "threereasons", "pricemath", "faq", "ingredients", "handheld", "breakout",
   ];
   let imgFormatIdx = 0;
 
