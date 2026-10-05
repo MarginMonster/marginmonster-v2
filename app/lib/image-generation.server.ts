@@ -82,7 +82,12 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
         )
       );
     const headline = clean(j.headline, 8);
-    const sub = clean(j.sub, 9);
+    // A sub-line is OPTIONAL — so drop one the model wrote too long rather than
+    // slice it mid-phrase. A live render shipped "…ONE SURPRISE AT" with "a time"
+    // chopped off by the word cap; a dangling fragment on a finished ad reads
+    // worse than no sub at all (the headline already carries it).
+    const subWordCount = (j.sub || "").trim().split(/\s+/).filter(Boolean).length;
+    const sub = subWordCount > 9 ? "" : clean(j.sub, 9);
     const cta = clean(j.cta, 3);
     if (!headline) return null;
     return { headline, sub, cta };
@@ -1763,7 +1768,16 @@ function formatLayoutPrompt(
    *  used to inherit "square 1:1" here, telling the model to compose for one
    *  shape while asking the renderer for another. */
   shape = "square 1:1",
+  /** The rotated surface/backdrop/light for THIS render, so a burst of one
+   *  product does not come back as N identical centred-box studio shots. Only
+   *  the real-merchant format path passes it; previews and video keyframes omit
+   *  it and keep the stable default so the format gallery never shifts. Used
+   *  only by the formats whose backdrop was generic to begin with — themed
+   *  layouts (neon dark, seasonal snow, origin craft, gift wrap, weather) keep
+   *  their own look. */
+  backdrop?: string,
 ): string {
+  const bg = backdrop || "a soft solid-color studio background that complements its palette";
   // Real merchant ads pass the product photo as image_input; self-forged
   // previews describe an EasyMode-branded hero product in text instead.
   const productClause = hero
@@ -1779,7 +1793,7 @@ function formatLayoutPrompt(
   const base = `Modern high-converting DTC e-commerce static ad, crisp clean design, ${shape}, professional advertising typography. Every text string below must appear EXACTLY as written, perfectly spelled, and you must not INVENT any additional layout text, gibberish or filler anywhere. This rule is about the ad's own copy only: the words already printed on the product itself are part of the product and must be reproduced exactly as they appear in the photograph — every character, code, serial and number identical, never re-lettered, never re-numbered, never tidied up. Each string appears ONCE, in the SAME LANGUAGE it is written in above — reproduce it exactly, never translate it, never transliterate it — and it must read as correct, grammatical text in that language: never repeat or stutter a word or phrase inside a sentence ("we still each still got", "first try first try" are failures), never re-render the same line twice. ${productClause}`;
   switch (key) {
     case "callout":
-      return `${base} Layout: the product large in the center on a soft solid-color studio background that complements its palette. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
+      return `${base} Layout: the product large in the center on ${bg}. Four thin dark annotation lines point to different parts of the product, each ending in a small bold label chip reading exactly: "${c.c1}", "${c.c2}", "${c.c3}", "${c.c4}". Bold headline at the top: "${c.headline}". A small rounded button at the bottom center: "${c.cta}".`;
     case "review":
       return `${base} Layout: a large white rounded testimonial card on a soft complementary pastel background. Inside the card: a row of five gold stars, then the quote "${c.quote}" in bold dark serif-ish text, then smaller grey text: "— ${c.name}, Verified Buyer". The product stands at the bottom-right, slightly overlapping the card with a natural soft shadow.`;
     case "chat":
@@ -1793,7 +1807,7 @@ function formatLayoutPrompt(
     case "ugcframe":
       return `${base} Layout: an authentic-feeling customer phone photo of the product on a real table in natural light (slightly imperfect framing, believable home setting). Overlaid at the bottom, a social-video caption bar in bold white text with black outline reading exactly: "${c.caption}". On the right edge, small white heart, comment and share icons stacked vertically. It should look native to a social feed, not like an ad.`;
     case "stat":
-      return `${base} Layout: the value "${c.stat}" rendered HUGE — filling most of the upper half in ultra-bold type on a soft complementary background — with "${c.statlabel}" in smaller text directly beneath it. The product stands in the lower right, hero-lit. Small confident headline at the bottom left: "${c.headline}". A rounded button bottom center: "${c.cta}".`;
+      return `${base} Layout: the value "${c.stat}" rendered HUGE — filling most of the upper half in ultra-bold type on ${bg} — with "${c.statlabel}" in smaller text directly beneath it. The product stands in the lower right, hero-lit. Small confident headline at the bottom left: "${c.headline}". A rounded button bottom center: "${c.cta}".`;
     case "magazine":
       return `${base} Layout: a glossy premium magazine cover. Masthead across the top in elegant bold letters: "${c.masthead}". The product is the cover star, large and centered with dramatic studio lighting. Two cover lines in editorial type: left side "${c.cover1}", right side "${c.cover2}". A tiny barcode in the bottom corner. Chic fashion-magazine energy.`;
     case "macro":
@@ -1869,7 +1883,7 @@ function formatLayoutPrompt(
     case "weather":
       return `${base} Layout: the product hero-shot against a dramatic weather backdrop (falling snow, mist or rain matched to the product's purpose), crisp and premium. Bold headline at the top: "${c.headline}". Sub-line: "${c.sub}". A rounded button at the bottom: "${c.cta}".`;
     case "duo":
-      return `${base} Layout: two complementary products side by side, angled slightly toward each other like a pair, on a soft complementary background. Headline at the top: "${c.headline}". A small label chip under the left item: "${c.pair1}" and under the right item: "${c.pair2}". A plus sign floats between them.`;
+      return `${base} Layout: two complementary products side by side, angled slightly toward each other like a pair, on ${bg}. Headline at the top: "${c.headline}". A small label chip under the left item: "${c.pair1}" and under the right item: "${c.pair2}". A plus sign floats between them.`;
     case "receipt":
       return `${base} Layout: a tall paper receipt filling one side, printed with the item line "${c.item}" and the price "${c.price}", plus a stamped note reading "${c.memo}". Bold headline beside it: "${c.headline}". The product stands next to the receipt, hero-lit. Charming price-anchoring energy.`;
     case "tierlist":
@@ -1912,6 +1926,33 @@ const AD_ANGLE_LENSES = [
   "lead with the feeling of owning it, not a feature list",
   "lead with who it's perfect for",
 ];
+
+// The COPY angle rotated per take, but the BACKDROP never did: with no merchant
+// direction every scene ad fell back to one BRIGHT_DEFAULT studio wash and every
+// generic format hard-coded "a soft solid-color studio background", so a ×10
+// burst of one product came back as ten near-identical centred-box shots that
+// differed only in headline — a prod QA sweep called the set "repetitive" (one
+// composition, only the tint moved). Rotate the SURFACE/BACKDROP/LIGHT per
+// render too. Every preset is bright, clean and premium (the fidelity gate
+// rejects dark/murky), reads correctly after "on " in a format layout AND stands
+// alone as a scene brief, and names no objects/props/people so it stays
+// compatible with the "completely empty scene" backdrop prompt.
+const BACKDROP_PRESETS = [
+  "a soft seamless studio sweep in a gentle color that complements the product, even daylight-quality light",
+  "a natural wood tabletop with a soft, bright, out-of-focus backdrop, warm gentle light and soft shadows",
+  "a smooth pale stone or concrete surface with a clean bright backdrop, crisp editorial light",
+  "a soft pastel paper-gradient backdrop that complements the product, bright and airy",
+  "a polished light marble surface with a soft bright backdrop, premium glossy light",
+  "a warm neutral linen-fabric surface with a softly lit bright backdrop, cozy diffused light",
+  "a minimalist raised pedestal against a soft complementary backdrop, clean directional side light",
+  "a bright tabletop with soft daylight and gentle natural shadows, fresh and airy",
+];
+// A rotating cursor, not Math.random(): burst jobs run back-to-back through the
+// worker, so stepping the cursor hands consecutive takes different backdrops
+// instead of letting random collisions re-cluster them. Resets per process; that
+// is fine — it only needs to spread the takes within a run.
+let backdropCursor = 0;
+const pickBackdrop = () => BACKDROP_PRESETS[backdropCursor++ % BACKDROP_PRESETS.length];
 
 async function formatCopy(
   formatKey: string,
@@ -2108,7 +2149,7 @@ export async function runFormatRung(opts: {
     return nil("copy-failed");
   }
 
-  const prompt = formatLayoutPrompt(opts.formatKey, copy);
+  const prompt = formatLayoutPrompt(opts.formatKey, copy, undefined, undefined, pickBackdrop());
   // The rejection reason goes into an IMAGE prompt, and the QA reply often
   // quotes the offending words back ('repeated word "still"'). Handing quoted
   // words to an image model is a good way to get them drawn into the picture —
@@ -3048,7 +3089,11 @@ export async function generateImageAd(
       ? "clean professional product photography"
       : brandStyle;
     const mode: "backdrop" | "scene" = styleMode === "scene" || styleMode === "backdrop" ? styleMode : inferStyleMode(stylePrompt);
-    const styleDesc = styleBrief || (brandWantsDark ? brandStyle : BRIGHT_DEFAULT);
+    // Rotate the backdrop when the merchant gave no brief and the brand is not a
+    // dark-look brand — otherwise every default/fallback scene ad for a product
+    // reused the one BRIGHT_DEFAULT wash. Still bright and clean, just not the
+    // same bright and clean every time.
+    const styleDesc = styleBrief || (brandWantsDark ? brandStyle : pickBackdrop());
 
     // RUNG -1 — AD FORMAT: a genuinely different creative COMPOSITION
     // (callouts / review card / text convo / versus / before-after / offer /
@@ -3304,7 +3349,7 @@ export async function generateImageAd(
         if (!localFileName) {
           // Nothing product-true available. A clean generated poster still beats
           // a terminal failure; if THIS throws the job fails and refunds.
-          usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+          usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${pickBackdrop()}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
           imageUrl = await fluxDevStill(usedPrompt, "scene-degrade-poster");
           genMeta.method = "text2img-degraded";
         }
