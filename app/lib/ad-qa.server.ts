@@ -130,12 +130,16 @@ async function scoreAdOnce(productImageUrl: string, adUrl: string, expected: str
         `anatomyOk: if a person appears — correct hands (four fingers and one thumb each, never six digits), exactly two hands, no extra or disembodied limb, no arm reaching at the camera as if holding it. If no person appears, answer true.`,
         `scalePlausible: is the product shown at a believable real-world size relative to anything it is next to (a hand, a person, furniture)? A shrunk or giant product is a failure. If there is nothing to judge against, answer true.`,
         `wouldShip: would you let a paying merchant post this as-is?`,
-        `transcript: transcribe EVERY word of the ad's own added layout text, exactly as rendered, including any misspelling, in reading order, space-separated. Do NOT correct anything. Do NOT include text printed on the product packaging.`,
+        `transcript: this is a SPELLING AUDIT. The rendered text is KNOWN to sometimes contain misspelled or malformed words. Copy each word GLYPH BY GLYPH exactly as the pixels show it, even when that spells a non-word — e.g. if the image shows "Buidale" write "Buidale", NOT the word you expect ("Buildable"). Do NOT fix, complete or normalise anything. Space-separated, in reading order. Do NOT include text printed on the product's own packaging.`,
         `notes: one short sentence naming the single worst problem, or "clean" if there is none.`,
         ``,
         `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"anatomyOk":bool,"scalePlausible":bool,"wouldShip":bool,"transcript":"...","notes":"..."}`,
       ].join("\n"),
-      [productImageUrl, adUrl]
+      [productImageUrl, adUrl],
+      // Match the live format gate's reader (see qaFormat): the cheap model
+      // auto-corrects the transcript, so the harness must audit with at least
+      // as strong a reader as the gate it measures.
+      { model: "claude-sonnet-5", maxTokens: 900 }
     );
     const m = raw && raw.match(/\{[\s\S]*\}/);
     if (!m) throw new Error("no JSON in the reply");

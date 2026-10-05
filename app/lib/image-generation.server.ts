@@ -2149,7 +2149,7 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
         // it (textSensible is deliberately told SENSE-not-spelling, and a brand
         // name is not a grammar error). A verbatim transcription lets us diff it
         // in CODE, which turns a judgment call into a string comparison.
-        `transcript: transcribe EVERY word of the ad's own added layout text, exactly as rendered, including any misspelling, in reading order, space-separated. Do NOT correct anything. Do NOT include text printed on the product packaging.`,
+        `transcript: transcribe EVERY word of the ad's own added layout text, exactly as rendered, LETTER FOR LETTER, in reading order, space-separated. Copy the GLYPHS you actually see — never the word you expect. If the image shows "Buidable" you write "Buidable"; if it shows "Teraastal" you write "Teraastal"; if a letter is missing or doubled, keep it missing or doubled. Do NOT silently fix a misspelling. Do NOT include text printed on the product packaging.`,
         `noSourceText: has any marketing text, watermark, price badge or caption from the SOURCE photo's background been copied into the ad? Answer true if NOT (the product's own packaging text is expected and fine).`,
         `reason: if anything is false, one short phrase naming the worst problem. Otherwise "clean".`,
         ``,
@@ -2160,7 +2160,16 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
         `IMPORTANT: ignore text printed on the product or its packaging, including non-Latin scripts and small print. Only judge the ad's added layout text. Non-English packaging is never a failure.`,
         `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"transcript":"...","reason":"..."}`,
       ].join(" "),
-      urls
+      urls,
+      // The code-side spell diff (findCorruptedWord) is only as good as this
+      // transcript, and the cheap reader SILENTLY AUTO-CORRECTS what it reads —
+      // it wrote "Buildable" for a rendered "Buidale", so the diff had nothing
+      // to bite on and the garble shipped. sonnet-5 is the reader the rest of
+      // this pipeline already trusts for anything quality-critical; the format
+      // gate is the last thing between a mangled render and a paid feed, so it
+      // gets the same reader. 700 tokens so the transcript never truncates into
+      // an unparseable verdict (which would fail-closed and lose the format).
+      { model: "claude-sonnet-5", maxTokens: 700 }
     );
     const m = raw && raw.match(/\{[\s\S]*\}/);
     if (!m) {
