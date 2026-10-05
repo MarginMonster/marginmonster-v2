@@ -2153,6 +2153,15 @@ async function formatCopy(
     if (!m) return null;
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     const out: Record<string, string> = {};
+    // Some label slots are OPTIONAL — losing one should degrade the format, not
+    // kill it. A callout with 2-3 benefit chips is a fine ad; the layout is
+    // count-adaptive and draws one line per chip that survives. The live logs
+    // showed "copy-failed" was a leading callout reject, much of it the model
+    // simply not returning a 4th chip — which used to fail the WHOLE format to a
+    // generic scene. c1 and c2 stay required (a callout needs at least two
+    // points); c3 and c4 may drop out.
+    const OPTIONAL: Record<string, Set<string>> = { callout: new Set(["c3", "c4"]) };
+    const optional = OPTIONAL[formatKey] || new Set<string>();
     for (const f of fields) {
       // tidyAdCopy is a DETERMINISTIC repair, not a second opinion. Once this
       // string reaches the image model it is baked into pixels, so a dropped
@@ -2165,7 +2174,10 @@ async function formatCopy(
       // guardrail: "COMIC-CON'S PICK" -> "COMIC-CON PICK" even when the model
       // ignores the prompt rule (it did, when the tag sat in the product title).
       const v = dropOrgEndorsementPossessive(tidyAdCopy(typeof j[f] === "string" ? (j[f] as string).replace(/["“”]/g, "") : ""));
-      if (!v) return null;
+      if (!v) {
+        if (optional.has(f)) continue; // drop an optional empty chip; don't fail the format
+        return null;
+      }
       out[f] = v;
     }
     // Belt and braces on the one field that can promise the merchant's money
@@ -2253,8 +2265,11 @@ export async function runFormatRung(opts: {
     ({ imageUrl: null, copy: null, prompt: null, qaPass: false, qaReason: "", retried: false, fallback });
 
   // The merchant PICKED this format. Losing it silently and shipping a generic
-  // scene instead is the worst possible outcome, so copy gets a second chance.
+  // scene instead is the worst possible outcome, so copy gets THREE chances —
+  // the live logs showed "copy-failed" (the copywriter returning unparseable or
+  // short JSON) was a leading callout reject, and each attempt is independent.
   let copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice, opts.productDetails);
+  if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice, opts.productDetails);
   if (!copy) copy = await formatCopy(opts.formatKey, opts.fields, opts.productTitle, opts.tone, opts.direction, opts.contentLang, opts.merchantOffer, opts.productPrice, opts.productDetails);
   if (!copy) {
     // Two formats need real money on the canvas. With no price in the
@@ -2309,16 +2324,27 @@ export async function runFormatRung(opts: {
 
   let imageUrl = await renderOnce();
   let qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
-  let retried = false;
   // Retry a REJECTION — the reason tells the model what to fix. Never retry
-  // an OUTAGE: the gate learned nothing about this take, so a second paid
-  // render is money for no information.
-  if (!qa.pass && !qa.degraded) {
-    // A blind re-roll of the identical prompt repeats the same mistake as often
-    // as not. Tell it what went wrong.
-    retried = true;
+  // an OUTAGE: the gate learned nothing about this take, so another paid render
+  // is money for no information.
+  //
+  // MORE THAN ONE RETRY, because the live logs proved one was not enough. The
+  // dominant format-reject is the image model dropping a letter from its OWN
+  // overlay text — "Buildable" came back "Buildale", "Buitdable", "Buidile" on
+  // three different tries of the SAME word, so the garble is STOCHASTIC, not a
+  // word it simply cannot spell. Independent re-rolls therefore compound: if a
+  // clean render is ~40% likely, one try lands 40%, three lands ~78%. Each retry
+  // carries the category of what went wrong, never the reviewer's prose.
+  const MAX_FORMAT_ATTEMPTS = 3;
+  let attempts = 1;
+  while (!qa.pass && !qa.degraded && attempts < MAX_FORMAT_ATTEMPTS) {
+    attempts++;
     imageUrl = await renderOnce(qa.reason);
     qa = await qaFormat(imageUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+  }
+  const retried = attempts > 1;
+  if (!qa.pass && !qa.degraded) {
+    console.log(`[image-ad] format ${opts.formatKey}: still rejected after ${attempts} attempts (${qa.reason})`);
   }
   // LAST-RESORT REPAIR before the scene fallback. The format rendered but the
   // gate still rejects it — and on a single-hero-product format that is most
@@ -2333,7 +2359,9 @@ export async function runFormatRung(opts: {
   if (!qa.pass && !qa.degraded && PASTE_SAFE.has(opts.formatKey)) {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const pasted = base ? await pasteProductIntoAd(imageUrl, opts.productImageUrl) : null;
-    if (pasted) {
+    if (!pasted) {
+      console.log(`[image-ad] format ${opts.formatKey}: paste-repair not applied (no product box or paste failed); reject was "${qa.reason}"`);
+    } else {
       const pastedUrl = `${base}/renders/${pasted.file}`;
       const qa2 = await qaFormat(pastedUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
       if (qa2.pass) {
@@ -2341,6 +2369,11 @@ export async function runFormatRung(opts: {
         imageUrl = pastedUrl;
         qa = qa2;
         pasteRepaired = true;
+      } else {
+        // The paste fixed the product but the gate still rejects — almost always
+        // because the ad's OWN overlay text is garbled (which a product swap
+        // cannot fix). Logged so the recovery ceiling is visible, not a mystery.
+        console.log(`[image-ad] format ${opts.formatKey}: paste fixed the product but re-QA still rejects (${qa2.reason}) — falling to scene`);
       }
     }
   }
