@@ -1464,6 +1464,186 @@ async function renderStatComposite(opts: {
   }
 }
 
+/** THE DETERMINISTIC US-VS-THEM (versus) — the comparison table is the most
+ *  structurally complex format, so the generative render BOTH drifts off the
+ *  two-column layout AND re-letters the text/brand. We build it ourselves: the
+ *  real product cutout as the hero, then a clean US (green ✓) vs THEM (red ✗)
+ *  table drawn with ffmpeg, so the structure, the checks/crosses, every label
+ *  and the brand are always perfect. Poppins has no ✓/✗ glyph, so the marks are
+ *  generated as small badge PNGs (green circle + white check, red circle + white
+ *  cross). Returns the finished file, or null on any failure (caller then falls
+ *  through to the generative render, exactly as before). */
+async function renderVersusComposite(opts: {
+  productImageUrl: string;
+  headline: string;
+  us: string[];
+  them: string[];
+  contentLang?: string | null;
+  styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const us = opts.us.map((s) => (s || "").trim()).filter(Boolean);
+  const them = opts.them.map((s) => (s || "").trim()).filter(Boolean);
+  const rows = Math.min(us.length, them.length, 3);
+  if (rows < 2) return null; // a comparison needs at least two paired rows
+
+  const cutout = await removeBackground(opts.productImageUrl);
+  if (!cutout) return null;
+
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.vb-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.vc-${stamp}.png`);
+  const tmpS1 = path.join(dir, `.v1-${stamp}.jpg`);
+  const tmpS2 = path.join(dir, `.v2-${stamp}.jpg`);
+  const tmpChk = path.join(dir, `.vk-${stamp}.png`);
+  const tmpX = path.join(dir, `.vx-${stamp}.png`);
+  const fileName = `img-${stamp}.jpg`;
+  const out = path.join(dir, fileName);
+  const tmps = [tmpBg, tmpCut, tmpS1, tmpS2, tmpChk, tmpX];
+  try {
+    // 1) Clean, light backdrop (flux), cream fallback — the table cells are drawn
+    //    on solid fills, so a subtle backdrop stays readable.
+    let gotBg = false;
+    try {
+      const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`;
+      const bgUrl = await fluxDevStill(bgPrompt, "versus-backdrop");
+      if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } }
+    } catch { /* cream fallback */ }
+    { const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer())); }
+
+    // 2) Build the ✓ and ✗ mark badges (Poppins lacks the glyphs): a coloured
+    //    circle (geq alpha mask) with two white rotated bars for the stroke(s).
+    const BADGE = 46;
+    const circle = (hex: string) => `color=c=${hex}:s=64x64,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte((X-32)*(X-32)+(Y-32)*(Y-32),30*30),255,0)'`;
+    const mkCheck = ["-y", "-f", "lavfi", "-i", circle("0x16A34A"),
+      "-f", "lavfi", "-i", "color=c=white:s=18x8,format=rgba",
+      "-f", "lavfi", "-i", "color=c=white:s=34x8,format=rgba",
+      "-filter_complex", "[1]rotate=0.785:c=none:ow=rotw(0.785):oh=roth(0.785)[s1];[2]rotate=-0.785:c=none:ow=rotw(-0.785):oh=roth(-0.785)[s2];[0][s1]overlay=9:25[a];[a][s2]overlay=21:13[o]",
+      "-map", "[o]", "-frames:v", "1", tmpChk];
+    const mkX = ["-y", "-f", "lavfi", "-i", circle("0xDC2626"),
+      "-f", "lavfi", "-i", "color=c=white:s=34x8,format=rgba",
+      "-f", "lavfi", "-i", "color=c=white:s=34x8,format=rgba",
+      "-filter_complex", "[1]rotate=0.785:c=none:ow=rotw(0.785):oh=roth(0.785)[s1];[2]rotate=-0.785:c=none:ow=rotw(-0.785):oh=roth(-0.785)[s2];[0][s1]overlay=(W-w)/2:(H-h)/2[a];[a][s2]overlay=(W-w)/2:(H-h)/2[o]",
+      "-map", "[o]", "-frames:v", "1", tmpX];
+    if (!(await runFfmpegStill(bin, mkCheck)).ok || !(await runFfmpegStill(bin, mkX)).ok) return null;
+    if (!fs.existsSync(tmpChk) || !fs.existsSync(tmpX)) return null;
+
+    // 3) Product hero cutout, centered in the upper third, soft drop shadow.
+    const cut = headerSize(tmpCut);
+    const boxW = 340, boxH = 235;
+    const cx = W / 2, cy = Math.round(H * 0.26);
+    let pw = boxW, ph = boxH;
+    if (cut) { const s = Math.min(boxW / cut.w, boxH / cut.h); pw = Math.round(cut.w * s); ph = Math.round(cut.h * s); }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xF4EFE6:s=${W}x${H}`];
+    const comp1 =
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];` +
+      `[1:v]scale=${pw}:${ph}[cut];` +
+      `[cut]split[c1][c2];` +
+      `[c2]colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=12,colorchannelmixer=aa=0.30[sh];` +
+      `[bg][sh]overlay=x=${px}+6:y=${py}+12[b1];` +
+      `[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp1, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpS1])).ok || !fs.existsSync(tmpS1)) return null;
+
+    // 4) Table geometry.
+    const mL = 44, gap = 28;
+    const cellW = Math.round((W - mL * 2 - gap) / 2);
+    const leftX = mL, rightX = mL + cellW + gap;
+    const leftCx = leftX + Math.round(cellW / 2), rightCx = rightX + Math.round(cellW / 2);
+    const headerY = 442;
+    const tableTop = 490, rowH = 128, rowGap = 18;
+    const rowTop = (i: number) => tableTop + i * (rowH + rowGap);
+    const rowMid = (i: number) => rowTop(i) + Math.round(rowH / 2);
+    const pillH = 48, pillW = 150;
+
+    // 5) Cells + header pills (drawbox), then overlay the badges (filter_complex).
+    const boxes: string[] = [];
+    for (let i = 0; i < rows; i++) {
+      boxes.push(`drawbox=x=${leftX}:y=${rowTop(i)}:w=${cellW}:h=${rowH}:color=0xE7F6ED:t=fill`);
+      boxes.push(`drawbox=x=${rightX}:y=${rowTop(i)}:w=${cellW}:h=${rowH}:color=0xF1F1F1:t=fill`);
+    }
+    boxes.push(`drawbox=x=${leftCx - pillW / 2}:y=${headerY - pillH / 2}:w=${pillW}:h=${pillH}:color=0x16A34A:t=fill`);
+    boxes.push(`drawbox=x=${rightCx - pillW / 2}:y=${headerY - pillH / 2}:w=${pillW}:h=${pillH}:color=0x9CA3AF:t=fill`);
+    const drawboxChain = boxes.join(",");
+    const chkLabels = Array.from({ length: rows }, (_, i) => `[k${i}]`).join("");
+    const xLabels = Array.from({ length: rows }, (_, i) => `[m${i}]`).join("");
+    let graph = `[1:v]scale=${BADGE}:${BADGE},split=${rows}${chkLabels};[2:v]scale=${BADGE}:${BADGE},split=${rows}${xLabels};[0:v]${drawboxChain}[s0];`;
+    let cur = "s0", step = 0;
+    for (let i = 0; i < rows; i++) {
+      const ky = rowMid(i) - Math.round(BADGE / 2);
+      const n1 = `s${++step}`;
+      graph += `[${cur}][k${i}]overlay=${leftX + 22}:${ky}[${n1}];`;
+      const n2 = `s${++step}`;
+      graph += `[${n1}][m${i}]overlay=${rightX + 22}:${ky}[${n2}];`;
+      cur = n2;
+    }
+    graph = graph.replace(/;$/, "");
+    if (!(await runFfmpegStill(bin, ["-y", "-i", tmpS1, "-i", tmpChk, "-i", tmpX, "-filter_complex", `${graph}`, "-map", `[${cur}]`, "-frames:v", "1", "-q:v", "3", tmpS2])).ok || !fs.existsSync(tmpS2)) return null;
+
+    // 6) All the text, drawn ourselves — perfectly spelled, always.
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${us.join(" ")} ${them.join(" ")}`); } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+
+    const hl = dt(opts.headline).toUpperCase();
+    if (!hl) return null;
+    // headline wraps to two balanced lines when long (same as the callout).
+    const words = hl.split(" ");
+    let line1 = hl, line2 = "";
+    if (hl.length > 20 && words.length > 2) {
+      let best = 1, bestDiff = Infinity;
+      for (let i = 1; i < words.length; i++) {
+        const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length;
+        const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 20) * 4;
+        if (d < bestDiff) { bestDiff = d; best = i; }
+      }
+      line1 = words.slice(0, best).join(" "); line2 = words.slice(best).join(" ");
+    }
+    const hlGlyph = hasCJK(hl) ? 1.05 : 0.60;
+    const hlLongest = Math.max(line1.length, line2.length, 1);
+    const hlSize = Math.min(line2 ? 48 : 56, Math.floor((W * 0.9) / (hlLongest * hlGlyph)));
+    const topY = 40, line2Y = topY + Math.round(hlSize * 1.12);
+
+    const hlLuma = (await bandLuma(bin, tmpS2, 0, 0.08)) ?? 180;
+    const hlDark = hlLuma > 150;
+    const hlColor = hlDark ? "0x14201A" : "white";
+    const hlShadow = hlDark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+
+    // per-label font, width-capped to the room left of the badge in a cell.
+    const labelAvail = cellW - BADGE - 22 - 18 - 16;
+    const labelSize = (s: string) => Math.max(17, Math.min(29, Math.floor(labelAvail / (Math.max(1, s.length) * (hasCJK(s) ? 1.05 : 0.54)))));
+    const labelX = (base: number) => base + 22 + BADGE + 16;
+
+    const draw: string[] = [
+      `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${topY}`,
+      line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${line2Y}` : "",
+      `drawtext=fontfile='${font}':text='US':fontsize=26:fontcolor=white:x=${leftCx}-text_w/2:y=${headerY - 15}`,
+      `drawtext=fontfile='${font}':text='THEM':fontsize=26:fontcolor=white:x=${rightCx}-text_w/2:y=${headerY - 15}`,
+      `drawtext=fontfile='${font}':text='VS':fontsize=30:fontcolor=white:box=1:boxcolor=0x14201A:boxborderw=16:x=(w-text_w)/2:y=${headerY - 18}`,
+    ];
+    for (let i = 0; i < rows; i++) {
+      const u = dt(us[i]).toUpperCase(), t = dt(them[i]).toUpperCase();
+      const uy = rowMid(i) - Math.round(labelSize(u) * 0.62);
+      const ty = rowMid(i) - Math.round(labelSize(t) * 0.62);
+      draw.push(`drawtext=fontfile='${font}':text='${u}':fontsize=${labelSize(u)}:fontcolor=0x14532D:x=${labelX(leftX)}:y=${uy}`);
+      draw.push(`drawtext=fontfile='${font}':text='${t}':fontsize=${labelSize(t)}:fontcolor=0x6B7280:x=${labelX(rightX)}:y=${ty}`);
+    }
+    const vf = draw.filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpS2, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch {
+    return null;
+  } finally {
+    for (const f of tmps) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } }
+  }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -2687,6 +2867,38 @@ export async function runFormatRung(opts: {
         console.log(`[image-ad] format stat: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
       } else {
         console.log(`[image-ad] format stat: deterministic (primary) not produced — trying generative`);
+      }
+    }
+  }
+
+  // US-VS-THEM (versus) → DETERMINISTIC FIRST. Versus is the most structurally
+  // complex format, so the generative render both DRIFTS off the two-column
+  // layout (logs showed it collapsing to a hero) and re-letters text/brand.
+  // Drawing the whole comparison table ourselves guarantees the structure, the
+  // ✓/✗ marks, every label and the brand. Generative stays the safety net.
+  if (opts.formatKey === "versus") {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const us = [copy.r1, copy.r2, copy.r3].map((c) => (c || "").trim()).filter(Boolean);
+    const them = [copy.t1, copy.t2, copy.t3].map((c) => (c || "").trim()).filter(Boolean);
+    if (base && us.length >= 2 && them.length >= 2) {
+      const det = await renderVersusComposite({
+        productImageUrl: opts.productImageUrl,
+        headline: copy.headline || "",
+        us,
+        them,
+        contentLang: opts.contentLang,
+        styleDesc: pickBackdrop(),
+      });
+      if (det) {
+        const detUrl = `${base}/renders/${det.file}`;
+        const qaD = await qaFormat(detUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+        if (qaD.pass) {
+          console.log(`[image-ad] format versus: deterministic us-vs-them (primary) — perfect table + real product`);
+          return { imageUrl: detUrl, copy, prompt: "deterministic-versus", qaPass: true, qaReason: "clean (deterministic versus)", retried: false, fallback: null };
+        }
+        console.log(`[image-ad] format versus: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
+      } else {
+        console.log(`[image-ad] format versus: deterministic (primary) not produced — trying generative`);
       }
     }
   }
