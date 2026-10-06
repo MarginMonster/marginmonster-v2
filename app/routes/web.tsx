@@ -2,7 +2,7 @@
  * archive. Same engine, no Polaris/App Bridge; styled to match the landing. */
 
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { Link, Outlet, useLoaderData, useLocation } from "@remix-run/react";
+import { Link, Outlet, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
@@ -146,18 +146,21 @@ export default function WebLayout() {
         <main className="wb-main">
           <Outlet />
         </main>
-        <Buddy />
+        <Buddy hud={hud} authed={authed} />
       </div>
     </>
   );
 }
 
-/* Magic Monster — the AI companion. A floating sidekick that greets you, answers
- * questions about the platform, and suggests what to make. Talks to /api/buddy
- * (Haiku behind a warm persona). Guides only — it doesn't click for you yet. */
-type MMMsg = { role: "user" | "assistant"; content: string };
-function Buddy() {
+/* Magic Monster — the AI companion. A floating sidekick with real character that
+ * greets you by name, suggests what to make, and drops tappable buttons under
+ * its replies that take you straight there. Talks to /api/buddy (Haiku behind a
+ * hype persona). It can't click for you yet — the buttons are its hands. */
+type MMAction = { label: string; to: string };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[] };
+function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: number }; authed: boolean }) {
   const loc = useLocation();
+  const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
@@ -166,9 +169,13 @@ function Buddy() {
 
   useEffect(() => {
     if (open && msgs.length === 0) {
-      setMsgs([{ role: "assistant", content: "Hey! I'm Magic Monster 👾 your sidekick for making ads & videos. Not sure what to make, or got a question? I've got you." }]);
+      const name = authed && hud.name ? hud.name.split(" ")[0] : null;
+      const greet = name
+        ? `Yo ${name}! 👾 You've got ${hud.ads} ads' worth of tokens in the tank. What are we cooking up — I'm full of ideas.`
+        : "Hey — I'm Magic Monster 👾 your creative sidekick for ads & videos. Tell me what you're selling and let's make something scroll-stopping.";
+      setMsgs([{ role: "assistant", content: greet }]);
     }
-  }, [open, msgs.length]);
+  }, [open, msgs.length, authed, hud.name, hud.ads]);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
 
   const send = async (text: string) => {
@@ -177,15 +184,16 @@ function Buddy() {
     const next: MMMsg[] = [...msgs, { role: "user", content: t }];
     setMsgs(next); setInput(""); setBusy(true);
     try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next, path: loc.pathname }) });
-      const data = await res.json().catch(() => ({ reply: "" })) as { reply?: string };
-      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…" }]);
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), path: loc.pathname }) });
+      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[] };
+      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [] }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: "Connection blipped — mind trying again?" }]);
     } finally { setBusy(false); }
   };
 
-  const chips = ["What should I make first?", "How do the formats work?", "Give me an ad idea"];
+  const go = (to: string) => { setOpen(false); if (to.startsWith("/web#")) { window.location.href = to; } else { nav(to); } };
+  const chips = ["Make me an ad", "Which format converts best?", "Give me an idea for a video"];
 
   return (
     <>
@@ -201,7 +209,14 @@ function Buddy() {
             <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label="Close chat">×</button>
           </div>
           <div className="mm-list" ref={listRef}>
-            {msgs.map((m, i) => <div key={i} className={`mm-msg ${m.role}`}>{m.content}</div>)}
+            {msgs.map((m, i) => (
+              <div key={i} className={`mm-row ${m.role}`}>
+                <div className={`mm-msg ${m.role}`}>{m.content}</div>
+                {m.actions && m.actions.length > 0 && (
+                  <div className="mm-acts">{m.actions.map((a) => <button key={a.to + a.label} type="button" className="mm-act" onClick={() => go(a.to)}>{a.label}</button>)}</div>
+                )}
+              </div>
+            ))}
             {busy && <div className="mm-msg assistant mm-typing"><i /><i /><i /></div>}
             {msgs.length <= 1 && !busy && (
               <div className="mm-chips">{chips.map((c) => <button key={c} type="button" onClick={() => send(c)}>{c}</button>)}</div>
@@ -706,6 +721,13 @@ const CSS = `
 .mm-msg{max-width:84%;padding:9px 13px;border-radius:15px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
 .mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid #E1DECD;color:#14201A;border-bottom-left-radius:5px;}
 .mm-msg.user{align-self:flex-end;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
+.mm-row{display:flex;flex-direction:column;gap:7px;}
+.mm-row.user{align-items:flex-end;}
+.mm-row.assistant{align-items:flex-start;}
+.mm-acts{display:flex;flex-wrap:wrap;gap:6px;max-width:92%;}
+.mm-act{font:inherit;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;border:0;border-radius:999px;padding:8px 15px;
+  background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 2px 8px rgba(12,122,70,.26),inset 0 0 0 1px rgba(231,200,121,.3);}
+.mm-act:hover{filter:brightness(1.07);transform:translateY(-1px);}
 .mm-typing{display:flex;gap:4px;align-items:center;}
 .mm-typing i{width:7px;height:7px;border-radius:50%;background:#9CCBB1;animation:mmBlink 1.2s infinite both;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}

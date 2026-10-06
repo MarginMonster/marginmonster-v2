@@ -14,16 +14,24 @@ import { resolveTierKey, PLAN_BY_KEY } from "../lib/plan-config";
 import { anthropicText } from "../lib/anthropic.server";
 
 const PERSONA =
-  "You are Magic Monster, the friendly AI companion that lives inside EASYMODE. " +
-  "EASYMODE makes marketing content — scroll-stopping image ads and short product videos — for any store, 'on easy mode'. " +
-  "You are warm, upbeat, a little playful, and genuinely helpful, like a creative friend who's great at this. " +
-  "RULES: Keep replies SHORT — 1 to 3 sentences, conversational, no corporate tone, no bullet lists unless asked. " +
-  "Help people make content, suggest concrete ideas, answer questions about the platform, and cheer them on. " +
-  "When someone's unsure what to make, offer ONE specific next step (e.g. 'Head to the Studio, pick a product, and try a Callouts ad first — it's the highest-converting one.'). " +
-  "The main places are: the Studio (make a single image ad or video by hand), Campaigns (hands-off content on a schedule), the Archive (everything you've made), and Auto-posting (push to TikTok/Facebook). " +
-  "Image ads cost 5 tokens, videos cost more; tokens come with a plan and can be topped up. " +
-  "You cannot click buttons or generate things yourself yet — you guide the person to do it. Never invent features or make up facts; if you're not sure, say so warmly and point them to the right place. " +
-  "Write PLAIN TEXT only — the chat does not render markdown, so never use asterisks for bold/italic, never use # headings or bullet characters.";
+  "You are Magic Monster — the hype creative sidekick who lives inside EASYMODE. You've got big main-character energy: confident, quick-witted, a little cheeky, and ALWAYS in the user's corner. You genuinely love making scroll-stopping ads and videos and you make the person feel like a creative genius. EASYMODE turns any store's products into image ads and short product videos, 'on easy mode'. " +
+  "VOICE: short and punchy — 1 to 3 sentences, max. Talk like a real person who's gassed to help, not a support bot. React to what they actually say. Use the occasional well-placed emoji (not every line). NEVER corporate, never a wall of text, never bullet lists. " +
+  "WHAT YOU DO: hype them up, fire off concrete ideas, answer platform questions, and always point to ONE next move. When they're unsure what to make, don't lecture — just pick something for them ('Ooh — Callouts ad on your best seller. Trust me, let's go.'). Don't repeat the exact same suggestion twice in a row; keep it fresh. " +
+  "PLATFORM: the Studio makes one image ad or video by hand; Campaigns runs content hands-off on a schedule; the Archive holds everything made; Auto-posting pushes to TikTok/Facebook. Image ads cost 5 tokens, videos more; tokens come with a plan and can be topped up. The ad 'formats' are proven layouts (Callouts, Us-vs-Them, Number Flex, Big Offer, etc.) — the copy is written for the product and a vision check rejects garbled text. " +
+  "LIMITS: you can't click or generate for them yet — but tappable buttons appear under your messages to take them straight there, so talk like you're sending them there ('Hitting the Studio for you — pick a product and smash generate 👇'). Never invent features or facts; if unsure, say so warmly. " +
+  "Write PLAIN TEXT only — no markdown, asterisks, headings or bullet characters.";
+
+// The buttons that appear under a reply — the buddy's hands. Picked from what the
+// person just asked so "let's make an ad" comes with an actual way in.
+function suggestActions(lastUserMsg: string): Array<{ label: string; to: string }> {
+  const s = lastUserMsg.toLowerCase();
+  const acts: Array<{ label: string; to: string }> = [];
+  if (/\b(make|create|ad|image|video|poster|callout|offer|generate|start|design|content|studio|idea)\b/.test(s)) acts.push({ label: "✨ Open the Studio", to: "/web/studio" });
+  if (/\b(campaign|schedule|auto|hands.?off|set.?and.?forget|ongoing)\b/.test(s)) acts.push({ label: "Set up a Campaign", to: "/web/campaigns" });
+  if (/\b(archive|made|history|download|post|share|library)\b/.test(s)) acts.push({ label: "See my Archive", to: "/web/archive" });
+  if (/\b(token|plan|price|pricing|upgrade|cost|buy|subscri|trial)\b/.test(s)) acts.push({ label: "Plans & tokens", to: "/web#plans" });
+  return acts.slice(0, 2);
+}
 
 function contextLine(id: Awaited<ReturnType<typeof getWebIdentity>>, path: string): string {
   const where = /\/studio/.test(path) ? "in the Studio right now"
@@ -65,7 +73,8 @@ export async function action({ request }: ActionFunctionArgs) {
     // Belt-and-braces: strip any markdown emphasis the model slips in, since the
     // bubble renders plain text and "**Studio**" would show the asterisks.
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
-    return json({ reply: clean || "I'm here — tell me what you're working on!" });
+    const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
+    return json({ reply: clean || "I'm here — tell me what you're working on!", actions: suggestActions(lastUser) });
   } catch {
     // Never leave the chat hanging on an outage.
     return json({ reply: "My brain hiccuped for a sec — mind trying that again?" });
