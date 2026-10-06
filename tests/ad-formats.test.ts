@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { AD_FORMATS } from "../app/lib/ad-formats.ts";
+import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS } from "../app/lib/ad-formats.ts";
 
 test("there are formats to check, and each has a key and fields", () => {
   assert.ok(AD_FORMATS.length >= 40, `expected the full format set, got ${AD_FORMATS.length}`);
@@ -47,6 +47,25 @@ test("no preview carries copy the format never asks for", () => {
   }
 });
 
+test("every format-group key points at a live format, and every live format has a home group", () => {
+  const live = new Set(AD_FORMATS.map((f) => f.key));
+  // Nothing in a group should be a typo or a retired key — the picker would
+  // render a dead tile (or crash the .filter) otherwise.
+  for (const g of FORMAT_GROUPS) {
+    assert.ok(g.formats.length > 0, `group "${g.key}" lists no formats`);
+    for (const k of g.formats) {
+      assert.ok(live.has(k), `group "${g.key}" lists "${k}", which is not a live format`);
+    }
+  }
+  // "popular" is a fast lane, not a home — every live format must be reachable
+  // from a real category so nothing is findable only via the "All" chip.
+  const homed = new Set(FORMAT_GROUPS.filter((g) => g.key !== "popular").flatMap((g) => g.formats));
+  for (const f of AD_FORMATS) {
+    assert.ok(homed.has(f.key), `format "${f.key}" belongs to no category group — it would only appear under "All"`);
+  }
+  assert.ok(FORMAT_GROUPS.some((g) => g.key === "popular"), "the picker expects a 'popular' group to lead with");
+});
+
 test("no layout prompt interpolates a key the copywriter is never asked for", () => {
   const src = readFileSync(new URL("../app/lib/image-generation.server.ts", import.meta.url), "utf8");
   const start = src.indexOf("function formatLayoutPrompt");
@@ -54,7 +73,11 @@ test("no layout prompt interpolates a key the copywriter is never asked for", ()
   const end = src.indexOf("\nfunction ", start + 10);
   const body = src.slice(start, end > 0 ? end : undefined);
 
-  const byKey = new Map(AD_FORMATS.map((f) => [f.key, f]));
+  // Check against the FULL key set, retired formats included: formatLayoutPrompt
+  // intentionally keeps a case for every retired format so remixing an older
+  // asset never hits an undefined key (see AD_FORMAT_BY_KEY's note). Using the
+  // live-only list here went red the moment the first format was retired.
+  const byKey = new Map(Object.values(AD_FORMAT_BY_KEY).map((f) => [f.key, f]));
   const caseRe = /case "([a-z0-9]+)":([\s\S]*?)(?=\n    case "|\n    default:)/g;
   let scanned = 0;
   let m: RegExpExecArray | null;
@@ -62,7 +85,7 @@ test("no layout prompt interpolates a key the copywriter is never asked for", ()
     const [, key, block] = m;
     scanned++;
     const fmt = byKey.get(key);
-    assert.ok(fmt, `formatLayoutPrompt handles "${key}" but AD_FORMATS has no such format`);
+    assert.ok(fmt, `formatLayoutPrompt handles "${key}" but no such format exists`);
     const used = [...new Set([...block.matchAll(/\$\{c\.([a-zA-Z0-9_]+)\}/g)].map((x) => x[1]))];
     for (const u of used) {
       assert.ok(

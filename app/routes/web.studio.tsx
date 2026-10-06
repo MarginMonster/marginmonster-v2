@@ -20,7 +20,7 @@ import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
-import { AD_FORMATS, AD_FORMAT_BY_KEY } from "../lib/ad-formats";
+import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
 import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
@@ -914,7 +914,9 @@ export default function WebStudio() {
   const [burst, setBurst] = useState(1);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [formatKey, setFormatKey] = useState<string | null>(null);
-  const [allFormats, setAllFormats] = useState(false);
+  // Which format category the picker is showing. Leads with "popular" so the
+  // first thing a merchant sees is eight strong choices, not forty.
+  const [fmtGroup, setFmtGroup] = useState<string>("popular");
   const [videoEngine, setVideoEngine] = useState("auto");
   const [commercial, setCommercial] = useState(false);
   const [breakout, setBreakout] = useState(false);
@@ -1370,21 +1372,40 @@ export default function WebStudio() {
             {imageMode === "product" && !service && (
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
-                <div className={`ws-tiles fmt${allFormats ? " ws-fmtbox" : ""}`}>
-                  {(allFormats ? AD_FORMATS : AD_FORMATS.slice(0, 8)).map((f, i) => (
-                    <button type="button" key={f.key} className={`ws-tile fmt${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
-                      style={allFormats ? { animationDelay: `${Math.min(i * 22, 550)}ms` } : undefined}
-                      onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
-                      <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
-                      <b>{f.name}</b>
+                <div className="ws-fmtcats" role="tablist" aria-label="Ad format categories">
+                  {FORMAT_GROUPS.map((g) => (
+                    <button type="button" key={g.key} role="tab" aria-selected={fmtGroup === g.key}
+                      className={`ws-fmtcat${fmtGroup === g.key ? " sel" : ""}`} title={g.blurb}
+                      onClick={() => setFmtGroup(g.key)}>
+                      <span aria-hidden="true">{g.emoji}</span> {g.name}
                     </button>
                   ))}
+                  <button type="button" role="tab" aria-selected={fmtGroup === "all"}
+                    className={`ws-fmtcat${fmtGroup === "all" ? " sel" : ""}`} title="Every format"
+                    onClick={() => setFmtGroup("all")}>All {AD_FORMATS.length}</button>
                 </div>
-                <div style={{ textAlign: "center", margin: "8px 0 2px" }}>
-                  <button type="button" className="wb-btn ghost" style={{ padding: "8px 18px", fontSize: 12.5 }} onClick={() => setAllFormats((v) => !v)}>
-                    {allFormats ? "Show fewer ▴" : `See all ${AD_FORMATS.length} formats ▾`}
-                  </button>
-                </div>
+                {(() => {
+                  const grp = FORMAT_GROUPS.find((g) => g.key === fmtGroup);
+                  const scroll = fmtGroup === "all";
+                  const shown: AdFormat[] = scroll || !grp
+                    ? AD_FORMATS
+                    : grp.formats.map((k) => AD_FORMAT_BY_KEY[k]).filter((f): f is AdFormat => !!f && !f.retired);
+                  return (
+                    <>
+                      {grp && grp.key !== "popular" && <p className="ws-fmthint">{grp.blurb}</p>}
+                      <div className={`ws-tiles fmt${scroll ? " ws-fmtbox" : ""}`}>
+                        {shown.map((f, i) => (
+                          <button type="button" key={f.key} className={`ws-tile fmt${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
+                            style={scroll ? { animationDelay: `${Math.min(i * 22, 550)}ms` } : undefined}
+                            onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
+                            <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
+                            <b>{f.name}</b>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
                 <p className="ws-note">Each format is a different creative <b>structure</b> — copy is written fresh for your product, the layout is built around your real photo, and a vision check rejects garbled text before you ever see it.</p>
                 {formatKey && <input type="hidden" name="formatKey" value={formatKey} />}
                 <details>
@@ -1819,6 +1840,18 @@ const WS_STYLE = `
 .ws-3w{display:flex;flex-direction:column;gap:10px;margin-top:2px}
 .ws-w{display:block;font-size:12px;font-weight:700;color:var(--ink,#14201A);margin-bottom:5px}
 .ws-ta{min-height:74px;resize:vertical;font:inherit;width:100%}
+/* Format category chips — turn a 40-tile wall into a short, browsable menu.
+   Wrap on desktop (all chips fit); scroll sideways on a phone so they never
+   stack three rows deep above the tiles. */
+.ws-fmtcats{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.ws-fmtcat{padding:8px 14px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12.5px;line-height:1;white-space:nowrap;cursor:pointer}
+.ws-fmtcat:hover{border-color:#9CCBB1}
+.ws-fmtcat.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
+.ws-fmthint{margin:-4px 0 10px;font-size:12.5px;color:var(--ink2,#4A554E)}
+@media (max-width:620px){
+  .ws-fmtcats{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}
+  .ws-fmtcats::-webkit-scrollbar{display:none}
+}
 .ws-chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
 .ws-chip{padding:8px 13px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink,#14201A);font-weight:600;font-size:12.5px;cursor:pointer}
 .ws-chip.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4}

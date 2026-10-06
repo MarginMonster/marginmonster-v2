@@ -423,3 +423,56 @@ export const AD_FORMATS: AdFormat[] = ALL_AD_FORMATS.filter((f) => !f.retired);
 export const AD_FORMAT_BY_KEY: Record<string, AdFormat> = Object.fromEntries(
   ALL_AD_FORMATS.map((f) => [f.key, f])
 );
+
+/* FORMAT GROUPS — forty proven structures is a wall, not a menu. A new merchant
+ * facing forty near-identical tiles picks nothing (or the first one), so the
+ * picker leads with a short curated "Popular" set and lets the rest be browsed
+ * by what the ad is trying to DO, not by visual style. Pure presentation: the
+ * groups only decide which tiles show; the chosen formatKey and the whole
+ * generate path are unchanged, and every live format still has a home here so
+ * nothing is reachable only through "All". "popular" deliberately re-lists
+ * formats that also live in a goal group — it's the fast lane, not a category.
+ * Keys are validated by a test against AD_FORMATS so a rename can't orphan a
+ * tile or hide a format. */
+export interface FormatGroup {
+  key: string;
+  name: string;
+  emoji: string;
+  /** One line shown on hover / as the group's helper text. */
+  blurb: string;
+  /** Ordered format keys shown under this group (all must be live). */
+  formats: string[];
+}
+
+export const FORMAT_GROUPS: FormatGroup[] = [
+  {
+    key: "popular", name: "Popular", emoji: "⭐",
+    blurb: "The highest-converting, most reliable formats — start here",
+    formats: ["callout", "versus", "stat", "offer", "poster", "gift", "beforeafter", "breakout"],
+  },
+  {
+    key: "benefits", name: "Benefits", emoji: "🎯",
+    blurb: "Lead with what your product does and the proof behind it",
+    formats: ["callout", "stat", "statgrid", "threereasons", "ingredients", "macro", "beforeafter", "faq"],
+  },
+  {
+    key: "offers", name: "Offers & gifting", emoji: "💥",
+    blurb: "Deals, bundles, urgency and gift-guide money-makers",
+    formats: ["offer", "restock", "seasonal", "pricemath", "receipt", "bundle", "duo", "gift"],
+  },
+  {
+    key: "social", name: "Social & native", emoji: "📱",
+    blurb: "Reads like organic content, not an ad — made to stop the scroll",
+    formats: ["poll", "notes", "pov", "handheld", "reminder", "breakout", "search", "speech", "checklist", "warning"],
+  },
+  {
+    key: "editorial", name: "Editorial & premium", emoji: "🗞",
+    blurb: "Magazine, poster and luxury-whitespace polish",
+    formats: ["poster", "magazine", "minimal", "splitpanel", "origin", "swatch", "neon", "chalkboard"],
+  },
+  {
+    key: "howto", name: "How it works", emoji: "🪜",
+    blurb: "Show the product in action — steps, routines and what's inside",
+    formats: ["steps", "routine", "weather", "unbox", "calendar", "versus"],
+  },
+];
