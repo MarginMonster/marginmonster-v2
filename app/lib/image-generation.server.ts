@@ -4113,6 +4113,95 @@ async function fluxToDisk(prompt: string): Promise<string> {
   return `/renders/${fileName}`;
 }
 
+/** Download a finished remote render to the durable disk and mirror it, like
+ *  fluxToDisk's tail. Returns the public /renders/<file> path. */
+async function persistRemote(url: string, ext: "jpg" | "png"): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`edit fetch ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 2_000) throw new Error("edited image came back empty");
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.${ext}`;
+  fs.writeFileSync(path.join(dir, fileName), buf);
+  try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
+  return `/renders/${fileName}`;
+}
+
+/** img2img for a photo edit: nano-banana (strongest identity-preserving editor),
+ *  flux-kontext-pro fallback — the same pair the ad pipeline uses. */
+async function editImg2Img(imageUrl: string, prompt: string): Promise<string> {
+  // No aspect_ratio: a photo edit must give the user THEIR photo back, just
+  // changed — nano-banana defaults to "match_input_image" and kontext preserves
+  // the input aspect, so a portrait/landscape stays its own shape instead of
+  // being square-cropped like an ad.
+  try {
+    return await repRun("google/nano-banana", { prompt, image_input: [imageUrl], output_format: "jpg" });
+  } catch (e) {
+    console.log("[photo-edit] nano-banana unavailable, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
+    return await repRun("black-forest-labs/flux-kontext-pro", { prompt, input_image: imageUrl, output_format: "jpg" });
+  }
+}
+
+export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap";
+const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap"]);
+export function isEditOp(x: unknown): x is EditOp { return typeof x === "string" && EDIT_OPS.has(x); }
+
+/** Casual "edit a photo" — one img2img transform on the user's OWN photo, saved
+ *  as an IMAGE_AD asset flagged metaJson.kind:"edit". Reuses the ad pipeline's
+ *  Replicate + ffmpeg primitives but DELIBERATELY skips the ad vision-QA ladder
+ *  and product grounding: the user is intentionally transforming their image, so
+ *  there is no "real product" to stay faithful to and nothing to reject. Rides
+ *  the GENERATE_IMAGE_AD job so its token refund-on-failure is inherited. */
+export async function editImage(opts: {
+  shopId: string;
+  sourceImageUrl: string;
+  editOp: EditOp;
+  prompt?: string;
+}): Promise<string> {
+  const { shopId, sourceImageUrl, editOp } = opts;
+  const prompt = (opts.prompt || "").trim().slice(0, 300);
+  if (!process.env.REPLICATE_API_TOKEN) throw new Error("Photo editing isn't set up on this server yet.");
+  if (!/^https?:\/\//i.test(sourceImageUrl)) throw new Error("Add a photo to edit first.");
+
+  let localUrl: string;
+  let label: string;
+
+  if (editOp === "bgremove") {
+    const cut = await removeBackground(sourceImageUrl);
+    if (!cut) throw new Error("Couldn't lift the subject off its background — try a clearer photo.");
+    localUrl = await persistRemote(cut, "png");
+    label = "background removed";
+  } else if (editOp === "bgswap") {
+    const backdropPrompt = `Empty premium backdrop photograph — ${prompt || "clean, softly-lit studio surface"}. Completely empty: no products, no people, just a beautiful empty display area across the lower third. Photorealistic, soft believable ground shadow area, no text, no watermark.`;
+    const [backdrop, cut] = await Promise.all([
+      fluxDevStill(backdropPrompt, "photo-edit-bgswap"),
+      removeBackground(sourceImageUrl),
+    ]);
+    if (!cut) throw new Error("Couldn't lift the subject off its background — try a clearer photo.");
+    const file = await compositeProductStill(backdrop, cut);
+    if (!file) throw new Error("Couldn't build the new background here (image tools unavailable).");
+    localUrl = `/renders/${file}`;
+    label = "new background";
+  } else {
+    const stylePrompt = editOp === "cartoonize"
+      ? `Redraw this exact image as a vibrant, clean cartoon illustration${prompt ? `, ${prompt}` : ""}. Keep the same subject, pose and composition — just stylize it. No added text or watermark.`
+      : `${prompt || "Give this photo a clean, premium, eye-catching restyle"}. Keep the same subject and composition; do not add any text or a watermark.`;
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, stylePrompt), "jpg");
+    label = editOp === "cartoonize" ? "cartoon" : "restyle";
+  }
+
+  const asset = await db.asset.create({
+    data: {
+      shopId, type: "IMAGE_AD", status: "PENDING",
+      title: `Photo edit — ${label}`,
+      bodyJson: JSON.stringify({ imageUrl: localUrl, prompt: prompt || null, method: "edit", editOp }),
+      metaJson: JSON.stringify({ kind: "edit", editOp, sourceImageUrl }),
+    },
+  });
+  return asset.id;
+}
+
 const PLAN_VISUAL_DIRECTION: Record<string, string> = {
   GROW_SALES: "lifestyle product shot, natural lighting, aspirational mood, conversion-optimized",
   LAUNCH_PRODUCT: "bold hero shot, dramatic lighting, excitement and novelty, launch energy",

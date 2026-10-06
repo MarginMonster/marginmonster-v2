@@ -387,7 +387,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  if (!shop.brandProfile) return json({ error: "Set your brand voice on the Dashboard first." });
+  if (!shop.brandProfile && intent !== "edit") return json({ error: "Set your brand voice on the Dashboard first." });
   if (!shop.activePlan?.active) return json({ error: "Pick a plan on the Dashboard first — content runs on tokens." });
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();
@@ -423,7 +423,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const service = !casualMode && form.get("service") === "1"; // intangible offering — sell the outcome
   const wear = form.get("wear") === "1";
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
-  if (!productTitle) return json({ error: "Give the product a name." });
+  if (!productTitle && intent !== "edit") return json({ error: "Give the product a name." });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: "The product image must be a full https:// URL." });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
@@ -626,6 +626,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         backed(TOKEN_COST.image, imgPerPieceFromExtra);
       }
       return json({ ok: true, queued: "image", count: n });
+    }
+    if (intent === "edit") {
+      // Casual "edit a photo" — transform the user's own uploaded/linked photo.
+      // Same 5-token image cost + spend/refund discipline; the worker routes it
+      // to editImage() (no brand profile or ad ladder). A source photo is
+      // REQUIRED — img2img can't invent one from a title.
+      assertCapability(shop.activePlan, "image");
+      const editOp = ((form.get("editOp") as string) || "").trim();
+      if (!["restyle", "cartoonize", "bgremove", "bgswap"].includes(editOp)) {
+        return json({ error: "Pick what to do with your photo — restyle, cartoonize, or change the background." });
+      }
+      if (!productImageUrl) {
+        return json({ error: "Add a photo to edit — upload one or paste an image URL." });
+      }
+      const editFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
+      charged(TOKEN_COST.image, editFromExtra);
+      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        editOp, sourceImageUrl: productImageUrl, editPrompt: direction,
+        // Carried only so the Archive "cooking" tile has a thumbnail + label
+        // while the edit runs (the worker's edit path ignores them).
+        productImageUrl, productTitle: productTitle || "Photo edit",
+        prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: editFromExtra,
+      });
+      backed(TOKEN_COST.image, editFromExtra);
+      return json({ ok: true, queued: "image", count: 1 });
     }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
@@ -935,6 +960,8 @@ export default function WebStudio() {
   const [burst, setBurst] = useState(1);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [formatKey, setFormatKey] = useState<string | null>(null);
+  // Casual "edit a photo" operation (restyle | cartoonize | bgswap | bgremove).
+  const [editOp, setEditOp] = useState<string | null>(null);
   // Which format category the picker is showing. Leads with "popular" so the
   // first thing a merchant sees is eight strong choices, not forty.
   const [fmtGroup, setFmtGroup] = useState<string>("popular");
@@ -966,6 +993,9 @@ export default function WebStudio() {
   // ticked in marketing can't ride a casual submit (the control is hidden in
   // casual, but a control nobody can see must not change the order).
   useEffect(() => { if (casual) setCommercial(false); }, [casual]);
+  // The photo-edit op only applies to the casual Image→product surface; clear it
+  // whenever we leave so a stale op can't flag a later submit as an edit.
+  useEffect(() => { if (!(casual && tab === "image" && imageMode === "product")) setEditOp(null); }, [casual, tab, imageMode]);
   // Import-by-URL (works for any storefront).
   const [showImport, setShowImport] = useState(false);
   // Catalogue picker: the chosen product's URL rides along so the social
@@ -1059,8 +1089,12 @@ export default function WebStudio() {
   // image burst to the video tab must not quote — or charge — ten videos.
   const burstMax = tab === "video" ? MAX_BURST.video : tab === "image" ? MAX_BURST.image : 1;
   if (burst > burstMax) setBurst(burstMax);
-  const verb = tab === "blog" ? "Write" : "Generate";
-  const noun = tab === "video" ? "video" : tab === "image" ? "image" : "article";
+  // Casual "edit a photo": the image→product surface becomes the photo editor,
+  // which submits intent="edit" (once an op is picked) and reads as "Edit photo".
+  const isEdit = casual && tab === "image" && imageMode === "product";
+  const submitIntent = isEdit && editOp ? "edit" : tab;
+  const verb = isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
+  const noun = isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : d.costs.blog;
   const cost = baseCost + engineFee;
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
@@ -1161,7 +1195,7 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !d.hasPlan || !productTitle.trim() || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp) || shortBy > 0;
 
   return (
     <div>
@@ -1394,7 +1428,7 @@ export default function WebStudio() {
             <div className="ws-tiles two">
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }} />
-                <b>{casual ? "Styled photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Your photo, beautifully styled" : "Your product in a famous ad format"}</span>
+                <b>{casual ? "Edit a photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Restyle, cartoonize, change the background" : "Your product in a famous ad format"}</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
@@ -1408,7 +1442,23 @@ export default function WebStudio() {
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
             <StepHead n={1} title="Pick the look" hint={casual ? "how your image is styled" : "the structure your ad is built on"} />
             {imageMode === "product" && casual && (
-              <p className="ws-note">Upload your photo below and add any direction — we&apos;ll style it into a clean, shareable image. Want to restyle, swap or remove the background instead? Photo edits are coming to Casual next.</p>
+              <>
+                <div className="ws-lbl">What do you want to do?</div>
+                <div className="ws-fmtcats" role="tablist" aria-label="Photo edit">
+                  {([["restyle", "🎨 Restyle"], ["cartoonize", "✏️ Cartoonize"], ["bgswap", "🖼 Swap background"], ["bgremove", "✂️ Remove background"]] as [string, string][]).map(([k, label]) => (
+                    <button type="button" key={k} role="tab" aria-selected={editOp === k}
+                      className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{label}</button>
+                  ))}
+                </div>
+                <p className="ws-note">
+                  {editOp === "bgremove" ? "Upload your photo — we'll cut the subject out onto a clean transparent background."
+                    : editOp === "bgswap" ? "Upload your photo, then describe the new background in the direction box below."
+                    : editOp === "cartoonize" ? "Upload your photo — we'll redraw it as a cartoon. Add any direction below to steer the style."
+                    : editOp === "restyle" ? "Upload your photo and describe the look you want in the direction box below."
+                    : "Pick what to do, then upload your photo below."}
+                </p>
+                {editOp && <input type="hidden" name="editOp" value={editOp} />}
+              </>
             )}
             {imageMode === "product" && !service && !casual && (
               <>
@@ -1617,7 +1667,7 @@ export default function WebStudio() {
                 ↺ Use last: {lastProd.title}
               </button>
             )}
-            <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
+            <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? "Optional name for your edit" : casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
             {tab !== "blog" && (
               <>
                 <div className="ws-lbl">{casual ? <>Photo <span className="ws-opt">powers your videos and images — upload or paste a URL</span></> : <>Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></>}</div>
@@ -1722,18 +1772,23 @@ export default function WebStudio() {
                     thing it can actually deliver. */}
                 <div className="ws-lbl">
                   {tab === "image"
-                    ? templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
+                    ? isEdit
+                      ? editOp === "bgswap" ? "Describe the new background" : editOp === "cartoonize" ? "Cartoon style" : editOp === "bgremove" ? "Remove background" : "Describe the look"
+                      : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
                     : "Topic"}{" "}
-                  <span className="ws-opt">optional</span>
+                  <span className="ws-opt">{isEdit && editOp === "bgremove" ? "nothing to add" : "optional"}</span>
                 </div>
                 <input className="wb-in" value={direction} maxLength={300}
+                  disabled={isEdit && editOp === "bgremove"}
                   placeholder={
                     tab === "image"
-                      ? templateKey
-                        ? "Any edits — e.g. make the wall sage green, add pine branches…"
-                        : formatKey
-                          ? "e.g. lead with how fast it ships — or leave blank and we'll pick the angle"
-                          : "Describe the scene you want — or leave blank for bright & clean…"
+                      ? isEdit
+                        ? editOp === "bgswap" ? "e.g. a sunny marble kitchen counter" : editOp === "cartoonize" ? "e.g. bold outlines, flat colors — or leave blank" : editOp === "bgremove" ? "We'll just cut the subject out" : "e.g. warm film look, soft golden light"
+                        : templateKey
+                          ? "Any edits — e.g. make the wall sage green, add pine branches…"
+                          : formatKey
+                            ? "e.g. lead with how fast it ships — or leave blank and we'll pick the angle"
+                            : "Describe the scene you want — or leave blank for bright & clean…"
                       : "Tap an angle above, or describe your own topic…"
                   }
                   onChange={(e) => setDirection(e.target.value)} />
@@ -1772,7 +1827,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && (
+            {tab !== "blog" && !isEdit && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">How many</span>
                 <div className="ws-burst-steps">
@@ -1796,7 +1851,7 @@ export default function WebStudio() {
             )}
             <input type="hidden" name="burst" value={burst} />
             <div style={{ marginTop: 10 }}>
-              <button className="wb-btn" name="intent" value={tab} disabled={ctaDisabled}>
+              <button className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
                 {busy
                   ? "Sending to the studio…"
                   : !d.hasPlan

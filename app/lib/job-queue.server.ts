@@ -4,7 +4,7 @@
 import { db } from "../db.server";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
-import { generateImageAd } from "./image-generation.server";
+import { generateImageAd, editImage, isEditOp } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
@@ -444,6 +444,20 @@ async function runJob(
     }
 
     case "GENERATE_IMAGE_AD": {
+      // Casual "edit a photo" rides this job (so the TOKEN_COST.image refund is
+      // inherited) but is a different pipeline: it transforms the user's OWN
+      // photo and needs neither a brand profile nor the ad ladder, so it branches
+      // BEFORE the guard below. Token already spent + prePaid, same as an ad.
+      if (payload.editOp) {
+        if (!isEditOp(payload.editOp)) throw new Error("Unknown photo-edit operation");
+        await editImage({
+          shopId,
+          sourceImageUrl: payload.sourceImageUrl as string,
+          editOp: payload.editOp,
+          prompt: typeof payload.editPrompt === "string" ? payload.editPrompt : undefined,
+        });
+        break;
+      }
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }

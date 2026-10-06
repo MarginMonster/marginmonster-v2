@@ -790,12 +790,12 @@ const CSS = `
 }
 
 /* ---- Helpurr — the AI helper (floating sidekick) ---- */
-.mm-fab{position:fixed;z-index:10600;bottom:20px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}
+.mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}
 .mm-fab:hover{transform:translateY(-2px) scale(1.06);}
 .mm-fab.open{transform:scale(.92);opacity:.95;}
 /* Nudged up and out to the top-right corner — at top:4px/right:6px it sat on the
    cat's ear and read as an earring. Now it floats clear above the head as a badge. */
-.mm-fab-dot{position:absolute;top:-2px;right:2px;width:12px;height:12px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;z-index:4;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+.mm-fab-dot{position:absolute;top:-2px;right:-3px;width:12px;height:12px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;z-index:4;box-shadow:0 1px 3px rgba(0,0,0,.25);}
 /* ---- the familiar: a smart emerald pixel-art cat, floating + animated ---- */
 .mm-fam{position:relative;display:grid;place-items:center;width:100%;height:100%;cursor:pointer;overflow:visible;}
 .mm-fam-img{width:124%;height:124%;object-fit:contain;image-rendering:pixelated;will-change:transform;
@@ -840,5 +840,5 @@ const CSS = `
 .mm-input input:focus{border-color:#12A85E;}
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
-@media(max-width:620px){.mm-fab{bottom:16px;right:16px;width:56px;height:56px}.mm-panel{bottom:80px;right:16px;height:72vh}}
+@media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}}
 `;
