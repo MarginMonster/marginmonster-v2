@@ -1384,6 +1384,16 @@ export default function WebStudio() {
                     className={`ws-fmtcat${fmtGroup === "all" ? " sel" : ""}`} title="Every format"
                     onClick={() => setFmtGroup("all")}>All {AD_FORMATS.length}</button>
                 </div>
+                {/* What's armed, shown above the tiles so a selection made in one
+                    category isn't invisible while browsing another — otherwise a
+                    merchant could generate "Callouts" while looking at an empty-
+                    looking Offers tab. */}
+                {formatKey && AD_FORMAT_BY_KEY[formatKey] && (
+                  <p className="ws-fmtsel">
+                    Selected: <b>{AD_FORMAT_BY_KEY[formatKey].name}</b>
+                    <button type="button" onClick={() => setFormatKey(null)} aria-label={`Clear ${AD_FORMAT_BY_KEY[formatKey].name}`}>✕</button>
+                  </p>
+                )}
                 {(() => {
                   const grp = FORMAT_GROUPS.find((g) => g.key === fmtGroup);
                   const scroll = fmtGroup === "all";
@@ -1848,6 +1858,10 @@ const WS_STYLE = `
 .ws-fmtcat:hover{border-color:#9CCBB1}
 .ws-fmtcat.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
 .ws-fmthint{margin:-4px 0 10px;font-size:12.5px;color:var(--ink2,#4A554E)}
+.ws-fmtsel{display:flex;align-items:center;gap:8px;margin:0 0 11px;font-size:12.5px;color:var(--ink2,#4A554E)}
+.ws-fmtsel b{color:#0C7A46;font-size:12.5px}
+.ws-fmtsel button{width:20px;height:20px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-size:10px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.ws-fmtsel button:hover{border-color:#12A85E;color:#12A85E}
 @media (max-width:620px){
   .ws-fmtcats{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}
   .ws-fmtcats::-webkit-scrollbar{display:none}
