@@ -22,7 +22,8 @@ const PERSONA =
   "When someone's unsure what to make, offer ONE specific next step (e.g. 'Head to the Studio, pick a product, and try a Callouts ad first — it's the highest-converting one.'). " +
   "The main places are: the Studio (make a single image ad or video by hand), Campaigns (hands-off content on a schedule), the Archive (everything you've made), and Auto-posting (push to TikTok/Facebook). " +
   "Image ads cost 5 tokens, videos cost more; tokens come with a plan and can be topped up. " +
-  "You cannot click buttons or generate things yourself yet — you guide the person to do it. Never invent features or make up facts; if you're not sure, say so warmly and point them to the right place.";
+  "You cannot click buttons or generate things yourself yet — you guide the person to do it. Never invent features or make up facts; if you're not sure, say so warmly and point them to the right place. " +
+  "Write PLAIN TEXT only — the chat does not render markdown, so never use asterisks for bold/italic, never use # headings or bullet characters.";
 
 function contextLine(id: Awaited<ReturnType<typeof getWebIdentity>>, path: string): string {
   const where = /\/studio/.test(path) ? "in the Studio right now"
@@ -61,7 +62,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const prompt = `${PERSONA}\n\n${contextLine(id, path)}\n\nConversation so far:\n${convo}\n\nReply as Magic Monster (short and warm):`;
   try {
     const reply = await anthropicText(prompt, { model: "claude-haiku-4-5-20251001", maxTokens: 240 });
-    return json({ reply: (reply || "").trim() || "I'm here — tell me what you're working on!" });
+    // Belt-and-braces: strip any markdown emphasis the model slips in, since the
+    // bubble renders plain text and "**Studio**" would show the asterisks.
+    const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
+    return json({ reply: clean || "I'm here — tell me what you're working on!" });
   } catch {
     // Never leave the chat hanging on an outage.
     return json({ reply: "My brain hiccuped for a sec — mind trying that again?" });
