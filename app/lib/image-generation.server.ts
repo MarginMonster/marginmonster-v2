@@ -1615,8 +1615,12 @@ async function renderVersusComposite(opts: {
     const hlShadow = hlDark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
 
     // per-label font, width-capped to the room left of the badge in a cell.
-    const labelAvail = cellW - BADGE - 22 - 18 - 16;
-    const labelSize = (s: string) => Math.max(17, Math.min(29, Math.floor(labelAvail / (Math.max(1, s.length) * (hasCJK(s) ? 1.05 : 0.54)))));
+    // Poppins-Bold caps measure ~0.61×fontsize, so the width factor must match or
+    // a mid-length label (e.g. "SECRET VARIANT CHANCE") sized at the cap runs to
+    // the cell edge — local measurement confirmed it. 0.62 + a lower cap keeps a
+    // comfortable right margin for every realistic 2-4 word label.
+    const labelAvail = cellW - BADGE - 22 - 22 - 16;
+    const labelSize = (s: string) => Math.max(16, Math.min(28, Math.floor(labelAvail / (Math.max(1, s.length) * (hasCJK(s) ? 1.10 : 0.62)))));
     const labelX = (base: number) => base + 22 + BADGE + 16;
 
     const draw: string[] = [
