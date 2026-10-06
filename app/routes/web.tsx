@@ -3,7 +3,7 @@
 
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
@@ -146,7 +146,73 @@ export default function WebLayout() {
         <main className="wb-main">
           <Outlet />
         </main>
+        <Buddy />
       </div>
+    </>
+  );
+}
+
+/* Magic Monster — the AI companion. A floating sidekick that greets you, answers
+ * questions about the platform, and suggests what to make. Talks to /api/buddy
+ * (Haiku behind a warm persona). Guides only — it doesn't click for you yet. */
+type MMMsg = { role: "user" | "assistant"; content: string };
+function Buddy() {
+  const loc = useLocation();
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState<MMMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && msgs.length === 0) {
+      setMsgs([{ role: "assistant", content: "Hey! I'm Magic Monster 👾 your sidekick for making ads & videos. Not sure what to make, or got a question? I've got you." }]);
+    }
+  }, [open, msgs.length]);
+  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
+
+  const send = async (text: string) => {
+    const t = text.trim();
+    if (!t || busy) return;
+    const next: MMMsg[] = [...msgs, { role: "user", content: t }];
+    setMsgs(next); setInput(""); setBusy(true);
+    try {
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next, path: loc.pathname }) });
+      const data = await res.json().catch(() => ({ reply: "" })) as { reply?: string };
+      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…" }]);
+    } catch {
+      setMsgs((m) => [...m, { role: "assistant", content: "Connection blipped — mind trying again?" }]);
+    } finally { setBusy(false); }
+  };
+
+  const chips = ["What should I make first?", "How do the formats work?", "Give me an ad idea"];
+
+  return (
+    <>
+      <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label="Chat with Magic Monster">
+        <img src="/easymode-head.png?v=2" alt="" />
+        {!open && <span className="mm-fab-dot" aria-hidden="true" />}
+      </button>
+      {open && (
+        <div className="mm-panel" role="dialog" aria-label="Magic Monster chat">
+          <div className="mm-head">
+            <span className="mm-head-crest"><img src="/easymode-head.png?v=2" alt="" /></span>
+            <div className="mm-head-txt"><b>Magic Monster</b><span>your content sidekick</span></div>
+            <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label="Close chat">×</button>
+          </div>
+          <div className="mm-list" ref={listRef}>
+            {msgs.map((m, i) => <div key={i} className={`mm-msg ${m.role}`}>{m.content}</div>)}
+            {busy && <div className="mm-msg assistant mm-typing"><i /><i /><i /></div>}
+            {msgs.length <= 1 && !busy && (
+              <div className="mm-chips">{chips.map((c) => <button key={c} type="button" onClick={() => send(c)}>{c}</button>)}</div>
+            )}
+          </div>
+          <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Magic Monster…" aria-label="Message Magic Monster" />
+            <button type="submit" disabled={busy || !input.trim()} aria-label="Send">➤</button>
+          </form>
+        </div>
+      )}
     </>
   );
 }
@@ -613,4 +679,45 @@ const CSS = `
   .ws-tiles,.ws-tiles.styles,.ws-tiles.fmt,.ws-tiles.two{gap:8px;}
   .ws-tile-sub{display:none;}
 }
+
+/* ---- Magic Monster — the AI companion (floating sidekick) ---- */
+.mm-fab{position:fixed;z-index:10600;bottom:22px;right:22px;width:60px;height:60px;border-radius:50%;border:0;cursor:pointer;padding:0;
+  background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 8px 24px rgba(12,122,70,.38),inset 0 0 0 2px rgba(231,200,121,.4);
+  display:grid;place-items:center;transition:transform .15s;}
+.mm-fab:hover{transform:translateY(-2px) scale(1.04);}
+.mm-fab.open{transform:scale(.92);opacity:.92;}
+.mm-fab img{width:40px;height:40px;border-radius:50%;object-fit:cover;image-rendering:pixelated;filter:brightness(1.12);}
+.mm-fab-dot{position:absolute;top:3px;right:3px;width:13px;height:13px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;}
+.mm-panel{position:fixed;z-index:10600;bottom:94px;right:22px;width:min(360px,calc(100vw - 32px));height:min(520px,70vh);
+  display:flex;flex-direction:column;border-radius:20px;overflow:hidden;background:linear-gradient(178deg,#FEFDF9,#F5F2E8);
+  border:1px solid #D7DCCB;box-shadow:0 24px 60px rgba(10,20,14,.32),inset 0 1px 0 rgba(255,255,255,.8);
+  animation:mmUp .28s cubic-bezier(.2,1.3,.4,1) both;}
+@keyframes mmUp{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mm-panel{animation:none}}
+.mm-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(168deg,#0E5233,#0A3421);color:#F4EAC8;}
+.mm-head-crest{width:34px;height:34px;border-radius:10px;overflow:hidden;flex:0 0 auto;border:1.5px solid rgba(231,200,121,.6);}
+.mm-head-crest img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;filter:brightness(1.14);}
+.mm-head-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0;}
+.mm-head-txt b{font-family:Poppins,sans-serif;font-size:14.5px;}
+.mm-head-txt span{font-size:11px;color:rgba(244,234,200,.72);}
+.mm-x{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.85);font-size:23px;line-height:1;cursor:pointer;padding:2px 5px;}
+.mm-x:hover{color:#fff;}
+.mm-list{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+.mm-msg{max-width:84%;padding:9px 13px;border-radius:15px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
+.mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid #E1DECD;color:#14201A;border-bottom-left-radius:5px;}
+.mm-msg.user{align-self:flex-end;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
+.mm-typing{display:flex;gap:4px;align-items:center;}
+.mm-typing i{width:7px;height:7px;border-radius:50%;background:#9CCBB1;animation:mmBlink 1.2s infinite both;}
+.mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}
+@keyframes mmBlink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.mm-typing i{animation:none;opacity:.6}}
+.mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
+.mm-chips button{font:inherit;font-size:12px;font-weight:600;color:#0C7A46;background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:6px 11px;cursor:pointer;}
+.mm-chips button:hover{background:#DCF0E5;}
+.mm-input{display:flex;gap:8px;padding:11px;border-top:1px solid #E1DECD;background:#FDFCF7;}
+.mm-input input{flex:1;border:1px solid #D7DCCB;border-radius:999px;padding:10px 15px;font:inherit;font-size:16px;background:#fff;color:#14201A;outline:none;}
+.mm-input input:focus{border-color:#12A85E;}
+.mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
+.mm-input button:disabled{opacity:.4;cursor:not-allowed;}
+@media(max-width:620px){.mm-fab{bottom:16px;right:16px;width:54px;height:54px}.mm-fab img{width:36px;height:36px}.mm-panel{bottom:80px;right:16px;height:72vh}}
 `;
