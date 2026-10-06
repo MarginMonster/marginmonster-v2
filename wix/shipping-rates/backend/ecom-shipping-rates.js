@@ -46,6 +46,20 @@ export const FALLBACK_WEIGHT_KG = 1.2;
  */
 export const SEA_MIN_KG = 12;
 
+/**
+ * The currency the rate arithmetic is denominated in.
+ *
+ * RATE_PER_KG and MIN_CHARGE come from freight quotes in US dollars, so
+ * the rate has to be returned as USD and left for Wix to convert into
+ * whatever the buyer is viewing. Product prices convert the same way, so
+ * the shipping line and the goods stay consistent with each other.
+ *
+ * Echoing `options.currency` here instead would be a silent margin loss:
+ * a buyer viewing in CAD would be handed a USD-sized number labelled CAD
+ * and charged it at face value — roughly a quarter under cost.
+ */
+export const RATE_CURRENCY = 'USD';
+
 const SEA_TIME = '40-60 days total (production + sea transit)';
 const AIR_TIME = '15-25 days total (production + air transit)';
 
@@ -146,7 +160,8 @@ export function quote(lineItems) {
 /* ------------------------------------------------------- the plugin */
 
 export const getShippingRates = (options) => {
-  const currency = (options && options.currency) || 'USD';
+  // Always USD — see RATE_CURRENCY. Wix converts it for display.
+  const currency = RATE_CURRENCY;
   const { kg, air, assumedLines } = quote(options && options.lineItems);
 
   if (assumedLines > 0) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   quote, airPrice, cartWeight, unitWeight, getShippingRates,
-  RATE_PER_KG, MIN_CHARGE, FALLBACK_WEIGHT_KG, SEA_MIN_KG, seaAvailable
+  RATE_PER_KG, MIN_CHARGE, FALLBACK_WEIGHT_KG, SEA_MIN_KG, seaAvailable, RATE_CURRENCY
 } from './.tmp/ecom-shipping-rates.mjs';
 
 const item = (weight, quantity = 1) => ({ quantity, physicalProperties: { weight } });
@@ -114,4 +114,24 @@ test('a light cart returns air only, never an empty list', () => {
   const out = getShippingRates({ currency: 'USD', lineItems: [item(2)] });
   assert.equal(out.shippingRates.length, 1);
   assert.equal(out.shippingRates[0].code, 'air-upgrade');
+});
+
+test('the rate is always quoted in USD, whatever the buyer is viewing', () => {
+  // A buyer browsing in CAD must not be handed a USD-sized number labelled
+  // CAD — Wix converts the USD figure for display instead.
+  const cad = getShippingRates({ currency: 'CAD', lineItems: [item(20)] });
+  for (const r of cad.shippingRates) {
+    assert.equal(r.cost.currency, 'USD', r.code + ' must stay in USD');
+  }
+  // and the figure itself is unchanged by the viewing currency
+  const usd = getShippingRates({ currency: 'USD', lineItems: [item(20)] });
+  assert.deepEqual(
+    cad.shippingRates.map(r => r.cost.price),
+    usd.shippingRates.map(r => r.cost.price)
+  );
+});
+
+test('a missing currency on the request changes nothing', () => {
+  const out = getShippingRates({ lineItems: [item(20)] });
+  assert.equal(out.shippingRates[0].cost.currency, 'USD');
 });
