@@ -263,7 +263,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
  * with CSS: it idly bobs and breathes, blinks on its own by swapping frames, and
  * bursts gold pixel-sparks when tapped. Each instance self-animates on its own
  * rAF; honours prefers-reduced-motion (stays still). */
-const FAM = { open: "/familiar-px.png", blink: "/familiar-px-blink.png", pawup: "/familiar-px-pawup.png", lick: "/familiar-px-lick.png" };
+const FAM = { open: "/familiar-px.png", blink: "/familiar-px-blink.png?v=2", pawup: "/familiar-px-pawup.png", lick: "/familiar-px-lick.png" };
 function famBurst(el: HTMLElement) {
   const img = el.querySelector("img.mm-fam-img") as HTMLImageElement | null;
   if (img) img.animate([{ filter: "brightness(1)" }, { filter: "brightness(1.4)" }, { filter: "brightness(1)" }], { duration: 400, easing: "ease-out" });
