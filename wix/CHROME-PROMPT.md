@@ -118,33 +118,33 @@ shipping notice is stopping checkout, tell me.
 
 ---
 
-## Task 4 — Audit costume sizes
+## Task 4 — Place the currency picker
 
-Many costume listings have the wrong sizing. Each costume has a "Size
-split" modifier with choices like `All S100-110CM (60 pcs)` or
-`All M110-120CM (120 pcs)`.
+Seven display currencies are already enabled on the site via the API — USD,
+CAD, GBP, EUR, AUD, MXN, JPY — and the Wix Currency Converter app is
+installed. What is missing is the control that lets a buyer switch. Until
+it is placed, the currencies are enabled but unreachable.
 
-Go through the costume products in **Dashboard → Catalog → Products**
-and for each one compare three things:
+1. In the **Wix Editor**, open the site header (the part that repeats on
+   every page, so it is on the master/header section, not one page).
+2. **Add** → search **Currency Converter** → drop it into the header,
+   somewhere a buyer will find it, e.g. beside the cart icon.
+3. Publish.
 
-- the size letters and cm ranges in the **Size split modifier**
-- the sizes stated in the **product description**
-- the sizes on any **size chart image** in the product gallery
+**Check it:** load shopmagicmonster.com, switch the picker to **CAD**, and
+confirm product prices change to CAD. Then put something in the cart and go
+to checkout.
 
-Flag every product where these disagree. Common problems to look for:
+Tell me what currency the **payment step** shows. I expect USD, because Wix
+only converts the display and the site's payment currency is a single
+site-wide USD value. I want to know whether the buyer sees that switch back
+to USD, and at what point — if it is jarring we may need a line of copy
+warning them up front.
 
-- cm range attached to the wrong letter (an `M` labelled `150-180CM`)
-- adult ranges on a kids' costume or the reverse — kids' costumes run
-  roughly 90–140 cm, adult roughly 150–180 cm
-- a size in the description that has no matching choice in the modifier
-- a piece count in the modifier that does not match the MOQ on the
-  product
-
-**Do not fix them yet.** Build me a list first: product name, what the
-modifier says, what the description says, and what you think is right.
-Show me the list and wait for my go-ahead before editing anything.
-
----
+Also confirm the **shipping** line converts to CAD along with the products.
+It is quoted in USD by design and Wix should convert it the same way. If the
+shipping figure stays in dollars while the products show CAD, stop and tell
+me — that means the conversion is not reaching the shipping line.
 
 ## Task 5 — Report back
 
@@ -153,7 +153,8 @@ Tell me:
 1. Which tasks completed and which are blocked, with the reason.
 2. The result of each check above — the actual number you saw in the
    cart, the actual shipping quote, the actual error message.
-3. The costume sizing list from Task 4.
+3. For Task 4: the currency shown at the payment step, and whether the
+   shipping line converted along with the products.
 
 Do not tell me something worked unless you saw it work. If a step fails,
 say so and stop rather than carrying on.
