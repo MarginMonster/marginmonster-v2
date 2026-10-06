@@ -61,6 +61,16 @@ export default function WebLayout() {
   useEffect(() => { setHudMin(localStorage.getItem("wbHudMin") === "1"); }, []);
   const toggleHud = () => setHudMin((m) => { localStorage.setItem("wbHudMin", m ? "0" : "1"); return !m; });
 
+  // Creation mode — "marketing" (sell your products) vs "casual" (just make cool
+  // stuff + edit photos). A pure front-end reframe: it swaps copy and hides the
+  // merchant-only surfaces, never touching billing or capability gates. Read
+  // after mount (same discipline as the HUD) so SSR + first paint stay on the
+  // default 'marketing' and the live paid experience never flips under a
+  // merchant mid-hydration. Persisted per browser; see [emMode].
+  const [mode, setMode] = useState<"marketing" | "casual">("marketing");
+  useEffect(() => { try { const m = localStorage.getItem("emMode"); if (m === "casual" || m === "marketing") setMode(m); } catch { /* storage is a nicety */ } }, []);
+  const chooseMode = (m: "marketing" | "casual") => { setMode(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
@@ -74,12 +84,20 @@ export default function WebLayout() {
             <nav className="wb-tabs">
               <Link className={tab("/web")} to="/web">Dashboard</Link>
               <Link className={tab("/web/studio")} to="/web/studio">Studio</Link>
-              <Link className={tab("/web/campaigns")} to="/web/campaigns">Campaigns</Link>
-              <Link className={tab("/web/archive")} to="/web/archive">Archive</Link>
-              <Link className={tab("/web/connect")} to="/web/connect">Auto-posting</Link>
+              {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
+                  in casual, where there's nothing being marketed. */}
+              {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">Campaigns</Link>}
+              <Link className={tab("/web/archive")} to="/web/archive">{mode === "casual" ? "Gallery" : "Archive"}</Link>
+              <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? "Share" : "Auto-posting"}</Link>
             </nav>
           )}
           <div className="wb-me">
+            {authed && (
+              <div className="wb-mode" role="group" aria-label="Creation mode">
+                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title="Sell your products — ads, campaigns, the works">Marketing</button>
+                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => chooseMode("casual")} title="Just make cool stuff & edit photos — no selling">Casual</button>
+              </div>
+            )}
             {authed
               ? <Link to="/web/logout" className="wb-out">Log out</Link>
               : <Link to="/web/login" className="wb-login">Log in</Link>}
@@ -144,21 +162,21 @@ export default function WebLayout() {
         )}
 
         <main className="wb-main">
-          <Outlet />
+          <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
-        <Buddy hud={hud} authed={authed} />
+        <Buddy hud={hud} authed={authed} mode={mode} />
       </div>
     </>
   );
 }
 
-/* Magic Monster — the AI companion. A floating sidekick with real character that
+/* Helpurr — the AI helper. A floating sidekick with real character that
  * greets you by name, suggests what to make, and drops tappable buttons under
  * its replies that take you straight there. Talks to /api/buddy (Haiku behind a
  * hype persona). It can't click for you yet — the buttons are its hands. */
 type MMAction = { label: string; to: string };
 type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[] };
-function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: number }; authed: boolean }) {
+function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
   const loc = useLocation();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
@@ -168,14 +186,20 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open && msgs.length === 0) {
+    // Refresh a lone, not-yet-replied greeting when the mode flips, but never
+    // wipe a started conversation — length stays 1, so this doesn't re-fire.
+    if (open && (msgs.length === 0 || (msgs.length === 1 && msgs[0].role === "assistant"))) {
       const name = authed && hud.name ? hud.name.split(" ")[0] : null;
-      const greet = name
-        ? `Yo ${name}! 👾 You've got ${hud.ads} ads' worth of tokens in the tank. What are we cooking up — I'm full of ideas.`
-        : "Hey — I'm Magic Monster 👾 your creative sidekick for ads & videos. Tell me what you're selling and let's make something scroll-stopping.";
+      const greet = mode === "casual"
+        ? (name
+            ? `Hey ${name}! 🐾 I'm Helpurr, your AI helper — got ${hud.ads} images' worth of tokens to play with. Want to edit a photo or make something fun to post?`
+            : "Hey — I'm Helpurr 🐾 your AI helper. Upload a photo and we'll restyle it, swap the background, or make something fun to share.")
+        : (name
+            ? `Hey ${name}! 🐾 I'm Helpurr, your AI helper — you've got ${hud.ads} ads' worth of tokens in the tank. What are we making?`
+            : "Hey — I'm Helpurr 🐾 your AI helper for ads & videos. Tell me what you're selling and let's make something scroll-stopping.");
       setMsgs([{ role: "assistant", content: greet }]);
     }
-  }, [open, msgs.length, authed, hud.name, hud.ads]);
+  }, [open, msgs.length, authed, hud.name, hud.ads, mode]);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
 
   const send = async (text: string) => {
@@ -184,7 +208,7 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
     const next: MMMsg[] = [...msgs, { role: "user", content: t }];
     setMsgs(next); setInput(""); setBusy(true);
     try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), path: loc.pathname }) });
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), path: loc.pathname, mode }) });
       const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[] };
       setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [] }]);
     } catch {
@@ -193,19 +217,21 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
   };
 
   const go = (to: string) => { setOpen(false); if (to.startsWith("/web#")) { window.location.href = to; } else { nav(to); } };
-  const chips = ["Make me an ad", "Which format converts best?", "Give me an idea for a video"];
+  const chips = mode === "casual"
+    ? ["Edit one of my photos", "Make a fun post", "Turn this into a sticker"]
+    : ["Make me an ad", "Which format converts best?", "Give me an idea for a video"];
 
   return (
     <>
-      <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label="Chat with Magic Monster">
+      <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label="Chat with Helpurr, your AI helper">
         <Familiar />
         {!open && <span className="mm-fab-dot" aria-hidden="true" />}
       </button>
       {open && (
-        <div className="mm-panel" role="dialog" aria-label="Magic Monster chat">
+        <div className="mm-panel" role="dialog" aria-label="Helpurr chat">
           <div className="mm-head">
             <span className="mm-head-crest"><Familiar think={busy} /></span>
-            <div className="mm-head-txt"><b>Magic Monster</b><span>{busy ? "thinking…" : "ready to make magic ✨"}</span></div>
+            <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? "thinking…" : "your AI helper 🐾"}</span></div>
             <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label="Close chat">×</button>
           </div>
           <div className="mm-list" ref={listRef}>
@@ -223,7 +249,7 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
             )}
           </div>
           <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Magic Monster…" aria-label="Message Magic Monster" />
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Helpurr…" aria-label="Message Helpurr" />
             <button type="submit" disabled={busy || !input.trim()} aria-label="Send">➤</button>
           </form>
         </div>
@@ -232,7 +258,7 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
   );
 }
 
-/* The Magic Monster familiar — a smart emerald PIXEL-ART cat (open-eyes sprite at
+/* Helpurr the familiar — a smart emerald PIXEL-ART cat (open-eyes sprite at
  * /familiar-px.png, eyes-closed frame at /familiar-px-blink.png) brought to life
  * with CSS: it idly bobs and breathes, blinks on its own by swapping frames, and
  * bursts gold pixel-sparks when tapped. Each instance self-animates on its own
@@ -346,6 +372,13 @@ const CSS = `
 .wb-login{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;text-decoration:none;color:var(--ink);
   padding:9px 18px;border-radius:11px;background:var(--card);border:1px solid var(--line);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-login:hover{border-color:var(--green2);color:var(--green);}
+/* Creation-mode pill — flips the whole app between selling (Marketing) and
+   just-for-fun (Casual). Lives in the bar on every page so it reads as a true,
+   readily-available switch rather than a buried setting. */
+.wb-mode{display:inline-flex;padding:3px;border-radius:999px;background:var(--paper,#F4F1E6);border:1px solid var(--line);flex:0 0 auto;}
+.wb-mode-opt{border:0;background:none;padding:6px 13px;border-radius:999px;font:inherit;font-size:12px;font-weight:800;letter-spacing:.02em;color:var(--ink2);cursor:pointer;line-height:1;white-space:nowrap;}
+.wb-mode-opt.on{background:linear-gradient(135deg,var(--green,#12A85E),var(--green2,#0C7A46));color:#fff;box-shadow:0 1px 4px rgba(12,122,70,.3);}
+.wb-mode-opt:not(.on):hover{color:var(--ink);}
 /* The mark: gold-rimmed crest so the deep-green tile reads as an emblem
    against cream instead of a dark smudge. */
 .wb-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;border-radius:8px;overflow:hidden;
@@ -756,11 +789,13 @@ const CSS = `
   .ws-tile-sub{display:none;}
 }
 
-/* ---- Magic Monster — the AI companion (floating sidekick) ---- */
+/* ---- Helpurr — the AI helper (floating sidekick) ---- */
 .mm-fab{position:fixed;z-index:10600;bottom:20px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}
 .mm-fab:hover{transform:translateY(-2px) scale(1.06);}
 .mm-fab.open{transform:scale(.92);opacity:.95;}
-.mm-fab-dot{position:absolute;top:4px;right:6px;width:12px;height:12px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;z-index:4;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+/* Nudged up and out to the top-right corner — at top:4px/right:6px it sat on the
+   cat's ear and read as an earring. Now it floats clear above the head as a badge. */
+.mm-fab-dot{position:absolute;top:-2px;right:2px;width:12px;height:12px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;z-index:4;box-shadow:0 1px 3px rgba(0,0,0,.25);}
 /* ---- the familiar: a smart emerald pixel-art cat, floating + animated ---- */
 .mm-fam{position:relative;display:grid;place-items:center;width:100%;height:100%;cursor:pointer;overflow:visible;}
 .mm-fam-img{width:124%;height:124%;object-fit:contain;image-rendering:pixelated;will-change:transform;

@@ -8,7 +8,7 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { trimToWord } from "../lib/text-trim";
-import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -415,7 +415,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // trimToWord, not slice: this text is read by a model, so it must not end
   // mid-word.
   const direction = trimToWord((form.get("direction") as string) || "", 500) || undefined;
-  const service = form.get("service") === "1"; // intangible offering — sell the outcome
+  // Casual mode is authoritative on the SERVER: even if a merchant-only hidden
+  // field leaks from a stale client, casual never honors service/offer/ad-format
+  // selections. This is the real guard; client-side hiding is only UX. Billing
+  // and capability gates are untouched either way.
+  const casualMode = form.get("mode") === "casual";
+  const service = !casualMode && form.get("service") === "1"; // intangible offering — sell the outcome
   const wear = form.get("wear") === "1";
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
   if (!productTitle) return json({ error: "Give the product a name." });
@@ -486,6 +491,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     if (intent === "video") {
       let contentType = ((form.get("contentType") as string) || "").trim() || undefined;
+      // Casual never renders the ad-coded content types — coerce the two most
+      // ad-shaped (a story Commercial, a Creator Demo) to a neutral Product
+      // Highlight even if a stale client submits them. The picker already hides
+      // them in casual; this is the server guard.
+      if (casualMode && (contentType === "commercial" || contentType === "review")) contentType = "highlight";
       // Preset translation: the picker key becomes its base pipeline type and
       // its baked-in direction rides ahead of whatever the merchant typed.
       const preset = contentType ? CT_PRESETS[contentType] : undefined;
@@ -495,7 +505,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
       const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
-      const commercial = form.get("commercial") === "1";
+      const commercial = !casualMode && form.get("commercial") === "1"; // the packshot endcard reads "ad" — never in casual
       const breakout = form.get("breakout") === "1";
       assertCapability(shop.activePlan, videoCapabilityFor(contentType));
       // Pre-charge validation: a presenter has to have something to hold —
@@ -550,10 +560,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (avatarId && !productImageUrl && !service) {
         return json({ error: "Add a product photo — the presenter needs something to hold." });
       }
+      // Ad templates & formats are marketing constructs — never applied in
+      // casual, so a casual image is a clean styled still, not an ad layout.
       const rawTemplate = ((form.get("templateKey") as string) || "").trim();
-      const templateKey = AD_TEMPLATE_BY_KEY[rawTemplate] ? rawTemplate : undefined;
+      const templateKey = !casualMode && AD_TEMPLATE_BY_KEY[rawTemplate] ? rawTemplate : undefined;
       const rawFormat = ((form.get("formatKey") as string) || "").trim();
-      const formatKey = AD_FORMAT_BY_KEY[rawFormat] ? rawFormat : undefined;
+      const formatKey = !casualMode && AD_FORMAT_BY_KEY[rawFormat] ? rawFormat : undefined;
       const n = burstCount(form, MAX_BURST.image);
       // Charge the WHOLE burst in one call. spendTokens throws a plain
       // "needs X, you have Y" before anything is queued, so a burst the
@@ -572,7 +584,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // they haven't pinned a template or format, walk the format list instead
       // of rendering the same composition n times. Pin one and every shot in
       // the burst honours it — the variation then comes from the render.
-      const spread = !templateKey && !formatKey && !avatarId && !service
+      // Casual never walks the ad-format list — its spread stays empty so every
+      // shot is a clean scene still, not a rotation of ad layouts.
+      const spread = !casualMode && !templateKey && !formatKey && !avatarId && !service
         ? AD_FORMATS.slice(0, n).map((f) => f.key)
         : [];
       for (let i = 0; i < n; i++) {
@@ -600,8 +614,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           styleMode: direction ? "scene" : "backdrop",
           templateKey: avatarId || service ? undefined : templateKey,
           formatKey: avatarId || service ? undefined : (spread[i] || formatKey),
-          // Only a merchant-declared promotion ever puts an offer on an ad.
-          merchantOffer: ((form.get("merchantOffer") as string) || "").trim().slice(0, 40) || undefined,
+          // Only a merchant-declared promotion ever puts an offer on an ad — and
+          // never in casual, where there's nothing being sold.
+          merchantOffer: casualMode ? undefined : (((form.get("merchantOffer") as string) || "").trim().slice(0, 40) || undefined),
           productSize: ((form.get("productSize") as string) || "").trim() || undefined,
           avatarId: service ? undefined : avatarId, avatarVariant,
           wear: !!avatarId && wear && !service,
@@ -893,6 +908,12 @@ function TabIcon({ kind }: { kind: Tab }) {
 export default function WebStudio() {
   const d = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  // Creation mode from the shell (web.tsx). "casual" reframes the Studio for
+  // just-for-fun making + photo edits and hides the merchant-only surfaces; it
+  // never changes what the backend charges. Default marketing if, somehow,
+  // there's no provider (keeps the live merchant flow safe).
+  const { mode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>() || { mode: "marketing" as const, setMode: () => {} };
+  const casual = mode === "casual";
   const nav = useNavigation();
   const submit = useSubmit();
   const busy = nav.state !== "idle";
@@ -937,6 +958,14 @@ export default function WebStudio() {
   const [wearOverride, setWearOverride] = useState<boolean | null>(null);
   useEffect(() => { setWearOverride(null); }, [apparel]);
   const wear = wearOverride === null ? apparel : wearOverride;
+  // Casual hides Article + Import — if the mode flips (or a deep-link lands)
+  // while one of those is active, fall back to a visible tab so the user never
+  // stares at a tab with no button. Runs after mount, when `casual` resolves.
+  useEffect(() => { if (casual && (tab === "blog" || tab === "import")) { setTab("image"); setUpsell(null); } }, [casual, tab]);
+  // "Commercial look" is an ad treatment — clear it on entering casual so a value
+  // ticked in marketing can't ride a casual submit (the control is hidden in
+  // casual, but a control nobody can see must not change the order).
+  useEffect(() => { if (casual) setCommercial(false); }, [casual]);
   // Import-by-URL (works for any storefront).
   const [showImport, setShowImport] = useState(false);
   // Catalogue picker: the chosen product's URL rides along so the social
@@ -1043,7 +1072,9 @@ export default function WebStudio() {
   // out and picked "With presenter" was charged for a presenter-less
   // service-outcome image — after a screen that told them the presenter would
   // be in it. A control nobody can see must not be able to change the order.
-  const showService = tab === "video" || (tab === "image" && imageMode === "product");
+  // No "what are you promoting?" in casual — there's nothing being sold. (The
+  // server also forces service=false in casual, so this is UX, not the guard.)
+  const showService = !casual && (tab === "video" || (tab === "image" && imageMode === "product"));
   // ONE FLAG, AND IT IS THE ONE THAT GETS SUBMITTED.
   //
   // `service` survives a tab or mode change but the toggle only EXISTS while
@@ -1082,7 +1113,7 @@ export default function WebStudio() {
       finalDirection = parts.join(". ");
       finalScene = [doWhat.trim(), where.trim()].filter(Boolean).join(". ");
     }
-    if (commercial && (contentType === "avatar" || contentType === "highlight")) {
+    if (!casual && commercial && (contentType === "avatar" || contentType === "highlight")) {
       const commercialScene = "a seamless bold single-color studio backdrop that complements the product's colors, big-budget commercial styling, crisp professional studio lighting";
       finalScene = finalScene ? `${finalScene}. ${commercialScene}` : commercialScene;
       finalDirection = finalDirection ? `${finalDirection}. Big-budget studio commercial energy.` : "Big-budget studio commercial energy: polished, confident, premium.";
@@ -1135,16 +1166,23 @@ export default function WebStudio() {
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
-      <h1 className="wb-h1">Content Studio</h1>
-      <p className="wb-sub">Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. Balance: <Ico n="coin" /> {d.tokens.toLocaleString("en-US")}</p>
-      {!d.hasBrand && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
+      <h1 className="wb-h1">{casual ? "Create" : "Content Studio"}</h1>
+      <p className="wb-sub">
+        {casual
+          ? <>Upload a photo to edit, or make an image or video to share — it lands in your <Link to="/web/archive">gallery</Link>. </>
+          : <>Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. </>}
+        Balance: <Ico n="coin" /> {d.tokens.toLocaleString("en-US")}
+      </p>
+      {!d.hasBrand && !casual && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
       {!d.hasPlan && <div className="wb-err">Pick a <Link to="/web">plan</Link> first — content runs on tokens.</div>}
       {/* Top banner too — a failure must be visible even when the config
           section that holds the inline error is collapsed or scrolled away. */}
       {err && <div className="wb-err">Couldn&apos;t generate: {err}</div>}
 
       <div className="ws-tabs">
-        {([["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]] as [Tab, string][]).map(([k, label]) => (
+        {/* Casual drops Article (every blog angle is sell-coded) and Import (a
+            store-catalogue concept) — it's about making & editing, not merchandising. */}
+        {((casual ? [["video", "Video"], ["image", "Image"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{label}
           </button>
@@ -1236,7 +1274,7 @@ export default function WebStudio() {
           <>
             <div className="ws-lbl">Pick your content type</div>
             <div className="ws-tiles ws-scrollbox">
-              {CONTENT_TYPES.map((ct) => {
+              {CONTENT_TYPES.filter((ct) => !casual || !(ct.key === "commercial" || ct.key === "review")).map((ct) => {
                 const locked = !can(ct.cap);
                 return (
                   <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}`}
@@ -1316,7 +1354,7 @@ export default function WebStudio() {
             {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
             {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
-            {(contentType === "avatar" || contentType === "highlight") && (
+            {!casual && (contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">
                 <input type="checkbox" name="commercial" value="1" checked={commercial}
                   onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
@@ -1352,15 +1390,15 @@ export default function WebStudio() {
         {/* ---- IMAGE: product-ad templates or presenter-holding ---- */}
         {tab === "image" && !imageMode && (
           <>
-            <div className="ws-lbl">What kind of image ad?</div>
+            <div className="ws-lbl">{casual ? "What kind of image?" : "What kind of image ad?"}</div>
             <div className="ws-tiles two">
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }} />
-                <b>Product ad</b><span className="ws-tile-sub">Your product in a famous ad format</span>
+                <b>{casual ? "Styled photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Your photo, beautifully styled" : "Your product in a famous ad format"}</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
-                <b>With presenter</b><span className="ws-tile-sub">A presenter holds it, poster copy on top</span>
+                <b>With presenter</b><span className="ws-tile-sub">{casual ? "A character holds or shows it" : "A presenter holds it, poster copy on top"}</span>
               </button>
             </div>
           </>
@@ -1368,8 +1406,11 @@ export default function WebStudio() {
         {tab === "image" && imageMode && (
           <>
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
-            <StepHead n={1} title="Pick the look" hint="the structure your ad is built on" />
-            {imageMode === "product" && !service && (
+            <StepHead n={1} title="Pick the look" hint={casual ? "how your image is styled" : "the structure your ad is built on"} />
+            {imageMode === "product" && casual && (
+              <p className="ws-note">Upload your photo below and add any direction — we&apos;ll style it into a clean, shareable image. Want to restyle, swap or remove the background instead? Photo edits are coming to Casual next.</p>
+            )}
+            {imageMode === "product" && !service && !casual && (
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
                 <div className="ws-fmtcats" role="tablist" aria-label="Ad format categories">
@@ -1437,7 +1478,7 @@ export default function WebStudio() {
             {imageMode === "presenter" && (
               <>
                 <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} brandFaceId={d.brandFaceId} />
-                {avatarId && <p className="ws-note">The presenter will hold your product in the shot — add a product photo below.</p>}
+                {avatarId && <p className="ws-note">{casual ? "The character will hold your subject in the shot — add a photo below." : "The presenter will hold your product in the shot — add a product photo below."}</p>}
                 {avatarId && <input type="hidden" name="avatarId" value={avatarId} />}
               </>
             )}
@@ -1447,8 +1488,8 @@ export default function WebStudio() {
         {/* Outfit rotation + Brand Face crowning, wherever a presenter stars. */}
         {((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && avatarId && (
           <>
-            <p className="ws-note">Their outfit rotates each time, so your content never looks stale.</p>
-            {avatarId !== d.brandFaceId && (
+            <p className="ws-note">{casual ? "Their outfit changes each time, so every shot looks a little different." : "Their outfit rotates each time, so your content never looks stale."}</p>
+            {!casual && avatarId !== d.brandFaceId && (
               <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
                 <Ico n="star" size={13} /> Make {d.cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face
               </button>
@@ -1459,13 +1500,14 @@ export default function WebStudio() {
         {/* ---- Shared product fields + CTA ---- */}
         {cfgReady && (
           <>
-            <StepHead n={2} title="Your product" hint="what we're actually selling" />
+            <StepHead n={2} title={casual ? "Your subject" : "Your product"} hint={casual ? "what this is about" : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
                 Pasting a link and retyping the title on every generation is a
                 tax the merchant pays forever. Their storefront gets mirrored
-                once, and from then on this is two taps. */}
-            {d.catalog.length > 0 ? (
+                once, and from then on this is two taps. Hidden in casual — a
+                store catalogue is a selling concept; casual uploads its own photo. */}
+            {d.catalog.length > 0 && !casual ? (
               <>
                 <div className="ws-lbl">
                   <span>Pick from your store</span>
@@ -1575,16 +1617,18 @@ export default function WebStudio() {
                 ↺ Use last: {lastProd.title}
               </button>
             )}
-            <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder="Midnight Roast — whole bean coffee" />
+            <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
             {tab !== "blog" && (
               <>
-                <div className="ws-lbl">Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></div>
+                <div className="ws-lbl">{casual ? <>Photo <span className="ws-opt">powers your videos and images — upload or paste a URL</span></> : <>Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></>}</div>
                 <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
                   onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
-                <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="…or https://yourstore.com/cdn/product.jpg" style={{ marginTop: 8 }} />
+                <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? "…or https://example.com/my-photo.jpg" : "…or https://yourstore.com/cdn/product.jpg"} style={{ marginTop: 8 }} />
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12" }}>
-                    Add a photo so the ad features <b>your</b> product — without one we&apos;d be inventing a product from the name. Promoting a service? Switch to <b>Service / offer</b> below.
+                    {casual
+                      ? <>Add a photo so it&apos;s really <b>yours</b> — without one we&apos;d just be inventing something from the name.</>
+                      : <>Add a photo so the ad features <b>your</b> product — without one we&apos;d be inventing a product from the name. Promoting a service? Switch to <b>Service / offer</b> below.</>}
                   </p>
                 )}
               </>
@@ -1612,7 +1656,7 @@ export default function WebStudio() {
             )}
 
             <StepHead n={3} title={`Direction & ${verb.toLowerCase()}`} hint="leave it to EasyMode, or steer it" />
-            {tab === "image" && (
+            {tab === "image" && !casual && (
               <>
                 <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
                 <input className="wb-in" name="merchantOffer" maxLength={40} placeholder="e.g. 20% off first order" />
@@ -1698,6 +1742,7 @@ export default function WebStudio() {
 
             {/* Composed fields ride hidden inputs so the native multipart
                 submit (needed for the photo upload) carries them. */}
+            <input type="hidden" name="mode" value={mode} />
             <input type="hidden" name="direction" value={finalDirection} />
             {finalScene ? <input type="hidden" name="scene" value={finalScene} /> : null}
             {serviceOn ? <input type="hidden" name="service" value="1" /> : null}
@@ -1740,9 +1785,11 @@ export default function WebStudio() {
                 </div>
                 {burst > 1 && (
                   <p className="ws-burst-note">
-                    {tab === "image" && !templateKey && !formatKey && imageMode !== "presenter" && !service
+                    {tab === "image" && !templateKey && !formatKey && imageMode !== "presenter" && !service && !casual
                       ? `${burst} different ad layouts at once — a full set, all ready to post.`
-                      : `${burst} takes at once — same setup, different angles, all yours to use.`}
+                      : casual
+                        ? `${burst} different looks at once — all yours to share.`
+                        : `${burst} takes at once — same setup, different angles, all yours to use.`}
                   </p>
                 )}
               </div>
@@ -1785,8 +1832,8 @@ export default function WebStudio() {
               <span className="ws-flex-rule" />
             </div>
             <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued} is being made`}</b>
-            <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>Archive</b> over the next few minutes — a set of different takes, all ready to post.</> : <>It lands in your <b>Archive</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
-            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}`}>View Archive ›</Link>
+            <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>{casual ? "gallery" : "Archive"}</b> over the next few minutes — a set of different takes, all ready to {casual ? "share" : "post"}.</> : <>It lands in your <b>{casual ? "gallery" : "Archive"}</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
+            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}`}>{casual ? "View gallery ›" : "View Archive ›"}</Link>
             <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
           </div>
         </div>
