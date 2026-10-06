@@ -1795,6 +1795,196 @@ async function renderBundleComposite(opts: {
   }
 }
 
+/** DETERMINISTIC STATEMENT POSTER (poster) — the bold-headline "award-ad" format.
+ *  The headline IS the ad, so a garbled word ruins it; we draw it ourselves. Big
+ *  headline + sub up top, real product cutout hero below, CTA pill. */
+async function renderPosterComposite(opts: {
+  productImageUrl: string; headline: string; sub: string; cta: string;
+  contentLang?: string | null; styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin(); if (!bin) return null;
+  if (!(opts.headline || "").trim()) return null;
+  const cutout = await removeBackground(opts.productImageUrl); if (!cutout) return null;
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders"); fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.pb-${stamp}.jpg`), tmpCut = path.join(dir, `.pc-${stamp}.png`), tmpStill = path.join(dir, `.pstl-${stamp}.jpg`);
+  const fileName = `img-${stamp}.jpg`, out = path.join(dir, fileName);
+  const tmps = [tmpBg, tmpCut, tmpStill];
+  try {
+    let gotBg = false;
+    try {
+      const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`;
+      const bgUrl = await fluxDevStill(bgPrompt, "poster-backdrop");
+      if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } }
+    } catch { /* cream fallback */ }
+    { const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer())); }
+    const cut = headerSize(tmpCut);
+    const boxW = 470, boxH = 420; const cx = W / 2, cy = Math.round(H * 0.565);
+    let pw = boxW, ph = boxH; if (cut) { const s = Math.min(boxW / cut.w, boxH / cut.h); pw = Math.round(cut.w * s); ph = Math.round(cut.h * s); }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+    const shW = Math.round(pw * 0.94), shH = Math.max(10, Math.round(ph * 0.11)); const shX = px + Math.round((pw - shW) / 2), shY = py + ph - Math.round(ph * 0.05);
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xF4EFE6:s=${W}x${H}`];
+    const comp = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];[1:v]scale=${pw}:${ph}[cut];[cut]split[c1][c2];[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];[bg][sh]overlay=x=${shX}:y=${shY}[b1];[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill])).ok || !fs.existsSync(tmpStill)) return null;
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${opts.sub} ${opts.cta}`); } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+    const hl = dt(opts.headline).toUpperCase(); const sb = dt(opts.sub || "").toUpperCase(); const ct = dt(opts.cta || "").toUpperCase();
+    if (!hl) return null;
+    const words = hl.split(" "); let line1 = hl, line2 = "";
+    if (hl.length > 16 && words.length > 2) {
+      let best = 1, bestDiff = Infinity;
+      for (let i = 1; i < words.length; i++) { const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length; const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 18) * 4; if (d < bestDiff) { bestDiff = d; best = i; } }
+      line1 = words.slice(0, best).join(" "); line2 = words.slice(best).join(" ");
+    }
+    const hg = hasCJK(hl) ? 1.05 : 0.60;
+    const hlLongest = Math.max(line1.length, line2.length, 1);
+    const hlSize = Math.min(line2 ? 58 : 68, Math.floor((W * 0.9) / (hlLongest * hg)));
+    const topY = 60, line2Y = topY + Math.round(hlSize * 1.12);
+    const subY = (line2 ? line2Y : topY) + Math.round(hlSize * 1.18);
+    const sg = hasCJK(sb) ? 1.05 : 0.52;
+    const subSize = sb ? Math.max(20, Math.min(34, Math.floor((W * 0.82) / (Math.max(1, sb.length) * sg)))) : 0;
+    const topLuma = (await bandLuma(bin, tmpStill, 0, 0.30)) ?? 180;
+    const dark = topLuma > 150;
+    const col = dark ? "0x14201A" : "white";
+    const sh2 = dark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+    const vf = [
+      dark ? "" : "drawbox=x=0:y=0:w=iw:h=340:color=black@0.16:t=fill",
+      `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${topY}`,
+      line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${line2Y}` : "",
+      sb ? `drawtext=fontfile='${font}':text='${sb}':fontsize=${subSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${subY}` : "",
+      ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x141414@0.92:boxborderw=18:x=(w-text_w)/2:y=h-92` : "",
+    ].filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpStill, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch { return null; } finally { for (const f of tmps) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } } }
+}
+
+/** DETERMINISTIC BIG OFFER (offer) — hero product + a bold offer flash + CTA.
+ *  Same build as the poster, plus a bright offer badge under the headline. */
+async function renderOfferComposite(opts: {
+  productImageUrl: string; headline: string; offer: string; cta: string;
+  contentLang?: string | null; styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin(); if (!bin) return null;
+  if (!(opts.headline || "").trim()) return null;
+  const cutout = await removeBackground(opts.productImageUrl); if (!cutout) return null;
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders"); fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.ob-${stamp}.jpg`), tmpCut = path.join(dir, `.oc-${stamp}.png`), tmpStill = path.join(dir, `.ostl-${stamp}.jpg`);
+  const fileName = `img-${stamp}.jpg`, out = path.join(dir, fileName); const tmps = [tmpBg, tmpCut, tmpStill];
+  try {
+    let gotBg = false;
+    try { const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`; const bgUrl = await fluxDevStill(bgPrompt, "offer-backdrop"); if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } } } catch { /* cream fallback */ }
+    { const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer())); }
+    const cut = headerSize(tmpCut);
+    const boxW = 460, boxH = 410; const cx = W / 2, cy = Math.round(H * 0.56);
+    let pw = boxW, ph = boxH; if (cut) { const s = Math.min(boxW / cut.w, boxH / cut.h); pw = Math.round(cut.w * s); ph = Math.round(cut.h * s); }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+    const shW = Math.round(pw * 0.94), shH = Math.max(10, Math.round(ph * 0.11)); const shX = px + Math.round((pw - shW) / 2), shY = py + ph - Math.round(ph * 0.05);
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xF4EFE6:s=${W}x${H}`];
+    const comp = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];[1:v]scale=${pw}:${ph}[cut];[cut]split[c1][c2];[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];[bg][sh]overlay=x=${shX}:y=${shY}[b1];[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill])).ok || !fs.existsSync(tmpStill)) return null;
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${opts.offer} ${opts.cta}`); } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+    const hl = dt(opts.headline).toUpperCase(); const of = dt(opts.offer || "").toUpperCase(); const ct = dt(opts.cta || "").toUpperCase();
+    if (!hl) return null;
+    const words = hl.split(" "); let line1 = hl, line2 = "";
+    if (hl.length > 16 && words.length > 2) { let best = 1, bestDiff = Infinity; for (let i = 1; i < words.length; i++) { const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length; const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 18) * 4; if (d < bestDiff) { bestDiff = d; best = i; } } line1 = words.slice(0, best).join(" "); line2 = words.slice(best).join(" "); }
+    const hg = hasCJK(hl) ? 1.05 : 0.60; const hlLongest = Math.max(line1.length, line2.length, 1);
+    const hlSize = Math.min(line2 ? 54 : 62, Math.floor((W * 0.9) / (hlLongest * hg)));
+    const topY = 56, line2Y = topY + Math.round(hlSize * 1.12);
+    const topLuma = (await bandLuma(bin, tmpStill, 0, 0.26)) ?? 180; const dark = topLuma > 150;
+    const col = dark ? "0x14201A" : "white"; const sh2 = dark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+    const badgeY = (line2 ? line2Y : topY) + Math.round(hlSize * 1.28);
+    const vf = [
+      dark ? "" : "drawbox=x=0:y=0:w=iw:h=300:color=black@0.16:t=fill",
+      `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${topY}`,
+      line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${line2Y}` : "",
+      of ? `drawtext=fontfile='${font}':text='${of}':fontsize=34:fontcolor=white:box=1:boxcolor=0xE11D48:boxborderw=20:x=(w-text_w)/2:y=${badgeY}` : "",
+      ct ? `drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x141414@0.92:boxborderw=18:x=(w-text_w)/2:y=h-92` : "",
+    ].filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpStill, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch { return null; } finally { for (const f of tmps) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } } }
+}
+
+/** DETERMINISTIC 3 REASONS (threereasons) — headline + hero product + three
+ *  numbered reason rows (1/2/3 badges). The numbers and reasons are drawn by us,
+ *  so the persuasion stack never garbles. No CTA field in this format. */
+async function renderReasonsComposite(opts: {
+  productImageUrl: string; headline: string; reasons: string[];
+  contentLang?: string | null; styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin(); if (!bin) return null;
+  const reasons = opts.reasons.map((s) => (s || "").trim()).filter(Boolean).slice(0, 3);
+  if (!(opts.headline || "").trim() || reasons.length < 2) return null;
+  const cutout = await removeBackground(opts.productImageUrl); if (!cutout) return null;
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders"); fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.rb-${stamp}.jpg`), tmpCut = path.join(dir, `.rc-${stamp}.png`), tmpS1 = path.join(dir, `.r1-${stamp}.jpg`), tmpS2 = path.join(dir, `.r2-${stamp}.jpg`);
+  const fileName = `img-${stamp}.jpg`, out = path.join(dir, fileName); const rows = reasons.length;
+  const nBadges = Array.from({ length: rows }, (_, i) => path.join(dir, `.rn${i}-${stamp}.png`));
+  const tmps = [tmpBg, tmpCut, tmpS1, tmpS2, ...nBadges];
+  try {
+    let gotBg = false;
+    try { const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`; const bgUrl = await fluxDevStill(bgPrompt, "reasons-backdrop"); if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } } } catch { /* cream fallback */ }
+    { const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer())); }
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${reasons.join(" ")}`); } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+    const BADGE = 48;
+    for (let i = 0; i < rows; i++) {
+      const args = ["-y", "-f", "lavfi", "-i", `color=c=0x14201A:s=64x64,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte((X-32)*(X-32)+(Y-32)*(Y-32),30*30),255,0)'`, "-filter_complex", `[0]drawtext=fontfile='${font}':text='${i + 1}':fontsize=40:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2-2[o]`, "-map", "[o]", "-frames:v", "1", nBadges[i]];
+      if (!(await runFfmpegStill(bin, args)).ok || !fs.existsSync(nBadges[i])) return null;
+    }
+    const cut = headerSize(tmpCut);
+    const boxW = 320, boxH = 240; const cx = W / 2, cy = Math.round(H * 0.3);
+    let pw = boxW, ph = boxH; if (cut) { const s = Math.min(boxW / cut.w, boxH / cut.h); pw = Math.round(cut.w * s); ph = Math.round(cut.h * s); }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+    const shW = Math.round(pw * 0.94), shH = Math.max(10, Math.round(ph * 0.12)); const shX = px + Math.round((pw - shW) / 2), shY = py + ph - Math.round(ph * 0.06);
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xF4EFE6:s=${W}x${H}`];
+    const comp = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];[1:v]scale=${pw}:${ph}[cut];[cut]split[c1][c2];[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];[bg][sh]overlay=x=${shX}:y=${shY}[b1];[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpS1])).ok || !fs.existsSync(tmpS1)) return null;
+    const chipX = 120, chipW = 784; const tableTop = 476, rowH = 98, rowGap = 16;
+    const rowTop = (i: number) => tableTop + i * (rowH + rowGap); const rowMid = (i: number) => rowTop(i) + Math.round(rowH / 2);
+    const boxes: string[] = []; for (let i = 0; i < rows; i++) boxes.push(`drawbox=x=${chipX}:y=${rowTop(i)}:w=${chipW}:h=${rowH}:color=0xF1EEE8:t=fill`);
+    let graph = `[0:v]${boxes.join(",")}[s0];`; let cur = "s0";
+    for (let i = 0; i < rows; i++) { const ky = rowMid(i) - Math.round(BADGE / 2); const n = `s${i + 1}`; graph += `[${i + 1}:v]scale=${BADGE}:${BADGE}[b${i}];[${cur}][b${i}]overlay=${chipX + 26}:${ky}[${n}];`; cur = n; }
+    graph = graph.replace(/;$/, "");
+    const inputs = ["-y", "-i", tmpS1]; for (const nb of nBadges) { inputs.push("-i", nb); }
+    if (!(await runFfmpegStill(bin, [...inputs, "-filter_complex", graph, "-map", `[${cur}]`, "-frames:v", "1", "-q:v", "3", tmpS2])).ok || !fs.existsSync(tmpS2)) return null;
+    const hl = dt(opts.headline).toUpperCase(); if (!hl) return null;
+    const words = hl.split(" "); let line1 = hl, line2 = "";
+    if (hl.length > 20 && words.length > 2) { let best = 1, bestDiff = Infinity; for (let i = 1; i < words.length; i++) { const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length; const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 20) * 4; if (d < bestDiff) { bestDiff = d; best = i; } } line1 = words.slice(0, best).join(" "); line2 = words.slice(best).join(" "); }
+    const hg = hasCJK(hl) ? 1.05 : 0.60; const hlLongest = Math.max(line1.length, line2.length, 1);
+    const hlSize = Math.min(line2 ? 46 : 54, Math.floor((W * 0.9) / (hlLongest * hg)));
+    const topY = 46, line2Y = topY + Math.round(hlSize * 1.12);
+    const hlLuma = (await bandLuma(bin, tmpS2, 0, 0.08)) ?? 180; const dark = hlLuma > 150;
+    const col = dark ? "0x14201A" : "white"; const sh2 = dark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+    const labelX = chipX + 26 + BADGE + 18; const labelAvail = chipW - 26 - BADGE - 18 - 24;
+    const labelSize = (s: string) => Math.max(18, Math.min(32, Math.floor(labelAvail / (Math.max(1, s.length) * (hasCJK(s) ? 1.10 : 0.62)))));
+    const draw: string[] = [
+      `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${topY}`,
+      line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${line2Y}` : "",
+    ];
+    for (let i = 0; i < rows; i++) { const lab = dt(reasons[i]).toUpperCase(); draw.push(`drawtext=fontfile='${font}':text='${lab}':fontsize=${labelSize(lab)}:fontcolor=0x14201A:x=${labelX}:y=${rowMid(i) - Math.round(labelSize(lab) * 0.62)}`); }
+    const vf = draw.filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpS2, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch { return null; } finally { for (const f of tmps) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } } }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -3083,6 +3273,35 @@ export async function runFormatRung(opts: {
         console.log(`[image-ad] format bundle: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
       } else {
         console.log(`[image-ad] format bundle: deterministic (primary) not produced — trying generative`);
+      }
+    }
+  }
+
+  // POSTER / OFFER / 3-REASONS → DETERMINISTIC FIRST. These text-forward formats
+  // garble constantly for hard products (the sweep logs showed them all falling
+  // to a scene). Drawing the headline/offer/reasons ourselves on the real cutout
+  // makes them render reliably; generative stays the safety net.
+  {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const tryDet = async (det: { file: string; absPath: string } | null, label: string) => {
+      if (!det) { console.log(`[image-ad] format ${opts.formatKey}: deterministic ${label} (primary) not produced — trying generative`); return null; }
+      const detUrl = `${base}/renders/${det.file}`;
+      const qaD = await qaFormat(detUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+      if (qaD.pass) { console.log(`[image-ad] format ${opts.formatKey}: deterministic ${label} (primary) — perfect text + real product`); return { imageUrl: detUrl, copy, prompt: `deterministic-${opts.formatKey}`, qaPass: true, qaReason: `clean (deterministic ${opts.formatKey})`, retried: false, fallback: null } as FormatRunResult; }
+      console.log(`[image-ad] format ${opts.formatKey}: deterministic ${label} (primary) re-QA failed (${qaD.reason}) — trying generative`);
+      return null;
+    };
+    if (base && opts.formatKey === "poster" && (copy.headline || "").trim()) {
+      const r = await tryDet(await renderPosterComposite({ productImageUrl: opts.productImageUrl, headline: copy.headline || "", sub: copy.sub || "", cta: copy.cta || "", contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "poster");
+      if (r) return r;
+    } else if (base && opts.formatKey === "offer" && (copy.headline || "").trim()) {
+      const r = await tryDet(await renderOfferComposite({ productImageUrl: opts.productImageUrl, headline: copy.headline || "", offer: copy.offer || "", cta: copy.cta || "", contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "offer");
+      if (r) return r;
+    } else if (base && opts.formatKey === "threereasons" && (copy.headline || "").trim()) {
+      const reasons = [copy.w1, copy.w2, copy.w3].map((c) => (c || "").trim()).filter(Boolean);
+      if (reasons.length >= 2) {
+        const r = await tryDet(await renderReasonsComposite({ productImageUrl: opts.productImageUrl, headline: copy.headline || "", reasons, contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "reasons");
+        if (r) return r;
       }
     }
   }
