@@ -1648,6 +1648,153 @@ async function renderVersusComposite(opts: {
   }
 }
 
+/** THE DETERMINISTIC KIT / BUNDLE — a "what's inside" checklist. The sweep caught
+ *  the generative version misspelling a plain word ("blind" -> "blund") past the
+ *  QA gate, which is exactly what drawing the text ourselves cures. Real product
+ *  cutout as the hero + a green-check list of the included items + a CTA, all
+ *  drawn with ffmpeg. Reuses the versus check badge. Returns the finished file,
+ *  or null on any failure (caller falls through to the generative render). */
+async function renderBundleComposite(opts: {
+  productImageUrl: string;
+  headline: string;
+  items: string[];
+  cta: string;
+  contentLang?: string | null;
+  styleDesc: string;
+}): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin();
+  if (!bin) return null;
+  const items = opts.items.map((s) => (s || "").trim()).filter(Boolean).slice(0, 3);
+  if (items.length < 2) return null; // a kit needs at least two included items
+
+  const cutout = await removeBackground(opts.productImageUrl);
+  if (!cutout) return null;
+
+  const W = 1024, H = 1024;
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const tmpBg = path.join(dir, `.kb-${stamp}.jpg`);
+  const tmpCut = path.join(dir, `.kc-${stamp}.png`);
+  const tmpS1 = path.join(dir, `.k1-${stamp}.jpg`);
+  const tmpS2 = path.join(dir, `.k2-${stamp}.jpg`);
+  const tmpChk = path.join(dir, `.kk-${stamp}.png`);
+  const fileName = `img-${stamp}.jpg`;
+  const out = path.join(dir, fileName);
+  const tmps = [tmpBg, tmpCut, tmpS1, tmpS2, tmpChk];
+  const rows = items.length;
+  try {
+    // 1) Backdrop (flux), cream fallback.
+    let gotBg = false;
+    try {
+      const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`;
+      const bgUrl = await fluxDevStill(bgPrompt, "bundle-backdrop");
+      if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } }
+    } catch { /* cream fallback */ }
+    { const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer())); }
+
+    // 2) Green ✓ badge (same build as versus).
+    const BADGE = 46;
+    const mkCheck = ["-y", "-f", "lavfi", "-i", `color=c=0x16A34A:s=64x64,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte((X-32)*(X-32)+(Y-32)*(Y-32),30*30),255,0)'`,
+      "-f", "lavfi", "-i", "color=c=white:s=18x8,format=rgba",
+      "-f", "lavfi", "-i", "color=c=white:s=34x8,format=rgba",
+      "-filter_complex", "[1]rotate=0.785:c=none:ow=rotw(0.785):oh=roth(0.785)[s1];[2]rotate=-0.785:c=none:ow=rotw(-0.785):oh=roth(-0.785)[s2];[0][s1]overlay=9:25[a];[a][s2]overlay=21:13[o]",
+      "-map", "[o]", "-frames:v", "1", tmpChk];
+    if (!(await runFfmpegStill(bin, mkCheck)).ok || !fs.existsSync(tmpChk)) return null;
+
+    // 3) Product hero cutout, upper area, contact shadow (as in stat).
+    const cut = headerSize(tmpCut);
+    const boxW = 340, boxH = 270;
+    const cx = W / 2, cy = Math.round(H * 0.28);
+    let pw = boxW, ph = boxH;
+    if (cut) { const s = Math.min(boxW / cut.w, boxH / cut.h); pw = Math.round(cut.w * s); ph = Math.round(cut.h * s); }
+    const px = Math.round(cx - pw / 2), py = Math.round(cy - ph / 2);
+    const shW = Math.round(pw * 0.94), shH = Math.max(10, Math.round(ph * 0.12));
+    const shX = px + Math.round((pw - shW) / 2), shY = py + ph - Math.round(ph * 0.05);
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xF4EFE6:s=${W}x${H}`];
+    const comp1 =
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];` +
+      `[1:v]scale=${pw}:${ph}[cut];` +
+      `[cut]split[c1][c2];` +
+      `[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];` +
+      `[bg][sh]overlay=x=${shX}:y=${shY}[b1];` +
+      `[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp1, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpS1])).ok || !fs.existsSync(tmpS1)) return null;
+
+    // 4) Row geometry: a centered column of light chips, each a ✓ + item label.
+    const chipX = 162, chipW = 700;
+    const tableTop = 470, rowH = 92, rowGap = 16;
+    const rowTop = (i: number) => tableTop + i * (rowH + rowGap);
+    const rowMid = (i: number) => rowTop(i) + Math.round(rowH / 2);
+
+    // 5) Chips + ✓ badges (filter_complex).
+    const boxes: string[] = [];
+    for (let i = 0; i < rows; i++) boxes.push(`drawbox=x=${chipX}:y=${rowTop(i)}:w=${chipW}:h=${rowH}:color=0xE7F6ED:t=fill`);
+    const chkLabels = Array.from({ length: rows }, (_, i) => `[k${i}]`).join("");
+    let graph = `[1:v]scale=${BADGE}:${BADGE},split=${rows}${chkLabels};[0:v]${boxes.join(",")}[s0];`;
+    let cur = "s0", step = 0;
+    for (let i = 0; i < rows; i++) {
+      const ky = rowMid(i) - Math.round(BADGE / 2);
+      const n = `s${++step}`;
+      graph += `[${cur}][k${i}]overlay=${chipX + 28}:${ky}[${n}];`;
+      cur = n;
+    }
+    graph = graph.replace(/;$/, "");
+    if (!(await runFfmpegStill(bin, ["-y", "-i", tmpS1, "-i", tmpChk, "-filter_complex", graph, "-map", `[${cur}]`, "-frames:v", "1", "-q:v", "3", tmpS2])).ok || !fs.existsSync(tmpS2)) return null;
+
+    // 6) Text: headline (auto-contrast + wrap), item labels, CTA.
+    let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${items.join(" ")} ${opts.cta}`); } catch { /* keep default */ }
+    if (!fs.existsSync(fontFile)) return null;
+    const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+
+    const hl = dt(opts.headline).toUpperCase();
+    const ct = dt(opts.cta).toUpperCase();
+    if (!hl) return null;
+    const words = hl.split(" ");
+    let line1 = hl, line2 = "";
+    if (hl.length > 20 && words.length > 2) {
+      let best = 1, bestDiff = Infinity;
+      for (let i = 1; i < words.length; i++) {
+        const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length;
+        const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - 20) * 4;
+        if (d < bestDiff) { bestDiff = d; best = i; }
+      }
+      line1 = words.slice(0, best).join(" "); line2 = words.slice(best).join(" ");
+    }
+    const hlG = hasCJK(hl) ? 1.05 : 0.60;
+    const hlLongest = Math.max(line1.length, line2.length, 1);
+    const hlSize = Math.min(line2 ? 48 : 56, Math.floor((W * 0.9) / (hlLongest * hlG)));
+    const topY = 44, line2Y = topY + Math.round(hlSize * 1.12);
+    const hlLuma = (await bandLuma(bin, tmpS2, 0, 0.08)) ?? 180;
+    const hlDark = hlLuma > 150;
+    const hlColor = hlDark ? "0x14201A" : "white";
+    const hlShadow = hlDark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+
+    const labelX = chipX + 28 + BADGE + 18;
+    const labelAvail = chipW - 28 - BADGE - 18 - 24;
+    const labelSize = (s: string) => Math.max(18, Math.min(32, Math.floor(labelAvail / (Math.max(1, s.length) * (hasCJK(s) ? 1.10 : 0.62)))));
+
+    const draw: string[] = [
+      `drawtext=fontfile='${font}':text='${line1}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${topY}`,
+      line2 ? `drawtext=fontfile='${font}':text='${line2}':fontsize=${hlSize}:fontcolor=${hlColor}:${hlShadow}:x=(w-text_w)/2:y=${line2Y}` : "",
+    ];
+    for (let i = 0; i < rows; i++) {
+      const lab = dt(items[i]).toUpperCase();
+      draw.push(`drawtext=fontfile='${font}':text='${lab}':fontsize=${labelSize(lab)}:fontcolor=0x14532D:x=${labelX}:y=${rowMid(i) - Math.round(labelSize(lab) * 0.62)}`);
+    }
+    if (ct) draw.push(`drawtext=fontfile='${font}':text='${ct}':fontsize=30:fontcolor=white:box=1:boxcolor=0x16A34A:boxborderw=18:x=(w-text_w)/2:y=${Math.round(H * 0.80)}`);
+    const vf = draw.filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", tmpS2, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch {
+    return null;
+  } finally {
+    for (const f of tmps) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } }
+  }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -2403,7 +2550,11 @@ function formatLayoutPrompt(
     case "magazine":
       return `${base} Layout: a glossy premium magazine cover. Masthead across the top in elegant bold letters: "${c.masthead}". The product is the cover star, large and centered with dramatic studio lighting. Two cover lines in editorial type: left side "${c.cover1}", right side "${c.cover2}". A tiny barcode in the bottom corner. Chic fashion-magazine energy.`;
     case "macro":
-      return `${base} Layout: three vertical panels side by side, each an EXTREME close-up crop of a different part of the product (its texture, its cap or edge, its label detail) — luxurious macro photography with shallow depth of field. Each panel has a small bold label chip at its base reading exactly: "${c.d1}", "${c.d2}", "${c.d3}".`;
+      // The three labels leave the frame mostly empty, and the model fills it
+      // with an invented promo footer — a live sweep got "COLLECT THEM ALL / SHOP
+      // NOW / LIMITED EDITION DROPS", i.e. fabricated scarcity (FTC). Lock the
+      // text to exactly the three chips and nothing else.
+      return `${base} Layout: three vertical panels side by side, each an EXTREME close-up crop of a different part of the product (its texture, its cap or edge, its label detail) — luxurious macro photography with shallow depth of field. Each panel has a small bold label chip at its base reading exactly: "${c.d1}", "${c.d2}", "${c.d3}". The ONLY text anywhere in the image is those three label chips — add NO headline, NO footer, NO call-to-action, NO "shop now"/"collect them all"/"limited edition"/"drops" or any other words; leave the rest of the frame clean.`;
     case "unbox":
       return `${base} Layout: a clean top-down flat-lay on a soft solid background: the product centered, styled like an unboxing spread. Three thin annotation lines point at it and its details, each ending in a small label chip reading exactly: "${c.i1}", "${c.i2}", "${c.i3}". Bold headline across the top: "${c.headline}".`;
     case "founder":
@@ -2903,6 +3054,35 @@ export async function runFormatRung(opts: {
         console.log(`[image-ad] format versus: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
       } else {
         console.log(`[image-ad] format versus: deterministic (primary) not produced — trying generative`);
+      }
+    }
+  }
+
+  // THE KIT / BUNDLE → DETERMINISTIC FIRST. The sweep caught the generative
+  // version misspelling a plain word ("blind" -> "blund") past QA; drawing the
+  // checklist ourselves cures it. Generative stays the safety net.
+  if (opts.formatKey === "bundle") {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const items = [copy.b1, copy.b2, copy.b3].map((c) => (c || "").trim()).filter(Boolean);
+    if (base && items.length >= 2) {
+      const det = await renderBundleComposite({
+        productImageUrl: opts.productImageUrl,
+        headline: copy.headline || "",
+        items,
+        cta: copy.cta || "",
+        contentLang: opts.contentLang,
+        styleDesc: pickBackdrop(),
+      });
+      if (det) {
+        const detUrl = `${base}/renders/${det.file}`;
+        const qaD = await qaFormat(detUrl, opts.productImageUrl, Object.values(copy), [opts.productTitle]);
+        if (qaD.pass) {
+          console.log(`[image-ad] format bundle: deterministic kit (primary) — perfect checklist + real product`);
+          return { imageUrl: detUrl, copy, prompt: "deterministic-bundle", qaPass: true, qaReason: "clean (deterministic bundle)", retried: false, fallback: null };
+        }
+        console.log(`[image-ad] format bundle: deterministic (primary) re-QA failed (${qaD.reason}) — trying generative`);
+      } else {
+        console.log(`[image-ad] format bundle: deterministic (primary) not produced — trying generative`);
       }
     }
   }
