@@ -1985,6 +1985,163 @@ async function renderReasonsComposite(opts: {
   } catch { return null; } finally { for (const f of tmps) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } } }
 }
 
+/** Balance a short string onto up to two lines (shared by the newer composites). */
+function wrapTwo(s: string, maxOne = 20): { line1: string; line2: string } {
+  const words = s.split(" ");
+  if (s.length <= maxOne || words.length <= 2) return { line1: s, line2: "" };
+  let best = 1, bestDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" ").length, b = words.slice(i).join(" ").length;
+    const d = Math.abs(a - b) + Math.max(0, Math.max(a, b) - maxOne) * 4;
+    if (d < bestDiff) { bestDiff = d; best = i; }
+  }
+  return { line1: words.slice(0, best).join(" "), line2: words.slice(best).join(" ") };
+}
+
+/** Shared: clean backdrop (flux, cream fallback) + product cutout composited with
+ *  a grounded contact shadow. Returns the still path, or null. Used by the
+ *  question/gift/search composites so they do not each re-inline the same block. */
+async function composeProductStill(bin: string, dir: string, stamp: string, styleDesc: string, slug: string, productImageUrl: string, box: { w: number; h: number; cyFrac: number }): Promise<string | null> {
+  const cutout = await removeBackground(productImageUrl); if (!cutout) return null;
+  const W = 1024, H = 1024;
+  const tmpBg = path.join(dir, `.${slug}b-${stamp}.jpg`), tmpCut = path.join(dir, `.${slug}c-${stamp}.png`), tmpStill = path.join(dir, `.${slug}s-${stamp}.jpg`);
+  let gotBg = false;
+  try {
+    const bgPrompt = `Empty advertising backdrop photograph — ${styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`;
+    const bgUrl = await fluxDevStill(bgPrompt, `${slug}-backdrop`);
+    if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } }
+  } catch { /* cream fallback */ }
+  try {
+    const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer()));
+    const cut = headerSize(tmpCut);
+    let pw = box.w, ph = box.h; if (cut) { const s = Math.min(box.w / cut.w, box.h / cut.h); pw = Math.round(cut.w * s); ph = Math.round(cut.h * s); }
+    const px = Math.round(W / 2 - pw / 2), py = Math.round(Math.round(H * box.cyFrac) - ph / 2);
+    const shW = Math.round(pw * 0.94), shH = Math.max(10, Math.round(ph * 0.12)); const shX = px + Math.round((pw - shW) / 2), shY = py + ph - Math.round(ph * 0.05);
+    const bgInput = gotBg ? ["-i", tmpBg] : ["-f", "lavfi", "-i", `color=c=0xF4EFE6:s=${W}x${H}`];
+    const comp = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];[1:v]scale=${pw}:${ph}[cut];[cut]split[c1][c2];[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];[bg][sh]overlay=x=${shX}:y=${shY}[b1];[b1][c1]overlay=x=${px}:y=${py}[outv]`;
+    const ok = (await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill])).ok && fs.existsSync(tmpStill);
+    return ok ? tmpStill : null;
+  } finally { for (const f of [tmpBg, tmpCut]) { try { fs.rmSync(f, { force: true }); } catch { /* best-effort */ } } }
+}
+
+async function resolveFont(text: string): Promise<string | null> {
+  let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(text); } catch { /* keep default */ }
+  if (!fs.existsSync(fontFile)) return null;
+  return fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+}
+
+/** DETERMINISTIC Q&A CARD (faq) — the buyer's question, answered. Bold question
+ *  up top, product hero, the answer in a green payoff card at the bottom. */
+async function renderFaqComposite(opts: { productImageUrl: string; question: string; answer: string; contentLang?: string | null; styleDesc: string; }): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin(); if (!bin) return null;
+  if (!(opts.question || "").trim() || !(opts.answer || "").trim()) return null;
+  const W = 1024, H = 1024; const dir = path.join(process.cwd(), "data", "renders"); fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const still = await composeProductStill(bin, dir, stamp, opts.styleDesc, "faq", opts.productImageUrl, { w: 360, h: 300, cyFrac: 0.5 });
+  if (!still) return null;
+  const fileName = `img-${stamp}.jpg`, out = path.join(dir, fileName);
+  try {
+    const font = await resolveFont(`${opts.question} ${opts.answer}`); if (!font) return null;
+    const q = wrapTwo(dt(opts.question).toUpperCase(), 22);
+    const a = wrapTwo(dt(opts.answer), 30);
+    const qSize = Math.min(q.line2 ? 46 : 52, Math.floor((W * 0.88) / (Math.max(q.line1.length, q.line2.length, 1) * (hasCJK(opts.question) ? 1.05 : 0.6))));
+    const qY = 58, q2Y = qY + Math.round(qSize * 1.12);
+    const topLuma = (await bandLuma(bin, still, 0, 0.26)) ?? 180; const dark = topLuma > 150;
+    const qc = dark ? "0x14201A" : "white"; const qsh = dark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+    // answer card at the bottom — green, with the answer wrapped inside
+    const aSize = Math.max(22, Math.min(34, Math.floor((W * 0.78) / (Math.max(a.line1.length, a.line2.length, 1) * (hasCJK(opts.answer) ? 1.05 : 0.52)))));
+    const cardH = a.line2 ? 168 : 110; const cardY = H - cardH - 70; const cardX = 90, cardW = W - 180;
+    const a1Y = cardY + Math.round((cardH - (a.line2 ? aSize * 2.2 : aSize)) / 2); const a2Y = a1Y + Math.round(aSize * 1.2);
+    const vf = [
+      dark ? "" : "drawbox=x=0:y=0:w=iw:h=300:color=black@0.16:t=fill",
+      `drawtext=fontfile='${font}':text='${q.line1}':fontsize=${qSize}:fontcolor=${qc}:${qsh}:x=(w-text_w)/2:y=${qY}`,
+      q.line2 ? `drawtext=fontfile='${font}':text='${q.line2}':fontsize=${qSize}:fontcolor=${qc}:${qsh}:x=(w-text_w)/2:y=${q2Y}` : "",
+      `drawbox=x=${cardX}:y=${cardY}:w=${cardW}:h=${cardH}:color=0x0C7A46:t=fill`,
+      `drawtext=fontfile='${font}':text='${a.line1}':fontsize=${aSize}:fontcolor=white:x=(w-text_w)/2:y=${a1Y}`,
+      a.line2 ? `drawtext=fontfile='${font}':text='${a.line2}':fontsize=${aSize}:fontcolor=white:x=(w-text_w)/2:y=${a2Y}` : "",
+    ].filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", still, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch { return null; } finally { try { fs.rmSync(still, { force: true }); } catch { /* best-effort */ } }
+}
+
+/** DETERMINISTIC GIFT PICK (gift) — a gift-guide card: headline, a tag badge, the
+ *  product hero, and a supporting line. */
+async function renderGiftComposite(opts: { productImageUrl: string; headline: string; badge: string; sub: string; contentLang?: string | null; styleDesc: string; }): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin(); if (!bin) return null;
+  if (!(opts.headline || "").trim()) return null;
+  const W = 1024, H = 1024; const dir = path.join(process.cwd(), "data", "renders"); fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const still = await composeProductStill(bin, dir, stamp, opts.styleDesc, "gift", opts.productImageUrl, { w: 440, h: 400, cyFrac: 0.58 });
+  if (!still) return null;
+  const fileName = `img-${stamp}.jpg`, out = path.join(dir, fileName);
+  try {
+    const font = await resolveFont(`${opts.headline} ${opts.badge} ${opts.sub}`); if (!font) return null;
+    const h = wrapTwo(dt(opts.headline).toUpperCase(), 18); const bd = dt(opts.badge || "").toUpperCase(); const sb = dt(opts.sub || "").toUpperCase();
+    const hSize = Math.min(h.line2 ? 54 : 62, Math.floor((W * 0.9) / (Math.max(h.line1.length, h.line2.length, 1) * (hasCJK(opts.headline) ? 1.05 : 0.6))));
+    const hY = 54, h2Y = hY + Math.round(hSize * 1.12);
+    const topLuma = (await bandLuma(bin, still, 0, 0.26)) ?? 180; const dark = topLuma > 150;
+    const col = dark ? "0x14201A" : "white"; const sh2 = dark ? "shadowcolor=white@0.3:shadowx=0:shadowy=2" : "shadowcolor=black@0.45:shadowx=0:shadowy=3";
+    const badgeY = (h.line2 ? h2Y : hY) + Math.round(hSize * 1.26);
+    const subSize = sb ? Math.max(20, Math.min(32, Math.floor((W * 0.8) / (Math.max(1, sb.length) * (hasCJK(opts.sub) ? 1.05 : 0.52))))) : 0;
+    const vf = [
+      dark ? "" : "drawbox=x=0:y=0:w=iw:h=300:color=black@0.16:t=fill",
+      `drawtext=fontfile='${font}':text='${h.line1}':fontsize=${hSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${hY}`,
+      h.line2 ? `drawtext=fontfile='${font}':text='${h.line2}':fontsize=${hSize}:fontcolor=${col}:${sh2}:x=(w-text_w)/2:y=${h2Y}` : "",
+      bd ? `drawtext=fontfile='${font}':text='${bd}':fontsize=30:fontcolor=0x14201A:box=1:boxcolor=0xE9C46A:boxborderw=18:x=(w-text_w)/2:y=${badgeY}` : "",
+      sb ? `drawtext=fontfile='${font}':text='${sb}':fontsize=${subSize}:fontcolor=white:box=1:boxcolor=0x14201A@0.82:boxborderw=14:x=(w-text_w)/2:y=h-96` : "",
+    ].filter(Boolean).join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", still, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch { return null; } finally { try { fs.rmSync(still, { force: true }); } catch { /* best-effort */ } }
+}
+
+/** DETERMINISTIC SEARCH BAR (search) — a search box with the query, three
+ *  autocomplete suggestion rows, and the product as the hero below. */
+async function renderSearchComposite(opts: { productImageUrl: string; query: string; suggestions: string[]; contentLang?: string | null; styleDesc: string; }): Promise<{ file: string; absPath: string } | null> {
+  const bin = ffmpegBin(); if (!bin) return null;
+  const sugg = opts.suggestions.map((s) => (s || "").trim()).filter(Boolean).slice(0, 3);
+  if (!(opts.query || "").trim() || sugg.length < 2) return null;
+  const W = 1024, H = 1024; const dir = path.join(process.cwd(), "data", "renders"); fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now()}-${crypto.randomBytes(9).toString("hex")}`;
+  const still = await composeProductStill(bin, dir, stamp, opts.styleDesc, "srch", opts.productImageUrl, { w: 420, h: 360, cyFrac: 0.72 });
+  if (!still) return null;
+  const fileName = `img-${stamp}.jpg`, out = path.join(dir, fileName);
+  try {
+    const font = await resolveFont(`${opts.query} ${sugg.join(" ")}`); if (!font) return null;
+    const q = dt(opts.query); const rows = sugg.length;
+    // search bar
+    const barX = 96, barY = 84, barW = W - 192, barH = 86;
+    const barSize = Math.max(22, Math.min(36, Math.floor((barW - 150) / (Math.max(1, q.length) * (hasCJK(opts.query) ? 1.05 : 0.56)))));
+    // suggestion rows under the bar
+    const rowH = 76, rowGap = 10, rowsTop = barY + barH + 14;
+    const rowTop = (i: number) => rowsTop + i * (rowH + rowGap);
+    const labelSize = (s: string) => Math.max(20, Math.min(30, Math.floor((barW - 150) / (Math.max(1, s.length) * (hasCJK(s) ? 1.05 : 0.54)))));
+    const boxes: string[] = [
+      `drawbox=x=${barX}:y=${barY}:w=${barW}:h=${barH}:color=white:t=fill`,
+      `drawbox=x=${barX}:y=${barY}:w=${barW}:h=${barH}:color=0xD6D0C4:t=3`,
+      // magnifier hint: a small ring + handle built from axis-aligned boxes at the bar's left
+      `drawbox=x=${barX + 34}:y=${barY + Math.round(barH / 2) - 13}:w=22:h=22:color=0x8A8578:t=3`,
+      `drawbox=x=${barX + 54}:y=${barY + Math.round(barH / 2) + 7}:w=12:h=6:color=0x8A8578:t=fill`,
+    ];
+    for (let i = 0; i < rows; i++) {
+      boxes.push(`drawbox=x=${barX}:y=${rowTop(i)}:w=${barW}:h=${rowH}:color=0xF4F1EA:t=fill`);
+      boxes.push(`drawbox=x=${barX + 40}:y=${rowTop(i) + Math.round(rowH / 2) - 7}:w=14:h=14:color=0x9CA3AF:t=3`);
+    }
+    const draw: string[] = [
+      `drawtext=fontfile='${font}':text='${q}':fontsize=${barSize}:fontcolor=0x14201A:x=${barX + 84}:y=${barY + Math.round((barH - barSize) / 2)}`,
+    ];
+    for (let i = 0; i < rows; i++) { const lab = dt(sugg[i]); const ls = labelSize(lab); draw.push(`drawtext=fontfile='${font}':text='${lab}':fontsize=${ls}:fontcolor=0x4B5563:x=${barX + 76}:y=${rowTop(i) + Math.round((rowH - ls) / 2)}`); }
+    const vf = [...boxes, ...draw].join(",");
+    const fin = await runFfmpegStill(bin, ["-y", "-i", still, "-vf", vf, "-frames:v", "1", "-q:v", "3", out]);
+    if (fin.ok && fs.existsSync(out) && fs.statSync(out).size > 20_000) return { file: fileName, absPath: out };
+    return null;
+  } catch { return null; } finally { try { fs.rmSync(still, { force: true }); } catch { /* best-effort */ } }
+}
+
 
 /** Put the fingers back over the pasted product's edges.
  *
@@ -3301,6 +3458,18 @@ export async function runFormatRung(opts: {
       const reasons = [copy.w1, copy.w2, copy.w3].map((c) => (c || "").trim()).filter(Boolean);
       if (reasons.length >= 2) {
         const r = await tryDet(await renderReasonsComposite({ productImageUrl: opts.productImageUrl, headline: copy.headline || "", reasons, contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "reasons");
+        if (r) return r;
+      }
+    } else if (base && opts.formatKey === "faq" && (copy.question || "").trim() && (copy.answer || "").trim()) {
+      const r = await tryDet(await renderFaqComposite({ productImageUrl: opts.productImageUrl, question: copy.question || "", answer: copy.answer || "", contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "faq");
+      if (r) return r;
+    } else if (base && opts.formatKey === "gift" && (copy.headline || "").trim()) {
+      const r = await tryDet(await renderGiftComposite({ productImageUrl: opts.productImageUrl, headline: copy.headline || "", badge: copy.badge || "", sub: copy.sub || "", contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "gift");
+      if (r) return r;
+    } else if (base && opts.formatKey === "search" && (copy.query || "").trim()) {
+      const sugg = [copy.s1, copy.s2, copy.s3].map((c) => (c || "").trim()).filter(Boolean);
+      if (sugg.length >= 2) {
+        const r = await tryDet(await renderSearchComposite({ productImageUrl: opts.productImageUrl, query: copy.query || "", suggestions: sugg, contentLang: opts.contentLang, styleDesc: pickBackdrop() }), "search");
         if (r) return r;
       }
     }
