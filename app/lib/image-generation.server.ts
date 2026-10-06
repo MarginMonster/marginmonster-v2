@@ -3260,7 +3260,8 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
           ? `productIntact: is the product in the ad the same product as image 1 — same shape, colors, packaging artwork, logos — not warped, restyled or reinvented? Compare any printed codes, serials or numbers on the packaging CHARACTER BY CHARACTER against image 1 and answer false if a single character differs. ALSO compare the product's prominent BRAND NAME / LOGO WORDMARK letter by letter: if the ad re-lettered it into a different word — a real render turned "HERO" into "MERO" and "Blokees" into "Blokes" — answer false. (The later rule about ignoring packaging text governs the AD's-own-text checks, NOT this one: here a mangled brand wordmark on the product IS a product-integrity failure.) This is a comparison between the two images, so script and language do not matter — you are checking the ad did not re-letter the product, not whether you personally can read it.`
           : `productIntact: answer true.`,
         `textSensible: does every line of the ad's own text read as grammatical English that makes sense? A repeated word or phrase ("we still each still got", "first try first try") is a FAILURE even though every word in it is spelled correctly. Read each sentence back for SENSE, not spelling.`,
-        `textMatches: does the ad's text say the requested strings above — none missing, none cut off mid-word, none invented?`,
+        `textMatches: does the ad's text say the requested strings above — none missing, none cut off mid-word, none invented? Check COMMON short words letter by letter too, not just long ones: a single wrong, missing or doubled letter in an everyday word — "blind"→"blund", "the"→"teh", "boxes"→"boxs" — is a FAILURE, never a match.`,
+        `gridSensible: if the ad contains a calendar, table, chart or any grid of dates/numbers, every weekday name must be real and correctly spelled (SUN MON TUE WED THU FRI SAT — never "TUD"/"WES") and every date must be a valid, sensibly-ordered number (never "39"). Answer true if there is no such grid OR it is all correct; false if any grid label or number is garbled.`,
         // TRANSCRIBE, don't judge. Asking "does it match?" is a perceptual call,
         // and a one-character corruption of an unfamiliar proper noun reads as a
         // match every time — a real ad shipped "Teraastal Umbreon" for a product
@@ -3277,7 +3278,7 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
         // judging it as "gibberish" threw away the format the merchant chose
         // and shipped a generic ad instead.
         `IMPORTANT: ignore text printed on the product or its packaging, including non-Latin scripts and small print. Only judge the ad's added layout text. Non-English packaging is never a failure.`,
-        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"noSourceText":bool,"transcript":"...","reason":"..."}`,
+        `Reply ONLY JSON: {"productIntact":bool,"textSensible":bool,"textMatches":bool,"gridSensible":bool,"noSourceText":bool,"transcript":"...","reason":"..."}`,
       ].join(" "),
       urls,
       // The code-side spell diff (findCorruptedWord) is only as good as this
@@ -3302,7 +3303,11 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
       console.warn(`[image-ad] qaFormat verdict left ${skippedFmt.join("/")} unanswered`);
       return { pass: false, reason: "qa-unparseable", degraded: true };
     }
-    const bad = HARD_FMT.filter((k) => j[k] === false);
+    // gridSensible is a SOFT addition: fail on an explicit false, but a model
+    // that omits it (most ads have no grid) must NOT fail-closed, or every
+    // non-grid format would drop to a scene on a missing field.
+    const bad: string[] = HARD_FMT.filter((k) => j[k] === false);
+    if (j.gridSensible === false) bad.push("gridSensible");
 
     // Mechanical spell-check of the RENDERED words against the words we asked
     // for. Only flags a word that is a near-miss of an expected word — same
@@ -3319,6 +3324,18 @@ async function qaFormat(imageUrl: string, productImageUrl: string | null, expect
     const corrupted = findCorruptedWord(expected, protect, typeof j.transcript === "string" ? j.transcript : "");
     if (corrupted && !bad.length) {
       return { pass: false, reason: `textMatches: rendered "${corrupted}" — not the requested spelling`.slice(0, 160) };
+    }
+
+    // Deterministic doubled-word backstop. The vision reader catches a stutter
+    // only some of the time — it flagged "is is"/"all all" on live ads but waved
+    // through "line up the the builds" on a Ritual render. Consecutive identical
+    // words of 3+ letters are a render stutter, never intentional ad copy, so
+    // scan the transcript in code and fail closed. (2-letter words skipped so a
+    // real "so so" style phrase can't trip it.)
+    const transcript = typeof j.transcript === "string" ? j.transcript : "";
+    const dup = transcript.toLowerCase().match(/\b([a-z]{3,})\s+\1\b/);
+    if (dup && !bad.length) {
+      return { pass: false, reason: `textSensible: rendered a doubled word "${dup[1]} ${dup[1]}"`.slice(0, 160) };
     }
 
     if (!bad.length) return { pass: true, reason: "clean" };
