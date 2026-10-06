@@ -701,8 +701,8 @@ const CSS = `
   display:grid;place-items:center;transition:transform .15s;}
 .mm-fab:hover{transform:translateY(-2px) scale(1.04);}
 .mm-fab.open{transform:scale(.92);opacity:.92;}
-.mm-fab img{width:40px;height:40px;border-radius:50%;object-fit:cover;image-rendering:pixelated;filter:brightness(1.12);}
-.mm-fab-dot{position:absolute;top:3px;right:3px;width:13px;height:13px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;}
+.mm-fab img{width:40px;height:40px;border-radius:50%;object-fit:cover;image-rendering:pixelated;filter:brightness(1.12);pointer-events:none;}
+.mm-fab-dot{position:absolute;top:3px;right:3px;width:13px;height:13px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;}
 .mm-panel{position:fixed;z-index:10600;bottom:94px;right:22px;width:min(360px,calc(100vw - 32px));height:min(520px,70vh);
   display:flex;flex-direction:column;border-radius:20px;overflow:hidden;background:linear-gradient(178deg,#FEFDF9,#F5F2E8);
   border:1px solid #D7DCCB;box-shadow:0 24px 60px rgba(10,20,14,.32),inset 0 1px 0 rgba(255,255,255,.8);
