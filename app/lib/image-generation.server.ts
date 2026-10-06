@@ -4350,7 +4350,12 @@ export async function generateImageAd(
     // feed-native). Claude writes exact copy, nano-banana builds the layout
     // around the real product photo, vision QA rejects gibberish or a warped
     // product with one retry. Any failure falls through the normal ladder.
-    if (formatKey && formatKey !== "poster") {
+    // Poster used to be excluded here because its generative layout garbled, so
+    // it was routed straight to the scene ladder (which draws its text with
+    // ffmpeg — clean, but not the real format). Now that runFormatRung has a
+    // deterministic poster composite, poster goes through the rung like the rest;
+    // a null composite or re-QA failure still falls through to the same ladder.
+    if (formatKey) {
       try {
         const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
         const f = AD_FORMAT_BY_KEY[formatKey];
