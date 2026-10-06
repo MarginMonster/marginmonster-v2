@@ -198,14 +198,14 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
   return (
     <>
       <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label="Chat with Magic Monster">
-        <img src="/easymode-head.png?v=2" alt="" />
+        <Familiar />
         {!open && <span className="mm-fab-dot" aria-hidden="true" />}
       </button>
       {open && (
         <div className="mm-panel" role="dialog" aria-label="Magic Monster chat">
           <div className="mm-head">
-            <span className="mm-head-crest"><img src="/easymode-head.png?v=2" alt="" /></span>
-            <div className="mm-head-txt"><b>Magic Monster</b><span>your content sidekick</span></div>
+            <span className="mm-head-crest"><Familiar think={busy} /></span>
+            <div className="mm-head-txt"><b>Magic Monster</b><span>{busy ? "thinking…" : "ready to make magic ✨"}</span></div>
             <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label="Close chat">×</button>
           </div>
           <div className="mm-list" ref={listRef}>
@@ -229,6 +229,65 @@ function Buddy({ hud, authed }: { hud: { name: string; ads: number; level: numbe
         </div>
       )}
     </>
+  );
+}
+
+/* The Magic Monster familiar — a hyper-real emerald cat-spirit (generated art at
+ * /familiar.jpg) brought to life: it breathes, glows, drifts gold dust, turns to
+ * watch the cursor, and sparkles when tapped. One shared rAF loop drives every
+ * instance off a single global pointer, so the floating button and the chat
+ * header crest track together. Honours prefers-reduced-motion (stays still). */
+type FamInst = { el: HTMLElement; img: HTMLImageElement; rx: number; ry: number; tx: number; ty: number; ph: number };
+const FAM: { x: number; y: number; reg: Set<FamInst>; raf: number; wired: boolean } = { x: 0, y: 0, reg: new Set(), raf: 0, wired: false };
+function famFrame() {
+  const now = typeof performance !== "undefined" ? performance.now() : 0;
+  for (const it of FAM.reg) {
+    const r = it.el.getBoundingClientRect();
+    const dx = (FAM.x - (r.left + r.width / 2)) / window.innerWidth;
+    const dy = (FAM.y - (r.top + r.height / 2)) / window.innerHeight;
+    const tRy = Math.max(-14, Math.min(14, dx * 34)), tRx = Math.max(-10, Math.min(10, -dy * 26));
+    const tTx = Math.max(-5, Math.min(5, dx * 22)), tTy = Math.max(-4, Math.min(4, dy * 16));
+    it.rx += (tRx - it.rx) * 0.08; it.ry += (tRy - it.ry) * 0.08; it.tx += (tTx - it.tx) * 0.08; it.ty += (tTy - it.ty) * 0.08;
+    const breathe = 1 + 0.025 * Math.sin(now / 1600 + it.ph), floatY = 2.2 * Math.sin(now / 1900 + it.ph);
+    it.img.style.transform = `perspective(340px) rotateX(${it.rx.toFixed(2)}deg) rotateY(${it.ry.toFixed(2)}deg) translate(${it.tx.toFixed(2)}px, ${(it.ty + floatY).toFixed(2)}px) scale(${breathe.toFixed(3)})`;
+  }
+  FAM.raf = requestAnimationFrame(famFrame);
+}
+function famBurst(el: HTMLElement) {
+  const R = el.getBoundingClientRect();
+  for (const it of FAM.reg) it.img.animate([{ filter: "brightness(1)" }, { filter: "brightness(1.3)" }, { filter: "brightness(1)" }], { duration: 420, easing: "ease-out" });
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2, sp = document.createElement("span");
+    sp.className = "mm-fam-spark";
+    sp.style.left = R.width / 2 + "px"; sp.style.top = R.height / 2 + "px";
+    el.appendChild(sp);
+    const d = R.width * 0.44;
+    sp.animate([{ transform: "translate(-50%,-50%) scale(1)", opacity: 1 }, { transform: `translate(${Math.cos(a) * d - 2}px, ${Math.sin(a) * d - 2}px) scale(.2)`, opacity: 0 }], { duration: 560 + Math.random() * 220, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => sp.remove();
+  }
+}
+function Familiar({ think }: { think?: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof window === "undefined") return;
+    const img = el.querySelector("img.mm-fam-img") as HTMLImageElement | null;
+    if (!img) return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const inst: FamInst = { el, img, rx: 0, ry: 0, tx: 0, ty: 0, ph: FAM.reg.size * 1.7 };
+    FAM.reg.add(inst);
+    if (!FAM.wired) {
+      FAM.wired = true;
+      FAM.x = window.innerWidth / 2; FAM.y = window.innerHeight / 2;
+      window.addEventListener("mousemove", (e) => { FAM.x = e.clientX; FAM.y = e.clientY; }, { passive: true });
+    }
+    if (!FAM.raf) FAM.raf = requestAnimationFrame(famFrame);
+    return () => { FAM.reg.delete(inst); if (FAM.reg.size === 0 && FAM.raf) { cancelAnimationFrame(FAM.raf); FAM.raf = 0; } };
+  }, []);
+  return (
+    <span className={`mm-fam${think ? " think" : ""}`} ref={ref} onClick={() => { if (ref.current) famBurst(ref.current); }}>
+      <img className="mm-fam-img" src="/familiar.jpg" alt="" draggable={false} />
+      <span className="mm-fam-glow" aria-hidden="true" />
+    </span>
   );
 }
 
@@ -696,13 +755,23 @@ const CSS = `
 }
 
 /* ---- Magic Monster — the AI companion (floating sidekick) ---- */
-.mm-fab{position:fixed;z-index:10600;bottom:22px;right:22px;width:60px;height:60px;border-radius:50%;border:0;cursor:pointer;padding:0;
-  background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 8px 24px rgba(12,122,70,.38),inset 0 0 0 2px rgba(231,200,121,.4);
-  display:grid;place-items:center;transition:transform .15s;}
-.mm-fab:hover{transform:translateY(-2px) scale(1.04);}
-.mm-fab.open{transform:scale(.92);opacity:.92;}
-.mm-fab img{width:40px;height:40px;border-radius:50%;object-fit:cover;image-rendering:pixelated;filter:brightness(1.12);pointer-events:none;}
-.mm-fab-dot{position:absolute;top:3px;right:3px;width:13px;height:13px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;}
+.mm-fab{position:fixed;z-index:10600;bottom:22px;right:22px;width:60px;height:60px;border-radius:30%;border:0;cursor:pointer;padding:0;background:transparent;
+  filter:drop-shadow(0 8px 20px rgba(14,82,51,.34));transition:transform .15s;}
+.mm-fab:hover{transform:translateY(-2px) scale(1.05);}
+.mm-fab.open{transform:scale(.93);opacity:.96;}
+.mm-fab-dot{position:absolute;top:2px;right:2px;width:13px;height:13px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;z-index:4;}
+/* ---- the familiar: hyper-real cat-spirit art brought to life ---- */
+.mm-fam{position:relative;display:block;width:100%;height:100%;border-radius:inherit;overflow:hidden;isolation:isolate;cursor:pointer;
+  background:radial-gradient(120% 120% at 50% 28%,#103a32,#061c18 72%);}
+.mm-fab .mm-fam{border-radius:30%;}
+.mm-fam-img{position:absolute;inset:-9%;width:118%;height:118%;object-fit:cover;will-change:transform;-webkit-user-drag:none;user-select:none;pointer-events:none;}
+.mm-fam-glow{position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  box-shadow:inset 0 0 18px rgba(5,22,18,.5),inset 0 0 0 2px rgba(201,158,63,.85),inset 0 0 0 3.5px rgba(14,82,51,.28);
+  animation:mmFamPulse 4.6s ease-in-out infinite;}
+.mm-fam.think .mm-fam-glow{animation-duration:1.9s;box-shadow:inset 0 0 18px rgba(5,22,18,.5),inset 0 0 12px rgba(243,217,140,.32),inset 0 0 0 2px rgba(201,158,63,.9);}
+@keyframes mmFamPulse{0%,100%{opacity:.82}50%{opacity:1}}
+.mm-fam-spark{position:absolute;width:5px;height:5px;border-radius:50%;background:radial-gradient(circle,#FDEEB6,#E6B64A 60%,transparent);pointer-events:none;z-index:3;}
+@media (prefers-reduced-motion:reduce){.mm-fam-img{transform:none!important}.mm-fam-glow{animation:none}}
 .mm-panel{position:fixed;z-index:10600;bottom:94px;right:22px;width:min(360px,calc(100vw - 32px));height:min(520px,70vh);
   display:flex;flex-direction:column;border-radius:20px;overflow:hidden;background:linear-gradient(178deg,#FEFDF9,#F5F2E8);
   border:1px solid #D7DCCB;box-shadow:0 24px 60px rgba(10,20,14,.32),inset 0 1px 0 rgba(255,255,255,.8);
@@ -710,8 +779,9 @@ const CSS = `
 @keyframes mmUp{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.mm-panel{animation:none}}
 .mm-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(168deg,#0E5233,#0A3421);color:#F4EAC8;}
-.mm-head-crest{width:34px;height:34px;border-radius:10px;overflow:hidden;flex:0 0 auto;border:1.5px solid rgba(231,200,121,.6);}
-.mm-head-crest img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;filter:brightness(1.14);}
+.mm-head-crest{width:40px;height:40px;border-radius:12px;flex:0 0 auto;overflow:visible;filter:drop-shadow(0 2px 6px rgba(0,0,0,.28));}
+.mm-head-crest .mm-fam{border-radius:12px;}
+.mm-head-crest .mm-fam-glow{box-shadow:inset 0 0 12px rgba(5,22,18,.5),inset 0 0 0 1px rgba(201,158,63,.55);}
 .mm-head-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0;}
 .mm-head-txt b{font-family:Poppins,sans-serif;font-size:14.5px;}
 .mm-head-txt span{font-size:11px;color:rgba(244,234,200,.72);}
@@ -741,5 +811,5 @@ const CSS = `
 .mm-input input:focus{border-color:#12A85E;}
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
-@media(max-width:620px){.mm-fab{bottom:16px;right:16px;width:54px;height:54px}.mm-fab img{width:36px;height:36px}.mm-panel{bottom:80px;right:16px;height:72vh}}
+@media(max-width:620px){.mm-fab{bottom:16px;right:16px;width:56px;height:56px}.mm-panel{bottom:80px;right:16px;height:72vh}}
 `;
