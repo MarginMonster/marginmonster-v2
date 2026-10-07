@@ -4,7 +4,7 @@
 import { db } from "../db.server";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
-import { generateImageAd, editImage, isEditOp, tagAssetSection } from "./image-generation.server";
+import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
@@ -455,6 +455,15 @@ async function runJob(
           sourceImageUrl: payload.sourceImageUrl as string,
           editOp: payload.editOp,
           prompt: typeof payload.editPrompt === "string" ? payload.editPrompt : undefined,
+        });
+        break;
+      }
+      // Creator "Make an image" — a text-to-image generation (no brand/ad ladder).
+      if (payload.createImage) {
+        await createImage({
+          shopId,
+          prompt: payload.createPrompt as string,
+          style: typeof payload.createStyle === "string" ? payload.createStyle : undefined,
         });
         break;
       }

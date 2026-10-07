@@ -44,6 +44,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 type Tool = { key: string; emoji: string; title: string; sub: string; to?: string; event?: string };
 const TOOLS: Tool[] = [
+  { key: "create", emoji: "✨", title: "Make an image", sub: "Type anything, pick an art style, generate", to: "/web/studio?do=create" },
   { key: "edit", emoji: "🎨", title: "Edit a photo", sub: "Restyle, cartoonize, swap or remove the background", to: "/web/studio?do=edit" },
   { key: "video", emoji: "🎬", title: "Make a video", sub: "A short, shareable clip from your photo", to: "/web/studio?do=video" },
   { key: "presenter", emoji: "🧑", title: "With a presenter", sub: "A character holds or shows off your thing", to: "/web/studio?do=presenter" },

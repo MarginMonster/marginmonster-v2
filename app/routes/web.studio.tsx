@@ -21,6 +21,7 @@ import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/ca
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
+import { CREATE_STYLES } from "../lib/create-styles";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
 import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
@@ -397,7 +398,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Legend, or a trial). Without it, send them to unlock it rather than generate.
   // Photo EDITS are a Creator feature too — gate them on the entitlement itself,
   // not just the client-supplied mode flag (a marketing-mode POST can't bypass it).
-  if ((casualMode || intent === "edit") && !capabilitiesFor(shop.activePlan).has("creator")) {
+  if ((casualMode || intent === "edit" || intent === "create") && !capabilitiesFor(shop.activePlan).has("creator")) {
     return json({ error: "Creator mode is a $6.99/mo add-on — add it to your plan (or go standalone) on the Plans page to edit photos and make creator content." });
   }
 
@@ -665,6 +666,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: editFromExtra,
       });
       backed(TOKEN_COST.image, editFromExtra);
+      return json({ ok: true, queued: "image", count: 1 });
+    }
+    if (intent === "create") {
+      // Creator "Make an image" — text-to-image in an art style. No product.
+      assertCapability(shop.activePlan, "image");
+      const createPrompt = trimToWord((form.get("createPrompt") as string) || (direction || ""), 500);
+      if (!createPrompt) return json({ error: "Describe what you want to make." });
+      const createStyle = ((form.get("createStyle") as string) || "").trim() || undefined;
+      const createFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
+      charged(TOKEN_COST.image, createFromExtra);
+      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        createImage: true, createPrompt, createStyle, section: "creator",
+        productTitle: createPrompt.slice(0, 60),
+        prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: createFromExtra,
+      });
+      backed(TOKEN_COST.image, createFromExtra);
       return json({ ok: true, queued: "image", count: 1 });
     }
     if (intent === "blog") {
@@ -966,7 +983,7 @@ export default function WebStudio() {
   // Image tab, presenter → Image+presenter, video → Video tab. ?tab= still works.
   const doParam = searchParams.get("do");
   const initTab = doParam === "video" ? "video"
-    : (doParam === "edit" || doParam === "image" || doParam === "presenter") ? "image"
+    : (doParam === "edit" || doParam === "image" || doParam === "presenter" || doParam === "create") ? "image"
     : (["video", "image", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<Tab>(initTab || "video");
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
@@ -975,9 +992,11 @@ export default function WebStudio() {
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
-  const [imageMode, setImageMode] = useState<"product" | "presenter" | null>(
-    doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : null,
+  const [imageMode, setImageMode] = useState<"product" | "presenter" | "create" | null>(
+    doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : doParam === "create" ? "create" : null,
   );
+  // Creator "Make an image" art style.
+  const [createStyle, setCreateStyle] = useState<string | null>(null);
   // How many to make in one go. Kept in one place across tabs so the choice
   // survives switching, but re-clamped below — video caps lower than image.
   const [burst, setBurst] = useState(1);
@@ -1019,6 +1038,7 @@ export default function WebStudio() {
   // The photo-edit op only applies to the casual Image→product surface; clear it
   // whenever we leave so a stale op can't flag a later submit as an edit.
   useEffect(() => { if (!(casual && tab === "image" && imageMode === "product")) setEditOp(null); }, [casual, tab, imageMode]);
+  useEffect(() => { if (!(casual && tab === "image" && imageMode === "create")) setCreateStyle(null); }, [casual, tab, imageMode]);
   // Import-by-URL (works for any storefront).
   const [showImport, setShowImport] = useState(false);
   // Catalogue picker: the chosen product's URL rides along so the social
@@ -1115,9 +1135,11 @@ export default function WebStudio() {
   // Casual "edit a photo": the image→product surface becomes the photo editor,
   // which submits intent="edit" (once an op is picked) and reads as "Edit photo".
   const isEdit = casual && tab === "image" && imageMode === "product";
-  const submitIntent = isEdit && editOp ? "edit" : tab;
-  const verb = isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
-  const noun = isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
+  // Creator "Make an image" — a text-to-image generation (its own intent).
+  const isCreate = casual && tab === "image" && imageMode === "create";
+  const submitIntent = isEdit && editOp ? "edit" : isCreate ? "create" : tab;
+  const verb = isCreate ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
+  const noun = isCreate ? "image" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : d.costs.blog;
   const cost = baseCost + engineFee;
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
@@ -1208,7 +1230,8 @@ export default function WebStudio() {
   // pipeline happily renders it and the merchant pays for slop. Require a
   // photo (upload OR url) for anything that should SHOW the product; services
   // legitimately have nothing to photograph.
-  const needsPhoto = tab !== "blog" && !serviceOn && !hasFile && !imageUrl.trim();
+  // "Make an image" generates from text — no photo required.
+  const needsPhoto = tab !== "blog" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim();
   // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
   // (title, photo, presenter, cartoon style) disabled the button; the one that
   // bites a brand-new trialist first did not. A Studio trial spends from a
@@ -1218,7 +1241,7 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp) || (isCreate && !direction.trim()) || shortBy > 0;
 
   return (
     <div>
@@ -1447,15 +1470,21 @@ export default function WebStudio() {
         {/* ---- IMAGE: product-ad templates or presenter-holding ---- */}
         {tab === "image" && !imageMode && (
           <>
-            <div className="ws-lbl">{casual ? "What kind of image?" : "What kind of image ad?"}</div>
-            <div className="ws-tiles two">
+            <div className="ws-lbl">{casual ? "What do you want to make?" : "What kind of image ad?"}</div>
+            <div className={`ws-tiles${casual ? "" : " two"}`}>
+              {casual && (
+                <button type="button" className="ws-tile" onClick={() => setImageMode("create")}>
+                  <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-poster.jpg?v=2)" }} />
+                  <b>Make an image</b><span className="ws-tile-sub">Type anything — pick an art style, generate</span>
+                </button>
+              )}
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }} />
                 <b>{casual ? "Edit a photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Restyle, cartoonize, change the background" : "Your product in a famous ad format"}</span>
               </button>
               <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
-                <b>With presenter</b><span className="ws-tile-sub">{casual ? "A character holds or shows it" : "A presenter holds it, poster copy on top"}</span>
+                <b>{casual ? "With a character" : "With presenter"}</b><span className="ws-tile-sub">{casual ? "A character holds or shows it" : "A presenter holds it, poster copy on top"}</span>
               </button>
             </div>
           </>
@@ -1463,7 +1492,22 @@ export default function WebStudio() {
         {tab === "image" && imageMode && (
           <>
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
-            <StepHead n={1} title="Pick the look" hint={casual ? "how your image is styled" : "the structure your ad is built on"} />
+            <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "the art style for your image" : casual ? "how your image is styled" : "the structure your ad is built on"} />
+            {imageMode === "create" && casual && (
+              <>
+                <div className="ws-lbl">Art style <span className="ws-opt">optional</span></div>
+                <div className="ws-fmtcats" role="tablist" aria-label="Art style">
+                  {CREATE_STYLES.map((s) => (
+                    <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key}
+                      className={`ws-fmtcat${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
+                      <span aria-hidden="true">{s.emoji}</span> {s.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="ws-note">Describe what you want below and we&apos;ll generate it{createStyle ? ` in ${CREATE_STYLES.find((s) => s.key === createStyle)?.name} style` : ""} — no photo needed.</p>
+                {createStyle && <input type="hidden" name="createStyle" value={createStyle} />}
+              </>
+            )}
             {imageMode === "product" && casual && (
               <>
                 <div className="ws-lbl">What do you want to do?</div>
@@ -1573,6 +1617,9 @@ export default function WebStudio() {
         {/* ---- Shared product fields + CTA ---- */}
         {cfgReady && (
           <>
+            {/* "Make an image" generates from text — it needs no subject/photo,
+                so the whole step-2 block is skipped for it. */}
+            {!isCreate && (<>
             <StepHead n={2} title={casual ? "Your subject" : "Your product"} hint={casual ? "what this is about" : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
@@ -1727,8 +1774,9 @@ export default function WebStudio() {
                 </div>
               </>
             )}
+            </>)}
 
-            <StepHead n={3} title={`Direction & ${verb.toLowerCase()}`} hint="leave it to EasyMode, or steer it" />
+            <StepHead n={3} title={isCreate ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isCreate ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
             {tab === "image" && !casual && (
               <>
                 <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
@@ -1795,17 +1843,21 @@ export default function WebStudio() {
                     thing it can actually deliver. */}
                 <div className="ws-lbl">
                   {tab === "image"
-                    ? isEdit
-                      ? editOp === "bgswap" ? "Describe the new background" : editOp === "cartoonize" ? "Cartoon style" : editOp === "bgremove" ? "Remove background" : "Describe the look"
-                      : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
+                    ? isCreate
+                      ? "Describe your image"
+                      : isEdit
+                        ? editOp === "bgswap" ? "Describe the new background" : editOp === "cartoonize" ? "Cartoon style" : editOp === "bgremove" ? "Remove background" : "Describe the look"
+                        : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
                     : "Topic"}{" "}
-                  <span className="ws-opt">{isEdit && editOp === "bgremove" ? "nothing to add" : "optional"}</span>
+                  <span className="ws-opt">{isCreate ? "required" : isEdit && editOp === "bgremove" ? "nothing to add" : "optional"}</span>
                 </div>
                 <input className="wb-in" value={direction} maxLength={300}
                   disabled={isEdit && editOp === "bgremove"}
                   placeholder={
                     tab === "image"
-                      ? isEdit
+                      ? isCreate
+                        ? "e.g. a red panda astronaut floating over neon Tokyo at night"
+                        : isEdit
                         ? editOp === "bgswap" ? "e.g. a sunny marble kitchen counter" : editOp === "cartoonize" ? "e.g. bold outlines, flat colors — or leave blank" : editOp === "bgremove" ? "We'll just cut the subject out" : "e.g. warm film look, soft golden light"
                         : templateKey
                           ? "Any edits — e.g. make the wall sage green, add pine branches…"
@@ -1850,7 +1902,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && !isEdit && (
+            {tab !== "blog" && !isEdit && !isCreate && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">How many</span>
                 <div className="ws-burst-steps">
