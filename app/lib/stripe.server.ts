@@ -289,10 +289,19 @@ export async function setSubscriptionCreatorAddon(opts: {
 
     if (opts.on) {
       if (creatorItem) return { ok: true }; // already has it
-      body[`items[${n}][price_data][currency]`] = "usd";
-      body[`items[${n}][price_data][unit_amount]`] = String(creatorAmount);
-      body[`items[${n}][price_data][recurring][interval]`] = interval;
-      body[`items[${n}][price_data][product_data][name]`] = `EasyMode Creator add-on${interval === "year" ? " (annual)" : ""}`;
+      // The subscription-UPDATE items param accepts a price ID or price_data
+      // WITH an existing `product` id — it rejects inline `product_data` (that
+      // only works on Checkout line_items and the /prices endpoint, which is
+      // why createPlanCheckout can use it but this can't). So mint the add-on
+      // price first (product created inline there) and attach it by id.
+      const price = (await stripePost("/prices", {
+        currency: "usd",
+        unit_amount: String(creatorAmount),
+        "recurring[interval]": interval,
+        "product_data[name]": `EasyMode Creator add-on${interval === "year" ? " (annual)" : ""}`,
+      })) as { id?: string };
+      if (!price.id) return { ok: false, error: "Couldn't set up the add-on price — try again in a moment." };
+      body[`items[${n}][price]`] = price.id;
       body["metadata[creator]"] = "1";
     } else {
       if (!creatorItem?.id) { body["metadata[creator]"] = ""; }
