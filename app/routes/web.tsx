@@ -202,7 +202,17 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   }, [open, msgs.length, authed, hud.name, hud.ads, mode]);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
   // Let any page open the chat — the Creator home's "Ask Helpurr" card fires this.
-  useEffect(() => { const h = () => setOpen(true); window.addEventListener("helpurr:open", h); return () => window.removeEventListener("helpurr:open", h); }, []);
+  useEffect(() => {
+    const h = (e: Event) => {
+      setOpen(true);
+      // The Creator home's Chat mode passes the typed prompt — prefill the box
+      // so the user just hits send (we don't auto-send; let them confirm).
+      const t = (e as CustomEvent<{ text?: string }>).detail?.text;
+      if (typeof t === "string" && t.trim()) setInput(t);
+    };
+    window.addEventListener("helpurr:open", h);
+    return () => window.removeEventListener("helpurr:open", h);
+  }, []);
 
   const send = async (text: string) => {
     const t = text.trim();

@@ -7,7 +7,8 @@
  * here when it's on. */
 
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
-import { Link, useLoaderData } from "@remix-run/react";
+import { Link, useLoaderData, useNavigate } from "@remix-run/react";
+import { useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
@@ -42,19 +43,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-type Tool = { key: string; emoji: string; title: string; sub: string; to?: string; event?: string };
-const TOOLS: Tool[] = [
-  { key: "create", emoji: "✨", title: "Make an image", sub: "Type anything, pick an art style, generate", to: "/web/studio?do=create" },
-  { key: "edit", emoji: "🎨", title: "Edit a photo", sub: "Restyle, cartoonize, swap or remove the background", to: "/web/studio?do=edit" },
-  { key: "video", emoji: "🎬", title: "Make a video", sub: "A short, shareable clip from your photo", to: "/web/studio?do=video" },
-  { key: "presenter", emoji: "🧑", title: "With a presenter", sub: "A character holds or shows off your thing", to: "/web/studio?do=presenter" },
-  { key: "music", emoji: "🎵", title: "Make music", sub: "Describe a track, get an original song", to: "/web/studio?do=music" },
-  { key: "helpurr", emoji: "🐾", title: "Ask Helpurr", sub: "Your AI helper — ideas, edits, anything", event: "helpurr:open" },
-  { key: "gallery", emoji: "🖼", title: "My Gallery", sub: "Everything you've made, ready to share", to: "/web/archive?section=creator" },
+// DeepAI-style mode tabs over one "Ask anything" box. Image/Edit/Video/Music
+// deep-link into the Studio's casual flows with the prompt prefilled (?do=…
+// &prompt=…); Chat opens Helpurr. Edit uploads its photo in the Studio.
+type Mode = { key: string; emoji: string; label: string; ph: string };
+const MODES: Mode[] = [
+  { key: "create", emoji: "✨", label: "Image", ph: "a red panda astronaut floating over neon Tokyo at night…" },
+  { key: "edit", emoji: "🎨", label: "Edit", ph: "make the shirt a purple hoodie and add a camera… (you'll add your photo next)" },
+  { key: "video", emoji: "🎬", label: "Video", ph: "a cozy 5-second clip of my product on a sunlit desk…" },
+  { key: "music", emoji: "🎵", label: "Music", ph: "upbeat lo-fi hip-hop with mellow piano and a soft beat…" },
+  { key: "chat", emoji: "🐾", label: "Chat", ph: "ask Helpurr anything — ideas, captions, what to make…" },
+];
+
+// Secondary entry points not covered by a prompt tab.
+const QUICK = [
+  { key: "presenter", emoji: "🧑", title: "With a presenter", to: "/web/studio?do=presenter" },
+  { key: "gallery", emoji: "🖼", title: "My Gallery", to: "/web/archive?section=creator" },
 ];
 
 export default function CreatorHome() {
   const { name, tokens, hasPlan, pieces } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState("create");
+  const [prompt, setPrompt] = useState("");
+  const active = MODES.find((m) => m.key === mode) || MODES[0];
+  const isChat = mode === "chat";
+
+  function go() {
+    const text = prompt.trim();
+    if (isChat) {
+      try { window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { text } })); } catch { /* ignore */ }
+      return;
+    }
+    const q = text ? `&prompt=${encodeURIComponent(text)}` : "";
+    navigate(`/web/studio?do=${mode}${q}`);
+  }
 
   return (
     <div className="cr">
@@ -65,29 +88,40 @@ export default function CreatorHome() {
         <div className="cr-hero-txt">
           <h1 className="cr-h1">Hey {name} — what are we making? 🐾</h1>
           <p className="cr-sub">
-            Upload a photo and turn it into something cool, or make a short video to share.
+            Type what you want, pick a mode, go.
             {hasPlan ? <> You&apos;ve got <b>{tokens.toLocaleString("en-US")}</b> tokens to play with.</> : <> <Link to="/web#plans">Pick a plan</Link> to start.</>}
           </p>
         </div>
       </div>
 
-      <div className="cr-tools">
-        {TOOLS.map((t) => {
-          const inner = (
-            <>
-              <span className="cr-tool-emoji" aria-hidden="true">{t.emoji}</span>
-              <b>{t.title}</b>
-              <span className="cr-tool-sub">{t.sub}</span>
-            </>
-          );
-          return t.event ? (
-            <button type="button" key={t.key} className="cr-tool" onClick={() => { try { window.dispatchEvent(new Event(t.event!)); } catch { /* ignore */ } }}>
-              {inner}
+      {/* Prompt-first surface: mode tabs + one "Ask anything" box. */}
+      <div className="cr-make">
+        <div className="cr-modes" role="tablist" aria-label="What to make">
+          {MODES.map((m) => (
+            <button type="button" key={m.key} role="tab" aria-selected={mode === m.key}
+              className={`cr-mode${mode === m.key ? " on" : ""}`} onClick={() => setMode(m.key)}>
+              <span aria-hidden="true">{m.emoji}</span> {m.label}
             </button>
-          ) : (
-            <Link key={t.key} className="cr-tool" to={t.to!}>{inner}</Link>
-          );
-        })}
+          ))}
+        </div>
+        <div className="cr-ask">
+          <textarea
+            className="cr-askin"
+            rows={2}
+            value={prompt}
+            placeholder={active.ph}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
+          />
+          <button type="button" className="cr-go" onClick={go} disabled={!isChat && !prompt.trim()}>
+            {isChat ? "Ask Helpurr 🐾" : "Make it →"}
+          </button>
+        </div>
+        <div className="cr-quick">
+          {QUICK.map((q) => (
+            <Link key={q.key} to={q.to} className="cr-quicklink"><span aria-hidden="true">{q.emoji}</span> {q.title}</Link>
+          ))}
+        </div>
       </div>
 
       {pieces.length > 0 ? (
@@ -110,7 +144,7 @@ export default function CreatorHome() {
           </div>
         </div>
       ) : (
-        <p className="cr-empty">Nothing in your gallery yet — tap <b>Edit a photo</b> above and make your first one. ✨</p>
+        <p className="cr-empty">Nothing in your gallery yet — type something above and make your first one. ✨</p>
       )}
 
       <p className="cr-foot">
@@ -130,14 +164,27 @@ const CR_CSS = `
 .cr-h1{margin:0;font-family:Poppins,sans-serif;font-weight:800;font-size:22px;line-height:1.15;color:var(--ink,#14201A)}
 .cr-sub{margin:6px 0 0;font-size:14px;color:var(--ink2,#4A554E)}
 .cr-sub a{color:var(--green,#0C7A46);font-weight:700}
-.cr-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
-.cr-tool{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;text-decoration:none;cursor:pointer;
-  padding:18px 18px 16px;border-radius:18px;background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF);
-  box-shadow:0 2px 8px rgba(20,32,26,.05);transition:transform .12s,box-shadow .12s,border-color .12s;font:inherit}
-.cr-tool:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(20,32,26,.1);border-color:#9CCBB1}
-.cr-tool-emoji{font-size:26px;line-height:1;margin-bottom:6px;filter:drop-shadow(0 1px 1px rgba(20,32,26,.15))}
-.cr-tool b{font-family:Poppins,sans-serif;font-weight:800;font-size:15.5px;color:var(--ink,#14201A)}
-.cr-tool-sub{font-size:12.5px;color:var(--ink2,#4A554E);line-height:1.35}
+.cr-make{padding:16px 16px 14px;border-radius:20px;background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF);box-shadow:0 3px 14px rgba(20,32,26,.06)}
+.cr-modes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.cr-mode{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;cursor:pointer;font:inherit;
+  font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2,#4A554E);
+  background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);transition:all .12s}
+.cr-mode:hover{border-color:#9CCBB1}
+.cr-mode.on{background:var(--green,#0C7A46);color:#fff;border-color:var(--green,#0C7A46);box-shadow:0 2px 8px rgba(12,122,70,.28)}
+.cr-ask{display:flex;gap:10px;align-items:stretch}
+.cr-askin{flex:1;resize:none;padding:14px 16px;border-radius:14px;border:1px solid var(--line,#E4DFCF);background:#fff;
+  font:inherit;font-size:15px;line-height:1.4;color:var(--ink,#14201A);outline:none;transition:border-color .12s,box-shadow .12s}
+.cr-askin:focus{border-color:#9CCBB1;box-shadow:0 0 0 3px rgba(12,122,70,.12)}
+.cr-askin::placeholder{color:#9AA69E}
+.cr-go{flex:0 0 auto;align-self:stretch;padding:0 22px;border:0;border-radius:14px;cursor:pointer;
+  font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;background:var(--green,#0C7A46);
+  box-shadow:0 2px 10px rgba(12,122,70,.3);transition:transform .1s,box-shadow .1s,opacity .1s}
+.cr-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 16px rgba(12,122,70,.34)}
+.cr-go:disabled{opacity:.45;cursor:not-allowed}
+.cr-quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.cr-quicklink{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);
+  text-decoration:none;padding:6px 12px;border-radius:999px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);transition:border-color .12s,color .12s}
+.cr-quicklink:hover{border-color:#9CCBB1;color:var(--green,#0C7A46)}
 .cr-recent{margin-top:26px}
 .cr-recent-hd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
 .cr-recent-hd b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A)}
@@ -155,8 +202,8 @@ const CR_CSS = `
   .cr-hero{flex-direction:row;padding:14px 15px;gap:12px}
   .cr-hero-cat{width:52px;height:52px}
   .cr-h1{font-size:18px}
-  .cr-tools{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .cr-tool{padding:14px 13px}
+  .cr-ask{flex-direction:column}
+  .cr-go{align-self:flex-end;padding:12px 20px}
   .cr-recent-row{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 `;

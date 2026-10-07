@@ -1042,7 +1042,9 @@ export default function WebStudio() {
   const [breakout, setBreakout] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
   const [showDone, setShowDone] = useState(false);
-  const [direction, setDirection] = useState("");
+  // ?prompt= lets the Creator home's prompt-first box prefill the describe/
+  // topic field when it deep-links into a mode (image/edit/video/music).
+  const [direction, setDirection] = useState(searchParams.get("prompt") || "");
   // Advanced prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
   const [saySomething, setSaySomething] = useState("");
