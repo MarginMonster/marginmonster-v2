@@ -4172,8 +4172,8 @@ export async function tagAssetSection(assetId: string | null | undefined, sectio
   }
 }
 
-export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap";
-const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap"]);
+export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap" | "colorize" | "upscale" | "replace";
+const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "replace"]);
 export function isEditOp(x: unknown): x is EditOp { return typeof x === "string" && EDIT_OPS.has(x); }
 
 /** Casual "edit a photo" — one img2img transform on the user's OWN photo, saved
@@ -4212,6 +4212,27 @@ export async function editImage(opts: {
     if (!file) throw new Error("Couldn't build the new background here (image tools unavailable).");
     localUrl = `/renders/${file}`;
     label = "new background";
+  } else if (editOp === "colorize") {
+    // Colorize a black-and-white / faded photo — the composition is preserved.
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, "Add natural, realistic color to this image. Keep every detail, texture, subject and the exact composition unchanged — only add colour. No text, no watermark."), "jpg");
+    label = "colorized";
+  } else if (editOp === "upscale") {
+    // Super-resolution via real-esrgan (its own model, cheap). Falls back to an
+    // img2img "enhance" if the upscaler is unavailable so the paid job still ships.
+    let out: string;
+    try {
+      out = await repRun("nightmareai/real-esrgan", { image: sourceImageUrl, scale: 4, face_enhance: false }, 90_000);
+    } catch (e) {
+      console.log("[photo-edit] real-esrgan unavailable, enhancing via img2img:", e instanceof Error ? e.message.slice(0, 120) : e);
+      out = await editImg2Img(sourceImageUrl, "Enhance this photo: sharper detail, cleaner texture, higher clarity. Keep the subject and composition identical. No text, no watermark.");
+    }
+    localUrl = await persistRemote(out, "jpg");
+    label = "upscaled";
+  } else if (editOp === "replace") {
+    // Prompt-guided targeted edit ("replace the sky with a sunset").
+    if (!prompt) throw new Error("Describe what to change — e.g. 'replace the sky with a sunset'.");
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Change only that; keep the rest of the image exactly the same — same subject, composition and style. No text, no watermark.`), "jpg");
+    label = "edited";
   } else {
     const stylePrompt = editOp === "cartoonize"
       ? `Redraw this exact image as a vibrant, clean cartoon illustration${prompt ? `, ${prompt}` : ""}. Keep the same subject, pose and composition — just stylize it. No added text or watermark.`

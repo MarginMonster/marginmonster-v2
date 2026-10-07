@@ -649,7 +649,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // REQUIRED — img2img can't invent one from a title.
       assertCapability(shop.activePlan, "image");
       const editOp = ((form.get("editOp") as string) || "").trim();
-      if (!["restyle", "cartoonize", "bgremove", "bgswap"].includes(editOp)) {
+      if (!["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "replace"].includes(editOp)) {
         return json({ error: "Pick what to do with your photo — restyle, cartoonize, or change the background." });
       }
       if (!productImageUrl) {
@@ -1241,7 +1241,7 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp) || (isCreate && !direction.trim()) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || shortBy > 0;
 
   return (
     <div>
@@ -1512,7 +1512,7 @@ export default function WebStudio() {
               <>
                 <div className="ws-lbl">What do you want to do?</div>
                 <div className="ws-fmtcats" role="tablist" aria-label="Photo edit">
-                  {([["restyle", "🎨 Restyle"], ["cartoonize", "✏️ Cartoonize"], ["bgswap", "🖼 Swap background"], ["bgremove", "✂️ Remove background"]] as [string, string][]).map(([k, label]) => (
+                  {([["restyle", "🎨 Restyle"], ["cartoonize", "✏️ Cartoonize"], ["replace", "🔁 Replace"], ["colorize", "🌈 Colorize"], ["upscale", "🔍 Upscale"], ["bgswap", "🖼 Swap background"], ["bgremove", "✂️ Remove background"]] as [string, string][]).map(([k, label]) => (
                     <button type="button" key={k} role="tab" aria-selected={editOp === k}
                       className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{label}</button>
                   ))}
@@ -1522,6 +1522,9 @@ export default function WebStudio() {
                     : editOp === "bgswap" ? "Upload your photo, then describe the new background in the direction box below."
                     : editOp === "cartoonize" ? "Upload your photo — we'll redraw it as a cartoon. Add any direction below to steer the style."
                     : editOp === "restyle" ? "Upload your photo and describe the look you want in the direction box below."
+                    : editOp === "colorize" ? "Upload a black-and-white or faded photo — we'll add natural, realistic colour."
+                    : editOp === "upscale" ? "Upload your photo — we'll sharpen and upscale it to higher resolution."
+                    : editOp === "replace" ? "Upload your photo, then describe what to change in the direction box below."
                     : "Pick what to do, then upload your photo below."}
                 </p>
                 {editOp && <input type="hidden" name="editOp" value={editOp} />}
@@ -1846,19 +1849,19 @@ export default function WebStudio() {
                     ? isCreate
                       ? "Describe your image"
                       : isEdit
-                        ? editOp === "bgswap" ? "Describe the new background" : editOp === "cartoonize" ? "Cartoon style" : editOp === "bgremove" ? "Remove background" : "Describe the look"
+                        ? editOp === "bgswap" ? "Describe the new background" : editOp === "replace" ? "What to change" : editOp === "cartoonize" ? "Cartoon style" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "No input needed" : "Describe the look"
                         : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
                     : "Topic"}{" "}
-                  <span className="ws-opt">{isCreate ? "required" : isEdit && editOp === "bgremove" ? "nothing to add" : "optional"}</span>
+                  <span className="ws-opt">{isCreate ? "required" : isEdit && editOp === "replace" ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
                 </div>
                 <input className="wb-in" value={direction} maxLength={300}
-                  disabled={isEdit && editOp === "bgremove"}
+                  disabled={isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")}
                   placeholder={
                     tab === "image"
                       ? isCreate
                         ? "e.g. a red panda astronaut floating over neon Tokyo at night"
                         : isEdit
-                        ? editOp === "bgswap" ? "e.g. a sunny marble kitchen counter" : editOp === "cartoonize" ? "e.g. bold outlines, flat colors — or leave blank" : editOp === "bgremove" ? "We'll just cut the subject out" : "e.g. warm film look, soft golden light"
+                        ? editOp === "bgswap" ? "e.g. a sunny marble kitchen counter" : editOp === "replace" ? "e.g. replace the sky with a sunset" : editOp === "cartoonize" ? "e.g. bold outlines, flat colors — or leave blank" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "Nothing to add — just hit Edit" : "e.g. warm film look, soft golden light"
                         : templateKey
                           ? "Any edits — e.g. make the wall sage green, add pine branches…"
                           : formatKey
