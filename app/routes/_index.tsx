@@ -1,7 +1,7 @@
 import { json, redirect, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { useEffect, useState } from "react";
-import { PLAN_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
+import { MARKETING_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { LANDING_I18N, LANG_LABELS, detectLang, type LangKey } from "../lib/landing-i18n";
 
@@ -250,7 +250,7 @@ export default function Index() {
           <h2>{t.price.h2}</h2>
           <p className="lz-show-sub">{t.price.sub}</p>
           <div className="lz-price-grid">
-            {PLAN_TIERS.map((tier) => (
+            {MARKETING_TIERS.map((tier) => (
               <div className={`lz-price-card${tier.highlight ? " feat" : ""}`} key={tier.key}>
                 {tier.highlight && <span className="lz-price-ribbon">{t.price.ribbon}</span>}
                 <div className="lz-price-name">{tier.name}</div>
@@ -266,7 +266,7 @@ export default function Index() {
                   <span>{t.price.tokensMo.replace("{N}", tier.monthlyTokens.toLocaleString())}</span>
                 </div>
                 {lang === "en" && <div className="lz-price-cap">{planCapacityLine(tier)}</div>}
-                <ul>{(t.price.tiers[tier.key] || tier.features).map((f) => <li key={f}>{f}</li>)}</ul>
+                <ul>{(t.price.tiers[tier.key as "STARTER" | "STUDIO" | "ANTHEM"] || tier.features).map((f: string) => <li key={f}>{f}</li>)}</ul>
                 <a className="lz-price-cta" href="/web/signup">{t.price.cta}</a>
               </div>
             ))}

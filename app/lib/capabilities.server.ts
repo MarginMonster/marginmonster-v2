@@ -20,7 +20,7 @@ import {
   type PlanKey,
 } from "./plan-config";
 
-type PlanLike = Pick<Plan, "type" | "active"> & { trialEndsAt?: Date | string | null };
+type PlanLike = Pick<Plan, "type" | "active"> & { trialEndsAt?: Date | string | null; creatorAddon?: boolean | null };
 
 export class CapabilityLockedError extends Error {
   capability: Capability;
@@ -47,10 +47,20 @@ export function isTrialing(plan: PlanLike | null | undefined): boolean {
 export function capabilitiesFor(plan: PlanLike | null | undefined): Set<Capability> {
   if (!plan || !plan.active) return new Set();
   const tier = resolveTierKey(plan.type) || "STARTER";
-  if (isTrialing(plan)) {
-    return new Set<Capability>([...TIER_CAPABILITIES.STUDIO, ...TIER_CAPABILITIES[tier]]);
-  }
-  return new Set(TIER_CAPABILITIES[tier]);
+  // Trial tastes everything a MARKETING tier includes (plus a look at Creator).
+  // But a standalone CREATOR trial must NOT get the Studio blanket — that would
+  // hand a $6.99 image-only plan the video/anthem path it's designed to never
+  // reach, so a trial-then-cancel could run real video COGS for free.
+  const isCreatorTier = PLAN_BY_KEY[tier]?.section === "creator";
+  const caps = isTrialing(plan)
+    ? (isCreatorTier
+        ? new Set<Capability>([...TIER_CAPABILITIES[tier], "creator"])
+        : new Set<Capability>([...TIER_CAPABILITIES.STUDIO, ...TIER_CAPABILITIES[tier], "creator"]))
+    : new Set<Capability>(TIER_CAPABILITIES[tier]);
+  // The $6.99 Creator add-on unlocks the Creator section on top of a marketing
+  // tier. (The CREATOR and ANTHEM/Legend tiers already include "creator".)
+  if (plan.creatorAddon) caps.add("creator");
+  return caps;
 }
 
 /** Throws CapabilityLockedError (with an upgrade-ready message) if locked. */

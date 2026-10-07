@@ -8,11 +8,11 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { Ico } from "../lib/icons";
 import {
-  PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
+  PLAN_TIERS, MARKETING_TIERS, PLAN_BY_KEY, CREATOR_PRICE, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
   annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
 } from "../lib/plan-config";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
-import { createPackCheckout, createPlanCheckout, resolvePendingCheckout, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
+import { createPackCheckout, createPlanCheckout, resolvePendingCheckout, setSubscriptionCreatorAddon, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
@@ -111,6 +111,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     langs: CONTENT_LANGS,
     tier: tierKey,
     tierName: tierKey ? PLAN_BY_KEY[tierKey].name : null,
+    // Creator section entitlement + how it was granted, for the Creator add-on
+    // card on the plans page.
+    hasCreator: capabilitiesFor(shop.activePlan).has("creator"),
+    creatorAddon: !!shop.activePlan?.creatorAddon,
     trialing: planTrialing(shop.activePlan),
     // A trial is once per ACCOUNT. The plan cards promised a free one to
     // everybody, including merchants who had already spent theirs — and
@@ -124,7 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     wins,
     referral,
     nextMove,
-    tiers: PLAN_TIERS.map((t) => ({
+    tiers: MARKETING_TIERS.map((t) => ({
       key: t.key, name: t.name, price: t.price, yearly: annualPrice(t), tagline: t.tagline,
       tokens: t.monthlyTokens, capacity: planCapacityLine(t), features: t.features, highlight: !!t.highlight,
     })),
@@ -193,13 +197,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!stripeEnabled()) return json({ error: "Billing is coming online — check back shortly." });
     const tierKey = form.get("tier") as PlanKey;
     if (!PLAN_BY_KEY[tierKey]) return json({ error: "Unknown plan." });
+    // Bolt the $6.99 Creator section onto this plan (ignored on CREATOR itself,
+    // and on Legend which already includes it). Carry a paid add-on FORWARD on a
+    // tier change — otherwise switching Starter→Studio from the main ladder would
+    // silently drop (and stop billing) a Creator entitlement the merchant pays for.
+    const withCreator = (form.get("withCreator") === "1" || !!shop.activePlan?.creatorAddon) && tierKey !== "CREATOR" && tierKey !== "ANTHEM";
     // Don't let an active subscriber buy the plan they are already on. `pack`
     // has always guarded this; `subscribe` did not, so a re-post (or a stale
     // tab) opened a second Stripe subscription for the same tier and billed
     // twice. A DIFFERENT tier is a legitimate upgrade/downgrade and still goes
-    // through — this only blocks the pure duplicate.
-    if (shop.activePlan?.active && resolveTierKey(shop.activePlan.type) === tierKey) {
-      return json({ error: `You're already on ${PLAN_BY_KEY[tierKey].name}.` });
+    // through — this only blocks the pure duplicate. Toggling the Creator add-on
+    // on the SAME tier is a real change, so it is NOT a duplicate.
+    if (shop.activePlan?.active && resolveTierKey(shop.activePlan.type) === tierKey && !!shop.activePlan.creatorAddon === withCreator) {
+      return json({ error: `You're already on ${PLAN_BY_KEY[tierKey].name}${withCreator ? " with Creator" : ""}.` });
+    }
+    // SAME tier, only the Creator add-on is changing → modify the LIVE
+    // subscription in place (prorated). Re-running checkout here would open a
+    // fresh full-price subscription and cancel the current one with no refund.
+    if (shop.activePlan?.active && account.stripeSubId
+        && resolveTierKey(shop.activePlan.type) === tierKey
+        && tierKey !== "CREATOR" && tierKey !== "ANTHEM"
+        && !!shop.activePlan.creatorAddon !== withCreator) {
+      const r = await setSubscriptionCreatorAddon({ subId: account.stripeSubId, on: withCreator });
+      if (!r.ok) return json({ error: r.error });
+      // Mirror locally for an instant UI update; the subscription.updated webhook
+      // re-affirms it from the subscription metadata (the source of truth).
+      await db.plan.updateMany({ where: { shopId: shop.id }, data: { creatorAddon: withCreator } }).catch(() => { /* non-fatal */ });
+      return json({ ok: withCreator ? "Creator added to your plan — your Create section is unlocked. 🎨" : "Creator removed from your plan." });
     }
     // ...but that guard can only read what the WEBHOOK writes, and Stripe
     // redirects the merchant back the instant checkout completes. For the first
@@ -233,6 +257,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         tierKey,
         annual,
         baseUrl,
+        withCreator,
         // One trial per account, and a tier change mid-trial keeps the
         // original end date rather than minting seven more free days.
         trialUsedAt: trialAlreadyTaken(account) ? (account.trialUsedAt ?? account.createdAt) : null,
@@ -611,6 +636,39 @@ export default function WebDashboard() {
         ))}
       </div>
 
+      {/* The Creator section — a separate $6.99 product: add it to any plan, go
+          standalone, or get it free on Legend. */}
+      {d.billingOn && (
+        <div className="wb-card wd-creator">
+          <span className="wd-creator-emoji" aria-hidden="true">🎨</span>
+          <div className="wd-creator-txt">
+            <b>Creator section{d.hasCreator ? <span className="wd-creator-on"> — active ✓</span> : null}</b>
+            <p>
+              Make cool stuff &amp; edit your own photos — restyle, cartoonize, swap backgrounds (~100 a month), with Helpurr.{" "}
+              {d.tier === "ANTHEM" ? "Included free with Legend." : `$${CREATOR_PRICE}/mo — add it to any plan or go solo.`}
+            </p>
+          </div>
+          {d.hasCreator ? (
+            <Link to="/web/create" className="wb-btn ghost wd-creator-cta">Open Creator →</Link>
+          ) : d.tier && d.tier !== "ANTHEM" ? (
+            <Form method="post" className="wd-creator-cta">
+              <input type="hidden" name="intent" value="subscribe" />
+              <input type="hidden" name="tier" value={d.tier} />
+              <input type="hidden" name="withCreator" value="1" />
+              {/* No annual input: the Creator add-on is always the flat $6.99/mo
+                  the label promises, regardless of the ladder's annual toggle. */}
+              <button className="wb-btn" disabled={busy || !d.billingOn}>Add Creator — ${CREATOR_PRICE}/mo</button>
+            </Form>
+          ) : !d.tier ? (
+            <Form method="post" className="wd-creator-cta">
+              <input type="hidden" name="intent" value="subscribe" />
+              <input type="hidden" name="tier" value="CREATOR" />
+              <button className="wb-btn" disabled={busy || !d.billingOn}>Get Creator — ${CREATOR_PRICE}/mo</button>
+            </Form>
+          ) : null}
+        </div>
+      )}
+
       {/* One balance, one currency — what each action costs */}
       <div className="wd-legend">
         <div className="wdg-h">One balance runs everything</div>
@@ -767,6 +825,15 @@ const DASH_CSS = `
 .wd-ribbon.gold{background:linear-gradient(165deg,#C98F12,#8a6207);box-shadow:0 3px 8px rgba(176,133,38,.35);}
 .wd-tagline{font-size:12.5px;color:var(--ink2);line-height:1.45;margin:4px 0 2px;}
 .wd-trial{margin-top:8px;font-size:11.5px;color:var(--ink2);}
+/* Creator section promo — a separate $6.99 product, shown under the ladder. */
+.wd-creator{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 24px;background:linear-gradient(135deg,#F0FAF4,#FBFAF2);}
+.wd-creator-emoji{font-size:30px;line-height:1;flex:0 0 auto;filter:drop-shadow(0 1px 1px rgba(20,32,26,.15));}
+.wd-creator-txt{flex:1 1 240px;min-width:0;}
+.wd-creator-txt b{font-family:Poppins,sans-serif;font-size:16px;color:var(--ink);}
+.wd-creator-on{color:#0C7A46;font-weight:700;}
+.wd-creator-txt p{margin:3px 0 0;font-size:13px;color:var(--ink2);}
+.wd-creator-cta{flex:0 0 auto;}
+@media(max-width:620px){.wd-creator-cta{flex:1 1 100%;}.wd-creator-cta .wb-btn{width:100%;}}
 /* token-cost legend */
 .wd-legend{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 26px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdg-h{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink);margin-bottom:10px;}

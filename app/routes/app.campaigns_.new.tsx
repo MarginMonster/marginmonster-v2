@@ -10,7 +10,7 @@ import { tokensRemaining, tokensRemainingLive, spendTokens, refundTokens } from 
 import { acceptQuestline } from "../lib/questlines.server";
 import { SOCIAL_PLAN_DEFS, questlineTokenCost } from "../lib/questlines";
 import { LIVE_AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
-import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, resolveTierKey } from "../lib/plan-config";
+import { MARKETING_TIERS, PLAN_BY_KEY, TOKEN_PACKS, resolveTierKey } from "../lib/plan-config";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const SHORT: Record<string, "tt" | "ig" | "fb"> = { tiktok: "tt", instagram: "ig", facebook: "fb" };
@@ -31,8 +31,8 @@ const ARCH_ORDER = ["SOCIAL_FOUND", "SOCIAL_STEADY", "SOCIAL_VIRAL", "SOCIAL_EMP
 const CROSS_POST_FEE = 20;
 
 function tierFor(cost: number): string {
-  const t = PLAN_TIERS.find((p) => p.monthlyTokens >= cost);
-  return t ? t.name : PLAN_TIERS[PLAN_TIERS.length - 1].name;
+  const t = MARKETING_TIERS.find((p) => p.monthlyTokens >= cost);
+  return t ? t.name : MARKETING_TIERS[MARKETING_TIERS.length - 1].name;
 }
 
 function archetypes(allowance: number, planName: string | null, hasVideoCap: boolean) {
@@ -85,7 +85,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     planName: tier?.name ?? null,
     allowance,
     packs: TOKEN_PACKS,
-    tiers: PLAN_TIERS.map((t) => ({ name: t.name, monthlyTokens: t.monthlyTokens, price: t.price })),
+    tiers: MARKETING_TIERS.map((t) => ({ name: t.name, monthlyTokens: t.monthlyTokens, price: t.price })),
     tokens: tokensRemainingLive(plan),
     linked,
     products,

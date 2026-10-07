@@ -387,8 +387,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  if (!shop.brandProfile && intent !== "edit") return json({ error: "Set your brand voice on the Dashboard first." });
+  // The Creator section (casual mode) is its own entitlement — gate it here.
+  const casualMode = form.get("mode") === "casual";
+  // Creators don't need a brand voice (that's a marketing concept); only
+  // marketing generation requires it. Editing never did.
+  if (!shop.brandProfile && intent !== "edit" && !casualMode) return json({ error: "Set your brand voice on the Dashboard first." });
   if (!shop.activePlan?.active) return json({ error: "Pick a plan on the Dashboard first — content runs on tokens." });
+  // Creator section = the $6.99 Creator entitlement (standalone plan, the +add-on,
+  // Legend, or a trial). Without it, send them to unlock it rather than generate.
+  // Photo EDITS are a Creator feature too — gate them on the entitlement itself,
+  // not just the client-supplied mode flag (a marketing-mode POST can't bypass it).
+  if ((casualMode || intent === "edit") && !capabilitiesFor(shop.activePlan).has("creator")) {
+    return json({ error: "Creator mode is a $6.99/mo add-on — add it to your plan (or go standalone) on the Plans page to edit photos and make creator content." });
+  }
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();
   const urlField = ((form.get("productImageUrl") as string) || "").trim() || undefined;
@@ -415,11 +426,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // trimToWord, not slice: this text is read by a model, so it must not end
   // mid-word.
   const direction = trimToWord((form.get("direction") as string) || "", 500) || undefined;
-  // Casual mode is authoritative on the SERVER: even if a merchant-only hidden
-  // field leaks from a stale client, casual never honors service/offer/ad-format
-  // selections. This is the real guard; client-side hiding is only UX. Billing
-  // and capability gates are untouched either way.
-  const casualMode = form.get("mode") === "casual";
+  // casualMode (above) is authoritative on the SERVER: even if a merchant-only
+  // hidden field leaks from a stale client, casual never honors service/offer/
+  // ad-format selections. This is the real guard; client-side hiding is only UX.
   // Which SECTION this piece belongs to — casual = the Creator gallery, marketing
   // = the Marketing archive. Carried on every job so the Archive can split them.
   const genSection = casualMode ? "creator" : "marketing";

@@ -290,6 +290,9 @@ enum PlanType {
   STARTER
   STUDIO
   ANTHEM
+  // Creator section standalone plan ($6.99) — the casual/personal creator
+  // experience (images + photo edits), separate from the marketing tiers.
+  CREATOR
   // Legacy ladder values — live rows may still carry these; gating maps them
   // to the new tiers (see LEGACY_TIER_MAP in app/lib/plan-config.ts).
   GROWTH
@@ -320,6 +323,10 @@ model Plan {
   // Add-ons
   adCreativePack    Boolean @default(false)
   campaignAutopilot Boolean @default(false)
+  // The $6.99 Creator add-on bolted onto a marketing plan — unlocks the Creator
+  // section for a merchant who's also on Starter/Studio. (Legend includes it via
+  // the tier; a standalone Creator uses type=CREATOR, not this flag.)
+  creatorAddon      Boolean @default(false)
 
   // Monthly quotas (seeded from the tier at selection time)
   blogQuota  Int @default(0)

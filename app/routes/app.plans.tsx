@@ -6,7 +6,7 @@ import { Page } from "@shopify/polaris";
 import { authenticate, billingIsTest, TOKEN_PACK_PLANS, TOKENS_BY_PACK } from "../shopify.server";
 import { recordBillingFailure } from "../lib/billing-debug.server";
 import { db } from "../db.server";
-import { PLAN_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, planCapacityLine, resolveTierKey, TOKEN_COST_LEGEND, type PlanKey } from "../lib/plan-config";
+import { MARKETING_TIERS, PLAN_BY_KEY, TOKEN_PACKS, ANNUAL_TO_TIER, annualKey, annualPrice, planCapacityLine, resolveTierKey, TOKEN_COST_LEGEND, type PlanKey } from "../lib/plan-config";
 import { unlockAchievement } from "../lib/xp.server";
 import { REFERRAL_REWARD_TOKENS } from "../lib/referral.server";
 import { COMPANIONS, COMPANION_BY_ID } from "../lib/companions";
@@ -442,7 +442,7 @@ export default function Plans() {
         )}
         {billingError && <div className="pl-banner err"><b>Couldn&apos;t start checkout.</b> {billingError}</div>}
         <div className="pl-grid">
-          {PLAN_TIERS.map((tier) => {
+          {MARKETING_TIERS.map((tier) => {
             const isCurrent = currentPlan === tier.key;
             const loading = nav.state !== "idle" && pending === tier.key;
             return (

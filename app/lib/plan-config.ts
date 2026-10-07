@@ -9,7 +9,16 @@
 //
 // The ladder is strictly cumulative — each tier contains everything below it.
 
-export type PlanKey = "STARTER" | "STUDIO" | "ANTHEM";
+// STARTER/STUDIO/ANTHEM are the cumulative MARKETING ladder. CREATOR is a
+// SEPARATE SECTION plan ($6.99) — not part of that ladder (it unlocks the
+// casual/personal Creator section, not marketing generators). It's a PlanKey so
+// the type system tracks it everywhere, but it's filtered out of the marketing
+// plan ladder (see MARKETING_TIERS) and ranks 0 for marketing min-tier checks.
+export type PlanKey = "STARTER" | "STUDIO" | "ANTHEM" | "CREATOR";
+
+/** The flat monthly price of the Creator entitlement — sold standalone (the
+ *  CREATOR tier) or as a +add-on on any marketing plan. Legend includes it. */
+export const CREATOR_PRICE = 6.99;
 
 // Pre-2026 ladder keys that may still exist on live Plan rows. They keep
 // working forever: gating resolves them to the closest new tier.
@@ -32,6 +41,9 @@ export interface PlanTier {
   imageQuota: number;
   campaignAutopilot: boolean;
   features: string[];
+  /** "marketing" (the $19/$39/$69 ladder, default) or "creator" (the $6.99
+   *  side plan). The marketing plan grid filters to section "marketing". */
+  section?: "marketing" | "creator";
 }
 
 export const PLAN_TIERS: PlanTier[] = [
@@ -85,6 +97,31 @@ export const PLAN_TIERS: PlanTier[] = [
       "Best price per generation — built for daily posting",
       "The biggest Campaign Autopilot mixes (Go Viral scale)",
       "Campaign discount on token costs",
+      "Creator section included free",
+    ],
+  },
+  {
+    // The Creator SECTION plan — a separate product from the marketing ladder.
+    // Sold standalone ($6.99) or as a +add-on on any marketing plan; included
+    // free on Legend. Unlocks the casual/personal creator experience (images +
+    // photo edits). 500 tokens = ~100 images/edits at 5 tokens; video is NOT a
+    // Creator capability, so a standalone Creator can't run the expensive path —
+    // it stays image-cheap and margin-safe. See CREATOR_PRICE.
+    key: "CREATOR",
+    name: "Creator",
+    price: CREATOR_PRICE,
+    tagline: "Make cool stuff & edit your own photos — restyle, cartoonize, swap backgrounds. Add it to any plan or go solo.",
+    section: "creator",
+    monthlyTokens: 500,
+    blogQuota: 0,
+    videoQuota: 0,
+    imageQuota: 100,
+    campaignAutopilot: false,
+    features: [
+      "The Creator section: edit & restyle your own photos",
+      "~100 images & photo edits a month",
+      "Helpurr, your AI helper, along for the ride",
+      "Add on to any plan, or run it on its own",
     ],
   },
 ];
@@ -92,6 +129,12 @@ export const PLAN_TIERS: PlanTier[] = [
 export const PLAN_BY_KEY: Record<PlanKey, PlanTier> = Object.fromEntries(
   PLAN_TIERS.map((t) => [t.key, t])
 ) as Record<PlanKey, PlanTier>;
+
+/** The marketing plan ladder for the pricing grid — Creator is a separate
+ *  product and shown on its own, never as a 4th marketing tier. */
+export const MARKETING_TIERS: PlanTier[] = PLAN_TIERS.filter((t) => t.section !== "creator");
+/** The standalone Creator plan. */
+export const CREATOR_TIER: PlanTier = PLAN_BY_KEY.CREATOR;
 
 // Annual billing — pay for 10 months, get 12 (2 months free). Billing keys are
 // the tier key + "_ANNUAL"; the annual price is the monthly price × 10.
@@ -124,7 +167,7 @@ export function minTierRank(minTier: string): number {
 }
 
 // ---- Capabilities: what each tier UNLOCKS (cumulative) ----
-export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem";
+export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem" | "creator";
 
 // Studio unlocks EVERY generator (video, cartoon, anthem included) — the
 // Anthem tier differentiates on VOLUME (1,600 tokens vs 900) and price-per-
@@ -133,7 +176,13 @@ export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "
 export const TIER_CAPABILITIES: Record<PlanKey, readonly Capability[]> = {
   STARTER: ["image", "blog", "autopost"],
   STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
-  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
+  // Legend includes the Creator section free.
+  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator"],
+  // Standalone Creator: the section + image/photo-edit generation only. No
+  // video/blog/campaigns — so it can't run the expensive path and stays
+  // margin-safe at $6.99. (On marketing plans the Creator add-on grants
+  // "creator" on top of the tier's own caps — see capabilitiesFor.)
+  CREATOR: ["image", "creator"],
 };
 
 /** The cheapest tier that includes a capability (upgrade-prompt target). */
@@ -144,6 +193,7 @@ export const CAPABILITY_TIER: Record<Capability, PlanKey> = {
   video: "STUDIO",
   cartoon: "STUDIO",
   anthem: "STUDIO",
+  creator: "CREATOR",
 };
 
 export const CAPABILITY_LABEL: Record<Capability, string> = {
@@ -153,6 +203,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   video: "Product videos",
   cartoon: "Cartoon Avatar styles",
   anthem: "Anthem singing videos",
+  creator: "Creator mode",
 };
 
 // ---- Trial ----
@@ -231,6 +282,7 @@ const PLAN_SHOWCASE: Record<PlanKey, TokenAction[]> = {
   STARTER: ["image", "blog"],
   STUDIO: ["video", "image", "blog"],
   ANTHEM: ["video", "image", "blog"],
+  CREATOR: ["image"],
 };
 const CAPACITY_NOUN: Partial<Record<TokenAction, string>> = {
   video: "product videos",

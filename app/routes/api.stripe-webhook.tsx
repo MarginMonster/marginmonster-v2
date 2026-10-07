@@ -59,7 +59,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // subscription.updated when Stripe's anchor advances.
         await activateStripePlan(
           accountId, meta.tierKey, (obj.subscription as string) || null, (obj.customer as string) || null,
-          false, checkoutActivationPeriod(obj),
+          false, checkoutActivationPeriod(obj), meta.creator === "1",
         );
         // This checkout resolved — clear the pending marker, but ONLY if it is
         // still THIS session's id. Keyed to obj.id so a later checkout the
@@ -112,7 +112,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             // end-trial button. See billing-period.ts.
             await activateStripePlan(
               accountId, meta.tierKey, subId, (obj.customer as string) || null, willCancel,
-              { kind: "stripe-anchor", startsAt: stripeAnchorFrom(obj) },
+              { kind: "stripe-anchor", startsAt: stripeAnchorFrom(obj) }, meta.creator === "1",
             );
           }
         } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {

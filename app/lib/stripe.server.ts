@@ -12,7 +12,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { artLog } from "./art-log.server";
 import { checkoutSessionVerdict, decidePeriodRoll, type ActivationPeriod } from "./billing-period";
-import { PLAN_BY_KEY, TOKEN_PACKS, annualPrice, type PlanKey } from "./plan-config";
+import { PLAN_BY_KEY, TOKEN_PACKS, CREATOR_PRICE, annualPrice, type PlanKey } from "./plan-config";
 
 const API = "https://api.stripe.com/v1";
 
@@ -154,9 +154,21 @@ export async function createPlanCheckout(opts: {
   trialEndsAt?: Date | string | null;
   /** Account.stripeCustomerId, so Stripe sees one customer per account. */
   customerId?: string | null;
+  /** Bolt the $6.99 Creator add-on onto this (marketing) plan — a second
+   *  subscription line item + a creator flag on the subscription metadata. */
+  withCreator?: boolean;
 }): Promise<string> {
   const tier = PLAN_BY_KEY[opts.tierKey];
-  const amount = (opts.annual ? annualPrice(tier) : tier.price) * 100;
+  // Round to integer cents: a fractional price (Creator $6.99 → $69.90 annual →
+  // 6990.000000000001 in IEEE-754) would be sent as a non-integer unit_amount
+  // and Stripe 400s the whole checkout.
+  const amount = Math.round((opts.annual ? annualPrice(tier) : tier.price) * 100);
+  // The add-on rides the same subscription (same interval), so a flag on the
+  // subscription metadata persists across renewals — every subscription.* event
+  // re-reads it, so it is never clobbered. Not added onto the CREATOR tier
+  // itself (that IS the Creator plan).
+  const withCreator = !!opts.withCreator && opts.tierKey !== "CREATOR";
+  const creatorAmount = Math.round((opts.annual ? CREATOR_PRICE * 10 : CREATOR_PRICE) * 100);
 
   // Trial parameters, or none.
   let trialParams: Record<string, string> = {};
@@ -211,6 +223,18 @@ export async function createPlanCheckout(opts: {
     "subscription_data[metadata][tierKey]": opts.tierKey,
     "metadata[accountId]": opts.accountId,
     "metadata[tierKey]": opts.tierKey,
+    // The Creator add-on: a second recurring line item (same interval) + a
+    // `creator` flag on the subscription metadata so every renewal re-grants it.
+    ...(withCreator ? {
+      "line_items[1][quantity]": "1",
+      "line_items[1][price_data][currency]": "usd",
+      "line_items[1][price_data][unit_amount]": String(creatorAmount),
+      "line_items[1][price_data][recurring][interval]": opts.annual ? "year" : "month",
+      "line_items[1][price_data][product_data][name]": `EasyMode Creator add-on${opts.annual ? " (annual)" : ""}`,
+      "line_items[1][price_data][product_data][description]": "The Creator section — edit & restyle your own photos, ~100 a month.",
+      "subscription_data[metadata][creator]": "1",
+      "metadata[creator]": "1",
+    } : {}),
     success_url: `${opts.baseUrl}/web?welcome=${opts.tierKey}`,
     cancel_url: `${opts.baseUrl}/web`,
   });
@@ -226,6 +250,64 @@ export async function createPlanCheckout(opts: {
     })
     .catch((e) => console.error("[stripe] could not record the pending checkout (non-fatal):", e));
   return session.url as string;
+}
+
+/** Add or remove the $6.99 Creator add-on on an EXISTING subscription, in place.
+ *
+ *  This is the correct alternative to re-running createPlanCheckout for an
+ *  add-on toggle: a fresh checkout opens a NEW full-price subscription and then
+ *  cancels the incumbent with no refund, so the merchant re-pays the whole plan
+ *  and forfeits the month they'd already bought. Instead we modify the live
+ *  subscription — keeping the plan item EXPLICITLY by id (so this can never drop
+ *  it) and adding/removing only the Creator item — and let Stripe prorate.
+ *
+ *  It does not write plan.creatorAddon itself: the subscription.updated webhook
+ *  this edit triggers re-reads metadata.creator and flips the flag there, the
+ *  single source of truth. */
+export async function setSubscriptionCreatorAddon(opts: {
+  subId: string;
+  on: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sub = (await stripeReq("GET", `/subscriptions/${encodeURIComponent(opts.subId)}`)) as {
+      items?: { data?: Array<{ id?: string; price?: { unit_amount?: number; recurring?: { interval?: string } } }> };
+    };
+    const items = (sub.items?.data || []).filter((it) => !!it.id);
+    if (items.length === 0) return { ok: false, error: "Couldn't read your subscription — manage it from the dashboard." };
+    // Every item in one subscription shares the interval — match the add-on to it.
+    const interval = items[0].price?.recurring?.interval === "year" ? "year" : "month";
+    const creatorAmount = Math.round((interval === "year" ? CREATOR_PRICE * 10 : CREATOR_PRICE) * 100);
+    const creatorItem = items.find((it) => it.price?.unit_amount === creatorAmount);
+    // The plan item(s) — everything that isn't the Creator add-on. Always passed
+    // back by id, unchanged, so a merge quirk can never remove the plan.
+    const planItems = items.filter((it) => it !== creatorItem);
+    if (planItems.length === 0) return { ok: false, error: "Couldn't read your plan — manage it from the dashboard." };
+
+    const body: Record<string, string> = { proration_behavior: "create_prorations" };
+    planItems.forEach((it, i) => { body[`items[${i}][id]`] = it.id!; });
+    const n = planItems.length;
+
+    if (opts.on) {
+      if (creatorItem) return { ok: true }; // already has it
+      body[`items[${n}][price_data][currency]`] = "usd";
+      body[`items[${n}][price_data][unit_amount]`] = String(creatorAmount);
+      body[`items[${n}][price_data][recurring][interval]`] = interval;
+      body[`items[${n}][price_data][product_data][name]`] = `EasyMode Creator add-on${interval === "year" ? " (annual)" : ""}`;
+      body["metadata[creator]"] = "1";
+    } else {
+      if (!creatorItem?.id) { body["metadata[creator]"] = ""; }
+      else {
+        body[`items[${n}][id]`] = creatorItem.id;
+        body[`items[${n}][deleted]`] = "true";
+        body["metadata[creator]"] = "";
+      }
+    }
+    await stripePost(`/subscriptions/${encodeURIComponent(opts.subId)}`, body);
+    return { ok: true };
+  } catch (e) {
+    console.error("[stripe] setSubscriptionCreatorAddon failed:", e instanceof Error ? e.message : e);
+    return { ok: false, error: "Couldn't update your Creator add-on — try again in a moment." };
+  }
 }
 
 /** Has the checkout this account last opened already been paid for?
@@ -277,7 +359,7 @@ export async function resolvePendingCheckout(
     // conditional write, so this and a late webhook cannot both grant.
     await activateStripePlan(accountId, verdict.tierKey, (session.subscription as string) || null, (session.customer as string) || null, false, {
       kind: "fresh-payment",
-    });
+    }, ((session.metadata as Record<string, string> | undefined)?.creator) === "1");
     await clear();
     return { state: "paid", tierKey: verdict.tierKey };
   }
@@ -352,6 +434,9 @@ export async function activateStripePlan(
    *  conservative case — an unknown anchor rolls nothing. See billing-period.ts
    *  for why this is a decision and not a one-line reset. */
   period: ActivationPeriod = { kind: "stripe-anchor", startsAt: null },
+  /** The $6.99 Creator add-on, read from the subscription metadata on EVERY
+   *  event — so a renewal re-grants it rather than clobbering it to false. */
+  creatorAddon = false,
 ): Promise<void> {
   const tier = PLAN_BY_KEY[tierKey as PlanKey];
   if (!tier) return;
@@ -433,12 +518,13 @@ export async function activateStripePlan(
       shopId, type: tier.key, reviewMode: "REVIEW_FIRST",
       blogQuota: tier.blogQuota, videoQuota: tier.videoQuota, imageQuota: tier.imageQuota,
       adCreativePack: tier.imageQuota > 0, campaignAutopilot: tier.campaignAutopilot,
+      creatorAddon,
       periodStart: new Date(), tokensIncluded: tier.monthlyTokens, tokensUsed: 0,
       cancelAtPeriodEnd: false,
       trialEndsAt: new Date(Date.now() + 7 * 86_400_000),
     },
     update: {
-      type: tier.key, active: true,
+      type: tier.key, active: true, creatorAddon,
       // A new activation is not a cancelled one — otherwise a merchant who
       // cancelled and then subscribed again would still be told their plan
       // will not renew. But this was HARDCODED false, and every
