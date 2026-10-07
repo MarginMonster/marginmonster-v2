@@ -305,8 +305,11 @@ export async function setSubscriptionCreatorAddon(opts: {
     await stripePost(`/subscriptions/${encodeURIComponent(opts.subId)}`, body);
     return { ok: true };
   } catch (e) {
-    console.error("[stripe] setSubscriptionCreatorAddon failed:", e instanceof Error ? e.message : e);
-    return { ok: false, error: "Couldn't update your Creator add-on — try again in a moment." };
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[stripe] setSubscriptionCreatorAddon failed:", msg);
+    // Surface the real Stripe reason (it's the merchant's own subscription) so
+    // a failure is actionable instead of a dead "try again" loop.
+    return { ok: false, error: `Couldn't update your Creator add-on: ${msg.slice(0, 180)}` };
   }
 }
 
