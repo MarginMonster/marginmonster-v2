@@ -167,7 +167,7 @@ export function minTierRank(minTier: string): number {
 }
 
 // ---- Capabilities: what each tier UNLOCKS (cumulative) ----
-export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem" | "creator";
+export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem" | "creator" | "music";
 
 // Studio unlocks EVERY generator (video, cartoon, anthem included) — the
 // Anthem tier differentiates on VOLUME (1,600 tokens vs 900) and price-per-
@@ -176,13 +176,14 @@ export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "
 export const TIER_CAPABILITIES: Record<PlanKey, readonly Capability[]> = {
   STARTER: ["image", "blog", "autopost"],
   STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
-  // Legend includes the Creator section free.
-  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator"],
-  // Standalone Creator: the section + image/photo-edit generation only. No
-  // video/blog/campaigns — so it can't run the expensive path and stays
-  // margin-safe at $6.99. (On marketing plans the Creator add-on grants
-  // "creator" on top of the tier's own caps — see capabilitiesFor.)
-  CREATOR: ["image", "creator"],
+  // Legend includes the Creator section free (music included).
+  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music"],
+  // Standalone Creator: the section + image/photo-edit/music generation only.
+  // No video/blog/campaigns — so it can't run the expensive path and stays
+  // margin-safe at $6.99 (music COGS ~$0.05-0.15/track, far under video).
+  // (On marketing plans the Creator add-on grants "creator"+"music" on top of
+  // the tier's own caps — see capabilitiesFor.)
+  CREATOR: ["image", "creator", "music"],
 };
 
 /** The cheapest tier that includes a capability (upgrade-prompt target). */
@@ -194,6 +195,7 @@ export const CAPABILITY_TIER: Record<Capability, PlanKey> = {
   cartoon: "STUDIO",
   anthem: "STUDIO",
   creator: "CREATOR",
+  music: "CREATOR",
 };
 
 export const CAPABILITY_LABEL: Record<Capability, string> = {
@@ -204,6 +206,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   cartoon: "Cartoon Avatar styles",
   anthem: "Anthem singing videos",
   creator: "Creator mode",
+  music: "Music tracks",
 };
 
 // ---- Trial ----
@@ -221,6 +224,10 @@ export const TOKEN_COST = {
   description: 3, // AI product listing (The Listing Forge)
   adCopy: 3, // Meta/TikTok ad copy
   image: 5, // AI image ad
+  // Standalone AI music track (Creator). musicgen/minimax COGS ~$0.05-0.15 —
+  // an order of magnitude under video. Priced for perceived value + wallet
+  // pacing (~50 tracks on the 500-token Creator wallet), not cost recovery.
+  music: 10,
   strategy: 6, // marketing plan
   blog: 10, // SEO blog post
   landing: 10, // landing page
@@ -256,6 +263,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   description: "Product description",
   adCopy: "Ad copy",
   image: "Image ad",
+  music: "Music track",
   strategy: "Marketing plan",
   blog: "Blog post",
   landing: "Landing page",

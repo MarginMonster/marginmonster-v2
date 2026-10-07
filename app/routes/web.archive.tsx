@@ -101,34 +101,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // counting the truncated page and therefore under-reported the library.
   const totalsRaw = await db.asset.groupBy({
     by: ["type"],
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] }, ...sectionWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, ...sectionWhere },
     _count: { _all: true },
   });
-  const totals = { video: 0, image: 0, blog: 0 };
+  const totals = { video: 0, image: 0, music: 0, blog: 0 };
   for (const t of totalsRaw) {
     if (t.type === "VIDEO_AD") totals.video = t._count._all;
     else if (t.type === "IMAGE_AD") totals.image = t._count._all;
+    else if (t.type === "AUDIO") totals.music = t._count._all;
     else if (t.type === "BLOG_POST") totals.blog = t._count._all;
   }
-  const totalAll = totals.video + totals.image + totals.blog;
+  const totalAll = totals.video + totals.image + totals.music + totals.blog;
 
   const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] }, ...sectionWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, ...sectionWhere },
     orderBy: { createdAt: "desc" },
     take: show,
   });
   const jobs = await db.job.findMany({
-    where: { shopId: shop.id, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } },
+    where: { shopId: shop.id, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_SONG", "GENERATE_BLOG_POST"] } },
     orderBy: { createdAt: "desc" },
     take: 20,
   });
   // Cooking tiles, same logic as the embedded Archive: live ETA per job type,
   // product image as the tile art, failed jobs surfaced instead of vanishing.
   const nowMs = Date.now();
-  const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_BLOG_POST: 40 };
-  const KIND: Record<string, "video" | "image" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_BLOG_POST: "blog" };
-  const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
-  const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
+  const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_SONG: 60, GENERATE_BLOG_POST: 40 };
+  const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
+  const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_SONG: TOKEN_COST.music, GENERATE_BLOG_POST: TOKEN_COST.blog };
+  const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
     let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
@@ -177,7 +178,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totalAll,
     nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
     assets: assets.map((a) => {
-      let body: { videoUrl?: string; imageUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
+      let body: { videoUrl?: string; imageUrl?: string; audioUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
       // MEDIA WE KNOW IS GONE.
       //
@@ -188,9 +189,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // a download link to nothing, and a Post button that could only fail.
       // Say it plainly instead. The age check matters: a just-generated asset
       // can legitimately still be serving from the provider.
-      const rawMedia = body.videoUrl || body.imageUrl || null;
+      const rawMedia = body.videoUrl || body.imageUrl || body.audioUrl || null;
       const pastProviderTtl = nowMs - a.createdAt.getTime() > 2 * 60 * 60 * 1000;
-      const expired = body.needsRegen === true || (pastProviderTtl && isExpiringUrl(rawMedia || undefined));
+      // Audio lives on our own durable /renders disk (no provider TTL to expire).
+      const expired = a.type !== "AUDIO" && (body.needsRegen === true || (pastProviderTtl && isExpiringUrl(rawMedia || undefined)));
       const text = typeof body.html === "string" ? stripHtml(body.html) : undefined;
       const unkeptMedia = a.status === "PENDING" && (a.type === "VIDEO_AD" || a.type === "IMAGE_AD");
       const daysLeft = unkeptMedia ? Math.max(0, CACHE_DAYS - Math.floor((nowMs - a.createdAt.getTime()) / 86_400_000)) : undefined;
@@ -201,6 +203,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         media: expired ? null : rawMedia,
         expired,
         isVideo: a.type === "VIDEO_AD",
+        isAudio: a.type === "AUDIO",
         snippet: text ? text.slice(0, 140) : undefined,
         html: a.type === "BLOG_POST" && typeof body.html === "string" ? body.html : undefined,
         // Which recipe built this? Merchants remix and compare, and "the one
@@ -243,12 +246,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // re-charged, the job went back to PENDING with attempts cleared, and the
     // worker rendered the merchant another 150-token video for free — as many
     // times as they pressed it.
-    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, status: { in: ["FAILED", "IN_PROGRESS"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
+    const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, status: { in: ["FAILED", "IN_PROGRESS"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_SONG", "GENERATE_BLOG_POST"] } } });
     if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
     let payload: Record<string, unknown> = {};
     try { payload = JSON.parse(job.payload); } catch { /* ignore */ }
-    if (job.type === "GENERATE_VIDEO_AD") {
-      try { assertCapability(shop.activePlan, videoCapabilityFor((payload.contentType as string) || undefined)); }
+    // Re-assert entitlement for EVERY generator type before re-charging — a
+    // retry is a fresh paid generation, and a plan that has since lost the
+    // capability (e.g. dropped the Creator add-on) must not re-run a song/edit
+    // the tier no longer includes. (Two-currency rule: tokens never unlock a
+    // generator the tier lacks.) The worker's own cases re-assert too.
+    {
+      const retryCap = job.type === "GENERATE_VIDEO_AD" ? videoCapabilityFor((payload.contentType as string) || undefined)
+        : job.type === "GENERATE_IMAGE_AD" ? "image" as const
+        : job.type === "GENERATE_SONG" ? "music" as const
+        : "blog" as const;
+      try { assertCapability(shop.activePlan, retryCap); }
       catch (e) { return json({ error: (e as Error).message }); }
     }
     let newPayload: string | undefined;
@@ -257,7 +269,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let spent = 0;
     let retryFromExtra = 0;
     if (payload.refunded) {
-      const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
+      const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : job.type === "GENERATE_SONG" ? TOKEN_COST.music : TOKEN_COST.blog;
       const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
       spent = cost;
       // The RE-SPEND has its own split. The refund that preceded this put
@@ -305,7 +317,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   if (intent === "dismissJob") {
     const jobId = (form.get("jobId") as string) || "";
-    await db.job.deleteMany({ where: { id: jobId, shopId: shop.id, status: "FAILED", type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] } } });
+    await db.job.deleteMany({ where: { id: jobId, shopId: shop.id, status: "FAILED", type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_SONG", "GENERATE_BLOG_POST"] } } });
     return json({});
   }
   if (intent === "keep") {
@@ -620,13 +632,13 @@ function fmtEta(etaSec: number, elapsedSec?: number): string {
   return mins >= 1 ? `taking longer than usual · ${mins} min in` : "taking longer than usual";
 }
 // Sanitized download filename from the piece's title.
-function dlName(title: string, isVideo: boolean): string {
+function dlName(title: string, isVideo: boolean, isAudio = false): string {
   const base = (title || "").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").slice(0, 40) || "easymode";
-  return `${base}.${isVideo ? "mp4" : "jpg"}`;
+  return `${base}.${isAudio ? "mp3" : isVideo ? "mp4" : "jpg"}`;
 }
 
-type ATab = "video" | "image" | "blog";
-const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", BLOG_POST: "blog" };
+type ATab = "video" | "image" | "music" | "blog";
+const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUDIO: "music", BLOG_POST: "blog" };
 
 // Route-local styles for everything the parity pass added (viewer, badges,
 // chips, caption box, failed section). Matches the web front-door look:
@@ -637,6 +649,14 @@ const WA_CSS = `
 .wa-poster{position:relative;display:block;width:100%;padding:0;border:0;background:#0b0f0d;cursor:pointer;font:inherit;color:inherit;}
 .wa-poster video,.wa-poster img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;pointer-events:none;}
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
+/* Audio has no still — a soft green-on-cream panel with a music glyph stands
+   in on the tile; the real <audio> player lives in the viewer. */
+.wa-audiotile{position:relative;width:100%;aspect-ratio:4/5;display:grid;place-items:center;background:linear-gradient(150deg,#0C7A46,#14201A);}
+.wa-audiotile .wa-audio-ico{color:#F4F1E6;opacity:.9;}
+.wa-audiotile .wa-play{font-size:26px;opacity:.85;}
+.wa-audiofull{width:100%;background:linear-gradient(150deg,#0C7A46,#14201A);display:flex;flex-direction:column;align-items:center;gap:16px;padding:40px 20px;}
+.wa-audiofull .wa-audio-ico{color:#F4F1E6;opacity:.92;}
+.wa-audiofull audio{width:min(420px,88%);}
 .wa-cd{position:absolute;top:8px;left:8px;background:rgba(20,32,26,.8);color:#E7C879;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.02em;}
 .wa-cd.urgent{background:#8C2E1B;color:#fff;}
 .wa-track{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border:1px solid var(--line,#e4e1d5);border-radius:10px;background:rgba(255,255,255,.55);}
@@ -759,7 +779,7 @@ export default function WebArchive() {
   const busy = nav.state !== "idle";
   // ?tab= deep link → initial tab.
   const [searchParams] = useSearchParams();
-  const startTab = (["video", "image", "blog"] as const).find((t) => t === searchParams.get("tab"));
+  const startTab = (["video", "image", "music", "blog"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<ATab>(startTab || "video");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   const [copied, setCopied] = useState(false);
@@ -830,7 +850,7 @@ export default function WebArchive() {
     a.type === "BLOG_POST"
       ? a.status === "PUBLISHED" ? ["posted", "Published"] : a.status === "APPROVED" ? ["kept", "Kept"] : ["new", "Ready"]
       : a.status === "PUBLISHED" ? ["posted", "Posted"] : a.status === "APPROVED" ? ["kept", "Kept"] : ["new", "New"];
-  const costOf = (t: string) => (t === "VIDEO_AD" ? cost.video : t === "IMAGE_AD" ? cost.image : cost.blog);
+  const costOf = (t: string) => (t === "VIDEO_AD" ? cost.video : t === "IMAGE_AD" ? cost.image : t === "AUDIO" ? cost.music : cost.blog);
   const copyHtml = (html: string) => { navigator.clipboard.writeText(html).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => { /* ignore */ }); };
   const downloadHtml = (title: string, html: string) => {
     const blob = new Blob([html], { type: "text/html" });
@@ -864,7 +884,7 @@ export default function WebArchive() {
         </div>
       )}
       <div className="ws-tabs" style={{ marginBottom: 16 }}>
-        {([["video", "video", "Videos"], ["image", "image", "Images"], ["blog", "article", "Articles"]] as [ATab, string, string][]).map(([k, icon, label]) => {
+        {([["video", "video", "Videos"], ["image", "image", "Images"], ["music", "music", "Music"], ["blog", "article", "Articles"]] as [ATab, string, string][]).map(([k, icon, label]) => {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
           // how much the merchant actually owned.
@@ -894,12 +914,12 @@ export default function WebArchive() {
         // showing neither number.
         <p className="wa-shelfnote">
           Showing <b>{shelf.length}</b> of <b>{tabTotal}</b>{" "}
-          {tab === "blog" ? "articles" : `${tab}s`}.{" "}
+          {tab === "blog" ? "articles" : tab === "music" ? "tracks" : `${tab}s`}.{" "}
           <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>Show older pieces →</Link>
         </p>
       )}
       {shelf.length === 0 && genCards.length === 0 && failCards.length === 0 && (
-        <div className="wb-card">No {tab === "blog" ? "articles" : `${tab}s`} yet — make one in the <Link to="/web/studio">Studio</Link>.</div>
+        <div className="wb-card">No {tab === "blog" ? "articles" : tab === "music" ? "tracks" : `${tab}s`} yet — make one in the <Link to="/web/studio">Studio</Link>.</div>
       )}
 
       {/* Cooking tiles stay pinned at the top of the shelf. */}
@@ -945,12 +965,21 @@ export default function WebArchive() {
             const [cc, cl] = chipFor(a);
             return (
               <div className="wb-asset" key={a.id}>
-                <button type="button" className="wa-poster" onClick={() => setViewer(a)} title="Open it big">
+                <button type="button" className="wa-poster" onClick={() => setViewer(a)} title={a.isAudio ? "Open & play" : "Open it big"}>
                   {a.isVideo && a.media && <video src={`${a.media}#t=0.1`} muted playsInline preload="metadata" />}
-                  {!a.isVideo && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
+                  {!a.isVideo && !a.isAudio && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
+                  {/* Audio has no still — the tile is a play affordance; the real
+                      <audio> player lives in the viewer. (An <img src=mp3> would
+                      just render broken, so audio never hits the <img> above.) */}
+                  {a.isAudio && a.media && (
+                    <div className="wa-audiotile">
+                      <span className="wa-audio-ico"><Ico n="music" size={34} /></span>
+                      <span className="wa-play" aria-hidden>▶</span>
+                    </div>
+                  )}
                   {!a.media && (
                     <div style={{ height: 220, display: "grid", placeItems: "center", gap: 6, textAlign: "center", color: "#E7C879" }}>
-                      <span style={{ display: "grid", placeItems: "center", opacity: .5 }}><Ico n={a.isVideo ? "video" : "image"} size={32} /></span>
+                      <span style={{ display: "grid", placeItems: "center", opacity: .5 }}><Ico n={a.isVideo ? "video" : a.isAudio ? "music" : "image"} size={32} /></span>
                       {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>The render for this one is gone — make it again.</span>}
                     </div>
                   )}
@@ -971,10 +1000,10 @@ export default function WebArchive() {
                       "switch to client rendering"), which is why the Archive
                       re-rendered itself from scratch on every visit. Keep the
                       local date; let React reconcile this one node. */}
-                  <div className="s">{a.isVideo ? "Video" : "Image ad"} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
+                  <div className="s">{a.isVideo ? "Video" : a.isAudio ? "Music" : "Image ad"} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
-                    {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo)} title="Download">⬇</a>}
+                    {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title="Download">⬇</a>}
                     <button type="button" className="wa-icon" title="Delete" disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
                   </div>
                 </div>
@@ -1031,6 +1060,11 @@ export default function WebArchive() {
                 : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || "Still being written…"}</p></div>
             ) : viewer.isVideo && viewer.media ? (
               <video className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
+            ) : viewer.isAudio && viewer.media ? (
+              <div className="wa-audiofull">
+                <span className="wa-audio-ico"><Ico n="music" size={46} /></span>
+                <audio src={viewer.media} controls autoPlay />
+              </div>
             ) : viewer.media ? (
               <img className="wa-vfull" src={viewer.media} alt={viewer.title} />
             ) : (
@@ -1078,16 +1112,18 @@ export default function WebArchive() {
               ) : (
                 <>
                   <div className="wa-vacts">
-                    {canPost && linked.length > 0 && !capOpen && viewer.media && (
+                    {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
                       <button type="button" className="wa-vbtn" disabled={busy} onClick={() => startPost(viewer.id)}>Post to socials</button>
                     )}
                     {viewer.status !== "APPROVED" && viewer.status !== "PUBLISHED" && (
                       <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
                     )}
-                    {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo)}>⬇ Download</a>}
+                    {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}>⬇ Download</a>}
                     {/* A piece whose render we lost is replaced on us, so the
                         button must not quote a price the merchant will not pay. */}
-                    <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "✨ Make it again" : "✨ Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens`}</span></button>
+                    {!viewer.isAudio && (
+                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "✨ Make it again" : "✨ Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens`}</span></button>
+                    )}
                     <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                   </div>
                   {capOpen && (

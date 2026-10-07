@@ -172,7 +172,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog },
+    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog, music: TOKEN_COST.music },
   });
 };
 
@@ -398,7 +398,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Legend, or a trial). Without it, send them to unlock it rather than generate.
   // Photo EDITS are a Creator feature too — gate them on the entitlement itself,
   // not just the client-supplied mode flag (a marketing-mode POST can't bypass it).
-  if ((casualMode || intent === "edit" || intent === "create") && !capabilitiesFor(shop.activePlan).has("creator")) {
+  if ((casualMode || intent === "edit" || intent === "create" || intent === "music") && !capabilitiesFor(shop.activePlan).has("creator")) {
     return json({ error: "Creator mode is a $6.99/mo add-on — add it to your plan (or go standalone) on the Plans page to edit photos and make creator content." });
   }
 
@@ -691,6 +691,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       backed(TOKEN_COST.image, createFromExtra);
       return json({ ok: true, queued: "image", count: 1 });
     }
+    if (intent === "music") {
+      // Creator "Make music" — text-to-song. No product, no photo.
+      assertCapability(shop.activePlan, "music");
+      const musicPrompt = trimToWord((form.get("musicPrompt") as string) || (direction || ""), 500);
+      if (!musicPrompt) return json({ error: "Describe the music you want." });
+      const musicFromExtra = (await spendTokens(shop.id, TOKEN_COST.music)).fromExtra;
+      charged(TOKEN_COST.music, musicFromExtra);
+      await enqueueJob(shop.id, "GENERATE_SONG", {
+        section: "creator", musicPrompt,
+        productTitle: musicPrompt.slice(0, 60),
+        prePaid: true, chargedTokens: TOKEN_COST.music, chargedFromExtra: musicFromExtra,
+      });
+      backed(TOKEN_COST.music, musicFromExtra);
+      return json({ ok: true, queued: "music", count: 1 });
+    }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
       const blogFromExtra = (await spendTokens(shop.id, TOKEN_COST.blog)).fromExtra;
@@ -724,7 +739,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({});
 };
 
-type Tab = "video" | "image" | "blog" | "import";
+type Tab = "video" | "image" | "music" | "blog" | "import";
 type CType = (typeof CONTENT_TYPES)[number]["key"];
 type CastItem = { id: string; name: string; img: string; designed: boolean };
 
@@ -959,6 +974,13 @@ function TabIcon({ kind }: { kind: Tab }) {
           <path d="m3.6 14.4 3.9-3.6a1.5 1.5 0 0 1 2 0l2.1 1.9 1.5-1.3a1.5 1.5 0 0 1 2 0l3.3 3" {...p} />
         </>
       )}
+      {kind === "music" && (
+        <>
+          <path d="M7.2 14.2V5.2l8-1.6v8.4" {...p} />
+          <circle cx="5.3" cy="14.3" r="1.9" {...p} />
+          <circle cx="13.3" cy="12.3" r="1.9" {...p} />
+        </>
+      )}
       {kind === "blog" && (
         <>
           <path d="M4 3.4h8.4L16.4 7v9.6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" {...p} />
@@ -990,8 +1012,9 @@ export default function WebStudio() {
   // Image tab, presenter → Image+presenter, video → Video tab. ?tab= still works.
   const doParam = searchParams.get("do");
   const initTab = doParam === "video" ? "video"
+    : doParam === "music" ? "music"
     : (doParam === "edit" || doParam === "image" || doParam === "presenter" || doParam === "create") ? "image"
-    : (["video", "image", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
+    : (["video", "image", "music", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<Tab>(initTab || "video");
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   const [imageUrl, setImageUrl] = useState("");
@@ -1144,14 +1167,16 @@ export default function WebStudio() {
   const isEdit = casual && tab === "image" && imageMode === "product";
   // Creator "Make an image" — a text-to-image generation (its own intent).
   const isCreate = casual && tab === "image" && imageMode === "create";
+  // Creator "Make music" — a text-to-song generation on its own casual tab.
+  const isMusic = casual && tab === "music";
   const submitIntent = isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
-  const verb = isCreate ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
-  const noun = isCreate ? "image" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
-  const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : d.costs.blog;
+  const verb = isCreate || isMusic ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
+  const noun = isCreate ? "image" : isMusic ? "song" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
+  const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : d.costs.blog;
   const cost = baseCost + engineFee;
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
-  const cfgReady = tab === "blog" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
+  const cfgReady = tab === "blog" || tab === "music" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
   // The Service/offer toggle only EXISTS on two of the four surfaces, but its
   // state survived a tab or mode change and the hidden field was submitted
   // regardless. So a merchant who tried Service on the product screen, backed
@@ -1238,7 +1263,7 @@ export default function WebStudio() {
   // photo (upload OR url) for anything that should SHOW the product; services
   // legitimately have nothing to photograph.
   // "Make an image" generates from text — no photo required.
-  const needsPhoto = tab !== "blog" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim();
+  const needsPhoto = tab !== "blog" && tab !== "music" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim();
   // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
   // (title, photo, presenter, cartoon style) disabled the button; the one that
   // bites a brand-new trialist first did not. A Studio trial spends from a
@@ -1248,7 +1273,7 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || shortBy > 0;
 
   return (
     <div>
@@ -1269,7 +1294,7 @@ export default function WebStudio() {
       <div className="ws-tabs">
         {/* Casual drops Article (every blog angle is sell-coded) and Import (a
             store-catalogue concept) — it's about making & editing, not merchandising. */}
-        {((casual ? [["video", "Video"], ["image", "Image"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
+        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{label}
           </button>
@@ -1627,9 +1652,9 @@ export default function WebStudio() {
         {/* ---- Shared product fields + CTA ---- */}
         {cfgReady && (
           <>
-            {/* "Make an image" generates from text — it needs no subject/photo,
-                so the whole step-2 block is skipped for it. */}
-            {!isCreate && (<>
+            {/* "Make an image" and "Make music" generate from text — they need
+                no subject/photo, so the whole step-2 block is skipped for them. */}
+            {!isCreate && !isMusic && (<>
             <StepHead n={2} title={casual ? "Your subject" : "Your product"} hint={casual ? "what this is about" : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
@@ -1786,7 +1811,7 @@ export default function WebStudio() {
             )}
             </>)}
 
-            <StepHead n={3} title={isCreate ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isCreate ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
+            <StepHead n={3} title={isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
             {tab === "image" && !casual && (
               <>
                 <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
@@ -1858,13 +1883,16 @@ export default function WebStudio() {
                       : isEdit
                         ? editOp === "bgswap" ? "Describe the new background" : editOp === "replace" ? "What to change" : editOp === "cartoonize" ? "Cartoon style" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "No input needed" : editOp === "restyle" ? "Describe the look" : "Describe your changes"
                         : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
+                    : tab === "music" ? "Describe your music"
                     : "Topic"}{" "}
-                  <span className="ws-opt">{isCreate ? "required" : isEdit && (editOp === "replace" || !editOp) ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
+                  <span className="ws-opt">{isCreate || isMusic ? "required" : isEdit && (editOp === "replace" || !editOp) ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
                 </div>
                 <input className="wb-in" value={direction} maxLength={300}
                   disabled={isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")}
                   placeholder={
-                    tab === "image"
+                    tab === "music"
+                      ? "e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat"
+                    : tab === "image"
                       ? isCreate
                         ? "e.g. a red panda astronaut floating over neon Tokyo at night"
                         : isEdit
@@ -1912,7 +1940,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && !isEdit && !isCreate && (
+            {tab !== "blog" && !isEdit && !isCreate && !isMusic && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">How many</span>
                 <div className="ws-burst-steps">

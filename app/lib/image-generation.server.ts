@@ -4129,6 +4129,24 @@ async function persistRemote(url: string, ext: "jpg" | "png"): Promise<string> {
   return `/renders/${fileName}`;
 }
 
+/** Download a finished remote AUDIO render (an mp3 from a music model) to the
+ *  durable disk and mirror it — persistRemote's twin for the Music generator.
+ *  (persistRemote is jpg|png-only and prefixes files `img-`.) Returns the
+ *  public /renders/aud-<id>.mp3 path. The base name stays [a-zA-Z0-9_-] so the
+ *  /renders serve-route allowlist accepts it. */
+export async function persistRemoteAudio(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`audio fetch ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 2_000) throw new Error("audio came back empty");
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `aud-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp3`;
+  fs.writeFileSync(path.join(dir, fileName), buf);
+  try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
+  return `/renders/${fileName}`;
+}
+
 /** img2img for a photo edit: nano-banana (strongest identity-preserving editor),
  *  flux-kontext-pro fallback — the same pair the ad pipeline uses. */
 async function editImg2Img(imageUrl: string, prompt: string): Promise<string> {
@@ -4173,7 +4191,7 @@ export async function tagAssetSection(assetId: string | null | undefined, sectio
 }
 
 export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap" | "colorize" | "upscale" | "replace" | "describe";
-const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "replace"]);
+const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "replace", "describe"]);
 export function isEditOp(x: unknown): x is EditOp { return typeof x === "string" && EDIT_OPS.has(x); }
 
 /** Casual "edit a photo" — one img2img transform on the user's OWN photo, saved

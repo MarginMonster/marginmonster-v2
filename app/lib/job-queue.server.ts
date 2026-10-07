@@ -6,6 +6,7 @@ import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
+import { generateMusic } from "./music-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
@@ -24,6 +25,7 @@ const MAX_ATTEMPTS = 3;
 export const REFUND_BY_TYPE: Record<string, number> = {
   GENERATE_VIDEO_AD: TOKEN_COST.video,
   GENERATE_IMAGE_AD: TOKEN_COST.image,
+  GENERATE_SONG: TOKEN_COST.music,
   GENERATE_BLOG_POST: TOKEN_COST.blog,
   // The boost service fee is charged up front too, and a launch that burns
   // through its retries left the merchant 25 tokens down with no campaign to
@@ -741,6 +743,32 @@ async function runJob(
         if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
         if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
       } catch { /* non-fatal */ }
+      break;
+    }
+
+    case "GENERATE_SONG": {
+      // Creator "Make music" — standalone AI audio track. Token-only (no quota
+      // counter like video). Prompt rides payload.musicPrompt. The generator
+      // writes the AUDIO asset; we just stamp + tag it into the Creator gallery.
+      if (!shop?.activePlan) throw new Error("Shop missing active plan");
+      // Belt-and-braces tier gate, like the video case: a downgrade between
+      // enqueue and run must not slip a locked generator through. A throw here
+      // terminal-fails the job → refundPrepaidOnce returns the tokens.
+      {
+        const { assertCapability } = await import("./capabilities.server");
+        assertCapability(shop.activePlan, "music");
+      }
+      const musicAssetId = await generateMusic({
+        shopId,
+        prompt: (payload.musicPrompt as string) || (payload.direction as string) || "",
+        title: payload.productTitle as string | undefined,
+      });
+      await stampProductUrl(musicAssetId, payload);
+      await tagAssetSection(musicAssetId, payload.section as string | undefined);
+      if (payload.prePaid) {
+        try { await maybeTickQuestline(payload, shopId, true, musicAssetId); }
+        catch (e) { console.error("[job] song accounting failed (non-fatal):", e); }
+      }
       break;
     }
 

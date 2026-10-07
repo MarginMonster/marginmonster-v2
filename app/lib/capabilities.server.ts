@@ -55,11 +55,15 @@ export function capabilitiesFor(plan: PlanLike | null | undefined): Set<Capabili
   const caps = isTrialing(plan)
     ? (isCreatorTier
         ? new Set<Capability>([...TIER_CAPABILITIES[tier], "creator"])
-        : new Set<Capability>([...TIER_CAPABILITIES.STUDIO, ...TIER_CAPABILITIES[tier], "creator"]))
+        // "creator" and "music" are granted as a pair everywhere (the add-on
+        // below, the CREATOR/ANTHEM tiers) — so the Creator "taste" a marketing
+        // trial gets is complete: image/edit AND music, not music walled off.
+        : new Set<Capability>([...TIER_CAPABILITIES.STUDIO, ...TIER_CAPABILITIES[tier], "creator", "music"]))
     : new Set<Capability>(TIER_CAPABILITIES[tier]);
-  // The $6.99 Creator add-on unlocks the Creator section on top of a marketing
-  // tier. (The CREATOR and ANTHEM/Legend tiers already include "creator".)
-  if (plan.creatorAddon) caps.add("creator");
+  // The $6.99 Creator add-on unlocks the Creator section — and everything in
+  // it (image/photo-edit via "image", plus "music") — on top of a marketing
+  // tier. (The CREATOR and ANTHEM/Legend tiers already include both.)
+  if (plan.creatorAddon) { caps.add("creator"); caps.add("music"); }
   return caps;
 }
 

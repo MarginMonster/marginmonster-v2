@@ -149,7 +149,7 @@ export async function deleteObject(key: string): Promise<void> {
 
 const mimeFor = (name: string): string => {
   const ext = name.split(".").pop()?.toLowerCase();
-  return ext === "mp4" ? "video/mp4" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+  return ext === "mp4" ? "video/mp4" : ext === "mp3" ? "audio/mpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
 };
 
 /** Object key for a render file name. Kept flat under a renders/ prefix. */

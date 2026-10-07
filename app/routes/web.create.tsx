@@ -20,16 +20,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Your most recent CREATOR pieces only — tagged section:"creator" at
   // generation (see the Archive split). Marketing content never shows here.
   const recent = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["IMAGE_AD", "VIDEO_AD"] }, metaJson: { contains: '"section":"creator"' } },
+    where: { shopId: shop.id, type: { in: ["IMAGE_AD", "VIDEO_AD", "AUDIO"] }, metaJson: { contains: '"section":"creator"' } },
     orderBy: { createdAt: "desc" },
     take: 8,
     select: { id: true, type: true, bodyJson: true, title: true },
   });
   const pieces = recent
     .map((a) => {
-      let b: { videoUrl?: string; imageUrl?: string } = {};
+      let b: { videoUrl?: string; imageUrl?: string; audioUrl?: string } = {};
       try { b = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
-      return { id: a.id, isVideo: a.type === "VIDEO_AD", media: b.videoUrl || b.imageUrl || null, title: a.title || "Untitled" };
+      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || null, title: a.title || "Untitled" };
     })
     .filter((p) => !!p.media)
     .slice(0, 6);
@@ -48,6 +48,7 @@ const TOOLS: Tool[] = [
   { key: "edit", emoji: "🎨", title: "Edit a photo", sub: "Restyle, cartoonize, swap or remove the background", to: "/web/studio?do=edit" },
   { key: "video", emoji: "🎬", title: "Make a video", sub: "A short, shareable clip from your photo", to: "/web/studio?do=video" },
   { key: "presenter", emoji: "🧑", title: "With a presenter", sub: "A character holds or shows off your thing", to: "/web/studio?do=presenter" },
+  { key: "music", emoji: "🎵", title: "Make music", sub: "Describe a track, get an original song", to: "/web/studio?do=music" },
   { key: "helpurr", emoji: "🐾", title: "Ask Helpurr", sub: "Your AI helper — ideas, edits, anything", event: "helpurr:open" },
   { key: "gallery", emoji: "🖼", title: "My Gallery", sub: "Everything you've made, ready to share", to: "/web/archive?section=creator" },
 ];
@@ -97,11 +98,13 @@ export default function CreatorHome() {
           </div>
           <div className="cr-recent-row">
             {pieces.map((p) => (
-              <Link key={p.id} to="/web/archive?section=creator" className="cr-piece" title={p.title}>
-                {p.isVideo
-                  ? <video src={p.media!} className="cr-piece-media" muted playsInline preload="metadata" />
-                  : <span className="cr-piece-media" style={{ backgroundImage: `url(${p.media})` }} />}
-                {p.isVideo && <span className="cr-piece-play" aria-hidden="true"><Ico n="play" size={16} /></span>}
+              <Link key={p.id} to={`/web/archive?section=creator${p.isAudio ? "&tab=music" : p.isVideo ? "&tab=video" : "&tab=image"}`} className="cr-piece" title={p.title}>
+                {p.isAudio
+                  ? <span className="cr-piece-media cr-piece-audio"><Ico n="music" size={26} /></span>
+                  : p.isVideo
+                    ? <video src={p.media!} className="cr-piece-media" muted playsInline preload="metadata" />
+                    : <span className="cr-piece-media" style={{ backgroundImage: `url(${p.media})` }} />}
+                {(p.isVideo || p.isAudio) && <span className="cr-piece-play" aria-hidden="true"><Ico n="play" size={16} /></span>}
               </Link>
             ))}
           </div>
@@ -142,6 +145,7 @@ const CR_CSS = `
 .cr-recent-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
 .cr-piece{position:relative;display:block;border-radius:14px;overflow:hidden;aspect-ratio:1/1;border:1px solid var(--line,#E4DFCF);background:#EFEADB}
 .cr-piece-media{display:block;width:100%;height:100%;object-fit:cover;background-size:cover;background-position:center}
+.cr-piece-audio{display:grid;place-items:center;background:linear-gradient(150deg,#0C7A46,#14201A);color:#F4F1E6}
 .cr-piece-play{position:absolute;inset:0;margin:auto;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:rgba(12,18,14,.5);color:#fff}
 .cr-empty{margin-top:24px;padding:18px;border-radius:16px;background:var(--paper,#F4F1E6);border:1px dashed var(--line,#E4DFCF);font-size:13.5px;color:var(--ink2,#4A554E);text-align:center}
 .cr-empty b{color:var(--ink,#14201A)}

@@ -23,7 +23,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     const name = params.file || "";
     // allow the image ad formats too — this guard used to be .mp4-only, which
     // 404'd every img-*.jpg and made all image ads render blank.
-    if (!/^[a-zA-Z0-9_-]+\.(mp4|jpe?g|png|webp)$/.test(name)) {
+    if (!/^[a-zA-Z0-9_-]+\.(mp4|mp3|jpe?g|png|webp)$/.test(name)) {
       return new Response("Not found", { status: 404 });
     }
     const filePath = path.join(process.cwd(), "data", "renders", name);
@@ -68,7 +68,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     }
     const size = fs.statSync(filePath).size;
     const ext = name.split(".").pop() as string;
-    const mime = ext === "mp4" ? "video/mp4" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+    const mime = ext === "mp4" ? "video/mp4" : ext === "mp3" ? "audio/mpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
     const baseHeaders: Record<string, string> = {
       "Content-Type": mime,
       "Accept-Ranges": "bytes",
