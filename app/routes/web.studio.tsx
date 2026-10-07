@@ -420,6 +420,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // selections. This is the real guard; client-side hiding is only UX. Billing
   // and capability gates are untouched either way.
   const casualMode = form.get("mode") === "casual";
+  // Which SECTION this piece belongs to — casual = the Creator gallery, marketing
+  // = the Marketing archive. Carried on every job so the Archive can split them.
+  const genSection = casualMode ? "creator" : "marketing";
   const service = !casualMode && form.get("service") === "1"; // intangible offering — sell the outcome
   const wear = form.get("wear") === "1";
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
@@ -539,6 +542,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       for (let i = 0; i < n; i++) {
         // Services: the presenter explains the offer to camera — nothing to hold.
         await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
+          section: genSection,
           productTitle, productImageUrl, productUrl, customPrompt: videoDirection, productDescription: direction,
           style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
           contentType, cartoonStyle,
@@ -592,6 +596,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       for (let i = 0; i < n; i++) {
         // Services skip the presenter-hold and product photo → outcome scene.
         await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+          section: genSection,
           // ALWAYS FRESH FROM THE STUDIO.
           //
           // This was `n > 1`: a burst composed fresh, a single press reused the
@@ -643,6 +648,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const editFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
       charged(TOKEN_COST.image, editFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        section: "creator",
         editOp, sourceImageUrl: productImageUrl, editPrompt: direction,
         // Carried only so the Archive "cooking" tile has a thumbnail + label
         // while the edit runs (the worker's edit path ignores them).
@@ -657,6 +663,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const blogFromExtra = (await spendTokens(shop.id, TOKEN_COST.blog)).fromExtra;
       charged(TOKEN_COST.blog, blogFromExtra);
       await enqueueJob(shop.id, "GENERATE_BLOG_POST", {
+        section: genSection,
         productTitle, productUrl, productDescription: direction, serviceMode: service,
         prePaid: true, chargedTokens: TOKEN_COST.blog, chargedFromExtra: blogFromExtra,
       });
@@ -1203,7 +1210,7 @@ export default function WebStudio() {
       <h1 className="wb-h1">{casual ? "Create" : "Content Studio"}</h1>
       <p className="wb-sub">
         {casual
-          ? <>Upload a photo to edit, or make an image or video to share — it lands in your <Link to="/web/archive">gallery</Link>. </>
+          ? <>Upload a photo to edit, or make an image or video to share — it lands in your <Link to="/web/archive?section=creator">gallery</Link>. </>
           : <>Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. </>}
         Balance: <Ico n="coin" /> {d.tokens.toLocaleString("en-US")}
       </p>
@@ -1888,7 +1895,7 @@ export default function WebStudio() {
             </div>
             <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued} is being made`}</b>
             <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>{casual ? "gallery" : "Archive"}</b> over the next few minutes — a set of different takes, all ready to {casual ? "share" : "post"}.</> : <>It lands in your <b>{casual ? "gallery" : "Archive"}</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
-            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}`}>{casual ? "View gallery ›" : "View Archive ›"}</Link>
+            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}${casual ? "&section=creator" : ""}`}>{casual ? "View gallery ›" : "View Archive ›"}</Link>
             <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
           </div>
         </div>

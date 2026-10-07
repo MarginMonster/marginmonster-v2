@@ -4,7 +4,7 @@
 import { db } from "../db.server";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
-import { generateImageAd, editImage, isEditOp } from "./image-generation.server";
+import { generateImageAd, editImage, isEditOp, tagAssetSection } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
@@ -485,6 +485,7 @@ async function runJob(
       // from exactly one place: the end of the VIDEO case. Every image ad
       // dropped the link, and /go/a then fell back to the storefront.
       await stampProductUrl(typeof imgAssetId === "string" ? imgAssetId : undefined, payload);
+      await tagAssetSection(typeof imgAssetId === "string" ? imgAssetId : undefined, payload.section as string | undefined);
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements
       try {
@@ -707,6 +708,7 @@ async function runJob(
         });
       }
       await stampProductUrl(forgedAssetId, payload);
+      await tagAssetSection(forgedAssetId, payload.section as string | undefined);
 
       // Accounting. Questline videos were pre-paid on accept (tokens) and don't
       // touch the manual video quota; standalone Studio videos burn a take.

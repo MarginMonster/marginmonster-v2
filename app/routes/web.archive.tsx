@@ -71,6 +71,20 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
 
+  // SEPARATE ARCHIVES per section. Creator (casual) pieces carry
+  // metaJson.section === "creator"; everything else — marketing content and all
+  // legacy assets made before the split — is the Marketing archive. Filtered on
+  // the stringified metaJson (no schema migration): JSON.stringify writes the
+  // key with no spaces, so this substring is stable.
+  const section = new URL(request.url).searchParams.get("section") === "creator" ? "creator" : "marketing";
+  const CREATOR_TAG = '"section":"creator"';
+  // metaJson is a non-nullable column (always at least "{}"), so a plain NOT is
+  // safe — no null rows to drop. Marketing = everything NOT tagged creator
+  // (which includes all legacy assets made before the section split).
+  const sectionWhere = section === "creator"
+    ? { metaJson: { contains: CREATOR_TAG } }
+    : { NOT: { metaJson: { contains: CREATOR_TAG } } };
+
   // How many to render. This USED to be a hard `take: 60` with no pagination
   // and no total — which quietly hid everything older than the newest 60. That
   // was not merely cosmetic: un-kept media is permanently deleted at 30 days
@@ -87,7 +101,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // counting the truncated page and therefore under-reported the library.
   const totalsRaw = await db.asset.groupBy({
     by: ["type"],
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] }, ...sectionWhere },
     _count: { _all: true },
   });
   const totals = { video: 0, image: 0, blog: 0 };
@@ -99,7 +113,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const totalAll = totals.video + totals.image + totals.blog;
 
   const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] }, ...sectionWhere },
     orderBy: { createdAt: "desc" },
     take: show,
   });
@@ -116,8 +130,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_BLOG_POST: TOKEN_COST.blog };
   const cookingCards: { jobId: string; kind: "video" | "image" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
+    // Cooking tiles belong to the section they were started in.
+    const jobSection = p.section === "creator" ? "creator" : "marketing";
+    if (jobSection !== section) continue;
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
     const failed = j.status === "FAILED";
     const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
@@ -145,6 +162,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // per-item countdown so nothing vanishes as a surprise. Blogs never expire.
   const CACHE_DAYS = 30;
   return json({
+    section,
     canPost: socialProviderEnabled() && linked.length > 0,
     linkedCount: linked.length,
     linked,
@@ -730,7 +748,11 @@ const WA_CSS = `
 `;
 
 export default function WebArchive() {
-  const { assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
+  const { section, assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
+  const isCreator = section === "creator";
+  // Preserve the section across tab links, "show more", and revalidation so the
+  // Gallery stays the Gallery.
+  const sectionQ = isCreator ? "section=creator" : "";
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -826,9 +848,9 @@ export default function WebArchive() {
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
-      <h1 className="wb-h1">Archive</h1>
+      <h1 className="wb-h1">{isCreator ? "Gallery" : "Archive"}</h1>
       <p className="wb-sub">
-        Everything you&apos;ve made — tap a piece to watch it big, keep it, download it{canPost ? `, or post it to your ${linkedCount} linked account${linkedCount > 1 ? "s" : ""}` : ""}.
+        {isCreator ? "Everything you've made in Creator" : "Everything you've made"} — tap a piece to watch it big, keep it, download it{canPost ? `, or ${isCreator ? "share" : "post"} it to your ${linkedCount} linked account${linkedCount > 1 ? "s" : ""}` : ""}.
         {cooking > 0 && <> · <b>{cooking} piece{cooking > 1 ? "s" : ""} cooking below</b> — this page updates itself.</>}
       </p>
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>Want one-tap posting? <Link to="/web/connect">Link your socials</Link>.</p>}
@@ -873,7 +895,7 @@ export default function WebArchive() {
         <p className="wa-shelfnote">
           Showing <b>{shelf.length}</b> of <b>{tabTotal}</b>{" "}
           {tab === "blog" ? "articles" : `${tab}s`}.{" "}
-          <Link to={`?show=${nextShow}`} preventScrollReset>Show older pieces →</Link>
+          <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>Show older pieces →</Link>
         </p>
       )}
       {shelf.length === 0 && genCards.length === 0 && failCards.length === 0 && (

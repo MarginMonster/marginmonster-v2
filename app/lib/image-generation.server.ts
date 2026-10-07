@@ -4143,6 +4143,34 @@ async function editImg2Img(imageUrl: string, prompt: string): Promise<string> {
   }
 }
 
+/** Flag a finished asset with its SECTION so the Archive can split Creator from
+ *  Marketing. Merges into metaJson (no schema change). Only "creator" is tagged —
+ *  the Marketing archive is everything NOT tagged creator, so marketing + legacy
+ *  need no write. Best-effort: a tag failure must never fail a paid generation. */
+export async function tagAssetSection(assetId: string | null | undefined, section: string | undefined): Promise<void> {
+  if (!assetId || section !== "creator") return;
+  // Compare-and-swap, not a blind write: the worker and every HTTP route share
+  // one event loop, so a click/caption write could land between our read and
+  // write. updateMany pins the metaJson we parsed; a miss means it changed under
+  // us, so we re-read and retry once rather than clobbering the other write.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const a = await db.asset.findUnique({ where: { id: assetId }, select: { metaJson: true } });
+      if (!a) return;
+      const prev = a.metaJson || "{}";
+      let meta: Record<string, unknown> = {};
+      try { meta = JSON.parse(prev); } catch { /* ignore */ }
+      if (meta.section === "creator") return;
+      meta.section = "creator";
+      const r = await db.asset.updateMany({ where: { id: assetId, metaJson: prev }, data: { metaJson: JSON.stringify(meta) } });
+      if (r.count > 0) return;
+    } catch (e) {
+      console.warn("[section] tag failed (non-fatal):", e instanceof Error ? e.message.slice(0, 120) : e);
+      return;
+    }
+  }
+}
+
 export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap";
 const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap"]);
 export function isEditOp(x: unknown): x is EditOp { return typeof x === "string" && EDIT_OPS.has(x); }
@@ -4196,7 +4224,7 @@ export async function editImage(opts: {
       shopId, type: "IMAGE_AD", status: "PENDING",
       title: `Photo edit — ${label}`,
       bodyJson: JSON.stringify({ imageUrl: localUrl, prompt: prompt || null, method: "edit", editOp }),
-      metaJson: JSON.stringify({ kind: "edit", editOp, sourceImageUrl }),
+      metaJson: JSON.stringify({ kind: "edit", section: "creator", editOp, sourceImageUrl }),
     },
   });
   return asset.id;
