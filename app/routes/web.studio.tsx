@@ -22,6 +22,7 @@ import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
 import { CREATE_STYLES } from "../lib/create-styles";
+import { MUSIC_STYLES, MUSIC_STYLE_BY_KEY } from "../lib/music-styles";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
 import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
@@ -694,13 +695,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (intent === "music") {
       // Creator "Make music" — text-to-song. No product, no photo.
       assertCapability(shop.activePlan, "music");
-      const musicPrompt = trimToWord((form.get("musicPrompt") as string) || (direction || ""), 500);
-      if (!musicPrompt) return json({ error: "Describe the music you want." });
+      const musicBase = trimToWord((form.get("musicPrompt") as string) || (direction || ""), 500);
+      if (!musicBase) return json({ error: "Describe the music you want." });
+      // Fold the picked genre/mood preset into the prompt (DeepAI-style style
+      // selection on top of the free-text prompt). Unknown keys are ignored.
+      const musicStyleKey = ((form.get("musicStyle") as string) || "").trim();
+      const musicStyle = MUSIC_STYLE_BY_KEY[musicStyleKey];
+      const musicPrompt = musicStyle ? `${musicBase}. Style: ${musicStyle.prompt}` : musicBase;
       const musicFromExtra = (await spendTokens(shop.id, TOKEN_COST.music)).fromExtra;
       charged(TOKEN_COST.music, musicFromExtra);
       await enqueueJob(shop.id, "GENERATE_SONG", {
         section: "creator", musicPrompt,
-        productTitle: musicPrompt.slice(0, 60),
+        productTitle: musicBase.slice(0, 60),
         prePaid: true, chargedTokens: TOKEN_COST.music, chargedFromExtra: musicFromExtra,
       });
       backed(TOKEN_COST.music, musicFromExtra);
@@ -1027,6 +1033,8 @@ export default function WebStudio() {
   );
   // Creator "Make an image" art style.
   const [createStyle, setCreateStyle] = useState<string | null>(null);
+  // Creator "Make music" genre/mood preset (optional, folded into the prompt).
+  const [musicStyle, setMusicStyle] = useState<string | null>(null);
   // How many to make in one go. Kept in one place across tabs so the choice
   // survives switching, but re-clamped below — video caps lower than image.
   const [burst, setBurst] = useState(1);
@@ -1071,6 +1079,7 @@ export default function WebStudio() {
   // whenever we leave so a stale op can't flag a later submit as an edit.
   useEffect(() => { if (!(casual && tab === "image" && imageMode === "product")) setEditOp(null); }, [casual, tab, imageMode]);
   useEffect(() => { if (!(casual && tab === "image" && imageMode === "create")) setCreateStyle(null); }, [casual, tab, imageMode]);
+  useEffect(() => { if (!(casual && tab === "music")) setMusicStyle(null); }, [casual, tab]);
   // Import-by-URL (works for any storefront).
   const [showImport, setShowImport] = useState(false);
   // Catalogue picker: the chosen product's URL rides along so the social
@@ -1869,6 +1878,20 @@ export default function WebStudio() {
                         <button type="button" key={i} className={`ws-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}><Ico n={s.icon} /> {s.label}</button>
                       ))}
                     </div>
+                  </>
+                )}
+                {tab === "music" && (
+                  <>
+                    <div className="ws-lbl">Genre / mood <span className="ws-opt">optional</span></div>
+                    <div className="ws-fmtcats" role="tablist" aria-label="Music style">
+                      {MUSIC_STYLES.map((s) => (
+                        <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
+                          className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
+                          <span aria-hidden="true">{s.emoji}</span> {s.name}
+                        </button>
+                      ))}
+                    </div>
+                    {musicStyle && <input type="hidden" name="musicStyle" value={musicStyle} />}
                   </>
                 )}
                 {/* WHAT THIS BOX DOES DEPENDS ON WHAT IS ABOVE IT.
