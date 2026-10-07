@@ -4172,7 +4172,7 @@ export async function tagAssetSection(assetId: string | null | undefined, sectio
   }
 }
 
-export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap" | "colorize" | "upscale" | "replace";
+export type EditOp = "restyle" | "cartoonize" | "bgremove" | "bgswap" | "colorize" | "upscale" | "replace" | "describe";
 const EDIT_OPS: ReadonlySet<string> = new Set(["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "replace"]);
 export function isEditOp(x: unknown): x is EditOp { return typeof x === "string" && EDIT_OPS.has(x); }
 
@@ -4228,10 +4228,12 @@ export async function editImage(opts: {
     }
     localUrl = await persistRemote(out, "jpg");
     label = "upscaled";
-  } else if (editOp === "replace") {
-    // Prompt-guided targeted edit ("replace the sky with a sunset").
-    if (!prompt) throw new Error("Describe what to change — e.g. 'replace the sky with a sunset'.");
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Change only that; keep the rest of the image exactly the same — same subject, composition and style. No text, no watermark.`), "jpg");
+  } else if (editOp === "replace" || editOp === "describe") {
+    // Free-text prompt-driven edit — DeepAI's "describe your changes" (and the
+    // "replace" quick-action share it). The model does exactly what's asked and
+    // leaves the rest alone.
+    if (!prompt) throw new Error("Describe the changes you want — e.g. 'make the shirt a purple hoodie'.");
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Apply exactly that change and keep everything else in the image the same — same subject, composition, framing and style. No added text, no watermark.`), "jpg");
     label = "edited";
   } else {
     const stylePrompt = editOp === "cartoonize"
