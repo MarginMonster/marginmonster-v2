@@ -953,7 +953,12 @@ export default function WebStudio() {
 
   // Deep-link support: arrive with ?tab= and ?product= pre-filled.
   const [searchParams] = useSearchParams();
-  const initTab = (["video", "image", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
+  // ?do= lets the Creator home deep-link straight into a flow: edit/image →
+  // Image tab, presenter → Image+presenter, video → Video tab. ?tab= still works.
+  const doParam = searchParams.get("do");
+  const initTab = doParam === "video" ? "video"
+    : (doParam === "edit" || doParam === "image" || doParam === "presenter") ? "image"
+    : (["video", "image", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<Tab>(initTab || "video");
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   const [imageUrl, setImageUrl] = useState("");
@@ -961,7 +966,9 @@ export default function WebStudio() {
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
-  const [imageMode, setImageMode] = useState<"product" | "presenter" | null>(null);
+  const [imageMode, setImageMode] = useState<"product" | "presenter" | null>(
+    doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : null,
+  );
   // How many to make in one go. Kept in one place across tabs so the choice
   // survives switching, but re-clamped below — video caps lower than image.
   const [burst, setBurst] = useState(1);

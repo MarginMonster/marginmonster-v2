@@ -82,7 +82,7 @@ export default function WebLayout() {
           </Link>
           {authed && (
             <nav className="wb-tabs">
-              <Link className={tab("/web")} to="/web">Dashboard</Link>
+              <Link className={tab(mode === "casual" ? "/web/create" : "/web")} to={mode === "casual" ? "/web/create" : "/web"}>{mode === "casual" ? "Home" : "Dashboard"}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">Studio</Link>
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
@@ -201,6 +201,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     }
   }, [open, msgs.length, authed, hud.name, hud.ads, mode]);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
+  // Let any page open the chat — the Creator home's "Ask Helpurr" card fires this.
+  useEffect(() => { const h = () => setOpen(true); window.addEventListener("helpurr:open", h); return () => window.removeEventListener("helpurr:open", h); }, []);
 
   const send = async (text: string) => {
     const t = text.trim();
