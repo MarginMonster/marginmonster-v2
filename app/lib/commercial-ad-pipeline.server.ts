@@ -28,7 +28,7 @@ import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { composeResolution } from "./feature-flags.server";
-import { CLAIMS_GUARDRAIL } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { trimToWord } from "./text-trim";
 import { mirrorRender } from "./object-storage.server";
 import {
@@ -116,8 +116,8 @@ export async function planCommercial(
   const raw = await anthropicText(
     [
       serviceMode
-        ? `You are directing a 15-second cinematic TV-style commercial for a service / offer: "${productTitle}". There is nothing physical to photograph — the ad sells the OUTCOME of the offer.`
-        : `You are directing a 15-second cinematic TV-style commercial for: "${productTitle}".`,
+        ? `You are directing a 15-second cinematic TV-style commercial for a service / offer: "${stripPromoTag(productTitle)}". There is nothing physical to photograph — the ad sells the OUTCOME of the offer.`
+        : `You are directing a 15-second cinematic TV-style commercial for: "${stripPromoTag(productTitle)}".`,
       productDescription ? `${serviceMode ? "Offer" : "Product"}: ${productDescription.slice(0, 400)}` : "",
       direction ? `The merchant's creative direction (FOLLOW IT): ${direction.slice(0, 600)}` : "",
       ``,
@@ -132,7 +132,10 @@ export async function planCommercial(
       `CRITICAL: every scene sentence MUST restate the protagonist's appearance (gender, age, hair, wardrobe) in full — each scene is rendered by an image model that sees ONLY that sentence, and any detail you drop gets re-invented differently, breaking the character between shots.`,
       `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
       `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
-      productDescription ? `Every spoken claim in "narration" must come from the ${serviceMode ? "offer" : "product"} details above — do not invent numbers, materials or results.` : "",
+      // UNCONDITIONAL on purpose: when a product has no description this anchor
+      // used to vanish, leaving a title-only spot free to invent features and
+      // results. It must fire every time, description or not.
+      `Every spoken claim in "narration" and "tagline" must be supported by the ${serviceMode ? "offer" : "product"} title and any details above — invent no features, numbers, materials, results, benefits or outcomes that are not stated. If there is nothing concrete to claim, name the ${serviceMode ? "offer" : "product"} and sell only on what is given.`,
       // Narration and tagline are spoken claims — no invented endorsement,
       // authenticity or scarcity built on a real brand/tag name either.
       `This applies to "narration" and "tagline": ${CLAIMS_GUARDRAIL}`,
@@ -154,12 +157,14 @@ export async function planCommercial(
   j.beats = j.beats.slice(0, 5).map((b) => ({
     scene: trimToWord(String(b.scene || ""), 300),
     motion: trimToWord(String(b.motion || "slow cinematic push-in"), 120),
-    // Narration is SPOKEN — a mid-word cut is audible.
-    narration: trimToWord(String(b.narration || ""), 140),
+    // Narration is SPOKEN — a mid-word cut is audible. Deterministic backstop:
+    // strip an implied endorsement possessive ("Nintendo's") the in-prompt
+    // guardrail may not have caught.
+    narration: dropOrgEndorsementPossessive(trimToWord(String(b.narration || ""), 140)),
   }));
   // The tagline is burned into the end card AND read aloud, so a hard cut is
   // both seen and heard.
-  j.tagline = trimToWord(String(j.tagline || productTitle), 60);
+  j.tagline = dropOrgEndorsementPossessive(trimToWord(String(j.tagline || stripPromoTag(productTitle)), 60));
   // A tagline pinned in the direction is a hard override, not a suggestion —
   // the writer kept "improving" pinned lines into its own copy.
   const pin = direction?.match(/tagline must be exactly:\s*(.+?)\s*$/i);

@@ -37,6 +37,7 @@ import {
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
@@ -394,8 +395,8 @@ async function writeCartoonScriptOnce(o: {
   const scriptPrompt = [
     `You write voice-over scripts for short animated (cartoon) video ads.${langDirective(o.contentLang)}`,
     o.serviceMode
-      ? `This is a SERVICE / offer (not a physical product): "${o.productTitle}". Sell the RESULT the customer gets.`
-      : `Product: "${o.productTitle}".`,
+      ? `This is a SERVICE / offer (not a physical product): "${stripPromoTag(o.productTitle)}". Sell the RESULT the customer gets.`
+      : `Product: "${stripPromoTag(o.productTitle)}".`,
     o.productDescription ? `Context: ${o.productDescription.slice(0, 300)}` : "",
     o.tone ? `Brand voice/tone: ${o.tone}.` : "",
     o.debranded ? `Sell what the item IS and what owning it feels like. Do not name any brand, franchise or character.` : "",
@@ -407,6 +408,9 @@ async function writeCartoonScriptOnce(o: {
     `beloved animated commercial. End with a short call to action.`,
     `SPEECH PACING (a voice model reads this aloud): commas where a person`,
     `breathes, a period at the END of every sentence. Short complete sentences.`,
+    // A spoken cartoon ad carries the same claim liability as a printed one —
+    // and this script is both HEARD and burned on-screen as captions.
+    CLAIMS_GUARDRAIL,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
   ].filter(Boolean).join("\n");
 
@@ -420,7 +424,10 @@ async function writeCartoonScriptOnce(o: {
   // `split(/\s+/)` scored a whole Chinese script as one word and discarded
   // it, which made Cartoon video impossible for every zh shop.
   if (scriptTooShort(script)) return "";
-  return endStop(capScript(script, 32));
+  // Deterministic backstop the in-prompt guardrail is documented not to always
+  // catch: strip an implied third-party endorsement possessive ("Comic-Con's
+  // pick") the model may still have written off a brand/tag name.
+  return dropOrgEndorsementPossessive(endStop(capScript(script, 32)));
 }
 
 /** Words that must never reach a viewer's ears. The failure this catches was

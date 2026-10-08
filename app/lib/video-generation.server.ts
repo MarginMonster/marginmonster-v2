@@ -9,6 +9,7 @@ import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { trimToWord } from "./text-trim";
+import { stripPromoTag } from "./ad-claims";
 import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, probeVideoDims, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import fs from "node:fs";
 import path from "node:path";
@@ -319,24 +320,35 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     " word, code and number printed on it unchanged and legible. Never redraw, restyle," +
     " relabel, re-number or resize it. Add no text, caption or watermark of your own —" +
     " the only lettering in frame is the product's own, exactly as photographed.";
+  // The branches that show a presenter or sell a service carry no productTruth,
+  // so an i2v model is free to burn in an invented badge, rating or price. This
+  // forbids that on every branch — an unverifiable on-screen claim is an FTC
+  // liability (16 CFR 465) exactly like a spoken one.
+  const noInventedText =
+    " Add no text, caption, badge, label, price, rating, star or watermark of your own in" +
+    " frame — no invented '#1', 'best seller', 'sale', 'X% off', '★★★★★' or review-count" +
+    " overlays; the only lettering allowed is what is genuinely printed on the real product shown.";
   const breakoutLook = `The product bursts OUT of a flat social-post card that sits behind it: the card stays static and flat while the product pushes further toward the camera in true 3D, its shadow sliding across the card as it emerges. Subtle parallax between the product, the card and the background, gentle float, premium product-commercial finish, vertical, photorealistic live-action footage.${productTruth}`;
   const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, confident slow camera push-in and orbit, premium big-brand energy, vertical, photorealistic live-action footage, not an illustration or 3D render.${productTruth}`;
+  // Strip a store curation tag ("– Comic-Con Pick") off the title before it
+  // steers the motion prompt toward an endorsement/superlative-flavored visual.
+  const cleanTitle = stripPromoTag(productTitle);
   const basePrompt =
     style === "AI_AVATAR" && avatar
       // This path has NO lip-sync (see VIDEO_MODEL note above), so a presenter
       // animated mid-speech is guaranteed to look out of time with whatever
       // audio plays over it — the same fault found in the cartoon pipeline.
       // Gestures and presence, not talking.
-      ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, warmly showing ${productTitle} to the camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, no lip movement, mouth closed or in a natural smile. Authentic hand-held creator feel, vertical.`
+      ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, warmly showing ${cleanTitle} to the camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, no lip movement, mouth closed or in a natural smile. Authentic hand-held creator feel, vertical.${noInventedText}`
       : style === "AI_AVATAR"
-        ? `UGC-style spokesperson warmly showing ${productTitle} to camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, mouth closed or smiling. Authentic, hand-held feel, vertical.`
+        ? `UGC-style spokesperson warmly showing ${cleanTitle} to camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, mouth closed or smiling. Authentic, hand-held feel, vertical.${noInventedText}`
         : params.breakout
-          ? `${breakoutLook} The product: ${productTitle}.`
+          ? `${breakoutLook} The product: ${cleanTitle}.`
           : params.commercial
-          ? `${commercialLook} The product: ${productTitle}.`
+          ? `${commercialLook} The product: ${cleanTitle}.`
           : params.serviceMode
-          ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${productTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.`
-          : `Dynamic product showcase video for ${productTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
+          ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${cleanTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.${noInventedText}`
+          : `Dynamic product showcase video for ${cleanTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
   // Bounded for the same reason the image pipeline bounds its brief: this is
   // appended AFTER the fidelity clause, so an unbounded paste buries it.
   const direction = trimToWord(params.customPrompt, 500) || undefined;

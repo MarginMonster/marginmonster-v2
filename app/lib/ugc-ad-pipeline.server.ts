@@ -28,7 +28,7 @@ import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRen
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
-import { CLAIMS_GUARDRAIL } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
@@ -959,7 +959,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       // 35-character Chinese script as ONE word, so every zh shop failed
       // this check forever and could not make a UGC ad at all.
       return scriptTooShort(raw) ? "" : raw;
-    }, params.productTitle, "ugc:script", params.productDescription);
+      // Strip a store curation tag ("– Comic-Con Pick") off the title BEFORE it
+      // becomes the grounding the writer anchors on — parity with the image
+      // generator, which the audit flagged this path was missing.
+    }, stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
     // ~12-13s budget — hard cap so it never runs past the lip-sync sweet spot.
     // In characters for CJK, where the old word cap could never fire. 36, not
     // 34: the spec is "26-32 words incl. the CTA" but the model routinely lands
@@ -970,6 +973,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // give the voice model a clean final stop so it doesn't rush/trail the
     // ending — 。for CJK, where a Latin full stop reads as a typo
     script = endStop(script);
+    // Deterministic backstop the in-prompt guardrail is documented not to always
+    // catch: an implied endorsement possessive ("Comic-Con's pick") the model
+    // may still write off a brand name carried in the description.
+    script = dropOrgEndorsementPossessive(script);
     await ckpt({ ckScript: script });
   }
 

@@ -1,5 +1,6 @@
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 
 /* AI caption + hashtag writer for auto-posted content.
  *
@@ -29,6 +30,10 @@ const TAG_CAP: Record<string, number> = { tiktok: 5, instagram: 6, facebook: 3 }
 export interface CaptionInput {
   productTitle: string;
   productType?: string;
+  // The real product description, so a PUBLIC caption has factual substance to
+  // anchor to instead of inventing it. Optional — callers pass it when they
+  // have it; absence just means less grounding, never a crash.
+  productDescription?: string;
   topic?: string;
   isVideo: boolean;
   platforms: string[];
@@ -123,8 +128,8 @@ export async function generateCaptionSet(
 
     const prompt = `You write high-performing social captions for an e-commerce brand. Write scroll-stopping captions that boost reach WITHOUT looking AI-generated or spammy.${langDirective(contentLang)}${contentLang && contentLang !== "en" ? " Hashtags may mix that language with high-reach English tags." : ""}
 
-Product: ${input.productTitle}${input.productType ? ` (${input.productType})` : ""}
-Format: ${medium}${input.topic ? `\nAngle/theme: ${input.topic}` : ""}
+Product: ${stripPromoTag(input.productTitle)}${input.productType ? ` (${input.productType})` : ""}
+${input.productDescription ? `Product details (ground every claim in these — invent nothing beyond them): ${input.productDescription.slice(0, 600)}\n` : ""}Format: ${medium}${input.topic ? `\nAngle/theme: ${input.topic}` : ""}
 ${voiceLines || "Brand voice: friendly, confident, modern."}
 
 Write a distinct caption for EACH of these platforms, tuned to how that platform rewards content:
@@ -136,6 +141,7 @@ Rules:
 - Do NOT put the hashtags inside the caption text — return them separately.
 - Do NOT include any link, price, or @mentions — those are added later.
 - Hashtags: no spaces, no # symbol in the array, real tags people search.
+- This caption is PUBLIC advertising the merchant is liable for. ${CLAIMS_GUARDRAIL}
 
 Return ONLY this JSON (only the platforms listed above):
 {
@@ -148,7 +154,9 @@ ${wanted.map((p) => `  "${p}": { "text": "caption here", "hashtags": ["tag1", "t
       const entry = parsed[p] as { text?: unknown; hashtags?: unknown } | undefined;
       const written = typeof entry?.text === "string" ? entry.text.trim() : "";
       set[p] = written
-        ? { text: written.slice(0, 300), hashtags: cleanTags(entry?.hashtags, p) }
+        // Deterministic backstop: strip an implied endorsement possessive
+        // ("Pokémon's pick") before the caption is published publicly.
+        ? { text: dropOrgEndorsementPossessive(written).slice(0, 300), hashtags: cleanTags(entry?.hashtags, p) }
         : { ...fb, fallback: true }; // model skipped this platform — retry it next time
     }
   } catch (e) {
@@ -188,7 +196,15 @@ export async function getOrMakeCaptions(
   const missing = wanted.filter((p) => !cached[p]?.text || poisoned(cached[p]));
   if (missing.length === 0) return cached;
 
-  const fresh = await generateCaptionSet(shopId, { ...input, platforms: missing });
+  // Best-effort grounding: if the asset stored the product description it was
+  // generated from, feed it to the writer so the PUBLIC caption anchors on real
+  // detail. Absent → the caller's value (usually none), which is still safe.
+  const descFromBody = typeof body.productDescription === "string" ? body.productDescription : undefined;
+  const fresh = await generateCaptionSet(shopId, {
+    ...input,
+    productDescription: input.productDescription || descFromBody,
+    platforms: missing,
+  });
   const merged: CaptionSet = { ...cached, ...fresh };
 
   // CACHE ONLY WHAT THE WRITER ACTUALLY WROTE.

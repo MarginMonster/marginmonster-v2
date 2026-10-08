@@ -23,6 +23,8 @@ export const CLAIMS_GUARDRAIL =
   "(4) State no superlative, ranking or market/category-performance claim as fact — no '#1', 'best', 'most-loved', 'top-rated', 'strongest-performing', 'fastest-growing', no 'S-tier'/tier ranking — unless the merchant's details support it. " +
   "(5) Promise no guarantee, warranty, refund, return or replacement — no 'lifetime', 'money-back', 'free replacement', 'satisfaction guaranteed', 'X-year warranty' — unless the merchant's details state that exact promise (it is a binding contract). " +
   "(6) In any comparison, state no specific factual claim about a competitor, rival brand or the category — contrast only on your product's own real, given strengths; never invent a rival's weakness or a 'most people…' statistic. " +
+  "(7) State no price, discount, sale, percentage-off or 'was/now' figure unless the merchant's details give that exact number — invent no '50% off', 'today only', 'lowest price' or deal. " +
+  "(8) Invent no social proof: no reviews, star ratings, review or sales counts ('4.9 stars', '10,000 sold', 'thousands of five-star fans'), testimonials, quotes or awards unless the merchant's details state them. " +
   "You MAY still name the product and its franchise descriptively and sell it on its real, given features.";
 
 // Merchants append store-internal curation/marketing labels to product titles —
