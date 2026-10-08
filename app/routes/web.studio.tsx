@@ -1287,7 +1287,7 @@ export default function WebStudio() {
   const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || shortBy > 0;
 
   return (
-    <div>
+    <div className={casual ? "ws-casual" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
       <h1 className="wb-h1">{casual ? "Create" : "Content Studio"}</h1>
       <p className="wb-sub">
@@ -2133,4 +2133,34 @@ const WS_STYLE = `
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
 .ws-tok .tb i{font-style:normal;font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);margin-left:5px}
 .ws-wallet{margin-top:8px;font-size:12.5px;font-weight:600;color:#7E5E13}
+
+/* ===================================================================
+   CASUAL (Creator) — premium, DeepAI-clean treatment. Scoped to
+   .ws-casual so the Marketing Studio is untouched. All features stay;
+   this only restyles. =================================================== */
+.ws-casual .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:34px;line-height:1.08;letter-spacing:-.025em;text-align:center;margin:8px 0 10px}
+.ws-casual .wb-sub{text-align:center;max-width:520px;margin:0 auto 20px;font-size:14.5px;color:var(--ink2,#4A554E)}
+.ws-casual .ws-tabs{justify-content:center;gap:8px;margin-bottom:18px}
+.ws-casual .ws-tab{border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.05);font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2,#4A554E);padding:9px 17px;transition:transform .12s,box-shadow .12s,color .12s}
+.ws-casual .ws-tab:hover{transform:translateY(-1px);box-shadow:0 10px 22px -12px rgba(20,32,26,.3);color:var(--ink,#14201A)}
+.ws-casual .ws-tab.on{background:linear-gradient(135deg,#12A85E,#0C7A46);color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(12,122,70,.3)}
+.ws-casual .ws-card{border-radius:22px;padding:26px 26px 24px;box-shadow:0 2px 8px rgba(20,32,26,.06),0 26px 60px -24px rgba(20,32,26,.2),inset 0 0 0 1px rgba(231,200,121,.26)}
+/* De-wizard: drop the numbered badges, let the titles lead (DeepAI-clean). The
+   steps and everything they do stay; only the number chip is hidden. */
+.ws-casual .ws-stepn{display:none}
+.ws-casual .ws-stephead{align-items:baseline;gap:8px;margin-top:6px}
+.ws-casual .ws-stephead b{font-family:Poppins,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.01em;color:var(--ink,#14201A)}
+.ws-casual .ws-lbl{font-family:Poppins,sans-serif}
+/* Selection pills get depth + lift; active in the brand green. */
+.ws-casual .ws-fmtcat,.ws-casual .ws-chip{box-shadow:0 1px 2px rgba(20,32,26,.05);font-family:Poppins,sans-serif;transition:transform .12s,box-shadow .12s,border-color .12s,background .12s}
+.ws-casual .ws-fmtcat:hover,.ws-casual .ws-chip:hover{transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(20,32,26,.3)}
+.ws-casual .ws-fmtcat.sel,.ws-casual .ws-chip.sel{border-color:#0C7A46;background:#EAF6EF;box-shadow:0 0 0 1px #0C7A46;color:var(--ink,#14201A)}
+/* The describe/prompt field → a premium ask-field. */
+.ws-casual .wb-in{border-radius:14px;border:1px solid var(--line,#E1DECD);padding:13px 16px;font-size:15px;box-shadow:inset 0 1px 2px rgba(20,32,26,.03);transition:border-color .15s,box-shadow .15s}
+.ws-casual .wb-in:focus{border-color:#9CCBB1;box-shadow:0 0 0 4px rgba(12,122,70,.14);outline:none}
+.ws-casual .ws-tok{border-radius:14px}
+/* Primary CTA → the home's "Make it" gradient pill (ghosts stay ghosts). */
+.ws-casual .wb-btn:not(.ghost){border-radius:15px;font-family:Poppins,sans-serif;font-weight:800;font-size:15px;padding:14px 22px;background:linear-gradient(135deg,#12A85E,#0C7A46);box-shadow:0 4px 14px rgba(12,122,70,.3);transition:transform .1s,box-shadow .1s,filter .1s}
+.ws-casual .wb-btn:not(.ghost):hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(12,122,70,.36);filter:brightness(1.03)}
+@media(max-width:620px){.ws-casual .wb-h1{font-size:27px}.ws-casual .ws-card{padding:20px 17px}}
 `;
