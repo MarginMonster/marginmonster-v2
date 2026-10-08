@@ -121,7 +121,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // The merchant's own catalogue, mirrored by the importer. Present = the
   // Studio can offer a picker instead of asking for a link every single time.
-  const [catalog, catalogCount, syncing] = await Promise.all([
+  const [catalog, catalogCount, syncing, recentRows] = await Promise.all([
     db.catalogProduct.findMany({
       where: { shopId: shop.id },
       orderBy: { position: "asc" },
@@ -147,8 +147,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       orderBy: { createdAt: "desc" },
       select: { createdAt: true, status: true, lastError: true },
     }),
+    // Recent CREATOR pieces — surfaced inside the Studio as the "creations
+    // shelf" (the Easel layout) so work accumulates in view, not only in the gallery.
+    db.asset.findMany({
+      where: { shopId: shop.id, type: { in: ["IMAGE_AD", "VIDEO_AD", "AUDIO"] }, metaJson: { contains: '"section":"creator"' } },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: { id: true, type: true, bodyJson: true, title: true },
+    }),
   ]);
+  const recent = recentRows
+    .map((a) => {
+      let b: { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string } = {};
+      try { b = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
+      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled" };
+    })
+    .filter((p) => !!p.media)
+    .slice(0, 6);
   return json({
+    recent,
     catalog,
     catalogCount,
     // Said next to the count, because the count on its own reads as "your
@@ -1336,6 +1353,11 @@ export default function WebStudio() {
           section that holds the inline error is collapsed or scrolled away. */}
       {err && <div className="wb-err">Couldn&apos;t generate: {err}</div>}
 
+      {/* THE EASEL (casual) — a left instrument rail + controls beside a Stage,
+          with a creations shelf below. Marketing is untouched: its wrappers are
+          display:contents (.ws-flow), so tabs + Form render in the old flow. */}
+      <div className={casual ? "ws-easel" : "ws-flow"}>
+       <div className={casual ? "ws-easel-left" : "ws-flow"}>
       <div className="ws-tabs">
         {/* Casual drops Article (every blog angle is sell-coded) and Import (a
             store-catalogue concept) — it's about making & editing, not merchandising. */}
@@ -2069,6 +2091,37 @@ export default function WebStudio() {
           </>
         )}
       </Form>
+       </div>
+       {casual && (
+         <aside className="ws-stage">
+           <div className="ws-stage-frame">
+             <div className={`ws-easelph${busy ? " making" : ""}`}>
+               <span className="ws-rose" aria-hidden="true" />
+               <div className="ws-easel-cap">{busy ? `Making your ${noun}…` : `Your ${noun} appears here`}</div>
+               <div className="ws-easel-sub">{busy ? "Hang tight — this takes a moment." : "Describe it, pick a look, then press Make."}</div>
+             </div>
+           </div>
+         </aside>
+       )}
+      </div>
+
+      {casual && d.recent.length > 0 && (
+        <section className="ws-shelf">
+          <div className="ws-shelf-h"><b>Your creations</b><Link to="/web/archive?section=creator" className="ws-shelf-all">Open gallery ›</Link></div>
+          <div className="ws-shelf-strip">
+            {d.recent.map((p) => (
+              <Link to="/web/archive?section=creator" key={p.id} className="ws-shelf-piece" title={p.title}>
+                <span className="ws-shelf-thumb" style={!p.isVideo && !p.isAudio && p.media ? { backgroundImage: `url(${p.media})` } : undefined}>
+                  {p.isVideo && p.media ? <video src={`${p.media}#t=0.1`} muted playsInline preload="metadata" /> : null}
+                  {p.isAudio ? <span className="ws-shelf-aud" aria-hidden="true">♪</span> : null}
+                  <span className="ws-shelf-tag">{p.isVideo ? "▶ Video" : p.isAudio ? "♪ Music" : "Image"}</span>
+                </span>
+                <span className="ws-shelf-pt">{p.title}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {showDone && queued && (
         <div className="ws-scrim" onClick={() => setShowDone(false)}>
@@ -2223,4 +2276,49 @@ const WS_STYLE = `
 .ws-casual .wb-btn:not(.ghost){border-radius:15px;font-family:Poppins,sans-serif;font-weight:800;font-size:15px;padding:14px 22px;background:linear-gradient(135deg,#12A85E,#0C7A46);box-shadow:0 4px 14px rgba(12,122,70,.3);transition:transform .1s,box-shadow .1s,filter .1s}
 .ws-casual .wb-btn:not(.ghost):hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(12,122,70,.36);filter:brightness(1.03)}
 @media(max-width:620px){.ws-casual .wb-h1{font-size:27px}.ws-casual .ws-card{padding:20px 17px}}
+
+/* ===== THE EASEL — casual Creator Studio workspace (left rail · Stage · shelf) =====
+   Marketing is untouched: its wrappers are display:contents, so tabs + Form
+   render in the old flow. All rules below are scoped to .ws-casual. */
+.ws-flow{display:contents}
+.ws-casual .ws-easel{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start;margin-top:6px}
+.ws-casual .ws-easel-left{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ws-casual .ws-easel-left .ws-card{margin:0}
+/* tab bar → vertical instrument rail */
+.ws-casual .ws-tabs{display:flex;flex-direction:column;gap:5px;background:#fff;border:1px solid var(--line,#E4DFCF);border-radius:18px;padding:11px;box-shadow:0 1px 2px rgba(20,32,26,.05);margin:0}
+.ws-casual .ws-tab{justify-content:flex-start;width:100%;border-radius:12px;padding:11px 13px;font-size:14px;gap:11px;border:1px solid transparent}
+.ws-casual .ws-tab.on{color:#fff;background:linear-gradient(100deg,#12A85E 40%,#0A6A3D 84%);box-shadow:0 4px 12px rgba(12,122,70,.26);border-color:transparent}
+/* the Stage */
+.ws-stage{position:sticky;top:14px;min-width:0}
+.ws-stage-frame{position:relative;min-height:470px;height:100%;display:grid;place-items:center;border-radius:20px;overflow:hidden;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
+.ws-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
+.ws-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:24px}
+.ws-rose{width:112px;height:112px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.85;animation:wsrose 3.8s ease-in-out infinite}
+@keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.05) rotate(4deg);opacity:1}}
+.ws-easelph.making .ws-rose{background:linear-gradient(130deg,#12A85E,#0A6A3D);opacity:1;animation:wsrosespin 2.1s linear infinite}
+@keyframes wsrosespin{to{transform:rotate(360deg)}}
+.ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
+.ws-easel-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:30ch;line-height:1.45}
+/* creations shelf */
+.ws-shelf{margin-top:20px}
+.ws-shelf-h{display:flex;align-items:baseline;gap:12px;margin:0 2px 11px}
+.ws-shelf-h b{font-size:14px;font-weight:800;color:var(--ink,#14201A)}
+.ws-shelf-all{margin-left:auto;font-size:12.5px;font-weight:700;color:#0C7A46;text-decoration:none}
+.ws-shelf-strip{position:relative;display:flex;gap:12px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:thin}
+.ws-shelf-strip::after{content:"";position:absolute;left:4px;right:4px;bottom:2px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(12,122,70,.3),transparent)}
+.ws-shelf-piece{flex:0 0 auto;width:112px;text-decoration:none}
+.ws-shelf-thumb{position:relative;display:block;width:112px;height:150px;border-radius:13px;overflow:hidden;border:1px solid var(--line,#E4DFCF);background:#F0ECDE center/cover no-repeat;box-shadow:0 1px 2px rgba(20,32,26,.05);transition:transform .14s,box-shadow .14s}
+.ws-shelf-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.ws-shelf-piece:hover .ws-shelf-thumb{transform:translateY(-4px);box-shadow:0 14px 28px -14px rgba(20,32,26,.3)}
+.ws-shelf-aud{position:absolute;inset:0;display:grid;place-items:center;font-size:26px;color:#EAF6EF;background:linear-gradient(150deg,#1B6D46,#14201A)}
+.ws-shelf-tag{position:absolute;left:7px;bottom:7px;font-size:9.5px;font-weight:700;color:#fff;background:rgba(12,18,14,.55);border-radius:999px;padding:2px 8px}
+.ws-shelf-pt{display:block;font-size:11px;font-weight:600;color:var(--ink2,#5B6B61);margin-top:7px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:820px){
+  .ws-casual .ws-easel{grid-template-columns:1fr}
+  .ws-casual .ws-tabs{flex-direction:row;overflow-x:auto}
+  .ws-casual .ws-tab{flex:0 0 auto}
+  .ws-stage{position:static}
+  .ws-stage-frame{min-height:300px}
+}
+@media (prefers-reduced-motion:reduce){.ws-rose{animation:none}}
 `;
