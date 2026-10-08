@@ -7,6 +7,7 @@ import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
 import { generateVideoAd } from "./video-generation.server";
 import { generateMusic } from "./music-generation.server";
+import { generateFacelessVideo } from "./faceless-video.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
 import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
@@ -508,6 +509,37 @@ async function runJob(
     }
 
     case "GENERATE_VIDEO_AD": {
+      // Faceless social video (Creator) — no brand profile, no product. Handled
+      // before the product-ad plumbing below; gated at the "video" capability.
+      if (payload.contentType === "faceless") {
+        if (!shop?.activePlan) throw new Error("Shop missing active plan");
+        {
+          const { assertCapability } = await import("./capabilities.server");
+          assertCapability(shop.activePlan, "video");
+        }
+        const facelessAssetId = await generateFacelessVideo({
+          shopId,
+          topic: (payload.topic as string) || (payload.productTitle as string) || "",
+          format: payload.facelessFormat as string | undefined,
+          voiceKey: payload.voiceKey as string | undefined,
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            ckScript: payload.ckScript as string | undefined,
+            ckAudioUrl: payload.ckAudioUrl as string | undefined,
+            ckVoPath: payload.ckVoPath as string | undefined,
+            ckTimings: payload.ckTimings as string | undefined,
+            ckImages: payload.ckImages as string[] | undefined,
+            ckMusic: payload.ckMusic as string | undefined,
+          },
+        });
+        await stampProductUrl(facelessAssetId, payload);
+        await tagAssetSection(facelessAssetId, payload.section as string | undefined);
+        if (payload.prePaid) {
+          try { await maybeTickQuestline(payload, shopId, true, facelessAssetId); }
+          catch (e) { console.error("[job] faceless accounting failed (non-fatal):", e); }
+        }
+        break;
+      }
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }

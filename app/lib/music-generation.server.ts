@@ -2,6 +2,9 @@
 // song." Mirrors createImage(): validate → run the model → persist → write ONE
 // Asset row (type AUDIO) → return its id. Billed at TOKEN_COST.music (10) at
 // enqueue in the route; the queue refunds on terminal failure.
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { db } from "../db.server";
 import { repPoll } from "./ugc-ad-pipeline.server";
 import { persistRemoteAudio } from "./image-generation.server";
@@ -86,4 +89,22 @@ export async function generateMusic(opts: {
     },
   });
   return asset.id;
+}
+
+/** Generate a short musicgen track and return its ABSOLUTE disk path — a raw
+ *  background-music bed for pipelines (faceless video), NOT a gallery asset. */
+export async function musicBedToDisk(prompt: string): Promise<string> {
+  const id = await createMusicgen({ prompt, duration: 12, output_format: "mp3", model_version: "stereo-large" });
+  const raw = (await repPoll(id, 5 * 60_000, "music-bed")) as unknown;
+  const url = audioUrlOf(raw, "music-bed");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`music-bed fetch ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 2_000) throw new Error("music-bed came back empty");
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `mbed-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`;
+  const filePath = path.join(dir, fileName);
+  fs.writeFileSync(filePath, buf);
+  return filePath;
 }

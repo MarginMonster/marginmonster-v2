@@ -173,7 +173,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog, music: TOKEN_COST.music },
+    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
   });
 };
 
@@ -440,7 +440,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Creator flows carry their own title (the prompt): photo edits, text-to-image
   // "create", and music never ask for a product name — only the product-based ad
   // flows do. (Masked until Creator became free on every plan — now reachable.)
-  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music") return json({ error: "Give the product a name." });
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless") return json({ error: "Give the product a name." });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: "The product image must be a full https:// URL." });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
@@ -715,6 +715,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       backed(TOKEN_COST.music, musicFromExtra);
       return json({ ok: true, queued: "music", count: 1 });
     }
+    if (intent === "faceless") {
+      // Creator "Faceless video" — topic → scripted 9:16 social video. No product,
+      // no photo. Gated at the "video" capability (video-shaped pipeline).
+      assertCapability(shop.activePlan, "video");
+      const topic = trimToWord((form.get("facelessTopic") as string) || (direction || ""), 300);
+      if (!topic) return json({ error: "Give your video a topic." });
+      const facelessFormat = ((form.get("facelessFormat") as string) || "facts").trim();
+      const voiceKey = ((form.get("voiceKey") as string) || "f-warm").trim();
+      const flFromExtra = (await spendTokens(shop.id, TOKEN_COST.faceless)).fromExtra;
+      charged(TOKEN_COST.faceless, flFromExtra);
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
+        section: "creator", contentType: "faceless", topic, facelessFormat, voiceKey,
+        productTitle: topic.slice(0, 60),
+        prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: flFromExtra,
+      });
+      backed(TOKEN_COST.faceless, flFromExtra);
+      return json({ ok: true, queued: "faceless", count: 1 });
+    }
     if (intent === "blog") {
       assertCapability(shop.activePlan, "blog");
       const blogFromExtra = (await spendTokens(shop.id, TOKEN_COST.blog)).fromExtra;
@@ -748,7 +766,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({});
 };
 
-type Tab = "video" | "image" | "music" | "blog" | "import";
+type Tab = "video" | "image" | "music" | "faceless" | "blog" | "import";
 type CType = (typeof CONTENT_TYPES)[number]["key"];
 type CastItem = { id: string; name: string; img: string; designed: boolean };
 
@@ -990,6 +1008,13 @@ function TabIcon({ kind }: { kind: Tab }) {
           <circle cx="13.3" cy="12.3" r="1.9" {...p} />
         </>
       )}
+      {kind === "faceless" && (
+        <>
+          <rect x="3" y="4.5" width="14" height="11" rx="2" {...p} />
+          <path d="M17 8.4 20.5 6v8l-3.5-2.4" {...p} />
+          <path d="M6.5 8.5h5M6.5 11.5h3" {...p} />
+        </>
+      )}
       {kind === "blog" && (
         <>
           <path d="M4 3.4h8.4L16.4 7v9.6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" {...p} />
@@ -1022,8 +1047,9 @@ export default function WebStudio() {
   const doParam = searchParams.get("do");
   const initTab = doParam === "video" ? "video"
     : doParam === "music" ? "music"
+    : doParam === "faceless" ? "faceless"
     : (doParam === "edit" || doParam === "image" || doParam === "presenter" || doParam === "create") ? "image"
-    : (["video", "image", "music", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
+    : (["video", "image", "music", "faceless", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<Tab>(initTab || "video");
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   const [imageUrl, setImageUrl] = useState("");
@@ -1038,6 +1064,9 @@ export default function WebStudio() {
   const [createStyle, setCreateStyle] = useState<string | null>(null);
   // Creator "Make music" genre/mood preset (optional, folded into the prompt).
   const [musicStyle, setMusicStyle] = useState<string | null>(null);
+  // Creator "Faceless video" — format + voice.
+  const [facelessFormat, setFacelessFormat] = useState("facts");
+  const [voiceKey, setVoiceKey] = useState("f-warm");
   // How many to make in one go. Kept in one place across tabs so the choice
   // survives switching, but re-clamped below — video caps lower than image.
   const [burst, setBurst] = useState(1);
@@ -1183,14 +1212,16 @@ export default function WebStudio() {
   const isCreate = casual && tab === "image" && imageMode === "create";
   // Creator "Make music" — a text-to-song generation on its own casual tab.
   const isMusic = casual && tab === "music";
+  // Creator "Faceless video" — topic → scripted 9:16 social video, own casual tab.
+  const isFaceless = casual && tab === "faceless";
   const submitIntent = isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
-  const verb = isCreate || isMusic ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
-  const noun = isCreate ? "image" : isMusic ? "song" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
-  const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : d.costs.blog;
+  const verb = isCreate || isMusic || isFaceless ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
+  const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
+  const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   const cost = baseCost + engineFee;
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
-  const cfgReady = tab === "blog" || tab === "music" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
+  const cfgReady = tab === "blog" || tab === "music" || tab === "faceless" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
   // The Service/offer toggle only EXISTS on two of the four surfaces, but its
   // state survived a tab or mode change and the hidden field was submitted
   // regardless. So a merchant who tried Service on the product screen, backed
@@ -1277,7 +1308,7 @@ export default function WebStudio() {
   // photo (upload OR url) for anything that should SHOW the product; services
   // legitimately have nothing to photograph.
   // "Make an image" generates from text — no photo required.
-  const needsPhoto = tab !== "blog" && tab !== "music" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim();
+  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim();
   // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
   // (title, photo, presenter, cartoon style) disabled the button; the one that
   // bites a brand-new trialist first did not. A Studio trial spends from a
@@ -1287,7 +1318,7 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !isFaceless && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || shortBy > 0;
 
   return (
     <div className={casual ? "ws-casual" : undefined}>
@@ -1308,7 +1339,7 @@ export default function WebStudio() {
       <div className="ws-tabs">
         {/* Casual drops Article (every blog angle is sell-coded) and Import (a
             store-catalogue concept) — it's about making & editing, not merchandising. */}
-        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
+        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{label}
           </button>
@@ -1668,7 +1699,7 @@ export default function WebStudio() {
           <>
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
-            {!isCreate && !isMusic && (<>
+            {!isCreate && !isMusic && !isFaceless && (<>
             <StepHead n={2} title={casual ? "Your subject" : "Your product"} hint={casual ? "what this is about" : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
@@ -1825,7 +1856,7 @@ export default function WebStudio() {
             )}
             </>)}
 
-            <StepHead n={3} title={isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
+            <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
             {tab === "image" && !casual && (
               <>
                 <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
@@ -1897,6 +1928,27 @@ export default function WebStudio() {
                     {musicStyle && <input type="hidden" name="musicStyle" value={musicStyle} />}
                   </>
                 )}
+                {tab === "faceless" && (
+                  <>
+                    <div className="ws-lbl">Format</div>
+                    <div className="ws-fmtcats" role="tablist" aria-label="Video format">
+                      {([["motivational", "💪 Motivational"], ["facts", "💡 Facts"], ["storytime", "📖 Storytime"], ["listicle", "🔢 Listicle"]] as [string, string][]).map(([k, label]) => (
+                        <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
+                          className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
+                      ))}
+                    </div>
+                    <div className="ws-lbl" style={{ marginTop: 12 }}>Voice</div>
+                    <div className="ws-fmtcats" role="tablist" aria-label="Voice">
+                      {([["f-warm", "🎙 Female · calm"], ["f-hype", "🎙 Female · hype"], ["m-warm", "🎙 Male · calm"], ["m-hype", "🎙 Male · hype"]] as [string, string][]).map(([k, label]) => (
+                        <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
+                          className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{label}</button>
+                      ))}
+                    </div>
+                    <input type="hidden" name="facelessFormat" value={facelessFormat} />
+                    <input type="hidden" name="voiceKey" value={voiceKey} />
+                    <p className="ws-note" style={{ marginTop: 12 }}>We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.</p>
+                  </>
+                )}
                 {/* WHAT THIS BOX DOES DEPENDS ON WHAT IS ABOVE IT.
                     With an ad FORMAT picked the composition is already fixed
                     and this text only ever reaches the copywriter as “Angle:”,
@@ -1912,13 +1964,16 @@ export default function WebStudio() {
                         ? editOp === "bgswap" ? "Describe the new background" : editOp === "replace" ? "What to change" : editOp === "cartoonize" ? "Cartoon style" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "No input needed" : editOp === "restyle" ? "Describe the look" : "Describe your changes"
                         : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
                     : tab === "music" ? "Describe your music"
+                    : tab === "faceless" ? "What's your video about?"
                     : "Topic"}{" "}
-                  <span className="ws-opt">{isCreate || isMusic ? "required" : isEdit && (editOp === "replace" || !editOp) ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
+                  <span className="ws-opt">{isCreate || isMusic || isFaceless ? "required" : isEdit && (editOp === "replace" || !editOp) ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
                 </div>
                 <input className="wb-in" value={direction} maxLength={300}
                   disabled={isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")}
                   placeholder={
-                    tab === "music"
+                    tab === "faceless"
+                      ? "e.g. 5 mind-blowing facts about the deep ocean"
+                    : tab === "music"
                       ? "e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat"
                     : tab === "image"
                       ? isCreate
@@ -1968,7 +2023,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && !isEdit && !isCreate && !isMusic && (
+            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">How many</span>
                 <div className="ws-burst-steps">
@@ -2027,9 +2082,9 @@ export default function WebStudio() {
               <span className="ws-flex-word">Easy<b>Mode</b></span>
               <span className="ws-flex-rule" />
             </div>
-            <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued} is being made`}</b>
+            <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued === "faceless" ? "faceless video" : queued} is being made`}</b>
             <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>{casual ? "gallery" : "Archive"}</b> over the next few minutes — a set of different takes, all ready to {casual ? "share" : "post"}.</> : <>It lands in your <b>{casual ? "gallery" : "Archive"}</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
-            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued}${casual ? "&section=creator" : ""}`}>{casual ? "View gallery ›" : "View Archive ›"}</Link>
+            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued === "faceless" ? "video" : queued}${casual ? "&section=creator" : ""}`}>{casual ? "View gallery ›" : "View Archive ›"}</Link>
             <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
           </div>
         </div>

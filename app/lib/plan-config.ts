@@ -253,6 +253,11 @@ export const TOKEN_COST = {
   // video — cap clip count / charge per-clip / force the default engine before
   // scaling Commercial. The margin lever — raise if COGS climbs.
   video: 150,
+  // Faceless social video (Creator): AI stills + Ken-Burns + TTS + word-synced
+  // captions + music bed — NO AI clips by default, so image-class COGS
+  // (~$0.15-0.40), priced well under a full product video. Gated at the "video"
+  // capability (carries a video-shaped pipeline), caps enforced server-side.
+  faceless: 80,
   // Forging a custom presenter renders one portrait per wardrobe outfit —
   // four paid image generations in parallel — so it is priced as what it is.
   // It used to cost nothing at all while the UI said "the forge runs on
@@ -273,6 +278,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   blog: "Blog post",
   landing: "Landing page",
   video: "Product video",
+  faceless: "Faceless video",
   boost: "Ad boost",
   avatarForge: "Custom presenter",
   email: "Marketing email",

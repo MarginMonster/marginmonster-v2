@@ -4147,6 +4147,49 @@ export async function persistRemoteAudio(url: string): Promise<string> {
   return `/renders/${fileName}`;
 }
 
+/** Generate a flux-schnell still at arbitrary dimensions and return its ABSOLUTE
+ *  disk path (for pipelines that feed ffmpeg directly, e.g. faceless-video
+ *  b-roll). Mirrored for durability like fluxToDisk. Fast + cheap (~$0.003). */
+export async function fluxStill(prompt: string, width = 768, height = 1344): Promise<string> {
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
+  if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
+  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${replicateToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      version: "5f24084160c9089501c1b3545d9be3c27883ae2239b6f412990e82d4a6210f8f",
+      input: { prompt, num_inference_steps: 4, width, height },
+    }),
+  });
+  if (!createRes.ok) throw new Error(`flux-still create ${createRes.status}`);
+  const prediction = (await createRes.json()) as { id: string };
+  let imageUrl: string | null = null;
+  for (let i = 0; i < 45; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+      headers: { Authorization: `Bearer ${replicateToken}` },
+    });
+    const pollData = (await pollRes.json()) as { status: string; output?: string[] | string | null; error?: string };
+    if (pollData.status === "succeeded" && pollData.output) {
+      imageUrl = Array.isArray(pollData.output) ? pollData.output[0] : pollData.output;
+      break;
+    }
+    if (pollData.status === "failed") throw new Error(`flux-still failed: ${pollData.error}`);
+  }
+  if (!imageUrl) throw new Error("flux-still timed out");
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`flux-still fetch ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 5_000) throw new Error("flux-still came back empty");
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
+  const filePath = path.join(dir, fileName);
+  fs.writeFileSync(filePath, buf);
+  try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
+  return filePath;
+}
+
 /** img2img for a photo edit: nano-banana (strongest identity-preserving editor),
  *  flux-kontext-pro fallback — the same pair the ad pipeline uses. */
 async function editImg2Img(imageUrl: string, prompt: string): Promise<string> {

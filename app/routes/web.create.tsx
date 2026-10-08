@@ -45,6 +45,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 const ICON: Record<string, ReactNode> = {
   create: <svg viewBox="0 0 24 24" {...S}><rect x="3" y="4.5" width="18" height="15" rx="2.6" /><circle cx="8.4" cy="9.6" r="1.5" /><path d="m4 16.5 4.6-4.2 3.3 3 3-2.4 5.1 4.2" /></svg>,
+  faceless: <svg viewBox="0 0 24 24" {...S}><rect x="3" y="4.5" width="14" height="11" rx="2" /><path d="M17 8.4 20.5 6v8l-3.5-2.4" /><path d="M6.5 8.5h5M6.5 11.5h3" /></svg>,
   edit: <svg viewBox="0 0 24 24" {...S}><path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17v3z" /><path d="M13.5 6.5l4 4" /></svg>,
   video: <svg viewBox="0 0 24 24" {...S}><rect x="2.5" y="5" width="19" height="14" rx="3" /><path d="m10 9.5 5 2.5-5 2.5z" /></svg>,
   music: <svg viewBox="0 0 24 24" {...S}><path d="M9 17.4V6.2l9-1.8v11.2" /><circle cx="6.8" cy="17.6" r="2.4" /><circle cx="15.8" cy="15.6" r="2.4" /></svg>,
@@ -56,6 +57,7 @@ const ICON: Record<string, ReactNode> = {
 // Helpurr. Edit uploads its photo in the Studio.
 type Mode = { key: string; label: string; ph: string };
 const MODES: Mode[] = [
+  { key: "faceless", label: "Faceless video", ph: "5 mind-blowing facts about the deep ocean…" },
   { key: "create", label: "Image", ph: "a red panda astronaut floating over neon Tokyo at night…" },
   { key: "edit", label: "Edit", ph: "make the shirt a purple hoodie and add a camera… (you'll add your photo next)" },
   { key: "video", label: "Video", ph: "a cozy 5-second clip of my product on a sunlit desk…" },
