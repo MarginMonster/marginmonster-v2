@@ -523,6 +523,9 @@ async function runJob(
           format: payload.facelessFormat as string | undefined,
           voiceKey: payload.voiceKey as string | undefined,
           jobId: payload.__jobId as string | undefined,
+          // Product Channel: a real catalogue product to sell (grounded script +
+          // its photo as the opening b-roll).
+          product: payload.product as { title: string; imageUrl?: string; description?: string } | undefined,
           resume: {
             ckScript: payload.ckScript as string | undefined,
             ckAudioUrl: payload.ckAudioUrl as string | undefined,
@@ -546,6 +549,7 @@ async function runJob(
               seriesId: payload.seriesId as string,
               topic: payload.topic as string | undefined,
               platforms: payload.seriesPlatforms as string[] | undefined,
+              linkUrl: payload.seriesProductUrl as string | undefined,
             });
           } catch (e) {
             console.error("[series] auto-post failed (non-fatal):", e);

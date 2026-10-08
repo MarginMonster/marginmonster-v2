@@ -128,8 +128,32 @@ export async function tickDueSeries(): Promise<void> {
           if (targets.length === 0) { await pause(s.id, "no-accounts"); continue; }
         }
 
+        // Decide what this drop is about, by source type.
         const recent = parseTopics(s.recentTopicsJson);
-        const topic = await nextTopic(s.niche, s.format, recent);
+        let topic: string;
+        let product: { title: string; imageUrl?: string; description?: string } | undefined;
+        let productUrl: string | undefined;
+        let nextCursor = s.productCursor;
+        // Product Channels are a MARKETING surface — their drops land in the
+        // marketing Archive, not the creator Gallery.
+        const section = s.sourceType === "product" ? "marketing" : "creator";
+
+        if (s.sourceType === "product") {
+          // Rotate the shop's catalogue — each drop sells the next product.
+          const catalog = await db.catalogProduct.findMany({
+            where: { shopId: s.shopId },
+            orderBy: { position: "asc" },
+            select: { title: true, url: true, imageUrl: true, description: true },
+          });
+          if (catalog.length === 0) { await pause(s.id, "no-products"); continue; }
+          const pick = catalog[((s.productCursor % catalog.length) + catalog.length) % catalog.length];
+          nextCursor = s.productCursor + 1;
+          topic = pick.title;
+          product = { title: pick.title, imageUrl: pick.imageUrl || undefined, description: pick.description || undefined };
+          productUrl = pick.url || undefined;
+        } else {
+          topic = await nextTopic(s.niche, s.format, recent);
+        }
 
         // Spend at enqueue, like the Studio. A terminal render failure refunds
         // via refundPrepaidOnce (chargedTokens), same as a manual faceless.
@@ -141,9 +165,10 @@ export async function tickDueSeries(): Promise<void> {
 
         await enqueueJob(s.shopId, "GENERATE_VIDEO_AD", {
           contentType: "faceless", topic, facelessFormat: s.format, voiceKey: s.voiceKey,
-          section: "creator", prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: fromExtra,
+          section, prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: fromExtra,
           seriesId: s.id, seriesName: s.name, seriesAutoPost: s.autoPost, seriesPlatforms: wantPlatforms,
-          initiator: "series",
+          ...(product ? { product, seriesProductUrl: productUrl } : {}),
+          initiator: s.sourceType === "product" ? "product-channel" : "series",
         });
 
         const interval = cadenceOf(s.cadence).intervalHours * 3600_000;
@@ -153,6 +178,7 @@ export async function tickDueSeries(): Promise<void> {
             lastRunAt: new Date(now),
             nextRunAt: new Date(now + interval),
             dropsMade: { increment: 1 },
+            productCursor: nextCursor,
             recentTopicsJson: JSON.stringify([...recent, topic].slice(-12)),
             pauseReason: null,
           },
@@ -178,6 +204,7 @@ export async function postCreatorDrop(opts: {
   seriesId?: string;
   topic?: string;
   platforms?: string[];
+  linkUrl?: string; // Product Channel: the product URL, appended to the caption as a shop link
 }): Promise<void> {
   const { socialProviderEnabled, ensureProfile, refreshLinkedPlatforms, publishPost } = await import("./social-provider.server");
   if (!socialProviderEnabled()) return;
@@ -209,7 +236,7 @@ export async function postCreatorDrop(opts: {
   const posted: string[] = [];
   const urls: Record<string, string> = {};
   for (const p of targets) {
-    const title = buildPostTitle(captions[p], "", fbText); // no /go link for creator content
+    const title = buildPostTitle(captions[p], opts.linkUrl || "", fbText); // product URL for Product Channels; empty for vibe drops
     const res = await publishPost(profileKey, { title, mediaUrl, isVideo: true, platforms: [p] });
     if (res.ok) {
       posted.push(p);

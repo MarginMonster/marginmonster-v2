@@ -271,7 +271,12 @@ model CreatorSeries {
   shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name             String // "Deep Ocean Facts"
   niche            String // the vibe/theme the AI riffs a fresh topic from each drop
-  format           String    @default("facts") // faceless format key (motivational|facts|storytime|listicle)
+  // "vibe" = creator channel (niche → AI topic). "product" = marketing Product
+  // Channel: rotates the shop's catalogue, each drop a faceless video selling the
+  // next product with its real image. productCursor tracks the rotation position.
+  sourceType       String    @default("vibe") // vibe | product
+  productCursor    Int       @default(0)
+  format           String    @default("facts") // faceless format key (vibe) OR product angle (product)
   voiceKey         String    @default("f-warm")
   cadence          String    @default("3x_week") // 3x_week | daily | 2x_day
   platformsJson    String    @default("[]") // subset of tiktok/instagram/facebook to post to

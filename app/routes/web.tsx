@@ -98,6 +98,8 @@ export default function WebLayout() {
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
               {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">Campaigns</Link>}
+              {/* Product Channels = faceless product-video autopilot (marketing). */}
+              {mode === "marketing" && <Link className={tab("/web/product-channels")} to="/web/product-channels">Channels</Link>}
               <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{mode === "casual" ? "Gallery" : "Archive"}</Link>
               <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? "Share" : "Auto-posting"}</Link>
             </nav>

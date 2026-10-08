@@ -202,18 +202,32 @@ async function assembleFaceless(opts: {
   }
 }
 
+/** Product Channel angles — how a faceless PRODUCT drop is pitched. Grounded in
+ *  the product's real description; never invents specs/prices/claims. */
+export const PRODUCT_ANGLES: Record<string, string> = {
+  spotlight: "a clean product spotlight — show it off, lead with the single best real benefit",
+  hype: "high-energy hype — fast, exciting, 'you need this', without overclaiming",
+  story: "a relatable mini-story — a real problem this product solves, then the reveal",
+  value: "value-led — why it's worth it and who it's for (never invent a price or discount)",
+};
+export const PRODUCT_ANGLE_KEYS = Object.keys(PRODUCT_ANGLES);
+
 export async function generateFacelessVideo(opts: {
   shopId: string;
   topic: string;
   format?: string;
   voiceKey?: string;
   jobId?: string;
+  // Product Channel drop: a faceless video SELLING a real catalogue product,
+  // grounded in its description, with its real image as the opening b-roll.
+  product?: { title: string; imageUrl?: string; description?: string };
   resume?: { ckScript?: string; ckAudioUrl?: string; ckVoPath?: string; ckTimings?: string; ckImages?: string[]; ckMusic?: string };
 }): Promise<string> {
   const topic = (opts.topic || "").trim();
   if (!topic) throw new Error("Give the video a topic.");
   const jobId = opts.jobId;
   const resume = opts.resume || {};
+  const product = opts.product;
   const ckpt = async (patch: Record<string, unknown>) => { if (jobId) await checkpointJob(jobId, patch); };
   const fmtKey = opts.format && FACELESS_FORMATS[opts.format] ? opts.format : "facts";
 
@@ -222,12 +236,21 @@ export async function generateFacelessVideo(opts: {
   if (resume.ckScript) {
     script = JSON.parse(resume.ckScript);
   } else {
-    const prompt =
-      `Write a short FACELESS social video for TikTok/Reels about: "${topic}".\n` +
-      `Style: ${FACELESS_FORMATS[fmtKey]}.\n` +
-      `Return 6-7 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook) + a VISUAL (a vivid, specific, cinematic image description for AI b-roll that matches the line — NO text/words/logos in the image, no real named people).\n` +
-      `Total spoken length ~30-40 seconds. Also give musicMood (a short phrase describing background music) and voiceGender.\n` +
-      `SAFETY: keep it general and true — do NOT invent specific statistics, prices, dates, medical or financial advice, or claims you are unsure of; no defamation of real people or brands.`;
+    const prompt = product
+      ? // PRODUCT CHANNEL — a faceless video selling a real catalogue product,
+        // grounded ONLY in its description (FTC-safe: no invented specs/prices).
+        `Write a short FACELESS product video for TikTok/Reels selling this product.\n` +
+        `PRODUCT: "${product.title}".\n` +
+        (product.description ? `DETAILS (use ONLY what's here — do not invent anything beyond it): ${product.description.slice(0, 600)}.\n` : "") +
+        `Angle: ${PRODUCT_ANGLES[opts.format || ""] || PRODUCT_ANGLES.spotlight}.\n` +
+        `Return 5-6 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook about the product; the LAST line is a soft call to action like "link's right here" or "grab yours") + a VISUAL (a vivid cinematic lifestyle scene that features or complements the product — NO text/words/logos in the image, no real named people).\n` +
+        `Total spoken length ~25-35 seconds. Also give musicMood (a short phrase) and voiceGender.\n` +
+        `SAFETY: say ONLY what is true from the DETAILS above — NEVER invent statistics, prices, discounts, sales, guarantees, reviews, ratings, awards or endorsements. No "best", "#1" or superlatives you cannot back up.`
+      : `Write a short FACELESS social video for TikTok/Reels about: "${topic}".\n` +
+        `Style: ${FACELESS_FORMATS[fmtKey]}.\n` +
+        `Return 6-7 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook) + a VISUAL (a vivid, specific, cinematic image description for AI b-roll that matches the line — NO text/words/logos in the image, no real named people).\n` +
+        `Total spoken length ~30-40 seconds. Also give musicMood (a short phrase describing background music) and voiceGender.\n` +
+        `SAFETY: keep it general and true — do NOT invent specific statistics, prices, dates, medical or financial advice, or claims you are unsure of; no defamation of real people or brands.`;
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 1200, jsonSchema: { name: "faceless_script", schema: SCRIPT_SCHEMA as unknown as Record<string, unknown> } });
     script = JSON.parse(raw) as Script;
     script.beats = (script.beats || []).filter((b) => b && b.line && b.visual).slice(0, 8);
@@ -292,10 +315,27 @@ export async function generateFacelessVideo(opts: {
   // 4) B-ROLL STILLS — one 9:16 flux still per beat (sequential = no 429). Banked
   //    contiguously so a restart keeps what already rendered.
   const stills: string[] = (resume.ckImages || []).filter((p) => p && fs.existsSync(p));
+  // Product Channel: open on the REAL product photo (the "here it is" hook), then
+  // AI lifestyle b-roll. Downloaded once; on any failure we fall through to all-AI
+  // b-roll so a drop never dies on a bad image URL. It takes beat 0's still slot,
+  // so the total stays beats.length.
+  if (!stills.length && product?.imageUrl) {
+    try {
+      const buf = await downloadBuffer(product.imageUrl);
+      if (buf.length > 3000) {
+        fs.mkdirSync(RENDERS(), { recursive: true });
+        const pn = path.join(RENDERS(), `prod-${Date.now()}-${crypto.randomBytes(5).toString("hex")}.jpg`);
+        fs.writeFileSync(pn, buf);
+        stills.push(pn);
+        await ckpt({ ckImages: stills });
+      }
+    } catch { /* fall through to AI b-roll */ }
+  }
   for (let i = stills.length; i < script.beats.length; i++) {
     // 720x1280 = exact 9:16 AND within flux-schnell's height<=1280 cap (1344 → 422);
     // also the final video's own frame size. The assembler oversamples for Ken-Burns.
-    const p = await fluxStill(`${script.beats[i].visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`, 720, 1280);
+    const beat = script.beats[i % script.beats.length];
+    const p = await fluxStill(`${beat.visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`, 720, 1280);
     stills.push(p);
     await ckpt({ ckImages: stills });
   }
