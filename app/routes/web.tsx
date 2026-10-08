@@ -445,7 +445,7 @@ const CSS = `
    arcade HUD unchanged). Every element stays — this only slims the look:
    flat-white card, no gold-rosette glow, thinner bars, muted LVL badge,
    tighter spacing. LOGGED FOR REVERT: to restore the original, remove the
-   `wb-hud-lite` class from the HUD div in WebLayout and delete this block;
+   wb-hud-lite class from the HUD div in WebLayout and delete this block;
    the pre-change version is git commit bfa35e9. ---- */
 .wb-hud-lite{background:#fff;padding:11px 15px;
   box-shadow:0 1px 2px rgba(20,32,26,.05),0 12px 30px -18px rgba(20,32,26,.16);}
