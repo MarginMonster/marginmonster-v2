@@ -1931,15 +1931,15 @@ export default function WebStudio() {
                 {tab === "faceless" && (
                   <>
                     <div className="ws-lbl">Format</div>
-                    <div className="ws-fmtcats" role="tablist" aria-label="Video format">
+                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
                       {([["motivational", "💪 Motivational"], ["facts", "💡 Facts"], ["storytime", "📖 Storytime"], ["listicle", "🔢 Listicle"]] as [string, string][]).map(([k, label]) => (
                         <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
                           className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
                       ))}
                     </div>
                     <div className="ws-lbl" style={{ marginTop: 12 }}>Voice</div>
-                    <div className="ws-fmtcats" role="tablist" aria-label="Voice">
-                      {([["f-warm", "🎙 Female · calm"], ["f-hype", "🎙 Female · hype"], ["m-warm", "🎙 Male · calm"], ["m-hype", "🎙 Male · hype"]] as [string, string][]).map(([k, label]) => (
+                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Voice">
+                      {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
                         <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
                           className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{label}</button>
                       ))}
@@ -2155,6 +2155,8 @@ const WS_STYLE = `
 .ws-fmtcat{padding:8px 14px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12.5px;line-height:1;white-space:nowrap;cursor:pointer}
 .ws-fmtcat:hover{border-color:#9CCBB1}
 .ws-fmtcat.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
+.ws-fmtcats.ws-pills2{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:visible}
+.ws-pills2 .ws-fmtcat{width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:9px 12px}
 .ws-fmthint{margin:-4px 0 10px;font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-fmtsel{display:flex;align-items:center;gap:8px;margin:0 0 11px;font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-fmtsel b{color:#0C7A46;font-size:12.5px}
@@ -2212,7 +2214,7 @@ const WS_STYLE = `
 /* Selection pills get depth + lift; active in the brand green. */
 .ws-casual .ws-fmtcat,.ws-casual .ws-chip{box-shadow:0 1px 2px rgba(20,32,26,.05);font-family:Poppins,sans-serif;transition:transform .12s,box-shadow .12s,border-color .12s,background .12s}
 .ws-casual .ws-fmtcat:hover,.ws-casual .ws-chip:hover{transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(20,32,26,.3)}
-.ws-casual .ws-fmtcat.sel,.ws-casual .ws-chip.sel{border-color:#0C7A46;background:#EAF6EF;box-shadow:0 0 0 1px #0C7A46;color:var(--ink,#14201A)}
+.ws-casual .ws-fmtcat.sel,.ws-casual .ws-chip.sel{border-color:#0C7A46;background:#EAF6EF;box-shadow:0 0 0 3px rgba(12,122,70,.14);color:var(--ink,#14201A)}
 /* The describe/prompt field → a premium ask-field. */
 .ws-casual .wb-in{border-radius:14px;border:1px solid var(--line,#E1DECD);padding:13px 16px;font-size:15px;box-shadow:inset 0 1px 2px rgba(20,32,26,.03);transition:border-color .15s,box-shadow .15s}
 .ws-casual .wb-in:focus{border-color:#9CCBB1;box-shadow:0 0 0 4px rgba(12,122,70,.14);outline:none}
