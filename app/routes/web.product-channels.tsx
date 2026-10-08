@@ -13,7 +13,6 @@ import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
-import { PRODUCT_ANGLES } from "../lib/faceless-video.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 
 export const meta = () => [{ title: "Product Channels · EasyMode" }];
@@ -98,7 +97,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const platforms = ((form.get("platforms") as string) || "").split(",").map((s) => s.trim()).filter((p) => (SOCIAL as readonly string[]).includes(p));
 
     if (!CADENCE[cadence]) return json({ error: "Pick a posting cadence." }, { status: 400 });
-    if (!PRODUCT_ANGLES[angle]) return json({ error: "Pick an angle." }, { status: 400 });
+    if (!ANGLES.some(([k]) => k === angle)) return json({ error: "Pick an angle." }, { status: 400 });
     if (autoPost) {
       const linked = socialProviderEnabled() ? linkedFromCache(shop.socialsJson).filter((p) => (SOCIAL as readonly string[]).includes(p)) : [];
       const targets = platforms.length ? platforms.filter((p) => linked.includes(p)) : linked;
