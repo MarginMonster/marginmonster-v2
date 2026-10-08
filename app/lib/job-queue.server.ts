@@ -534,6 +534,23 @@ async function runJob(
         });
         await stampProductUrl(facelessAssetId, payload);
         await tagAssetSection(facelessAssetId, payload.section as string | undefined);
+        // Creator "Channel" drop: publish it to the shop's linked socials right
+        // after it renders (if the channel is on auto-post). Non-fatal — the
+        // video is already in the Gallery whether or not the post lands.
+        if (payload.seriesId && payload.seriesAutoPost) {
+          try {
+            const { postCreatorDrop } = await import("./creator-series.server");
+            await postCreatorDrop({
+              shopId,
+              assetId: facelessAssetId,
+              seriesId: payload.seriesId as string,
+              topic: payload.topic as string | undefined,
+              platforms: payload.seriesPlatforms as string[] | undefined,
+            });
+          } catch (e) {
+            console.error("[series] auto-post failed (non-fatal):", e);
+          }
+        }
         if (payload.prePaid) {
           try { await maybeTickQuestline(payload, shopId, true, facelessAssetId); }
           catch (e) { console.error("[job] faceless accounting failed (non-fatal):", e); }

@@ -165,6 +165,7 @@ model Shop {
   subscribers        Subscriber[]
   abandonedCheckouts AbandonedCheckout[]
   customerLifecycles CustomerLifecycle[]
+  creatorSeries      CreatorSeries[]
 }
 
 // One row per PAID token top-up — chargeId is unique so a purchase can never
@@ -256,6 +257,37 @@ model ShopAchievement {
   unlockedAt DateTime @default(now())
 
   @@unique([shopId, key])
+}
+
+// A Creator "Channel" — faceless social video on autopilot. Pick a vibe once;
+// the worker picks a fresh AI topic on a cadence, renders a faceless video,
+// and (if autoPost) publishes it to the shop's linked socials. Distinct from
+// Questline (marketing campaigns, products + XP + click attribution): this is
+// pure creator content, no product, no /go turnstile. Reuses the faceless
+// pipeline + the upload-post provider + the prepaid/refund token safety.
+model CreatorSeries {
+  id               String    @id @default(cuid())
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name             String // "Deep Ocean Facts"
+  niche            String // the vibe/theme the AI riffs a fresh topic from each drop
+  format           String    @default("facts") // faceless format key (motivational|facts|storytime|listicle)
+  voiceKey         String    @default("f-warm")
+  cadence          String    @default("3x_week") // 3x_week | daily | 2x_day
+  platformsJson    String    @default("[]") // subset of tiktok/instagram/facebook to post to
+  autoPost         Boolean   @default(true) // true = publish automatically; false = hold in Gallery for approval
+  status           String    @default("ACTIVE") // ACTIVE | PAUSED | ENDED
+  pauseReason      String? // out-of-tokens | no-accounts | user
+  recentTopicsJson String    @default("[]") // last ~12 topics so the AI doesn't repeat itself
+  dropsMade        Int       @default(0)
+  dropsPosted      Int       @default(0)
+  lastRunAt        DateTime?
+  nextRunAt        DateTime? // when the next drop should generate + post
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([shopId])
 }
 
 model LandingPage {

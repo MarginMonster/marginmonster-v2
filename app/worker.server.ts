@@ -4,6 +4,7 @@
 
 import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
 import { postDueSlots } from "./lib/social-post.server";
+import { tickDueSeries } from "./lib/creator-series.server";
 import { refreshSocialStats } from "./lib/social-insights.server";
 import { backfillDeadImages } from "./lib/image-generation.server";
 import { purgeStaleUnkept } from "./lib/storage-cleanup.server";
@@ -81,6 +82,9 @@ async function tick() {
     }
     // Publish READY slots whose post time arrived (self-throttled to ~5 min).
     await postDueSlots();
+    // Advance Creator "Channels" — render + post the next drop for any channel
+    // whose cadence is due (self-throttled to ~2 min; caps drops per scan).
+    await tickDueSeries().catch((e) => console.error("[worker] series tick (non-fatal):", e));
     // Pull organic follower/engagement analytics into the cache (self-throttled to ~1h).
     await refreshSocialStats().catch((e) => console.error("[worker] social insights (non-fatal):", e));
     await backfillDeadImages().catch((e) => console.error("[worker] image backfill (non-fatal):", e));

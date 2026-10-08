@@ -92,6 +92,9 @@ export default function WebLayout() {
             <nav className="wb-tabs">
               <Link className={tab(mode === "casual" ? "/web/create" : "/web")} to={mode === "casual" ? "/web/create" : "/web"}>{mode === "casual" ? "Home" : "Dashboard"}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">Studio</Link>
+              {/* Channels = the Creator autopilot (faceless video on a cadence).
+                  Casual only — it's a creator surface, not a selling one. */}
+              {mode === "casual" && <Link className={tab("/web/channels")} to="/web/channels">Channels</Link>}
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
               {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">Campaigns</Link>}
