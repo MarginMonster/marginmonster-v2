@@ -110,21 +110,25 @@ export default function WebLayout() {
               <h1 className="wb-ch-h">Where do you want to start?</h1>
               <p className="wb-ch-sub">Pick a side to begin — you can switch anytime from the toggle up top.</p>
               <div className="wb-ch-grid">
-                <button type="button" className="wb-ch-card mk" onClick={() => pickMode("marketing")}>
-                  <span className="wb-ch-ico"><Ico n="rocket" size={24} /></span>
-                  <span className="wb-ch-eyebrow">Marketing</span>
-                  <span className="wb-ch-title">Market my store</span>
-                  <span className="wb-ch-desc">AI ads, campaigns and auto-posting that sell your products.</span>
-                  <span className="wb-ch-nav">Dashboard · Campaigns · Channels</span>
-                  <span className="wb-ch-go">Enter marketing <span aria-hidden="true">→</span></span>
-                </button>
                 <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
-                  <span className="wb-ch-ico"><Ico n="palette" size={24} /></span>
-                  <span className="wb-ch-eyebrow">Creator</span>
-                  <span className="wb-ch-title">Create for me</span>
-                  <span className="wb-ch-desc">Make images, videos and music from a prompt — no store needed.</span>
-                  <span className="wb-ch-nav">Studio · Channels · Gallery</span>
-                  <span className="wb-ch-go">Enter creator <span aria-hidden="true">→</span></span>
+                  <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg)" }} aria-hidden="true" />
+                  <span className="wb-ch-body">
+                    <span className="wb-ch-eyebrow">Creator · Free roam</span>
+                    <span className="wb-ch-title">Create anything</span>
+                    <span className="wb-ch-desc">Turn any idea into an image, video or song — just describe it, and it&apos;s yours.</span>
+                    <span className="wb-ch-nav">Studio · Channels · Gallery</span>
+                    <span className="wb-ch-go">Enter creator <span aria-hidden="true">→</span></span>
+                  </span>
+                </button>
+                <button type="button" className="wb-ch-card mk" onClick={() => pickMode("marketing")}>
+                  <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
+                  <span className="wb-ch-body">
+                    <span className="wb-ch-eyebrow">Marketing</span>
+                    <span className="wb-ch-title">Market my store</span>
+                    <span className="wb-ch-desc">AI ads, campaigns and auto-posting that sell your products.</span>
+                    <span className="wb-ch-nav">Dashboard · Campaigns · Channels</span>
+                    <span className="wb-ch-go">Enter marketing <span aria-hidden="true">→</span></span>
+                  </span>
                 </button>
               </div>
             </div>
@@ -462,13 +466,14 @@ const CSS = `
 .wb-ch-h{font-family:Poppins,sans-serif;font-weight:800;font-size:27px;color:var(--ink);margin:0 0 7px;line-height:1.15;}
 .wb-ch-sub{font-size:14px;color:var(--ink2);margin:0 0 28px;}
 .wb-ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left;}
-.wb-ch-card{display:flex;flex-direction:column;align-items:flex-start;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:22px 20px;cursor:pointer;font:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
-.wb-ch-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px -18px rgba(20,32,26,.42);}
+.wb-ch-card{display:flex;flex-direction:column;align-items:stretch;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:0;overflow:hidden;cursor:pointer;font:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.wb-ch-card:hover{transform:translateY(-3px);box-shadow:0 20px 40px -18px rgba(20,32,26,.45);}
 .wb-ch-card.mk:hover{border-color:var(--green2);}
 .wb-ch-card.cr:hover{border-color:var(--gold);}
-.wb-ch-ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;margin-bottom:14px;}
-.wb-ch-card.mk .wb-ch-ico{background:rgba(12,122,70,.1);color:var(--green);}
-.wb-ch-card.cr .wb-ch-ico{background:rgba(176,133,38,.15);color:var(--gold-deep);}
+.wb-ch-hero{display:block;width:100%;height:152px;background:center/cover no-repeat;border-bottom:1px solid var(--line);}
+.wb-ch-card.cr .wb-ch-hero{background-color:#EFE6CC;}
+.wb-ch-card.mk .wb-ch-hero{background-color:#DCEBE0;}
+.wb-ch-body{display:flex;flex-direction:column;align-items:flex-start;padding:17px 20px 21px;}
 .wb-ch-eyebrow{font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;}
 .wb-ch-card.mk .wb-ch-eyebrow{color:var(--green);}
 .wb-ch-card.cr .wb-ch-eyebrow{color:var(--gold-deep);}

@@ -1695,7 +1695,7 @@ export default function WebStudio() {
         {tab === "image" && imageMode && (
           <>
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
-            <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "the art style for your image" : casual ? "how your image is styled" : "the structure your ad is built on"} />
+            <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "optional — pick a look, or skip for a natural photo" : casual ? "how your image is styled" : "the structure your ad is built on"} />
             {imageMode === "create" && casual && (
               <>
                 <div className="ws-lbl">Art style <span className="ws-opt">optional</span></div>
@@ -2560,15 +2560,11 @@ const WS_STYLE = `
    On a single column the old layout buried the Stage under the whole form and
    left the Make button mid-scroll. Here the three zones get PINNED instead of
    stacked (the Ideogram/Krea model): the Rosette Stage leads as a hero canvas,
-   the instrument rail becomes a sticky 4-up segmented control, and Make + wallet
-   detach into a fixed thumb-reachable bottom bar. All scoped to .ws-casual, so
+   the instrument rail becomes a sticky 4-up segmented control, and the Make CTA
+   sits full-width in flow right under the cost pill. All scoped to .ws-casual, so
    desktop (>620px) and marketing are untouched. 620px is the file's phone
    breakpoint; being later in source, these rules win at ≤620px. */
 @media (max-width:620px){
-  /* clearance so the fixed Make bar never covers the last flow element (the
-     shelf is a sibling outside .ws-easel, so the padding sits on the root). */
-  .ws-casual{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
-
   /* 1 — hoist the Rosette Stage to the top as the hero canvas */
   .ws-casual .ws-easel{gap:12px}
   .ws-casual .ws-stage{order:-1;position:static;top:auto}
@@ -2580,11 +2576,12 @@ const WS_STYLE = `
   .ws-casual .ws-tab{width:auto;flex-direction:column;justify-content:center;gap:4px;padding:8px 4px;font-size:11px;line-height:1.1;border-radius:10px}
   .ws-casual .ws-tab svg{width:18px;height:18px}
 
-  /* 3 — Make CTA + wallet leave the form flow and pin to the bottom. The
-     button stays a Form descendant, so submission still works. */
-  .ws-casual .ws-makebar{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0!important;display:flex;flex-direction:column;gap:2px;padding:9px 14px calc(9px + env(safe-area-inset-bottom));background:rgba(255,254,249,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line,#E4DFCF);box-shadow:0 -6px 20px -12px rgba(20,32,26,.4)}
+  /* 3 — Make CTA + wallet sit IN FLOW right under the cost pill (owner: keep
+     Make adjacent to the cost, not pinned at the page bottom under the shelf).
+     Full-width so it still reads as the primary action. */
+  .ws-casual .ws-makebar{margin-top:14px}
   .ws-casual .ws-makebar .wb-btn{width:100%;margin:0}
-  .ws-casual .ws-makebar .ws-wallet{margin:0;text-align:center;font-size:11px;line-height:1.3}
+  .ws-casual .ws-makebar .ws-wallet{margin:7px 0 0;text-align:center;font-size:11px;line-height:1.3}
 
   /* 4 — shelf stays a horizontal filmstrip, slightly smaller */
   .ws-casual .ws-shelf{margin-top:16px}
