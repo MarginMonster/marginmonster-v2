@@ -765,6 +765,23 @@ const WA_CSS = `
   .wa-vacts{gap:7px;margin-top:10px;}
   .wa-vbtn{padding:10px 14px;font-size:12.5px;border-radius:11px;}
 }
+
+/* ===================================================================
+   CASUAL (Creator) Gallery — premium treatment, scoped to .wa-creator
+   so the Marketing Archive is untouched. Styling only. =============== */
+.wa-creator .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:34px;line-height:1.08;letter-spacing:-.025em;text-align:center;margin:8px 0 10px;}
+.wa-creator .wb-sub{text-align:center;max-width:560px;margin:0 auto 8px;font-size:14.5px;color:var(--ink2,#4A554E);}
+.wa-creator .wa-wallet{text-align:center;}
+.wa-creator .ws-tabs{justify-content:center;gap:8px;}
+.wa-creator .ws-tab{border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.05);font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2,#4A554E);padding:9px 17px;transition:transform .12s,box-shadow .12s,color .12s;}
+.wa-creator .ws-tab:hover{transform:translateY(-1px);box-shadow:0 10px 22px -12px rgba(20,32,26,.3);color:var(--ink,#14201A);}
+.wa-creator .ws-tab.on{background:linear-gradient(135deg,#12A85E,#0C7A46);color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(12,122,70,.3);}
+/* Tiles — rounder, softer, premium hover lift. */
+.wa-creator .wa-poster{border-radius:16px;overflow:hidden;}
+.wa-creator .wa-audiotile{border-radius:16px;}
+.wa-creator .wb-asset{transition:transform .14s ease,box-shadow .14s ease;}
+.wa-creator .wb-asset:hover{transform:translateY(-3px);}
+@media(max-width:620px){.wa-creator .wb-h1{font-size:27px;}}
 `;
 
 export default function WebArchive() {
@@ -866,7 +883,7 @@ export default function WebArchive() {
   const failCards = cookingCards.filter((j) => j.kind === tab && j.status === "failed");
 
   return (
-    <div>
+    <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
       <h1 className="wb-h1">{isCreator ? "Gallery" : "Archive"}</h1>
       <p className="wb-sub">
