@@ -43,6 +43,14 @@ const CONTENT_TYPES = [
   { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
 ] as const;
 
+// Casual (Creator) reframes the kept video types in its own, non-sell language —
+// same pipelines, creator-native names. Only the three casual keeps it shows.
+const CASUAL_VIDEO_COPY: Record<string, { name: string; sub: string }> = {
+  cartoon: { name: "Cartoon", sub: "Your idea, redrawn & animated viral-style" },
+  highlight: { name: "Showcase", sub: "Cinematic motion from your photo or idea" },
+  asmr: { name: "Satisfying", sub: "Macro textures in slow-mo — the loop nobody scrolls past" },
+};
+
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
 // creative direction — translated at submit so the queue, the capability
 // gate and the pipelines never learn new keys.
@@ -1496,9 +1504,16 @@ export default function WebStudio() {
         {/* ---- VIDEO: pick your content type (big live-render tiles) ---- */}
         {tab === "video" && !contentType && (
           <>
-            <div className="ws-lbl">Pick your content type</div>
+            <div className="ws-lbl">{casual ? "What kind of video?" : "Pick your content type"}</div>
             <div className="ws-tiles ws-scrollbox">
-              {CONTENT_TYPES.filter((ct) => !casual || !(ct.key === "commercial" || ct.key === "review")).map((ct) => {
+              {CONTENT_TYPES.filter((ct) => !casual
+                // Casual = Creator: drop the presenter/ad formats (avatar,
+                // Creator Demo, unboxing = a person on camera; jingle = a song,
+                // which lives in the Music tab; commercial = an ad). Keep the
+                // ones a creator makes from an idea or a photo: a cartoon, a
+                // cinematic showcase, and satisfying macro loops.
+                ? true
+                : (ct.key === "cartoon" || ct.key === "highlight" || ct.key === "asmr")).map((ct) => {
                 const locked = !can(ct.cap);
                 return (
                   <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}`}
@@ -1506,7 +1521,7 @@ export default function WebStudio() {
                     <span className="ws-tile-img" style={{ backgroundImage: `url(${ct.cover})` }}>
                       {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {ct.tier}</span>}
                     </span>
-                    <b>{ct.name}</b>
+                    <b>{casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].name : ct.name}</b>
                     {/* The description, always. With no plan every tile is
                         locked, so this line used to replace all eight
                         explanations with “Unlock with Studio” — a merchant
@@ -1515,7 +1530,7 @@ export default function WebStudio() {
                         already said twice over by the badge and the tile
                         styling, and tapping one opens the panel that names the
                         tier and the price. */}
-                    <span className="ws-tile-sub" title={ct.sub}>{ct.sub}</span>
+                    <span className="ws-tile-sub" title={ct.sub}>{casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].sub : ct.sub}</span>
                   </button>
                 );
               })}
@@ -1533,7 +1548,7 @@ export default function WebStudio() {
         {tab === "video" && contentType && (
           <>
             <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ Content type</button>
-            <StepHead n={1} title="Pick the look" hint="who stars in it, and how it's shot" />
+            <StepHead n={1} title={casual ? "Set the look" : "Pick the look"} hint={casual ? "the style, and what it's about" : "who stars in it, and how it's shot"} />
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
@@ -2358,7 +2373,7 @@ const WS_STYLE = `
 .ws-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:24px}
 .ws-rose{width:112px;height:112px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.85;animation:wsrose 3.8s ease-in-out infinite}
 @keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.05) rotate(4deg);opacity:1}}
-.ws-easelph.making .ws-rose{background:linear-gradient(130deg,#12A85E,#0A6A3D);opacity:1;animation:wsrosespin 2.1s linear infinite}
+.ws-easelph.making .ws-rose{background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D);opacity:1;animation:wsrosespin 2.4s linear infinite}
 @keyframes wsrosespin{to{transform:rotate(360deg)}}
 .ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
 .ws-easel-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:30ch;line-height:1.45}
