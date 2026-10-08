@@ -166,6 +166,40 @@ export async function tickDueSeries(): Promise<void> {
   }
 }
 
+/** TEMP owner-scoped diagnostic: walks the per-series drop checks for a shop's
+ *  first ACTIVE channel and reports exactly where it stops — WITHOUT spending or
+ *  enqueuing. Lets us see why a channel isn't dropping without worker logs. */
+export async function debugDropOnce(shopId: string): Promise<Record<string, unknown>> {
+  const steps: Record<string, unknown> = {};
+  try {
+    const now = Date.now();
+    const all = await db.creatorSeries.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: 5 });
+    steps.totalSeries = all.length;
+    steps.rows = all.map((s) => ({ id: s.id, status: s.status, pauseReason: s.pauseReason, nextRunAt: s.nextRunAt, due: s.nextRunAt ? s.nextRunAt.getTime() <= now : null, dropsMade: s.dropsMade }));
+    const due = await db.creatorSeries.findMany({ where: { shopId, status: "ACTIVE", nextRunAt: { lte: new Date(now) } }, orderBy: { nextRunAt: "asc" }, take: 1 });
+    steps.dueCount = due.length;
+    if (!due.length) return { ...steps, stop: "nothing due" };
+    const s = due[0];
+    const shop = await db.shop.findUnique({ where: { id: shopId }, select: { id: true, socialsJson: true, activePlan: true } });
+    steps.hasPlan = !!shop?.activePlan;
+    if (!shop?.activePlan) return { ...steps, stop: "no active plan" };
+    try {
+      const { assertCapability } = await import("./capabilities.server");
+      assertCapability(shop.activePlan, "video");
+      steps.cap = "ok";
+    } catch (e) { return { ...steps, stop: "capability", capErr: e instanceof Error ? e.message : String(e) }; }
+    steps.walletTokens = tokensRemainingLive(shop.activePlan);
+    steps.facelessCost = TOKEN_COST.faceless;
+    if (tokensRemainingLive(shop.activePlan) < TOKEN_COST.faceless) return { ...steps, stop: "out-of-tokens" };
+    const recent = parseTopics(s.recentTopicsJson);
+    const topic = await nextTopic(s.niche, s.format, recent);
+    steps.topic = topic;
+    return { ...steps, reached: "pre-spend OK — would enqueue a drop here" };
+  } catch (e) {
+    return { ...steps, error: e instanceof Error ? e.stack || e.message : String(e) };
+  }
+}
+
 /** Publish a finished series drop to the shop's linked socials. Reuses the SAME
  *  provider + caption + title stack as the manual "Post to socials" button and
  *  the campaign scheduler, minus the product /go link. Records postedTo on the
