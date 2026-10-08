@@ -108,7 +108,7 @@ export default function WebLayout() {
             Level, token reserve, XP to the next level and what the wallet
             currently affords, all in one glance. */}
         {authed && (
-          <div className={`wb-hud${hudMin ? " min" : ""}`} aria-label="Player status">
+          <div className={`wb-hud${hudMin ? " min" : ""}${mode === "casual" ? " wb-hud-lite" : ""}`} aria-label="Player status">
             {hudMin ? (
               <button
                 type="button" className="wb-hud-mini" onClick={toggleHud}
@@ -440,6 +440,22 @@ const CSS = `
 .wb-hud-topup b{font-size:11.5px;color:#fff;background:linear-gradient(168deg,#12A85E,#0B6B3E);padding:5px 11px;border-radius:999px;}
 .wb-hud-topup:hover b{filter:brightness(1.07)}
 .wb-hud-stat{white-space:nowrap;}
+
+/* ---- Creator-mode HUD: a cleaner, calmer take (Marketing keeps the full
+   arcade HUD unchanged). Every element stays — this only slims the look:
+   flat-white card, no gold-rosette glow, thinner bars, muted LVL badge,
+   tighter spacing. LOGGED FOR REVERT: to restore the original, remove the
+   `wb-hud-lite` class from the HUD div in WebLayout and delete this block;
+   the pre-change version is git commit bfa35e9. ---- */
+.wb-hud-lite{background:#fff;padding:11px 15px;
+  box-shadow:0 1px 2px rgba(20,32,26,.05),0 12px 30px -18px rgba(20,32,26,.16);}
+.wb-hud-lite::after{display:none;}
+.wb-hud-lite .wb-hud-top{margin-bottom:8px;}
+.wb-hud-lite .wb-hud-lvl{background:#F3F0E4;color:#7E5E13;border-color:rgba(176,133,38,.26);box-shadow:none;}
+.wb-hud-lite .wb-hud-barlabel{margin:7px 0 3px;}
+.wb-hud-lite .wb-hud-hp,.wb-hud-lite .wb-hud-xp{height:6px;}
+.wb-hud-lite .wb-hud-stats{margin-top:9px;font-size:11.5px;}
+.wb-hud-lite .wb-hud-toggle{border-color:var(--line);}
 
 /* ---- Mobile header: nothing wraps into a second line of tabs, nothing
         overflows the viewport. The tab strip scrolls sideways instead. ---- */
