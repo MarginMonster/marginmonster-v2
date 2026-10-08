@@ -254,10 +254,14 @@ export const TOKEN_COST = {
   // scaling Commercial. The margin lever — raise if COGS climbs.
   video: 150,
   // Faceless social video (Creator): AI stills + Ken-Burns + TTS + word-synced
-  // captions + music bed — NO AI clips by default, so image-class COGS
-  // (~$0.15-0.40), priced well under a full product video. Gated at the "video"
-  // capability (carries a video-shaped pipeline), caps enforced server-side.
-  faceless: 80,
+  // captions + music bed — NO AI clips by default. MEASURED COGS on a real
+  // render ≈ $0.08 (script + MiniMax TTS + WhisperX + ~6 flux stills + musicgen),
+  // NOT the $0.15-0.40 once guessed. Repriced 80 → 30 (2026-10-08): the budget
+  // faceless market (faceless.video/AutoShorts/faceless.so) sells short clips at
+  // ~$1-1.30 each, and 80 tokens was ~$5/video on Starter — over-packaged, not a
+  // cost floor. 30 tokens keeps a ~20× margin and makes volume competitive
+  // (Starter ~10/mo, Studio ~30, Creator ~16). Gated at the "video" capability.
+  faceless: 30,
   // Forging a custom presenter renders one portrait per wardrobe outfit —
   // four paid image generations in parallel — so it is priced as what it is.
   // It used to cost nothing at all while the UI said "the forge runs on
