@@ -4150,7 +4150,7 @@ export async function persistRemoteAudio(url: string): Promise<string> {
 /** Generate a flux-schnell still at arbitrary dimensions and return its ABSOLUTE
  *  disk path (for pipelines that feed ffmpeg directly, e.g. faceless-video
  *  b-roll). Mirrored for durability like fluxToDisk. Fast + cheap (~$0.003). */
-export async function fluxStill(prompt: string, width = 768, height = 1344): Promise<string> {
+export async function fluxStill(prompt: string, width = 720, height = 1280): Promise<string> {
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
   const createRes = await fetch("https://api.replicate.com/v1/predictions", {

@@ -293,7 +293,9 @@ export async function generateFacelessVideo(opts: {
   //    contiguously so a restart keeps what already rendered.
   const stills: string[] = (resume.ckImages || []).filter((p) => p && fs.existsSync(p));
   for (let i = stills.length; i < script.beats.length; i++) {
-    const p = await fluxStill(`${script.beats[i].visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`, 768, 1344);
+    // 720x1280 = exact 9:16 AND within flux-schnell's height<=1280 cap (1344 → 422);
+    // also the final video's own frame size. The assembler oversamples for Ken-Burns.
+    const p = await fluxStill(`${script.beats[i].visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`, 720, 1280);
     stills.push(p);
     await ckpt({ ckImages: stills });
   }
