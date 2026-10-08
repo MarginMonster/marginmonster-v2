@@ -192,8 +192,10 @@ const CR_CSS = `
 /* The actual type-here field — a recessed cream well so the text sits IN a box,
    not floating on the white card. */
 .cr-askin{flex:1;outline:0;resize:none;font:inherit;font-size:16px;line-height:1.5;color:var(--cr-ink);
-  background:#F4F1E6;border:1px solid #E2DCC8;border-radius:14px;padding:12px 15px;min-height:48px;max-height:170px;
-  box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:border-color .15s,box-shadow .15s;}
+  background:#F4F1E6;border:1px solid #E2DCC8;border-radius:14px;padding:12px 15px;min-height:58px;max-height:170px;
+  box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:border-color .15s,box-shadow .15s;
+  overflow-y:auto;scrollbar-width:none;}
+.cr-askin::-webkit-scrollbar{width:0;height:0;}
 .cr-askin:focus{border-color:#9CCBB1;box-shadow:inset 0 1px 3px rgba(20,32,26,.045),0 0 0 3px rgba(12,122,70,.14);}
 .cr-askin::placeholder{color:var(--cr-ink3);}
 .cr-go{position:relative;isolation:isolate;overflow:hidden;flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;padding:13px 22px;border-radius:15px;transition:transform .1s,box-shadow .1s,filter .1s;
