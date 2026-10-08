@@ -45,10 +45,10 @@ const CONTENT_TYPES = [
 
 // Casual (Creator) reframes the kept video types in its own, non-sell language —
 // same pipelines, creator-native names. Only the three casual keeps it shows.
-const CASUAL_VIDEO_COPY: Record<string, { name: string; sub: string }> = {
-  cartoon: { name: "Cartoon", sub: "Your idea, redrawn & animated viral-style" },
-  highlight: { name: "Showcase", sub: "Cinematic motion from your photo or idea" },
-  asmr: { name: "Satisfying", sub: "Macro textures in slow-mo — the loop nobody scrolls past" },
+const CASUAL_VIDEO_COPY: Record<string, { name: string; sub: string; emoji: string }> = {
+  cartoon: { name: "Cartoon", sub: "Your idea, redrawn & animated viral-style", emoji: "🎨" },
+  highlight: { name: "Showcase", sub: "Cinematic motion from your photo or idea", emoji: "🎬" },
+  asmr: { name: "Satisfying", sub: "Macro textures in slow-mo — the loop nobody scrolls past", emoji: "✨" },
 };
 
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
@@ -1518,7 +1518,9 @@ export default function WebStudio() {
                 return (
                   <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}`}
                     onClick={() => (locked ? setUpsell({ name: ct.name, tier: ct.tier, price: ct.price }) : (setContentType(ct.key), setUpsell(null)))}>
-                    <span className="ws-tile-img" style={{ backgroundImage: `url(${ct.cover})` }}>
+                    <span className={`ws-tile-img${casual && CASUAL_VIDEO_COPY[ct.key] ? " ws-tile-casual" : ""}`}
+                      style={casual && CASUAL_VIDEO_COPY[ct.key] ? undefined : { backgroundImage: `url(${ct.cover})` }}>
+                      {casual && CASUAL_VIDEO_COPY[ct.key] ? <span className="ws-tile-emoji" aria-hidden="true">{CASUAL_VIDEO_COPY[ct.key].emoji}</span> : null}
                       {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {ct.tier}</span>}
                     </span>
                     <b>{casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].name : ct.name}</b>
@@ -2389,6 +2391,10 @@ const WS_STYLE = `
 .ws-verb{font:inherit;font-weight:700;font-size:12px;color:#d9f3e5;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:7px 13px;cursor:pointer;text-decoration:none;transition:.12s}
 .ws-verb:hover{background:rgba(18,168,94,.22);border-color:rgba(18,168,94,.5);color:#fff}
 .ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
+/* Creator-native Video cards: brand tile + emoji instead of product/presenter cover art. */
+.ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
+.ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
+.ws-tile-emoji{font-size:34px;line-height:1;filter:saturate(1.05)}
 /* creations shelf */
 .ws-shelf{margin-top:20px}
 .ws-shelf-h{display:flex;align-items:baseline;gap:12px;margin:0 2px 11px}
