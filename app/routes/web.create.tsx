@@ -165,11 +165,7 @@ const CR_CSS = `
 .cr{--cr-card:#fff;--cr-line:#E7E2D2;--cr-ink:#14201A;--cr-ink2:#5B6B61;--cr-ink3:#8A968E;--cr-green:#0C7A46;--cr-green2:#12A85E;--cr-gold:#B08526;
   --cr-sh-sm:0 1px 2px rgba(20,32,26,.05);--cr-sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);--cr-sh-lg:0 2px 8px rgba(20,32,26,.06),0 26px 60px -22px rgba(20,32,26,.2);
   max-width:860px;margin:0 auto;padding:14px 0 56px;}
-.cr-hero{position:relative;isolation:isolate;text-align:center;padding:14px 0 6px;}
-/* EasyMode treatment: the engine-turned rosette ("flower") drifting behind the
-   hero in the green cut, like the page field — wbDrift is the layout's keyframe. */
-.cr-hero::before{content:"";position:absolute;z-index:-1;top:-150px;left:50%;width:560px;height:560px;margin-left:-280px;
-  background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.07;pointer-events:none;animation:wbDrift 240s linear infinite;}
+.cr-hero{text-align:center;padding:14px 0 6px;}
 .cr-greet{display:inline-flex;align-items:center;gap:9px;background:var(--cr-card);border:1px solid var(--cr-line);border-radius:999px;padding:5px 14px 5px 6px;box-shadow:var(--cr-sh-sm);font-size:12.5px;font-weight:600;color:var(--cr-ink2);margin-bottom:18px;}
 .cr-greet-av{width:24px;height:24px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#1B6D46,#0C7A46);display:grid;place-items:center;flex:0 0 auto;}
 .cr-greet-av img{width:118%;height:118%;object-fit:contain;image-rendering:pixelated;}
@@ -182,7 +178,12 @@ const CR_CSS = `
 .cr-mode{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--cr-ink2);background:var(--cr-card);border:1px solid var(--cr-line);box-shadow:var(--cr-sh-sm);transition:transform .12s,box-shadow .12s,border-color .12s,color .12s;}
 .cr-mode svg{width:16px;height:16px;}
 .cr-mode:hover{color:var(--cr-ink);transform:translateY(-1px);box-shadow:var(--cr-sh-md);}
-.cr-mode.on{background:linear-gradient(135deg,var(--cr-green2),var(--cr-green));color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(12,122,70,.3);}
+.cr-mode.on{position:relative;isolation:isolate;overflow:hidden;color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(12,122,70,.3);
+  background:linear-gradient(100deg,#12A85E 42%,#0A6A3D 82%,#075530);}
+/* Gold flower — the engine-turned rosette masked gold, bleeding off the right
+   like the app's green buttons; held far out so it stays a corner flourish. */
+.cr-mode.on::after{content:"";position:absolute;z-index:-1;top:50%;right:-66px;width:104px;height:104px;margin-top:-52px;pointer-events:none;
+  background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.5;animation:wbDrift 60s linear infinite;}
 .cr-ask{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:flex-end;gap:12px;background:var(--cr-card);border:1px solid var(--cr-line);border-radius:22px;padding:13px 13px 13px 20px;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.28);transition:border-color .15s,box-shadow .15s;}
 .cr-ask:focus-within{border-color:#9CCBB1;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.28),0 0 0 4px rgba(12,122,70,.16);}
 /* The gold cut of the rosette bleeding off the prompt bar's right edge — the
@@ -191,8 +192,16 @@ const CR_CSS = `
   background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.14;pointer-events:none;animation:wbDrift 160s linear infinite;}
 .cr-askin{flex:1;border:0;outline:0;resize:none;background:none;font:inherit;font-size:16px;line-height:1.5;color:var(--cr-ink);padding:6px 0;min-height:30px;max-height:160px;}
 .cr-askin::placeholder{color:var(--cr-ink3);}
-.cr-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;background:linear-gradient(135deg,var(--cr-green2),var(--cr-green));padding:13px 20px;border-radius:15px;box-shadow:0 4px 14px rgba(12,122,70,.32);transition:transform .1s,box-shadow .1s,filter .1s;}
-.cr-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 20px rgba(12,122,70,.36);filter:brightness(1.03);}
+.cr-go{position:relative;isolation:isolate;overflow:hidden;flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;padding:13px 22px;border-radius:15px;transition:transform .1s,box-shadow .1s,filter .1s;
+  /* Dark-right gradient so the gold rosette reads (gold on flat bright green vanishes). */
+  background:linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530),linear-gradient(165deg,#12A85E,#0B6B3E);
+  box-shadow:0 4px 14px rgba(12,122,70,.32),inset 0 0 0 1px rgba(231,200,121,.34);}
+/* Gold hairline ruled inside the edge + the masked-gold rosette turning behind
+   the label where it bleeds off the right — the app's full CTA treatment. */
+.cr-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:11px;pointer-events:none;}
+.cr-go::after{content:"";position:absolute;z-index:-1;top:50%;right:-82px;width:150px;height:150px;margin-top:-75px;pointer-events:none;
+  background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.55;animation:wbDrift 60s linear infinite;}
+.cr-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 20px rgba(12,122,70,.36),inset 0 0 0 1px rgba(231,200,121,.34);filter:brightness(1.04);}
 .cr-go:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;}
 .cr-go svg{width:17px;height:17px;}
 .cr-hint{text-align:center;font-size:12.5px;color:var(--cr-ink3);margin:12px 0 0;}
@@ -217,7 +226,7 @@ const CR_CSS = `
 .cr-foot{margin-top:30px;text-align:center;font-size:12.5px;font-weight:600;color:var(--cr-gold);}
 .cr-coin{color:var(--cr-gold);}
 .cr-foot a{color:var(--cr-green);font-weight:700;text-decoration:none;}
-@media(prefers-reduced-motion:reduce){.cr-hero::before,.cr-ask::after{animation:none;}}
+@media(prefers-reduced-motion:reduce){.cr-ask::after,.cr-go::after,.cr-mode.on::after{animation:none;}}
 @media(max-width:620px){
   .cr-h1{font-size:29px;}
   .cr-ask{flex-direction:column;align-items:stretch;border-radius:18px;padding:14px;}

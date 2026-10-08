@@ -56,20 +56,28 @@ export default function WebLayout() {
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
 
-  // HUD collapse — remembered per browser, read after mount so SSR matches.
-  const [hudMin, setHudMin] = useState(false);
-  useEffect(() => { setHudMin(localStorage.getItem("wbHudMin") === "1"); }, []);
-  const toggleHud = () => setHudMin((m) => { localStorage.setItem("wbHudMin", m ? "0" : "1"); return !m; });
-
   // Creation mode — "marketing" (sell your products) vs "casual" (just make cool
   // stuff + edit photos). A pure front-end reframe: it swaps copy and hides the
   // merchant-only surfaces, never touching billing or capability gates. Read
-  // after mount (same discipline as the HUD) so SSR + first paint stay on the
-  // default 'marketing' and the live paid experience never flips under a
-  // merchant mid-hydration. Persisted per browser; see [emMode].
+  // after mount so SSR + first paint stay on the default 'marketing' and the
+  // live paid experience never flips under a merchant mid-hydration. Persisted
+  // per browser; see [emMode].
   const [mode, setMode] = useState<"marketing" | "casual">("marketing");
   useEffect(() => { try { const m = localStorage.getItem("emMode"); if (m === "casual" || m === "marketing") setMode(m); } catch { /* storage is a nicety */ } }, []);
   const chooseMode = (m: "marketing" | "casual") => { setMode(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
+
+  // HUD collapse — PER MODE, read after mount so SSR matches. The Creator
+  // section defaults to the clean collapsed mini-pill; Marketing defaults
+  // expanded. Each remembers its own toggle per browser.
+  const [hudMin, setHudMin] = useState(false);
+  const hudKey = (m: "marketing" | "casual") => (m === "casual" ? "wbHudMin_casual" : "wbHudMin");
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(hudKey(mode));
+      setHudMin(stored != null ? stored === "1" : mode === "casual");
+    } catch { setHudMin(mode === "casual"); }
+  }, [mode]);
+  const toggleHud = () => setHudMin((m) => { try { localStorage.setItem(hudKey(mode), m ? "0" : "1"); } catch { /* ignore */ } return !m; });
 
   return (
     <>
