@@ -660,7 +660,7 @@ export default function WebDashboard() {
                       one who has spent it is charged today. Neither is
                       “Start free trial”. */}
                   <button className="wb-btn" disabled={busy || !d.billingOn}>
-                    {(d.trialAvailable ? "Start free trial" : d.trialing ? `Switch to ${t.name}` : `Start ${t.name}`)}{!isLegend && creatorOn ? " + Creator" : ""}
+                    {(d.trialAvailable ? "Start free trial" : d.trialing ? `Switch to ${t.name}` : `Get ${t.name}`)}{!isLegend && creatorOn ? " + Creator" : ""}
                   </button>
                 </Form>
                 {/* The trial ceiling is a CAP, not a grant: what a trialist can

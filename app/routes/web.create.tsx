@@ -1,18 +1,17 @@
-/* Creator home — the CREATOR section's own front door (the Marketing section
- * keeps web._index as its dashboard). A DeepAI-style "what do you want to make?"
- * hub, in EASYMODE's green-on-cream theme: a warm hero with Helpurr, big tool
- * cards that deep-link into the Studio's casual flows (?do=…), and a strip of
- * your most recent Gallery pieces. No merchant/dashboard machinery — this is the
- * fun, personal side. Casual mode is the section switch; the nav routes "Home"
- * here when it's on. */
+/* Creator home — the CREATOR section's own front door (Marketing keeps
+ * web._index as its dashboard). A premium, DeepAI-style prompt-first hub in
+ * EASYMODE's green-on-cream theme: a confident hero, one "Ask anything" bar with
+ * mode tabs (Image · Edit · Video · Music · Chat) that deep-link into the
+ * Studio's casual flows (?do=…&prompt=…), Chat opens Helpurr, and a strip of
+ * your most recent Gallery pieces. All features intact — just world-class
+ * execution. Casual mode is the section switch; the nav routes "Home" here. */
 
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, useLoaderData, useNavigate } from "@remix-run/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
-import { Ico } from "../lib/icons";
 
 export const meta = () => [{ title: "Create · EasyMode" }];
 
@@ -43,22 +42,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-// DeepAI-style mode tabs over one "Ask anything" box. Image/Edit/Video/Music
-// deep-link into the Studio's casual flows with the prompt prefilled (?do=…
-// &prompt=…); Chat opens Helpurr. Edit uploads its photo in the Studio.
-type Mode = { key: string; emoji: string; label: string; ph: string };
-const MODES: Mode[] = [
-  { key: "create", emoji: "✨", label: "Image", ph: "a red panda astronaut floating over neon Tokyo at night…" },
-  { key: "edit", emoji: "🎨", label: "Edit", ph: "make the shirt a purple hoodie and add a camera… (you'll add your photo next)" },
-  { key: "video", emoji: "🎬", label: "Video", ph: "a cozy 5-second clip of my product on a sunlit desk…" },
-  { key: "music", emoji: "🎵", label: "Music", ph: "upbeat lo-fi hip-hop with mellow piano and a soft beat…" },
-  { key: "chat", emoji: "🐾", label: "Chat", ph: "ask Helpurr anything — ideas, captions, what to make…" },
-];
+const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+const ICON: Record<string, ReactNode> = {
+  create: <svg viewBox="0 0 24 24" {...S}><rect x="3" y="4.5" width="18" height="15" rx="2.6" /><circle cx="8.4" cy="9.6" r="1.5" /><path d="m4 16.5 4.6-4.2 3.3 3 3-2.4 5.1 4.2" /></svg>,
+  edit: <svg viewBox="0 0 24 24" {...S}><path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17v3z" /><path d="M13.5 6.5l4 4" /></svg>,
+  video: <svg viewBox="0 0 24 24" {...S}><rect x="2.5" y="5" width="19" height="14" rx="3" /><path d="m10 9.5 5 2.5-5 2.5z" /></svg>,
+  music: <svg viewBox="0 0 24 24" {...S}><path d="M9 17.4V6.2l9-1.8v11.2" /><circle cx="6.8" cy="17.6" r="2.4" /><circle cx="15.8" cy="15.6" r="2.4" /></svg>,
+  chat: <svg viewBox="0 0 24 24" {...S}><path d="M4 5h16v11H8l-4 3.5z" /></svg>,
+};
 
-// Secondary entry points not covered by a prompt tab.
-const QUICK = [
-  { key: "presenter", emoji: "🧑", title: "With a presenter", to: "/web/studio?do=presenter" },
-  { key: "gallery", emoji: "🖼", title: "My Gallery", to: "/web/archive?section=creator" },
+// DeepAI-style mode tabs over one "Ask anything" bar. Image/Edit/Video/Music
+// deep-link into the Studio's casual flows with the prompt prefilled; Chat opens
+// Helpurr. Edit uploads its photo in the Studio.
+type Mode = { key: string; label: string; ph: string };
+const MODES: Mode[] = [
+  { key: "create", label: "Image", ph: "a red panda astronaut floating over neon Tokyo at night…" },
+  { key: "edit", label: "Edit", ph: "make the shirt a purple hoodie and add a camera… (you'll add your photo next)" },
+  { key: "video", label: "Video", ph: "a cozy 5-second clip of my product on a sunlit desk…" },
+  { key: "music", label: "Music", ph: "upbeat lo-fi hip-hop with mellow piano and a soft beat…" },
+  { key: "chat", label: "Chat", ph: "ask Helpurr anything — ideas, captions, what to make…" },
 ];
 
 export default function CreatorHome() {
@@ -84,44 +86,48 @@ export default function CreatorHome() {
       <style dangerouslySetInnerHTML={{ __html: CR_CSS }} />
 
       <div className="cr-hero">
-        <span className="cr-hero-cat" aria-hidden="true"><img src="/familiar-px.png?v=2" alt="" /></span>
-        <div className="cr-hero-txt">
-          <h1 className="cr-h1">Hey {name} — what are we making? 🐾</h1>
-          <p className="cr-sub">
-            Type what you want, pick a mode, go.
-            {hasPlan ? <> You&apos;ve got <b>{tokens.toLocaleString("en-US")}</b> tokens to play with.</> : <> <Link to="/web#plans">Pick a plan</Link> to start.</>}
-          </p>
-        </div>
+        <span className="cr-greet">
+          <span className="cr-greet-av" aria-hidden="true"><img src="/familiar-px.png?v=2" alt="" /></span>
+          Helpurr&apos;s ready <span className="cr-greet-dot" aria-hidden="true" />
+        </span>
+        <h1 className="cr-h1">What will you <span className="cr-accent">create</span>, {name}?</h1>
+        <p className="cr-sub">
+          {hasPlan
+            ? <>Describe it, pick a mode, and we&apos;ll make it — images, edits, video, music, or a quick chat.</>
+            : <>Describe it, pick a mode, and we&apos;ll make it. <Link to="/web#plans">Pick a plan</Link> to start.</>}
+        </p>
       </div>
 
-      {/* Prompt-first surface: mode tabs + one "Ask anything" box. */}
-      <div className="cr-make">
-        <div className="cr-modes" role="tablist" aria-label="What to make">
-          {MODES.map((m) => (
-            <button type="button" key={m.key} role="tab" aria-selected={mode === m.key}
-              className={`cr-mode${mode === m.key ? " on" : ""}`} onClick={() => setMode(m.key)}>
-              <span aria-hidden="true">{m.emoji}</span> {m.label}
-            </button>
-          ))}
-        </div>
-        <div className="cr-ask">
-          <textarea
-            className="cr-askin"
-            rows={2}
-            value={prompt}
-            placeholder={active.ph}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
-          />
-          <button type="button" className="cr-go" onClick={go} disabled={!isChat && !prompt.trim()}>
-            {isChat ? "Ask Helpurr 🐾" : "Make it →"}
+      <div className="cr-modes" role="tablist" aria-label="What to make">
+        {MODES.map((m) => (
+          <button type="button" key={m.key} role="tab" aria-selected={mode === m.key}
+            className={`cr-mode${mode === m.key ? " on" : ""}`} onClick={() => setMode(m.key)}>
+            {ICON[m.key]} {m.label}
           </button>
-        </div>
-        <div className="cr-quick">
-          {QUICK.map((q) => (
-            <Link key={q.key} to={q.to} className="cr-quicklink"><span aria-hidden="true">{q.emoji}</span> {q.title}</Link>
-          ))}
-        </div>
+        ))}
+      </div>
+
+      <div className="cr-ask">
+        <textarea
+          className="cr-askin"
+          rows={1}
+          value={prompt}
+          placeholder={active.ph}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
+        />
+        <button type="button" className="cr-go" onClick={go} disabled={!isChat && !prompt.trim()}>
+          {isChat ? "Ask Helpurr" : "Make it"}
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h13" /><path d="m12 5 7 7-7 7" /></svg>
+        </button>
+      </div>
+      <p className="cr-hint">Press Enter to generate · Shift+Enter for a new line</p>
+
+      <div className="cr-quick">
+        <Link to="/web/archive?section=creator" className="cr-ql">
+          <svg viewBox="0 0 24 24" {...S}><rect x="3" y="4.5" width="18" height="15" rx="2.6" /><circle cx="8.4" cy="9.6" r="1.5" /><path d="m4 16.5 4.6-4.2 3.3 3 3-2.4 5.1 4.2" /></svg>
+          My Gallery
+        </Link>
       </div>
 
       {pieces.length > 0 ? (
@@ -134,76 +140,88 @@ export default function CreatorHome() {
             {pieces.map((p) => (
               <Link key={p.id} to={`/web/archive?section=creator${p.isAudio ? "&tab=music" : p.isVideo ? "&tab=video" : "&tab=image"}`} className="cr-piece" title={p.title}>
                 {p.isAudio
-                  ? <span className="cr-piece-media cr-piece-audio"><Ico n="music" size={26} /></span>
+                  ? <span className="cr-piece-media cr-piece-audio">{ICON.music}</span>
                   : p.isVideo
                     ? <video src={p.media!} className="cr-piece-media" muted playsInline preload="metadata" />
-                    : <span className="cr-piece-media" style={{ backgroundImage: `url(${p.media})` }} />}
-                {(p.isVideo || p.isAudio) && <span className="cr-piece-play" aria-hidden="true"><Ico n="play" size={16} /></span>}
+                    : <span className="cr-piece-media cr-piece-img" style={{ backgroundImage: `url(${p.media})` }} />}
+                {(p.isVideo || p.isAudio) && <span className="cr-piece-play" aria-hidden="true">▶</span>}
+                <span className="cr-piece-tag">{p.isAudio ? "Music" : p.isVideo ? "Video" : "Image"}</span>
               </Link>
             ))}
           </div>
         </div>
       ) : (
-        <p className="cr-empty">Nothing in your gallery yet — type something above and make your first one. ✨</p>
+        <p className="cr-empty">Nothing in your gallery yet — type something above and make your first one.</p>
       )}
 
       <p className="cr-foot">
-        <Ico n="coin" /> {hasPlan ? `${tokens.toLocaleString("en-US")} tokens` : "No plan yet"} · <Link to="/web#plans">Get more</Link>
+        <span className="cr-coin" aria-hidden="true">◎</span> {hasPlan ? `${tokens.toLocaleString("en-US")} tokens` : "No plan yet"} · <Link to="/web#plans">Get more</Link>
       </p>
     </div>
   );
 }
 
 const CR_CSS = `
-.cr{max-width:1080px;margin:0 auto;padding:4px 0 40px}
-.cr-hero{display:flex;align-items:center;gap:16px;margin:2px 0 22px;padding:18px 20px;border-radius:20px;
-  background:linear-gradient(135deg,#F0FAF4,#FBFAF2);border:1px solid var(--line,#E4DFCF);
-  box-shadow:0 3px 14px rgba(20,32,26,.06),inset 0 0 0 1px rgba(231,200,121,.22)}
-.cr-hero-cat{flex:0 0 auto;width:64px;height:64px;display:grid;place-items:center}
-.cr-hero-cat img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 2px 4px rgba(20,32,26,.25))}
-.cr-h1{margin:0;font-family:Poppins,sans-serif;font-weight:800;font-size:22px;line-height:1.15;color:var(--ink,#14201A)}
-.cr-sub{margin:6px 0 0;font-size:14px;color:var(--ink2,#4A554E)}
-.cr-sub a{color:var(--green,#0C7A46);font-weight:700}
-.cr-make{padding:16px 16px 14px;border-radius:20px;background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF);box-shadow:0 3px 14px rgba(20,32,26,.06)}
-.cr-modes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.cr-mode{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;cursor:pointer;font:inherit;
-  font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2,#4A554E);
-  background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);transition:all .12s}
-.cr-mode:hover{border-color:#9CCBB1}
-.cr-mode.on{background:var(--green,#0C7A46);color:#fff;border-color:var(--green,#0C7A46);box-shadow:0 2px 8px rgba(12,122,70,.28)}
-.cr-ask{display:flex;gap:10px;align-items:stretch}
-.cr-askin{flex:1;resize:none;padding:14px 16px;border-radius:14px;border:1px solid var(--line,#E4DFCF);background:#fff;
-  font:inherit;font-size:15px;line-height:1.4;color:var(--ink,#14201A);outline:none;transition:border-color .12s,box-shadow .12s}
-.cr-askin:focus{border-color:#9CCBB1;box-shadow:0 0 0 3px rgba(12,122,70,.12)}
-.cr-askin::placeholder{color:#9AA69E}
-.cr-go{flex:0 0 auto;align-self:stretch;padding:0 22px;border:0;border-radius:14px;cursor:pointer;
-  font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;background:var(--green,#0C7A46);
-  box-shadow:0 2px 10px rgba(12,122,70,.3);transition:transform .1s,box-shadow .1s,opacity .1s}
-.cr-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 16px rgba(12,122,70,.34)}
-.cr-go:disabled{opacity:.45;cursor:not-allowed}
-.cr-quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.cr-quicklink{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);
-  text-decoration:none;padding:6px 12px;border-radius:999px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);transition:border-color .12s,color .12s}
-.cr-quicklink:hover{border-color:#9CCBB1;color:var(--green,#0C7A46)}
-.cr-recent{margin-top:26px}
-.cr-recent-hd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
-.cr-recent-hd b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A)}
-.cr-recent-all{font-size:12.5px;font-weight:700;color:var(--green,#0C7A46);text-decoration:none}
-.cr-recent-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
-.cr-piece{position:relative;display:block;border-radius:14px;overflow:hidden;aspect-ratio:1/1;border:1px solid var(--line,#E4DFCF);background:#EFEADB}
-.cr-piece-media{display:block;width:100%;height:100%;object-fit:cover;background-size:cover;background-position:center}
-.cr-piece-audio{display:grid;place-items:center;background:linear-gradient(150deg,#0C7A46,#14201A);color:#F4F1E6}
-.cr-piece-play{position:absolute;inset:0;margin:auto;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:rgba(12,18,14,.5);color:#fff}
-.cr-empty{margin-top:24px;padding:18px;border-radius:16px;background:var(--paper,#F4F1E6);border:1px dashed var(--line,#E4DFCF);font-size:13.5px;color:var(--ink2,#4A554E);text-align:center}
-.cr-empty b{color:var(--ink,#14201A)}
-.cr-foot{margin-top:22px;font-size:12.5px;font-weight:600;color:#7E5E13;display:flex;align-items:center;gap:6px}
-.cr-foot a{color:var(--green,#0C7A46);font-weight:700}
-@media (max-width:620px){
-  .cr-hero{flex-direction:row;padding:14px 15px;gap:12px}
-  .cr-hero-cat{width:52px;height:52px}
-  .cr-h1{font-size:18px}
-  .cr-ask{flex-direction:column}
-  .cr-go{align-self:flex-end;padding:12px 20px}
-  .cr-recent-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+.cr{--cr-card:#fff;--cr-line:#E7E2D2;--cr-ink:#14201A;--cr-ink2:#5B6B61;--cr-ink3:#8A968E;--cr-green:#0C7A46;--cr-green2:#12A85E;--cr-gold:#B08526;
+  --cr-sh-sm:0 1px 2px rgba(20,32,26,.05);--cr-sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);--cr-sh-lg:0 2px 8px rgba(20,32,26,.06),0 26px 60px -22px rgba(20,32,26,.2);
+  max-width:860px;margin:0 auto;padding:14px 0 56px;}
+.cr-hero{position:relative;isolation:isolate;text-align:center;padding:14px 0 6px;}
+/* EasyMode treatment: the engine-turned rosette ("flower") drifting behind the
+   hero in the green cut, like the page field — wbDrift is the layout's keyframe. */
+.cr-hero::before{content:"";position:absolute;z-index:-1;top:-150px;left:50%;width:560px;height:560px;margin-left:-280px;
+  background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.07;pointer-events:none;animation:wbDrift 240s linear infinite;}
+.cr-greet{display:inline-flex;align-items:center;gap:9px;background:var(--cr-card);border:1px solid var(--cr-line);border-radius:999px;padding:5px 14px 5px 6px;box-shadow:var(--cr-sh-sm);font-size:12.5px;font-weight:600;color:var(--cr-ink2);margin-bottom:18px;}
+.cr-greet-av{width:24px;height:24px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#1B6D46,#0C7A46);display:grid;place-items:center;flex:0 0 auto;}
+.cr-greet-av img{width:118%;height:118%;object-fit:contain;image-rendering:pixelated;}
+.cr-greet-dot{width:7px;height:7px;border-radius:50%;background:var(--cr-green2);box-shadow:0 0 0 3px rgba(18,168,94,.18);}
+.cr-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:38px;line-height:1.06;letter-spacing:-.025em;margin:0 0 12px;color:var(--cr-ink);}
+.cr-accent{background:linear-gradient(120deg,var(--cr-green2),var(--cr-green));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.cr-sub{margin:0 auto;max-width:470px;font-size:15px;line-height:1.5;color:var(--cr-ink2);}
+.cr-sub a{color:var(--cr-green);font-weight:700;}
+.cr-modes{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:26px 0 14px;}
+.cr-mode{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--cr-ink2);background:var(--cr-card);border:1px solid var(--cr-line);box-shadow:var(--cr-sh-sm);transition:transform .12s,box-shadow .12s,border-color .12s,color .12s;}
+.cr-mode svg{width:16px;height:16px;}
+.cr-mode:hover{color:var(--cr-ink);transform:translateY(-1px);box-shadow:var(--cr-sh-md);}
+.cr-mode.on{background:linear-gradient(135deg,var(--cr-green2),var(--cr-green));color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(12,122,70,.3);}
+.cr-ask{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:flex-end;gap:12px;background:var(--cr-card);border:1px solid var(--cr-line);border-radius:22px;padding:13px 13px 13px 20px;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.28);transition:border-color .15s,box-shadow .15s;}
+.cr-ask:focus-within{border-color:#9CCBB1;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.28),0 0 0 4px rgba(12,122,70,.16);}
+/* The gold cut of the rosette bleeding off the prompt bar's right edge — the
+   app's Autopilot/HUD card treatment, the "spinning gold" signature. */
+.cr-ask::after{content:"";position:absolute;z-index:-1;top:50%;right:-78px;width:234px;height:234px;margin-top:-117px;
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.14;pointer-events:none;animation:wbDrift 160s linear infinite;}
+.cr-askin{flex:1;border:0;outline:0;resize:none;background:none;font:inherit;font-size:16px;line-height:1.5;color:var(--cr-ink);padding:6px 0;min-height:30px;max-height:160px;}
+.cr-askin::placeholder{color:var(--cr-ink3);}
+.cr-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;background:linear-gradient(135deg,var(--cr-green2),var(--cr-green));padding:13px 20px;border-radius:15px;box-shadow:0 4px 14px rgba(12,122,70,.32);transition:transform .1s,box-shadow .1s,filter .1s;}
+.cr-go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 20px rgba(12,122,70,.36);filter:brightness(1.03);}
+.cr-go:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;}
+.cr-go svg{width:17px;height:17px;}
+.cr-hint{text-align:center;font-size:12.5px;color:var(--cr-ink3);margin:12px 0 0;}
+.cr-quick{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin:20px 0 0;}
+.cr-ql{display:inline-flex;align-items:center;gap:7px;text-decoration:none;font-family:Poppins,sans-serif;font-weight:600;font-size:12.5px;color:var(--cr-ink2);background:rgba(255,255,255,.6);border:1px solid var(--cr-line);padding:8px 14px;border-radius:999px;transition:all .12s;}
+.cr-ql svg{width:15px;height:15px;}
+.cr-ql:hover{color:var(--cr-green);border-color:#9CCBB1;background:#fff;}
+.cr-recent{margin-top:46px;}
+.cr-recent-hd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;}
+.cr-recent-hd b{font-family:Poppins,sans-serif;font-weight:700;font-size:15px;letter-spacing:-.01em;color:var(--cr-ink);}
+.cr-recent-all{font-family:Poppins,sans-serif;font-weight:600;font-size:12.5px;color:var(--cr-green);text-decoration:none;}
+.cr-recent-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px;}
+.cr-piece{position:relative;display:block;aspect-ratio:1;border-radius:16px;overflow:hidden;border:1px solid var(--cr-line);box-shadow:var(--cr-sh-sm);transition:transform .14s,box-shadow .14s;}
+.cr-piece:hover{transform:translateY(-3px);box-shadow:var(--cr-sh-md);}
+.cr-piece-media{display:block;width:100%;height:100%;object-fit:cover;}
+.cr-piece-img{background-size:cover;background-position:center;}
+.cr-piece-audio{display:grid;place-items:center;background:linear-gradient(150deg,#1B6D46,#14201A);color:#EAF6EF;}
+.cr-piece-audio svg{width:26px;height:26px;}
+.cr-piece-tag{position:absolute;left:8px;bottom:8px;font-family:Poppins,sans-serif;font-weight:700;font-size:10.5px;color:#fff;background:rgba(12,18,14,.55);padding:3px 8px;border-radius:999px;}
+.cr-piece-play{position:absolute;inset:0;margin:auto;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;font-size:13px;}
+.cr-empty{margin-top:30px;padding:20px;border-radius:16px;background:rgba(255,255,255,.55);border:1px dashed var(--cr-line);font-size:13.5px;color:var(--cr-ink2);text-align:center;}
+.cr-foot{margin-top:30px;text-align:center;font-size:12.5px;font-weight:600;color:var(--cr-gold);}
+.cr-coin{color:var(--cr-gold);}
+.cr-foot a{color:var(--cr-green);font-weight:700;text-decoration:none;}
+@media(prefers-reduced-motion:reduce){.cr-hero::before,.cr-ask::after{animation:none;}}
+@media(max-width:620px){
+  .cr-h1{font-size:29px;}
+  .cr-ask{flex-direction:column;align-items:stretch;border-radius:18px;padding:14px;}
+  .cr-go{justify-content:center;}
+  .cr-recent-row{grid-template-columns:repeat(3,1fr);}
 }
 `;
