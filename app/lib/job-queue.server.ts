@@ -523,6 +523,8 @@ async function runJob(
           format: payload.facelessFormat as string | undefined,
           voiceKey: payload.voiceKey as string | undefined,
           jobId: payload.__jobId as string | undefined,
+          // Land it in the right Archive section (creator vs marketing/Product).
+          section: payload.section as string | undefined,
           // Product Channel: a real catalogue product to sell (grounded script +
           // its photo as the opening b-roll).
           product: payload.product as { title: string; imageUrl?: string; description?: string } | undefined,

@@ -218,6 +218,10 @@ export async function generateFacelessVideo(opts: {
   format?: string;
   voiceKey?: string;
   jobId?: string;
+  // Which Archive section this lands in: "creator" (vibe channels / manual) or
+  // "marketing" (Product Channels). tagAssetSection only ever tags "creator", so
+  // the asset must carry the right section itself.
+  section?: string;
   // Product Channel drop: a faceless video SELLING a real catalogue product,
   // grounded in its description, with its real image as the opening b-roll.
   product?: { title: string; imageUrl?: string; description?: string };
@@ -366,7 +370,7 @@ export async function generateFacelessVideo(opts: {
       status: "PENDING",
       title: `Faceless video — ${topic.slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "FACELESS", videoUrl: storedUrl, prompt: topic, script: fullScript }),
-      metaJson: JSON.stringify({ kind: "faceless", section: "creator", format: fmtKey, topic, aspect: "vertical" }),
+      metaJson: JSON.stringify({ kind: "faceless", section: opts.section || "creator", format: fmtKey, topic, aspect: "vertical", ...(product ? { product: product.title } : {}) }),
     },
   });
   return asset.id;
