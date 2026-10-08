@@ -184,13 +184,17 @@ const CR_CSS = `
    like the app's green buttons; held far out so it stays a corner flourish. */
 .cr-mode.on::after{content:"";position:absolute;z-index:-1;top:50%;right:-66px;width:104px;height:104px;margin-top:-52px;pointer-events:none;
   background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.5;animation:wbDrift 60s linear infinite;}
-.cr-ask{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:flex-end;gap:12px;background:var(--cr-card);border:1px solid var(--cr-line);border-radius:22px;padding:13px 13px 13px 20px;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.28);transition:border-color .15s,box-shadow .15s;}
-.cr-ask:focus-within{border-color:#9CCBB1;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.28),0 0 0 4px rgba(12,122,70,.16);}
+.cr-ask{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:flex-end;gap:12px;background:var(--cr-card);border:1px solid var(--cr-line);border-radius:22px;padding:14px;box-shadow:var(--cr-sh-lg),inset 0 0 0 1px rgba(231,200,121,.26);}
 /* The gold cut of the rosette bleeding off the prompt bar's right edge — the
    app's Autopilot/HUD card treatment, the "spinning gold" signature. */
 .cr-ask::after{content:"";position:absolute;z-index:-1;top:50%;right:-78px;width:234px;height:234px;margin-top:-117px;
-  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.14;pointer-events:none;animation:wbDrift 160s linear infinite;}
-.cr-askin{flex:1;border:0;outline:0;resize:none;background:none;font:inherit;font-size:16px;line-height:1.5;color:var(--cr-ink);padding:6px 0;min-height:30px;max-height:160px;}
+  background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.13;pointer-events:none;animation:wbDrift 160s linear infinite;}
+/* The actual type-here field — a recessed cream well so the text sits IN a box,
+   not floating on the white card. */
+.cr-askin{flex:1;outline:0;resize:none;font:inherit;font-size:16px;line-height:1.5;color:var(--cr-ink);
+  background:#F4F1E6;border:1px solid #E2DCC8;border-radius:14px;padding:12px 15px;min-height:48px;max-height:170px;
+  box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:border-color .15s,box-shadow .15s;}
+.cr-askin:focus{border-color:#9CCBB1;box-shadow:inset 0 1px 3px rgba(20,32,26,.045),0 0 0 3px rgba(12,122,70,.14);}
 .cr-askin::placeholder{color:var(--cr-ink3);}
 .cr-go{position:relative;isolation:isolate;overflow:hidden;flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;font:inherit;font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:#fff;padding:13px 22px;border-radius:15px;transition:transform .1s,box-shadow .1s,filter .1s;
   /* Dark-right gradient so the gold rosette reads (gold on flat bright green vanishes). */
