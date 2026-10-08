@@ -521,9 +521,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // HARD REQUIREMENT: no product photo = the engines invent a product from
-  // the title and the merchant pays for generic AI art. Services are the one
-  // legitimate exception (there is nothing to photograph).
-  if ((intent === "video" || intent === "image") && !service && !productImageUrl) {
+  // the title and the merchant pays for generic AI art. Services are one
+  // legitimate exception (there is nothing to photograph); the other is CASUAL
+  // (Creator) video, which is a text-to-video CREATIVE generator by design —
+  // "describe anything, no photo" — not a factual product ad, so a photoless
+  // render is the intended path (minimax text-to-video / cartoon text keyframe),
+  // and the claims guardrail already governs any spoken/on-screen copy.
+  if ((intent === "video" || intent === "image") && !service && !productImageUrl && !(casualMode && intent === "video")) {
     return json({ error: "Add a product photo — upload one or paste an image URL. Without it we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
   }
 
@@ -1271,7 +1275,7 @@ export default function WebStudio() {
   // Creator "Faceless video" — topic → scripted 9:16 social video, own casual tab.
   const isFaceless = casual && tab === "faceless";
   const submitIntent = isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
-  const verb = isCreate || isMusic || isFaceless ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
+  const verb = isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   const cost = baseCost + engineFee;
@@ -1408,8 +1412,11 @@ export default function WebStudio() {
   // pipeline happily renders it and the merchant pays for slop. Require a
   // photo (upload OR url) for anything that should SHOW the product; services
   // legitimately have nothing to photograph.
-  // "Make an image" generates from text — no photo required.
-  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim();
+  // "Make an image" generates from text — no photo required. Casual (Creator)
+  // VIDEO is the same deal: a "describe anything, no photo" text-to-video
+  // generator, so a photo is optional there too (add one to feature a real
+  // product; without one we create the whole thing from the words).
+  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim() && !(casual && tab === "video");
   // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
   // (title, photo, presenter, cartoon style) disabled the button; the one that
   // bites a brand-new trialist first did not. A Studio trial spends from a
@@ -1822,7 +1829,7 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && (<>
-            <StepHead n={2} title={casual ? "Your subject" : "Your product"} hint={casual ? "what this is about" : "what we're actually selling"} />
+            <StepHead n={2} title={casual ? (tab === "video" ? "Describe your video" : "Your subject") : "Your product"} hint={casual ? (tab === "video" ? "anything you like — no photo needed" : "what this is about") : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
                 Pasting a link and retyping the title on every generation is a
@@ -1939,10 +1946,16 @@ export default function WebStudio() {
                 ↺ Use last: {lastProd.title}
               </button>
             )}
-            <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? "Optional name for your edit" : casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
+            {(casual && tab === "video") ? (
+              <textarea className="wb-in ws-ta ws-hero" name="productTitle" required value={productTitle} rows={3}
+                onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }}
+                placeholder="Describe your video — e.g. a cozy autumn morning, steam rising off a mug by a rainy window" />
+            ) : (
+              <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? "Optional name for your edit" : casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
+            )}
             {tab !== "blog" && (
               <>
-                <div className="ws-lbl">{isEdit ? <>Your photo <span className="ws-opt">drag &amp; drop, or click to upload</span></> : casual ? <>Photo <span className="ws-opt">powers your videos and images — upload or paste a URL</span></> : <>Product photo <span className="ws-opt">powers videos &amp; image ads — upload or paste a URL</span></>}</div>
+                <div className="ws-lbl">{isEdit ? <>Your photo <span className="ws-opt">drag &amp; drop, or click to upload</span></> : casual ? <>Photo <span className="ws-opt">optional — add one to feature a real product</span></> : <>Product photo <span className="ws-opt">powers videos &amp; image ads — upload or paste a URL</span></>}</div>
                 {isEdit ? (
                   <div className={`ws-drop${editPreview ? " has" : ""}`}
                     onClick={() => photoInputRef.current?.click()}
@@ -1969,6 +1982,11 @@ export default function WebStudio() {
                     onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
                 )}
                 <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? "…or https://example.com/my-photo.jpg" : "…or https://yourstore.com/cdn/product.jpg"} style={{ marginTop: 8 }} />
+                {casual && tab === "video" && !hasFile && !imageUrl.trim() && (
+                  <p className="ws-note">
+                    ✨ No photo? We&apos;ll create your whole video from your words. Add one above to feature a <b>real</b> product.
+                  </p>
+                )}
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12" }}>
                     {casual
@@ -2113,6 +2131,20 @@ export default function WebStudio() {
                     : "Topic"}{" "}
                   <span className="ws-opt">{isCreate || isMusic || isFaceless ? "required" : isEdit && (editOp === "replace" || !editOp) ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
                 </div>
+                {/* The text-to-create instruments (Make an image / Make music /
+                    Faceless) lead with a BIG "describe anything" box — the
+                    DeepAI-style hero input. No reference photo is involved, so
+                    the box is the whole act of creation and deserves the room.
+                    Edit / blog / marketing keep the compact single-line input. */}
+                {(isCreate || isMusic || isFaceless) ? (
+                  <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
+                    placeholder={
+                      isMusic ? "e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat"
+                      : isFaceless ? "e.g. 5 mind-blowing facts about the deep ocean"
+                      : "e.g. a red panda astronaut floating over neon Tokyo at night"
+                    }
+                    onChange={(e) => setDirection(e.target.value)} />
+                ) : (
                 <input className="wb-in" value={direction} maxLength={300}
                   disabled={isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")}
                   placeholder={
@@ -2133,6 +2165,14 @@ export default function WebStudio() {
                       : "Tap an angle above, or describe your own topic…"
                   }
                   onChange={(e) => setDirection(e.target.value)} />
+                )}
+                {isFaceless && (
+                  <div className="ws-chips" style={{ marginTop: 8 }}>
+                    {["5 mind-blowing facts about the deep ocean", "a 30-second motivational pep talk", "storytime: the day everything changed"].map((ex) => (
+                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}>✨ {ex}</button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -2191,7 +2231,7 @@ export default function WebStudio() {
               </div>
             )}
             <input type="hidden" name="burst" value={burst} />
-            <div style={{ marginTop: 10 }}>
+            <div className="ws-makebar" style={{ marginTop: 10 }}>
               <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
                 {busy
                   ? "Sending to the studio…"
@@ -2342,6 +2382,11 @@ const WS_STYLE = `
 .ws-3w{display:flex;flex-direction:column;gap:10px;margin-top:2px}
 .ws-w{display:block;font-size:12px;font-weight:700;color:var(--ink,#14201A);margin-bottom:5px}
 .ws-ta{min-height:74px;resize:vertical;font:inherit;width:100%}
+/* The "describe anything" hero box — the DeepAI-style text-to-create input for
+   Make an image / Make music / Faceless. Bigger, softer, with a green focus ring. */
+.ws-hero{min-height:112px;font-size:16px;line-height:1.45;padding:14px 15px;border-radius:14px;border:1.5px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.05);transition:border-color .12s,box-shadow .12s}
+.ws-hero:focus{outline:none;border-color:#12A85E;box-shadow:0 0 0 3px rgba(18,168,94,.16)}
+.ws-hero::placeholder{color:#9AA69E}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
    stack three rows deep above the tiles. */
@@ -2502,6 +2547,42 @@ const WS_STYLE = `
   .ws-casual .ws-tab{flex:0 0 auto}
   .ws-stage{position:static}
   .ws-stage-frame{min-height:300px}
+}
+/* ── THE EASEL on phones — "Pinned Cockpit" ───────────────────────────────
+   On a single column the old layout buried the Stage under the whole form and
+   left the Make button mid-scroll. Here the three zones get PINNED instead of
+   stacked (the Ideogram/Krea model): the Rosette Stage leads as a hero canvas,
+   the instrument rail becomes a sticky 4-up segmented control, and Make + wallet
+   detach into a fixed thumb-reachable bottom bar. All scoped to .ws-casual, so
+   desktop (>620px) and marketing are untouched. 620px is the file's phone
+   breakpoint; being later in source, these rules win at ≤620px. */
+@media (max-width:620px){
+  /* clearance so the fixed Make bar never covers the last flow element (the
+     shelf is a sibling outside .ws-easel, so the padding sits on the root). */
+  .ws-casual{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+
+  /* 1 — hoist the Rosette Stage to the top as the hero canvas */
+  .ws-casual .ws-easel{gap:12px}
+  .ws-casual .ws-stage{order:-1;position:static;top:auto}
+  .ws-casual .ws-easel-left{order:0}
+  .ws-casual .ws-stage-frame{min-height:0;height:40vh;max-height:340px}
+
+  /* 2 — vertical rail → one sticky 4-up segmented control (icon over label) */
+  .ws-casual .ws-tabs{position:sticky;top:0;z-index:6;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:5px;border-radius:14px;overflow:visible}
+  .ws-casual .ws-tab{width:auto;flex-direction:column;justify-content:center;gap:4px;padding:8px 4px;font-size:11px;line-height:1.1;border-radius:10px}
+  .ws-casual .ws-tab svg{width:18px;height:18px}
+
+  /* 3 — Make CTA + wallet leave the form flow and pin to the bottom. The
+     button stays a Form descendant, so submission still works. */
+  .ws-casual .ws-makebar{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0!important;display:flex;flex-direction:column;gap:2px;padding:9px 14px calc(9px + env(safe-area-inset-bottom));background:rgba(255,254,249,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line,#E4DFCF);box-shadow:0 -6px 20px -12px rgba(20,32,26,.4)}
+  .ws-casual .ws-makebar .wb-btn{width:100%;margin:0}
+  .ws-casual .ws-makebar .ws-wallet{margin:0;text-align:center;font-size:11px;line-height:1.3}
+
+  /* 4 — shelf stays a horizontal filmstrip, slightly smaller */
+  .ws-casual .ws-shelf{margin-top:16px}
+  .ws-casual .ws-shelf-strip{gap:9px}
+  .ws-casual .ws-shelf-piece,.ws-casual .ws-shelf-thumb{width:96px}
+  .ws-casual .ws-shelf-thumb{height:128px}
 }
 @media (prefers-reduced-motion:reduce){.ws-rose{animation:none}}
 `;
