@@ -1173,7 +1173,7 @@ export default function WebStudio() {
   const queuedCount = (actionData as { count?: number } | null)?.count ?? 1;
   useEffect(() => {
     if (actionData && "queued" in actionData) {
-      setShowDone(true);
+      if (!casual) setShowDone(true); // casual: the Stage shows the making → result state instead of a modal
       try {
         const entry = { title: productTitle.trim(), image: imageUrl.trim() };
         if (entry.title) { localStorage.setItem("wsLastProduct", JSON.stringify(entry)); setLastProd(entry); }
@@ -1236,6 +1236,51 @@ export default function WebStudio() {
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   const cost = baseCost + engineFee;
+
+  // ── THE EASEL, PHASE 2: live result on the Stage (casual only) ──────────────
+  // The Studio is fire-and-confirm: a submit queues an async job and the piece
+  // lands in the gallery minutes later. Here we keep watching, and the moment the
+  // new piece appears we render it ON the Stage with verb chips — no leaving the
+  // room. Marketing is untouched (it keeps the confirmation modal).
+  type StagePiece = { id: string; isVideo: boolean; isAudio: boolean; media: string; title: string };
+  const [stageResult, setStageResult] = useState<StagePiece | null>(null);
+  const [making, setMaking] = useState(false);
+  const preIdsRef = useRef<string[]>([]);
+  const makingNounRef = useRef<string>("");
+  const makeBtnRef = useRef<HTMLButtonElement>(null);
+  const stageRev = useRevalidator();
+  // Enter "making" on the Stage when a casual generation is queued; remember
+  // what's already there so we can spot the fresh piece when it lands.
+  useEffect(() => {
+    if (casual && actionData && "queued" in actionData) {
+      preIdsRef.current = d.recent.map((p) => p.id);
+      makingNounRef.current = noun;
+      setStageResult(null);
+      setMaking(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionData]);
+  // While making, quietly revalidate so d.recent refreshes; stop after a cap so a
+  // stuck render never polls forever.
+  useEffect(() => {
+    if (!making) return;
+    const started = Date.now();
+    const iv = setInterval(() => {
+      if (Date.now() - started > 7 * 60_000) { setMaking(false); return; }
+      if (stageRev.state === "idle") stageRev.revalidate();
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [making, stageRev]);
+  // The new piece has landed → show it on the Stage.
+  useEffect(() => {
+    if (!making) return;
+    const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));
+    if (fresh && fresh.media) {
+      setStageResult({ id: fresh.id, isVideo: fresh.isVideo, isAudio: fresh.isAudio, media: fresh.media, title: fresh.title });
+      setMaking(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.recent, making]);
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
   const cfgReady = tab === "blog" || tab === "music" || tab === "faceless" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
@@ -2069,7 +2114,7 @@ export default function WebStudio() {
             )}
             <input type="hidden" name="burst" value={burst} />
             <div style={{ marginTop: 10 }}>
-              <button className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
+              <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
                 {busy
                   ? "Sending to the studio…"
                   : !d.hasPlan
@@ -2094,12 +2139,30 @@ export default function WebStudio() {
        </div>
        {casual && (
          <aside className="ws-stage">
-           <div className="ws-stage-frame">
-             <div className={`ws-easelph${busy ? " making" : ""}`}>
-               <span className="ws-rose" aria-hidden="true" />
-               <div className="ws-easel-cap">{busy ? `Making your ${noun}…` : `Your ${noun} appears here`}</div>
-               <div className="ws-easel-sub">{busy ? "Hang tight — this takes a moment." : "Describe it, pick a look, then press Make."}</div>
-             </div>
+           <div className={`ws-stage-frame${stageResult ? " has-result" : ""}`}>
+             {stageResult ? (
+               <div className="ws-stageresult">
+                 <div className="ws-stagemedia">
+                   {stageResult.isVideo
+                     ? <video src={stageResult.media} controls autoPlay muted loop playsInline />
+                     : stageResult.isAudio
+                       ? <div className="ws-stageaud"><span className="ws-rose" aria-hidden="true" /><audio src={stageResult.media} controls /></div>
+                       : <img src={stageResult.media} alt={stageResult.title} />}
+                 </div>
+                 <div className="ws-verbs">
+                   <a className="ws-verb gold" href={stageResult.media} download>⤓ Download</a>
+                   <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ Make another</button>
+                   <Link className="ws-verb" to="/web/archive?section=creator">Open gallery</Link>
+                   <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ Clear</button>
+                 </div>
+               </div>
+             ) : (
+               <div className={`ws-easelph${(making || busy) ? " making" : ""}`}>
+                 <span className="ws-rose" aria-hidden="true" />
+                 <div className="ws-easel-cap">{(making || busy) ? `Making your ${makingNounRef.current || noun}…` : `Your ${noun} appears here`}</div>
+                 <div className="ws-easel-sub">{(making || busy) ? "This takes a few minutes — it'll land right here." : "Describe it, pick a look, then press Make."}</div>
+               </div>
+             )}
            </div>
          </aside>
        )}
@@ -2299,6 +2362,18 @@ const WS_STYLE = `
 @keyframes wsrosespin{to{transform:rotate(360deg)}}
 .ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
 .ws-easel-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:30ch;line-height:1.45}
+/* Phase 2 — the finished piece renders ON the Stage, with verb chips. */
+.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:#0f1713}
+.ws-stage-frame.has-result::after{display:none}
+.ws-stageresult{position:absolute;inset:0;display:flex;flex-direction:column}
+.ws-stagemedia{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#0f1713}
+.ws-stagemedia img,.ws-stagemedia video{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.ws-stageaud{display:flex;flex-direction:column;align-items:center;gap:18px;padding:26px}
+.ws-stageaud audio{width:min(320px,86%)}
+.ws-verbs{display:flex;flex-wrap:wrap;gap:7px;padding:10px;background:#0b120e;border-top:1px solid rgba(255,255,255,.08)}
+.ws-verb{font:inherit;font-weight:700;font-size:12px;color:#d9f3e5;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:7px 13px;cursor:pointer;text-decoration:none;transition:.12s}
+.ws-verb:hover{background:rgba(18,168,94,.22);border-color:rgba(18,168,94,.5);color:#fff}
+.ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
 /* creations shelf */
 .ws-shelf{margin-top:20px}
 .ws-shelf-h{display:flex;align-items:baseline;gap:12px;margin:0 2px 11px}
