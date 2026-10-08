@@ -400,7 +400,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Photo EDITS are a Creator feature too — gate them on the entitlement itself,
   // not just the client-supplied mode flag (a marketing-mode POST can't bypass it).
   if ((casualMode || intent === "edit" || intent === "create" || intent === "music") && !capabilitiesFor(shop.activePlan).has("creator")) {
-    return json({ error: "Creator mode is a $6.99/mo add-on — add it to your plan (or go standalone) on the Plans page to edit photos and make creator content." });
+    return json({ error: "Creator is included on every plan — pick one on the Plans page to make images, edit photos and generate music (or get the standalone Creator plan for $6.99/mo)." });
   }
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();

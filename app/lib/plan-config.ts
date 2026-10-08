@@ -62,6 +62,7 @@ export const PLAN_TIERS: PlanTier[] = [
       "SEO blog posts, written for you and ready to paste",
       "Captions + hashtags, auto-posted to TikTok, IG & Facebook",
       "AI product listings & ad copy",
+      "Creator section included — AI images, photo edits & music",
     ],
   },
   {
@@ -80,6 +81,7 @@ export const PLAN_TIERS: PlanTier[] = [
       "Avatar AI & Product Highlight — presenter or cinematic",
       "Anthem + all 8 Cartoon Avatar styles included",
       "Campaign Autopilot — a month of content, launched for you",
+      "Creator section included — AI images, photo edits & music",
     ],
   },
   {
@@ -97,20 +99,20 @@ export const PLAN_TIERS: PlanTier[] = [
       "Best price per generation — built for daily posting",
       "The biggest Campaign Autopilot mixes (Go Viral scale)",
       "Campaign discount on token costs",
-      "Creator section included free",
+      "Creator section included — AI images, photo edits & music",
     ],
   },
   {
-    // The Creator SECTION plan — a separate product from the marketing ladder.
-    // Sold standalone ($6.99) or as a +add-on on any marketing plan; included
-    // free on Legend. Unlocks the casual/personal creator experience (images +
-    // photo edits). 500 tokens = ~100 images/edits at 5 tokens; video is NOT a
-    // Creator capability, so a standalone Creator can't run the expensive path —
-    // it stays image-cheap and margin-safe. See CREATOR_PRICE.
+    // The standalone Creator plan — for people who want ONLY the creative tools
+    // and no marketing plan. (Creator is included free on every marketing plan,
+    // so this is the no-marketing-plan path, not an add-on.) Unlocks images,
+    // photo edits + music. 500 tokens = ~100 images/edits at 5 tokens; video is
+    // NOT a Creator capability, so it can't run the expensive path — it stays
+    // image-cheap and margin-safe. See CREATOR_PRICE.
     key: "CREATOR",
     name: "Creator",
     price: CREATOR_PRICE,
-    tagline: "Make cool stuff & edit your own photos — restyle, cartoonize, swap backgrounds. Add it to any plan or go solo.",
+    tagline: "Just the creative tools — make AI images, edit your photos and generate music. No marketing plan needed.",
     section: "creator",
     monthlyTokens: 500,
     blogQuota: 0,
@@ -118,10 +120,10 @@ export const PLAN_TIERS: PlanTier[] = [
     imageQuota: 100,
     campaignAutopilot: false,
     features: [
-      "The Creator section: edit & restyle your own photos",
-      "~100 images & photo edits a month",
+      "AI image generator + photo editor (restyle, cartoonize, swap bg)",
+      "AI music — describe a track, get a song",
+      "~100 creations a month",
       "Helpurr, your AI helper, along for the ride",
-      "Add on to any plan, or run it on its own",
     ],
   },
 ];
@@ -174,15 +176,18 @@ export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "
 // token, not on locked features. Gating creativity behind the top tier read
 // as too strict; volume is the honest upsell.
 export const TIER_CAPABILITIES: Record<PlanKey, readonly Capability[]> = {
-  STARTER: ["image", "blog", "autopost"],
-  STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem"],
-  // Legend includes the Creator section free (music included).
+  // Creator (image/photo-edit + music) is INCLUDED FREE on every marketing plan.
+  // It costs ~$0 to bundle: Creator has no video (the only real cost driver) and
+  // every generation still spends the plan's own token wallet, so volume stays
+  // metered and margin-safe — the capability unlock is pure value, not compute.
+  // (Pricing analysis 2026-10-08: free-on-all beats a $6.99 add-on — the add-on
+  // was a low-attach paywall with checkout friction on a shareable feature.)
+  STARTER: ["image", "blog", "autopost", "creator", "music"],
+  STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music"],
   ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music"],
-  // Standalone Creator: the section + image/photo-edit/music generation only.
-  // No video/blog/campaigns — so it can't run the expensive path and stays
-  // margin-safe at $6.99 (music COGS ~$0.05-0.15/track, far under video).
-  // (On marketing plans the Creator add-on grants "creator"+"music" on top of
-  // the tier's own caps — see capabilitiesFor.)
+  // Standalone Creator: the section + image/photo-edit/music only — for people
+  // who want the creative tools and NO marketing plan. No video/blog/campaigns,
+  // so it can't run the expensive path and stays margin-safe at $6.99.
   CREATOR: ["image", "creator", "music"],
 };
 

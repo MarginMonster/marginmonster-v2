@@ -365,15 +365,6 @@ export default function WebDashboard() {
   // ── Billing period toggle + referral input.
   const [annual, setAnnual] = useState(false);
   const [refInput, setRefInput] = useState("");
-  // Per-plan Creator add-on toggle. Keyed by tier so each card tracks its own
-  // "+ Creator" choice. If the merchant already pays for the add-on, default it
-  // ON for every addable card — so switching tiers KEEPS Creator (visibly, and
-  // still removable) instead of silently dropping an entitlement they pay for.
-  const [wantCreator, setWantCreator] = useState<Record<string, boolean>>(() => {
-    const o: Record<string, boolean> = {};
-    if (d.creatorAddon) for (const t of d.tiers) if (t.key !== "ANTHEM") o[t.key] = true;
-    return o;
-  });
   const [refCopied, setRefCopied] = useState(false);
   const referralApplied = !!(actionData && "referralApplied" in actionData);
   const copyReferral = () => {
@@ -566,11 +557,6 @@ export default function WebDashboard() {
       <div className="wb-grid" style={{ marginBottom: 22 }}>
         {d.tiers.map((t) => {
           const isCurrent = d.tier === t.key;
-          const isLegend = t.key === "ANTHEM"; // Legend includes Creator free
-          const creatorOn = !!wantCreator[t.key];
-          const creatorSuffix = creatorOn ? (annual ? ` + $${(CREATOR_PRICE * 10).toFixed(2)}/yr Creator` : ` + $${CREATOR_PRICE}/mo Creator`) : "";
-          const comboMo = (t.price + CREATOR_PRICE).toFixed(2);
-          const comboYr = (t.yearly + CREATOR_PRICE * 10).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
           return (
           <div className={`wb-card wd-plancard${t.highlight ? " hot" : ""}`} key={t.key}>
             {t.highlight && <div className="wd-ribbon">Most popular</div>}
@@ -584,24 +570,6 @@ export default function WebDashboard() {
             <div className="wb-note">{t.capacity}</div>
             <ul className="wb-feats">{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
 
-            {/* Creator add-on, right where the plan is chosen — toggle it on and
-                the CTA + total update. Legend includes it, so it shows a badge. */}
-            {d.billingOn && (isLegend ? (
-              <div className="wd-ac wd-ac-incl"><span className="wd-ac-check" aria-hidden="true">✓</span> Creator section included</div>
-            ) : (
-              <>
-                <button type="button" className={`wd-ac${creatorOn ? " on" : ""}`} aria-pressed={creatorOn}
-                  onClick={() => setWantCreator((s) => ({ ...s, [t.key]: !s[t.key] }))}>
-                  <span className="wd-ac-check" aria-hidden="true">{creatorOn ? "✓" : "＋"}</span>
-                  <span className="wd-ac-txt">{creatorOn ? "Creator added" : "Add Creator"}</span>
-                  <span className="wd-ac-price">+${CREATOR_PRICE}/mo</span>
-                </button>
-                {creatorOn && (
-                  <div className="wd-ac-combo">Total {annual ? <>${comboYr}/yr</> : <>${comboMo}/mo</>} — plan + Creator</div>
-                )}
-              </>
-            ))}
-
             {/* Flipping to Annual re-prices every card, including the one the
                 merchant is already on — which had no buy button, because the
                 subscribe form only renders for OTHER tiers. Say the path. */}
@@ -613,40 +581,28 @@ export default function WebDashboard() {
               </p>
             )}
             {isCurrent && d.billingOn && (
-              <>
-                {/* Add / remove Creator in place when the toggle differs from the
-                    live add-on state (prorated; no full re-charge). */}
-                {!isLegend && creatorOn !== d.creatorAddon && (
-                  <Form method="post" className="wd-ac-apply">
-                    <input type="hidden" name="intent" value="subscribe" />
-                    <input type="hidden" name="tier" value={t.key} />
-                    <input type="hidden" name="withCreator" value={creatorOn ? "1" : "0"} />
-                    <button className="wb-btn" disabled={busy}>{creatorOn ? `Add Creator — $${CREATOR_PRICE}/mo` : "Remove Creator"}</button>
+              d.cancelPending ? (
+                <>
+                  <p className="wb-note" style={{ marginTop: 8 }}>
+                    Cancelled — this plan won&apos;t renew. You keep every generator and every token
+                    until the period you&apos;ve paid for ends.
+                  </p>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="resumePlan" />
+                    <button className="wb-btn" disabled={busy}>Keep my plan</button>
                   </Form>
-                )}
-                {d.cancelPending ? (
-                  <>
-                    <p className="wb-note" style={{ marginTop: 8 }}>
-                      Cancelled — this plan won&apos;t renew. You keep every generator and every token
-                      until the period you&apos;ve paid for ends.
-                    </p>
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="resumePlan" />
-                      <button className="wb-btn" disabled={busy}>Keep my plan</button>
-                    </Form>
-                  </>
-                ) : (
-                  <Form
-                    method="post"
-                    onSubmit={(e) => {
-                      if (!confirm("Cancel your plan? It stays active — with all your tokens — until the end of the period you've already paid for, then stops renewing.")) e.preventDefault();
-                    }}
-                  >
-                    <input type="hidden" name="intent" value="cancelPlan" />
-                    <button className="wb-btn ghost" disabled={busy}>Cancel plan</button>
-                  </Form>
-                )}
-              </>
+                </>
+              ) : (
+                <Form
+                  method="post"
+                  onSubmit={(e) => {
+                    if (!confirm("Cancel your plan? It stays active — with all your tokens — until the end of the period you've already paid for, then stops renewing.")) e.preventDefault();
+                  }}
+                >
+                  <input type="hidden" name="intent" value="cancelPlan" />
+                  <button className="wb-btn ghost" disabled={busy}>Cancel plan</button>
+                </Form>
+              )
             )}
             {!isCurrent && (
               <>
@@ -654,23 +610,22 @@ export default function WebDashboard() {
                   <input type="hidden" name="intent" value="subscribe" />
                   <input type="hidden" name="tier" value={t.key} />
                   {annual && <input type="hidden" name="annual" value="1" />}
-                  <input type="hidden" name="withCreator" value={creatorOn ? "1" : "0"} />
                   {/* Say what will happen. A merchant already inside their one
                       trial is CHANGING tier and keeps the original end date;
                       one who has spent it is charged today. Neither is
                       “Start free trial”. */}
                   <button className="wb-btn" disabled={busy || !d.billingOn}>
-                    {(d.trialAvailable ? "Start free trial" : d.trialing ? `Switch to ${t.name}` : `Get ${t.name}`)}{!isLegend && creatorOn ? " + Creator" : ""}
+                    {d.trialAvailable ? "Start free trial" : d.trialing ? `Switch to ${t.name}` : `Get ${t.name}`}
                   </button>
                 </Form>
                 {/* The trial ceiling is a CAP, not a grant: what a trialist can
                     actually spend is min(the tier’s own allowance, the cap). */}
                 <div className="wd-trial">
                   {d.trialAvailable
-                    ? <>7-day free trial ({Math.min(t.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US")} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}{!isLegend ? creatorSuffix : ""}</>
+                    ? <>7-day free trial ({Math.min(t.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US")} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</>
                     : d.trialing
-                      ? <>Keeps your current trial end date · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}{!isLegend ? creatorSuffix : ""}</>
-                      : <>${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}{!isLegend ? creatorSuffix : ""}, billed today · your free trial is already used</>}
+                      ? <>Keeps your current trial end date · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</>
+                      : <>${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}, billed today · your free trial is already used</>}
                 </div>
               </>
             )}
@@ -679,16 +634,16 @@ export default function WebDashboard() {
         })}
       </div>
 
-      {/* Creator now rides each plan card as a toggle (above). What's left here
-          is the STANDALONE path for people who want only Creator and no
-          marketing plan — plus a quick way in once it's active. A plan-holder
-          without Creator uses the per-card toggle, so nothing shows for them. */}
+      {/* Creator is now INCLUDED FREE on every marketing plan (see the feature
+          lists above). This card is the STANDALONE path — the creative tools on
+          their own, for people who want no marketing plan — and a quick way in
+          once Creator is active on their account. */}
       {d.billingOn && (d.hasCreator ? (
         <div className="wb-card wd-solo">
           <span className="wd-solo-emoji" aria-hidden="true">🎨</span>
           <div className="wd-solo-txt">
-            <b>Creator section — active ✓</b>
-            <p>Edit &amp; restyle your own photos, make images &amp; music with Helpurr.</p>
+            <b>Creator section — included with your plan ✓</b>
+            <p>Make AI images, edit your photos and generate music with Helpurr.</p>
           </div>
           <Link to="/web/create" className="wb-btn ghost wd-solo-cta">Open Creator →</Link>
         </div>
@@ -696,8 +651,8 @@ export default function WebDashboard() {
         <div className="wb-card wd-solo">
           <span className="wd-solo-emoji" aria-hidden="true">🎨</span>
           <div className="wd-solo-txt">
-            <b>Just want to create?</b>
-            <p>Skip the marketing plans — get the Creator section on its own. Edit &amp; restyle photos, make images &amp; music with Helpurr. ${CREATOR_PRICE}/mo.</p>
+            <b>Just want the creative tools?</b>
+            <p>Skip the marketing plans — get Creator on its own: AI images, photo editing &amp; music with Helpurr. <b>${CREATOR_PRICE}/mo</b>, no marketing plan needed.</p>
           </div>
           <Form method="post" className="wd-solo-cta">
             <input type="hidden" name="intent" value="subscribe" />
@@ -863,20 +818,6 @@ const DASH_CSS = `
 .wd-ribbon.gold{background:linear-gradient(165deg,#C98F12,#8a6207);box-shadow:0 3px 8px rgba(176,133,38,.35);}
 .wd-tagline{font-size:12.5px;color:var(--ink2);line-height:1.45;margin:4px 0 2px;}
 .wd-trial{margin-top:8px;font-size:11.5px;color:var(--ink2);}
-/* Per-plan Creator add-on toggle — sits inside each plan card above the CTA. */
-.wd-ac{display:flex;align-items:center;gap:8px;width:100%;margin:10px 0 2px;padding:9px 12px;border-radius:12px;cursor:pointer;font:inherit;text-align:left;
-  background:var(--paper,#F4F1E6);border:1px dashed var(--line,#E4DFCF);color:var(--ink2,#4A554E);transition:all .12s;}
-.wd-ac:hover{border-color:#9CCBB1;}
-.wd-ac.on{background:#EAF7F0;border-style:solid;border-color:#0C7A46;color:var(--ink,#14201A);}
-.wd-ac-check{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;flex:0 0 auto;font-size:13px;font-weight:800;
-  background:#fff;border:1px solid var(--line,#E4DFCF);color:#0C7A46;}
-.wd-ac.on .wd-ac-check{background:#0C7A46;border-color:#0C7A46;color:#fff;}
-.wd-ac-txt{flex:1 1 auto;font-family:Poppins,sans-serif;font-weight:700;font-size:13px;}
-.wd-ac-price{flex:0 0 auto;font-weight:800;font-size:12.5px;color:#0C7A46;}
-.wd-ac-incl{cursor:default;background:#EAF7F0;border-style:solid;border-color:#9CCBB1;color:#0C7A46;font-family:Poppins,sans-serif;font-weight:700;font-size:13px;}
-.wd-ac-incl .wd-ac-check{background:#0C7A46;border-color:#0C7A46;color:#fff;}
-.wd-ac-combo{margin:2px 0 2px;font-size:11.5px;font-weight:700;color:#0C7A46;}
-.wd-ac-apply{margin-top:8px;}
 /* Standalone Creator card (no marketing plan) + "active" quick-open. */
 .wd-solo{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 24px;background:linear-gradient(135deg,#F0FAF4,#FBFAF2);}
 .wd-solo-emoji{font-size:30px;line-height:1;flex:0 0 auto;filter:drop-shadow(0 1px 1px rgba(20,32,26,.15));}
