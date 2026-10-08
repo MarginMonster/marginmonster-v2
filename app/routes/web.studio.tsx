@@ -437,7 +437,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const service = !casualMode && form.get("service") === "1"; // intangible offering — sell the outcome
   const wear = form.get("wear") === "1";
   const scene = ((form.get("scene") as string) || "").trim() || undefined;
-  if (!productTitle && intent !== "edit") return json({ error: "Give the product a name." });
+  // Creator flows carry their own title (the prompt): photo edits, text-to-image
+  // "create", and music never ask for a product name — only the product-based ad
+  // flows do. (Masked until Creator became free on every plan — now reachable.)
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music") return json({ error: "Give the product a name." });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: "The product image must be a full https:// URL." });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
