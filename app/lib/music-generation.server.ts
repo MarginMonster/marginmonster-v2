@@ -1,14 +1,34 @@
 // Standalone AI Music generator (Creator section) — "describe a track, get a
-// song." Mirrors the createImage() shape: validate → run the model → persist →
-// write ONE Asset row (type AUDIO) → return its id. Billed at TOKEN_COST.music
-// (10) at enqueue in the route; the queue refunds on terminal failure.
-//
-// Distinct from the anthem/jingle SINGING VIDEO (jingle-ad-pipeline), which is
-// a 150-token VIDEO_AD with lyrics + lipsync. This is audio-only, prompt-native
-// and cheap (musicgen COGS ~$0.05-0.15).
+// song." Mirrors createImage(): validate → run the model → persist → write ONE
+// Asset row (type AUDIO) → return its id. Billed at TOKEN_COST.music (10) at
+// enqueue in the route; the queue refunds on terminal failure.
 import { db } from "../db.server";
-import { repCreate, repPoll } from "./ugc-ad-pipeline.server";
+import { repPoll } from "./ugc-ad-pipeline.server";
 import { persistRemoteAudio } from "./image-generation.server";
+
+// meta/musicgen is a VERSIONED community model — it 404s on the versionless
+// /models/{owner}/{name}/predictions endpoint, so it MUST be run via the
+// /predictions endpoint with a pinned version. (Verified live: the models
+// endpoint returns 404.) Pin bumps are a one-line change.
+const MUSICGEN_VERSION = "671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb";
+
+/** Start a musicgen prediction by version. Returns the prediction id. Mirrors
+ *  the rate-limit tolerance of the repo's other create helpers. */
+async function createMusicgen(input: Record<string, unknown>): Promise<string> {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) throw new Error("REPLICATE_API_TOKEN not set");
+  for (let a = 0; a < 6; a++) {
+    const res = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ version: MUSICGEN_VERSION, input }),
+    });
+    if (res.status === 429) { await new Promise((r) => setTimeout(r, 12_000)); continue; }
+    if (!res.ok) throw new Error(`musicgen create ${res.status}: ${(await res.text()).slice(0, 180)}`);
+    return ((await res.json()) as { id: string }).id;
+  }
+  throw new Error("musicgen: rate-limited too long");
+}
 
 /** Music models can hand back a bare url, an array, or an object keyed
  *  audio/audio_out/audio_url. repPoll already unwraps string|string[]; this
@@ -32,25 +52,23 @@ export async function generateMusic(opts: {
   const prompt = (opts.prompt || "").trim();
   if (!prompt) throw new Error("Describe the music you want.");
 
-  // Engine chain — meta/musicgen (text → instrumental track, prompt-native, no
-  // lyrics, cheap). Two configs so a schema/capacity hiccup on the first still
-  // renders; total failure throws and the queue refunds the merchant.
-  const attempts: { input: Record<string, unknown>; engine: string }[] = [
-    { input: { prompt, duration: 15, output_format: "mp3", normalization_strategy: "peak" }, engine: "musicgen" },
-    { input: { prompt, duration: 12, output_format: "mp3" }, engine: "musicgen" },
+  // meta/musicgen — text → instrumental track, prompt-native, no lyrics, cheap.
+  // stereo-large is pure text-to-music (no melody conditioning); a second config
+  // (plain large) covers a schema/capacity hiccup. Total failure → queue refund.
+  const attempts: Record<string, unknown>[] = [
+    { prompt, duration: 12, output_format: "mp3", normalization_strategy: "peak", model_version: "stereo-large" },
+    { prompt, duration: 10, output_format: "mp3", model_version: "large" },
   ];
   const errors: string[] = [];
   let remoteUrl = "";
-  let engine = "";
-  for (const a of attempts) {
+  for (const input of attempts) {
     try {
-      const id = await repCreate("meta/musicgen", a.input);
+      const id = await createMusicgen(input);
       const raw = (await repPoll(id, 5 * 60_000, "music")) as unknown;
-      remoteUrl = audioUrlOf(raw, a.engine);
-      engine = a.engine;
+      remoteUrl = audioUrlOf(raw, "musicgen");
       break;
     } catch (e) {
-      errors.push((e as Error).message.slice(0, 160));
+      errors.push((e as Error).message.slice(0, 180));
     }
   }
   if (!remoteUrl) throw new Error(`[music] every engine failed: ${errors.join(" | ")}`);
@@ -63,8 +81,8 @@ export async function generateMusic(opts: {
       type: "AUDIO",
       status: "PENDING",
       title,
-      bodyJson: JSON.stringify({ audioUrl, prompt, engine }),
-      metaJson: JSON.stringify({ kind: "song", section: "creator", engine }),
+      bodyJson: JSON.stringify({ audioUrl, prompt, engine: "musicgen" }),
+      metaJson: JSON.stringify({ kind: "song", section: "creator", engine: "musicgen" }),
     },
   });
   return asset.id;
