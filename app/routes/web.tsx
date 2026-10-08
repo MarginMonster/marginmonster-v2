@@ -79,10 +79,57 @@ export default function WebLayout() {
   }, [mode]);
   const toggleHud = () => setHudMin((m) => { try { localStorage.setItem(hudKey(mode), m ? "0" : "1"); } catch { /* ignore */ } return !m; });
 
+  // THE FRONT DOOR — a dedicated path chooser (Marketing vs Creator) so an
+  // arrival explicitly picks their side instead of silently landing in the
+  // marketing Dashboard and wondering why they're looking at campaigns. Gated
+  // on a PER-SESSION flag for now (owner: "make it the default landing even if
+  // it's annoying") — it shows once each fresh visit, then lets them move
+  // freely. To make it a true ONE-TIME choice later, swap `sessionStorage` +
+  // `emChose` for a localStorage check on `emMode` being unset.
+  const navigate = useNavigate();
+  const [showChooser, setShowChooser] = useState(false);
+  useEffect(() => {
+    if (!authed) return;
+    try { if (!sessionStorage.getItem("emChose")) setShowChooser(true); } catch { /* storage is a nicety */ }
+  }, [authed]);
+  const pickMode = (m: "marketing" | "casual") => {
+    chooseMode(m);
+    try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
+    setShowChooser(false);
+    navigate(m === "casual" ? "/web/create" : "/web");
+  };
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wb">
+        {authed && showChooser && (
+          <div className="wb-chooser" role="dialog" aria-modal="true" aria-label="Choose where to start">
+            <div className="wb-ch-panel">
+              <div className="wb-ch-brand"><Crest size={30} /><span>Easy<b>Mode</b></span></div>
+              <h1 className="wb-ch-h">Where do you want to start?</h1>
+              <p className="wb-ch-sub">Pick a side to begin — you can switch anytime from the toggle up top.</p>
+              <div className="wb-ch-grid">
+                <button type="button" className="wb-ch-card mk" onClick={() => pickMode("marketing")}>
+                  <span className="wb-ch-ico"><Ico n="rocket" size={24} /></span>
+                  <span className="wb-ch-eyebrow">Marketing</span>
+                  <span className="wb-ch-title">Market my store</span>
+                  <span className="wb-ch-desc">AI ads, campaigns and auto-posting that sell your products.</span>
+                  <span className="wb-ch-nav">Dashboard · Campaigns · Channels</span>
+                  <span className="wb-ch-go">Enter marketing <span aria-hidden="true">→</span></span>
+                </button>
+                <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
+                  <span className="wb-ch-ico"><Ico n="palette" size={24} /></span>
+                  <span className="wb-ch-eyebrow">Creator</span>
+                  <span className="wb-ch-title">Create for me</span>
+                  <span className="wb-ch-desc">Make images, videos and music from a prompt — no store needed.</span>
+                  <span className="wb-ch-nav">Studio · Channels · Gallery</span>
+                  <span className="wb-ch-go">Enter creator <span aria-hidden="true">→</span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <header className="wb-nav">
           <Link to="/" className="wb-brand">
             <Crest size={30} />
@@ -108,7 +155,7 @@ export default function WebLayout() {
             {authed && (
               <div className="wb-mode" role="group" aria-label="Creation mode">
                 <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title="Sell your products — ads, campaigns, the works">Marketing</button>
-                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => chooseMode("casual")} title="Just make cool stuff & edit photos — no selling">Casual</button>
+                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => chooseMode("casual")} title="Create for yourself — images, videos & music, no store needed">Creator</button>
               </div>
             )}
             {authed
@@ -404,6 +451,34 @@ const CSS = `
 .wb-mode-opt{border:0;background:none;padding:6px 13px;border-radius:999px;font:inherit;font-size:12px;font-weight:800;letter-spacing:.02em;color:var(--ink2);cursor:pointer;line-height:1;white-space:nowrap;}
 .wb-mode-opt.on{background:linear-gradient(135deg,var(--green,#12A85E),var(--green2,#0C7A46));color:#fff;box-shadow:0 1px 4px rgba(12,122,70,.3);}
 .wb-mode-opt:not(.on):hover{color:var(--ink);}
+/* THE FRONT DOOR — full-screen path chooser shown on arrival (see WebLayout).
+   Inside .wb so it inherits the theme tokens; fixed over everything. */
+.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:28px 20px;overflow-y:auto;
+  background:radial-gradient(74% 54% at 50% -4%,rgba(15,145,82,.16),transparent 60%),radial-gradient(50% 36% at 98% 96%,rgba(176,133,38,.1),transparent 66%),var(--paper);}
+.wb-ch-panel{width:100%;max-width:660px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
+@keyframes wbChIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:20px;color:var(--ink);margin-bottom:24px;}
+.wb-ch-brand b{color:var(--gold);}
+.wb-ch-h{font-family:Poppins,sans-serif;font-weight:800;font-size:27px;color:var(--ink);margin:0 0 7px;line-height:1.15;}
+.wb-ch-sub{font-size:14px;color:var(--ink2);margin:0 0 28px;}
+.wb-ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left;}
+.wb-ch-card{display:flex;flex-direction:column;align-items:flex-start;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:22px 20px;cursor:pointer;font:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.wb-ch-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px -18px rgba(20,32,26,.42);}
+.wb-ch-card.mk:hover{border-color:var(--green2);}
+.wb-ch-card.cr:hover{border-color:var(--gold);}
+.wb-ch-ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;margin-bottom:14px;}
+.wb-ch-card.mk .wb-ch-ico{background:rgba(12,122,70,.1);color:var(--green);}
+.wb-ch-card.cr .wb-ch-ico{background:rgba(176,133,38,.15);color:var(--gold-deep);}
+.wb-ch-eyebrow{font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;}
+.wb-ch-card.mk .wb-ch-eyebrow{color:var(--green);}
+.wb-ch-card.cr .wb-ch-eyebrow{color:var(--gold-deep);}
+.wb-ch-title{font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin:4px 0 7px;}
+.wb-ch-desc{font-size:13.5px;line-height:1.5;color:var(--ink2);margin:0 0 11px;}
+.wb-ch-nav{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink2);opacity:.72;margin-bottom:16px;}
+.wb-ch-go{display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;border-radius:11px;padding:9px 15px;}
+.wb-ch-card.mk .wb-ch-go{background:linear-gradient(135deg,var(--green2),var(--green));}
+.wb-ch-card.cr .wb-ch-go{background:linear-gradient(135deg,var(--gold),var(--gold-deep));}
+@media(max-width:560px){.wb-ch-grid{grid-template-columns:1fr}.wb-ch-h{font-size:23px}.wb-chooser{padding:22px 16px}}
 /* The mark: gold-rimmed crest so the deep-green tile reads as an emblem
    against cream instead of a dark smudge. */
 .wb-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;border-radius:8px;overflow:hidden;
