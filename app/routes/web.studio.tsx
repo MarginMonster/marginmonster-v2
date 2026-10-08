@@ -1879,7 +1879,7 @@ export default function WebStudio() {
                 </div>
                 {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
               </>
-            ) : (
+            ) : !casual ? (
               <div className="ws-connect">
                 <b><Ico n="box" /> Bring your whole store in</b>
                 <p>Paste your store address once and we&rsquo;ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.</p>
@@ -1893,7 +1893,7 @@ export default function WebStudio() {
                   <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>
                 )}
               </div>
-            )}
+            ) : null}
             {d.catalogSyncing && d.catalog.length === 0 && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
             {showConnect && !d.catalogSyncing && (
               <div className="ws-import">
@@ -1928,20 +1928,28 @@ export default function WebStudio() {
             )}
             {pickedUrl ? <input type="hidden" name="productUrl" value={pickedUrl} /> : null}
 
-            <div className="ws-lbl"><span>Product name</span>
-              <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button>
-            </div>
-            {showImport && (
-              <div className="ws-import">
-                <input className="wb-in" type="url" value={urlInput} placeholder="Paste a product link…" onChange={(e) => setUrlInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
-                <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : "Import"}</button>
-              </div>
+            {/* Product name + "Add by URL" (import a product by link) is a
+                selling/catalogue concept — marketing only. In casual the field
+                above IS the "describe anything" subject box, labelled by its
+                StepHead, so this row would only confuse a creator. */}
+            {!casual && (
+              <>
+                <div className="ws-lbl"><span>Product name</span>
+                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button>
+                </div>
+                {showImport && (
+                  <div className="ws-import">
+                    <input className="wb-in" type="url" value={urlInput} placeholder="Paste a product link…" onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
+                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : "Import"}</button>
+                  </div>
+                )}
+                {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+              </>
             )}
-            {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
             {/* setPickedUrl("") because no URL is remembered with the last
                 product — the previous pick's link must not survive the swap. */}
-            {lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
+            {!casual && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
               <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); }}>
                 ↺ Use last: {lastProd.title}
               </button>
