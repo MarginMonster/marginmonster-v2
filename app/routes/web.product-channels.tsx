@@ -12,6 +12,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 
@@ -250,7 +251,7 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
         <button type="button" className={`pc-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}><b>👁 Let me approve each one</b><span>Videos wait in your Archive — you post with one tap.</span></button>
       </div>
 
-      <div className="pc-summary"><span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens/week</span><span className="pc-bal">{tokens} tokens in wallet</span></div>
+      <div className="pc-summary"><span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens · <b>+{xpForSpend(weeklyTokens)}</b> XP / wk</span><span className="pc-bal">{tokens} tokens in wallet</span></div>
 
       {error && <div className="pc-err">{error}</div>}
       {!canAfford && <div className="pc-err">You need at least {facelessCost} tokens to run a channel — <Link to="/web#plans" className="pc-link">top up</Link>.</div>}

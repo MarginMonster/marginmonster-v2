@@ -11,6 +11,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 
@@ -302,7 +303,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
       </div>
 
       <div className="ch-summary">
-        <span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens/week</span>
+        <span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens · <b>+{xpForSpend(weeklyTokens)}</b> XP / wk</span>
         <span className="ch-bal">{tokens} tokens in wallet</span>
       </div>
 

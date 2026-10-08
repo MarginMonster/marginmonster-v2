@@ -14,6 +14,7 @@ import {
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
 import { createPackCheckout, createPlanCheckout, resolvePendingCheckout, setSubscriptionCreatorAddon, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
+import { xpForSpend } from "../lib/achievements";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
@@ -512,7 +513,7 @@ export default function WebDashboard() {
               <p>{d.nextMove.reason}</p>
             </div>
           </div>
-          <span className="wdn-cta">Create it — {d.nextMove.cost} tokens →</span>
+          <span className="wdn-cta">Create it — {d.nextMove.cost} tokens · +{xpForSpend(d.nextMove.cost)} XP →</span>
         </Link>
       )}
 

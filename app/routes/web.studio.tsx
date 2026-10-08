@@ -16,6 +16,7 @@ import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { xpForSpend } from "../lib/achievements";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
@@ -1665,12 +1666,12 @@ export default function WebStudio() {
             <div className={`ws-tiles${casual ? "" : " two"}`}>
               {casual && (
                 <button type="button" className="ws-tile" onClick={() => setImageMode("create")}>
-                  <span className="ws-tile-img ws-tile-casual" style={{ background: "linear-gradient(140deg,#12A85E,#7b3f9e 66%,#ffb15c)" }}><span className="ws-tile-emoji" aria-hidden="true">✨</span></span>
+                  <span className="ws-tile-img" style={{ backgroundImage: "url(/create/make-image.svg?v=1)", backgroundPosition: "center" }} />
                   <b>Make an image</b><span className="ws-tile-sub">Type anything — pick an art style, generate</span>
                 </button>
               )}
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
-                <span className={`ws-tile-img${casual ? " ws-tile-casual" : ""}`} style={casual ? { background: "linear-gradient(140deg,#cfc7b6,#12A85E 76%)" } : { backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }}>{casual ? <span className="ws-tile-emoji" aria-hidden="true">🪄</span> : null}</span>
+                <span className="ws-tile-img" style={{ backgroundImage: casual ? "url(/create/edit-photo.svg?v=1)" : "url(/ad-templates/format-offer.jpg?v=2)", ...(casual ? { backgroundPosition: "center" } : null) }} />
                 <b>{casual ? "Edit a photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Restyle, cartoonize, change the background" : "Your product in a famous ad format"}</span>
               </button>
               {/* "With presenter" is a marketing concept (brand mascot/spokesperson
@@ -2144,7 +2145,7 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            <div className="ws-tok"><span className="tt">This {noun}</span><span className="tb"><b>{cost}</b><i>tokens</i></span></div>
+            <div className="ws-tok"><span className="tt">This {noun}</span><span className="tb"><b>{cost}</b><i>tokens</i><em className="xp">+{xpForSpend(cost)} XP</em></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
             {/* The trial cap is the ONE spend failure the merchant can clear
@@ -2199,8 +2200,8 @@ export default function WebStudio() {
                   : shortBy > 0
                     ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
                   : burst > 1
-                    ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens`
-                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""}`}
+                    ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens · +${xpForSpend(cost * burst)} XP`
+                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""} · +${xpForSpend(cost)} XP`}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
@@ -2385,6 +2386,7 @@ const WS_STYLE = `
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
 .ws-tok .tb i{font-style:normal;font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);margin-left:5px}
+.ws-tok .tb em.xp{font-style:normal;font-size:11px;font-weight:800;color:var(--brand,#0C7A46);background:rgba(12,122,70,.1);border-radius:999px;padding:2px 7px;margin-left:8px;vertical-align:middle}
 .ws-wallet{margin-top:8px;font-size:12.5px;font-weight:600;color:#7E5E13}
 
 /* ===================================================================

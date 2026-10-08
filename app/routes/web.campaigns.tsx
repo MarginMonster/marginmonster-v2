@@ -22,6 +22,7 @@ import { SOCIAL_PLAN_DEFS, questlineCostFor } from "../lib/questlines";
 import { acceptQuestline, abandonQuestline } from "../lib/questlines.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
+import { xpForSpend } from "../lib/achievements";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { CATALOG_CAP } from "../lib/catalog-import.server";
 import { Ico } from "../lib/icons";
@@ -690,7 +691,7 @@ export default function WebCampaigns() {
                     {p.videoLocked
                       ? "Video unlocks on the Studio plan"
                       : p.affordable
-                        ? `${p.cost.toLocaleString("en-US")} of your ${d.tokens.toLocaleString("en-US")} tokens`
+                        ? `${p.cost.toLocaleString("en-US")} of your ${d.tokens.toLocaleString("en-US")} tokens · +${xpForSpend(p.cost).toLocaleString("en-US")} XP`
                         : `${p.cost.toLocaleString("en-US")} tokens — top up to run this`}
                   </span>
                 </span>

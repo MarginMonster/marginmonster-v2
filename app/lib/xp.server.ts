@@ -3,6 +3,7 @@ import {
   ACHIEVEMENT_BY_KEY,
   giftForLevel,
   levelForXp,
+  xpForSpend,
   type AchievementDef,
 } from "./achievements";
 
@@ -141,10 +142,13 @@ export async function onTokensRefunded(shopId: string, amount: number): Promise<
   try {
     const shop = await db.shop.findUnique({ where: { id: shopId }, select: { xp: true, tokensSpent: true } });
     if (!shop) return;
+    // XP is wound back at the SAME rate it was granted (xpForSpend), while the
+    // lifetime tokensSpent counter tracks raw tokens — so the refund stays
+    // proportional and BIG_SPENDER still measures real spend.
     await db.shop.update({
       where: { id: shopId },
       data: {
-        xp: { decrement: Math.min(amount, Math.max(0, shop.xp)) },
+        xp: { decrement: Math.min(xpForSpend(amount), Math.max(0, shop.xp)) },
         tokensSpent: { decrement: Math.min(amount, Math.max(0, shop.tokensSpent)) },
       },
     });
@@ -160,7 +164,8 @@ export async function onTokensSpent(shopId: string, amount: number): Promise<voi
       data: { tokensSpent: { increment: amount } },
     });
     if (shop.tokensSpent >= 100) await unlockAchievement(shopId, "BIG_SPENDER");
-    const res = await awardXp(shopId, amount);
+    // XP banked is offset from the token cost (xpForSpend) — never a 1:1 swap.
+    const res = await awardXp(shopId, xpForSpend(amount));
     if (res?.leveledUp) await checkLevelAchievements(shopId, res.level);
   } catch (e) {
     console.error("[xp] onTokensSpent failed (non-fatal):", e);

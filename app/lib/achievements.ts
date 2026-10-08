@@ -72,10 +72,26 @@ export function giftForLevel(level: number): number {
   return 5;
 }
 
+/* XP ≠ tokens, on purpose.
+ *
+ * XP earned from a spend is deliberately OFFSET from the token cost so the two
+ * never read as a 1:1 swap ("30 tokens → 30 XP" looks like an exchange rate and
+ * cheapens both). XP is the currency that CLIMBS — you always bank more XP than
+ * you spent, which is what keeps level-ups (and their token gifts) coming as a
+ * merchant generates more. This MUST be linear: refundTokens unwinds spends
+ * partially, so the clawback can only stay proportional if the rate is a plain
+ * multiplier. Display helpers and the award/refund paths all route through
+ * xpForSpend so the "+X XP" a merchant is shown is exactly what lands. */
+export const SPEND_XP_RATE = 1.5;
+export function xpForSpend(tokens: number): number {
+  if (!Number.isFinite(tokens) || tokens <= 0) return 0;
+  return Math.round(tokens * SPEND_XP_RATE);
+}
+
 /* XP awards per outcome (server enforces) */
 export const XP_EVENTS = {
   forgeListing: 8, // per listing successfully forged
   applyListing: 12, // per listing pushed live to the store
-  tokenSpent: 1, // per token spent (farm-proof: they paid)
+  tokenSpent: SPEND_XP_RATE, // XP per token spent — offset from cost, see xpForSpend
   videoGenerated: 60, // per finished video — the app's premium action
 } as const;

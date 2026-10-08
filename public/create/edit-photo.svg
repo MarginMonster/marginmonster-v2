@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Edit a photo">
+  <defs>
+    <linearGradient id="ep-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F3F9F4"/>
+      <stop offset="1" stop-color="#F4F1E6"/>
+    </linearGradient>
+    <linearGradient id="ep-after-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAF6EF"/>
+      <stop offset="1" stop-color="#BFE6D1"/>
+    </linearGradient>
+    <linearGradient id="ep-before-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#DAD7CE"/>
+      <stop offset="1" stop-color="#BCB9AF"/>
+    </linearGradient>
+    <linearGradient id="ep-pot-after" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C98A3B"/>
+      <stop offset="1" stop-color="#A2692a"/>
+    </linearGradient>
+    <linearGradient id="ep-leaf-after" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12A85E"/>
+      <stop offset="1" stop-color="#0A6A3D"/>
+    </linearGradient>
+    <radialGradient id="ep-sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFE39A"/>
+      <stop offset="1" stop-color="#F3B63E"/>
+    </radialGradient>
+    <clipPath id="ep-frame"><rect x="72" y="96" width="256" height="208" rx="18"/></clipPath>
+    <clipPath id="ep-left"><rect x="72" y="96" width="128" height="208"/></clipPath>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#ep-bg)"/>
+
+  <!-- faint brand rosette flourish -->
+  <g opacity="0.07">
+    <image x="252" y="252" width="210" height="210" href="/gstyle-rosette.svg"/>
+  </g>
+
+  <!-- the photo card -->
+  <rect x="72" y="96" width="256" height="208" rx="18" fill="#ffffff" stroke="#E2DCC8" stroke-width="2"/>
+
+  <g clip-path="url(#ep-frame)">
+    <!-- ===== AFTER (full, underneath) : vivid & graded ===== -->
+    <rect x="72" y="96" width="256" height="208" fill="url(#ep-after-sky)"/>
+    <circle cx="282" cy="140" r="22" fill="url(#ep-sun)"/>
+    <!-- centred potted plant, straddling the divider -->
+    <path d="M200 256 C196 214 176 196 150 190 C172 200 184 224 188 256 Z" fill="#1B6D46"/>
+    <path d="M200 256 C204 214 224 196 250 190 C228 200 216 224 212 256 Z" fill="#1B6D46"/>
+    <path d="M200 262 C198 210 188 182 200 150 C212 182 202 210 200 262 Z" fill="url(#ep-leaf-after)"/>
+    <path d="M170 288 L230 288 L222 256 L178 256 Z" fill="url(#ep-pot-after)"/>
+
+    <!-- ===== BEFORE (left half) : flat grey ===== -->
+    <g clip-path="url(#ep-left)">
+      <rect x="72" y="96" width="128" height="208" fill="url(#ep-before-sky)"/>
+      <circle cx="282" cy="140" r="22" fill="#CFCCC2"/>
+      <path d="M200 256 C196 214 176 196 150 190 C172 200 184 224 188 256 Z" fill="#8F8C82"/>
+      <path d="M200 262 C198 210 188 182 200 150 C212 182 202 210 200 262 Z" fill="#9B988E"/>
+      <path d="M170 288 L230 288 L222 256 L178 256 Z" fill="#A6A298"/>
+    </g>
+  </g>
+
+  <!-- divider + drag handle -->
+  <line x1="200" y1="96" x2="200" y2="304" stroke="#ffffff" stroke-width="4"/>
+  <circle cx="200" cy="200" r="20" fill="#0C7A46" stroke="#ffffff" stroke-width="3"/>
+  <path d="M193 200 l-6 0 M188 196 l-4 4 4 4 M207 200 l6 0 M212 196 l4 4 -4 4"
+        fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- magic wand + sparkle: the edit itself -->
+  <g transform="translate(286 104)">
+    <rect x="-3.5" y="6" width="7" height="40" rx="3.5" transform="rotate(42 0 0)" fill="#14201A"/>
+    <path d="M6 -6 l4.4 11.6 11.6 4.4 -11.6 4.4 -4.4 11.6 -4.4 -11.6 -11.6 -4.4 11.6 -4.4 z" fill="#B08526"/>
+  </g>
+  <g fill="#F3B63E">
+    <path d="M90 108 l3 7.6 7.6 3 -7.6 3 -3 7.6 -3 -7.6 -7.6 -3 7.6 -3 z"/>
+  </g>
+</svg>

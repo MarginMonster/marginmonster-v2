@@ -13,6 +13,7 @@ import { db } from "../db.server";
 import { ensureProfile, linkedFromCache, publishPost, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { xpForSpend } from "../lib/achievements";
 import { assertCapability, videoCapabilityFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
@@ -1048,7 +1049,7 @@ export default function WebArchive() {
                   <div className="s">Failed — retry it right here</div>
                   <div className="wa-jacts">
                     <button type="button" className="wb-btn" style={{ padding: "8px 16px", fontSize: 12.5 }} disabled={busy} onClick={() => retryJob(j.jobId)}>
-                      {j.retryCost > 0 ? `Retry · ${j.retryCost} tokens` : "Retry free"}
+                      {j.retryCost > 0 ? `Retry · ${j.retryCost} tokens · +${xpForSpend(j.retryCost)} XP` : "Retry free"}
                     </button>
                     <button type="button" className="wb-btn ghost" style={{ padding: "8px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => dismissJob(j.jobId)}>Dismiss</button>
                   </div>
@@ -1123,7 +1124,7 @@ export default function WebArchive() {
                 <div className="wa-vacts">
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? "Copied ✓" : "Copy HTML"}</button>}
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}>⬇ Download</button>}
-                  <button type="button" className="wa-vbtn gold" disabled={busy} title="Write a fresh article on the same product" onClick={() => remix(viewer.id)}>✨ Remix<span className="c">{costOf(viewer.type)} tokens</span></button>
+                  <button type="button" className="wa-vbtn gold" disabled={busy} title="Write a fresh article on the same product" onClick={() => remix(viewer.id)}>✨ Remix<span className="c">{costOf(viewer.type)} tokens · +{xpForSpend(costOf(viewer.type))} XP</span></button>
                   <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                 </div>
               ) : (
@@ -1139,7 +1140,7 @@ export default function WebArchive() {
                     {/* A piece whose render we lost is replaced on us, so the
                         button must not quote a price the merchant will not pay. */}
                     {!viewer.isAudio && (
-                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "✨ Make it again" : "✨ Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens`}</span></button>
+                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "✨ Make it again" : "✨ Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens · +${xpForSpend(costOf(viewer.type))} XP`}</span></button>
                     )}
                     <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                   </div>
