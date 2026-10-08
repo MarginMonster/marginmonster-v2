@@ -1665,12 +1665,12 @@ export default function WebStudio() {
             <div className={`ws-tiles${casual ? "" : " two"}`}>
               {casual && (
                 <button type="button" className="ws-tile" onClick={() => setImageMode("create")}>
-                  <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-poster.jpg?v=2)" }} />
+                  <span className="ws-tile-img ws-tile-casual" style={{ background: "linear-gradient(140deg,#12A85E,#7b3f9e 66%,#ffb15c)" }}><span className="ws-tile-emoji" aria-hidden="true">✨</span></span>
                   <b>Make an image</b><span className="ws-tile-sub">Type anything — pick an art style, generate</span>
                 </button>
               )}
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
-                <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }} />
+                <span className={`ws-tile-img${casual ? " ws-tile-casual" : ""}`} style={casual ? { background: "linear-gradient(140deg,#cfc7b6,#12A85E 76%)" } : { backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }}>{casual ? <span className="ws-tile-emoji" aria-hidden="true">🪄</span> : null}</span>
                 <b>{casual ? "Edit a photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Restyle, cartoonize, change the background" : "Your product in a famous ad format"}</span>
               </button>
               {/* "With presenter" is a marketing concept (brand mascot/spokesperson
