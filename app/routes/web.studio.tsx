@@ -51,6 +51,22 @@ const CASUAL_VIDEO_COPY: Record<string, { name: string; sub: string; emoji: stri
   asmr: { name: "Satisfying", sub: "Macro textures in slow-mo — the loop nobody scrolls past", emoji: "✨" },
 };
 
+// Pick-by-look art-style swatches — each background is CRAFTED to evoke the
+// style itself (watercolor washes, neon cyberpunk, pixel bands…), so you choose
+// a look by its look, not by reading a chip. Keyed to CREATE_STYLES.
+const STYLE_SWATCH: Record<string, string> = {
+  photo: "linear-gradient(135deg,#dcc9a8,#9b8a6e)",
+  digital: "linear-gradient(135deg,#7b5cff,#ff5ca8 55%,#ffb15c)",
+  anime: "linear-gradient(135deg,#ff9ec4,#9ad0ff 55%,#fff3a0)",
+  "3d": "radial-gradient(circle at 35% 30%,#eef4ff,#9fb3d9 60%,#56688f)",
+  oil: "linear-gradient(135deg,#8a3b1e,#c98a3b 55%,#4a5a2e)",
+  watercolor: "radial-gradient(circle at 30% 30%,#ffd1dc,transparent 55%),radial-gradient(circle at 72% 62%,#bfe3ff,transparent 52%),#fdfbf5",
+  neon: "radial-gradient(circle at 72% 28%,#ff2e97,transparent 48%),linear-gradient(135deg,#0b0f2a,#5a1e8f)",
+  pixel: "linear-gradient(135deg,#5ec8ff 25%,#ff5ca8 25% 50%,#ffe24a 50% 75%,#5efc82 75%)",
+  fantasy: "radial-gradient(circle at 50% 18%,#ffe8a3,transparent 52%),linear-gradient(160deg,#3a2a6b,#7b3f9e 60%,#c76b3f)",
+  minimal: "linear-gradient(135deg,#fdfbf5,#ece4d4)",
+};
+
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
 // creative direction — translated at submit so the queue, the capability
 // gate and the pipelines never learn new keys.
@@ -1085,6 +1101,20 @@ export default function WebStudio() {
   const [imageMode, setImageMode] = useState<"product" | "presenter" | "create" | null>(
     doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : doParam === "create" ? "create" : null,
   );
+  // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
+  // input it drives. Cleared when the preview changes so blob URLs don't leak.
+  const [editPreview, setEditPreview] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const takePhoto = (f: File | null | undefined) => {
+    if (!f || !/^image\//.test(f.type)) return;
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(f);
+      if (photoInputRef.current) photoInputRef.current.files = dt.files;
+    } catch { /* some browsers block programmatic file set — the click path still works */ }
+    setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return URL.createObjectURL(f); });
+    setHasFile(true);
+  };
   // Creator "Make an image" art style.
   const [createStyle, setCreateStyle] = useState<string | null>(null);
   // Creator "Make music" genre/mood preset (optional, folded into the prompt).
@@ -1643,10 +1673,14 @@ export default function WebStudio() {
                 <span className="ws-tile-img" style={{ backgroundImage: "url(/ad-templates/format-offer.jpg?v=2)" }} />
                 <b>{casual ? "Edit a photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Restyle, cartoonize, change the background" : "Your product in a famous ad format"}</span>
               </button>
-              <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
-                <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
-                <b>{casual ? "With a character" : "With presenter"}</b><span className="ws-tile-sub">{casual ? "A character holds or shows it" : "A presenter holds it, poster copy on top"}</span>
-              </button>
+              {/* "With presenter" is a marketing concept (brand mascot/spokesperson
+                  selling a product) — never in casual, where there's no product to hold. */}
+              {!casual && (
+                <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
+                  <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
+                  <b>With presenter</b><span className="ws-tile-sub">A presenter holds it, poster copy on top</span>
+                </button>
+              )}
             </div>
           </>
         )}
@@ -1657,11 +1691,14 @@ export default function WebStudio() {
             {imageMode === "create" && casual && (
               <>
                 <div className="ws-lbl">Art style <span className="ws-opt">optional</span></div>
-                <div className="ws-fmtcats" role="tablist" aria-label="Art style">
+                <div className="ws-stylegrid" role="tablist" aria-label="Art style">
                   {CREATE_STYLES.map((s) => (
-                    <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key}
-                      className={`ws-fmtcat${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
-                      <span aria-hidden="true">{s.emoji}</span> {s.name}
+                    <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
+                      className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
+                      <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
+                        <span className="ws-styletile-emoji" aria-hidden="true">{s.emoji}</span>
+                      </span>
+                      <span className="ws-styletile-nm">{s.name}</span>
                     </button>
                   ))}
                 </div>
@@ -1904,9 +1941,32 @@ export default function WebStudio() {
             <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? "Optional name for your edit" : casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
             {tab !== "blog" && (
               <>
-                <div className="ws-lbl">{casual ? <>Photo <span className="ws-opt">powers your videos and images — upload or paste a URL</span></> : <>Product photo <span className="ws-opt">powers videos & image ads — upload or paste a URL</span></>}</div>
-                <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
-                  onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
+                <div className="ws-lbl">{isEdit ? <>Your photo <span className="ws-opt">drag &amp; drop, or click to upload</span></> : casual ? <>Photo <span className="ws-opt">powers your videos and images — upload or paste a URL</span></> : <>Product photo <span className="ws-opt">powers videos &amp; image ads — upload or paste a URL</span></>}</div>
+                {isEdit ? (
+                  <div className={`ws-drop${editPreview ? " has" : ""}`}
+                    onClick={() => photoInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("drag"); }}
+                    onDragLeave={(e) => e.currentTarget.classList.remove("drag")}
+                    onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("drag"); takePhoto(e.dataTransfer.files?.[0]); }}>
+                    {editPreview ? (
+                      <>
+                        <img src={editPreview} alt="Your photo" className="ws-drop-img" />
+                        <span className="ws-drop-change">Drop a new one, or click to change</span>
+                      </>
+                    ) : (
+                      <div className="ws-drop-empty">
+                        <span className="ws-drop-ba" aria-hidden="true"><i className="before" /><em>→</em><i className="after" /></span>
+                        <b>Drop your photo here</b>
+                        <span className="ws-drop-sub">or click to upload — then describe your edits below</span>
+                      </div>
+                    )}
+                    <input ref={photoInputRef} type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" className="ws-drop-input"
+                      onChange={(e) => takePhoto(e.currentTarget.files?.[0])} />
+                  </div>
+                ) : (
+                  <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
+                    onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
+                )}
                 <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? "…or https://example.com/my-photo.jpg" : "…or https://yourstore.com/cdn/product.jpg"} style={{ marginTop: 8 }} />
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12" }}>
@@ -2045,7 +2105,7 @@ export default function WebStudio() {
                     ? isCreate
                       ? "Describe your image"
                       : isEdit
-                        ? editOp === "bgswap" ? "Describe the new background" : editOp === "replace" ? "What to change" : editOp === "cartoonize" ? "Cartoon style" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "No input needed" : editOp === "restyle" ? "Describe the look" : "Describe your changes"
+                        ? editOp === "bgswap" ? "Describe the new background" : editOp === "replace" ? "What to change" : editOp === "cartoonize" ? "Cartoon style" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "No input needed" : editOp === "restyle" ? "Describe the look" : "Describe your edits"
                         : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
                     : tab === "music" ? "Describe your music"
                     : tab === "faceless" ? "What's your video about?"
@@ -2395,6 +2455,31 @@ const WS_STYLE = `
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
 .ws-tile-emoji{font-size:34px;line-height:1;filter:saturate(1.05)}
+/* Pick-by-look art-style swatches (casual "Make an image"). */
+.ws-stylegrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:4px}
+.ws-styletile{position:relative;border:0;padding:0;margin:0;background:none;font:inherit;cursor:pointer;border-radius:12px}
+.ws-styletile-face{display:block;position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(20,32,26,.08),inset 0 0 0 1px rgba(255,255,255,.14);transition:transform .13s,box-shadow .13s}
+.ws-styletile-emoji{position:absolute;left:6px;top:5px;font-size:16px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+.ws-styletile-nm{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;font-weight:700;color:#fff;letter-spacing:.01em;padding:11px 3px 4px;background:linear-gradient(transparent,rgba(12,18,14,.6));text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-styletile:hover .ws-styletile-face{transform:translateY(-2px);box-shadow:0 8px 16px -8px rgba(20,32,26,.4),inset 0 0 0 1px rgba(255,255,255,.18)}
+.ws-styletile.sel .ws-styletile-face{box-shadow:0 0 0 2px #0C7A46,0 0 0 5px rgba(12,122,70,.18),inset 0 0 0 1px rgba(255,255,255,.2)}
+@media(max-width:560px){.ws-stylegrid{grid-template-columns:repeat(4,1fr)}}
+/* Photo-editor drag & drop zone (casual Edit) + a DeepAI-style before→after hint. */
+.ws-drop{position:relative;border:2px dashed #CFC8B2;border-radius:16px;background:#F7F4EC;min-height:150px;display:grid;place-items:center;text-align:center;cursor:pointer;overflow:hidden;transition:border-color .15s,background .15s}
+.ws-drop:hover{border-color:#9CCBB1;background:#F3F9F4}
+.ws-drop.drag{border-color:#0C7A46;background:#EAF6EF}
+.ws-drop.has{border-style:solid;border-color:var(--line,#E4DFCF);background:#0f1713;padding:0;min-height:0}
+.ws-drop-input{display:none}
+.ws-drop-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 18px;pointer-events:none}
+.ws-drop-empty b{font-size:14.5px;color:var(--ink,#14201A)}
+.ws-drop-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:34ch}
+.ws-drop-img{display:block;max-width:100%;max-height:260px;object-fit:contain}
+.ws-drop-change{position:absolute;left:0;right:0;bottom:0;font-size:11px;font-weight:700;color:#eafff4;background:rgba(11,18,14,.6);padding:7px}
+.ws-drop-ba{display:inline-flex;align-items:center;gap:9px;margin-bottom:4px}
+.ws-drop-ba i{width:46px;height:46px;border-radius:10px;box-shadow:0 1px 3px rgba(20,32,26,.14);display:block}
+.ws-drop-ba i.before{background:linear-gradient(135deg,#cfc7b6,#9a917c);filter:grayscale(.3) brightness(.95)}
+.ws-drop-ba i.after{background:radial-gradient(circle at 35% 30%,#ffe8a3,transparent 55%),linear-gradient(135deg,#12A85E,#7b3f9e)}
+.ws-drop-ba em{font-style:normal;font-weight:800;color:#0C7A46;font-size:15px}
 /* creations shelf */
 .ws-shelf{margin-top:20px}
 .ws-shelf-h{display:flex;align-items:baseline;gap:12px;margin:0 2px 11px}
