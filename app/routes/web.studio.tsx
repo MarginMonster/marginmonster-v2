@@ -1096,7 +1096,9 @@ export default function WebStudio() {
     : doParam === "faceless" ? "faceless"
     : (doParam === "edit" || doParam === "image" || doParam === "presenter" || doParam === "create") ? "image"
     : (["video", "image", "music", "faceless", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
-  const [tab, setTab] = useState<Tab>(initTab || "video");
+  // Creator is now the single create surface (Home merged in): it opens
+  // prompt-first on "Make an image" (describe box) instead of the video tiles.
+  const [tab, setTab] = useState<Tab>(initTab || (casual ? "image" : "video"));
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   const [imageUrl, setImageUrl] = useState("");
   const [hasFile, setHasFile] = useState(false);
@@ -1104,8 +1106,13 @@ export default function WebStudio() {
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
   const [imageMode, setImageMode] = useState<"product" | "presenter" | "create" | null>(
-    doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : doParam === "create" ? "create" : null,
+    doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : doParam === "create" ? "create" : (casual ? "create" : null),
   );
+  // A photo dropped/uploaded onto the Stage waits here until the edit flow has
+  // mounted its file input, then loads in (see the effect below). DeepAI-style:
+  // the canvas is a drop target, not just an output.
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const stageUploadRef = useRef<HTMLInputElement>(null);
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   const [editPreview, setEditPreview] = useState<string | null>(null);
@@ -1324,6 +1331,23 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.recent, making]);
+  // DROP (or upload) A PHOTO ONTO THE STAGE → edit it. The idle Stage is a
+  // drag/drop + click-to-upload target (DeepAI-style). A dropped image flips
+  // into the photo-edit flow, then loads once that flow's file input mounts.
+  const onStagePhoto = (f?: File | null) => {
+    if (!f || !/^image\//.test(f.type)) return;
+    setStageResult(null);
+    setTab("image");
+    setImageMode("product");
+    setPendingPhoto(f);
+  };
+  useEffect(() => {
+    if (isEdit && pendingPhoto && photoInputRef.current) {
+      takePhoto(pendingPhoto);
+      setPendingPhoto(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, pendingPhoto]);
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
   const cfgReady = tab === "blog" || tab === "music" || tab === "faceless" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
@@ -2283,13 +2307,20 @@ export default function WebStudio() {
                  </div>
                </div>
              ) : (
-               <div className={`ws-easelph${(making || busy) ? " making" : ""}`}>
+               <div className={`ws-easelph ws-easelph-drop${(making || busy) ? " making" : ""}`}
+                 role="button" tabIndex={0} aria-label="Drop or upload a photo to edit"
+                 onClick={() => { if (!(making || busy)) stageUploadRef.current?.click(); }}
+                 onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}
+                 onDragOver={(e) => { if (making || busy) return; e.preventDefault(); e.currentTarget.classList.add("drag"); }}
+                 onDragLeave={(e) => e.currentTarget.classList.remove("drag")}
+                 onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("drag"); if (!(making || busy)) onStagePhoto(e.dataTransfer.files?.[0]); }}>
                  <span className="ws-rose" aria-hidden="true" />
                  <div className="ws-easel-cap">{(making || busy) ? `Making your ${makingNounRef.current || noun}…` : `Your ${noun} appears here`}</div>
-                 <div className="ws-easel-sub">{(making || busy) ? "This takes a few minutes — it'll land right here." : "Describe it, pick a look, then press Make."}</div>
+                 <div className="ws-easel-sub">{(making || busy) ? "This takes a few minutes — it'll land right here." : "Drop or upload a photo to edit — or describe it on the left to create."}</div>
                </div>
              )}
            </div>
+           <input ref={stageUploadRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => onStagePhoto(e.currentTarget.files?.[0])} />
          </aside>
        )}
       </div>
@@ -2488,6 +2519,12 @@ const WS_STYLE = `
 .ws-stage-frame{position:relative;min-height:470px;height:100%;display:grid;place-items:center;border-radius:20px;overflow:hidden;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
 .ws-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
 .ws-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:24px}
+/* The idle Stage is a drop/upload target (DeepAI-style). */
+.ws-easelph-drop{cursor:pointer;width:100%;height:100%;justify-content:center;border-radius:20px;transition:background .14s}
+.ws-easelph-drop:hover{background:rgba(12,122,70,.04)}
+.ws-easelph-drop:focus-visible{outline:2px solid #12A85E;outline-offset:-8px}
+.ws-easelph-drop.drag{background:rgba(12,122,70,.08);outline:2px dashed #12A85E;outline-offset:-12px}
+.ws-easelph-drop.making{cursor:default}
 .ws-rose{width:112px;height:112px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.85;animation:wsrose 3.8s ease-in-out infinite}
 @keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.05) rotate(4deg);opacity:1}}
 .ws-easelph.making .ws-rose{background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D);opacity:1;animation:wsrosespin 2.4s linear infinite}

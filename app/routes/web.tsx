@@ -96,7 +96,7 @@ export default function WebLayout() {
     chooseMode(m);
     try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
     setShowChooser(false);
-    navigate(m === "casual" ? "/web/create" : "/web");
+    navigate(m === "casual" ? "/web/studio" : "/web");
   };
 
   return (
@@ -141,7 +141,9 @@ export default function WebLayout() {
           </Link>
           {authed && (
             <nav className="wb-tabs">
-              <Link className={tab(mode === "casual" ? "/web/create" : "/web")} to={mode === "casual" ? "/web/create" : "/web"}>{mode === "casual" ? "Home" : "Dashboard"}</Link>
+              {/* Creator Home merged into the Studio — casual leads with Studio;
+                  only Marketing keeps a separate Dashboard. */}
+              {mode === "marketing" && <Link className={tab("/web")} to="/web">Dashboard</Link>}
               <Link className={tab("/web/studio")} to="/web/studio">Studio</Link>
               {/* Channels = the Creator autopilot (faceless video on a cadence).
                   Casual only — it's a creator surface, not a selling one. */}
@@ -159,7 +161,7 @@ export default function WebLayout() {
             {authed && (
               <div className="wb-mode" role="group" aria-label="Creation mode">
                 <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title="Sell your products — ads, campaigns, the works">Marketing</button>
-                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => chooseMode("casual")} title="Create for yourself — images, videos & music, no store needed">Creator</button>
+                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title="Create for yourself — images, videos & music, no store needed">Creator</button>
               </div>
             )}
             {authed

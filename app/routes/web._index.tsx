@@ -646,7 +646,7 @@ export default function WebDashboard() {
             <b>Creator section — included with your plan ✓</b>
             <p>Make AI images, edit your photos and generate music with Helpurr.</p>
           </div>
-          <Link to="/web/create" className="wb-btn ghost wd-solo-cta">Open Creator →</Link>
+          <Link to="/web/studio" className="wb-btn ghost wd-solo-cta">Open Creator →</Link>
         </div>
       ) : !d.tier ? (
         <div className="wb-card wd-solo">
