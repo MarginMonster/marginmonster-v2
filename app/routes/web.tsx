@@ -111,7 +111,7 @@ export default function WebLayout() {
               <p className="wb-ch-sub">Pick a side to begin — you can switch anytime from the toggle up top.</p>
               <div className="wb-ch-grid">
                 <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
-                  <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg)" }} aria-hidden="true" />
+                  <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
                   <span className="wb-ch-body">
                     <span className="wb-ch-eyebrow">Creator · Free roam</span>
                     <span className="wb-ch-title">Create anything</span>
@@ -457,7 +457,7 @@ const CSS = `
 .wb-mode-opt:not(.on):hover{color:var(--ink);}
 /* THE FRONT DOOR — full-screen path chooser shown on arrival (see WebLayout).
    Inside .wb so it inherits the theme tokens; fixed over everything. */
-.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px 18px;overflow-x:hidden;overflow-y:auto;
+.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:18px 18px 24px;padding-top:calc(18px + env(safe-area-inset-top,0px));overflow-x:hidden;overflow-y:auto;
   background:radial-gradient(74% 54% at 50% -4%,rgba(15,145,82,.16),transparent 60%),radial-gradient(50% 36% at 98% 96%,rgba(176,133,38,.1),transparent 66%),var(--paper);}
 /* EasyMode spinning rosette "flowers" behind the panel — the brand page-field
    motif (green) + the spinning-gold accent, the same wbDrift the HUD field uses.
@@ -465,7 +465,7 @@ const CSS = `
 .wb-chooser::before,.wb-chooser::after{content:"";position:fixed;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center;background-size:contain;}
 .wb-chooser::before{top:-170px;right:-200px;width:560px;height:560px;opacity:.1;background-image:url(/gstyle-rosette-green.svg);animation:wbDrift 210s linear infinite;}
 .wb-chooser::after{bottom:-200px;left:-200px;width:520px;height:520px;opacity:.08;background-image:url(/gstyle-rosette.svg);animation:wbDriftBack 240s linear infinite;}
-.wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
+.wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:0 auto;text-align:center;animation:wbChIn .3s ease both;}
 @keyframes wbChIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin-bottom:14px;}
 .wb-ch-brand b{color:var(--gold);}
@@ -490,7 +490,7 @@ const CSS = `
 .wb-ch-card.mk .wb-ch-go{background:linear-gradient(135deg,var(--green2),var(--green));}
 .wb-ch-card.cr .wb-ch-go{background:linear-gradient(135deg,var(--gold),var(--gold-deep));}
 @media(max-width:560px){
-  .wb-chooser{padding:16px 14px}
+  .wb-chooser{padding:14px 14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px))}
   .wb-ch-brand{margin-bottom:10px;font-size:18px}
   .wb-ch-h{font-size:21px}
   .wb-ch-sub{margin-bottom:13px}
