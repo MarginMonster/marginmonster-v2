@@ -18,6 +18,9 @@ export const LANG_LABELS: Record<LangKey, string> = {
 export interface LandingCopy {
   nav: { login: string; start: string };
   hero: { eyebrow: string; h1a: string; h1b: string; sub: string; cta: string; note: string };
+  /** The two-paths row under the hero — Create (studio) vs Market (autopilot).
+   *  Optional so an untranslated language pack falls back to English. */
+  paths?: { eyebrow: string; create: { h: string; p: string; cta: string }; market: { h: string; p: string; cta: string } };
   stats: { types: string; channels: string; start: string; tap?: string };
   features: { icon: string; title: string; body: string }[];
   show: { eyebrow: string; h2: string; sub: string; cards: { label: string; sub: string }[] };
@@ -42,12 +45,17 @@ export interface LandingCopy {
 const EN: LandingCopy = {
   nav: { login: "Log in", start: "Start free" },
   hero: {
-    eyebrow: "Marketing on easy mode",
-    h1a: "Your whole store's marketing, ",
-    h1b: "running itself.",
-    sub: "EasyMode turns your products into videos, image ads and SEO articles — then posts them to your socials on a schedule. You approve, it ships. Works with any store.",
+    eyebrow: "Create + market on easy mode",
+    h1a: "Make anything. ",
+    h1b: "Market everything.",
+    sub: "A creative studio that turns any prompt into images, videos, songs and faceless clips — plus a marketing autopilot that turns your store's products into ads and auto-posts them. Create just for you, or sell on autopilot.",
     cta: "Start free — 7-day trial",
-    note: "Any store, any platform · cancel anytime",
+    note: "No store needed to create · cancel anytime",
+  },
+  paths: {
+    eyebrow: "Two sides, one login",
+    create: { h: "Create", p: "Turn a prompt into images, videos, songs and faceless social clips. No store needed.", cta: "Start creating" },
+    market: { h: "Market", p: "Turn your store's products into ads, campaigns and auto-posts that sell.", cta: "Market my store" },
   },
   stats: { types: "ad formats, one subscription", channels: "posting to TikTok, IG & FB", start: "to start", tap: "1-tap" },
   features: [
@@ -148,12 +156,17 @@ const EN: LandingCopy = {
 const ES: LandingCopy = {
   nav: { login: "Iniciar sesión", start: "Empieza gratis" },
   hero: {
-    eyebrow: "Marketing en modo fácil",
-    h1a: "Todo el marketing de tu tienda, ",
-    h1b: "funcionando solo.",
-    sub: "EasyMode convierte tus productos en videos, anuncios de imagen y artículos SEO — y los publica en tus redes según un calendario. Tú apruebas, él publica. Funciona con cualquier tienda.",
+    eyebrow: "Crea y promociona en modo fácil",
+    h1a: "Crea lo que sea. ",
+    h1b: "Promociónalo todo.",
+    sub: "Un estudio creativo que convierte cualquier idea en imágenes, videos, canciones y clips sin rostro — y un piloto automático de marketing que convierte los productos de tu tienda en anuncios y los publica por ti. Crea para ti, o vende en automático.",
     cta: "Empieza gratis — prueba de 7 días",
-    note: "Cualquier tienda, cualquier plataforma · cancela cuando quieras",
+    note: "No necesitas tienda para crear · cancela cuando quieras",
+  },
+  paths: {
+    eyebrow: "Dos caras, una cuenta",
+    create: { h: "Crea", p: "Convierte una idea en imágenes, videos, canciones y clips para redes. Sin tienda.", cta: "Empieza a crear" },
+    market: { h: "Promociona", p: "Convierte los productos de tu tienda en anuncios, campañas y publicaciones automáticas.", cta: "Promociona mi tienda" },
   },
   stats: { types: "formatos de anuncio, una suscripción", channels: "publicación en TikTok, IG y FB", start: "para empezar", tap: "1 toque" },
   features: [
@@ -254,12 +267,17 @@ const ES: LandingCopy = {
 const FR: LandingCopy = {
   nav: { login: "Connexion", start: "Essai gratuit" },
   hero: {
-    eyebrow: "Le marketing en mode facile",
-    h1a: "Tout le marketing de votre boutique, ",
-    h1b: "en pilote automatique.",
-    sub: "EasyMode transforme vos produits en vidéos, visuels publicitaires et articles SEO — puis les publie sur vos réseaux selon un calendrier. Vous validez, il publie. Compatible avec toutes les boutiques.",
+    eyebrow: "Créer et vendre en mode facile",
+    h1a: "Créez tout. ",
+    h1b: "Vendez partout.",
+    sub: "Un studio créatif qui transforme une simple idée en images, vidéos, chansons et clips sans visage — et un pilote automatique marketing qui transforme les produits de votre boutique en publicités et les publie pour vous. Créez pour vous, ou vendez en automatique.",
     cta: "Essai gratuit — 7 jours",
-    note: "Toute boutique, toute plateforme · annulez à tout moment",
+    note: "Aucune boutique requise pour créer · annulez à tout moment",
+  },
+  paths: {
+    eyebrow: "Deux faces, un seul compte",
+    create: { h: "Créer", p: "Transformez une idée en images, vidéos, chansons et clips pour les réseaux. Sans boutique.", cta: "Commencer à créer" },
+    market: { h: "Vendre", p: "Transformez les produits de votre boutique en publicités, campagnes et posts automatiques.", cta: "Promouvoir ma boutique" },
   },
   stats: { types: "formats de pub, un seul abonnement", channels: "publication TikTok, IG & FB", start: "pour commencer", tap: "1 clic" },
   features: [
@@ -360,12 +378,17 @@ const FR: LandingCopy = {
 const DE: LandingCopy = {
   nav: { login: "Anmelden", start: "Kostenlos starten" },
   hero: {
-    eyebrow: "Marketing im Easy Mode",
-    h1a: "Das komplette Marketing deines Shops, ",
-    h1b: "läuft von selbst.",
-    sub: "EasyMode verwandelt deine Produkte in Videos, Werbebilder und SEO-Artikel — und postet sie nach Zeitplan auf deinen Kanälen. Du gibst frei, es liefert. Funktioniert mit jedem Shop.",
+    eyebrow: "Erstellen und vermarkten – ganz easy",
+    h1a: "Erstelle alles. ",
+    h1b: "Vermarkte alles.",
+    sub: "Ein Kreativstudio, das aus einem Prompt Bilder, Videos, Songs und Faceless-Clips macht — plus ein Marketing-Autopilot, der die Produkte deines Shops in Anzeigen verwandelt und für dich postet. Erstelle für dich oder verkaufe automatisch.",
     cta: "Kostenlos starten — 7 Tage testen",
-    note: "Jeder Shop, jede Plattform · jederzeit kündbar",
+    note: "Kein Shop nötig zum Erstellen · jederzeit kündbar",
+  },
+  paths: {
+    eyebrow: "Zwei Seiten, ein Login",
+    create: { h: "Erstellen", p: "Mach aus einem Prompt Bilder, Videos, Songs und Social-Clips. Kein Shop nötig.", cta: "Loslegen" },
+    market: { h: "Vermarkten", p: "Mach aus deinen Shop-Produkten Anzeigen, Kampagnen und Auto-Posts, die verkaufen.", cta: "Shop vermarkten" },
   },
   stats: { types: "Anzeigenformate, ein Abo", channels: "Posting auf TikTok, IG & FB", start: "zum Start", tap: "1 Tipp" },
   features: [
@@ -466,12 +489,17 @@ const DE: LandingCopy = {
 const ZH: LandingCopy = {
   nav: { login: "登录", start: "免费开始" },
   hero: {
-    eyebrow: "轻松模式营销",
-    h1a: "让你店铺的全部营销，",
-    h1b: "自动运转。",
-    sub: "EasyMode 把你的产品变成视频、广告图和 SEO 文章 — 并按排期自动发布到你的社交账号。你来审核，它来发布。适用于任何店铺。",
+    eyebrow: "轻松创作，轻松营销",
+    h1a: "想到什么就创作，",
+    h1b: "一键全域营销。",
+    sub: "一个创意工作室，把任意灵感变成图片、视频、歌曲和无人出镜短片；再加一个营销自动驾驶，把你店铺的商品变成广告并自动发布。为自己创作，或自动带货。",
     cta: "免费开始 — 7 天试用",
-    note: "任何店铺、任何平台 · 随时取消",
+    note: "创作无需店铺 · 随时取消",
+  },
+  paths: {
+    eyebrow: "一个账号，两种玩法",
+    create: { h: "创作", p: "把灵感变成图片、视频、歌曲和社交短片。无需店铺。", cta: "开始创作" },
+    market: { h: "营销", p: "把店铺商品变成广告、活动和自动发布的内容。", cta: "营销我的店铺" },
   },
   stats: { types: "种广告形式，一份订阅", channels: "发布到 TikTok、IG 和 FB", start: "起步价", tap: "一键" },
   features: [

@@ -24,9 +24,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 /* Every string here is the site's own hero copy (LANDING_I18N.en), not a fresh
  * claim written for search engines. The page picks its language on the client,
  * so the server-rendered head is English — same as the server-rendered body. */
-const TITLE = "EasyMode — your whole store's marketing, running itself";
+const TITLE = "EasyMode — make anything, market everything";
 const DESCRIPTION =
-  "EasyMode turns your products into videos, image ads and SEO articles — then posts them to your socials on a schedule. You approve, it ships. Works with any store.";
+  "A creative studio that turns any prompt into images, videos, songs and faceless clips — plus a marketing autopilot that turns your store's products into ads and auto-posts them. No store needed to create.";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const origin = data?.origin || "https://easymodeapp.com";
@@ -81,6 +81,8 @@ export default function Index() {
   useEffect(() => { try { document.documentElement.lang = lang; } catch { /* SSR */ } }, [lang]);
   const pick = (l: LangKey) => { setLang(l); try { localStorage.setItem("emLang", l); } catch { /* private mode */ } };
   const t = LANDING_I18N[lang] || LANDING_I18N.en;
+  // Two-paths (Create / Market) copy — falls back to English until translated.
+  const P = t.paths || LANDING_I18N.en.paths!;
 
   return (
     <>
@@ -168,6 +170,37 @@ export default function Index() {
             <div><b>{t.stats.tap || "1-tap"}</b><span>{t.stats.channels}</span></div>
             <div className="lz-div" />
             <div><b>$19</b><span>{t.stats.start}</span></div>
+          </div>
+        </section>
+
+        {/* TWO PATHS — EasyMode is a creative studio AND a marketing autopilot.
+            This row makes the dual nature concrete right under the hero so the
+            page never reads as "just a marketing app". */}
+        <section className="lz-paths" aria-label="Two ways to use EasyMode">
+          <span className="lz-eyebrow">{P.eyebrow}</span>
+          <div className="lz-paths-grid">
+            <a className="lz-path lz-path-cr" href="/web/signup">
+              <span className="lz-path-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3.4a8.6 8.6 0 0 0 0 17.2c1.3 0 1.8-.9 1.4-1.9-.5-1.2.3-2.3 1.6-2.3h1.4a4.2 4.2 0 0 0 4.2-4.6A8.7 8.7 0 0 0 12 3.4z" />
+                  <circle cx="8" cy="10.4" r="1.1" /><circle cx="12" cy="7.9" r="1.1" /><circle cx="15.9" cy="10.2" r="1.1" />
+                </svg>
+              </span>
+              <b>{P.create.h}</b>
+              <p>{P.create.p}</p>
+              <span className="lz-path-go">{P.create.cta} <span className="lz-arr">→</span></span>
+            </a>
+            <a className="lz-path lz-path-mk" href="/web/signup">
+              <span className="lz-path-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3.5 10.5v3a1 1 0 0 0 1 1h2l5 3.8V5.7l-5 3.8h-2a1 1 0 0 0-1 1z" />
+                  <path d="M15.5 9a4 4 0 0 1 0 6M18 6.6a7.5 7.5 0 0 1 0 10.8" />
+                </svg>
+              </span>
+              <b>{P.market.h}</b>
+              <p>{P.market.p}</p>
+              <span className="lz-path-go">{P.market.cta} <span className="lz-arr">→</span></span>
+            </a>
           </div>
         </section>
 
@@ -445,6 +478,23 @@ html,body{margin:0;padding:0}
 .lz-div{width:1px;height:30px;background:var(--line)}
 /* The AI trust strip. Quiet by design: wordmarks sit muted until hover so
    the strip reads as infrastructure, not advertising for someone else. */
+/* TWO PATHS row — the Create vs Market split under the hero. */
+.lz-paths{max-width:960px;margin:38px auto 0;padding:0 26px;text-align:center;}
+.lz-paths-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px;text-align:left;}
+.lz-path{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;text-decoration:none;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 24px 22px;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.lz-path:hover{transform:translateY(-3px);box-shadow:0 20px 44px -22px rgba(20,32,26,.4);}
+.lz-path-cr:hover{border-color:var(--gold);}
+.lz-path-mk:hover{border-color:var(--green2);}
+.lz-path-ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;margin-bottom:12px;}
+.lz-path-cr .lz-path-ico{background:rgba(176,133,38,.14);color:var(--gold-deep);}
+.lz-path-mk .lz-path-ico{background:rgba(12,122,70,.1);color:var(--green);}
+.lz-path b{font-family:Poppins,sans-serif;font-weight:800;font-size:20px;color:var(--ink);}
+.lz-path p{font-size:14px;line-height:1.5;color:var(--ink2);margin:5px 0 12px;}
+.lz-path-go{font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;}
+.lz-path-cr .lz-path-go{color:var(--gold-deep);}
+.lz-path-mk .lz-path-go{color:var(--green);}
+.lz-path:hover .lz-arr{transform:translateX(3px);}
+@media(max-width:640px){.lz-paths-grid{grid-template-columns:1fr}.lz-paths{margin-top:30px}}
 .lz-powered{max-width:900px;margin:44px auto 0;padding:0 26px;text-align:center;}
 .lz-autopost{max-width:900px;margin:40px auto 0;padding:0 26px;text-align:center;}
 .lz-ap-points{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 10px;margin:16px 0 0;padding:0;}
