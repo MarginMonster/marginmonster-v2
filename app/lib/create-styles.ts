@@ -22,6 +22,8 @@ export const CREATE_STYLES: CreateStyle[] = [
   { key: "pixel", name: "Pixel Art", emoji: "👾", prompt: "pixel art, 16-bit, crisp pixels, retro game art, limited palette" },
   { key: "fantasy", name: "Fantasy", emoji: "🐉", prompt: "epic fantasy art, dramatic lighting, painterly, highly detailed, magical" },
   { key: "minimal", name: "Minimalist", emoji: "⚪", prompt: "minimalist, clean, simple shapes, lots of negative space, flat design, elegant" },
+  { key: "comic", name: "Comic", emoji: "💥", prompt: "comic book art, bold black ink outlines, halftone dot shading, dynamic, vivid pop-art colors" },
+  { key: "sketch", name: "Sketch", emoji: "✏️", prompt: "detailed pencil sketch, graphite on paper, fine cross-hatching, hand-drawn, monochrome" },
 ];
 
 export const CREATE_STYLE_BY_KEY: Record<string, CreateStyle> = Object.fromEntries(

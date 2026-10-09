@@ -66,6 +66,8 @@ const STYLE_SWATCH: Record<string, string> = {
   pixel: "linear-gradient(135deg,#5ec8ff 25%,#ff5ca8 25% 50%,#ffe24a 50% 75%,#5efc82 75%)",
   fantasy: "radial-gradient(circle at 50% 18%,#ffe8a3,transparent 52%),linear-gradient(160deg,#3a2a6b,#7b3f9e 60%,#c76b3f)",
   minimal: "linear-gradient(135deg,#fdfbf5,#ece4d4)",
+  comic: "radial-gradient(circle at 72% 30%,#ffe24a,transparent 46%),linear-gradient(135deg,#ff4d4d,#ff8a3d 52%,#2b8cff)",
+  sketch: "linear-gradient(135deg,#f6f3ec,#cfccc5 52%,#6f6c66)",
 };
 
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
@@ -1139,8 +1141,10 @@ export default function WebStudio() {
     setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return URL.createObjectURL(f); });
     setHasFile(true);
   };
-  // Creator "Make an image" art style.
+  // Creator "Make an image" art style. The picker is collapsed by default
+  // (reveal on click) so the describe box stays the whole act of creation.
   const [createStyle, setCreateStyle] = useState<string | null>(null);
+  const [showStyle, setShowStyle] = useState(false);
   // Creator "Make music" genre/mood preset (optional, folded into the prompt).
   const [musicStyle, setMusicStyle] = useState<string | null>(null);
   // Creator "Faceless video" — format + voice.
@@ -1730,11 +1734,15 @@ export default function WebStudio() {
         )}
         {tab === "image" && imageMode && (
           <>
-            <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
-            {/* Casual "create" leads with the describe box (directly under the
-                Stage) and moves the optional style grid BELOW it — see the
-                {isCreate && casual} block further down. So skip this header for
-                that path; every other image mode still gets it. */}
+            {/* Casual "create" is the default landing and leads straight with
+                the describe box sitting right under the Stage: no "Image type"
+                back link (the Stage itself is the upload/edit entry) and no
+                separate style header up here — the optional style picker is a
+                collapsed disclosure BELOW the box. Every other image mode keeps
+                the back link + header. */}
+            {!(isCreate && casual) && (
+              <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
+            )}
             {!(isCreate && casual) && (
               <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "optional — pick a look, or skip for a natural photo" : casual ? "how your image is styled" : "the structure your ad is built on"} />
             )}
@@ -2051,7 +2059,12 @@ export default function WebStudio() {
             )}
             </>)}
 
-            <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
+            {/* Casual create skips this header — the "Describe your image"
+                label below already names the box, and dropping it lifts the
+                box to sit right under the Stage. */}
+            {!(isCreate && casual) && (
+              <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
+            )}
             {tab === "image" && !casual && (
               <>
                 <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
@@ -2208,25 +2221,44 @@ export default function WebStudio() {
               </>
             )}
 
-            {/* Optional art-style picker — moved BELOW the describe box for
-                casual "create" so the prompt box sits directly under the Stage
-                (the header for this lives here now, not up top). */}
+            {/* Optional art-style picker — a COLLAPSED disclosure under the
+                describe box (reveal on click) so it never competes with the
+                prompt. Sits below the box so, on casual create, the box stays
+                directly under the Stage. The hidden input lives outside the
+                open/closed gate so a chosen style still submits when collapsed. */}
             {isCreate && casual && (
-              <>
-                <div className="ws-lbl">Art style <span className="ws-opt">optional — or skip for a natural photo</span></div>
-                <div className="ws-stylegrid" role="tablist" aria-label="Art style">
-                  {CREATE_STYLES.map((s) => (
-                    <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
-                      className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
-                      <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
-                        <span className="ws-styletile-emoji" aria-hidden="true">{s.emoji}</span>
-                      </span>
-                      <span className="ws-styletile-nm">{s.name}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="ws-styledisc">
+                <button type="button" className={`ws-styletoggle${showStyle ? " open" : ""}`}
+                  aria-expanded={showStyle} onClick={() => setShowStyle((v) => !v)}>
+                  <span className="ws-styletoggle-l">
+                    <span aria-hidden="true">🎨</span>
+                    {createStyle
+                      ? <>Style: <b>{CREATE_STYLES.find((s) => s.key === createStyle)?.name}</b></>
+                      : <>Steer the look</>}
+                  </span>
+                  <span className="ws-styletoggle-r">
+                    {!createStyle && <span className="ws-opt">optional</span>}
+                    <span className="ws-chev" aria-hidden="true">⌄</span>
+                  </span>
+                </button>
+                {showStyle && (
+                  <>
+                    <p className="ws-note" style={{ marginTop: 8 }}>Pick an art style, or skip for a natural photo.</p>
+                    <div className="ws-stylegrid" role="tablist" aria-label="Art style">
+                      {CREATE_STYLES.map((s) => (
+                        <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
+                          className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
+                          <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
+                            <span className="ws-styletile-emoji" aria-hidden="true">{s.emoji}</span>
+                          </span>
+                          <span className="ws-styletile-nm">{s.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {createStyle && <input type="hidden" name="createStyle" value={createStyle} />}
-              </>
+              </div>
             )}
 
             {/* Composed fields ride hidden inputs so the native multipart
@@ -2580,7 +2612,19 @@ const WS_STYLE = `
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
 .ws-tile-emoji{font-size:34px;line-height:1;filter:saturate(1.05)}
 /* Pick-by-look art-style swatches (casual "Make an image"). */
-.ws-stylegrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:4px}
+/* 4-up so the 12 styles fill clean 3×4 rows on both the narrow desktop
+   controls column and mobile (no half-empty last row). */
+.ws-stylegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+/* Collapsed art-style disclosure — a single row that reveals the grid on click. */
+.ws-styledisc{margin-top:4px}
+.ws-styletoggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:var(--card,#fff);border:1.5px solid var(--line,#E4E7E1);border-radius:12px;padding:11px 14px;font:inherit;cursor:pointer;color:var(--ink,#14201A);transition:border-color .14s,background .14s}
+.ws-styletoggle:hover{border-color:#12A85E}
+.ws-styletoggle.open{border-color:#12A85E;background:rgba(12,122,70,.03)}
+.ws-styletoggle-l{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-styletoggle-l b{font-weight:800}
+.ws-styletoggle-r{display:inline-flex;align-items:center;gap:8px;flex-shrink:0}
+.ws-chev{font-size:13px;line-height:1;color:var(--ink2,#5C6B61);transition:transform .18s}
+.ws-styletoggle.open .ws-chev{transform:rotate(180deg)}
 .ws-styletile{position:relative;border:0;padding:0;margin:0;background:none;font:inherit;cursor:pointer;border-radius:12px}
 .ws-styletile-face{display:block;position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(20,32,26,.08),inset 0 0 0 1px rgba(255,255,255,.14);transition:transform .13s,box-shadow .13s}
 .ws-styletile-emoji{position:absolute;left:6px;top:5px;font-size:16px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
