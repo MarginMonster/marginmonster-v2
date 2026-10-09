@@ -432,7 +432,7 @@ const CSS = `
   background-image:url(/gstyle-rosette-green.svg);animation:wbDriftBack 260s linear infinite;}
 @keyframes wbDrift{to{transform:rotate(360deg)}}
 @keyframes wbDriftBack{to{transform:rotate(-360deg)}}
-@media (prefers-reduced-motion:reduce){.wb::before,.wb::after,.wb-chooser::before,.wb-chooser::after{animation:none}}
+@media (prefers-reduced-motion:reduce){.wb::before,.wb::after,.wb-chooser::before,.wb-chooser::after,.wb-ch-go::after{animation:none}}
 /* Everything real sits above the ambient layer. */
 .wb-nav,.wb-hud,.wb-main{position:relative;z-index:1;}
 .wb-nav{display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
@@ -457,7 +457,7 @@ const CSS = `
 .wb-mode-opt:not(.on):hover{color:var(--ink);}
 /* THE FRONT DOOR — full-screen path chooser shown on arrival (see WebLayout).
    Inside .wb so it inherits the theme tokens; fixed over everything. */
-.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:18px 18px 24px;padding-top:calc(18px + env(safe-area-inset-top,0px));overflow-x:hidden;overflow-y:auto;
+.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 18px 20px;overflow-x:hidden;overflow-y:auto;
   background:radial-gradient(74% 54% at 50% -4%,rgba(15,145,82,.16),transparent 60%),radial-gradient(50% 36% at 98% 96%,rgba(176,133,38,.1),transparent 66%),var(--paper);}
 /* EasyMode spinning rosette "flowers" behind the panel — the brand page-field
    motif (green) + the spinning-gold accent, the same wbDrift the HUD field uses.
@@ -465,7 +465,7 @@ const CSS = `
 .wb-chooser::before,.wb-chooser::after{content:"";position:fixed;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center;background-size:contain;}
 .wb-chooser::before{top:-170px;right:-200px;width:560px;height:560px;opacity:.1;background-image:url(/gstyle-rosette-green.svg);animation:wbDrift 210s linear infinite;}
 .wb-chooser::after{bottom:-200px;left:-200px;width:520px;height:520px;opacity:.08;background-image:url(/gstyle-rosette.svg);animation:wbDriftBack 240s linear infinite;}
-.wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:0 auto;text-align:center;animation:wbChIn .3s ease both;}
+.wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
 @keyframes wbChIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin-bottom:14px;}
 .wb-ch-brand b{color:var(--gold);}
@@ -486,16 +486,22 @@ const CSS = `
 .wb-ch-title{font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:3px 0 6px;}
 .wb-ch-desc{font-size:13px;line-height:1.45;color:var(--ink2);margin:0 0 10px;}
 .wb-ch-nav{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink2);opacity:.72;margin-bottom:13px;}
-.wb-ch-go{display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;border-radius:11px;padding:9px 16px;box-shadow:0 4px 12px -4px rgba(20,32,26,.3);}
-.wb-ch-card.mk .wb-ch-go{background:linear-gradient(135deg,var(--green2),var(--green));}
-.wb-ch-card.cr .wb-ch-go{background:linear-gradient(135deg,var(--gold),var(--gold-deep));}
+/* CTA buttons carry the EasyMode treatment: guilloche hatch + the gold GStyle
+   rosette peeking from the right + a gold inner hairline (same as the landing). */
+.wb-ch-go{position:relative;overflow:hidden;isolation:isolate;display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;border-radius:11px;padding:9px 18px;box-shadow:0 4px 12px -4px rgba(20,32,26,.3);}
+.wb-ch-card.mk .wb-ch-go{background:repeating-linear-gradient(57deg,rgba(255,220,120,.16) 0 1px,transparent 1px 8px),repeating-linear-gradient(123deg,rgba(255,220,120,.11) 0 1px,transparent 1px 8px),linear-gradient(135deg,var(--green2),var(--green));}
+.wb-ch-card.cr .wb-ch-go{background:repeating-linear-gradient(57deg,rgba(255,255,255,.18) 0 1px,transparent 1px 8px),repeating-linear-gradient(123deg,rgba(255,255,255,.12) 0 1px,transparent 1px 8px),linear-gradient(135deg,var(--gold),var(--gold-deep));}
+.wb-ch-go::after{content:"";position:absolute;z-index:-1;top:50%;right:-12px;width:50px;height:50px;transform:translateY(-50%);pointer-events:none;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.32;animation:wbDrift 90s linear infinite;}
+.wb-ch-card.cr .wb-ch-go::after{background:#FFF6DC;opacity:.36;}
+.wb-ch-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,214,102,.5);border-radius:8px;pointer-events:none;z-index:1;}
+.wb-ch-card.cr .wb-ch-go::before{border-color:rgba(255,248,224,.55);}
 @media(max-width:560px){
-  .wb-chooser{padding:14px 14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px))}
+  .wb-chooser{padding:calc(10px + env(safe-area-inset-top,0px)) 14px 16px}
   .wb-ch-brand{margin-bottom:10px;font-size:18px}
   .wb-ch-h{font-size:21px}
   .wb-ch-sub{margin-bottom:13px}
   .wb-ch-grid{grid-template-columns:1fr;gap:10px}
-  .wb-ch-hero{height:104px}
+  .wb-ch-hero{height:clamp(104px,18vh,176px)}
   .wb-ch-body{padding:12px 15px 14px}
   .wb-ch-title{font-size:16px;margin:2px 0 4px}
   .wb-ch-desc{margin:0 0 9px}
