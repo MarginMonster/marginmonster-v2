@@ -1113,6 +1113,18 @@ export default function WebStudio() {
   // the canvas is a drop target, not just an output.
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const stageUploadRef = useRef<HTMLInputElement>(null);
+  // `mode` loads from localStorage after mount, so `casual` is false during the
+  // tab initializer. Once casual is confirmed on a fresh landing (no deep-link),
+  // open prompt-first on "Make an image" — the Studio is the Creator home now.
+  const didInitCasualRef = useRef(false);
+  useEffect(() => {
+    if (casual && !initTab && !didInitCasualRef.current) {
+      didInitCasualRef.current = true;
+      setTab("image");
+      setImageMode("create");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casual]);
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   const [editPreview, setEditPreview] = useState<string | null>(null);
