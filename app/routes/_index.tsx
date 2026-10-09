@@ -60,6 +60,8 @@ const FEAT_ICONS: Record<string, JSX.Element> = {
   cinema: <><rect x="2.5" y="8" width="19" height="12.5" rx="2.5" /><path d="m3.4 8 3.3-4.2 3.6 4.2M10.3 8l3.3-4.2L17.2 8" /></>,
   shield: <><path d="M12 3.2 19.4 6v6c0 4.2-3 7.3-7.4 8.8C7.6 19.3 4.6 16.2 4.6 12V6z" /><path d="m9 12.1 2.2 2.2 4-4.2" /></>,
   bolt: <><path d="M13.2 2.6 4.8 13.4h6L10.6 21.4 19 10.6h-6z" /></>,
+  palette: <><path d="M12 3.4a8.6 8.6 0 0 0 0 17.2c1.3 0 1.8-.9 1.4-1.9-.5-1.2.3-2.3 1.6-2.3h1.4a4.2 4.2 0 0 0 4.2-4.6A8.7 8.7 0 0 0 12 3.4z" /><circle cx="8" cy="10.4" r="1.1" /><circle cx="12" cy="7.9" r="1.1" /><circle cx="15.9" cy="10.2" r="1.1" /></>,
+  wand: <><path d="M5 19 14.5 9.5" /><path d="M13 7.5l3 3" /><path d="M18 3.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></>,
 };
 
 function FeatIcon({ name }: { name: string }) {
@@ -165,11 +167,11 @@ export default function Index() {
           </div>
 
           <div className="lz-stats">
-            <div><b>9</b><span>{t.stats.types}</span></div>
+            <div><b>4</b><span>{t.stats.types}</span></div>
             <div className="lz-div" />
             <div><b>{t.stats.tap || "1-tap"}</b><span>{t.stats.channels}</span></div>
             <div className="lz-div" />
-            <div><b>$19</b><span>{t.stats.start}</span></div>
+            <div><b>{t.stats.free || "Free"}</b><span>{t.stats.start}</span></div>
           </div>
         </section>
 
@@ -258,6 +260,10 @@ export default function Index() {
             <figure className="lz-show-card" key="commercial">
               <video className="lz-show-vid" src="/showcase/commercial.mp4?v=3" poster="/showcase/commercial-cover.jpg?v=2" autoPlay muted loop playsInline aria-label="EasyMode-generated commercial" />
               <figcaption><b>Commercial</b><span>A cinematic story ad — script, scenes &amp; voice by EasyMode</span></figcaption>
+            </figure>
+            <figure className="lz-show-card" key="creator-faceless">
+              <video className="lz-show-vid" src="/showcase/creator-faceless.mp4" poster="/showcase/creator-faceless.jpg" autoPlay muted loop playsInline aria-label="An EasyMode faceless creator video" />
+              <figcaption><b>Faceless video</b><span>From a prompt — script, voice &amp; word-synced captions. No store needed.</span></figcaption>
             </figure>
             {[
               "/style-tiles/avatarcover.jpg?v=4",
