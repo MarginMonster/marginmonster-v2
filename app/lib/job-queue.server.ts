@@ -467,6 +467,8 @@ async function runJob(
           shopId,
           prompt: payload.createPrompt as string,
           style: typeof payload.createStyle === "string" ? payload.createStyle : undefined,
+          model: typeof payload.createModel === "string" ? payload.createModel : undefined,
+          aspectRatio: typeof payload.createAspect === "string" ? payload.createAspect : undefined,
         });
         break;
       }

@@ -8,6 +8,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { mirrorRender } from "./object-storage.server";
 import { trimToWord } from "./text-trim";
 import { CREATE_STYLE_BY_KEY } from "./create-styles";
+import { CREATE_MODEL_BY_KEY, DEFAULT_CREATE_MODEL, CREATE_ASPECT_VALUES, DEFAULT_CREATE_ASPECT } from "./create-models";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
@@ -4318,22 +4319,35 @@ export async function editImage(opts: {
 /** Creator "Make an image" — a text-to-image generation in a chosen art style,
  *  saved as a creator-section asset. No product, no grounding, no ad-QA ladder:
  *  it's a consumer image generator. Rides the GENERATE_IMAGE_AD job (refund
- *  inherited); flux-schnell (fast + cheap) via fluxToDisk. */
-export async function createImage(opts: { shopId: string; prompt: string; style?: string }): Promise<string> {
+ *  inherited). The user picks the MODEL (default "best" = nano-banana, premium
+ *  quality + legible text) and the output FRAME (aspect_ratio); both are
+ *  validated against the create-models allow-list, never passed raw. */
+export async function createImage(opts: { shopId: string; prompt: string; style?: string; model?: string; aspectRatio?: string }): Promise<string> {
   const { shopId } = opts;
   const prompt = (opts.prompt || "").trim().slice(0, 500);
   if (!prompt) throw new Error("Describe what you want to make.");
   if (!process.env.REPLICATE_API_TOKEN) throw new Error("Image generation isn't set up on this server yet.");
   const style = opts.style && CREATE_STYLE_BY_KEY[opts.style] ? opts.style : undefined;
   const styleSuffix = style ? CREATE_STYLE_BY_KEY[style].prompt : "";
-  const full = `${prompt}${styleSuffix ? `. ${styleSuffix}` : ""}. No text, no watermark, no signature.`;
-  const localUrl = await fluxToDisk(full);
+  // NB: no blanket "no text" — a creator may WANT words/logos/captions, and the
+  // default model renders them cleanly. We only suppress watermarks/signatures.
+  const full = `${prompt}${styleSuffix ? `. ${styleSuffix}` : ""}. No watermark, no signature.`;
+  const modelKey = opts.model && CREATE_MODEL_BY_KEY[opts.model] ? opts.model : DEFAULT_CREATE_MODEL;
+  const aspect = opts.aspectRatio && CREATE_ASPECT_VALUES.includes(opts.aspectRatio) ? opts.aspectRatio : DEFAULT_CREATE_ASPECT;
+  const modelId = CREATE_MODEL_BY_KEY[modelKey].id;
+  // Route every model through repRun (official-model endpoint: 429 backoff +
+  // honours aspect_ratio) then persist to the durable disk. The pinned
+  // fluxToDisk version predates aspect_ratio, so it is NOT used here.
+  const input: Record<string, unknown> = { prompt: full, aspect_ratio: aspect, output_format: "jpg" };
+  if (modelId === "black-forest-labs/flux-schnell") input.num_inference_steps = 4;
+  const remoteUrl = await repRun(modelId, input);
+  const localUrl = await persistRemote(remoteUrl, "jpg");
   const asset = await db.asset.create({
     data: {
       shopId, type: "IMAGE_AD", status: "PENDING",
       title: prompt.slice(0, 60),
-      bodyJson: JSON.stringify({ imageUrl: localUrl, prompt, method: "create", style: style || null }),
-      metaJson: JSON.stringify({ kind: "create", section: "creator", style: style || null }),
+      bodyJson: JSON.stringify({ imageUrl: localUrl, prompt, method: "create", style: style || null, model: modelKey, aspect }),
+      metaJson: JSON.stringify({ kind: "create", section: "creator", style: style || null, model: modelKey, aspect }),
     },
   });
   return asset.id;

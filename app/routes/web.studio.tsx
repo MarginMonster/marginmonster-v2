@@ -23,6 +23,7 @@ import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
 import { CREATE_STYLES } from "../lib/create-styles";
+import { CREATE_MODELS, CREATE_ASPECTS, aspectCss, DEFAULT_CREATE_MODEL, DEFAULT_CREATE_ASPECT } from "../lib/create-models";
 import { MUSIC_STYLES, MUSIC_STYLE_BY_KEY } from "../lib/music-styles";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
@@ -733,10 +734,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const createPrompt = trimToWord((form.get("createPrompt") as string) || (direction || ""), 500);
       if (!createPrompt) return json({ error: "Describe what you want to make." });
       const createStyle = ((form.get("createStyle") as string) || "").trim() || undefined;
+      // Model + output frame are validated again server-side in createImage
+      // against the create-models allow-list, so a crafted value can't reach
+      // Replicate. Cost is flat 5 tokens — every offered model is margin-safe.
+      const createModel = ((form.get("createModel") as string) || "").trim() || undefined;
+      const createAspect = ((form.get("createAspect") as string) || "").trim() || undefined;
       const createFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
       charged(TOKEN_COST.image, createFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
-        createImage: true, createPrompt, createStyle, section: "creator",
+        createImage: true, createPrompt, createStyle, createModel, createAspect, section: "creator",
         productTitle: createPrompt.slice(0, 60),
         prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: createFromExtra,
       });
@@ -1145,6 +1151,9 @@ export default function WebStudio() {
   // (reveal on click) so the describe box stays the whole act of creation.
   const [createStyle, setCreateStyle] = useState<string | null>(null);
   const [showStyle, setShowStyle] = useState(false);
+  // Creator "Make an image" — AI model + output frame (aspect ratio).
+  const [createModel, setCreateModel] = useState<string>(DEFAULT_CREATE_MODEL);
+  const [createAspect, setCreateAspect] = useState<string>(DEFAULT_CREATE_ASPECT);
   // Creator "Make music" genre/mood preset (optional, folded into the prompt).
   const [musicStyle, setMusicStyle] = useState<string | null>(null);
   // Creator "Faceless video" — format + voice.
@@ -1310,6 +1319,11 @@ export default function WebStudio() {
   // room. Marketing is untouched (it keeps the confirmation modal).
   type StagePiece = { id: string; isVideo: boolean; isAudio: boolean; media: string; title: string };
   const [stageResult, setStageResult] = useState<StagePiece | null>(null);
+  // The result's real aspect ratio (w/h), captured on load, so the Stage frame
+  // HUGS the image instead of letterboxing it in a wide black box. Reset to
+  // null whenever the shown media changes (falls back to a square frame).
+  const [stageAspect, setStageAspect] = useState<number | null>(null);
+  useEffect(() => { setStageAspect(null); }, [stageResult?.media]);
   const [making, setMaking] = useState(false);
   const preIdsRef = useRef<string[]>([]);
   const makingNounRef = useRef<string>("");
@@ -2221,6 +2235,35 @@ export default function WebStudio() {
               </>
             )}
 
+            {/* Output FRAME + AI MODEL — the two the merchant asked for. Frame
+                sets aspect_ratio (so no more square-in-a-black-box); Model picks
+                the Replicate model (default "Best" = premium, legible text).
+                Both ride hidden inputs and are re-validated server-side. */}
+            {isCreate && casual && (
+              <div className="ws-genopts">
+                <div className="ws-lbl">Frame</div>
+                <div className="ws-frames" role="tablist" aria-label="Output frame">
+                  {CREATE_ASPECTS.map((a) => (
+                    <button type="button" key={a.value} role="tab" aria-selected={createAspect === a.value} title={`${a.name} (${a.value})`}
+                      className={`ws-frame${createAspect === a.value ? " sel" : ""}`} onClick={() => setCreateAspect(a.value)}>
+                      <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
+                      <span className="ws-frame-nm">{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="ws-lbl" style={{ marginTop: 12 }}>Model</div>
+                <div className="ws-models" role="tablist" aria-label="AI model">
+                  {CREATE_MODELS.map((m) => (
+                    <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
+                      className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>{m.name}</button>
+                  ))}
+                </div>
+                <p className="ws-note" style={{ marginTop: 6 }}>{CREATE_MODELS.find((m) => m.key === createModel)?.blurb}</p>
+                <input type="hidden" name="createModel" value={createModel} />
+                <input type="hidden" name="createAspect" value={createAspect} />
+              </div>
+            )}
+
             {/* Optional art-style picker — a COLLAPSED disclosure under the
                 describe box (reveal on click) so it never competes with the
                 prompt. Sits below the box so, on casual create, the box stays
@@ -2342,15 +2385,18 @@ export default function WebStudio() {
        </div>
        {casual && (
          <aside className="ws-stage">
-           <div className={`ws-stage-frame${stageResult ? " has-result" : ""}`}>
+           <div className={`ws-stage-frame${stageResult ? " has-result" : ""}`}
+             style={stageResult && stageAspect ? ({ ["--stage-ar" as string]: String(stageAspect) } as React.CSSProperties) : undefined}>
              {stageResult ? (
                <div className="ws-stageresult">
                  <div className="ws-stagemedia">
                    {stageResult.isVideo
-                     ? <video src={stageResult.media} controls autoPlay muted loop playsInline />
+                     ? <video src={stageResult.media} controls autoPlay muted loop playsInline
+                         onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth && v.videoHeight) setStageAspect(v.videoWidth / v.videoHeight); }} />
                      : stageResult.isAudio
                        ? <div className="ws-stageaud"><span className="ws-rose" aria-hidden="true" /><audio src={stageResult.media} controls /></div>
-                       : <img src={stageResult.media} alt={stageResult.title} />}
+                       : <img src={stageResult.media} alt={stageResult.title}
+                           onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setStageAspect(t.naturalWidth / t.naturalHeight); }} />}
                  </div>
                  <div className="ws-verbs">
                    <a className="ws-verb gold" href={stageResult.media} download>⤓ Download</a>
@@ -2555,7 +2601,10 @@ const WS_STYLE = `
 .ws-casual .ws-fmtcat:hover,.ws-casual .ws-chip:hover{transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(20,32,26,.3)}
 .ws-casual .ws-fmtcat.sel,.ws-casual .ws-chip.sel{border-color:#0C7A46;background:#EAF6EF;box-shadow:0 0 0 3px rgba(12,122,70,.14);color:var(--ink,#14201A)}
 /* The describe/prompt field → a premium ask-field. */
-.ws-casual .wb-in{border-radius:14px;border:1px solid var(--line,#E1DECD);padding:13px 16px;font-size:15px;box-shadow:inset 0 1px 2px rgba(20,32,26,.03);transition:border-color .15s,box-shadow .15s}
+/* 16px (not 15) is deliberate: iOS Safari auto-zooms any focused field below
+   16px, and this selector outranks the base .wb-in / .ws-hero — that 1px was
+   the whole "screen zooms & I have to realign after Generate" bug on phones. */
+.ws-casual .wb-in{border-radius:14px;border:1px solid var(--line,#E1DECD);padding:13px 16px;font-size:16px;box-shadow:inset 0 1px 2px rgba(20,32,26,.03);transition:border-color .15s,box-shadow .15s}
 .ws-casual .wb-in:focus{border-color:#9CCBB1;box-shadow:0 0 0 4px rgba(12,122,70,.14);outline:none}
 .ws-casual .ws-tok{border-radius:14px}
 /* Primary CTA → the home's "Make it" gradient pill (ghosts stay ghosts). */
@@ -2575,8 +2624,8 @@ const WS_STYLE = `
 .ws-casual .ws-tab{justify-content:flex-start;width:100%;border-radius:12px;padding:11px 13px;font-size:14px;gap:11px;border:1px solid transparent}
 .ws-casual .ws-tab.on{color:#fff;background:linear-gradient(100deg,#12A85E 40%,#0A6A3D 84%);box-shadow:0 4px 12px rgba(12,122,70,.26);border-color:transparent}
 /* the Stage */
-.ws-stage{position:sticky;top:14px;min-width:0}
-.ws-stage-frame{position:relative;min-height:470px;height:100%;display:grid;place-items:center;border-radius:20px;overflow:hidden;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
+.ws-stage{position:sticky;top:14px;min-width:0;display:flex;flex-direction:column;align-items:center}
+.ws-stage-frame{position:relative;width:100%;min-height:470px;height:100%;display:grid;place-items:center;border-radius:20px;overflow:hidden;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
 .ws-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
 .ws-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:24px}
 /* The idle Stage is a drop/upload target (DeepAI-style). */
@@ -2596,11 +2645,15 @@ const WS_STYLE = `
 .ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
 .ws-easel-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:30ch;line-height:1.45}
 /* Phase 2 — the finished piece renders ON the Stage, with verb chips. */
-.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:#0f1713}
+/* The finished piece: the frame now HUGS the media's aspect ratio (--stage-ar,
+   set on load; 4/3 until then) instead of dropping a square into a wide black
+   box — so there's essentially nothing left to letterbox. Clean brand-ink matte
+   for the rare residual edge. */
+.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:#14201A;min-height:0;height:min(66vh,560px);width:auto;max-width:100%;aspect-ratio:var(--stage-ar,4/3);margin-inline:auto}
 .ws-stage-frame.has-result::after{display:none}
 .ws-stageresult{position:absolute;inset:0;display:flex;flex-direction:column}
-.ws-stagemedia{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#0f1713}
-.ws-stagemedia img,.ws-stagemedia video{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.ws-stagemedia{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:transparent}
+.ws-stagemedia img,.ws-stagemedia video{width:100%;height:100%;object-fit:contain;display:block}
 .ws-stageaud{display:flex;flex-direction:column;align-items:center;gap:18px;padding:26px}
 .ws-stageaud audio{width:min(320px,86%)}
 .ws-verbs{display:flex;flex-wrap:wrap;gap:7px;padding:10px;background:#0b120e;border-top:1px solid rgba(255,255,255,.08)}
@@ -2615,6 +2668,20 @@ const WS_STYLE = `
 /* 4-up so the 12 styles fill clean 3×4 rows on both the narrow desktop
    controls column and mobile (no half-empty last row). */
 .ws-stylegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+/* Output FRAME picker — four shape chips (each shows its real aspect). */
+.ws-genopts{margin-top:4px}
+.ws-frames{display:flex;gap:8px;margin-top:4px}
+.ws-frame{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:9px 4px;border:1.5px solid var(--line,#E4E7E1);border-radius:12px;background:var(--card,#fff);font:inherit;cursor:pointer;transition:border-color .14s,background .14s}
+.ws-frame:hover{border-color:#12A85E}
+.ws-frame.sel{border-color:#0C7A46;background:rgba(12,122,70,.06)}
+.ws-frame-shape{height:22px;width:auto;border:2px solid #B9C2BB;border-radius:3px;background:rgba(12,122,70,.05)}
+.ws-frame.sel .ws-frame-shape{border-color:#0C7A46;background:rgba(12,122,70,.12)}
+.ws-frame-nm{font-size:11px;font-weight:700;color:var(--ink,#14201A)}
+/* AI MODEL picker — compact pills; the selected one's blurb shows below. */
+.ws-models{display:flex;gap:8px;margin-top:4px}
+.ws-model{flex:1;padding:10px 8px;border:1.5px solid var(--line,#E4E7E1);border-radius:12px;background:var(--card,#fff);font:inherit;font-weight:800;font-size:13px;color:var(--ink,#14201A);cursor:pointer;transition:border-color .14s,background .14s}
+.ws-model:hover{border-color:#12A85E}
+.ws-model.sel{border-color:#0C7A46;background:rgba(12,122,70,.06);box-shadow:inset 0 0 0 1px rgba(12,122,70,.25)}
 /* Collapsed art-style disclosure — a single row that reveals the grid on click. */
 .ws-styledisc{margin-top:4px}
 .ws-styletoggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:var(--card,#fff);border:1.5px solid var(--line,#E4E7E1);border-radius:12px;padding:11px 14px;font:inherit;cursor:pointer;color:var(--ink,#14201A);transition:border-color .14s,background .14s}
@@ -2683,6 +2750,8 @@ const WS_STYLE = `
   .ws-casual .ws-stage{order:-1;position:static;top:auto}
   .ws-casual .ws-easel-left{order:0}
   .ws-casual .ws-stage-frame{min-height:0;height:40vh;max-height:340px}
+  /* a result hugs its own shape (portrait stays tall, capped); idle stays 40vh */
+  .ws-casual .ws-stage-frame.has-result{height:auto;width:100%;aspect-ratio:var(--stage-ar,1/1);max-height:min(62vh,460px)}
 
   /* 2 — vertical rail → one sticky 4-up segmented control (icon over label) */
   .ws-casual .ws-tabs{position:sticky;top:0;z-index:6;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:5px;border-radius:14px;overflow:visible}
