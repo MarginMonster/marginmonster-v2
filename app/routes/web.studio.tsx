@@ -23,7 +23,7 @@ import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
 import { CREATE_STYLES } from "../lib/create-styles";
-import { CREATE_MODELS, CREATE_ASPECTS, aspectCss, DEFAULT_CREATE_MODEL, DEFAULT_CREATE_ASPECT } from "../lib/create-models";
+import { CREATE_MODELS, CREATE_ASPECTS, aspectCss, createModelSurcharge, normalizeCreateModelKey, DEFAULT_CREATE_MODEL, DEFAULT_CREATE_ASPECT } from "../lib/create-models";
 import { MUSIC_STYLES, MUSIC_STYLE_BY_KEY } from "../lib/music-styles";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
@@ -734,19 +734,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const createPrompt = trimToWord((form.get("createPrompt") as string) || (direction || ""), 500);
       if (!createPrompt) return json({ error: "Describe what you want to make." });
       const createStyle = ((form.get("createStyle") as string) || "").trim() || undefined;
-      // Model + output frame are validated again server-side in createImage
-      // against the create-models allow-list, so a crafted value can't reach
-      // Replicate. Cost is flat 5 tokens — every offered model is margin-safe.
-      const createModel = ((form.get("createModel") as string) || "").trim() || undefined;
+      // Model + output frame are re-validated here (and again in createImage)
+      // against the create-models allow-list — a crafted value can't reach
+      // Replicate OR dodge the surcharge. The premium "Genius" model carries a
+      // token surcharge (margin protector, like the video engines); re-derive it
+      // server-side from the normalized key, and charge base + surcharge.
+      const createModel = normalizeCreateModelKey((form.get("createModel") as string) || "");
       const createAspect = ((form.get("createAspect") as string) || "").trim() || undefined;
-      const createFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
-      charged(TOKEN_COST.image, createFromExtra);
+      const createEach = TOKEN_COST.image + createModelSurcharge(createModel);
+      const createFromExtra = (await spendTokens(shop.id, createEach)).fromExtra;
+      charged(createEach, createFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         createImage: true, createPrompt, createStyle, createModel, createAspect, section: "creator",
         productTitle: createPrompt.slice(0, 60),
-        prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: createFromExtra,
+        prePaid: true, chargedTokens: createEach, chargedFromExtra: createFromExtra,
       });
-      backed(TOKEN_COST.image, createFromExtra);
+      backed(createEach, createFromExtra);
       return json({ ok: true, queued: "image", count: 1 });
     }
     if (intent === "music") {
@@ -1310,7 +1313,11 @@ export default function WebStudio() {
   const verb = isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
   const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
-  const cost = baseCost + engineFee;
+  // Premium "Make an image" model (Genius) adds a token surcharge, like the
+  // video engines. Re-derived from the SAME table the server charges from, so
+  // the quote, the pill, XP and the Make button can't disagree with the charge.
+  const createFee = isCreate ? createModelSurcharge(createModel) : 0;
+  const cost = baseCost + engineFee + createFee;
 
   // ── THE EASEL, PHASE 2: live result on the Stage (casual only) ──────────────
   // The Studio is fire-and-confirm: a submit queues an async job and the piece
@@ -2255,7 +2262,9 @@ export default function WebStudio() {
                 <div className="ws-models" role="tablist" aria-label="AI model">
                   {CREATE_MODELS.map((m) => (
                     <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
-                      className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>{m.name}</button>
+                      className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
+                      {m.name}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
+                    </button>
                   ))}
                 </div>
                 <p className="ws-note" style={{ marginTop: 6 }}>{CREATE_MODELS.find((m) => m.key === createModel)?.blurb}</p>
@@ -2369,7 +2378,7 @@ export default function WebStudio() {
                     ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
                   : burst > 1
                     ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens · +${xpForSpend(cost * burst)} XP`
-                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : ""} · +${xpForSpend(cost)} XP`}
+                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : createFee ? ` (incl. +${createFee} Genius)` : ""} · +${xpForSpend(cost)} XP`}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
@@ -2682,6 +2691,7 @@ const WS_STYLE = `
 .ws-model{flex:1;padding:10px 8px;border:1.5px solid var(--line,#E4E7E1);border-radius:12px;background:var(--card,#fff);font:inherit;font-weight:800;font-size:13px;color:var(--ink,#14201A);cursor:pointer;transition:border-color .14s,background .14s}
 .ws-model:hover{border-color:#12A85E}
 .ws-model.sel{border-color:#0C7A46;background:rgba(12,122,70,.06);box-shadow:inset 0 0 0 1px rgba(12,122,70,.25)}
+.ws-model-up{display:inline-block;margin-left:5px;font-size:10px;font-weight:800;color:#8A6A12;background:rgba(255,210,74,.32);border-radius:999px;padding:1px 6px;vertical-align:middle}
 /* Collapsed art-style disclosure — a single row that reveals the grid on click. */
 .ws-styledisc{margin-top:4px}
 .ws-styletoggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:var(--card,#fff);border:1.5px solid var(--line,#E4E7E1);border-radius:12px;padding:11px 14px;font:inherit;cursor:pointer;color:var(--ink,#14201A);transition:border-color .14s,background .14s}

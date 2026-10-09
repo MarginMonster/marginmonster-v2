@@ -4333,13 +4333,17 @@ export async function createImage(opts: { shopId: string; prompt: string; style?
   // default model renders them cleanly. We only suppress watermarks/signatures.
   const full = `${prompt}${styleSuffix ? `. ${styleSuffix}` : ""}. No watermark, no signature.`;
   const modelKey = opts.model && CREATE_MODEL_BY_KEY[opts.model] ? opts.model : DEFAULT_CREATE_MODEL;
+  const modelDef = CREATE_MODEL_BY_KEY[modelKey];
   const aspect = opts.aspectRatio && CREATE_ASPECT_VALUES.includes(opts.aspectRatio) ? opts.aspectRatio : DEFAULT_CREATE_ASPECT;
-  const modelId = CREATE_MODEL_BY_KEY[modelKey].id;
+  const modelId = modelDef.id;
   // Route every model through repRun (official-model endpoint: 429 backoff +
   // honours aspect_ratio) then persist to the durable disk. The pinned
   // fluxToDisk version predates aspect_ratio, so it is NOT used here.
   const input: Record<string, unknown> = { prompt: full, aspect_ratio: aspect, output_format: "jpg" };
   if (modelId === "black-forest-labs/flux-schnell") input.num_inference_steps = 4;
+  // Genius (nano-banana-pro): pin resolution so one generation never exceeds
+  // the ~$0.25 COGS cap (2K ≈ $0.15; 4K ≈ $0.30 is never requested).
+  if (modelDef.resolution) input.resolution = modelDef.resolution;
   const remoteUrl = await repRun(modelId, input);
   const localUrl = await persistRemote(remoteUrl, "jpg");
   const asset = await db.asset.create({
