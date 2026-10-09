@@ -108,7 +108,7 @@ export default function WebLayout() {
             <div className="wb-ch-panel">
               <div className="wb-ch-brand"><Crest size={30} /><span>Easy<b>Mode</b></span></div>
               <h1 className="wb-ch-h">Where do you want to start?</h1>
-              <p className="wb-ch-sub">Pick a side to begin — you can switch anytime from the toggle up top.</p>
+              <p className="wb-ch-sub">Jump into either — switch between them anytime from the toggle up top.</p>
               <div className="wb-ch-grid">
                 <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
                   <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
