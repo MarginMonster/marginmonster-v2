@@ -432,7 +432,7 @@ const CSS = `
   background-image:url(/gstyle-rosette-green.svg);animation:wbDriftBack 260s linear infinite;}
 @keyframes wbDrift{to{transform:rotate(360deg)}}
 @keyframes wbDriftBack{to{transform:rotate(-360deg)}}
-@media (prefers-reduced-motion:reduce){.wb::before,.wb::after{animation:none}}
+@media (prefers-reduced-motion:reduce){.wb::before,.wb::after,.wb-chooser::before,.wb-chooser::after{animation:none}}
 /* Everything real sits above the ambient layer. */
 .wb-nav,.wb-hud,.wb-main{position:relative;z-index:1;}
 .wb-nav{display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
@@ -457,33 +457,51 @@ const CSS = `
 .wb-mode-opt:not(.on):hover{color:var(--ink);}
 /* THE FRONT DOOR — full-screen path chooser shown on arrival (see WebLayout).
    Inside .wb so it inherits the theme tokens; fixed over everything. */
-.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:28px 20px;overflow-y:auto;
+.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px 18px;overflow-x:hidden;overflow-y:auto;
   background:radial-gradient(74% 54% at 50% -4%,rgba(15,145,82,.16),transparent 60%),radial-gradient(50% 36% at 98% 96%,rgba(176,133,38,.1),transparent 66%),var(--paper);}
-.wb-ch-panel{width:100%;max-width:660px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
+/* EasyMode spinning rosette "flowers" behind the panel — the brand page-field
+   motif (green) + the spinning-gold accent, the same wbDrift the HUD field uses.
+   position:fixed so they anchor to the viewport and never add scroll. */
+.wb-chooser::before,.wb-chooser::after{content:"";position:fixed;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center;background-size:contain;}
+.wb-chooser::before{top:-170px;right:-200px;width:560px;height:560px;opacity:.1;background-image:url(/gstyle-rosette-green.svg);animation:wbDrift 210s linear infinite;}
+.wb-chooser::after{bottom:-200px;left:-200px;width:520px;height:520px;opacity:.08;background-image:url(/gstyle-rosette.svg);animation:wbDriftBack 240s linear infinite;}
+.wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
 @keyframes wbChIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:20px;color:var(--ink);margin-bottom:24px;}
+.wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin-bottom:14px;}
 .wb-ch-brand b{color:var(--gold);}
-.wb-ch-h{font-family:Poppins,sans-serif;font-weight:800;font-size:27px;color:var(--ink);margin:0 0 7px;line-height:1.15;}
-.wb-ch-sub{font-size:14px;color:var(--ink2);margin:0 0 28px;}
-.wb-ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left;}
-.wb-ch-card{display:flex;flex-direction:column;align-items:stretch;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:0;overflow:hidden;cursor:pointer;font:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.wb-ch-h{font-family:Poppins,sans-serif;font-weight:800;font-size:25px;color:var(--ink);margin:0 0 5px;line-height:1.14;}
+.wb-ch-sub{font-size:13.5px;color:var(--ink2);margin:0 0 18px;}
+.wb-ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;text-align:left;}
+.wb-ch-card{display:flex;flex-direction:column;align-items:stretch;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:0;overflow:hidden;cursor:pointer;font:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
 .wb-ch-card:hover{transform:translateY(-3px);box-shadow:0 20px 40px -18px rgba(20,32,26,.45);}
 .wb-ch-card.mk:hover{border-color:var(--green2);}
 .wb-ch-card.cr:hover{border-color:var(--gold);}
-.wb-ch-hero{display:block;width:100%;height:152px;background:center/cover no-repeat;border-bottom:1px solid var(--line);}
-.wb-ch-card.cr .wb-ch-hero{background-color:#EFE6CC;}
+.wb-ch-hero{display:block;width:100%;height:138px;background:center/cover no-repeat;border-bottom:1px solid var(--line);}
+.wb-ch-card.cr .wb-ch-hero{background-color:#E6EFDD;}
 .wb-ch-card.mk .wb-ch-hero{background-color:#DCEBE0;}
-.wb-ch-body{display:flex;flex-direction:column;align-items:flex-start;padding:17px 20px 21px;}
+.wb-ch-body{display:flex;flex-direction:column;align-items:flex-start;padding:14px 18px 16px;}
 .wb-ch-eyebrow{font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;}
 .wb-ch-card.mk .wb-ch-eyebrow{color:var(--green);}
 .wb-ch-card.cr .wb-ch-eyebrow{color:var(--gold-deep);}
-.wb-ch-title{font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin:4px 0 7px;}
-.wb-ch-desc{font-size:13.5px;line-height:1.5;color:var(--ink2);margin:0 0 11px;}
-.wb-ch-nav{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink2);opacity:.72;margin-bottom:16px;}
-.wb-ch-go{display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;border-radius:11px;padding:9px 15px;}
+.wb-ch-title{font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:3px 0 6px;}
+.wb-ch-desc{font-size:13px;line-height:1.45;color:var(--ink2);margin:0 0 10px;}
+.wb-ch-nav{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink2);opacity:.72;margin-bottom:13px;}
+.wb-ch-go{display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;border-radius:11px;padding:9px 16px;box-shadow:0 4px 12px -4px rgba(20,32,26,.3);}
 .wb-ch-card.mk .wb-ch-go{background:linear-gradient(135deg,var(--green2),var(--green));}
 .wb-ch-card.cr .wb-ch-go{background:linear-gradient(135deg,var(--gold),var(--gold-deep));}
-@media(max-width:560px){.wb-ch-grid{grid-template-columns:1fr}.wb-ch-h{font-size:23px}.wb-chooser{padding:22px 16px}}
+@media(max-width:560px){
+  .wb-chooser{padding:16px 14px}
+  .wb-ch-brand{margin-bottom:10px;font-size:18px}
+  .wb-ch-h{font-size:21px}
+  .wb-ch-sub{margin-bottom:13px}
+  .wb-ch-grid{grid-template-columns:1fr;gap:10px}
+  .wb-ch-hero{height:104px}
+  .wb-ch-body{padding:12px 15px 14px}
+  .wb-ch-title{font-size:16px;margin:2px 0 4px}
+  .wb-ch-desc{margin:0 0 9px}
+  .wb-ch-nav{display:none}
+  .wb-ch-go{padding:8px 14px}
+}
 /* The mark: gold-rimmed crest so the deep-green tile reads as an emblem
    against cream instead of a dark smudge. */
 .wb-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;border-radius:8px;overflow:hidden;
