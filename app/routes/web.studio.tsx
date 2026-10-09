@@ -1731,24 +1731,12 @@ export default function WebStudio() {
         {tab === "image" && imageMode && (
           <>
             <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
-            <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "optional — pick a look, or skip for a natural photo" : casual ? "how your image is styled" : "the structure your ad is built on"} />
-            {imageMode === "create" && casual && (
-              <>
-                <div className="ws-lbl">Art style <span className="ws-opt">optional</span></div>
-                <div className="ws-stylegrid" role="tablist" aria-label="Art style">
-                  {CREATE_STYLES.map((s) => (
-                    <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
-                      className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
-                      <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
-                        <span className="ws-styletile-emoji" aria-hidden="true">{s.emoji}</span>
-                      </span>
-                      <span className="ws-styletile-nm">{s.name}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="ws-note">Describe what you want below and we&apos;ll generate it{createStyle ? ` in ${CREATE_STYLES.find((s) => s.key === createStyle)?.name} style` : ""} — no photo needed.</p>
-                {createStyle && <input type="hidden" name="createStyle" value={createStyle} />}
-              </>
+            {/* Casual "create" leads with the describe box (directly under the
+                Stage) and moves the optional style grid BELOW it — see the
+                {isCreate && casual} block further down. So skip this header for
+                that path; every other image mode still gets it. */}
+            {!(isCreate && casual) && (
+              <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "optional — pick a look, or skip for a natural photo" : casual ? "how your image is styled" : "the structure your ad is built on"} />
             )}
             {imageMode === "product" && casual && (
               <>
@@ -2220,6 +2208,27 @@ export default function WebStudio() {
               </>
             )}
 
+            {/* Optional art-style picker — moved BELOW the describe box for
+                casual "create" so the prompt box sits directly under the Stage
+                (the header for this lives here now, not up top). */}
+            {isCreate && casual && (
+              <>
+                <div className="ws-lbl">Art style <span className="ws-opt">optional — or skip for a natural photo</span></div>
+                <div className="ws-stylegrid" role="tablist" aria-label="Art style">
+                  {CREATE_STYLES.map((s) => (
+                    <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
+                      className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
+                      <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
+                        <span className="ws-styletile-emoji" aria-hidden="true">{s.emoji}</span>
+                      </span>
+                      <span className="ws-styletile-nm">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+                {createStyle && <input type="hidden" name="createStyle" value={createStyle} />}
+              </>
+            )}
+
             {/* Composed fields ride hidden inputs so the native multipart
                 submit (needed for the photo upload) carries them. */}
             <input type="hidden" name="mode" value={mode} />
@@ -2326,9 +2335,16 @@ export default function WebStudio() {
                  onDragOver={(e) => { if (making || busy) return; e.preventDefault(); e.currentTarget.classList.add("drag"); }}
                  onDragLeave={(e) => e.currentTarget.classList.remove("drag")}
                  onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("drag"); if (!(making || busy)) onStagePhoto(e.dataTransfer.files?.[0]); }}>
-                 <span className="ws-rose" aria-hidden="true" />
-                 <div className="ws-easel-cap">{(making || busy) ? `Making your ${makingNounRef.current || noun}…` : `Your ${noun} appears here`}</div>
-                 <div className="ws-easel-sub">{(making || busy) ? "This takes a few minutes — it'll land right here." : "Drop or upload a photo to edit — or describe it on the left to create."}</div>
+                 <span className="ws-easel-mark" aria-hidden="true">
+                   <span className="ws-rose" />
+                   {!(making || busy) && (
+                     <span className="ws-dropplus">
+                       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5.4v13.2M5.4 12h13.2" /></svg>
+                     </span>
+                   )}
+                 </span>
+                 <div className="ws-easel-cap">{(making || busy) ? `Making your ${makingNounRef.current || noun}…` : `Add a photo, or make one`}</div>
+                 <div className="ws-easel-sub">{(making || busy) ? "This takes a few minutes — it'll land right here." : "Tap to upload or drop a photo to edit — or just describe what you want below."}</div>
                </div>
              )}
            </div>
@@ -2537,6 +2553,10 @@ const WS_STYLE = `
 .ws-easelph-drop:focus-visible{outline:2px solid #12A85E;outline-offset:-8px}
 .ws-easelph-drop.drag{background:rgba(12,122,70,.08);outline:2px dashed #12A85E;outline-offset:-12px}
 .ws-easelph-drop.making{cursor:default}
+/* Add-photo affordance: a solid + badge nested in the rosette's hollow centre. */
+.ws-easel-mark{position:relative;display:grid;place-items:center}
+.ws-dropplus{position:absolute;inset:0;margin:auto;width:46px;height:46px;display:grid;place-items:center;border-radius:999px;background:#0C7A46;color:#fff;border:2.5px solid #fff;box-shadow:0 6px 16px rgba(12,122,70,.32);transition:transform .14s}
+.ws-easelph-drop:hover .ws-dropplus{transform:scale(1.07)}
 .ws-rose{width:112px;height:112px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.85;animation:wsrose 3.8s ease-in-out infinite}
 @keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.05) rotate(4deg);opacity:1}}
 .ws-easelph.making .ws-rose{background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D);opacity:1;animation:wsrosespin 2.4s linear infinite}
