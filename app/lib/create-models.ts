@@ -27,26 +27,24 @@ export interface CreateModel {
   resolution?: "1K" | "2K";
 }
 
-// A DeepAI-style 3-rung ladder: Fast (drafts) → Smart (the intelligent default)
-// → Genius (the premium, 2K, capped at ~$0.25 COGS — DeepAI's own top rung is
-// "Super Genius 2K" at $0.25). Every rung renders text; only Genius surcharges.
+// TWO premium engines — no weak/draft rung (a fuzzy flux-schnell result would
+// make the platform look cheap). Signature is the intelligent default; Imperial
+// is the flagship. Both are top-tier and render text cleanly.
 export const CREATE_MODELS: CreateModel[] = [
-  // Cheap + instant (~$0.003), weaker at words — for text-free art/quick drafts.
-  { key: "fast", name: "Fast", blurb: "Instant drafts — cheapest, best for text-free art", id: "black-forest-labs/flux-schnell", surcharge: 0 },
   // DEFAULT, intelligent. Gemini 2.5 Flash Image — premium photoreal + legible
-  // text, ~$0.039/img. Proven in this codebase (photo edits). Same price.
-  { key: "smart", name: "Smart", blurb: "Our smart default — premium quality and crisp text", id: "google/nano-banana", surcharge: 0 },
-  // PREMIUM "Genius". Gemini 3 Pro Image (nano-banana-pro) at 2K — the sharpest
-  // detail + best-in-class text. ~$0.15/img at 2K (hard-capped under $0.25 by
-  // pinning resolution:"2K"; 4K is never requested).
-  { key: "genius", name: "Genius", blurb: "Top-tier 2K — the sharpest detail and flawless text", id: "google/nano-banana-pro", surcharge: 5, resolution: "2K" },
+  // text, ~$0.039/img. Proven in this codebase (photo edits).
+  { key: "signature", name: "Signature", blurb: "Premium quality and crisp, readable text — our default", id: "google/nano-banana", surcharge: 0 },
+  // FLAGSHIP. Gemini 3 Pro Image (nano-banana-pro) at 2K — the sharpest detail
+  // and flawless text. ~$0.15/img at 2K (hard-capped under $0.25 by pinning
+  // resolution:"2K"; 4K is never requested).
+  { key: "imperial", name: "Imperial", blurb: "Our flagship — ultra-detailed 2K and flawless text", id: "google/nano-banana-pro", surcharge: 5, resolution: "2K" },
 ];
 
 export const CREATE_MODEL_BY_KEY: Record<string, CreateModel> = Object.fromEntries(
   CREATE_MODELS.map((m) => [m.key, m]),
 );
 
-export const DEFAULT_CREATE_MODEL = "smart";
+export const DEFAULT_CREATE_MODEL = "signature";
 
 /** A valid model key, or the default — never trust a raw form value. */
 export function normalizeCreateModelKey(key: string | null | undefined): string {

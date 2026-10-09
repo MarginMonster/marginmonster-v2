@@ -2378,7 +2378,7 @@ export default function WebStudio() {
                     ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
                   : burst > 1
                     ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens · +${xpForSpend(cost * burst)} XP`
-                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : createFee ? ` (incl. +${createFee} Genius)` : ""} · +${xpForSpend(cost)} XP`}
+                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : createFee ? ` (incl. +${createFee} ${CREATE_MODELS.find((m) => m.key === createModel)?.name || "premium"})` : ""} · +${xpForSpend(cost)} XP`}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
