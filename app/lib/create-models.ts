@@ -33,18 +33,19 @@ export interface CreateModel {
 export const CREATE_MODELS: CreateModel[] = [
   // DEFAULT, intelligent. Gemini 2.5 Flash Image — premium photoreal + legible
   // text, ~$0.039/img. Proven in this codebase (photo edits).
-  { key: "signature", name: "Signature", blurb: "Premium quality and crisp, readable text — our default", id: "google/nano-banana", surcharge: 0 },
-  // FLAGSHIP. Gemini 3 Pro Image (nano-banana-pro) at 2K — the sharpest detail
-  // and flawless text. ~$0.15/img at 2K (hard-capped under $0.25 by pinning
-  // resolution:"2K"; 4K is never requested).
-  { key: "imperial", name: "Imperial", blurb: "Our flagship — ultra-detailed 2K and flawless text", id: "google/nano-banana-pro", surcharge: 5, resolution: "2K" },
+  { key: "pro", name: "Pro", blurb: "Premium quality and crisp, readable text — our default", id: "google/nano-banana", surcharge: 0 },
+  // FLAGSHIP. Gemini 3 Pro Image (nano-banana-pro) — the sharpest detail and
+  // flawless text. We quietly render it at the model's top standard resolution
+  // (~$0.15/img) and never touch the pricey max tier, so the COGS stays capped
+  // — but the LABEL never says "2K" (reads like a downgrade next to 4K).
+  { key: "ultra", name: "Ultra", blurb: "Our flagship — the sharpest detail and flawless text", id: "google/nano-banana-pro", surcharge: 5, resolution: "2K" },
 ];
 
 export const CREATE_MODEL_BY_KEY: Record<string, CreateModel> = Object.fromEntries(
   CREATE_MODELS.map((m) => [m.key, m]),
 );
 
-export const DEFAULT_CREATE_MODEL = "signature";
+export const DEFAULT_CREATE_MODEL = "pro";
 
 /** A valid model key, or the default — never trust a raw form value. */
 export function normalizeCreateModelKey(key: string | null | undefined): string {

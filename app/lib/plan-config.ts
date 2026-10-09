@@ -228,7 +228,11 @@ export const TRIAL_TOKEN_CAP = 400;
 export const TOKEN_COST = {
   description: 3, // AI product listing (The Listing Forge)
   adCopy: 3, // Meta/TikTok ad copy
-  image: 5, // AI image ad
+  image: 5, // AI image ad (marketing)
+  // Creator "Make an image" — cheaper than a marketing image ad so the consumer
+  // tool feels generous/competitive. Default engine COGS ~$0.039, flagship
+  // ~$0.15 (+surcharge); still strong margin at 3 + surcharge tokens.
+  createImage: 3,
   // Standalone AI music track (Creator). musicgen/minimax COGS ~$0.05-0.15 —
   // an order of magnitude under video. Priced for perceived value + wallet
   // pacing (~50 tracks on the 500-token Creator wallet), not cost recovery.
@@ -277,6 +281,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   description: "Product description",
   adCopy: "Ad copy",
   image: "Image ad",
+  createImage: "Image",
   music: "Music track",
   strategy: "Marketing plan",
   blog: "Blog post",

@@ -218,7 +218,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
+    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
   });
 };
 
@@ -741,7 +741,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // server-side from the normalized key, and charge base + surcharge.
       const createModel = normalizeCreateModelKey((form.get("createModel") as string) || "");
       const createAspect = ((form.get("createAspect") as string) || "").trim() || undefined;
-      const createEach = TOKEN_COST.image + createModelSurcharge(createModel);
+      const createEach = TOKEN_COST.createImage + createModelSurcharge(createModel);
       const createFromExtra = (await spendTokens(shop.id, createEach)).fromExtra;
       charged(createEach, createFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
@@ -1139,6 +1139,11 @@ export default function WebStudio() {
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   const [editPreview, setEditPreview] = useState<string | null>(null);
+  // The actual picked File, held in state. iOS Safari blocks setting
+  // input.files programmatically, so a photo chosen via the Stage "+" never
+  // reaches the native productPhoto input — we inject THIS into the submit
+  // FormData instead (see onFormSubmit), and show it on the Stage.
+  const [editFile, setEditFile] = useState<File | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const takePhoto = (f: File | null | undefined) => {
     if (!f || !/^image\//.test(f.type)) return;
@@ -1148,6 +1153,7 @@ export default function WebStudio() {
       if (photoInputRef.current) photoInputRef.current.files = dt.files;
     } catch { /* some browsers block programmatic file set — the click path still works */ }
     setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return URL.createObjectURL(f); });
+    setEditFile(f);
     setHasFile(true);
   };
   // Creator "Make an image" art style. The picker is collapsed by default
@@ -1312,7 +1318,7 @@ export default function WebStudio() {
   const submitIntent = isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
   const verb = isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
-  const baseCost = tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
+  const baseCost = isCreate ? d.costs.createImage : tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   // Premium "Make an image" model (Genius) adds a token surcharge, like the
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
@@ -1330,7 +1336,7 @@ export default function WebStudio() {
   // HUGS the image instead of letterboxing it in a wide black box. Reset to
   // null whenever the shown media changes (falls back to a square frame).
   const [stageAspect, setStageAspect] = useState<number | null>(null);
-  useEffect(() => { setStageAspect(null); }, [stageResult?.media]);
+  useEffect(() => { setStageAspect(null); }, [stageResult?.media, editPreview]);
   const [making, setMaking] = useState(false);
   const preIdsRef = useRef<string[]>([]);
   const makingNounRef = useRef<string>("");
@@ -1365,6 +1371,11 @@ export default function WebStudio() {
     if (fresh && fresh.media) {
       setStageResult({ id: fresh.id, isVideo: fresh.isVideo, isAudio: fresh.isAudio, media: fresh.media, title: fresh.title });
       setMaking(false);
+      // The edit is done — drop the loaded source photo so it doesn't linger on
+      // the Stage behind the result or get re-submitted on the next Make.
+      setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; });
+      setEditFile(null);
+      setHasFile(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.recent, making]);
@@ -1379,7 +1390,10 @@ export default function WebStudio() {
     setPendingPhoto(f);
   };
   useEffect(() => {
-    if (isEdit && pendingPhoto && photoInputRef.current) {
+    // Don't gate on photoInputRef being mounted — takePhoto holds the File in
+    // state (editFile) and shows the preview regardless; the input.files copy
+    // is only a best-effort bonus for browsers that allow it.
+    if (isEdit && pendingPhoto) {
       takePhoto(pendingPhoto);
       setPendingPhoto(null);
     }
@@ -1464,7 +1478,20 @@ export default function WebStudio() {
     try { n = ((parseInt(localStorage.getItem(pair) || "0", 10) || 0) + 1); localStorage.setItem(pair, String(n)); } catch { /* private mode */ }
     return String(n % 4);
   };
-  const onFormSubmit = () => { if (variantRef.current) variantRef.current.value = nextVariant(); };
+  const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (variantRef.current) variantRef.current.value = nextVariant();
+    // A photo picked via the Stage "+" lives in state (editFile) but may not be
+    // in the native productPhoto input (iOS blocks the programmatic transfer).
+    // For a casual photo edit, submit a FormData with the File injected so the
+    // edit always has the photo — regardless of what the input holds.
+    if (isEdit && editFile) {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      fd.set("productPhoto", editFile);
+      fd.set("intent", submitIntent);
+      submit(fd, { method: "post", encType: "multipart/form-data" });
+    }
+  };
 
   const doImport = () => { if (urlInput.trim()) submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" }); };
 
@@ -2394,8 +2421,8 @@ export default function WebStudio() {
        </div>
        {casual && (
          <aside className="ws-stage">
-           <div className={`ws-stage-frame${stageResult ? " has-result" : ""}`}
-             style={stageResult && stageAspect ? ({ ["--stage-ar" as string]: String(stageAspect) } as React.CSSProperties) : undefined}>
+           <div className={`ws-stage-frame${stageResult || (isEdit && editPreview) ? " has-result" : ""}`}
+             style={(stageResult || (isEdit && editPreview)) && stageAspect ? ({ ["--stage-ar" as string]: String(stageAspect) } as React.CSSProperties) : undefined}>
              {stageResult ? (
                <div className="ws-stageresult">
                  <div className="ws-stagemedia">
@@ -2412,6 +2439,24 @@ export default function WebStudio() {
                    <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ Make another</button>
                    <Link className="ws-verb" to="/web/archive?section=creator">Open gallery</Link>
                    <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ Clear</button>
+                 </div>
+               </div>
+             ) : (isEdit && editPreview) ? (
+               /* A photo loaded for editing shows ON the Stage (the canvas) — so
+                  the "+" placeholder is clearly replaced — then the edited
+                  result lands over it. Tapping it re-opens the picker. */
+               <div className="ws-stageresult">
+                 <div className="ws-stagemedia ws-stagemedia-edit" role="button" tabIndex={0}
+                   onClick={() => { if (!(making || busy)) stageUploadRef.current?.click(); }}
+                   onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}>
+                   <img src={editPreview} alt="Your photo"
+                     onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setStageAspect(t.naturalWidth / t.naturalHeight); }} />
+                 </div>
+                 <div className="ws-verbs">
+                   <span className="ws-editcap">{making || busy ? "Editing your photo…" : "Describe your edits, then Make"}</span>
+                   {!(making || busy) && (
+                     <button type="button" className="ws-verb" onClick={() => { setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; }); setEditFile(null); setHasFile(false); }}>✕ Remove</button>
+                   )}
                  </div>
                </div>
              ) : (
@@ -2669,6 +2714,8 @@ const WS_STYLE = `
 .ws-verb{font:inherit;font-weight:700;font-size:12px;color:#d9f3e5;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:7px 13px;cursor:pointer;text-decoration:none;transition:.12s}
 .ws-verb:hover{background:rgba(18,168,94,.22);border-color:rgba(18,168,94,.5);color:#fff}
 .ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
+.ws-stagemedia-edit{cursor:pointer}
+.ws-editcap{margin-right:auto;align-self:center;padding-left:4px;font-size:12px;font-weight:700;color:#d9f3e5}
 /* Creator-native Video cards: brand tile + emoji instead of product/presenter cover art. */
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
