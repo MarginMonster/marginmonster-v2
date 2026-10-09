@@ -498,7 +498,7 @@ const CSS = `
 .wb-ch-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,214,102,.5);border-radius:8px;pointer-events:none;z-index:1;}
 .wb-ch-card.cr .wb-ch-go::before{border-color:rgba(255,248,224,.55);}
 @media(max-width:560px){
-  .wb-chooser{padding:calc(10px + env(safe-area-inset-top,0px)) 14px 16px}
+  .wb-chooser{padding:calc(3px + env(safe-area-inset-top,0px)) 14px 16px}
   .wb-ch-brand{margin-bottom:10px;font-size:18px}
   .wb-ch-h{font-size:21px}
   .wb-ch-sub{margin-bottom:13px}
