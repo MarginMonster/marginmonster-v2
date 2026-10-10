@@ -489,12 +489,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // gets a distinct "against our guidelines" message (unsafe:true) so the client
   // can tell it apart from a general generation failure. Fails open. Scoped to
   // the free-text Creator generators (quickedit uses our own baked prompts).
+  let genPermissive = false;
   if (["create", "edit", "music", "faceless"].includes(intent) || (intent === "video" && casualMode)) {
     const screenText = [form.get("createPrompt"), direction, form.get("productTitle")]
       .map((v) => (typeof v === "string" ? v : "")).join("\n").trim();
     if (screenText) {
       const verdict = await screenCreatePrompt(screenText);
       if (!verdict.ok) return json({ error: verdict.message, unsafe: true });
+      genPermissive = verdict.permissive;
     }
   }
   // casualMode (above) is authoritative on the SERVER: even if a merchant-only
@@ -792,11 +794,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // server-side from the normalized key, and charge base + surcharge.
       const createModel = normalizeCreateModelKey((form.get("createModel") as string) || "");
       const createAspect = ((form.get("createAspect") as string) || "").trim() || undefined;
-      const createEach = TOKEN_COST.createImage + createModelSurcharge(createModel);
+      // A "mature" prompt (horror/gore) runs on the permissive engine (flux-dev),
+      // NOT the premium model they picked — so charge the BASE price, not the
+      // premium surcharge (they shouldn't pay the Ultra fee for a flux render).
+      const createEach = genPermissive ? TOKEN_COST.createImage : TOKEN_COST.createImage + createModelSurcharge(createModel);
       const createFromExtra = (await spendTokens(shop.id, createEach)).fromExtra;
       charged(createEach, createFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
-        createImage: true, createPrompt, createStyle, createModel, createAspect, section: "creator",
+        createImage: true, createPrompt, createStyle, createModel, createAspect, createPermissive: genPermissive, section: "creator",
         productTitle: createPrompt.slice(0, 60),
         prePaid: true, chargedTokens: createEach, chargedFromExtra: createFromExtra,
       });

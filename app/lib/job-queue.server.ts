@@ -469,6 +469,7 @@ async function runJob(
           style: typeof payload.createStyle === "string" ? payload.createStyle : undefined,
           model: typeof payload.createModel === "string" ? payload.createModel : undefined,
           aspectRatio: typeof payload.createAspect === "string" ? payload.createAspect : undefined,
+          permissive: payload.createPermissive === true,
         });
         break;
       }
