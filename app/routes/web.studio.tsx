@@ -1626,9 +1626,11 @@ export default function WebStudio() {
       const fd = new FormData(e.currentTarget);
       // An uploaded photo rides as a File; an imported Gallery creation (?src=)
       // rides as its URL — casual edit hides the native productImageUrl input,
-      // so inject it here or the edit would arrive with no source image.
+      // so inject it here or the edit would arrive with no source image. The
+      // server requires a FULL https:// URL, and a ?src= from the gallery is a
+      // relative /renders/… path, so absolutize it (same as quickEdit does).
       if (editFile) fd.set("productPhoto", editFile);
-      else fd.set("productImageUrl", imageUrl.trim());
+      else { const u = imageUrl.trim(); fd.set("productImageUrl", u.startsWith("http") ? u : `${window.location.origin}${u}`); }
       fd.set("intent", submitIntent);
       submit(fd, { method: "post", encType: "multipart/form-data" });
     }
