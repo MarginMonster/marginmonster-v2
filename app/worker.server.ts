@@ -154,6 +154,12 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   import("./lib/stripe.server")
     .then((m) => m.ensureStripeWebhook())
     .catch((e) => console.error("[worker] stripe webhook boot kick:", e));
+  // Config health: alert the operator on money/security misconfig at boot
+  // (e.g. an unset SESSION_SECRET) instead of letting it sit silently in a
+  // diagnostics page nobody opens. Silent when the config is healthy.
+  import("./lib/ops-alert.server")
+    .then((m) => m.checkConfigHealth())
+    .catch((e) => console.error("[worker] config health check:", e));
 }
 
 export {};

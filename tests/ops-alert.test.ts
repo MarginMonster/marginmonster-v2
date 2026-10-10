@@ -40,3 +40,15 @@ test("alertOps no-ops cleanly when email is not configured", () => {
   const body = alertOpsBody();
   assert.match(body, /if\s*\(\s*!emailEnabled\(\)\s*\)\s*return false/, "must no-op when email is off");
 });
+
+test("checkConfigHealth flags the money/security envs and only fires in prod", () => {
+  const at = SRC.indexOf("export async function checkConfigHealth");
+  assert.notEqual(at, -1, "checkConfigHealth was renamed or removed");
+  const body = SRC.slice(at);
+  assert.match(body, /NODE_ENV\s*!==\s*"production"/, "must only run in production");
+  assert.match(body, /SESSION_SECRET/, "must check SESSION_SECRET");
+  assert.match(body, /DEV_GRANT_KEY/, "must check DEV_GRANT_KEY (armed backdoor)");
+  assert.match(body, /STRIPE_SECRET_KEY/, "must check STRIPE_SECRET_KEY (billing offline)");
+  assert.match(body, /if\s*\(\s*!issues\.length\s*\)\s*return/, "a healthy config must stay silent");
+  assert.match(body, /try\s*\{[\s\S]*catch/, "must never throw into boot");
+});

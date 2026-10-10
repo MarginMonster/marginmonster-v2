@@ -66,3 +66,37 @@ export async function alertOps(key: string, subject: string, lines: string[]): P
     return false; // an alert must never break the thing it's reporting on
   }
 }
+
+/**
+ * Boot-time config health check. Catches the class of silent misconfiguration
+ * that bit us once already: SESSION_SECRET was effectively unset in prod for who
+ * knows how long and nobody noticed, because the only place it showed was a
+ * diagnostics page nobody opens. This runs once at boot and — only if there's a
+ * real money/security issue — logs it AND emails the operator. A healthy deploy
+ * is silent. Never throws (boot must not depend on it).
+ */
+export async function checkConfigHealth(): Promise<void> {
+  try {
+    if (process.env.NODE_ENV !== "production") return;
+    const issues: string[] = [];
+    if (!process.env.SESSION_SECRET) {
+      issues.push("SESSION_SECRET is unset/empty — cookie & link signing is falling back to the Shopify client secret. Set a strong random value and redeploy.");
+    }
+    if (process.env.DEV_GRANT_KEY) {
+      issues.push("DEV_GRANT_KEY is SET — the token-granting /web/dev route is ARMED. Unset it in prod.");
+    }
+    if (!process.env.STRIPE_SECRET_KEY) {
+      issues.push("STRIPE_SECRET_KEY is unset — billing/checkout is offline; nothing can be charged.");
+    }
+    if (!issues.length) return;
+    // Log even if email is off (an email-off issue can't be emailed anyway).
+    console.warn(`[config-health] ${issues.length} issue(s) at boot:\n` + issues.map((s, i) => `  ${i + 1}. ${s}`).join("\n"));
+    await alertOps(
+      "config-health",
+      `Config health — ${issues.length} money/security issue${issues.length > 1 ? "s" : ""} at boot`,
+      ["EASYMODE started with env issues that affect money or security:", ...issues.map((s, i) => `${i + 1}. ${s}`)]
+    );
+  } catch {
+    /* boot must never depend on the health check */
+  }
+}
