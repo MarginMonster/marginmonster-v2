@@ -4203,6 +4203,29 @@ export async function fluxStill(prompt: string, width = 720, height = 1280): Pro
   return filePath;
 }
 
+/** PREMIUM b-roll still for faceless video — the quality lever. flux-schnell
+ *  (fluxStill above) is RETIRED from b-roll: fast and cheap but visibly sloppy.
+ *  "pro" = google/nano-banana (the same model behind the Creator images), "ultra"
+ *  = google/nano-banana-pro at 2K (the flagship, sharpest/most cinematic). Goes
+ *  through the 429-tolerant repRun. Returns an ABSOLUTE disk path for ffmpeg. */
+export async function brollStill(prompt: string, quality: "pro" | "ultra" = "pro"): Promise<string> {
+  const modelId = quality === "ultra" ? "google/nano-banana-pro" : "google/nano-banana";
+  const input: Record<string, unknown> = { prompt, aspect_ratio: "9:16", output_format: "jpg" };
+  if (quality === "ultra") input.resolution = "2K";
+  const url = await repRun(modelId, input, 180_000);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`broll fetch ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 5_000) throw new Error("broll came back empty");
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
+  const filePath = path.join(dir, fileName);
+  fs.writeFileSync(filePath, buf);
+  try { await mirrorRender(fileName, buf); } catch { /* non-fatal */ }
+  return filePath;
+}
+
 /** img2img for a photo edit: the chosen editor (nano-banana for "Pro",
  *  nano-banana-pro for "Ultra" — both strong identity-preserving editors) with
  *  a flux-kontext-pro fallback. The fallback also catches a safety refusal, so

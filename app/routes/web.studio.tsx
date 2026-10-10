@@ -24,7 +24,7 @@ import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
 import { CREATE_STYLES } from "../lib/create-styles";
-import { CREATE_MODELS, CREATE_ASPECTS, aspectCss, createModelSurcharge, normalizeCreateModelKey, DEFAULT_CREATE_MODEL, DEFAULT_CREATE_ASPECT } from "../lib/create-models";
+import { CREATE_MODELS, CREATE_ASPECTS, aspectCss, createModelSurcharge, normalizeCreateModelKey, DEFAULT_CREATE_MODEL, DEFAULT_CREATE_ASPECT, FACELESS_QUALITIES, facelessQualitySurcharge, normalizeFacelessQuality } from "../lib/create-models";
 import { MUSIC_STYLES, MUSIC_STYLE_BY_KEY } from "../lib/music-styles";
 import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
@@ -853,14 +853,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!topic) return json({ error: "Give your video a topic." });
       const facelessFormat = ((form.get("facelessFormat") as string) || "facts").trim();
       const voiceKey = ((form.get("voiceKey") as string) || "f-warm").trim();
-      const flFromExtra = (await spendTokens(shop.id, TOKEN_COST.faceless)).fromExtra;
-      charged(TOKEN_COST.faceless, flFromExtra);
+      // Ultra = nano-banana-pro b-roll (vs nano-banana for Pro) — a per-video
+      // surcharge on top of the base faceless cost.
+      const facelessQuality = normalizeFacelessQuality((form.get("facelessQuality") as string) || "");
+      const facelessCost = TOKEN_COST.faceless + facelessQualitySurcharge(facelessQuality);
+      const flFromExtra = (await spendTokens(shop.id, facelessCost)).fromExtra;
+      charged(facelessCost, flFromExtra);
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
-        section: "creator", contentType: "faceless", topic, facelessFormat, voiceKey,
+        section: "creator", contentType: "faceless", topic, facelessFormat, voiceKey, facelessQuality,
         productTitle: topic.slice(0, 60),
-        prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: flFromExtra,
+        prePaid: true, chargedTokens: facelessCost, chargedFromExtra: flFromExtra,
       });
-      backed(TOKEN_COST.faceless, flFromExtra);
+      backed(facelessCost, flFromExtra);
       return json({ ok: true, queued: "faceless", count: 1 });
     }
     if (intent === "blog") {
@@ -1249,6 +1253,7 @@ export default function WebStudio() {
   // Creator "Faceless video" — format + voice.
   const [facelessFormat, setFacelessFormat] = useState("facts");
   const [voiceKey, setVoiceKey] = useState("f-warm");
+  const [facelessQuality, setFacelessQuality] = useState<"pro" | "ultra">("pro");
   // How many to make in one go. Kept in one place across tabs so the choice
   // survives switching, but re-clamped below — video caps lower than image.
   const [burst, setBurst] = useState(1);
@@ -1404,7 +1409,8 @@ export default function WebStudio() {
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
   const createFee = (isCreate || isEdit) ? createModelSurcharge(createModel) : 0;
-  const cost = baseCost + engineFee + createFee;
+  const facelessFee = isFaceless ? facelessQualitySurcharge(facelessQuality) : 0;
+  const cost = baseCost + engineFee + createFee + facelessFee;
 
   // ── THE EASEL, PHASE 2: live result on the Stage (casual only) ──────────────
   // The Studio is fire-and-confirm: a submit queues an async job and the piece
@@ -1872,7 +1878,7 @@ export default function WebStudio() {
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
             )}
-            {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>Product Highlight</b> — cinematic motion built around your product. No presenter needed.</p>}
+            {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>{casual ? "Showcase" : "Product Highlight"}</b> — {casual ? "cinematic motion from your idea or a photo." : "cinematic motion built around your product. No presenter needed."}</p>}
             {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
             {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>Creator Demo</b> — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.</p>}
             {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
@@ -1889,7 +1895,7 @@ export default function WebStudio() {
               <label className="ws-commercial">
                 <input type="checkbox" name="breakout" value="1" checked={breakout}
                   onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
-                <span><b><Ico n="burst" /> Breakout</b> — your product bursts out of a social post frame in 3D, the scroll-stopper</span>
+                <span><b><Ico n="burst" /> Breakout</b> — {casual ? "your subject bursts out of the frame in 3D — the scroll-stopper" : "your product bursts out of a social post frame in 3D, the scroll-stopper"}</span>
               </label>
             )}
             <div className="ws-lbl">Video engine <span className="ws-opt">premium engines add tokens</span></div>
@@ -2584,8 +2590,19 @@ export default function WebStudio() {
                       className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{label}</button>
                   ))}
                 </div>
+                <div className="ws-lbl" style={{ marginTop: 12 }}>Quality</div>
+                <div className="ws-models" role="tablist" aria-label="B-roll quality">
+                  {FACELESS_QUALITIES.map((q) => (
+                    <button type="button" key={q.key} role="tab" aria-selected={facelessQuality === q.key}
+                      className={`ws-model${facelessQuality === q.key ? " sel" : ""}`} onClick={() => setFacelessQuality(q.key)}>
+                      {q.name}{q.surcharge > 0 && <span className="ws-model-up">+{q.surcharge}</span>}
+                    </button>
+                  ))}
+                </div>
+                <p className="ws-note" style={{ marginTop: 6 }}>{FACELESS_QUALITIES.find((q) => q.key === facelessQuality)?.blurb}</p>
                 <input type="hidden" name="facelessFormat" value={facelessFormat} />
                 <input type="hidden" name="voiceKey" value={voiceKey} />
+                <input type="hidden" name="facelessQuality" value={facelessQuality} />
                 <p className="ws-note" style={{ marginTop: 12 }}>We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.</p>
               </div>
             )}
@@ -2655,7 +2672,7 @@ export default function WebStudio() {
                     ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
                   : burst > 1
                     ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens · +${xpForSpend(cost * burst)} XP`
-                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : createFee ? ` (incl. +${createFee} ${CREATE_MODELS.find((m) => m.key === createModel)?.name || "premium"})` : ""} · +${xpForSpend(cost)} XP`}
+                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : createFee ? ` (incl. +${createFee} ${CREATE_MODELS.find((m) => m.key === createModel)?.name || "premium"})` : facelessFee ? ` (incl. +${facelessFee} Ultra)` : ""} · +${xpForSpend(cost)} XP`}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan

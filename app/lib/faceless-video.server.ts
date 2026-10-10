@@ -13,7 +13,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { repCreate, repPoll, downloadBuffer, runFfmpeg, ffprobeDuration, resolveTextFont, checkpointJob } from "./ugc-ad-pipeline.server";
-import { fluxStill } from "./image-generation.server";
+import { brollStill } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 
@@ -252,10 +252,13 @@ export async function generateFacelessVideo(opts: {
   // Product Channel drop: a faceless video SELLING a real catalogue product,
   // grounded in its description, with its real image as the opening b-roll.
   product?: { title: string; imageUrl?: string; description?: string };
+  // B-roll quality: "pro" = nano-banana (default), "ultra" = nano-banana-pro @2K.
+  quality?: "pro" | "ultra";
   resume?: { ckScript?: string; ckAudioUrl?: string; ckVoPath?: string; ckTimings?: string; ckImages?: string[]; ckMusic?: string };
 }): Promise<string> {
   const topic = (opts.topic || "").trim();
   if (!topic) throw new Error("Give the video a topic.");
+  const quality: "pro" | "ultra" = opts.quality === "ultra" ? "ultra" : "pro";
   const jobId = opts.jobId;
   const resume = opts.resume || {};
   const product = opts.product;
@@ -373,15 +376,16 @@ export async function generateFacelessVideo(opts: {
     } catch { return null; }
   };
   for (let i = stills.length; i < script.beats.length; i++) {
-    // 720x1280 = exact 9:16 AND within flux-schnell's height<=1280 cap (1344 → 422);
-    // also the final video's own frame size. The assembler oversamples for Ken-Burns.
+    // The assembler oversamples each still for the Ken-Burns crop, so a bigger,
+    // sharper source (nano-banana / nano-banana-pro) reads as real b-roll, not
+    // the flux-schnell slop it replaced.
     const beat = script.beats[i % script.beats.length];
     const prompt = `${beat.visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`;
-    // Up to 3 tries per beat: flux 429s/transient refusals are common under load,
-    // and a single throw here used to kill the entire render (no retry, no catch).
+    // Up to 3 tries per beat: a 429/transient refusal under load used to kill
+    // the whole render (no retry, no catch). No schnell fallback — it's retired.
     let still: string | null = null;
     for (let attempt = 0; attempt < 3 && !still; attempt++) {
-      try { still = await fluxStill(prompt, 720, 1280); }
+      try { still = await brollStill(prompt, quality); }
       catch { if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); }
     }
     // Never skip a beat (the resume/checkpoint logic maps stills[i] → beat i):

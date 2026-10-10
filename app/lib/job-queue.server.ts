@@ -526,6 +526,7 @@ async function runJob(
           topic: (payload.topic as string) || (payload.productTitle as string) || "",
           format: payload.facelessFormat as string | undefined,
           voiceKey: payload.voiceKey as string | undefined,
+          quality: payload.facelessQuality === "ultra" ? "ultra" : "pro",
           jobId: payload.__jobId as string | undefined,
           // Land it in the right Archive section (creator vs marketing/Product).
           section: payload.section as string | undefined,

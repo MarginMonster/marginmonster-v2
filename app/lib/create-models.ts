@@ -58,6 +58,31 @@ export function createModelSurcharge(key: string | null | undefined): number {
   return m ? m.surcharge : 0;
 }
 
+/** Faceless video B-ROLL quality. The b-roll images ARE the visual, so this is
+ *  the quality lever. The default is nano-banana (flux-schnell is retired — it
+ *  was visibly sloppy); Ultra steps up to nano-banana-pro @2K. The surcharge is
+ *  per VIDEO (it covers all ~6-7 b-roll stills at the premium model), on top of
+ *  TOKEN_COST.faceless. */
+export interface FacelessQuality {
+  key: "pro" | "ultra";
+  name: string;
+  blurb: string;
+  surcharge: number;
+}
+export const FACELESS_QUALITIES: FacelessQuality[] = [
+  { key: "pro", name: "Pro", blurb: "Premium cinematic b-roll — crisp and clean", surcharge: 0 },
+  { key: "ultra", name: "Ultra", blurb: "Flagship b-roll — the sharpest, most cinematic look", surcharge: 20 },
+];
+export const FACELESS_QUALITY_BY_KEY: Record<string, FacelessQuality> = Object.fromEntries(
+  FACELESS_QUALITIES.map((q) => [q.key, q]),
+);
+export function normalizeFacelessQuality(key: string | null | undefined): "pro" | "ultra" {
+  return key === "ultra" ? "ultra" : "pro";
+}
+export function facelessQualitySurcharge(key: string | null | undefined): number {
+  return FACELESS_QUALITY_BY_KEY[key || "pro"]?.surcharge ?? 0;
+}
+
 export interface CreateAspect {
   /** The Replicate aspect_ratio enum value, e.g. "1:1". */
   value: string;
