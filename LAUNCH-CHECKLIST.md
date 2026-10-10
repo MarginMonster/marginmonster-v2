@@ -26,7 +26,8 @@ _Last updated 2026-10-10. Code triage + **live prod env verified via `/art-statu
 
 ## 🟢 C. Other env / safety (quick owner settings)
 
-- **Set `SESSION_SECRET`** — art-status shows it's **not set**, so cookie/link signing currently falls back to the Shopify client secret. The list-based rotation makes adding it safe with **no merchant logout**. (Only unset env in the list.)
+- **Fix `SESSION_SECRET`** — the key row EXISTS in Render, but the running instance reports it **empty/unset** (`/art-status` → `SESSION_SECRET: false`), so cookie/link signing still falls back to the Shopify client secret. Put a **strong random value** in it **and redeploy** (if it was just added, the live instance hasn't picked it up). The list-based rotation makes this safe with **no merchant logout**.
+- `QA_KEY` is set (the `/web/qa` diagnostics route is live) — fine if intended. `PURGE_KEY` is intentionally **unset** (keeps `/api/diag`, `/api/reauth` and `/art-status`'s *detail* dark) — leave it off; that's by design.
 - **Confirm `DEV_GRANT_KEY` is UNSET** in Render — if set, it arms a token-granting route (dark by default: [web.dev.tsx:35](app/routes/web.dev.tsx:35) 404s when unset). art-status deliberately does **not** report this one, so verify it in the dashboard directly.
 - Confirm `PURGE_KEY` is set (gates the `/art-status` + `/api/diag` *detail* — names, failure text, per-shop activity; the aggregate status is intentionally public).
 - **Set `OPS_ALERT_EMAIL`** to an inbox you watch — money-critical failures (double-billing, churn mismatch, owed refund) now email it. Unset = they go to `EMAIL_FROM`'s mailbox instead (still delivered, just make sure someone reads that inbox).
