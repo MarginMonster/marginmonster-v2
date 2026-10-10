@@ -381,6 +381,62 @@ export async function resolvePendingCheckout(
   return { state: "stale" };
 }
 
+/** PROACTIVE billing reconciliation. The at-the-moment alerts in
+ *  activate/deactivateStripePlan catch a double-charge WHEN a tier change
+ *  happens, but can't see one that already happened — e.g. a past tier change
+ *  whose superseded-sub cancel failed before alerting existed, or a charge a
+ *  missed webhook left behind. This scans every account that has a Stripe
+ *  customer and asks Stripe directly how many ACTIVE subscriptions it has; two
+ *  or more means the customer is being billed for multiple plans at once, which
+ *  we alert on (once per account per throttle window) so it's cancelled by hand.
+ *
+ *  Read-only against Stripe — it NEVER cancels anything itself. Choosing which
+ *  of two paid subscriptions to kill (proration, which plan they actually meant)
+ *  is a judgement a human must make; an automated cancel could refund the wrong
+ *  one or cut off the plan they want. Safe to run on a timer; no-ops when Stripe
+ *  is off. */
+export async function reconcileBilling(opts?: { limit?: number }): Promise<{ scanned: number; doubleBilled: number; errors: number }> {
+  if (!stripeEnabled()) return { scanned: 0, doubleBilled: 0, errors: 0 };
+  const accounts = await db.account.findMany({
+    where: { stripeCustomerId: { not: null } },
+    select: { id: true, email: true, stripeCustomerId: true, stripeSubId: true },
+    take: opts?.limit ?? 1000,
+  });
+  let doubleBilled = 0;
+  let errors = 0;
+  for (const a of accounts) {
+    try {
+      const res = await stripeReq(
+        "GET",
+        `/subscriptions?customer=${encodeURIComponent(a.stripeCustomerId!)}&status=active&limit=100`
+      );
+      const subs = (Array.isArray(res.data) ? res.data : []) as Array<{ id: string }>;
+      if (subs.length >= 2) {
+        doubleBilled++;
+        const ids = subs.map((s) => s.id).join(", ");
+        console.warn(`[reconcile] account ${a.id} (${a.email || "?"}) has ${subs.length} active subs: ${ids}`);
+        const { alertOps } = await import("./ops-alert.server");
+        await alertOps(
+          `double-bill-reconcile:${a.id}`,
+          `Double charge — ${a.email || a.id} has ${subs.length} active subscriptions`,
+          [
+            `Account ${a.id} (${a.email || "no email on file"}) has ${subs.length} ACTIVE Stripe subscriptions: ${ids}.`,
+            `We track only ${a.stripeSubId || "none"} as the live one — the extra(s) are billing this customer for a plan they shouldn't have.`,
+            `Cancel the superfluous subscription(s) in the Stripe dashboard (keep the one they meant to be on). This scan never cancels anything automatically.`,
+          ]
+        );
+      }
+      // Gentle on the Stripe API — this is the same box that serves merchants.
+      await new Promise((r) => setTimeout(r, 120));
+    } catch (e) {
+      errors++;
+      console.error(`[reconcile] ${a.id}: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    }
+  }
+  console.log(`[reconcile] scanned ${accounts.length} Stripe customers — ${doubleBilled} double-billed, ${errors} errors`);
+  return { scanned: accounts.length, doubleBilled, errors };
+}
+
 /** One-time token pack checkout. */
 export async function createPackCheckout(opts: {
   accountId: string;

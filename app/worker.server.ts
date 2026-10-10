@@ -160,6 +160,16 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   import("./lib/ops-alert.server")
     .then((m) => m.checkConfigHealth())
     .catch((e) => console.error("[worker] config health check:", e));
+  // Proactive billing reconciliation: catch a customer billed for 2+ plans at
+  // once — a past double-charge a missed webhook or an old bug left behind,
+  // which the at-the-moment alerts can't see retroactively. First run shortly
+  // after boot (so it doesn't fight the other boot kicks), then daily.
+  // Read-only against Stripe; it only alerts, never cancels.
+  setTimeout(() => {
+    const run = () => import("./lib/stripe.server").then((m) => m.reconcileBilling()).catch((e) => console.error("[worker] billing reconcile:", e));
+    run();
+    setInterval(run, 24 * 3600_000);
+  }, 60_000);
 }
 
 export {};
