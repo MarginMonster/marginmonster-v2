@@ -794,10 +794,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // server-side from the normalized key, and charge base + surcharge.
       const createModel = normalizeCreateModelKey((form.get("createModel") as string) || "");
       const createAspect = ((form.get("createAspect") as string) || "").trim() || undefined;
-      // A "mature" prompt (horror/gore) runs on the permissive engine (flux-dev),
-      // NOT the premium model they picked — so charge the BASE price, not the
-      // premium surcharge (they shouldn't pay the Ultra fee for a flux render).
-      const createEach = genPermissive ? TOKEN_COST.createImage : TOKEN_COST.createImage + createModelSurcharge(createModel);
+      // Charge the price the user picked (base + any premium surcharge),
+      // regardless of which engine actually runs it. A "mature" prompt routes to
+      // flux-dev under the hood, but the quote and the charge stay consistent —
+      // and the permissive engine is cheap, so the margin only improves.
+      const createEach = TOKEN_COST.createImage + createModelSurcharge(createModel);
       const createFromExtra = (await spendTokens(shop.id, createEach)).fromExtra;
       charged(createEach, createFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
