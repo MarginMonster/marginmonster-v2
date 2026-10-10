@@ -91,6 +91,29 @@ export async function checkConfigHealth(): Promise<void> {
     if (!issues.length) return;
     // Log even if email is off (an email-off issue can't be emailed anyway).
     console.warn(`[config-health] ${issues.length} issue(s) at boot:\n` + issues.map((s, i) => `  ${i + 1}. ${s}`).join("\n"));
+    // PERSISTENT dedupe for the EMAIL (not the log). alertOps's throttle lives in
+    // memory, so every deploy is a fresh process that re-emails the same config
+    // warning — which spammed the operator once per deploy during an active push
+    // burst. Persist the last-alert time in the DB and stay quiet for 24h on an
+    // UNCHANGED issue set. (Money alerts deliberately DON'T do this — you want to
+    // be reminded of a double-charge; a standing config warning you don't.)
+    const sig = issues.join("|");
+    try {
+      const { db } = await import("../db.server");
+      const row = await db.setting.findUnique({ where: { key: "config_health_last_alert" } }).catch(() => null);
+      if (row) {
+        try {
+          const prev = JSON.parse(row.value) as { at: number; sig: string };
+          if (prev.sig === sig && Date.now() - prev.at < 24 * 3600_000) return; // same issues, alerted within 24h → stay quiet
+        } catch { /* malformed row → fall through and re-alert */ }
+      }
+      const payload = JSON.stringify({ at: Date.now(), sig });
+      await db.setting.upsert({
+        where: { key: "config_health_last_alert" },
+        create: { key: "config_health_last_alert", value: payload },
+        update: { value: payload },
+      });
+    } catch { /* DB unavailable → fail toward informing: fall through and alert */ }
     await alertOps(
       "config-health",
       `Config health — ${issues.length} money/security issue${issues.length > 1 ? "s" : ""} at boot`,
