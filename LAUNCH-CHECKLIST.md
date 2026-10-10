@@ -1,36 +1,34 @@
 # EASYMODE — Launch Checklist (owner actions)
 
-_Last updated 2026-10-10. Generated from a full code triage of billing, email, the Stripe webhook, the avatar gate, env usage, and the test suite (run 3×: **277/277 green**)._
+_Last updated 2026-10-10. Code triage + **live prod env verified via `/art-status`** (the real difference-maker — a code read can't see which env vars are actually set). Test suite run 3×: **277/277 green**._
 
-**Bottom line:** no code change is required to turn the money on — the billing path is ready and verified. The real wall is two **owner-only** gates (A and B). Everything the earlier notes flagged as a code risk (avatar-voices gate, FTC ad-format guardrail, campaign auto-post safety) is **already implemented and live**.
+**Bottom line — you're much closer than a code-only read implied.** Live `/art-status` confirms **Stripe, Email, Replicate, Anthropic, FAL and UploadPost are ALL already configured in prod.** Billing and email aren't "turn them on" gates anymore — they're on. What actually remains is small: one behavioral card test (A), a DNS check (B), and `SESSION_SECRET` (C). Everything flagged as a code risk (avatar gate, FTC ad-format guardrail, campaign auto-post safety) is implemented and live.
+
+> Verified prod env (`/art-status`, 2026-10-10): `STRIPE_SECRET_KEY ✓` · `STRIPE_WEBHOOK ✓` · `EMAIL_READY ✓` · `REPLICATE ✓` · `ANTHROPIC ✓` · `FAL ✓` · `UPLOADPOST ✓` · **`SESSION_SECRET ✗ (not set)`**. Prod activity (24h): 33 image gens completed, 3 failed (~8%); 1 video completed, 0 failed.
 
 ---
 
-## 🔴 A. Stripe — turn billing on + run one live trial (owner only)
+## 🟡 A. Stripe — one live card test (the secret is already set)
 
-I can't do this — it sets live secrets and runs a real card charge.
+`STRIPE_SECRET_KEY` and the webhook are **already live in prod** — billing is on. The only thing I can't do (live money) is verify the end-to-end flow once:
 
-1. In the **Render dashboard**, set `STRIPE_SECRET_KEY` (live key).
-2. Confirm `SHOPIFY_APP_URL` **or** `STRIPE_WEBHOOK_URL_BASE` is the real public origin (`https://easymodeapp.com`) — the webhook registers against it.
-3. Run **one real card-gated trial** end-to-end on the live site:
+1. Run **one real card-gated trial** on the live site:
    - Start the 7-day trial → confirm Stripe collected the card (the gate is pinned in code: `payment_method_collection: "always"`, [stripe.server.ts:198](app/lib/stripe.server.ts:198)).
    - Confirm the plan activates immediately (webhook) **or** on next dashboard load (self-heal fallback `resolvePendingCheckout`, [stripe.server.ts:340](app/lib/stripe.server.ts:340)).
    - Let the trial convert (or use a Stripe test clock) → confirm the day-7 charge fires and tokens roll.
-4. `STRIPE_WEBHOOK_SECRET` is optional — the endpoint self-provisions and stores it if unset.
+2. Confirm `SHOPIFY_APP_URL`/`STRIPE_WEBHOOK_URL_BASE` is the real public origin (`https://easymodeapp.com`) — the webhook registers against it. (`STRIPE_WEBHOOK ✓` in art-status means a signing secret already exists, so this is likely fine.)
 
-## 🔴 B. Email — provider + DNS (owner only)
+## 🟡 B. Email — DNS check (the provider is already configured)
 
-Signup/login do **not** depend on email, so email-off is not a lockout — only password-reset-by-email, transactional mail, and the monthly digest go dark (reset degrades to a support fallback). Still needed for self-serve:
+`EMAIL_READY ✓` means `EMAIL_API_KEY` **and** `EMAIL_FROM` are both set, so transactional mail / password-reset / digest are wired. The app can't verify DNS, so the one owner check:
 
-1. Set `EMAIL_API_KEY` + `EMAIL_FROM` (Resend) in Render — gates [email-provider.server.ts:14](app/lib/email-provider.server.ts:14).
-2. Add **SPF + DKIM** TXT records (and DMARC) for the sending domain so mail isn't spam-binned. (MX only if you also want to *receive* at that domain.)
+1. Confirm **SPF + DKIM** (and ideally DMARC) TXT records exist for the `EMAIL_FROM` sending domain so mail isn't spam-binned. Send yourself a password-reset from `/web/forgot` as the real-world test. (MX only if you also want to *receive* at that domain.)
 
 ## 🟢 C. Other env / safety (quick owner settings)
 
-- **Confirm `DEV_GRANT_KEY` is UNSET** in Render — if set, it arms a token-granting route. (Dark by default: [web.dev.tsx:35](app/routes/web.dev.tsx:35) 404s when unset.)
-- Set `PURGE_KEY` (gates `/art-status` + `/api/diag` detail/purge).
-- Recommended: set `SESSION_SECRET` (today cookie/link signing falls back to the Shopify client secret; the list-based rotation makes adding it safe with **no merchant logout**).
-- Optional premium/organic: `FAL_KEY` (premium video; else omni-human fallback), `UPLOADPOST_API_KEY` (organic auto-posting; unset = campaigns forge + hold READY).
+- **Set `SESSION_SECRET`** — art-status shows it's **not set**, so cookie/link signing currently falls back to the Shopify client secret. The list-based rotation makes adding it safe with **no merchant logout**. (Only unset env in the list.)
+- **Confirm `DEV_GRANT_KEY` is UNSET** in Render — if set, it arms a token-granting route (dark by default: [web.dev.tsx:35](app/routes/web.dev.tsx:35) 404s when unset). art-status deliberately does **not** report this one, so verify it in the dashboard directly.
+- Confirm `PURGE_KEY` is set (gates the `/art-status` + `/api/diag` *detail* — names, failure text, per-shop activity; the aggregate status is intentionally public).
 - `render.yaml` now lists all of these with `sync:false` so a blueprint re-sync won't leave them unprovisioned (values stay in the dashboard).
 
 ---
