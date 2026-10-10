@@ -64,6 +64,10 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      # Where money-critical ops alerts (double-billing, churn mismatch, owed
+      # refund) are emailed. Falls back to EMAIL_FROM when unset.
+      - key: OPS_ALERT_EMAIL
+        sync: false
       - key: FAL_KEY
         sync: false
       - key: UPLOADPOST_API_KEY

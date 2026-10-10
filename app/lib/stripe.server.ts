@@ -517,10 +517,22 @@ export async function activateStripePlan(
       // Loud, and deliberately not fatal: the merchant has already paid for
       // the new plan and must get it. But this is a live duplicate charge",
       // so it needs a human.
+      const reason = e instanceof Error ? e.message : String(e);
       console.error(
         `[stripe] account ${accountId}: FAILED to cancel superseded subscription ${prior.stripeSubId} — ` +
-        `this account is now billed for TWO plans until it is cancelled by hand: ` +
-        (e instanceof Error ? e.message : String(e))
+        `this account is now billed for TWO plans until it is cancelled by hand: ` + reason
+      );
+      // This is a live DOUBLE CHARGE — email the operator so it's fixed by hand
+      // before the next cycle, not discovered when the customer disputes it.
+      const { alertOps } = await import("./ops-alert.server");
+      await alertOps(
+        `double-bill:${accountId}`,
+        `Double charge — account ${accountId} billed for two plans`,
+        [
+          `Account ${accountId}'s old subscription ${prior.stripeSubId} FAILED to cancel after it moved to a new plan.`,
+          `Until you cancel ${prior.stripeSubId} by hand in Stripe, this account is charged for BOTH plans every cycle.`,
+          `Stripe said: ${reason}`,
+        ]
       );
     }
   }
@@ -641,6 +653,18 @@ export async function deactivateStripePlan(accountId: string, subId?: string | n
       console.warn(
         `[stripe] account ${accountId}: ignoring cancellation of ${subId} — the live subscription is ` +
           `${account.stripeSubId}. If that is wrong the plan will stay active, so check this account.`
+      );
+      // Deliberately keep the plan ON (never cut off a payer on a sub-id
+      // mismatch) — but if the mismatch is wrong, this is a churned account
+      // still getting the product free, so flag it for a human to check.
+      const { alertOps } = await import("./ops-alert.server");
+      await alertOps(
+        `churn-mismatch:${accountId}`,
+        `Churn sub-id mismatch — account ${accountId} plan kept active`,
+        [
+          `A cancellation came in for subscription ${subId}, but account ${accountId}'s live subscription is ${account.stripeSubId}.`,
+          `The plan was LEFT ACTIVE (we never cut off a payer on a mismatch). If the cancellation was genuine, this account now has the product for free — check it in Stripe.`,
+        ]
       );
       return;
     }

@@ -344,6 +344,19 @@ export async function refundTokens(shopId: string, amount: number, fromExtra?: n
       `[tokens] ${shopId}: ${owed} of a ${amount}-token refund could not be applied — ` +
         `the wallet kept moving under it. This is owed to the merchant.`
     );
+    // Email it too — a silently-owed refund is money we took and didn't give
+    // back; the operator can credit it by hand.
+    try {
+      const { alertOps } = await import("./ops-alert.server");
+      await alertOps(
+        `owed-refund:${shopId}`,
+        `Refund shortfall — shop ${shopId} owed ${owed} tokens`,
+        [
+          `${owed} of a ${amount}-token refund for shop ${shopId} could not be applied (the wallet kept moving under the refund).`,
+          `This is the safe direction (under- not over-refunded), but the shop is owed ${owed} tokens — credit them by hand.`,
+        ]
+      );
+    } catch { /* alerting must never break the refund path */ }
   }
 
   // The progression this spend bought comes back with the tokens.
