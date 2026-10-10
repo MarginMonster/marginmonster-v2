@@ -378,6 +378,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // presenter from an uploaded reference. Queued: four renders take ~90s.
   if (intent === "forgeAvatar") {
     if (!shop.activePlan?.active) return json({ avatarError: "Pick a plan first — the forge runs on tokens." });
+    // Custom presenters exist to STAR in avatar videos — a "video" capability
+    // (Studio+). The forge was gated only on an active plan, so a standalone
+    // Creator plan ($6.99, no video) could forge presenters it can never use in
+    // a video AND at a loss: 4 nano-banana-pro renders (~$0.60 COGS) for 20
+    // tokens = ~$0.28 on the Creator token floor. Gate it to the tier that can
+    // actually use the output, where 20 tokens (~$0.87 on Studio) clears margin.
+    if (!capabilitiesFor(shop.activePlan).has("video")) {
+      return json({ avatarError: "Custom presenters star in your avatar videos — upgrade to a plan with video to forge one." });
+    }
     const name = ((form.get("avatarName") as string) || "").trim().slice(0, 40);
     if (!name) return json({ avatarError: "Give your presenter a name." });
     const gender = form.get("avatarGender") === "f" ? "f" : "m";

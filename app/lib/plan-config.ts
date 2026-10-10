@@ -229,14 +229,22 @@ export const TOKEN_COST = {
   description: 3, // AI product listing (The Listing Forge)
   adCopy: 3, // Meta/TikTok ad copy
   image: 5, // AI image ad (marketing)
-  // Creator "Make an image" — cheaper than a marketing image ad so the consumer
-  // tool feels generous/competitive. Default engine COGS ~$0.039, flagship
-  // ~$0.15 (+surcharge); still strong margin at 3 + surcharge tokens.
-  createImage: 3,
+  // Creator "Make an image" — text-to-image in an art style. Default engine
+  // (Pro) COGS ~$0.039 (nano-banana), flagship (Ultra) ~$0.15 (nano-banana-pro
+  // @2K, +surcharge). MUST profit on the standalone CREATOR plan, whose token
+  // value is the FLOOR at $0.0140/token ($6.99/500) — far below the stale
+  // $0.07-0.10 once assumed. At 5 tokens Pro = $0.070 vs $0.039 COGS ≈ 44%
+  // margin on Creator (and ~81% on Studio); Ultra rides the +11 surcharge in
+  // create-models.ts → 16 tokens = $0.224 vs $0.15 ≈ 33% on Creator. Repriced
+  // 3 → 5 on 2026-10-10 (every-generation-profit sweep): at 3 tokens Pro was
+  // only ~7% on Creator — positive but below real all-in profit.
+  createImage: 5,
   // One-tap post-generation edit of a finished image (Enhance / Zoom / Remove
-  // bg). A small "slight" charge — another value moment on an image already
-  // made. COGS: upscale/bgremove ~$0.002, nano-banana zoom ~$0.039; profitable.
-  quickEdit: 2,
+  // bg / Replace). COGS: upscale/bgremove ~$0.002-0.006, but REPLACE runs
+  // nano-banana (~$0.039) — at 2 tokens that was a LOSS on the Creator floor
+  // ($0.028 < $0.039). Repriced 2 → 4 (2026-10-10): 4 tokens = $0.056 vs the
+  // $0.039 worst-case op ≈ 30% on Creator, and the cheap ops stay high-margin.
+  quickEdit: 4,
   // Standalone AI music track (Creator). musicgen/minimax COGS ~$0.05-0.15 —
   // an order of magnitude under video. Priced for perceived value + wallet
   // pacing (~50 tracks on the 500-token Creator wallet), not cost recovery.

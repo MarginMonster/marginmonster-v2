@@ -3,11 +3,15 @@
  * generation + allow-list validation). The merchant asked for model selection
  * and a frame/aspect control; this is the single source of truth for both.
  *
- * COGS note: a create-image costs the user 5 tokens (= ~$0.35–0.50 of revenue
- * at $0.07–0.10/token). Every model here is well under that per image, so all
- * ship at the SAME 5 tokens and stay profitable. A true flagship (e.g.
- * nano-banana Pro at $0.13–0.24) would need its own higher-token tier — add it
- * with a `surcharge` and wire the video-engine surcharge pattern if we ever do.
+ * COGS note (corrected 2026-10-10): margin is set against the CHEAPEST plan
+ * that can buy the generation, because that is the binding floor. For image/
+ * create that is the standalone CREATOR plan at $0.0140/token ($6.99/500) —
+ * NOT the stale $0.07–0.10/token this file once assumed (that was the old
+ * $59/$99 era). At the real floor, the default "pro" engine (nano-banana,
+ * ~$0.039) clears margin at the 5-token createImage base; but the flagship
+ * "ultra" (nano-banana-pro @2K, ~$0.15) does NOT at a small surcharge — it was
+ * a LOSS on Creator at +5 (8 tokens = $0.112 < $0.15). The surcharge below is
+ * sized so Ultra profits on the Creator floor too (see `surcharge`).
  */
 
 export interface CreateModel {
@@ -38,7 +42,11 @@ export const CREATE_MODELS: CreateModel[] = [
   // flawless text. We quietly render it at the model's top standard resolution
   // (~$0.15/img) and never touch the pricey max tier, so the COGS stays capped
   // — but the LABEL never says "2K" (reads like a downgrade next to 4K).
-  { key: "ultra", name: "Ultra", blurb: "Our flagship — the sharpest detail and flawless text", id: "google/nano-banana-pro", surcharge: 5, resolution: "2K" },
+  // Surcharge +11 (raised from +5 on 2026-10-10): at the Creator token floor
+  // ($0.0140) a +5 Ultra was a LOSS (8 tok = $0.112 < $0.15 COGS). +11 → create
+  // 16 tok = $0.224 (≈33% on Creator, ~81% on Studio), edit 16 tok likewise; it
+  // profits on every plan. The margin protector, mirrors the video engines.
+  { key: "ultra", name: "Ultra", blurb: "Our flagship — the sharpest detail and flawless text", id: "google/nano-banana-pro", surcharge: 11, resolution: "2K" },
 ];
 
 export const CREATE_MODEL_BY_KEY: Record<string, CreateModel> = Object.fromEntries(

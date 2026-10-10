@@ -16,9 +16,14 @@
  *   voice      — minimax TTS (cartoon's path, commercial-cast voice)
  *   assembly   — ffmpeg: normalize, concat, letterbox, grade, VO, packshot
  *
- * COGS ≈ 3 keyframes + 3 clips + TTS ≈ $1.50–2.50 per 15s spot — comparable
- * to renting a third-party generator, on keys we already hold, with our
- * fidelity thinking in the loop instead of theirs.
+ * COGS (verified 2026-10-10): 5 keyframes (nano-banana-pro @2K, ~$0.15 ea =
+ * ~$0.75) + 5 clips (Kling 2.6 Pro, 5s silent, ~$0.35 ea = ~$1.75) + ~6 TTS
+ * + 5 vision gates ≈ ~$2.75 per spot. The motion gate re-rolls a FAILING beat
+ * once (up to 10 clips total) — worst case ~$4.55. Pinned to the free default
+ * engine (no premium surcharge can multiply it), so vs the flat 150-token
+ * charge (~$6.50 Studio) it stays profit-positive even worst-case (~30%). The
+ * clips are REQUESTED at 5s (animateInputFor duration:5), not 10s — the ":349"
+ * trim comment describes an older model and does NOT mean we over-buy footage.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";

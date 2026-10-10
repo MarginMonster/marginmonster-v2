@@ -43,6 +43,7 @@ import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 import { capScript } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
+import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive } from "./ad-claims";
 import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
@@ -273,6 +274,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       `for what it IS. Never sing a fragment of the listing title, a SKU, a size`,
       `or count, or a region/language tag ("S-Chinese", "2-Pack", "OEM", "V2").`,
       `If the title has no sayable name in it, sing the plain product category.`,
+      // FTC (16 CFR 465): a jingle is sung AND burned as on-screen karaoke
+      // captions — public ad copy the merchant is liable for. The same grounding
+      // guardrail the UGC/commercial/cartoon scripts carry; jingle was the lone
+      // generator missing it. A sung lyric has no room to invent a review, a
+      // rating, scarcity, an endorsement or a guarantee any more than a headline.
+      ``,
+      CLAIMS_GUARDRAIL,
     ]
       .filter(Boolean)
       .join("\n");
@@ -291,6 +299,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     // Measured per writing system. `split(/\s+/)` scored a whole Chinese
     // lyric as one word, so this cap never fired and the song ran long.
     lyrics = capScript(lyrics, 48);
+    // Belt-and-braces (same backstop commercial/cartoon use): strip an
+    // endorsement possessive from a known third-party trademark even if the
+    // description smuggled one in, before the lyric is sung and captioned.
+    lyrics = dropOrgEndorsementPossessive(lyrics);
     await ckpt({ ckLyrics: lyrics });
   }
 
