@@ -72,6 +72,14 @@ const STYLE_SWATCH: Record<string, string> = {
   sketch: "linear-gradient(135deg,#f6f3ec,#cfccc5 52%,#6f6c66)",
 };
 
+// One-tap photo-edit ops (casual "Edit a photo"). Shown as a collapsed
+// disclosure below the describe box so they don't crowd it.
+const EDIT_QUICK_ACTIONS: [string, string][] = [
+  ["restyle", "🎨 Restyle"], ["cartoonize", "✏️ Cartoonize"], ["replace", "🔁 Replace"],
+  ["colorize", "🌈 Colorize"], ["upscale", "🔍 Upscale"], ["bgswap", "🖼 Swap background"],
+  ["bgremove", "✂️ Remove background"],
+];
+
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
 // creative direction — translated at submit so the queue, the capability
 // gate and the pipelines never learn new keys.
@@ -741,17 +749,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!productImageUrl) {
         return json({ error: "Add a photo to edit — upload one or paste an image URL." });
       }
-      const editFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
-      charged(TOKEN_COST.image, editFromExtra);
+      // The user picks the edit engine (Pro = nano-banana, Ultra = nano-banana-
+      // pro). Charge base image + the model surcharge, validated server-side.
+      const editModel = normalizeCreateModelKey((form.get("createModel") as string) || "");
+      const editEach = TOKEN_COST.image + createModelSurcharge(editModel);
+      const editFromExtra = (await spendTokens(shop.id, editEach)).fromExtra;
+      charged(editEach, editFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         section: "creator",
-        editOp, sourceImageUrl: productImageUrl, editPrompt: direction,
+        editOp, sourceImageUrl: productImageUrl, editPrompt: direction, editModel,
         // Carried only so the Archive "cooking" tile has a thumbnail + label
         // while the edit runs (the worker's edit path ignores them).
         productImageUrl, productTitle: productTitle || "Photo edit",
-        prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: editFromExtra,
+        prePaid: true, chargedTokens: editEach, chargedFromExtra: editFromExtra,
       });
-      backed(TOKEN_COST.image, editFromExtra);
+      backed(editEach, editFromExtra);
       return json({ ok: true, queued: "image", count: 1 });
     }
     if (intent === "quickedit") {
@@ -1217,6 +1229,8 @@ export default function WebStudio() {
   // (reveal on click) so the describe box stays the whole act of creation.
   const [createStyle, setCreateStyle] = useState<string | null>(null);
   const [showStyle, setShowStyle] = useState(false);
+  // Casual "Edit a photo" — collapsed quick-actions disclosure.
+  const [showEditOps, setShowEditOps] = useState(false);
   // Creator "Make an image" — AI model + output frame (aspect ratio).
   const [createModel, setCreateModel] = useState<string>(DEFAULT_CREATE_MODEL);
   const [createAspect, setCreateAspect] = useState<string>(DEFAULT_CREATE_ASPECT);
@@ -1379,7 +1393,7 @@ export default function WebStudio() {
   // Premium "Make an image" model (Genius) adds a token surcharge, like the
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
-  const createFee = isCreate ? createModelSurcharge(createModel) : 0;
+  const createFee = (isCreate || isEdit) ? createModelSurcharge(createModel) : 0;
   const cost = baseCost + engineFee + createFee;
 
   // ── THE EASEL, PHASE 2: live result on the Stage (casual only) ──────────────
@@ -1911,31 +1925,12 @@ export default function WebStudio() {
             {!(isCreate && casual) && (
               <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
             )}
-            {!(isCreate && casual) && (
+            {!((isCreate || isEdit) && casual) && (
               <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "optional — pick a look, or skip for a natural photo" : casual ? "how your image is styled" : "the structure your ad is built on"} />
             )}
-            {imageMode === "product" && casual && (
-              <>
-                <div className="ws-lbl">Quick actions <span className="ws-opt">optional</span></div>
-                <div className="ws-fmtcats" role="tablist" aria-label="Photo edit">
-                  {([["restyle", "🎨 Restyle"], ["cartoonize", "✏️ Cartoonize"], ["replace", "🔁 Replace"], ["colorize", "🌈 Colorize"], ["upscale", "🔍 Upscale"], ["bgswap", "🖼 Swap background"], ["bgremove", "✂️ Remove background"]] as [string, string][]).map(([k, label]) => (
-                    <button type="button" key={k} role="tab" aria-selected={editOp === k}
-                      className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{label}</button>
-                  ))}
-                </div>
-                <p className="ws-note">
-                  {editOp === "bgremove" ? "Upload your photo — we'll cut the subject out onto a clean transparent background."
-                    : editOp === "bgswap" ? "Upload your photo, then describe the new background in the box below."
-                    : editOp === "cartoonize" ? "Upload your photo — we'll redraw it as a cartoon. Add any direction below to steer the style."
-                    : editOp === "restyle" ? "Upload your photo and describe the look you want in the box below."
-                    : editOp === "colorize" ? "Upload a black-and-white or faded photo — we'll add natural, realistic colour."
-                    : editOp === "upscale" ? "Upload your photo — we'll sharpen and upscale it to higher resolution."
-                    : editOp === "replace" ? "Upload your photo, then describe what to change in the box below."
-                    : "Upload your photo and just describe the changes you want below — or tap a quick action."}
-                </p>
-                {editOp && <input type="hidden" name="editOp" value={editOp} />}
-              </>
-            )}
+            {/* Casual photo-edit quick actions moved BELOW the describe box as a
+                collapsed disclosure (see the {isEdit && casual} block), so the
+                edit flow leads with the box — same clean shape as "Make an image". */}
             {imageMode === "product" && !service && !casual && (
               <>
                 <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
@@ -2028,7 +2023,7 @@ export default function WebStudio() {
           <>
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
-            {!isCreate && !isMusic && !isFaceless && (<>
+            {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && (<>
             <StepHead n={2} title={casual ? (tab === "video" ? "Describe your video" : "Your subject") : "Your product"} hint={casual ? (tab === "video" ? "anything you like — no photo needed" : "what this is about") : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
@@ -2230,7 +2225,7 @@ export default function WebStudio() {
             {/* Casual create skips this header — the "Describe your image"
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
-            {!(isCreate && casual) && (
+            {!((isCreate || isEdit) && casual) && (
               <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
             )}
             {tab === "image" && !casual && (
@@ -2349,11 +2344,12 @@ export default function WebStudio() {
                     DeepAI-style hero input. No reference photo is involved, so
                     the box is the whole act of creation and deserves the room.
                     Edit / blog / marketing keep the compact single-line input. */}
-                {(isCreate || isMusic || isFaceless) ? (
+                {(isCreate || isMusic || isFaceless || (isEdit && casual)) ? (
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
                     placeholder={
                       isMusic ? "e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat"
                       : isFaceless ? "e.g. 5 mind-blowing facts about the deep ocean"
+                      : isEdit ? "e.g. make it terrifying · turn it into a watercolor painting · add a stormy sunset sky"
                       : "e.g. a red panda astronaut floating over neon Tokyo at night"
                     }
                     onChange={(e) => setDirection(e.target.value)} />
@@ -2457,6 +2453,53 @@ export default function WebStudio() {
                   </>
                 )}
                 {createStyle && <input type="hidden" name="createStyle" value={createStyle} />}
+              </div>
+            )}
+
+            {/* CASUAL "EDIT A PHOTO" — same clean shape as "Make an image":
+                the describe box leads (above), then a compact Model picker
+                (Pro/Ultra; no Frame — an edit keeps the photo's own shape) and
+                the quick actions as a collapsed disclosure. */}
+            {isEdit && casual && (
+              <div className="ws-genopts">
+                <div className="ws-lbl">Model</div>
+                <div className="ws-models" role="tablist" aria-label="AI model">
+                  {CREATE_MODELS.map((m) => (
+                    <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
+                      className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
+                      {m.name}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
+                    </button>
+                  ))}
+                </div>
+                <p className="ws-note" style={{ marginTop: 6 }}>{CREATE_MODELS.find((m) => m.key === createModel)?.blurb}</p>
+                <input type="hidden" name="createModel" value={createModel} />
+                <div className="ws-styledisc" style={{ marginTop: 12 }}>
+                  <button type="button" className={`ws-styletoggle${showEditOps ? " open" : ""}`}
+                    aria-expanded={showEditOps} onClick={() => setShowEditOps((v) => !v)}>
+                    <span className="ws-styletoggle-l">
+                      <span aria-hidden="true">⚡</span>
+                      {editOp
+                        ? <>Quick action: <b>{EDIT_QUICK_ACTIONS.find(([k]) => k === editOp)?.[1].replace(/^\S+\s/, "")}</b></>
+                        : <>Quick actions</>}
+                    </span>
+                    <span className="ws-styletoggle-r">
+                      {!editOp && <span className="ws-opt">optional</span>}
+                      <span className="ws-chev" aria-hidden="true">⌄</span>
+                    </span>
+                  </button>
+                  {showEditOps && (
+                    <>
+                      <p className="ws-note" style={{ marginTop: 8 }}>One-tap transforms — or just describe your edit above.</p>
+                      <div className="ws-fmtcats" role="tablist" aria-label="Photo edit">
+                        {EDIT_QUICK_ACTIONS.map(([k, label]) => (
+                          <button type="button" key={k} role="tab" aria-selected={editOp === k}
+                            className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{label}</button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {editOp && <input type="hidden" name="editOp" value={editOp} />}
+                </div>
               </div>
             )}
 

@@ -458,6 +458,7 @@ async function runJob(
           sourceImageUrl: payload.sourceImageUrl as string,
           editOp: payload.editOp,
           prompt: typeof payload.editPrompt === "string" ? payload.editPrompt : undefined,
+          model: typeof payload.editModel === "string" ? payload.editModel : undefined,
         });
         break;
       }

@@ -4191,17 +4191,22 @@ export async function fluxStill(prompt: string, width = 720, height = 1280): Pro
   return filePath;
 }
 
-/** img2img for a photo edit: nano-banana (strongest identity-preserving editor),
- *  flux-kontext-pro fallback — the same pair the ad pipeline uses. */
-async function editImg2Img(imageUrl: string, prompt: string): Promise<string> {
+/** img2img for a photo edit: the chosen editor (nano-banana for "Pro",
+ *  nano-banana-pro for "Ultra" — both strong identity-preserving editors) with
+ *  a flux-kontext-pro fallback. The fallback also catches a safety refusal, so
+ *  a "make it terrifying" edit that nano-banana balks at still ships via the
+ *  more-permissive kontext. */
+async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana"): Promise<string> {
   // No aspect_ratio: a photo edit must give the user THEIR photo back, just
   // changed — nano-banana defaults to "match_input_image" and kontext preserves
   // the input aspect, so a portrait/landscape stays its own shape instead of
   // being square-cropped like an ad.
+  const input: Record<string, unknown> = { prompt, image_input: [imageUrl], output_format: "jpg" };
+  if (modelId === "google/nano-banana-pro") input.resolution = "2K";
   try {
-    return await repRun("google/nano-banana", { prompt, image_input: [imageUrl], output_format: "jpg" });
+    return await repRun(modelId, input);
   } catch (e) {
-    console.log("[photo-edit] nano-banana unavailable, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
+    console.log("[photo-edit] primary editor unavailable/refused, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
     return await repRun("black-forest-labs/flux-kontext-pro", { prompt, input_image: imageUrl, output_format: "jpg" });
   }
 }
@@ -4249,9 +4254,13 @@ export async function editImage(opts: {
   sourceImageUrl: string;
   editOp: EditOp;
   prompt?: string;
+  model?: string;
 }): Promise<string> {
   const { shopId, sourceImageUrl, editOp } = opts;
   const prompt = (opts.prompt || "").trim().slice(0, 300);
+  // The user-picked edit engine (Pro = nano-banana, Ultra = nano-banana-pro),
+  // validated against the allow-list; drives the img2img ops below.
+  const editModelId = opts.model && CREATE_MODEL_BY_KEY[opts.model] ? CREATE_MODEL_BY_KEY[opts.model].id : "google/nano-banana";
   if (!process.env.REPLICATE_API_TOKEN) throw new Error("Photo editing isn't set up on this server yet.");
   if (!/^https?:\/\//i.test(sourceImageUrl)) throw new Error("Add a photo to edit first.");
 
@@ -4276,7 +4285,7 @@ export async function editImage(opts: {
     label = "new background";
   } else if (editOp === "colorize") {
     // Colorize a black-and-white / faded photo — the composition is preserved.
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, "Add natural, realistic color to this image. Keep every detail, texture, subject and the exact composition unchanged — only add colour. No text, no watermark."), "jpg");
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, "Add natural, realistic color to this image. Keep every detail, texture, subject and the exact composition unchanged — only add colour. No text, no watermark.", editModelId), "jpg");
     label = "colorized";
   } else if (editOp === "upscale") {
     // Super-resolution via real-esrgan (its own model, cheap). Falls back to an
@@ -4286,7 +4295,7 @@ export async function editImage(opts: {
       out = await repRun("nightmareai/real-esrgan", { image: sourceImageUrl, scale: 4, face_enhance: false }, 90_000);
     } catch (e) {
       console.log("[photo-edit] real-esrgan unavailable, enhancing via img2img:", e instanceof Error ? e.message.slice(0, 120) : e);
-      out = await editImg2Img(sourceImageUrl, "Enhance this photo: sharper detail, cleaner texture, higher clarity. Keep the subject and composition identical. No text, no watermark.");
+      out = await editImg2Img(sourceImageUrl, "Enhance this photo: sharper detail, cleaner texture, higher clarity. Keep the subject and composition identical. No text, no watermark.", editModelId);
     }
     localUrl = await persistRemote(out, "jpg");
     label = "upscaled";
@@ -4295,13 +4304,13 @@ export async function editImage(opts: {
     // "replace" quick-action share it). The model does exactly what's asked and
     // leaves the rest alone.
     if (!prompt) throw new Error("Describe the changes you want — e.g. 'make the shirt a purple hoodie'.");
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Apply exactly that change and keep everything else in the image the same — same subject, composition, framing and style. No added text, no watermark.`), "jpg");
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Apply exactly that change and keep everything else in the image the same — same subject, composition, framing and style. No added text, no watermark.`, editModelId), "jpg");
     label = "edited";
   } else {
     const stylePrompt = editOp === "cartoonize"
       ? `Redraw this exact image as a vibrant, clean cartoon illustration${prompt ? `, ${prompt}` : ""}. Keep the same subject, pose and composition — just stylize it. No added text or watermark.`
       : `${prompt || "Give this photo a clean, premium, eye-catching restyle"}. Keep the same subject and composition; do not add any text or a watermark.`;
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, stylePrompt), "jpg");
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, stylePrompt, editModelId), "jpg");
     label = editOp === "cartoonize" ? "cartoon" : "restyle";
   }
 
