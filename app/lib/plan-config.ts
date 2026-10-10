@@ -270,6 +270,13 @@ export const TOKEN_COST = {
   // cost floor. 30 tokens keeps a ~20× margin and makes volume competitive
   // (Starter ~10/mo, Studio ~30, Creator ~16). Gated at the "video" capability.
   faceless: 30,
+  // Casual (Creator) video — a single text/image-to-video clip via the chosen
+  // engine, NO presenter/avatar lipsync and no multi-scene commercial (those are
+  // what make the marketing `video` cost 150). A single clip's COGS is cents, so
+  // the marketing price was wildly over-packaged for a creator making fun videos
+  // (and absurd next to faceless, a full 30s video, at 30). 50 keeps a big margin
+  // and sits sensibly above faceless. Premium engines still add their surcharge.
+  casualVideo: 50,
   // Forging a custom presenter renders one portrait per wardrobe outfit —
   // four paid image generations in parallel — so it is priced as what it is.
   // It used to cost nothing at all while the UI said "the forge runs on
@@ -292,6 +299,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   blog: "Blog post",
   landing: "Landing page",
   video: "Product video",
+  casualVideo: "Video",
   faceless: "Faceless video",
   boost: "Ad boost",
   avatarForge: "Custom presenter",

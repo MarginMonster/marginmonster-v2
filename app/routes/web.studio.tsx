@@ -237,7 +237,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
+    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
   });
 };
 
@@ -627,7 +627,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // no surcharge billed, default-engine COGS stays inside the flat price.
       const engineDrivesRender = !avatarId && contentType !== "commercial";
       const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
-      const each = TOKEN_COST.video + engineSurcharge(effectiveEngine);
+      // Casual (Creator) video is a single clip — priced well below a full
+      // marketing video ad (presenter/multi-scene). Engine surcharge still rides.
+      const videoBase = casualMode ? TOKEN_COST.casualVideo : TOKEN_COST.video;
+      const each = videoBase + engineSurcharge(effectiveEngine);
       // Video bursts cap lower than image bursts — one video is 60+ tokens, so
       // a ten-pack would empty most wallets on a single tap. Three is enough
       // to pick from without being a decision the merchant regrets.
@@ -1404,7 +1407,7 @@ export default function WebStudio() {
   const submitIntent = isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
   const verb = isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
-  const baseCost = isCreate ? d.costs.createImage : tab === "video" ? d.costs.video : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
+  const baseCost = isCreate ? d.costs.createImage : tab === "video" ? (casual ? d.costs.casualVideo : d.costs.video) : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   // Premium "Make an image" model (Genius) adds a token surcharge, like the
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
