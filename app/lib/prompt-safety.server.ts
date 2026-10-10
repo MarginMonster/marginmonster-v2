@@ -57,7 +57,7 @@ export async function screenCreatePrompt(text: string): Promise<{ ok: true } | {
     if (v.verdict === "block") {
       return {
         ok: false,
-        message: "That prompt is against our content guidelines, so it wasn't generated — no tokens were spent. Try describing something else.",
+        message: "Sorry — this one looks like it touches on something unsafe, so we weren't able to create it (and you weren't charged). No worries at all — tweak the wording or try a different idea and we'll get right on it.",
       };
     }
     return { ok: true };

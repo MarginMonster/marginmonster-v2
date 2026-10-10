@@ -1458,7 +1458,7 @@ export default function WebStudio() {
       const errStr = (lg.error || "").toLowerCase();
       const isSafety = /safet|flag|content polic|sensitive|nsfw|not allowed|blocked|moderat|csam|prohibit|violat|e005/.test(errStr);
       setGenError(isSafety
-        ? { kind: "unsafe", message: "That was stopped by the image model's safety filters. Your tokens were refunded — try a different prompt." }
+        ? { kind: "unsafe", message: "Sorry — this one looks like it touches on something we can't create, so the model held back. You've been refunded, no worries. Try rewording it or a different idea and we'll get right on it." }
         : { kind: "failed", message: "That one didn't come through — it may have hit a snag. Your tokens were refunded; try again." });
       setMaking(false);
     }
@@ -2567,9 +2567,9 @@ export default function WebStudio() {
              ) : genError ? (
                <div className={`ws-easelph ws-generr${genError.kind === "unsafe" ? " unsafe" : ""}`} role="alert">
                  <span className="ws-generr-ico" aria-hidden="true">{genError.kind === "unsafe" ? "⚠" : "!"}</span>
-                 <div className="ws-easel-cap">{genError.kind === "unsafe" ? "Prompt not allowed" : "That didn’t finish"}</div>
+                 <div className="ws-easel-cap">{genError.kind === "unsafe" ? "Sorry, we can’t make that one" : "That didn’t finish"}</div>
                  <div className="ws-easel-sub">{genError.message}</div>
-                 <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>Got it</button>
+                 <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>{genError.kind === "unsafe" ? "Try another" : "Got it"}</button>
                </div>
              ) : (isEdit && editPreview) ? (
                /* A photo loaded for editing shows ON the Stage (the canvas) — so
@@ -2855,7 +2855,8 @@ const WS_STYLE = `
 /* Failed-generation card (shown on the Stage instead of spinning forever). */
 .ws-generr{gap:10px}
 .ws-generr-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#F5E6C8;color:#9A5B12;font-weight:900;font-size:24px;border:2px solid #E7C98F}
-.ws-generr.unsafe .ws-generr-ico{background:#F6DEDC;color:#B4302C;border-color:#E6ABA7}
+/* The unsafe card stays warm/amber (not alarm-red) so the tone matches the
+   gentle, apologetic copy. */
 .ws-generr-btn{margin-top:6px;color:#0C7A46;background:#fff;border:1.5px solid var(--line,#E4DFCF)}
 .ws-generr-btn:hover{background:rgba(12,122,70,.06);border-color:#12A85E;color:#0C7A46}
 /* Creator-native Video cards: brand tile + emoji instead of product/presenter cover art. */
