@@ -15,6 +15,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
+import { screenCreatePrompt } from "../lib/prompt-safety.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
@@ -483,6 +484,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // trimToWord, not slice: this text is read by a model, so it must not end
   // mid-word.
   const direction = trimToWord((form.get("direction") as string) || "", 500) || undefined;
+  // PROMPT SAFETY SCREEN — classify the creative prompt BEFORE spending a token
+  // or touching the pipeline. An unsafe prompt never travels the pipeline; it
+  // gets a distinct "against our guidelines" message (unsafe:true) so the client
+  // can tell it apart from a general generation failure. Fails open. Scoped to
+  // the free-text Creator generators (quickedit uses our own baked prompts).
+  if (["create", "edit", "music", "faceless"].includes(intent) || (intent === "video" && casualMode)) {
+    const screenText = [form.get("createPrompt"), direction, form.get("productTitle")]
+      .map((v) => (typeof v === "string" ? v : "")).join("\n").trim();
+    if (screenText) {
+      const verdict = await screenCreatePrompt(screenText);
+      if (!verdict.ok) return json({ error: verdict.message, unsafe: true });
+    }
+  }
   // casualMode (above) is authoritative on the SERVER: even if a merchant-only
   // hidden field leaks from a stale client, casual never honors service/offer/
   // ad-format selections. This is the real guard; client-side hiding is only UX.
@@ -1375,9 +1389,10 @@ export default function WebStudio() {
   const [stageAspect, setStageAspect] = useState<number | null>(null);
   useEffect(() => { setStageAspect(null); }, [stageResult?.media, editPreview]);
   const [making, setMaking] = useState(false);
-  // A generation that FAILED (blocked/risky prompt, provider error, timeout) —
-  // shown on the Stage instead of spinning forever.
-  const [genError, setGenError] = useState<string | null>(null);
+  // A generation that FAILED or was BLOCKED — shown on the Stage instead of
+  // spinning forever. `kind` splits an unsafe/guideline block from a general
+  // technical failure so the message (and tone) can differ.
+  const [genError, setGenError] = useState<{ kind: "failed" | "unsafe"; message: string } | null>(null);
   const makingStartedRef = useRef<number>(0);
   const preIdsRef = useRef<string[]>([]);
   const makingNounRef = useRef<string>("");
@@ -1393,6 +1408,11 @@ export default function WebStudio() {
       setGenError(null);
       setStageResult(null);
       setMaking(true);
+    } else if (casual && actionData && "unsafe" in actionData && (actionData as { unsafe?: boolean }).unsafe) {
+      // The prompt was blocked BEFORE the pipeline — show it on the Stage as a
+      // guidelines block (distinct from a technical failure), no spinner.
+      setMaking(false);
+      setGenError({ kind: "unsafe", message: (actionData as { error?: string }).error || "That prompt is against our content guidelines." });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionData]);
@@ -1408,7 +1428,7 @@ export default function WebStudio() {
     const iv = setInterval(() => {
       if (Date.now() - started > capMs) {
         setMaking(false);
-        setGenError("This is taking longer than usual. It may still land in your gallery shortly — or try again.");
+        setGenError({ kind: "failed", message: "This is taking longer than usual. It may still land in your gallery shortly — or try again." });
         return;
       }
       if (stageRev.state === "idle") stageRev.revalidate();
@@ -1433,7 +1453,13 @@ export default function WebStudio() {
     // FAILED and was created around when we started → stop spinning and say so.
     const lg = d.lastGen;
     if (lg && lg.status === "FAILED" && new Date(lg.at).getTime() >= makingStartedRef.current - 15000) {
-      setGenError("That one didn't come through — it may have been blocked or hit a snag. Your tokens were refunded; try tweaking your prompt.");
+      // Even a prompt that passed our pre-screen can be refused by the model's
+      // own provider-side safety — read the failure reason and split the message.
+      const errStr = (lg.error || "").toLowerCase();
+      const isSafety = /safet|flag|content polic|sensitive|nsfw|not allowed|blocked|moderat|csam|prohibit|violat|e005/.test(errStr);
+      setGenError(isSafety
+        ? { kind: "unsafe", message: "That was stopped by the image model's safety filters. Your tokens were refunded — try a different prompt." }
+        : { kind: "failed", message: "That one didn't come through — it may have hit a snag. Your tokens were refunded; try again." });
       setMaking(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1580,7 +1606,10 @@ export default function WebStudio() {
 
   const doImport = () => { if (urlInput.trim()) submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" }); };
 
-  const err = actionData && "error" in actionData ? (actionData.error as string) : null;
+  // A casual unsafe-prompt block is shown on the Stage card, so don't ALSO
+  // repeat it in the form error line.
+  const isUnsafeBlock = !!(actionData && "unsafe" in actionData && (actionData as { unsafe?: boolean }).unsafe);
+  const err = actionData && "error" in actionData && !(casual && isUnsafeBlock) ? (actionData.error as string) : null;
   // A product ad with no product photo is just AI art from the title — the
   // pipeline happily renders it and the merchant pays for slop. Require a
   // photo (upload OR url) for anything that should SHOW the product; services
@@ -2536,10 +2565,10 @@ export default function WebStudio() {
                  </div>
                </div>
              ) : genError ? (
-               <div className="ws-easelph ws-generr" role="alert">
-                 <span className="ws-generr-ico" aria-hidden="true">!</span>
-                 <div className="ws-easel-cap">That didn&rsquo;t finish</div>
-                 <div className="ws-easel-sub">{genError}</div>
+               <div className={`ws-easelph ws-generr${genError.kind === "unsafe" ? " unsafe" : ""}`} role="alert">
+                 <span className="ws-generr-ico" aria-hidden="true">{genError.kind === "unsafe" ? "⚠" : "!"}</span>
+                 <div className="ws-easel-cap">{genError.kind === "unsafe" ? "Prompt not allowed" : "That didn’t finish"}</div>
+                 <div className="ws-easel-sub">{genError.message}</div>
                  <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>Got it</button>
                </div>
              ) : (isEdit && editPreview) ? (
@@ -2826,6 +2855,7 @@ const WS_STYLE = `
 /* Failed-generation card (shown on the Stage instead of spinning forever). */
 .ws-generr{gap:10px}
 .ws-generr-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#F5E6C8;color:#9A5B12;font-weight:900;font-size:24px;border:2px solid #E7C98F}
+.ws-generr.unsafe .ws-generr-ico{background:#F6DEDC;color:#B4302C;border-color:#E6ABA7}
 .ws-generr-btn{margin-top:6px;color:#0C7A46;background:#fff;border:1.5px solid var(--line,#E4DFCF)}
 .ws-generr-btn:hover{background:rgba(12,122,70,.06);border-color:#12A85E;color:#0C7A46}
 /* Creator-native Video cards: brand tile + emoji instead of product/presenter cover art. */
