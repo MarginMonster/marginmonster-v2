@@ -519,7 +519,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Creator flows carry their own title (the prompt): photo edits, text-to-image
   // "create", and music never ask for a product name — only the product-based ad
   // flows do. (Masked until Creator became free on every plan — now reachable.)
-  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless") return json({ error: "Give the product a name." });
+  // Casual video is now describe-first too (no separate "name" field) — derive
+  // its title from the description, same as create/music/faceless.
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && !(casualMode && intent === "video")) return json({ error: "Give the product a name." });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: "The product image must be a full https:// URL." });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
@@ -640,7 +642,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Services: the presenter explains the offer to camera — nothing to hold.
         await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
           section: genSection,
-          productTitle, productImageUrl, productUrl, customPrompt: videoDirection, productDescription: direction,
+          // Casual video has no name field — title it from the description.
+          productTitle: productTitle || (casualMode ? (direction || "").slice(0, 60) || "My video" : productTitle),
+          productImageUrl, productUrl, customPrompt: videoDirection, productDescription: direction,
           style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
           contentType, cartoonStyle,
           avatarId, avatarVariant,
@@ -1660,7 +1664,10 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !isFaceless && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || shortBy > 0;
+  // Casual video is describe-first (no name field): it needs a description, not
+  // a productTitle — same as create/music/faceless.
+  const casualVideo = casual && tab === "video";
+  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideo && !direction.trim()) || shortBy > 0;
 
   return (
     <div className={casual ? "ws-casual" : undefined}>
@@ -1830,8 +1837,12 @@ export default function WebStudio() {
               <p className="ws-note"><Ico n="music" /> <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.</p>
             )}
             {/* Presenter FIRST — the style tiles below render as the chosen
-              * presenter, so picking them in this order explains the art. */}
-            {(baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
+              * presenter, so picking them in this order explains the art.
+              * CREATOR (casual) has NO presenter: a spokesperson/avatar is a
+              * marketing concept (a person selling your product). A casual
+              * "Cartoon" still shows the style grid below, but it animates the
+              * described idea, not a presenter. */}
+            {!casual && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
             {contentType === "cartoon" && !avatarId && <p className="ws-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
             {showCartoonGrid && (
@@ -2035,7 +2046,7 @@ export default function WebStudio() {
           <>
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
-            {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && (<>
+            {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
             <StepHead n={2} title={casual ? (tab === "video" ? "Describe your video" : "Your subject") : "Your product"} hint={casual ? (tab === "video" ? "anything you like — no photo needed" : "what this is about") : "what we're actually selling"} />
 
             {/* ---- Catalogue picker ----
@@ -2237,7 +2248,7 @@ export default function WebStudio() {
             {/* Casual create skips this header — the "Describe your image"
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
-            {!(((isCreate || isEdit) && casual) || isMusic || isFaceless) && (
+            {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
               <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
             )}
             {tab === "image" && !casual && (
@@ -2251,6 +2262,22 @@ export default function WebStudio() {
               </>
             )}
             {tab === "video" ? (
+              casual ? (
+                /* CREATOR video = describe-your-video. No brand voice, no
+                   presenter "what do they say/do/where" (that's a marketing
+                   spokesperson ad) — just describe the video you want. */
+                <>
+                  <div className="ws-lbl">Describe your video <span className="ws-opt">required</span></div>
+                  <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
+                    placeholder="e.g. a red fox running through a snowy forest at dawn, cinematic slow motion"
+                    onChange={(e) => setDirection(e.target.value)} />
+                  <div className="ws-chips" style={{ marginTop: 8 }}>
+                    {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
+                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}>✨ {ex}</button>
+                    ))}
+                  </div>
+                </>
+              ) : (
               <>
                 <div className="ws-lbl"><span>Prompting</span>
                   <button type="button" className="ws-addurl" onClick={() => setAdvanced((a) => !a)}>{advanced ? "Use auto" : "Advanced ▾"}</button>
@@ -2285,6 +2312,7 @@ export default function WebStudio() {
                   </div>
                 )}
               </>
+              )
             ) : (
               <>
                 {tab === "blog" && (
