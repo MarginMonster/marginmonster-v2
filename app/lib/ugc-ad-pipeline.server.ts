@@ -196,12 +196,18 @@ function animateModelFor(engineKey: string | undefined): string {
 }
 
 function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string }): Record<string, unknown> {
+  const neg = opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur";
   // 9:16 explicitly: Veo defaults to 16:9 landscape, and a landscape clip
   // cover-cropped into our vertical assembler loses two-thirds of the frame.
-  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: "9:16" };
+  // generate_audio:false — Veo renders native audio at +50% cost ($0.15/s vs
+  // $0.10/s) that this pipeline ALWAYS discards under its own MiniMax TTS +
+  // music bed, so paying for it was pure waste (~$0.40 on an 8s clip). The
+  // param + negative_prompt are confirmed in google/veo-3-fast's live Replicate
+  // input schema (verified 2026-10-10). Seedance/Hailuo below take NEITHER a
+  // negative_prompt NOR an audio flag (not in their schemas) — do not add them.
+  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: "9:16", generate_audio: false, negative_prompt: neg };
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
-  const neg = opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur";
   // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it.
   if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 5 };
   return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 10, cfg_scale: 0.5 };
