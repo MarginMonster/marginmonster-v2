@@ -1,0 +1,41 @@
+name: tests
+
+# Unit + invariant suite (277 tests) and a full typecheck. These invariants —
+# wallet compare-and-swap, no-blind-writes, ad-format field coverage, refund
+# claiming — guard real money and real posting, and until now ran NOWHERE in
+# CI or the Docker build, so a regression (e.g. a blind read-modify-write that
+# re-posts to a live social account) could ship silently. This surfaces a red
+# invariant on every push to main and every PR.
+#
+# Node 24: the tests are .ts run via node --test's native type-stripping, which
+# the Node 20 runtime image can't do — so this is a CI gate, not a build step.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install deps
+        run: npm ci
+      - name: Generate Prisma client
+        # The suite imports modules that import @prisma/client; generating it
+        # needs only the schema, no database connection.
+        run: npx prisma generate
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Run tests
+        run: npm test

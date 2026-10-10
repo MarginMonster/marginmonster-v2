@@ -4154,22 +4154,34 @@ export async function persistRemoteAudio(url: string): Promise<string> {
 export async function fluxStill(prompt: string, width = 720, height = 1280): Promise<string> {
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (!replicateToken) throw new Error("REPLICATE_API_TOKEN not set");
-  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${replicateToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      version: "5f24084160c9089501c1b3545d9be3c27883ae2239b6f412990e82d4a6210f8f",
-      input: { prompt, num_inference_steps: 4, width, height },
-    }),
-  });
-  if (!createRes.ok) throw new Error(`flux-still create ${createRes.status}`);
-  const prediction = (await createRes.json()) as { id: string };
+  // Create WITH 429/5xx backoff. A single rate-limit (429) used to throw
+  // outright — in faceless b-roll (6-7 sequential stills under load) that
+  // aborted a whole render on one unlucky tick. Retry transient statuses a few
+  // times, honouring Retry-After; a real 4xx (bad prompt/auth) still throws fast.
+  let prediction: { id: string } | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${replicateToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        version: "5f24084160c9089501c1b3545d9be3c27883ae2239b6f412990e82d4a6210f8f",
+        input: { prompt, num_inference_steps: 4, width, height },
+      }),
+    });
+    if (createRes.ok) { prediction = (await createRes.json()) as { id: string }; break; }
+    const transient = createRes.status === 429 || createRes.status >= 500;
+    if (!transient || attempt === 3) throw new Error(`flux-still create ${createRes.status}`);
+    const retryAfter = Number(createRes.headers.get("retry-after")) || 0;
+    await new Promise((r) => setTimeout(r, Math.max(retryAfter * 1000, 1500 * (attempt + 1))));
+  }
+  if (!prediction) throw new Error("flux-still create failed");
   let imageUrl: string | null = null;
-  for (let i = 0; i < 45; i++) {
+  for (let i = 0; i < 90; i++) { // ~3 min (was 90s) — flux-schnell queues under load
     await new Promise((r) => setTimeout(r, 2000));
     const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
       headers: { Authorization: `Bearer ${replicateToken}` },
     });
+    if (!pollRes.ok) continue; // transient 429/5xx on the poll — just try the next tick
     const pollData = (await pollRes.json()) as { status: string; output?: string[] | string | null; error?: string };
     if (pollData.status === "succeeded" && pollData.output) {
       imageUrl = Array.isArray(pollData.output) ? pollData.output[0] : pollData.output;
