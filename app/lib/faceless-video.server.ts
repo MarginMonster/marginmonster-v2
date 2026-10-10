@@ -16,6 +16,16 @@ import { repCreate, repPoll, downloadBuffer, runFfmpeg, ffprobeDuration, resolve
 import { brollStill } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
+import { dropOrgEndorsementPossessive } from "./ad-claims";
+
+// Truncate on a sentence boundary so a hard char-cap never feeds the writer a
+// dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
+// hard slice if there is no earlier sentence end.
+function sentenceSlice(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n);
+  return cut.replace(/[^.!?]*$/, "").trim() || cut;
+}
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 
@@ -275,7 +285,7 @@ export async function generateFacelessVideo(opts: {
         // grounded ONLY in its description (FTC-safe: no invented specs/prices).
         `Write a short FACELESS product video for TikTok/Reels selling this product.\n` +
         `PRODUCT: "${product.title}".\n` +
-        (product.description ? `DETAILS (use ONLY what's here — do not invent anything beyond it): ${product.description.slice(0, 600)}.\n` : "") +
+        (product.description ? `DETAILS (use ONLY what's here — do not invent anything beyond it): ${sentenceSlice(product.description, 600)}.\n` : "") +
         `Angle: ${PRODUCT_ANGLES[opts.format || ""] || PRODUCT_ANGLES.spotlight}.\n` +
         `Return 5-6 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook about the product; the LAST line is a soft call to action like "link's right here" or "grab yours") + a VISUAL (a vivid cinematic lifestyle scene that features or complements the product — NO text/words/logos in the image, no real named people).\n` +
         `Total spoken length ~25-35 seconds. Also give musicMood (a short phrase) and voiceGender.\n` +
@@ -288,6 +298,12 @@ export async function generateFacelessVideo(opts: {
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 1200, jsonSchema: { name: "faceless_script", schema: SCRIPT_SCHEMA as unknown as Record<string, unknown> } });
     script = JSON.parse(raw) as Script;
     script.beats = (script.beats || []).filter((b) => b && b.line && b.visual).slice(0, 8);
+    // Post-gen FTC backstop (same as commercial/cartoon/jingle): the spoken
+    // line is also burned as a caption, so strip an endorsement possessive from
+    // a known third-party trademark the writer may have slipped in ("Pokémon's",
+    // "Disney's") even though the prompt forbids it. Cheap belt-and-braces over
+    // the in-prompt SAFETY rule above.
+    script.beats = script.beats.map((b) => ({ ...b, line: dropOrgEndorsementPossessive(b.line) }));
     if (script.beats.length < 2) throw new Error("[faceless] script too short");
     await ckpt({ ckScript: JSON.stringify(script) });
   }

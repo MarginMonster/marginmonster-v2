@@ -281,6 +281,17 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     style,
   } = params;
 
+  // AI_AVATAR presenters MUST lip-sync, and only generateUgcAd does that.
+  // Dispatch (job-queue.server.ts:714) routes every avatarId to generateUgcAd,
+  // so this function should never receive AI_AVATAR — the "does NOT speak"
+  // branch in the prompt builder below is dead code that would ship a SILENT
+  // presenter (mouth closed, no lip-sync) sold as a spokesperson ad. If a
+  // future refactor ever routes a presenter here, fail loudly (terminal throw →
+  // the queue refunds) instead of delivering a mute presenter as a paid video.
+  if (style === "AI_AVATAR") {
+    throw new Error("generateVideoAd received AI_AVATAR — presenters must route through generateUgcAd for lip-sync, never here");
+  }
+
   // `|| "{}"`: a half-built brand profile (null/empty column) must not throw a
   // SyntaxError here — that terminal-fails a pre-paid job before a single
   // provider call, on every retry.
@@ -333,22 +344,17 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // Strip a store curation tag ("– Comic-Con Pick") off the title before it
   // steers the motion prompt toward an endorsement/superlative-flavored visual.
   const cleanTitle = stripPromoTag(productTitle);
+  // style is always PRODUCT_HIGHLIGHT here (AI_AVATAR is rejected at the top —
+  // presenters lip-sync via generateUgcAd). The old AI_AVATAR "does NOT speak"
+  // prompt branches were dead code that would have shipped a mute presenter.
   const basePrompt =
-    style === "AI_AVATAR" && avatar
-      // This path has NO lip-sync (see VIDEO_MODEL note above), so a presenter
-      // animated mid-speech is guaranteed to look out of time with whatever
-      // audio plays over it — the same fault found in the cartoon pipeline.
-      // Gestures and presence, not talking.
-      ? `UGC-style spokesperson video: ${avatar.desc}, wearing ${outfit.desc}, warmly showing ${cleanTitle} to the camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, no lip movement, mouth closed or in a natural smile. Authentic hand-held creator feel, vertical.${noInventedText}`
-      : style === "AI_AVATAR"
-        ? `UGC-style spokesperson warmly showing ${cleanTitle} to camera with natural gestures. ${voice.tone} tone. The presenter does NOT speak — no mouth movement, mouth closed or smiling. Authentic, hand-held feel, vertical.${noInventedText}`
-        : params.breakout
-          ? `${breakoutLook} The product: ${cleanTitle}.`
-          : params.commercial
-          ? `${commercialLook} The product: ${cleanTitle}.`
-          : params.serviceMode
-          ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${cleanTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.${noInventedText}`
-          : `Dynamic product showcase video for ${cleanTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
+    params.breakout
+      ? `${breakoutLook} The product: ${cleanTitle}.`
+      : params.commercial
+      ? `${commercialLook} The product: ${cleanTitle}.`
+      : params.serviceMode
+      ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${cleanTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.${noInventedText}`
+      : `Dynamic product showcase video for ${cleanTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
   // Bounded for the same reason the image pipeline bounds its brief: this is
   // appended AFTER the fidelity clause, so an unbounded paste buries it.
   const direction = trimToWord(params.customPrompt, 500) || undefined;
@@ -357,12 +363,9 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     : "";
   const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}`;
 
-  // Seed frame: the presenter portrait (avatar) or the product photo.
+  // Seed frame: the product photo (PRODUCT_HIGHLIGHT is the only style here).
   let seedImage: string | undefined;
-  if (style === "AI_AVATAR" && avatar) {
-    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    if (base) seedImage = `${base}/avatars/${avatar.id}_${variant}.jpg`;
-  } else if (style === "PRODUCT_HIGHLIGHT" && productImageUrl) {
+  if (productImageUrl) {
     seedImage = productImageUrl;
     // Render natively vertical: a 720x1280 seed yields a 720x1280 clip that
     // fills the frame, instead of a square clip fit into bars by toVerticalFrame.
@@ -561,7 +564,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `${style === "AI_AVATAR" ? (avatar ? `${avatar.name} presents` : "Avatar video") : "Product video"} — ${productTitle}`,
+      title: `Product video — ${productTitle}`,
       // sourceUrl keeps the provider link for debugging/remix; videoUrl is ours.
       bodyJson: JSON.stringify({ style, videoUrl: storedUrl, sourceUrl: videoUrl, prompt }),
       // productImageUrl is what a REMIX rebuilds from. Without it the remix

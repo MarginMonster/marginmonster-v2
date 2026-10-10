@@ -425,6 +425,14 @@ async function writeCartoonScriptOnce(o: {
   // `split(/\s+/)` scored a whole Chinese script as one word and discarded
   // it, which made Cartoon video impossible for every zh shop.
   if (scriptTooShort(script)) return "";
+  // Wire in the scriptLeaks() backstop (was built for the real "a presenter
+  // said claymation" bug but never called). Reject ONLY a style/medium word the
+  // product itself is NOT about — so a genuine "3D Puzzle" or "Air-Dry Clay"
+  // product keeps its real category word, while a Clay-style ad that leaked
+  // "claymation"/"cartoon"/"this video" is treated as a refusal and the
+  // withBrandFallback ladder regenerates (never shipping the leak).
+  const haystack = `${o.productTitle} ${o.productDescription || ""}`.toLowerCase();
+  if (scriptLeaks(script).some((w) => !haystack.includes(w))) return "";
   // Deterministic backstop the in-prompt guardrail is documented not to always
   // catch: strip an implied third-party endorsement possessive ("Comic-Con's
   // pick") the model may still have written off a brand/tag name.

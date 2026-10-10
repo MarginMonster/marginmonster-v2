@@ -946,7 +946,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     `like recommending to a friend. End with a short call to action.`,
     `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
-    params.productDescription ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.` : "",
+    // Grounding anchor is UNCONDITIONAL (parity with the commercial pipeline):
+    // with a description, claims must come from it; WITHOUT one, a title-only
+    // generation must not soft-invent specs/results from the bare name — it was
+    // previously silent in the no-description case, leaving only CLAIMS_GUARDRAIL.
+    params.productDescription
+      ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.`
+      : `You have ONLY the product name — state no specific spec, material, size, count, ingredient, price or result; sell the feeling and the category, and invent no feature the merchant did not give.`,
     // A spoken ad carries the same claim liability as a printed one: no invented
     // endorsement, authenticity or scarcity built on the real brand/tag names.
     CLAIMS_GUARDRAIL,
