@@ -28,6 +28,7 @@ import {
   repCreate,
   repPoll,
   runFfmpeg,
+  assertPlayableVideo,
 } from "./ugc-ad-pipeline.server";
 import { OUTFITS, type Avatar } from "./avatars";
 import {
@@ -703,6 +704,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       lipSynced: !!talkingUrl, // omni bakes the sung audio in; kling loops under the song
       productCutAt: heldProduct ? "end" : "mid",
     });
+
+    // Output QA — never persist a broken clip as a paid video (refund instead).
+    assertPlayableVideo(outPath);
 
     try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 

@@ -22,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db.server";
 import { mirrorRender } from "./object-storage.server";
-import { checkpointJob, download } from "./ugc-ad-pipeline.server";
+import { checkpointJob, download, assertPlayableVideo } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 
 export function creatifyEnabled(): boolean {
@@ -159,6 +159,8 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   const fileName = `commercial-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
   const outPath = path.join(rendersDir, fileName);
   await download(videoUrl, outPath);
+  // Output QA — a truncated download must not persist as a paid video (refund).
+  assertPlayableVideo(outPath);
   try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
   const asset = await db.asset.create({

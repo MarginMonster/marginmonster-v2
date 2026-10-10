@@ -523,6 +523,20 @@ export function ffprobeDuration(file: string): number {
   return d;
 }
 
+/** OUTPUT QA for the paid video pipelines. A 0-status ffmpeg encode (or a
+ *  truncated download) can still leave a missing / zero-duration / unprobeable
+ *  file, which would persist as a paid VIDEO_AD and ship to the merchant with no
+ *  refund — the "no output QA on video" gap. Call this right before persisting:
+ *  it throws on an unplayable file, which routes the job into the SAME
+ *  failure+refund path an encode error already uses (job-queue catch →
+ *  refundPrepaidOnce), so a broken video is never billed. Conservative 1s floor
+ *  — any real ad/faceless clip runs far longer. */
+export function assertPlayableVideo(file: string, minSeconds = 1): void {
+  if (!fs.existsSync(file)) throw new Error("[video QA] output file is missing");
+  const dur = ffprobeDuration(file); // throws if the file can't be probed at all
+  if (!(dur > minSeconds)) throw new Error(`[video QA] output is only ${dur.toFixed(2)}s — unplayable`);
+}
+
 /** The pixel dimensions of a video's first video stream, or null if it can't be
  *  measured. Used by the output aspect-ratio QA — a square render shipping as a
  *  "vertical" ad is a paid-for defect we must catch. Same ffprobe+spawnSync
@@ -1426,6 +1440,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       lipSynced: engine === "omni-human" || engine === "heygen-fal",
       cutaway: cutawayMode,
     });
+
+    // Output QA — never persist a broken clip as a paid video (refund instead).
+    assertPlayableVideo(outPath);
 
     // Mirror to durable object storage (no-op unless configured) so the clip
     // survives disk resizes/instance changes.

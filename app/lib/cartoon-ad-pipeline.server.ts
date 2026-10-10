@@ -34,6 +34,7 @@ import {
   downloadBuffer,
   repCreate,
   repPoll,
+  assertPlayableVideo,
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
@@ -907,6 +908,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       // our narration laid over it.
       lipSynced,
     });
+
+    // Output QA — never persist a broken clip as a paid video (refund instead).
+    assertPlayableVideo(outPath);
 
     try { await mirrorRender(fileName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
