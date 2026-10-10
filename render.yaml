@@ -46,6 +46,32 @@ services:
         sync: false
       - key: TIKTOK_APP_SECRET
         sync: false
+      # Web front door (easymodeapp.com): Stripe billing, transactional email,
+      # cookie/link signing, premium video, organic auto-posting, diagnostics.
+      # All sync:false — the VALUES live in the Render dashboard; listing them
+      # here only stops a blueprint re-sync from leaving them unprovisioned.
+      # (DEV_GRANT_KEY is intentionally omitted — it must stay UNSET in prod, or
+      # it arms a token-granting route. Do not add it here.)
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_WEBHOOK_URL_BASE
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: FAL_KEY
+        sync: false
+      - key: UPLOADPOST_API_KEY
+        sync: false
+      - key: PRIVATE_AVATAR_OWNERS
+        sync: false
+      - key: PURGE_KEY
+        sync: false
       # Durable object storage for renders (Cloudflare R2 / AWS S3 / any
       # S3-compatible). Set all four to make Kept content survive disk changes;
       # leave unset to fall back to local-disk-only (original behavior).

@@ -146,60 +146,87 @@ async function assembleFaceless(opts: {
 
   const N = norm.length;
   const seg = voDur / N;
-  const args: string[] = ["-y"];
-  norm.forEach((s) => args.push("-i", s)); // inputs 0..N-1
-  args.push("-i", opts.voPath); // input N
   const hasMusic = !!opts.musicPath && fs.existsSync(opts.musicPath);
-  if (hasMusic) args.push("-stream_loop", "-1", "-i", opts.musicPath!); // input N+1 (looped)
-
-  const filters: string[] = [];
-  const labels: string[] = [];
-  norm.forEach((_, i) => {
-    const frames = Math.max(18, Math.round(seg * 30));
-    const z = i % 2 === 0 ? `1+0.12*on/${frames - 1}` : `max(1.12-0.12*on/${frames - 1},1.001)`;
-    filters.push(
-      `[${i}:v]scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
-      `zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,setsar=1[c${i}]`
-    );
-    labels.push(`[c${i}]`);
-  });
-  filters.push(`${labels.join("")}concat=n=${N}:v=1:a=0[vcat]`);
-
-  let vLabel = "[vcat]";
   const captions = timedCaptionFilters(opts.caps, opts.fontFile);
-  if (captions.length) { filters.push(`[vcat]${captions.join(",")}[vf]`); vLabel = "[vf]"; }
 
-  let aMap = `${N}:a`;
-  if (hasMusic) {
-    filters.push(`[${N + 1}:a]volume=0.20,afade=t=out:st=${Math.max(0, voDur - 1.5).toFixed(2)}:d=1.5[bg]`);
-    filters.push(`[${N}:a][bg]amix=inputs=2:duration=first:dropout_transition=0[aout]`);
-    aMap = "[aout]";
-  }
+  // Build the whole ffmpeg arg list for a given quality rung. Captions, the
+  // music bed and the Ken-Burns motion are all nice-to-have; the VO over the
+  // stills is the product. Each toggle lets a failed encode DEGRADE to a
+  // simpler-but-valid graph — rebuilt from parts, so there is never the
+  // dangling ";;" that a string-replace on the joined filtergraph used to leave
+  // behind (which made the old no-caption "fallback" itself unparseable, so ANY
+  // encode hiccup hard-failed all three attempts → "didn't make it" + refund).
+  const buildArgs = (useCaptions: boolean, useKenBurns: boolean, useMusic: boolean): string[] => {
+    const a: string[] = ["-y"];
+    norm.forEach((s) => {
+      // Ken-Burns gets its duration from zoompan d=; the plain rung instead
+      // holds each still for `seg` seconds with -loop 1 -t.
+      if (useKenBurns) a.push("-i", s);
+      else a.push("-loop", "1", "-t", seg.toFixed(3), "-i", s);
+    });
+    a.push("-i", opts.voPath); // input N
+    const musicOn = useMusic && hasMusic;
+    if (musicOn) a.push("-stream_loop", "-1", "-i", opts.musicPath!); // input N+1 (looped)
 
-  args.push(
-    "-filter_complex", filters.join(";"),
-    "-map", vLabel, "-map", aMap,
-    "-t", voDur.toFixed(2),
-    "-threads", "2", "-filter_complex_threads", "2",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
-    opts.outPath,
-  );
-  await beat();
-  const run = await runFfmpeg(args);
-  if (run.status !== 0 || !fs.existsSync(opts.outPath)) {
-    // CAPTIONS/MUSIC ARE NICE-TO-HAVE; the video is the product. Retry once with
-    // no captions (the commonest drawtext/font failure) before giving up.
-    if (captions.length) {
-      const bare = args.slice();
-      const fcIdx = bare.indexOf("-filter_complex") + 1;
-      bare[fcIdx] = bare[fcIdx].replace(`[vcat]${captions.join(",")}[vf]`, "");
-      const vIdx = bare.lastIndexOf(vLabel); if (vIdx > -1) bare[vIdx] = "[vcat]";
-      const run2 = await runFfmpeg(bare);
-      if (run2.status === 0 && fs.existsSync(opts.outPath)) return;
+    const f: string[] = [];
+    const labels: string[] = [];
+    norm.forEach((_, i) => {
+      if (useKenBurns) {
+        const frames = Math.max(18, Math.round(seg * 30));
+        const z = i % 2 === 0 ? `1+0.12*on/${frames - 1}` : `max(1.12-0.12*on/${frames - 1},1.001)`;
+        f.push(
+          `[${i}:v]scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
+          `zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,setsar=1[c${i}]`
+        );
+      } else {
+        f.push(`[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30[c${i}]`);
+      }
+      labels.push(`[c${i}]`);
+    });
+    f.push(`${labels.join("")}concat=n=${N}:v=1:a=0[vcat]`);
+
+    let vLabel = "[vcat]";
+    if (useCaptions && captions.length) { f.push(`[vcat]${captions.join(",")}[vf]`); vLabel = "[vf]"; }
+
+    let aMap = `${N}:a`;
+    if (musicOn) {
+      f.push(`[${N + 1}:a]volume=0.20,afade=t=out:st=${Math.max(0, voDur - 1.5).toFixed(2)}:d=1.5[bg]`);
+      f.push(`[${N}:a][bg]amix=inputs=2:duration=first:dropout_transition=0[aout]`);
+      aMap = "[aout]";
     }
-    throw new Error(`[faceless] ffmpeg failed: ${(run.stderr || "").slice(-240)}`);
+
+    a.push(
+      "-filter_complex", f.join(";"),
+      "-map", vLabel, "-map", aMap,
+      "-t", voDur.toFixed(2),
+      "-threads", "2", "-filter_complex_threads", "2",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+      opts.outPath,
+    );
+    return a;
+  };
+
+  // OUTPUT QA: a 0-status encode that wrote a zero-duration/garbage file must
+  // NOT ship as a paid video — accept a rung only if it produced a playable MP4.
+  const produced = (): boolean => { try { return fs.existsSync(opts.outPath) && ffprobeDuration(opts.outPath) > 1; } catch { return false; } };
+
+  // Degrade ladder: full → drop captions → plain slideshow (no Ken-Burns, no
+  // music). Each rung is a complete, independently-valid graph, so a zoompan or
+  // drawtext failure falls back to a static slideshow instead of killing the job.
+  const rungs: Array<[cap: boolean, kb: boolean, mus: boolean]> = [[true, true, true]];
+  if (captions.length) rungs.push([false, true, true]);
+  rungs.push([false, false, false]);
+
+  await beat();
+  let lastErr = "";
+  for (const [cap, kb, mus] of rungs) {
+    const run = await runFfmpeg(buildArgs(cap, kb, mus));
+    if (run.status === 0 && produced()) return;
+    lastErr = (run.stderr || "").slice(-240);
+    await beat(); // heartbeat between rungs so a multi-encode assembly can't near the 25-min reaper
   }
+  throw new Error(`[faceless] ffmpeg failed after ${rungs.length} rungs: ${lastErr}`);
 }
 
 /** Product Channel angles — how a faceless PRODUCT drop is pitched. Grounded in
@@ -335,12 +362,33 @@ export async function generateFacelessVideo(opts: {
       }
     } catch { /* fall through to AI b-roll */ }
   }
+  // Last-resort neutral frame (brand ink) so one unrenderable beat can never
+  // sink a whole paid render when there's nothing earlier to reuse.
+  const neutralFrame = async (): Promise<string | null> => {
+    try {
+      fs.mkdirSync(RENDERS(), { recursive: true });
+      const pn = path.join(RENDERS(), `bg-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.jpg`);
+      const c = await runFfmpeg(["-y", "-f", "lavfi", "-i", "color=c=0x14201A:s=720x1280", "-frames:v", "1", pn]);
+      return c.status === 0 && fs.existsSync(pn) ? pn : null;
+    } catch { return null; }
+  };
   for (let i = stills.length; i < script.beats.length; i++) {
     // 720x1280 = exact 9:16 AND within flux-schnell's height<=1280 cap (1344 → 422);
     // also the final video's own frame size. The assembler oversamples for Ken-Burns.
     const beat = script.beats[i % script.beats.length];
-    const p = await fluxStill(`${beat.visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`, 720, 1280);
-    stills.push(p);
+    const prompt = `${beat.visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`;
+    // Up to 3 tries per beat: flux 429s/transient refusals are common under load,
+    // and a single throw here used to kill the entire render (no retry, no catch).
+    let still: string | null = null;
+    for (let attempt = 0; attempt < 3 && !still; attempt++) {
+      try { still = await fluxStill(prompt, 720, 1280); }
+      catch { if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); }
+    }
+    // Never skip a beat (the resume/checkpoint logic maps stills[i] → beat i):
+    // fall back to repeating the previous still, or a neutral frame for beat 0.
+    if (!still) still = stills.length ? stills[stills.length - 1] : await neutralFrame();
+    if (!still) throw new Error("[faceless] b-roll generation failed for the opening beat");
+    stills.push(still);
     await ckpt({ ckImages: stills });
   }
   if (!stills.length) throw new Error("[faceless] no b-roll generated");

@@ -1137,6 +1137,29 @@ export default function WebArchive() {
                       <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}>⬇ Download</a>}
+                    {/* CROSS-SECTION BRIDGE — "edit my own content": open this
+                        image in the Creator editor (seeds ?src=; the full
+                        describe-first edit flow runs on it). Image-only — the
+                        edit pipeline can't edit video. Flips to casual so the
+                        edit lands back in the Creator Gallery. */}
+                    {!viewer.isVideo && !viewer.isAudio && viewer.media && (
+                      <button type="button" className="wa-vbtn ghost" disabled={busy}
+                        title="Open this image in the Creator editor"
+                        onClick={() => { try { localStorage.setItem("emMode", "casual"); } catch { /* */ } window.location.href = `/web/studio?do=edit&src=${encodeURIComponent(viewer.media!)}`; }}>
+                        ✎ Edit{isCreator ? "" : " in Creator"}
+                      </button>
+                    )}
+                    {/* CROSS-SECTION BRIDGE — "use creator content on Marketing":
+                        schedule this creation into a marketing campaign (repost,
+                        0 tokens, posts the media as-is — no ad-format claims are
+                        layered on, so no fabrication risk). Flips to marketing. */}
+                    {isCreator && !viewer.isAudio && viewer.media && (
+                      <button type="button" className="wa-vbtn ghost" disabled={busy}
+                        title="Schedule this into a marketing campaign"
+                        onClick={() => { try { localStorage.setItem("emMode", "marketing"); } catch { /* */ } window.location.href = `/web/campaigns?pick=${encodeURIComponent(viewer.id)}`; }}>
+                        ➜ Use in a campaign
+                      </button>
+                    )}
                     {/* A piece whose render we lost is replaced on us, so the
                         button must not quote a price the merchant will not pay. */}
                     {!viewer.isAudio && (

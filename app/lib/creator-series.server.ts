@@ -245,15 +245,34 @@ export async function postCreatorDrop(opts: {
   }
   if (!posted.length) return;
 
-  const newPosted = [...new Set([...already, ...posted])];
-  const prevUrls = meta.postedUrls && typeof meta.postedUrls === "object" ? (meta.postedUrls as Record<string, string>) : {};
-  meta.postedTo = newPosted;
-  meta.postedUrls = { ...prevUrls, ...urls };
-  const allLinkedDone = linked.every((p) => newPosted.includes(p));
-  await db.asset.update({
-    where: { id: opts.assetId },
-    data: { metaJson: JSON.stringify(meta), ...(allLinkedDone ? { status: "PUBLISHED" as const } : {}) },
-  });
+  // Record what we just posted with a COMPARE-AND-SWAP, not a blind write.
+  // Two Channel drops for the same asset can race here (worker reaper + drain,
+  // or >1 instance); a blind `update({where:{id}})` lets the loser clobber the
+  // winner's postedTo, and a clobbered record reads as "un-posted" on the next
+  // drop — which re-posts to the merchant's live social account. Re-read the
+  // current metaJson, UNION our posted platforms into it, and pin the write on
+  // the exact value we merged from; on a miss someone else wrote first, so
+  // re-read and merge again. Union is what makes this safe even if both racers
+  // already fired: the durable record ends up as the superset, so no later
+  // drop re-posts a platform that was in fact posted.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const cur = await db.asset.findUnique({ where: { id: opts.assetId }, select: { metaJson: true } });
+    if (!cur) break;
+    const pinned = cur.metaJson;
+    let m: Record<string, unknown> = {};
+    try { m = JSON.parse(pinned || "{}"); } catch { /* */ }
+    const curPosted: string[] = Array.isArray(m.postedTo) ? (m.postedTo as string[]) : [];
+    const curUrls = m.postedUrls && typeof m.postedUrls === "object" ? (m.postedUrls as Record<string, string>) : {};
+    const mergedPosted = [...new Set([...curPosted, ...posted])];
+    m.postedTo = mergedPosted;
+    m.postedUrls = { ...curUrls, ...urls };
+    const allLinkedDone = linked.every((p) => mergedPosted.includes(p));
+    const r = await db.asset.updateMany({
+      where: { id: opts.assetId, metaJson: pinned },
+      data: { metaJson: JSON.stringify(m), ...(allLinkedDone ? { status: "PUBLISHED" as const } : {}) },
+    });
+    if (r.count > 0) break;
+  }
   if (opts.seriesId) {
     try { await db.creatorSeries.update({ where: { id: opts.seriesId }, data: { dropsPosted: { increment: 1 } } }); } catch { /* */ }
   }

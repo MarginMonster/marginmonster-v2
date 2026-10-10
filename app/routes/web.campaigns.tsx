@@ -12,7 +12,7 @@
  * parseSchedule, abandonQuestline all key off shopId, not a Shopify session. */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Link, useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
+import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
 import { useState } from "react";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -348,12 +348,18 @@ export default function WebCampaigns() {
   const [castQ, setCastQ] = useState("");
   const [picked, setPicked] = useState<number[]>(d.catalog.length ? [0] : []);
   const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("SET_AND_FORGET");
-  const [showLaunch, setShowLaunch] = useState(d.campaigns.length === 0);
+  // ?pick=<assetId> arrives from the Creator Gallery's "Use in a campaign"
+  // bridge — open the launcher straight onto the "schedule what I've made"
+  // picker with that creation pre-selected (only if it's actually schedulable).
+  const [searchParams] = useSearchParams();
+  const pickParam = searchParams.get("pick");
+  const pickValid = !!pickParam && d.archive.some((a) => a.id === pickParam);
+  const [showLaunch, setShowLaunch] = useState(d.campaigns.length === 0 || pickValid);
   // Two ways to start: pay to make a month of content, or schedule the month
   // you already made. The second costs nothing, so it leads when there's a
   // library to schedule.
-  const [mode, setMode] = useState<"new" | "archive">("new");
-  const [pickedAssets, setPickedAssets] = useState<string[]>([]);
+  const [mode, setMode] = useState<"new" | "archive">(pickValid ? "archive" : "new");
+  const [pickedAssets, setPickedAssets] = useState<string[]>(pickValid ? [pickParam!] : []);
   const [spreadDays, setSpreadDays] = useState(30);
   const [postTime, setPostTime] = useState("12:00");
 

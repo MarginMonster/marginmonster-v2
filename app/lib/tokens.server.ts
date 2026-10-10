@@ -73,6 +73,40 @@ export function planTrialing(plan: { trialEndsAt?: Date | string | null } | null
   return !!plan?.trialEndsAt && new Date(plan.trialEndsAt).getTime() > Date.now();
 }
 
+/** Display-safe monthly-usage summary for the HUD value meter. PURE — never
+ *  writes. Mirrors tokensRemainingLive's period + trial handling exactly so the
+ *  meter can never imply tokens the spend path would refuse. Returns the
+ *  monthly allowance (what the plan includes every cycle), how much of it has
+ *  been used this cycle, the purchased top-up that rides alongside it, and when
+ *  the allowance next refills. All zeroed for an inactive/absent plan. */
+export function monthlyUsageSummary(
+  plan: (Pick<Plan, "type" | "active" | "tokensIncluded" | "tokensUsed" | "tokensExtra" | "periodStart"> & { trialEndsAt?: Date | string | null }) | null | undefined
+): { active: boolean; trialing: boolean; monthly: number; used: number; remaining: number; extra: number; trialCap: number; resetAt: string | null } {
+  if (!plan || !plan.active) {
+    return { active: false, trialing: false, monthly: 0, used: 0, remaining: 0, extra: 0, trialCap: TRIAL_TOKEN_CAP, resetAt: null };
+  }
+  const tier = resolveTierKey(plan.type);
+  // If the period already elapsed but no spend has rolled it over yet, the
+  // merchant's cycle is effectively fresh — mirror the live-balance branch so
+  // the meter reads 0 used against a full allowance, not last cycle's spend.
+  const elapsed = Date.now() - new Date(plan.periodStart).getTime() >= PERIOD_MS;
+  const monthly = tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded;
+  const used = elapsed ? 0 : Math.max(0, Math.min(monthly, plan.tokensUsed));
+  const extra = Math.max(0, plan.tokensExtra);
+  // Next refill is 30 days from the cycle's effective start (now, if elapsed).
+  const base = elapsed ? Date.now() : new Date(plan.periodStart).getTime();
+  return {
+    active: true,
+    trialing: planTrialing(plan),
+    monthly,
+    used,
+    remaining: Math.max(0, monthly - used),
+    extra,
+    trialCap: TRIAL_TOKEN_CAP,
+    resetAt: new Date(base + PERIOD_MS).toISOString(),
+  };
+}
+
 /** Roll the monthly allowance over if the billing period has elapsed. Returns
  *  the (possibly refreshed) plan.
  *

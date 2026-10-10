@@ -46,8 +46,14 @@ function layoutBodies(): Map<string, string> {
   return out;
 }
 
-/** `${c.headline}` / `${c.c1}` references inside one case body, ignoring
- *  anything inside a // or /* comment. */
+/** Copy fields a case body draws, ignoring anything inside a // or /* comment.
+ *  A field reaches the ad whether it is interpolated directly (`${c.headline}`)
+ *  or captured into a local/array first and interpolated from there — e.g.
+ *  callout's `const chips = [c.c1, c.c2, c.c3, c.c4].filter(Boolean)` then
+ *  `...reading exactly: ${list}`. Matching the `${c.x}` form alone missed the
+ *  array-capture case and wrongly reported c1–c4 as never drawn. Match any
+ *  member access of the copy object `c` (comments are stripped first, so prose
+ *  inside the prompt can't spoof one). */
 function drawnFields(caseBody: string): Set<string> {
   const code = caseBody
     .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -55,7 +61,7 @@ function drawnFields(caseBody: string): Set<string> {
     .map((l) => l.replace(/\/\/.*$/, ""))
     .join("\n");
   const found = new Set<string>();
-  for (const m of code.matchAll(/\$\{c\.([A-Za-z0-9_]+)\}/g)) found.add(m[1]);
+  for (const m of code.matchAll(/\bc\.([A-Za-z0-9_]+)/g)) found.add(m[1]);
   return found;
 }
 

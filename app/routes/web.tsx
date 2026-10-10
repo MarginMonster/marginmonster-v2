@@ -5,7 +5,7 @@ import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
-import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
+import { tokensRemainingLive, planTrialing, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { totalXpForLevel } from "../lib/achievements";
 import { Ico } from "../lib/icons";
@@ -14,6 +14,10 @@ const EMPTY_HUD = {
   name: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
   tokens: 0, tokensMax: 0, tokensPct: 0, videos: 0, ads: 0,
   planLabel: null as string | null,
+  // Value meter — what the plan includes each month, how much is used, and when
+  // it refills. Zeroed/empty for an inactive plan.
+  planActive: false, trialing: false, monthly: 0, used: 0, extra: 0,
+  resetShort: null as string | null,
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -33,6 +37,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const next = totalXpForLevel(shop.level + 1);
   const xpInto = Math.max(0, shop.xp - cur);
   const xpNeed = Math.max(1, next - cur);
+  // Value meter — monthly allowance, usage this cycle, and the refill date,
+  // formatted server-side so SSR and client agree (no hydration flicker).
+  const usage = monthlyUsageSummary(plan);
+  const resetShort = usage.resetAt
+    ? new Date(usage.resetAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
   return json({
     authed: true,
     hud: {
@@ -47,6 +57,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       videos: Math.floor(tokens / TOKEN_COST.video),
       ads: Math.floor(tokens / TOKEN_COST.image),
       planLabel: tier ? `${PLAN_BY_KEY[tier].name}${planTrialing(plan) ? " · Trial" : ""}` : null,
+      planActive: usage.active,
+      trialing: usage.trialing,
+      monthly: usage.monthly,
+      used: usage.used,
+      extra: usage.extra,
+      resetShort,
     },
   });
 };
@@ -200,6 +216,34 @@ export default function WebLayout() {
 
                 <div className="wb-hud-barlabel"><span>Token reserve</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
                 <div className="wb-hud-hp" title={`${hud.tokensPct}% of your wallet remaining`}><i style={{ width: `${hud.tokensPct}%` }} /></div>
+
+                {/* VALUE METER — frames the plan as a benefit, not a cost: what
+                    it includes every month, how much is used this cycle, and
+                    when it refills. Top-ups (which never expire) ride a line
+                    below so the two kinds of tokens never read as one pool. */}
+                {hud.planActive && (
+                  <div className="wb-hud-meter">
+                    {hud.trialing ? (
+                      <span className="wb-hud-meter-l">
+                        Trial · <b>{hud.monthly.toLocaleString()}/mo</b> unlocks when your plan starts
+                      </span>
+                    ) : (
+                      <>
+                        <span className="wb-hud-meter-l">
+                          <b>{hud.monthly.toLocaleString()}</b> tokens included monthly · <b>{hud.used.toLocaleString()}</b> used
+                        </span>
+                        {hud.resetShort && (
+                          <span className="wb-hud-meter-r" title="When your monthly tokens refill">↻ refills {hud.resetShort}</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {hud.planActive && !hud.trialing && hud.extra > 0 && (
+                  <div className="wb-hud-extra" title="Purchased tokens — they roll over and never expire">
+                    <Ico n="coin" /> +{hud.extra.toLocaleString()} top-up tokens · never expire
+                  </div>
+                )}
 
                 <div className="wb-hud-barlabel">
                   <span>XP · Level {hud.level}</span>
@@ -559,6 +603,12 @@ const CSS = `
 .wb-hud-topup b{font-size:11.5px;color:#fff;background:linear-gradient(168deg,#12A85E,#0B6B3E);padding:5px 11px;border-radius:999px;}
 .wb-hud-topup:hover b{filter:brightness(1.07)}
 .wb-hud-stat{white-space:nowrap;}
+/* Value meter — a quiet benefit line under the reserve bar. */
+.wb-hud-meter{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
+  margin-top:6px;font-size:11.5px;font-weight:600;color:var(--ink2);line-height:1.35;}
+.wb-hud-meter b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums;}
+.wb-hud-meter-r{white-space:nowrap;color:var(--gold-deep);font-weight:700;}
+.wb-hud-extra{margin-top:4px;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gold-deep);}
 
 /* ---- Creator-mode HUD: a cleaner, calmer take (Marketing keeps the full
    arcade HUD unchanged). Every element stays — this only slims the look:

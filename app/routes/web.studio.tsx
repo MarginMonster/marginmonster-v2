@@ -1180,7 +1180,11 @@ export default function WebStudio() {
   // prompt-first on "Make an image" (describe box) instead of the video tiles.
   const [tab, setTab] = useState<Tab>(initTab || (casual ? "image" : "video"));
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
-  const [imageUrl, setImageUrl] = useState("");
+  // ?src=<renders url> imports an existing creation (from the Gallery) straight
+  // into the edit flow — the cross-section "edit my own content" bridge. It
+  // seeds the edit source URL; paired with ?do=edit it lands in the edit flow
+  // with the image already on the Stage (see editPreview below + onFormSubmit).
+  const [imageUrl, setImageUrl] = useState(searchParams.get("src") || "");
   const [hasFile, setHasFile] = useState(false);
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
@@ -1207,7 +1211,9 @@ export default function WebStudio() {
   }, [casual]);
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
-  const [editPreview, setEditPreview] = useState<string | null>(null);
+  // Seeded from ?src= so an imported Gallery creation shows on the Stage the
+  // moment the edit flow opens (a remote URL here; revokeObjectURL no-ops it).
+  const [editPreview, setEditPreview] = useState<string | null>(doParam === "edit" ? (searchParams.get("src") || null) : null);
   // The actual picked File, held in state. iOS Safari blocks setting
   // input.files programmatically, so a photo chosen via the Stage "+" never
   // reaches the native productPhoto input — we inject THIS into the submit
@@ -1615,10 +1621,14 @@ export default function WebStudio() {
     // in the native productPhoto input (iOS blocks the programmatic transfer).
     // For a casual photo edit, submit a FormData with the File injected so the
     // edit always has the photo — regardless of what the input holds.
-    if (isEdit && editFile) {
+    if (isEdit && (editFile || imageUrl.trim())) {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
-      fd.set("productPhoto", editFile);
+      // An uploaded photo rides as a File; an imported Gallery creation (?src=)
+      // rides as its URL — casual edit hides the native productImageUrl input,
+      // so inject it here or the edit would arrive with no source image.
+      if (editFile) fd.set("productPhoto", editFile);
+      else fd.set("productImageUrl", imageUrl.trim());
       fd.set("intent", submitIntent);
       submit(fd, { method: "post", encType: "multipart/form-data" });
     }
@@ -2225,7 +2235,7 @@ export default function WebStudio() {
             {/* Casual create skips this header — the "Describe your image"
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
-            {!((isCreate || isEdit) && casual) && (
+            {!(((isCreate || isEdit) && casual) || isMusic || isFaceless) && (
               <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
             )}
             {tab === "image" && !casual && (
@@ -2285,7 +2295,11 @@ export default function WebStudio() {
                     </div>
                   </>
                 )}
-                {tab === "music" && (
+                {/* Marketing mode keeps these pickers above the compact input
+                    (its StepHead layout). Casual gets the describe-first hero
+                    with the same pickers moved BELOW, in a .ws-genopts block —
+                    see the isMusic / isFaceless genopts further down. */}
+                {tab === "music" && !casual && (
                   <>
                     <div className="ws-lbl">Genre / mood <span className="ws-opt">optional</span></div>
                     <div className="ws-fmtcats" role="tablist" aria-label="Music style">
@@ -2299,7 +2313,7 @@ export default function WebStudio() {
                     {musicStyle && <input type="hidden" name="musicStyle" value={musicStyle} />}
                   </>
                 )}
-                {tab === "faceless" && (
+                {tab === "faceless" && !casual && (
                   <>
                     <div className="ws-lbl">Format</div>
                     <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
@@ -2500,6 +2514,49 @@ export default function WebStudio() {
                   )}
                   {editOp && <input type="hidden" name="editOp" value={editOp} />}
                 </div>
+              </div>
+            )}
+
+            {/* CASUAL "MAKE MUSIC" — describe-first like image: the hero box
+                leads (above), and the Genre / mood picker sits below as a tidy
+                options row instead of crowding in over the box. */}
+            {isMusic && (
+              <div className="ws-genopts">
+                <div className="ws-lbl">Genre / mood <span className="ws-opt">optional</span></div>
+                <div className="ws-fmtcats" role="tablist" aria-label="Music style">
+                  {MUSIC_STYLES.map((s) => (
+                    <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
+                      className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
+                      <span aria-hidden="true">{s.emoji}</span> {s.name}
+                    </button>
+                  ))}
+                </div>
+                {musicStyle && <input type="hidden" name="musicStyle" value={musicStyle} />}
+              </div>
+            )}
+
+            {/* CASUAL "FACELESS VIDEO" — describe-first like image: the topic
+                box + example chips lead (above), then Format + Voice below in a
+                .ws-genopts block. Flagship action, so both choices stay visible. */}
+            {isFaceless && (
+              <div className="ws-genopts">
+                <div className="ws-lbl">Format</div>
+                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
+                  {([["motivational", "💪 Motivational"], ["facts", "💡 Facts"], ["storytime", "📖 Storytime"], ["listicle", "🔢 Listicle"]] as [string, string][]).map(([k, label]) => (
+                    <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
+                      className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
+                  ))}
+                </div>
+                <div className="ws-lbl" style={{ marginTop: 12 }}>Voice</div>
+                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Voice">
+                  {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
+                    <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
+                      className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{label}</button>
+                  ))}
+                </div>
+                <input type="hidden" name="facelessFormat" value={facelessFormat} />
+                <input type="hidden" name="voiceKey" value={voiceKey} />
+                <p className="ws-note" style={{ marginTop: 12 }}>We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.</p>
               </div>
             )}
 
