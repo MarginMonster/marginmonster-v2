@@ -192,7 +192,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((p) => !!p.media)
     .slice(0, 6);
+  // The newest CREATOR generation job (any status) — so the Studio Stage can
+  // surface a FAILED generation (e.g. a blocked/risky prompt) instead of
+  // spinning forever. Self-clearing: a later success is a newer row.
+  const lastGenRow = await db.job.findFirst({
+    where: { shopId: shop.id, type: { in: ["GENERATE_IMAGE_AD", "GENERATE_VIDEO_AD", "GENERATE_SONG"] }, payload: { contains: '"section":"creator"' } },
+    orderBy: { createdAt: "desc" },
+    select: { status: true, createdAt: true, lastError: true },
+  });
+  const lastGen = lastGenRow ? { status: lastGenRow.status as string, at: lastGenRow.createdAt.toISOString(), error: lastGenRow.lastError || null } : null;
   return json({
+    lastGen,
     recent,
     catalog,
     catalogCount,
@@ -218,7 +228,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
+    costs: { video: TOKEN_COST.video, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
   });
 };
 
@@ -444,7 +454,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Legend, or a trial). Without it, send them to unlock it rather than generate.
   // Photo EDITS are a Creator feature too — gate them on the entitlement itself,
   // not just the client-supplied mode flag (a marketing-mode POST can't bypass it).
-  if ((casualMode || intent === "edit" || intent === "create" || intent === "music") && !capabilitiesFor(shop.activePlan).has("creator")) {
+  if ((casualMode || intent === "edit" || intent === "create" || intent === "music" || intent === "quickedit") && !capabilitiesFor(shop.activePlan).has("creator")) {
     return json({ error: "Creator is included on every plan — pick one on the Plans page to make images, edit photos and generate music (or get the standalone Creator plan for $6.99/mo)." });
   }
 
@@ -726,6 +736,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: editFromExtra,
       });
       backed(TOKEN_COST.image, editFromExtra);
+      return json({ ok: true, queued: "image", count: 1 });
+    }
+    if (intent === "quickedit") {
+      // One-tap post-generation edit of a finished Creator image (Enhance /
+      // Zoom out / Zoom in / Remove bg). Reuses the edit pipeline on the
+      // result's own URL, but a small "slight" charge — another value moment on
+      // an image already made (DeepAI's post-gen upsell).
+      assertCapability(shop.activePlan, "image");
+      const quickOp = ((form.get("editOp") as string) || "").trim();
+      if (!["bgremove", "upscale", "replace"].includes(quickOp)) {
+        return json({ error: "That quick action isn't available." });
+      }
+      if (quickOp === "replace" && !(direction || "").trim()) {
+        return json({ error: "Couldn't apply that edit." });
+      }
+      if (!productImageUrl) {
+        return json({ error: "Make an image first, then tap a quick edit." });
+      }
+      const quickFromExtra = (await spendTokens(shop.id, TOKEN_COST.quickEdit)).fromExtra;
+      charged(TOKEN_COST.quickEdit, quickFromExtra);
+      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        section: "creator",
+        editOp: quickOp, sourceImageUrl: productImageUrl, editPrompt: direction,
+        productImageUrl, productTitle: productTitle || "Quick edit",
+        prePaid: true, chargedTokens: TOKEN_COST.quickEdit, chargedFromExtra: quickFromExtra,
+      });
+      backed(TOKEN_COST.quickEdit, quickFromExtra);
       return json({ ok: true, queued: "image", count: 1 });
     }
     if (intent === "create") {
@@ -1338,6 +1375,10 @@ export default function WebStudio() {
   const [stageAspect, setStageAspect] = useState<number | null>(null);
   useEffect(() => { setStageAspect(null); }, [stageResult?.media, editPreview]);
   const [making, setMaking] = useState(false);
+  // A generation that FAILED (blocked/risky prompt, provider error, timeout) —
+  // shown on the Stage instead of spinning forever.
+  const [genError, setGenError] = useState<string | null>(null);
+  const makingStartedRef = useRef<number>(0);
   const preIdsRef = useRef<string[]>([]);
   const makingNounRef = useRef<string>("");
   const makeBtnRef = useRef<HTMLButtonElement>(null);
@@ -1348,6 +1389,8 @@ export default function WebStudio() {
     if (casual && actionData && "queued" in actionData) {
       preIdsRef.current = d.recent.map((p) => p.id);
       makingNounRef.current = noun;
+      makingStartedRef.current = Date.now();
+      setGenError(null);
       setStageResult(null);
       setMaking(true);
     }
@@ -1358,8 +1401,16 @@ export default function WebStudio() {
   useEffect(() => {
     if (!making) return;
     const started = Date.now();
+    // Video can legitimately take minutes; images/songs are quick. Cap the poll
+    // so a stuck render never spins forever — and SAY something on timeout
+    // instead of silently going idle.
+    const capMs = (makingNounRef.current === "video") ? 6 * 60_000 : 3 * 60_000;
     const iv = setInterval(() => {
-      if (Date.now() - started > 7 * 60_000) { setMaking(false); return; }
+      if (Date.now() - started > capMs) {
+        setMaking(false);
+        setGenError("This is taking longer than usual. It may still land in your gallery shortly — or try again.");
+        return;
+      }
       if (stageRev.state === "idle") stageRev.revalidate();
     }, 5000);
     return () => clearInterval(iv);
@@ -1376,9 +1427,43 @@ export default function WebStudio() {
       setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; });
       setEditFile(null);
       setHasFile(false);
+      return;
+    }
+    // No new piece yet — did THIS generation fail? The newest creator job is
+    // FAILED and was created around when we started → stop spinning and say so.
+    const lg = d.lastGen;
+    if (lg && lg.status === "FAILED" && new Date(lg.at).getTime() >= makingStartedRef.current - 15000) {
+      setGenError("That one didn't come through — it may have been blocked or hit a snag. Your tokens were refunded; try tweaking your prompt.");
+      setMaking(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.recent, making]);
+  }, [d.recent, d.lastGen, making]);
+  // POST-GENERATION QUICK EDITS — one tap turns a finished image into the next
+  // (Enhance / Zoom out / Zoom in / Remove bg). Reuses the edit pipeline on the
+  // result's OWN url (a small "quickedit" charge). Submitted programmatically
+  // because the Stage lives outside the <Form>.
+  const quickEdit = (op: string, dir?: string) => {
+    if (!stageResult || stageResult.isVideo || stageResult.isAudio || making || busy) return;
+    const abs = stageResult.media.startsWith("http") ? stageResult.media : `${window.location.origin}${stageResult.media}`;
+    const fd = new FormData();
+    fd.set("intent", "quickedit");
+    fd.set("mode", "casual");
+    fd.set("editOp", op);
+    if (dir) fd.set("direction", dir);
+    fd.set("productImageUrl", abs);
+    fd.set("productTitle", "Quick edit");
+    submit(fd, { method: "post", encType: "multipart/form-data" });
+  };
+  // Click a creation in the shelf → bring it back UP onto the Stage (for viewing
+  // + quick edits), instead of leaving to the gallery.
+  const loadToStage = (p: StagePiece) => {
+    setGenError(null);
+    setMaking(false);
+    setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
+    setEditFile(null);
+    setStageResult(p);
+    try { document.querySelector(".ws-stage")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { /* */ }
+  };
   // DROP (or upload) A PHOTO ONTO THE STAGE → edit it. The idle Stage is a
   // drag/drop + click-to-upload target (DeepAI-style). A dropped image flips
   // into the photo-edit flow, then loads once that flow's file input mounts.
@@ -2434,12 +2519,28 @@ export default function WebStudio() {
                        : <img src={stageResult.media} alt={stageResult.title}
                            onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setStageAspect(t.naturalWidth / t.naturalHeight); }} />}
                  </div>
+                 {!stageResult.isVideo && !stageResult.isAudio && (
+                   <div className="ws-quick">
+                     <span className="ws-quick-lbl">Quick edit · {d.costs.quickEdit} ea</span>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("upscale")}>✨ Enhance</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent.")}>🔭 Zoom out</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent.")}>🔎 Zoom in</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("bgremove")}>✂ Remove bg</button>
+                   </div>
+                 )}
                  <div className="ws-verbs">
                    <a className="ws-verb gold" href={stageResult.media} download>⤓ Download</a>
                    <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ Make another</button>
                    <Link className="ws-verb" to="/web/archive?section=creator">Open gallery</Link>
                    <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ Clear</button>
                  </div>
+               </div>
+             ) : genError ? (
+               <div className="ws-easelph ws-generr" role="alert">
+                 <span className="ws-generr-ico" aria-hidden="true">!</span>
+                 <div className="ws-easel-cap">That didn&rsquo;t finish</div>
+                 <div className="ws-easel-sub">{genError}</div>
+                 <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>Got it</button>
                </div>
              ) : (isEdit && editPreview) ? (
                /* A photo loaded for editing shows ON the Stage (the canvas) — so
@@ -2490,14 +2591,14 @@ export default function WebStudio() {
           <div className="ws-shelf-h"><b>Your creations</b><Link to="/web/archive?section=creator" className="ws-shelf-all">Open gallery ›</Link></div>
           <div className="ws-shelf-strip">
             {d.recent.map((p) => (
-              <Link to="/web/archive?section=creator" key={p.id} className="ws-shelf-piece" title={p.title}>
+              <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className="ws-shelf-piece" title={`${p.title} — open on the Stage`}>
                 <span className="ws-shelf-thumb" style={!p.isVideo && !p.isAudio && p.media ? { backgroundImage: `url(${p.media})` } : undefined}>
                   {p.isVideo && p.media ? <video src={`${p.media}#t=0.1`} muted playsInline preload="metadata" /> : null}
                   {p.isAudio ? <span className="ws-shelf-aud" aria-hidden="true">♪</span> : null}
                   <span className="ws-shelf-tag">{p.isVideo ? "▶ Video" : p.isAudio ? "♪ Music" : "Image"}</span>
                 </span>
                 <span className="ws-shelf-pt">{p.title}</span>
-              </Link>
+              </button>
             ))}
           </div>
         </section>
@@ -2716,6 +2817,17 @@ const WS_STYLE = `
 .ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
 .ws-stagemedia-edit{cursor:pointer}
 .ws-editcap{margin-right:auto;align-self:center;padding-left:4px;font-size:12px;font-weight:700;color:#d9f3e5}
+/* Post-generation quick edits (Enhance / Zoom out / Zoom in / Remove bg). */
+.ws-quick{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;background:#0b120e;border-top:1px solid rgba(255,255,255,.08)}
+.ws-quick-lbl{font-size:10px;font-weight:800;letter-spacing:.03em;color:#9fdcbf;text-transform:uppercase;margin-right:2px}
+.ws-quickbtn{font:inherit;font-weight:700;font-size:12px;color:#eafff4;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:6px 11px;cursor:pointer;transition:background .12s,border-color .12s}
+.ws-quickbtn:hover:not(:disabled){background:rgba(18,168,94,.28);border-color:rgba(18,168,94,.55);color:#fff}
+.ws-quickbtn:disabled{opacity:.5;cursor:default}
+/* Failed-generation card (shown on the Stage instead of spinning forever). */
+.ws-generr{gap:10px}
+.ws-generr-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#F5E6C8;color:#9A5B12;font-weight:900;font-size:24px;border:2px solid #E7C98F}
+.ws-generr-btn{margin-top:6px;color:#0C7A46;background:#fff;border:1.5px solid var(--line,#E4DFCF)}
+.ws-generr-btn:hover{background:rgba(12,122,70,.06);border-color:#12A85E;color:#0C7A46}
 /* Creator-native Video cards: brand tile + emoji instead of product/presenter cover art. */
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
@@ -2779,7 +2891,7 @@ const WS_STYLE = `
 .ws-shelf-all{margin-left:auto;font-size:12.5px;font-weight:700;color:#0C7A46;text-decoration:none}
 .ws-shelf-strip{position:relative;display:flex;gap:12px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:thin}
 .ws-shelf-strip::after{content:"";position:absolute;left:4px;right:4px;bottom:2px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(12,122,70,.3),transparent)}
-.ws-shelf-piece{flex:0 0 auto;width:112px;text-decoration:none}
+.ws-shelf-piece{flex:0 0 auto;width:112px;text-decoration:none;border:0;background:none;padding:0;margin:0;font:inherit;cursor:pointer;text-align:left;display:block}
 .ws-shelf-thumb{position:relative;display:block;width:112px;height:150px;border-radius:13px;overflow:hidden;border:1px solid var(--line,#E4DFCF);background:#F0ECDE center/cover no-repeat;box-shadow:0 1px 2px rgba(20,32,26,.05);transition:transform .14s,box-shadow .14s}
 .ws-shelf-thumb video{width:100%;height:100%;object-fit:cover;display:block}
 .ws-shelf-piece:hover .ws-shelf-thumb{transform:translateY(-4px);box-shadow:0 14px 28px -14px rgba(20,32,26,.3)}

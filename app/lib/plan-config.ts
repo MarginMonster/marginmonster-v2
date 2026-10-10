@@ -233,6 +233,10 @@ export const TOKEN_COST = {
   // tool feels generous/competitive. Default engine COGS ~$0.039, flagship
   // ~$0.15 (+surcharge); still strong margin at 3 + surcharge tokens.
   createImage: 3,
+  // One-tap post-generation edit of a finished image (Enhance / Zoom / Remove
+  // bg). A small "slight" charge — another value moment on an image already
+  // made. COGS: upscale/bgremove ~$0.002, nano-banana zoom ~$0.039; profitable.
+  quickEdit: 2,
   // Standalone AI music track (Creator). musicgen/minimax COGS ~$0.05-0.15 —
   // an order of magnitude under video. Priced for perceived value + wallet
   // pacing (~50 tracks on the 500-token Creator wallet), not cost recovery.
@@ -282,6 +286,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   adCopy: "Ad copy",
   image: "Image ad",
   createImage: "Image",
+  quickEdit: "Quick edit",
   music: "Music track",
   strategy: "Marketing plan",
   blog: "Blog post",
