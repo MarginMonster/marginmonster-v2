@@ -74,7 +74,7 @@ export default function WebSignup() {
   // Seed the account's AI content language from the landing-page toggle.
   const [lang, setLang] = useState("en");
   const [tz, setTz] = useState("");
-  useEffect(() => { try { setLang(localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
+  useEffect(() => { try { const m = document.cookie.match(/(?:^|;\s*)uiLang=([^;]+)/); setLang((m && decodeURIComponent(m[1])) || localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
   // Same idea as the language above: ask the browser once, at signup.
   useEffect(() => { try { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); } catch { /* older browser */ } }, []);
   // The copy swaps client-side, so the DOCUMENT has to follow it: a screen
