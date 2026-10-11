@@ -557,10 +557,8 @@ export default function WebCampaigns() {
                     {n > 0 ? (
                       <div className="wc-types">
                         {typeLines(cell!).map((t, j) => <span className="wc-t" key={j}>{t}</span>)}
-                        {endHere && <span className="wc-endtag">ENDS</span>}
+                        {endHere && <span className="wc-endtag">{t("ENDS")}</span>}
                       </div>
-                    ) : past ? (
-                      <span className="wc-x" aria-hidden="true">✕</span>
                     ) : null}
                   </div>
                 );
@@ -833,9 +831,9 @@ const WC_STYLE = `
    equivalent for, and day cells that name what lands instead of dotting it. */
 .wc-slab{position:relative;border-radius:24px;overflow:hidden;padding:20px 14px 18px;background:#060B08;
   box-shadow:0 26px 64px rgba(6,20,12,.4),0 4px 14px rgba(0,0,0,.3)}
-.wc-rose{position:absolute;pointer-events:none;opacity:.16;filter:saturate(1.2)}
+.wc-rose{position:absolute;pointer-events:none;opacity:.11;filter:saturate(1.2)}
 .wc-rose.a{width:420px;top:-150px;right:-140px;animation:wcspin 150s linear infinite}
-.wc-rose.b{width:320px;bottom:-130px;left:-110px;opacity:.09;animation:wcspin 210s linear infinite reverse}
+.wc-rose.b{width:320px;bottom:-130px;left:-110px;opacity:.06;animation:wcspin 210s linear infinite reverse}
 @keyframes wcspin{to{transform:rotate(360deg)}}
 .wc-slab-frame{position:absolute;inset:9px;border-radius:17px;border:1px solid rgba(231,200,121,.22);pointer-events:none}
 .wc-slab-in{position:relative;z-index:1}
@@ -848,22 +846,22 @@ const WC_STYLE = `
 .wc-ct{font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.12em;color:#E7C879;
   border:1px solid rgba(231,200,121,.3);border-radius:999px;padding:3px 10px;white-space:nowrap}
 .wc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
-.wc-dow{text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(243,241,230,.42);padding-bottom:4px}
-.wc-dy{position:relative;min-height:62px;border-radius:11px;padding:5px 4px;
-  border:1px solid rgba(243,241,230,.10);background:rgba(243,241,230,.035);
+.wc-dow{text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(243,241,230,.5);padding-bottom:5px}
+.wc-dy{position:relative;min-height:62px;border-radius:11px;padding:5px 5px;
+  border:1px solid rgba(243,241,230,.07);background:#0B130E;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
   display:flex;flex-direction:column;gap:3px;overflow:hidden}
-.wc-dy.empty{border-color:transparent;background:none}
-.wc-dn{font-size:10.5px;font-weight:700;color:rgba(243,241,230,.5);font-variant-numeric:tabular-nums;line-height:1}
-.wc-dy.drop{border-color:rgba(18,168,94,.5);background:linear-gradient(180deg,rgba(18,168,94,.18),rgba(18,168,94,.06))}
+.wc-dy.empty{border-color:transparent;background:none;box-shadow:none}
+.wc-dn{font-size:11px;font-weight:700;color:rgba(243,241,230,.62);font-variant-numeric:tabular-nums;line-height:1}
+.wc-dy.drop{border-color:rgba(18,168,94,.55);background:linear-gradient(180deg,rgba(18,168,94,.24),rgba(18,168,94,.07)),#0B130E}
 .wc-dy.drop .wc-dn{color:#EAF7EF}
-.wc-dy.today{border-color:#E7C879;box-shadow:0 0 0 1px #E7C879,0 0 18px rgba(231,200,121,.25)}
-.wc-dy.past{opacity:.42}
+.wc-dy.today{border-color:#E7C879;box-shadow:0 0 0 1px #E7C879,0 0 18px rgba(231,200,121,.22),inset 0 1px 0 rgba(255,255,255,.03)}
+.wc-dy.past{opacity:.5}
 .wc-dy.endday{border-color:rgba(231,200,121,.6)}
 .wc-types{display:flex;flex-direction:column;gap:2px}
-.wc-t{font-size:9.5px;font-weight:700;letter-spacing:.02em;color:#CFEBD9;background:rgba(18,168,94,.28);
-  border-radius:5px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wc-t{font-size:9.5px;font-weight:700;letter-spacing:.02em;color:#D6F0E0;background:rgba(18,168,94,.34);
+  border-radius:5px;padding:1.5px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wc-endtag{font-size:8.5px;font-weight:800;letter-spacing:.08em;color:#0A0F0C;background:#E7C879;border-radius:4px;padding:1px 4px}
-.wc-x{font-size:11px;color:rgba(243,241,230,.2);margin-top:auto;align-self:center}
 /* The line the app doesn't have. */
 .wc-next-up{display:flex;align-items:center;gap:9px;margin:14px 6px 0;padding:9px 12px;border-radius:12px;
   background:rgba(18,168,94,.12);border:1px solid rgba(18,168,94,.32);font-size:12.5px;color:#DCEFE3}
