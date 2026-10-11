@@ -2993,15 +2993,18 @@ const WS_STYLE = `
 .ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
 .ws-easel-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:30ch;line-height:1.45}
 /* Phase 2 — the finished piece renders ON the Stage, with verb chips. */
-/* The finished piece: the frame now HUGS the media's aspect ratio (--stage-ar,
-   set on load; 4/3 until then) instead of dropping a square into a wide black
-   box — so there's essentially nothing left to letterbox. Clean brand-ink matte
-   for the rare residual edge. */
-.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:#14201A;min-height:0;height:min(66vh,560px);width:auto;max-width:100%;aspect-ratio:var(--stage-ar,4/3);margin-inline:auto}
+/* The finished piece renders at its OWN aspect ratio. The frame grows to the
+   image + the button rows (height:auto, NOT a fixed tall box) and the image
+   fills the available width undistorted, so a landscape or square result is
+   never stranded letterboxed with big dark bands above and below — the old
+   height:min(66vh,560px)+max-width:100% silently overrode aspect-ratio and
+   forced every result into a fixed ~portrait box. The dark matte now only shows
+   behind a portrait's side margins (a normal, intentional look). */
+.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:#14201A;min-height:0;height:auto;width:100%;max-width:min(100%,560px);display:block;margin-inline:auto}
 .ws-stage-frame.has-result::after{display:none}
-.ws-stageresult{position:absolute;inset:0;display:flex;flex-direction:column}
-.ws-stagemedia{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:transparent}
-.ws-stagemedia img,.ws-stagemedia video{width:100%;height:100%;object-fit:contain;display:block}
+.ws-stageresult{position:relative;display:flex;flex-direction:column}
+.ws-stagemedia{display:grid;place-items:center;overflow:hidden;background:transparent}
+.ws-stagemedia img,.ws-stagemedia video{max-width:100%;max-height:62vh;width:auto;height:auto;object-fit:contain;display:block}
 .ws-stageaud{display:flex;flex-direction:column;align-items:center;gap:18px;padding:26px}
 .ws-stageaud audio{width:min(320px,86%)}
 .ws-verbs{display:flex;flex-wrap:wrap;gap:7px;padding:10px;background:#0b120e;border-top:1px solid rgba(255,255,255,.08)}
