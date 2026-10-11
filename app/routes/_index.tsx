@@ -629,13 +629,13 @@ html,body{margin:0;padding:0}
   .lz-hero{padding:34px 18px 24px;}
   .lz-foot{padding:22px 18px 34px;}
 }
-/* Phone widths: the wordmark stays — it's the brand. The language select
-   gives up its width instead, and the two buttons tighten. */
+/* Phone widths: the brand collapses to the crest alone — the wordmark would
+   clip next to the language pill + the two buttons, and a cut-off word reads
+   worse than the clean mark. The pill (globe + code) stays, buttons tighten. */
 @media(max-width:430px){
   .lz-nav{gap:6px;padding:12px 12px;}
   .lz-brand{font-size:15px;gap:6px;}
-  .lz-lang{font-size:0;gap:0;}
-  .lz-lang select{max-width:84px;padding:7px 4px;font-size:11.5px;}
+  .lz-brand>span:not(.lz-crest){display:none;}
   .lz-navlink{padding:9px 10px;font-size:12px;}
   .lz-navcta{padding:9px 12px;font-size:12px;}
 }
