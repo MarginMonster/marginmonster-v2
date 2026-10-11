@@ -9,6 +9,11 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Make": "Crear",
+  "Write": "Escribir",
+  "Generate": "Generar",
+  "song": "canción",
+  "photo": "foto",
   " (incl. +{n} engine)": " (incl. +{n} motor)",
   " No tokens spent.": " No se gastaron tokens.",
   " and ": " y ",
@@ -1026,6 +1031,10 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Make": "Créer",
+  "Write": "Rédiger",
+  "Generate": "Générer",
+  "song": "chanson",
   " (incl. +{n} Ultra)": " (dont +{n} Ultra)",
   " (incl. +{n} engine)": " (dont +{n} moteur)",
   " (incl. +{n} {model})": " (dont +{n} {model})",
@@ -2033,6 +2042,11 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Make": "Erstellen",
+  "Write": "Schreiben",
+  "Generate": "Generieren",
+  "song": "Song",
+  "photo": "Foto",
   " (incl. +{n} Ultra)": " (inkl. +{n} Ultra)",
   " (incl. +{n} engine)": " (inkl. +{n} Engine)",
   " (incl. +{n} {model})": " (inkl. +{n} {model})",
@@ -3047,6 +3061,11 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Make": "制作",
+  "Write": "撰写",
+  "Generate": "生成",
+  "song": "歌曲",
+  "photo": "照片",
   " (incl. +{n} Ultra)": "（含 +{n} Ultra）",
   " (incl. +{n} engine)": "（含 +{n} 引擎）",
   " (incl. +{n} {model})": "（含 +{n} {model}）",

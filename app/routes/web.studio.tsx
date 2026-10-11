@@ -2276,7 +2276,7 @@ export default function WebStudio() {
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
             {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
-              <StepHead n={3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: verb.toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
+              <StepHead n={3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
             )}
             {tab === "image" && !casual && (
               <>
@@ -2636,7 +2636,7 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            <div className="ws-tok"><span className="tt">{t("This {noun}", { noun })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
+            <div className="ws-tok"><span className="tt">{t("This {noun}", { noun: t(noun) })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
             {/* The trial cap is the ONE spend failure the merchant can clear
@@ -2700,12 +2700,12 @@ export default function WebStudio() {
                     ? t("Pick a plan to start")
                   : shortBy > 0
                     ? (shortBy === 1
-                        ? t("Needs {short} more token — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun }) : t("this {noun}", { noun }) })
-                        : t("Needs {short} more tokens — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun }) : t("this {noun}", { noun }) }))
+                        ? t("Needs {short} more token — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun: t(noun) }) : t("this {noun}", { noun: t(noun) }) })
+                        : t("Needs {short} more tokens — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun: t(noun) }) : t("this {noun}", { noun: t(noun) }) }))
                   : burst > 1
-                    ? t("{verb} {n} {noun}s — {total} tokens · +{xp} XP", { verb, n: burst, noun, total: cost * burst, xp: xpForSpend(cost * burst) })
+                    ? t("{verb} {n} {noun}s — {total} tokens · +{xp} XP", { verb: t(verb), n: burst, noun: t(noun), total: cost * burst, xp: xpForSpend(cost * burst) })
                     : t("{verb} {noun} — {cost} tokens{extra} · +{xp} XP", {
-                        verb, noun, cost, xp: xpForSpend(cost),
+                        verb: t(verb), noun: t(noun), cost, xp: xpForSpend(cost),
                         extra: engineFee ? t(" (incl. +{n} engine)", { n: engineFee })
                              : createFee ? t(" (incl. +{n} {model})", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") })
                              : facelessFee ? t(" (incl. +{n} Ultra)", { n: facelessFee })
@@ -2795,7 +2795,7 @@ export default function WebStudio() {
                      </span>
                    )}
                  </span>
-                 <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: makingNounRef.current || noun }) : t("Add a photo, or make one")}</div>
+                 <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) }) : t("Add a photo, or make one")}</div>
                  <div className="ws-easel-sub">{(making || busy) ? t("This takes a few minutes — it'll land right here.") : t("Tap to upload or drop a photo to edit — or just describe what you want below.")}</div>
                </div>
              )}
