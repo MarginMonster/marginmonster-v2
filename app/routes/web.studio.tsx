@@ -2353,7 +2353,7 @@ export default function WebStudio() {
                       {MUSIC_STYLES.map((s) => (
                         <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
                           className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
-                          <span aria-hidden="true">{s.emoji}</span> {s.name}
+                          <Ico n={s.icon} /> {s.name}
                         </button>
                       ))}
                     </div>
@@ -2505,7 +2505,7 @@ export default function WebStudio() {
                         <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
                           className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
                           <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
-                            <span className="ws-styletile-emoji" aria-hidden="true">{s.emoji}</span>
+                            <span className="ws-styletile-emoji" aria-hidden="true"><Ico n={s.icon} size={24} /></span>
                           </span>
                           <span className="ws-styletile-nm">{s.name}</span>
                         </button>
@@ -2574,7 +2574,7 @@ export default function WebStudio() {
                   {MUSIC_STYLES.map((s) => (
                     <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
                       className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
-                      <span aria-hidden="true">{s.emoji}</span> {s.name}
+                      <Ico n={s.icon} /> {s.name}
                     </button>
                   ))}
                 </div>

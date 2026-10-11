@@ -71,6 +71,18 @@ const I: Record<string, Paths> = {
   gem: <><path d="M5 4.6h14l3 4.4-10 10.4L2 9z" /><path d="M2 9h20M8 4.6 6 9l6 10.4M16 4.6l2 4.4-6 10.4" /></>,
   refresh: <><path d="M4.8 11.4a7.4 7.4 0 0 1 12.5-4.3l1.9 1.9M19.2 12.6a7.4 7.4 0 0 1-12.5 4.3l-1.9-1.9" /><path d="M18.8 3.4v4.6h-4.6M5.2 20.6V16h4.6" /></>,
   search: <><circle cx="10.6" cy="10.6" r="6.4" /><path d="m15.3 15.3 4.5 4.5" /></>,
+
+  /* ── art-style + music-style tiles ──────────────────────────────── */
+  brush: <><path d="m9.4 14.6 7.2-7.2a2 2 0 0 1 2.8 2.8l-7.2 7.2" /><path d="M9.4 14.6c-1.9 0-3.4 1.5-3.9 4.4 2.9-.5 4.4-2 4.4-3.9a.5.5 0 0 0-.5-.5z" /></>,
+  droplet: <><path d="M12 3.6c3.3 3.9 5.4 6.8 5.4 9.6a5.4 5.4 0 0 1-10.8 0c0-2.8 2.1-5.7 5.4-9.6z" /></>,
+  grid: <><rect x="4" y="4" width="7" height="7" rx="1.2" /><rect x="13" y="4" width="7" height="7" rx="1.2" /><rect x="4" y="13" width="7" height="7" rx="1.2" /><rect x="13" y="13" width="7" height="7" rx="1.2" /></>,
+  wand: <><path d="M5 19 14.4 9.6" /><path d="m16.8 4.4.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /></>,
+  circle: <><circle cx="12" cy="12" r="7.6" /></>,
+  pencil: <><path d="M4.5 19.5 5.6 15 15 5.6a2.05 2.05 0 0 1 2.9 2.9L8.5 17.9z" /><path d="m13.4 7.2 3.4 3.4" /></>,
+  headphones: <><path d="M5 13.5v-1.5a7 7 0 0 1 14 0v1.5" /><rect x="3.3" y="13" width="3.8" height="6.4" rx="1.6" /><rect x="16.9" y="13" width="3.8" height="6.4" rx="1.6" /></>,
+  mic: <><rect x="9" y="2.8" width="6" height="11" rx="3" /><path d="M5.8 11.2a6.2 6.2 0 0 0 12.4 0" /><path d="M12 17.4v3.4M8.6 20.8h6.8" /></>,
+  guitar: <><circle cx="8.8" cy="15.2" r="5" /><circle cx="8.8" cy="15.2" r="1.3" /><path d="m12.4 11.6 5.8-5.8M16.8 4.2l2.8 2.8" /></>,
+  moon: <><path d="M19.4 13.6A7.7 7.7 0 1 1 10.4 4.6a6 6 0 0 0 9 9z" /></>,
 };
 
 export type IcoName = keyof typeof I;
