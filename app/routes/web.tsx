@@ -2,16 +2,15 @@
  * archive. Same engine, no Polaris/App Bridge; styled to match the landing. */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Link, Outlet, useFetcher, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
+import { Link, Outlet, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive, planTrialing, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
-import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
+import { normalizeContentLang } from "../lib/content-lang";
 import { totalXpForLevel } from "../lib/achievements";
 import { Ico } from "../lib/icons";
-import { LangToggle } from "../components/LangToggle";
 
 const EMPTY_HUD = {
   name: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
@@ -25,7 +24,7 @@ const EMPTY_HUD = {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
-  if (!id) return json({ authed: false, hud: EMPTY_HUD, contentLang: "en" });
+  if (!id) return json({ authed: false, hud: EMPTY_HUD });
   const { account, shop } = id;
   const plan = shop.activePlan;
   const tier = plan?.active ? resolveTierKey(plan.type) : null;
@@ -48,7 +47,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
   return json({
     authed: true,
-    contentLang: normalizeContentLang(shop.contentLang),
     hud: {
       name: account.name?.trim() || account.email.split("@")[0],
       level: shop.level,
@@ -87,14 +85,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function WebLayout() {
-  const { authed, hud, contentLang } = useLoaderData<typeof loader>();
+  const { authed, hud } = useLoaderData<typeof loader>();
   const loc = useLocation();
-  // Content-language toggle in the shell header — one tap changes the language
-  // every generation writes in (shop.contentLang), from any page. The fetcher
-  // posts to the /web action's setLang intent; pendingLang shows the pick
-  // instantly while it saves, so the pill never lags behind the tap.
-  const langFetcher = useFetcher();
-  const pendingLang = langFetcher.formData?.get("contentLang")?.toString();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
 
   // Creation mode — "marketing" (sell your products) vs "casual" (just make cool
@@ -209,14 +201,6 @@ export default function WebLayout() {
                 <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title="Sell your products — ads, campaigns, the works">Marketing</button>
                 <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title="Create for yourself — images, videos & music, no store needed">Creator</button>
               </div>
-            )}
-            {authed && (
-              <LangToggle
-                value={pendingLang || contentLang}
-                labels={CONTENT_LANG_NATIVE}
-                onPick={(c) => langFetcher.submit({ intent: "setLang", contentLang: c }, { method: "post", action: "/web" })}
-                title="Content language — the language your generations are written in"
-              />
             )}
             {authed
               ? <Link to="/web/logout" className="wb-out">Log out</Link>

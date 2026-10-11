@@ -8,7 +8,9 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { trimToWord } from "../lib/text-trim";
-import { Form, Link, useActionData, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import { LangToggle } from "../components/LangToggle";
+import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
 import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -238,6 +240,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
     costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
+    // OUTPUT language — the language the generated copy/script/captions are
+    // written in (shop.contentLang). Surfaced as a subtle chip by the Make
+    // button so a merchant can, e.g., run an English store but make Spanish ads.
+    outputLang: normalizeContentLang(shop.contentLang),
   });
 };
 
@@ -1445,6 +1451,10 @@ export default function WebStudio() {
   const preIdsRef = useRef<string[]>([]);
   const makingNounRef = useRef<string>("");
   const makeBtnRef = useRef<HTMLButtonElement>(null);
+  // Output-language chip (by the Make button): sets the language the generated
+  // copy/script is written in. Optimistic pendingLang so the chip never lags.
+  const outLangFetcher = useFetcher();
+  const outputLang = outLangFetcher.formData?.get("contentLang")?.toString() || d.outputLang;
   const stageRev = useRevalidator();
   // Enter "making" on the Stage when a casual generation is queued; remember
   // what's already there so we can spot the fresh piece when it lands.
@@ -2673,6 +2683,16 @@ export default function WebStudio() {
               </div>
             )}
             <input type="hidden" name="burst" value={burst} />
+            {!isMusic && (
+              <div className="ws-outlang">
+                <span className="ws-outlang-lbl">Writing in</span>
+                <LangToggle
+                  value={outputLang} labels={CONTENT_LANG_NATIVE} align="left"
+                  onPick={(c) => outLangFetcher.submit({ intent: "setLang", contentLang: c }, { method: "post", action: "/web" })}
+                  title="Output language — the language the generated copy, script & captions are written in. Keep the app in English and still make, say, Spanish ads."
+                />
+              </div>
+            )}
             <div className="ws-makebar" style={{ marginTop: 10 }}>
               <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
                 {busy
@@ -2926,6 +2946,11 @@ const WS_STYLE = `
 .ws-tok .tb i{font-style:normal;font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);margin-left:5px}
 .ws-tok .tb em.xp{font-style:normal;font-size:11px;font-weight:800;color:var(--brand,#0C7A46);background:rgba(12,122,70,.1);border-radius:999px;padding:2px 7px;margin-left:8px;vertical-align:middle}
 .ws-wallet{margin-top:8px;font-size:12.5px;font-weight:600;color:#7E5E13}
+/* Output-language chip — subtle, right above Make; not part of the main option
+   stack so it never clutters a flow that rarely changes it. */
+.ws-outlang{display:flex;align-items:center;gap:7px;margin:2px 0;font-size:12px;color:var(--ink2,#8A968E)}
+.ws-outlang-lbl{font-weight:600}
+.ws-casual .ws-outlang{justify-content:center}
 
 /* ===================================================================
    CASUAL (Creator) — premium, DeepAI-clean treatment. Scoped to

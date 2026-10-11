@@ -44,6 +44,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   try {
     const account = await createWebAccount(email, password, name || undefined, lang, timezone);
+    // Tell the operator a new account signed up. Best-effort and never throws
+    // (alertOps swallows its own failures), so it can't break or slow the
+    // signup itself. One email per new email address per 30-min window.
+    try {
+      const { alertOps } = await import("../lib/ops-alert.server");
+      await alertOps(`signup:${email}`, `New signup — ${email}`, [
+        "A new account just signed up on EasyMode.",
+        `Email: ${email}`,
+        `Name: ${name || "(not given)"}`,
+        `Language: ${lang || "en"}`,
+        `When: ${new Date().toISOString()}`,
+      ]);
+    } catch { /* a notification must never fail a signup */ }
     return webSessionRedirect(account);
   } catch (e) {
     // Only messages we wrote go to the browser. Anything else — a Prisma
