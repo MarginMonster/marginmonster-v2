@@ -16,6 +16,7 @@ import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
+import { readUiLang, tr } from "../lib/ui-i18n";
 
 export const meta = () => [{ title: "Channels · EasyMode" }];
 
@@ -76,6 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
+  const lang = readUiLang(request);
   const form = await request.formData();
   const intent = (form.get("intent") as string) || "";
 
@@ -104,7 +106,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (shop.activePlan) {
       try { const { assertCapability } = await import("../lib/capabilities.server"); assertCapability(shop.activePlan, "video"); canUse = true; } catch { canUse = false; }
     }
-    if (!canUse) return json({ error: "Channels need a plan with video — upgrade to Studio or Anthem." }, { status: 400 });
+    if (!canUse) return json({ error: tr(lang, "Channels need a plan with video — upgrade to Studio or Anthem.") }, { status: 400 });
 
     const name = ((form.get("name") as string) || "").trim().slice(0, 60);
     const niche = ((form.get("niche") as string) || "").trim().slice(0, 160);
@@ -115,13 +117,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const platforms = ((form.get("platforms") as string) || "")
       .split(",").map((s) => s.trim()).filter((p) => (SOCIAL as readonly string[]).includes(p));
 
-    if (!niche) return json({ error: "Give your channel a vibe — what's it about?" }, { status: 400 });
-    if (!CADENCE[cadence]) return json({ error: "Pick a posting cadence." }, { status: 400 });
+    if (!niche) return json({ error: tr(lang, "Give your channel a vibe — what's it about?") }, { status: 400 });
+    if (!CADENCE[cadence]) return json({ error: tr(lang, "Pick a posting cadence.") }, { status: 400 });
 
     if (autoPost) {
       const linked = socialProviderEnabled() ? linkedFromCache(shop.socialsJson).filter((p) => (SOCIAL as readonly string[]).includes(p)) : [];
       const targets = platforms.length ? platforms.filter((p) => linked.includes(p)) : linked;
-      if (targets.length === 0) return json({ error: "Connect a social account first (or switch to “Let me approve each one”)." }, { status: 400 });
+      if (targets.length === 0) return json({ error: tr(lang, "Connect a social account first (or switch to “Let me approve each one”).") }, { status: 400 });
     }
 
     await db.creatorSeries.create({
@@ -143,7 +145,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return redirect("/web/channels");
   }
 
-  return json({ error: "Unknown action." }, { status: 400 });
+  return json({ error: tr(lang, "Unknown action.") }, { status: 400 });
 };
 
 /* ---------------- UI ---------------- */

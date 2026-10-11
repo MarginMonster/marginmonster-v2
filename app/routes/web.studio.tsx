@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
+import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -148,6 +149,7 @@ const decodeEntities = (s: string) => s
   .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const lang = readUiLang(request);
   const { account, shop } = await requireWebIdentity(request);
   const { customCastFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
@@ -223,7 +225,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     catalogTruncated: !!shop.catalogTruncatedAt,
     catalogSyncing: syncing?.status === "PENDING" || syncing?.status === "IN_PROGRESS",
     // Only when the MOST RECENT attempt is the failed one.
-    catalogFailed: syncing?.status === "FAILED" ? syncing.lastError || "That import didn't complete." : null,
+    catalogFailed: syncing?.status === "FAILED" ? syncing.lastError || tr(lang, "That import didn't complete.") : null,
     // Real start time, so the elapsed counter survives a reload instead of
     // restarting at zero and making a long import look stuck.
     catalogSyncStartedAt:
@@ -249,6 +251,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  const lang = readUiLang(request);
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
@@ -267,7 +270,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { account } = await requireWebIdentity(request);
     const r = await endTrialNow(account.id);
     return r.ok
-      ? json({ trialEnded: "You're on the full plan — your whole allowance just unlocked." })
+      ? json({ trialEnded: tr(lang, "You're on the full plan — your whole allowance just unlocked.") })
       : json({ error: r.error });
   }
 
@@ -279,7 +282,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try {
       storeOrigin(storeUrl); // validates + blocks private hosts before queueing
     } catch (e) {
-      return json({ catalogError: e instanceof Error ? e.message : "That doesn't look like a web address." });
+      return json({ catalogError: e instanceof Error ? e.message : tr(lang, "That doesn't look like a web address.") });
     }
     // A second submission usually means the merchant spotted a typo in the
     // first one. This used to answer "queued!" and silently drop the new URL,
@@ -316,7 +319,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
     if (crawls >= 6) {
-      return json({ catalogError: "That's a lot of imports in one hour — give the last one time to finish and try again shortly." });
+      return json({ catalogError: tr(lang, "That's a lot of imports in one hour — give the last one time to finish and try again shortly.") });
     }
 
     // Re-point anything still waiting: it has not started, so it can simply
@@ -377,14 +380,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       return json({ imported: { title: p.title || "", image: p.image || null, url: p.url } });
     } catch (e) {
-      return json({ importError: e instanceof Error ? e.message : "Couldn't import from that URL." });
+      return json({ importError: e instanceof Error ? e.message : tr(lang, "Couldn't import from that URL.") });
     }
   }
 
   // "Turn your brand mascot into a marketing tool" — forge a private
   // presenter from an uploaded reference. Queued: four renders take ~90s.
   if (intent === "forgeAvatar") {
-    if (!shop.activePlan?.active) return json({ avatarError: "Pick a plan first — the forge runs on tokens." });
+    if (!shop.activePlan?.active) return json({ avatarError: tr(lang, "Pick a plan first — the forge runs on tokens.") });
     // Custom presenters exist to STAR in avatar videos — a "video" capability
     // (Studio+). The forge was gated only on an active plan, so a standalone
     // Creator plan ($6.99, no video) could forge presenters it can never use in
@@ -392,15 +395,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // tokens = ~$0.28 on the Creator token floor. Gate it to the tier that can
     // actually use the output, where 20 tokens (~$0.87 on Studio) clears margin.
     if (!capabilitiesFor(shop.activePlan).has("video")) {
-      return json({ avatarError: "Custom presenters star in your avatar videos — upgrade to a plan with video to forge one." });
+      return json({ avatarError: tr(lang, "Custom presenters star in your avatar videos — upgrade to a plan with video to forge one.") });
     }
     const name = ((form.get("avatarName") as string) || "").trim().slice(0, 40);
-    if (!name) return json({ avatarError: "Give your presenter a name." });
+    if (!name) return json({ avatarError: tr(lang, "Give your presenter a name.") });
     const gender = form.get("avatarGender") === "f" ? "f" : "m";
     const ref = form.get("avatarPhoto");
-    if (!ref || typeof ref === "string" || ref.size === 0) return json({ avatarError: "Upload a photo of your mascot or spokesperson." });
-    if (!/^image\//.test(ref.type)) return json({ avatarError: "That file isn't an image — use a JPG, PNG or WebP." });
-    if (ref.size > 8 * 1024 * 1024) return json({ avatarError: "Image too large — keep it under 8 MB." });
+    if (!ref || typeof ref === "string" || ref.size === 0) return json({ avatarError: tr(lang, "Upload a photo of your mascot or spokesperson.") });
+    if (!/^image\//.test(ref.type)) return json({ avatarError: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
+    if (ref.size > 8 * 1024 * 1024) return json({ avatarError: tr(lang, "Image too large — keep it under 8 MB.") });
     const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
     const ext = ref.type === "image/png" ? "png" : ref.type === "image/webp" ? "webp" : "jpg";
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
@@ -420,19 +423,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       where: { shopId: shop.id, type: "FORGE_CUSTOM_AVATAR", status: { in: ["PENDING", "IN_PROGRESS"] } },
     });
     if (running > 0) {
-      return json({ avatarError: "Your last presenter is still being forged — give it a minute." });
+      return json({ avatarError: tr(lang, "Your last presenter is still being forged — give it a minute.") });
     }
     const MAX_CUSTOM_PRESENTERS = 12;
     const owned = await db.customAvatar.count({ where: { shopId: shop.id } });
     if (owned >= MAX_CUSTOM_PRESENTERS) {
-      return json({ avatarError: `You already have ${MAX_CUSTOM_PRESENTERS} presenters — delete one to forge another.` });
+      return json({ avatarError: tr(lang, "You already have {n} presenters — delete one to forge another.", { n: MAX_CUSTOM_PRESENTERS }) });
     }
 
     let forgeFromExtra = 0;
     try {
       forgeFromExtra = (await spendTokens(shop.id, TOKEN_COST.avatarForge)).fromExtra;
     } catch (e) {
-      return json({ avatarError: e instanceof Error ? e.message : "Not enough tokens to forge a presenter." });
+      return json({ avatarError: e instanceof Error ? e.message : tr(lang, "Not enough tokens to forge a presenter.") });
     }
 
     // The spend above is committed, so everything after it has to either queue
@@ -465,7 +468,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           re instanceof Error ? re.message.slice(0, 200) : re,
         );
       }
-      return json({ avatarError: e instanceof Error ? e.message : "Couldn't start the forge — your tokens were returned." });
+      return json({ avatarError: e instanceof Error ? e.message : tr(lang, "Couldn't start the forge — your tokens were returned.") });
     }
   }
 
@@ -473,14 +476,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const casualMode = form.get("mode") === "casual";
   // Creators don't need a brand voice (that's a marketing concept); only
   // marketing generation requires it. Editing never did.
-  if (!shop.brandProfile && intent !== "edit" && !casualMode) return json({ error: "Set your brand voice on the Dashboard first." });
-  if (!shop.activePlan?.active) return json({ error: "Pick a plan on the Dashboard first — content runs on tokens." });
+  if (!shop.brandProfile && intent !== "edit" && !casualMode) return json({ error: tr(lang, "Set your brand voice on the Dashboard first.") });
+  if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — content runs on tokens.") });
   // Creator section = the $6.99 Creator entitlement (standalone plan, the +add-on,
   // Legend, or a trial). Without it, send them to unlock it rather than generate.
   // Photo EDITS are a Creator feature too — gate them on the entitlement itself,
   // not just the client-supplied mode flag (a marketing-mode POST can't bypass it).
   if ((casualMode || intent === "edit" || intent === "create" || intent === "music" || intent === "quickedit") && !capabilitiesFor(shop.activePlan).has("creator")) {
-    return json({ error: "Creator is included on every plan — pick one on the Plans page to make images, edit photos and generate music (or get the standalone Creator plan for $6.99/mo)." });
+    return json({ error: tr(lang, "Creator is included on every plan — pick one on the Plans page to make images, edit photos and generate music (or get the standalone Creator plan for $6.99/mo).") });
   }
 
   const productTitle = ((form.get("productTitle") as string) || "").trim();
@@ -537,8 +540,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // flows do. (Masked until Creator became free on every plan — now reachable.)
   // Casual video is now describe-first too (no separate "name" field) — derive
   // its title from the description, same as create/music/faceless.
-  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && !(casualMode && intent === "video")) return json({ error: "Give the product a name." });
-  if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: "The product image must be a full https:// URL." });
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
+  if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: tr(lang, "The product image must be a full https:// URL.") });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
   // Stored on the persistent disk and served publicly at /uploads/* so the
@@ -547,8 +550,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let uploadedPhoto = false;
   const photo = form.get("productPhoto");
   if (photo && typeof photo !== "string" && photo.size > 0) {
-    if (!/^image\//.test(photo.type)) return json({ error: "That file isn't an image — use a JPG, PNG or WebP." });
-    if (photo.size > 8 * 1024 * 1024) return json({ error: "Image too large — keep it under 8 MB." });
+    if (!/^image\//.test(photo.type)) return json({ error: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
+    if (photo.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Image too large — keep it under 8 MB.") });
     const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
     const ext = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
@@ -556,7 +559,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
     fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await photo.arrayBuffer()));
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    if (!base) return json({ error: "Photo uploads aren't configured on this server yet — paste an image URL instead." });
+    if (!base) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet — paste an image URL instead.") });
     productImageUrl = `${base}/uploads/${name}`;
     uploadedPhoto = true;
   }
@@ -570,7 +573,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (productImageUrl && !uploadedPhoto) {
     const resolved = await resolveImageOrPage(productImageUrl);
     if (!resolved.image) {
-      return json({ error: `We couldn't get a product image from that link — ${resolved.why || "it isn't an image and has no product photo on the page"}. Paste a direct image link, or upload the photo.` });
+      return json({ error: tr(lang, "We couldn't get a product image from that link — {why}. Paste a direct image link, or upload the photo.", { why: resolved.why || tr(lang, "it isn't an image and has no product photo on the page") }) });
     }
     productImageUrl = resolved.image;
   }
@@ -583,7 +586,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // render is the intended path (minimax text-to-video / cartoon text keyframe),
   // and the claims guardrail already governs any spoken/on-screen copy.
   if ((intent === "video" || intent === "image") && !service && !productImageUrl && !(casualMode && intent === "video")) {
-    return json({ error: "Add a product photo — upload one or paste an image URL. Without it we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”." });
+    return json({ error: tr(lang, "Add a product photo — upload one or paste an image URL. Without it we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”.") });
   }
 
   // TOKENS CHARGED BUT NOT YET BACKED BY A QUEUED JOB.
@@ -630,7 +633,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // fail BEFORE tokens are spent, not in the pipeline.
       const presenterVideo = !!avatarId && contentType !== "cartoon" && contentType !== "jingle";
       if (presenterVideo && !productImageUrl && !service) {
-        return json({ error: "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to Service / offer.)" });
+        return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to Service / offer.)") });
       }
       // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
       // not use one: it goes through the lipsync chain (HeyGen/omni-human), so
@@ -682,7 +685,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
       if (avatarId && !productImageUrl && !service) {
-        return json({ error: "Add a product photo — the presenter needs something to hold." });
+        return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
       }
       // Ad templates & formats are marketing constructs — never applied in
       // casual, so a casual image is a clean styled still, not an ad layout.
@@ -764,13 +767,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const pickedOp = ((form.get("editOp") as string) || "").trim();
       const editOp = pickedOp || ((direction || "").trim() ? "describe" : "");
       if (!["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "replace", "describe"].includes(editOp)) {
-        return json({ error: "Upload a photo and describe the changes you want — or tap a quick action." });
+        return json({ error: tr(lang, "Upload a photo and describe the changes you want — or tap a quick action.") });
       }
       if ((editOp === "describe" || editOp === "replace") && !(direction || "").trim()) {
-        return json({ error: "Describe the changes you want — e.g. 'make the shirt a purple hoodie'." });
+        return json({ error: tr(lang, "Describe the changes you want — e.g. 'make the shirt a purple hoodie'.") });
       }
       if (!productImageUrl) {
-        return json({ error: "Add a photo to edit — upload one or paste an image URL." });
+        return json({ error: tr(lang, "Add a photo to edit — upload one or paste an image URL.") });
       }
       // The user picks the edit engine (Pro = nano-banana, Ultra = nano-banana-
       // pro). Charge base image + the model surcharge, validated server-side.
@@ -797,13 +800,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       assertCapability(shop.activePlan, "image");
       const quickOp = ((form.get("editOp") as string) || "").trim();
       if (!["bgremove", "upscale", "replace"].includes(quickOp)) {
-        return json({ error: "That quick action isn't available." });
+        return json({ error: tr(lang, "That quick action isn't available.") });
       }
       if (quickOp === "replace" && !(direction || "").trim()) {
-        return json({ error: "Couldn't apply that edit." });
+        return json({ error: tr(lang, "Couldn't apply that edit.") });
       }
       if (!productImageUrl) {
-        return json({ error: "Make an image first, then tap a quick edit." });
+        return json({ error: tr(lang, "Make an image first, then tap a quick edit.") });
       }
       const quickFromExtra = (await spendTokens(shop.id, TOKEN_COST.quickEdit)).fromExtra;
       charged(TOKEN_COST.quickEdit, quickFromExtra);
@@ -820,7 +823,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Creator "Make an image" — text-to-image in an art style. No product.
       assertCapability(shop.activePlan, "image");
       const createPrompt = trimToWord((form.get("createPrompt") as string) || (direction || ""), 500);
-      if (!createPrompt) return json({ error: "Describe what you want to make." });
+      if (!createPrompt) return json({ error: tr(lang, "Describe what you want to make.") });
       const createStyle = ((form.get("createStyle") as string) || "").trim() || undefined;
       // Model + output frame are re-validated here (and again in createImage)
       // against the create-models allow-list — a crafted value can't reach
@@ -848,7 +851,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Creator "Make music" — text-to-song. No product, no photo.
       assertCapability(shop.activePlan, "music");
       const musicBase = trimToWord((form.get("musicPrompt") as string) || (direction || ""), 500);
-      if (!musicBase) return json({ error: "Describe the music you want." });
+      if (!musicBase) return json({ error: tr(lang, "Describe the music you want.") });
       // Fold the picked genre/mood preset into the prompt (DeepAI-style style
       // selection on top of the free-text prompt). Unknown keys are ignored.
       const musicStyleKey = ((form.get("musicStyle") as string) || "").trim();
@@ -869,7 +872,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // no photo. Gated at the "video" capability (video-shaped pipeline).
       assertCapability(shop.activePlan, "video");
       const topic = trimToWord((form.get("facelessTopic") as string) || (direction || ""), 300);
-      if (!topic) return json({ error: "Give your video a topic." });
+      if (!topic) return json({ error: tr(lang, "Give your video a topic.") });
       const facelessFormat = ((form.get("facelessFormat") as string) || "facts").trim();
       const voiceKey = ((form.get("voiceKey") as string) || "f-warm").trim();
       // Ultra = nano-banana-pro b-roll (vs nano-banana for Pro) — a per-video
@@ -914,7 +917,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       }
     }
-    return json({ error: e instanceof Error ? e.message : "Couldn't queue that." });
+    return json({ error: e instanceof Error ? e.message : tr(lang, "Couldn't queue that.") });
   }
   return json({});
 };

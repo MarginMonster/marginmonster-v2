@@ -15,6 +15,7 @@ import { json } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
 import { useState } from "react";
 import { useT } from "../lib/ui-lang";
+import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { LIVE_AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
@@ -279,13 +280,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
+  const lang = readUiLang(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
 
   if (intent === "launch") {
     let bag: { title: string; image: string | null; url?: string | null }[] = [];
     try { bag = JSON.parse((form.get("products") as string) || "[]"); } catch { /* empty */ }
-    if (!bag.length) return json({ error: "Pick at least one product for the campaign to feature." });
+    if (!bag.length) return json({ error: tr(lang, "Pick at least one product for the campaign to feature.") });
     const res = await acceptQuestline({
       shopId: shop.id,
       templateKey: (form.get("plan") as string) || "",

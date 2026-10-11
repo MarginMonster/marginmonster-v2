@@ -8,6 +8,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
+import { readUiLang, tr } from "../lib/ui-i18n";
 import {
   PLAN_TIERS, MARKETING_TIERS, PLAN_BY_KEY, CREATOR_PRICE, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
   annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
@@ -24,6 +25,7 @@ import { externalOrigin } from "../lib/origin.server";
 export const meta = () => [{ title: "Dashboard · EasyMode" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const lang = readUiLang(request);
   const { account, shop } = await requireWebIdentity(request);
   const tierKey = shop.activePlan?.active ? resolveTierKey(shop.activePlan.type) : null;
   const { CONTENT_LANGS, normalizeContentLang } = await import("../lib/content-lang");
@@ -87,11 +89,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const caps = capabilitiesFor(shop.activePlan);
       const balance = tokensRemainingLive(shop.activePlan);
       if (caps.has("video") && balance >= TOKEN_COST.video) {
-        nextMove = { kind: "video", reason: "Video is what stops the scroll — pick a presenter, a cartoon style or a cinematic highlight.", cost: TOKEN_COST.video };
+        nextMove = { kind: "video", reason: tr(lang, "Video is what stops the scroll — pick a presenter, a cartoon style or a cinematic highlight."), cost: TOKEN_COST.video };
       } else if (caps.has("image") && balance >= TOKEN_COST.image) {
-        nextMove = { kind: "image", reason: "A scroll-stopping image ad built on a famous ad format — done in about a minute.", cost: TOKEN_COST.image };
+        nextMove = { kind: "image", reason: tr(lang, "A scroll-stopping image ad built on a famous ad format — done in about a minute."), cost: TOKEN_COST.image };
       } else if (caps.has("blog") && balance >= TOKEN_COST.blog) {
-        nextMove = { kind: "blog", reason: "An SEO article pulls in free Google traffic that keeps working long after you post it.", cost: TOKEN_COST.blog };
+        nextMove = { kind: "blog", reason: tr(lang, "An SEO article pulls in free Google traffic that keeps working long after you post it."), cost: TOKEN_COST.blog };
       }
     } catch { /* non-fatal — the card just won't render */ }
   }
@@ -141,6 +143,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  const lang = readUiLang(request);
   const { account, shop } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
@@ -153,7 +156,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const tone = ((form.get("tone") as string) || "").trim();
     const tagline = ((form.get("tagline") as string) || "").trim();
     const about = ((form.get("about") as string) || "").trim();
-    if (!tone && !about) return json({ error: "Tell us a little about the brand so content sounds like you." });
+    if (!tone && !about) return json({ error: tr(lang, "Tell us a little about the brand so content sounds like you.") });
     const voiceJson = JSON.stringify({ tone: tone || "friendly, confident, modern", tagline, about, vocabulary: [], values: [] });
     // "{}" here meant every prompt that reads productJson.positioning got the
     // literal string "undefined" for a web merchant. What the merchant typed
@@ -183,9 +186,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     // Content language rides the brand form — it's part of the brand's voice.
     const { normalizeContentLang } = await import("../lib/content-lang");
-    const lang = (form.get("contentLang") as string) || "";
-    if (lang) await db.shop.update({ where: { id: shop.id }, data: { contentLang: normalizeContentLang(lang) } });
-    return json({ ok: "Voice updated ✓ — new content will speak it. The studio is open.", voiceSaved: true });
+    const contentLang = (form.get("contentLang") as string) || "";
+    if (contentLang) await db.shop.update({ where: { id: shop.id }, data: { contentLang: normalizeContentLang(contentLang) } });
+    return json({ ok: tr(lang, "Voice updated ✓ — new content will speak it. The studio is open."), voiceSaved: true });
   }
 
   // Referral: a new account enters someone's code (paid out on conversion).
@@ -196,9 +199,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (intent === "subscribe") {
-    if (!stripeEnabled()) return json({ error: "Billing is coming online — check back shortly." });
+    if (!stripeEnabled()) return json({ error: tr(lang, "Billing is coming online — check back shortly.") });
     const tierKey = form.get("tier") as PlanKey;
-    if (!PLAN_BY_KEY[tierKey]) return json({ error: "Unknown plan." });
+    if (!PLAN_BY_KEY[tierKey]) return json({ error: tr(lang, "Unknown plan.") });
     // Bolt the $6.99 Creator section onto this plan (ignored on CREATOR itself,
     // and on Legend which already includes it). The per-plan toggle sends an
     // EXPLICIT withCreator ("1" or "0") — honour it so the add-on can be removed,
@@ -215,7 +218,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // through — this only blocks the pure duplicate. Toggling the Creator add-on
     // on the SAME tier is a real change, so it is NOT a duplicate.
     if (shop.activePlan?.active && resolveTierKey(shop.activePlan.type) === tierKey && !!shop.activePlan.creatorAddon === withCreator) {
-      return json({ error: `You're already on ${PLAN_BY_KEY[tierKey].name}${withCreator ? " with Creator" : ""}.` });
+      return json({ error: tr(lang, withCreator ? "You're already on {name} with Creator." : "You're already on {name}.", { name: PLAN_BY_KEY[tierKey].name }) });
     }
     // SAME tier, only the Creator add-on is changing → modify the LIVE
     // subscription in place (prorated). Re-running checkout here would open a
@@ -229,7 +232,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Mirror locally for an instant UI update; the subscription.updated webhook
       // re-affirms it from the subscription metadata (the source of truth).
       await db.plan.updateMany({ where: { shopId: shop.id }, data: { creatorAddon: withCreator } }).catch(() => { /* non-fatal */ });
-      return json({ ok: withCreator ? "Creator added to your plan — your Create section is unlocked." : "Creator removed from your plan." });
+      return json({ ok: withCreator ? tr(lang, "Creator added to your plan — your Create section is unlocked.") : tr(lang, "Creator removed from your plan.") });
     }
     // ...but that guard can only read what the WEBHOOK writes, and Stripe
     // redirects the merchant back the instant checkout completes. For the first
@@ -248,7 +251,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const pending = await resolvePendingCheckout(account.id);
       if (pending.state === "paid") {
         const name = PLAN_BY_KEY[(pending.tierKey || tierKey) as PlanKey]?.name || "Your plan";
-        return json({ error: `${name} is already active — that last payment just took a moment to land. Reload to see it.` });
+        return json({ error: tr(lang, "{name} is already active — that last payment just took a moment to land. Reload to see it.", { name }) });
       }
     } catch (e) {
       // Never block a checkout on the guard itself failing: the window this
@@ -272,7 +275,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       return redirect(url);
     } catch (e) {
-      return json({ error: e instanceof Error ? e.message : "Checkout couldn't start." });
+      return json({ error: e instanceof Error ? e.message : tr(lang, "Checkout couldn't start.") });
     }
   }
 
@@ -281,18 +284,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "cancelPlan" || intent === "resumePlan") {
     const { setPlanCancellation } = await import("../lib/stripe.server");
     const r = await setPlanCancellation(account.id, intent === "cancelPlan");
-    if (!r.ok) return json({ error: r.error || "Couldn't update your plan just now." });
+    if (!r.ok) return json({ error: r.error || tr(lang, "Couldn't update your plan just now.") });
     return json({
       ok:
         intent === "cancelPlan"
-          ? "Your plan won't renew. You keep everything until the end of the period you've already paid for."
-          : "Your plan is back on — it'll renew as normal.",
+          ? tr(lang, "Your plan won't renew. You keep everything until the end of the period you've already paid for.")
+          : tr(lang, "Your plan is back on — it'll renew as normal."),
     });
   }
 
   if (intent === "pack") {
-    if (!stripeEnabled()) return json({ error: "Billing is coming online — check back shortly." });
-    if (!shop.activePlan?.active) return json({ error: "Pick a plan first — packs top up a plan's balance." });
+    if (!stripeEnabled()) return json({ error: tr(lang, "Billing is coming online — check back shortly.") });
+    if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan first — packs top up a plan's balance.") });
     // A TRIAL WILL NOT LET THEM SPEND THIS.
     //
     // Purchased tokens land in tokensExtra, and for the whole trial both the
@@ -304,9 +307,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // button already exists in the Studio.
     if (planTrialing(shop.activePlan)) {
       return json({
-        error:
+        error: tr(
+          lang,
           "Top-ups unlock when your trial converts — they can't be spent before then. " +
-          "Start your plan now from the Studio and your balance opens up straight away.",
+            "Start your plan now from the Studio and your balance opens up straight away.",
+        ),
       });
     }
     const tokens = parseInt((form.get("tokens") as string) || "0", 10);
@@ -314,7 +319,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const url = await createPackCheckout({ accountId: account.id, email: account.email, tokens, baseUrl });
       return redirect(url);
     } catch (e) {
-      return json({ error: e instanceof Error ? e.message : "Checkout couldn't start." });
+      return json({ error: e instanceof Error ? e.message : tr(lang, "Checkout couldn't start.") });
     }
   }
 

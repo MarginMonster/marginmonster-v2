@@ -8,6 +8,7 @@ import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useS
 import { useEffect, useState } from "react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
+import { readUiLang, tr } from "../lib/ui-i18n";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { isExpiringUrl } from "../lib/image-generation.server";
 import { db } from "../db.server";
@@ -254,6 +255,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
+  const lang = readUiLang(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
 
@@ -269,7 +271,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // worker rendered the merchant another 150-token video for free — as many
     // times as they pressed it.
     const job = await db.job.findFirst({ where: { id: jobId, shopId: shop.id, status: { in: ["FAILED", "IN_PROGRESS"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_SONG", "GENERATE_BLOG_POST"] } } });
-    if (!job) return json({ error: "That job's gone — try generating again from the Studio." });
+    if (!job) return json({ error: tr(lang, "That job's gone — try generating again from the Studio.") });
     let payload: Record<string, unknown> = {};
     try { payload = JSON.parse(job.payload); } catch { /* ignore */ }
     // Re-assert entitlement for EVERY generator type before re-charging — a
@@ -305,7 +307,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // expiring one on the next failure, which is the bug this field exists
       // to prevent.
       try { retryFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
-      catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
+      catch (e) { return json({ error: e instanceof Error ? e.message : tr(lang, "Not enough tokens to retry.") }); }
       // START CLEAN. A re-run is a fresh render the merchant is paying for
       // again, so it must not inherit the previous run's stage checkpoints:
       // ckFalRequestId, ckTalkingUrl and friends would re-attach to — or
@@ -336,9 +338,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const { refundTokens } = await import("../lib/tokens.server");
         await refundTokens(shop.id, spent, retryFromExtra).catch((e) => console.error("[retry] losing click refund failed:", e));
       }
-      return json({ ok: "Already retrying — hang tight." });
+      return json({ ok: tr(lang, "Already retrying — hang tight.") });
     }
-    return json({ ok: "Retrying — back in the oven." });
+    return json({ ok: tr(lang, "Retrying — back in the oven.") });
   }
   if (intent === "dismissJob") {
     const jobId = (form.get("jobId") as string) || "";
@@ -359,15 +361,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // avatar variant is nudged so the new take genuinely looks different.
     // Costs the same as making one new. (Web accounts have no Shopify catalog
     // to re-fetch a photo from — the metaJson-stored productImageUrl rides along.)
-    if (!shop.brandProfile) return json({ error: "Analyze your store first so remixes match your brand." });
-    if (!shop.activePlan?.active) return json({ error: "Pick a plan first — remixes run on tokens." });
+    if (!shop.brandProfile) return json({ error: tr(lang, "Analyze your store first so remixes match your brand.") });
+    if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan first — remixes run on tokens.") });
     const id = (form.get("assetId") as string) || "";
     const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "BLOG_POST"] } } });
-    if (!asset) return json({ error: "That piece is gone — refresh and try again." });
+    if (!asset) return json({ error: tr(lang, "That piece is gone — refresh and try again.") });
     let meta: { productTitle?: string; avatarId?: string; avatarVariant?: number; direction?: string; style?: string; cartoonStyle?: string; productImageUrl?: string; formatKey?: string; templateKey?: string; serviceMode?: boolean; styleMode?: string; wear?: boolean } = {};
     try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* ignore */ }
     const productTitle = (meta.productTitle || asset.title || "").trim();
-    if (!productTitle) return json({ error: "Couldn't tell which product this was — remake it from the Studio." });
+    if (!productTitle) return json({ error: tr(lang, "Couldn't tell which product this was — remake it from the Studio.") });
     const avatarId = meta.avatarId || undefined;
     const direction = meta.direction || undefined;
     const nextVariant = avatarId ? (((meta.avatarVariant ?? 0) + 1) % 4) : 0; // rotate the take
@@ -397,7 +399,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // the photo lands here, which is a one-time cliff, not an ongoing one.
     if (asset.type !== "BLOG_POST" && !meta.serviceMode && !productImageUrl) {
       return json({
-        error: `This ${type === "video" ? "video" : "ad"} was made before we started saving its product photo, so a remix would invent a product instead of using yours. Remake it from the Studio — pick the product and we'll keep the rest.`,
+        error: tr(lang, "This {kind} was made before we started saving its product photo, so a remix would invent a product instead of using yours. Remake it from the Studio — pick the product and we'll keep the rest.", { kind: type === "video" ? "video" : "ad" }),
       });
     }
     const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
@@ -441,7 +443,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let remixFromExtra = 0;
     if (!free) {
       try { remixFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
-      catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a remix." }); }
+      catch (e) { return json({ error: e instanceof Error ? e.message : tr(lang, "Not enough tokens for a remix.") }); }
     }
     // prePaid:false on a free job, NOT chargedTokens:0 — the refund path
     // falls back to REFUND_BY_TYPE when chargedTokens is not a positive
@@ -496,7 +498,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // when linked (richest tag style), else the first linked network.
     const id = (form.get("assetId") as string) || "";
     const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
-    if (!asset) return json({ error: "That piece is gone — refresh and try again." });
+    if (!asset) return json({ error: tr(lang, "That piece is gone — refresh and try again.") });
     let title = asset.title || "New from our shop";
     try { const m = JSON.parse(asset.metaJson || "{}"); title = m.productTitle || title; } catch { /* ignore */ }
     const isVideo = asset.type === "VIDEO_AD";
@@ -514,21 +516,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ draft: buildPostTitle(captions[tune], buyUrl, fbText) });
   }
   if (intent === "post") {
-    if (!socialProviderEnabled()) return json({ error: "Social posting is coming online — check back shortly." });
+    if (!socialProviderEnabled()) return json({ error: tr(lang, "Social posting is coming online — check back shortly.") });
     const id = (form.get("assetId") as string) || "";
     const asset = await db.asset.findFirst({ where: { id, shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
-    if (!asset) return json({ error: "That piece is gone — refresh and try again." });
+    if (!asset) return json({ error: tr(lang, "That piece is gone — refresh and try again.") });
     let media: string | undefined;
     let title = asset.title || "New from our shop";
     try { const b = JSON.parse(asset.bodyJson || "{}"); media = b.videoUrl || b.imageUrl; } catch { /* ignore */ }
     try { const m = JSON.parse(asset.metaJson || "{}"); title = m.productTitle || title; } catch { /* ignore */ }
-    if (!media) return json({ error: "This piece has no media to post." });
+    if (!media) return json({ error: tr(lang, "This piece has no media to post.") });
     // Provision-on-demand instead of hard-failing on a missing profile key, and
     // a live platform refresh instead of trusting the stale socials cache.
     const profileKey = await ensureProfile(shop.id);
-    if (!profileKey) return json({ error: "Couldn't reach the posting service — try again in a minute." });
+    if (!profileKey) return json({ error: tr(lang, "Couldn't reach the posting service — try again in a minute.") });
     const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
-    if (platforms.length === 0) return json({ error: "Link your socials first on the Auto-posting page." });
+    if (platforms.length === 0) return json({ error: tr(lang, "Link your socials first on the Auto-posting page.") });
     const isVideo = asset.type === "VIDEO_AD";
     // DO NOT ABSOLUTIZE HERE.
     //
@@ -595,7 +597,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         lastErr = r.error;
       }
     }
-    if (!landed.length) return json({ error: `Posting failed (${lastErr || "unknown"}) — check your linked accounts.` });
+    if (!landed.length) return json({ error: tr(lang, "Posting failed ({err}) — check your linked accounts.", { err: lastErr || "unknown" }) });
     // Remember WHERE it landed: the live post links power the Boost panel
     // and stay on the card long after this response is gone.
     let meta: Record<string, unknown> = {};
@@ -635,8 +637,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       postedAssetId: id,
       posted: landed.join(" · "),
       ok: missed.length
-        ? `Posted to ${landed.join(" · ")}. ${missed.join(" · ")} didn't go through (${lastErr || "unknown"}) — check that account and try again.`
-        : `Posted to ${landed.join(" · ")}`,
+        ? tr(lang, "Posted to {landed}. {missed} didn't go through ({err}) — check that account and try again.", { landed: landed.join(" · "), missed: missed.join(" · "), err: lastErr || "unknown" })
+        : tr(lang, "Posted to {landed}", { landed: landed.join(" · ") }),
       postedUrls,
     });
   }

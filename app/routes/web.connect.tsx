@@ -9,6 +9,7 @@ import { connectUrl, refreshLinkedPlatforms, socialProviderEnabled } from "../li
 import { externalOrigin } from "../lib/origin.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
+import { readUiLang, tr } from "../lib/ui-i18n";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
@@ -24,12 +25,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  const lang = readUiLang(request);
   const { shop } = await requireWebIdentity(request);
-  if (!socialProviderEnabled()) return json({ error: "Social posting is coming online — check back shortly." });
+  if (!socialProviderEnabled()) return json({ error: tr(lang, "Social posting is coming online — check back shortly.") });
   // externalOrigin, because request.url is http:// behind Render’s edge and
   // this address is where the provider sends the merchant back.
   const url = await connectUrl(shop.id, `${externalOrigin(request)}/web/connect`);
-  if (!url) return json({ error: "Couldn't open the connect page — try again in a moment." });
+  if (!url) return json({ error: tr(lang, "Couldn't open the connect page — try again in a moment.") });
   return redirect(url);
 };
 
