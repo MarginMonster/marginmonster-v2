@@ -82,6 +82,15 @@ export default function Index() {
   const [lang, setLang] = useState<LangKey>("en");
   useEffect(() => { setLang(detectLang()); }, []);
   useEffect(() => { try { document.documentElement.lang = lang; } catch { /* SSR */ } }, [lang]);
+  // Carry the landing's language into the APP: the uiLang cookie is what the
+  // whole web app (shell, Studio, everything) reads to pick its display
+  // language. Mirroring it here — on auto-detect and on every explicit pick —
+  // means someone who reads the pitch in Spanish and signs up lands in a
+  // Spanish app, not an English one. They can still change it from the header
+  // pill anytime. (Content/output language stays a separate control.)
+  useEffect(() => {
+    try { document.cookie = `uiLang=${lang}; Path=/; Max-Age=31536000; SameSite=Lax`; } catch { /* private mode */ }
+  }, [lang]);
   const pick = (l: LangKey) => { setLang(l); try { localStorage.setItem("emLang", l); } catch { /* private mode */ } };
   const t = LANDING_I18N[lang] || LANDING_I18N.en;
   // Two-paths (Create / Market) copy — falls back to English until translated.

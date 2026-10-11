@@ -5,8 +5,10 @@ import {
   Scripts,
   ScrollRestoration,
   isRouteErrorResponse,
+  useLoaderData,
   useRouteError,
 } from "@remix-run/react";
+import { json } from "@remix-run/node";
 import type {
   LinksFunction,
   LoaderFunctionArgs,
@@ -14,6 +16,8 @@ import type {
   MetaFunction,
 } from "@remix-run/node";
 import { addDocumentResponseHeaders } from "./shopify.server";
+import { readUiLang } from "./lib/ui-i18n";
+import { UiLangProvider } from "./lib/ui-lang";
 
 /* Default document head. <Meta /> was already wired up below, but not one
  * route in the app exported a meta function, so every page — the marketing
@@ -81,14 +85,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
   await addDocumentResponseHeaders(request, headers);
   applySecurityHeaders(request, headers);
-  return new Response(null, { status: 200, headers });
+  // The chosen UI display language, resolved once here so SSR renders the whole
+  // document in it (no English-then-swap flash) and <html lang> is correct for
+  // screen readers and the browser's own UI.
+  const uiLang = readUiLang(request);
+  return json({ uiLang }, { headers });
 };
 
 export const headers: HeadersFunction = ({ loaderHeaders }) => loaderHeaders;
 
 export default function App() {
+  const { uiLang } = useLoaderData<typeof loader>();
   return (
-    <html lang="en">
+    <html lang={uiLang}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -96,7 +105,9 @@ export default function App() {
         <Links />
       </head>
       <body>
-        <Outlet />
+        <UiLangProvider lang={uiLang}>
+          <Outlet />
+        </UiLangProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

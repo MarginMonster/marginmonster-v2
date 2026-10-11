@@ -2,7 +2,7 @@
  * archive. Same engine, no Polaris/App Bridge; styled to match the landing. */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Link, Outlet, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
+import { Link, Outlet, useLoaderData, useLocation, useNavigate, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
@@ -11,6 +11,9 @@ import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { normalizeContentLang } from "../lib/content-lang";
 import { totalXpForLevel } from "../lib/achievements";
 import { Ico } from "../lib/icons";
+import { LangToggle } from "../components/LangToggle";
+import { UI_LANG_NATIVE } from "../lib/ui-i18n";
+import { useT, useUiLang } from "../lib/ui-lang";
 
 const EMPTY_HUD = {
   name: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
@@ -88,6 +91,12 @@ export default function WebLayout() {
   const { authed, hud } = useLoaderData<typeof loader>();
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
+  // UI display language — the header pill. t() translates chrome; the pill
+  // POSTs to /set-ui-lang, which sets the cookie and redirects back so every
+  // loader re-runs and the whole app re-renders in the chosen language.
+  const t = useT();
+  const uiLang = useUiLang();
+  const submitLang = useSubmit();
 
   // Creation mode — "marketing" (sell your products) vs "casual" (just make cool
   // stuff + edit photos). A pure front-end reframe: it swaps copy and hides the
@@ -142,30 +151,30 @@ export default function WebLayout() {
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wb">
         {authed && showChooser && (
-          <div className="wb-chooser" role="dialog" aria-modal="true" aria-label="Choose where to start">
+          <div className="wb-chooser" role="dialog" aria-modal="true" aria-label={t("Choose where to start")}>
             <div className="wb-ch-panel">
               <div className="wb-ch-brand"><Crest size={30} /><span>Easy<b>Mode</b></span></div>
-              <h1 className="wb-ch-h">Where do you want to start?</h1>
-              <p className="wb-ch-sub">Jump into either — switch between them anytime from the toggle up top.</p>
+              <h1 className="wb-ch-h">{t("Where do you want to start?")}</h1>
+              <p className="wb-ch-sub">{t("Jump into either — switch between them anytime from the toggle up top.")}</p>
               <div className="wb-ch-grid">
                 <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
                   <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
                   <span className="wb-ch-body">
-                    <span className="wb-ch-eyebrow">Creator · Free roam</span>
-                    <span className="wb-ch-title">Create anything</span>
-                    <span className="wb-ch-desc">Turn any idea into an image, video or song — just describe it, and it&apos;s yours.</span>
-                    <span className="wb-ch-nav">Studio · Channels · Gallery</span>
-                    <span className="wb-ch-go">Enter creator <span aria-hidden="true">→</span></span>
+                    <span className="wb-ch-eyebrow">{t("Creator · Free roam")}</span>
+                    <span className="wb-ch-title">{t("Create anything")}</span>
+                    <span className="wb-ch-desc">{t("Turn any idea into an image, video or song — just describe it, and it’s yours.")}</span>
+                    <span className="wb-ch-nav">{t("Studio · Channels · Gallery")}</span>
+                    <span className="wb-ch-go">{t("Enter creator")} <span aria-hidden="true">→</span></span>
                   </span>
                 </button>
                 <button type="button" className="wb-ch-card mk" onClick={() => pickMode("marketing")}>
                   <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
                   <span className="wb-ch-body">
-                    <span className="wb-ch-eyebrow">Marketing</span>
-                    <span className="wb-ch-title">Market my store</span>
-                    <span className="wb-ch-desc">AI ads, campaigns and auto-posting that sell your products.</span>
-                    <span className="wb-ch-nav">Dashboard · Campaigns · Channels</span>
-                    <span className="wb-ch-go">Enter marketing <span aria-hidden="true">→</span></span>
+                    <span className="wb-ch-eyebrow">{t("Marketing")}</span>
+                    <span className="wb-ch-title">{t("Market my store")}</span>
+                    <span className="wb-ch-desc">{t("AI ads, campaigns and auto-posting that sell your products.")}</span>
+                    <span className="wb-ch-nav">{t("Dashboard · Campaigns · Channels")}</span>
+                    <span className="wb-ch-go">{t("Enter marketing")} <span aria-hidden="true">→</span></span>
                   </span>
                 </button>
               </div>
@@ -181,30 +190,37 @@ export default function WebLayout() {
             <nav className="wb-tabs">
               {/* Creator Home merged into the Studio — casual leads with Studio;
                   only Marketing keeps a separate Dashboard. */}
-              {mode === "marketing" && <Link className={tab("/web")} to="/web">Dashboard</Link>}
-              <Link className={tab("/web/studio")} to="/web/studio">Studio</Link>
+              {mode === "marketing" && <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>}
+              <Link className={tab("/web/studio")} to="/web/studio">{t("Studio")}</Link>
               {/* Channels = the Creator autopilot (faceless video on a cadence).
                   Casual only — it's a creator surface, not a selling one. */}
-              {mode === "casual" && <Link className={tab("/web/channels")} to="/web/channels">Channels</Link>}
+              {mode === "casual" && <Link className={tab("/web/channels")} to="/web/channels">{t("Channels")}</Link>}
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
-              {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">Campaigns</Link>}
+              {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>}
               {/* Product Channels = faceless product-video autopilot (marketing). */}
-              {mode === "marketing" && <Link className={tab("/web/product-channels")} to="/web/product-channels">Channels</Link>}
-              <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{mode === "casual" ? "Gallery" : "Archive"}</Link>
-              <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? "Share" : "Auto-posting"}</Link>
+              {mode === "marketing" && <Link className={tab("/web/product-channels")} to="/web/product-channels">{t("Channels")}</Link>}
+              <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{mode === "casual" ? t("Gallery") : t("Archive")}</Link>
+              <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? t("Share") : t("Auto-posting")}</Link>
             </nav>
           )}
           <div className="wb-me">
+            <LangToggle
+              value={uiLang}
+              labels={UI_LANG_NATIVE}
+              align="right"
+              title={t("Display language — translates the app")}
+              onPick={(c) => submitLang({ lang: c }, { method: "post", action: "/set-ui-lang" })}
+            />
             {authed && (
-              <div className="wb-mode" role="group" aria-label="Creation mode">
-                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title="Sell your products — ads, campaigns, the works">Marketing</button>
-                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title="Create for yourself — images, videos & music, no store needed">Creator</button>
+              <div className="wb-mode" role="group" aria-label={t("Creation mode")}>
+                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Sell your products — ads, campaigns, the works")}>{t("Marketing")}</button>
+                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title={t("Create for yourself — images, videos & music, no store needed")}>{t("Creator")}</button>
               </div>
             )}
             {authed
-              ? <Link to="/web/logout" className="wb-out">Log out</Link>
-              : <Link to="/web/login" className="wb-login">Log in</Link>}
+              ? <Link to="/web/logout" className="wb-out">{t("Log out")}</Link>
+              : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
           </div>
         </header>
 
@@ -212,12 +228,12 @@ export default function WebLayout() {
             Level, token reserve, XP to the next level and what the wallet
             currently affords, all in one glance. */}
         {authed && (
-          <div className={`wb-hud${hudMin ? " min" : ""}${mode === "casual" ? " wb-hud-lite" : ""}`} aria-label="Player status">
+          <div className={`wb-hud${hudMin ? " min" : ""}${mode === "casual" ? " wb-hud-lite" : ""}`} aria-label={t("Player status")}>
             {hudMin ? (
               <button
                 type="button" className="wb-hud-mini" onClick={toggleHud}
-                title={`LVL ${hud.level} · ${hud.tokens.toLocaleString()} tokens — tap to expand`}
-                aria-label="Expand player status"
+                title={t("LVL {n} · {tokens} tokens — tap to expand", { n: hud.level, tokens: hud.tokens.toLocaleString() })}
+                aria-label={t("Expand player status")}
               >
                 <Crest size={22} />
                 <span className="wb-hud-lvl">LVL {hud.level}</span>
@@ -229,15 +245,15 @@ export default function WebLayout() {
                 <div className="wb-hud-top">
                   <Crest size={26} />
                   <span className="wb-hud-name">{hud.name}</span>
-                  <span className="wb-hud-lvl" title="Your store's level — every level pays out free tokens">LVL {hud.level}</span>
+                  <span className="wb-hud-lvl" title={t("Your store's level — every level pays out free tokens")}>LVL {hud.level}</span>
                   {hud.planLabel
-                    ? <Link to="/web#plans" className="wb-hud-plan" title="Manage your plan">{hud.planLabel}</Link>
-                    : <Link to="/web#plans" className="wb-hud-plan off">No plan</Link>}
-                  <button type="button" className="wb-hud-toggle" onClick={toggleHud} title="Collapse" aria-label="Collapse player status">▴</button>
+                    ? <Link to="/web#plans" className="wb-hud-plan" title={t("Manage your plan")}>{hud.planLabel}</Link>
+                    : <Link to="/web#plans" className="wb-hud-plan off">{t("No plan")}</Link>}
+                  <button type="button" className="wb-hud-toggle" onClick={toggleHud} title={t("Collapse")} aria-label={t("Collapse player status")}>▴</button>
                 </div>
 
-                <div className="wb-hud-barlabel"><span>Token reserve</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
-                <div className="wb-hud-hp" title={`${hud.tokensPct}% of your wallet remaining`}><i style={{ width: `${hud.tokensPct}%` }} /></div>
+                <div className="wb-hud-barlabel"><span>{t("Token reserve")}</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
+                <div className="wb-hud-hp" title={t("{pct}% of your wallet remaining", { pct: hud.tokensPct })}><i style={{ width: `${hud.tokensPct}%` }} /></div>
 
                 {/* VALUE METER — frames the plan as a benefit, not a cost: what
                     it includes every month, how much is used this cycle, and
@@ -247,35 +263,35 @@ export default function WebLayout() {
                   <div className="wb-hud-meter">
                     {hud.trialing ? (
                       <span className="wb-hud-meter-l">
-                        Trial · <b>{hud.monthly.toLocaleString()}/mo</b> unlocks when your plan starts
+                        {t("Trial · {monthly}/mo unlocks when your plan starts", { monthly: hud.monthly.toLocaleString() })}
                       </span>
                     ) : (
                       <>
                         <span className="wb-hud-meter-l">
-                          <b>{hud.monthly.toLocaleString()}</b> tokens included monthly · <b>{hud.used.toLocaleString()}</b> used
+                          {t("{monthly} tokens included monthly · {used} used", { monthly: hud.monthly.toLocaleString(), used: hud.used.toLocaleString() })}
                         </span>
                         {hud.resetShort && (
-                          <span className="wb-hud-meter-r" title="When your monthly tokens refill">↻ refills {hud.resetShort}</span>
+                          <span className="wb-hud-meter-r" title={t("When your monthly tokens refill")}>{t("↻ refills {date}", { date: hud.resetShort })}</span>
                         )}
                       </>
                     )}
                   </div>
                 )}
                 {hud.planActive && !hud.trialing && hud.extra > 0 && (
-                  <div className="wb-hud-extra" title="Purchased tokens — they roll over and never expire">
-                    <Ico n="coin" /> +{hud.extra.toLocaleString()} top-up tokens · never expire
+                  <div className="wb-hud-extra" title={t("Purchased tokens — they roll over and never expire")}>
+                    <Ico n="coin" /> {t("+{extra} top-up tokens · never expire", { extra: hud.extra.toLocaleString() })}
                   </div>
                 )}
 
                 <div className="wb-hud-barlabel">
-                  <span>XP · Level {hud.level}</span>
-                  <span>{hud.xpInto.toLocaleString()} / {hud.xpNeed.toLocaleString()} · {(hud.xpNeed - hud.xpInto).toLocaleString()} to LVL {hud.level + 1}</span>
+                  <span>{t("XP · Level {n}", { n: hud.level })}</span>
+                  <span>{t("{into} / {need} · {left} to LVL {next}", { into: hud.xpInto.toLocaleString(), need: hud.xpNeed.toLocaleString(), left: (hud.xpNeed - hud.xpInto).toLocaleString(), next: hud.level + 1 })}</span>
                 </div>
-                <div className="wb-hud-xp" title={`${hud.xpPct}% of the way to level ${hud.level + 1}`}><i style={{ width: `${hud.xpPct}%` }} /></div>
+                <div className="wb-hud-xp" title={t("{pct}% of the way to level {next}", { pct: hud.xpPct, next: hud.level + 1 })}><i style={{ width: `${hud.xpPct}%` }} /></div>
 
                 <div className="wb-hud-stats">
-                  <Link to="/web#plans" className="wb-hud-topup" title="Get more tokens">
-                    <span><Ico n="coin" /> {hud.tokens.toLocaleString()}</span><b>Add tokens</b>
+                  <Link to="/web#plans" className="wb-hud-topup" title={t("Get more tokens")}>
+                    <span><Ico n="coin" /> {hud.tokens.toLocaleString()}</span><b>{t("Add tokens")}</b>
                   </Link>
                   {/* These are what the BALANCE AFFORDS, not what the merchant
                       owns — but the label said "3 Videos", which on the Archive
@@ -285,8 +301,8 @@ export default function WebLayout() {
                       exist on touch. Say what the number means. */}
                   {/* "1 videos' worth" was live in the HUD the moment a trialist
                       made one 225-token video. Pluralise on the count. */}
-                  <span className="wb-hud-stat" title="How many product videos your balance covers"><Ico n="video" /> {hud.videos} {hud.videos === 1 ? "video’s" : "videos’"} worth</span>
-                  <span className="wb-hud-stat" title="How many image ads your balance covers"><Ico n="image" /> {hud.ads} {hud.ads === 1 ? "image’s" : "images’"} worth</span>
+                  <span className="wb-hud-stat" title={t("How many product videos your balance covers")}><Ico n="video" /> {hud.videos === 1 ? t("{n} video’s worth", { n: hud.videos }) : t("{n} videos’ worth", { n: hud.videos })}</span>
+                  <span className="wb-hud-stat" title={t("How many image ads your balance covers")}><Ico n="image" /> {hud.ads === 1 ? t("{n} image’s worth", { n: hud.ads }) : t("{n} images’ worth", { n: hud.ads })}</span>
                 </div>
               </>
             )}
