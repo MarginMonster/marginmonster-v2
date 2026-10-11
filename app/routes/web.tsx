@@ -112,7 +112,12 @@ export default function WebLayout() {
     chooseMode(m);
     try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
     setShowChooser(false);
-    navigate(m === "casual" ? "/web/studio" : "/web");
+    // Honor a deep link: the chooser is an overlay on top of the page the
+    // visitor actually asked for, so once they pick a mode we just close it and
+    // leave them there. Only from the /web home (which has no casual view) do we
+    // route to the creator Studio. Previously this always jumped to /web/studio
+    // or /web, so a shared /web/archive or /web/channels link was discarded.
+    if (loc.pathname === "/web" && m === "casual") navigate("/web/studio");
   };
 
   return (
@@ -302,11 +307,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       const name = authed && hud.name ? hud.name.split(" ")[0] : null;
       const greet = mode === "casual"
         ? (name
-            ? `Hey ${name}! 🐾 I'm Helpurr, your AI helper — got ${hud.ads} images' worth of tokens to play with. Want to edit a photo or make something fun to post?`
-            : "Hey — I'm Helpurr 🐾 your AI helper. Upload a photo and we'll restyle it, swap the background, or make something fun to share.")
+            ? `Hey ${name}! I'm Helpurr, your AI helper — got ${hud.ads} images' worth of tokens to play with. Want to edit a photo or make something fun to post?`
+            : "Hey — I'm Helpurr your AI helper. Upload a photo and we'll restyle it, swap the background, or make something fun to share.")
         : (name
-            ? `Hey ${name}! 🐾 I'm Helpurr, your AI helper — you've got ${hud.ads} ads' worth of tokens in the tank. What are we making?`
-            : "Hey — I'm Helpurr 🐾 your AI helper for ads & videos. Tell me what you're selling and let's make something scroll-stopping.");
+            ? `Hey ${name}! I'm Helpurr, your AI helper — you've got ${hud.ads} ads' worth of tokens in the tank. What are we making?`
+            : "Hey — I'm Helpurr your AI helper for ads & videos. Tell me what you're selling and let's make something scroll-stopping.");
       setMsgs([{ role: "assistant", content: greet }]);
     }
   }, [open, msgs.length, authed, hud.name, hud.ads, mode]);
@@ -353,7 +358,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         <div className="mm-panel" role="dialog" aria-label="Helpurr chat">
           <div className="mm-head">
             <span className="mm-head-crest"><Familiar think={busy} /></span>
-            <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? "thinking…" : "your AI helper 🐾"}</span></div>
+            <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? "thinking…" : "your AI helper"}</span></div>
             <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label="Close chat">×</button>
           </div>
           <div className="mm-list" ref={listRef}>
@@ -640,7 +645,7 @@ const CSS = `
   .wb-login{padding:8px 15px;font-size:12.5px;}
   .wb-main{padding:10px 16px 70px;}
   .wb-hud{width:calc(100% - 32px);padding:11px 13px;}
-  .wb-hud-name{max-width:38vw;font-size:13px;}
+  .wb-hud-name{max-width:52vw;font-size:13px;}
   .wb-hud-barlabel{font-size:9.5px;}
   .wb-hud-barlabel span:last-child{font-size:10.5px;}
   .wb-hud-stats{font-size:11.5px;gap:8px;}

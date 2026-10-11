@@ -13,7 +13,26 @@ import { db } from "../db.server";
 import { ensureProfile, linkedFromCache, publishPost, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { facelessQualitySurcharge } from "../lib/create-models";
+import { engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { xpForSpend } from "../lib/achievements";
+
+/** The CURRENT price to retry a failed job, derived from its payload — not the
+ *  amount originally charged. A job that failed before a reprice (e.g. faceless
+ *  at the old 80 tokens, now 30) must retry at today's price, never the stale
+ *  one. Callers clamp with Math.min(stored, current) so a retry is never more
+ *  than either the original charge or the current price. */
+function currentRetryCost(type: string, pl: Record<string, unknown>): number {
+  if (type === "GENERATE_VIDEO_AD") {
+    if (pl.contentType === "faceless") return TOKEN_COST.faceless + facelessQualitySurcharge(pl.facelessQuality as string);
+    const eng = engineSurcharge(normalizeEngineKey(pl.videoEngine as string));
+    return (pl.section === "creator" ? TOKEN_COST.casualVideo : TOKEN_COST.video) + eng;
+  }
+  if (type === "GENERATE_IMAGE_AD") return TOKEN_COST.image;
+  if (type === "GENERATE_SONG") return TOKEN_COST.music;
+  if (type === "GENERATE_BLOG_POST") return TOKEN_COST.blog;
+  return TOKEN_COST.image;
+}
 import { assertCapability, videoCapabilityFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
@@ -129,7 +148,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const nowMs = Date.now();
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_SONG: 60, GENERATE_BLOG_POST: 40 };
   const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
-  const RETRY_FLAT: Record<string, number> = { GENERATE_VIDEO_AD: TOKEN_COST.video, GENERATE_IMAGE_AD: TOKEN_COST.image, GENERATE_SONG: TOKEN_COST.music, GENERATE_BLOG_POST: TOKEN_COST.blog };
   const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
     let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string } = {};
@@ -156,7 +174,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const elapsedSec = Math.round((nowMs - startMs) / 1000);
     const etaSec = generating ? Math.round(TYPICAL[j.type] - elapsedSec) : 0;
     const pl = p as { chargedTokens?: number };
-    const retryCost = failed && p.refunded ? (typeof pl.chargedTokens === "number" && pl.chargedTokens > 0 ? pl.chargedTokens : RETRY_FLAT[j.type] || 0) : 0;
+    const curCost = currentRetryCost(j.type, p as Record<string, unknown>);
+    const storedCost = typeof pl.chargedTokens === "number" && pl.chargedTokens > 0 ? pl.chargedTokens : curCost;
+    const retryCost = failed && p.refunded ? Math.min(storedCost, curCost) : 0;
     cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, elapsedSec, refunded: !!p.refunded, retryCost });
   }
   const linked = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
@@ -270,8 +290,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let spent = 0;
     let retryFromExtra = 0;
     if (payload.refunded) {
-      const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : job.type === "GENERATE_SONG" ? TOKEN_COST.music : TOKEN_COST.blog;
-      const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
+      // Retry at TODAY's price, clamped so it is never more than the original
+      // charge (a pre-reprice faceless job stored 80; the current price is 30).
+      const curCost = currentRetryCost(job.type, payload as Record<string, unknown>);
+      const storedCost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : curCost;
+      const cost = Math.min(storedCost, curCost);
       spent = cost;
       // The RE-SPEND has its own split. The refund that preceded this put
       // tokens back into whichever bucket paid the first time, but the wallet
@@ -897,7 +920,7 @@ export default function WebArchive() {
       {ok && <div className="wb-ok">{ok}</div>}
       {remixed && (
         <div className="wb-ok">
-          ✨ {remixFree ? "Making it again, on us" : "Remixing"} — a fresh {remixed === "blog" ? "article" : remixed} is on the way.
+          <Ico n="sparkle" /> {remixFree ? "Making it again, on us" : "Remixing"} — a fresh {remixed === "blog" ? "article" : remixed} is on the way.
           It&apos;ll land on this shelf in a minute.{remixFree ? " No tokens spent." : ""}
         </div>
       )}
@@ -910,13 +933,13 @@ export default function WebArchive() {
             + cookingCards.filter((j) => j.kind === k).length;
           return (
             <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>
-              <Ico n={icon} /> {label}{n > 0 ? ` · ${n}` : ""}
+              <Ico n={icon} /> {label} · {n}
             </button>
           );
         })}
       </div>
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
-        <p className="wa-shelfnote">⏳ Un-kept videos &amp; photos clear after 30 days — open a piece and hit <b>Keep</b> to save it for good.</p>
+        <p className="wa-shelfnote"><Ico n="hourglass" /> Un-kept videos &amp; photos clear after 30 days — open a piece and hit <b>Keep</b> to save it for good.</p>
       )}
       {/* Only when there is genuinely more of THIS type to load. The library
           can be past the page size while the open tab is already complete —
@@ -1007,7 +1030,7 @@ export default function WebArchive() {
                       the same time — one says it is lost, the other says it is
                       safe for a month. The countdown is about un-kept media
                       clearing; there is nothing here left to clear. */}
-                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={`Auto-clears in ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} — open it and hit Keep`}>⏳ {a.daysLeft}d</span>}
+                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={`Auto-clears in ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} — open it and hit Keep`}><Ico n="hourglass" /> {a.daysLeft}d</span>}
                 </button>
                 <div className="m">
                   {a.title}
@@ -1021,7 +1044,7 @@ export default function WebArchive() {
                   <div className="s">{a.isVideo ? "Video" : a.isAudio ? "Music" : "Image ad"} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
-                    {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title="Download">⬇</a>}
+                    {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title="Download"><Ico n="download" /></a>}
                     <button type="button" className="wa-icon" title="Delete" disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
                   </div>
                 </div>
@@ -1117,14 +1140,14 @@ export default function WebArchive() {
                 </div>
               )}
               {viewer.daysLeft != null && !posted && !viewer.expired && (
-                <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}>⏳ Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — <b>Keep</b> saves it for good.</span>
+                <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — <b>Keep</b> saves it for good.</span>
               )}
               {viewer.type !== "BLOG_POST" && <span className="wa-aitag">✦ AI-generated · review before posting</span>}
               {viewer.type === "BLOG_POST" ? (
                 <div className="wa-vacts">
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? "Copied ✓" : "Copy HTML"}</button>}
-                  {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}>⬇ Download</button>}
-                  <button type="button" className="wa-vbtn gold" disabled={busy} title="Write a fresh article on the same product" onClick={() => remix(viewer.id)}>✨ Remix<span className="c">{costOf(viewer.type)} tokens · +{xpForSpend(costOf(viewer.type))} XP</span></button>
+                  {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> Download</button>}
+                  <button type="button" className="wa-vbtn gold" disabled={busy} title="Write a fresh article on the same product" onClick={() => remix(viewer.id)}><Ico n="sparkle" /> Remix<span className="c">{costOf(viewer.type)} tokens · +{xpForSpend(costOf(viewer.type))} XP</span></button>
                   <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                 </div>
               ) : (
@@ -1136,7 +1159,7 @@ export default function WebArchive() {
                     {viewer.status !== "APPROVED" && viewer.status !== "PUBLISHED" && (
                       <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
                     )}
-                    {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}>⬇ Download</a>}
+                    {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> Download</a>}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
                         image in the Creator editor (seeds ?src=; the full
                         describe-first edit flow runs on it). Image-only — the
@@ -1146,7 +1169,7 @@ export default function WebArchive() {
                       <button type="button" className="wa-vbtn ghost" disabled={busy}
                         title="Open this image in the Creator editor"
                         onClick={() => { try { localStorage.setItem("emMode", "casual"); } catch { /* */ } window.location.href = `/web/studio?do=edit&src=${encodeURIComponent(viewer.media!)}`; }}>
-                        ✎ Edit{isCreator ? "" : " in Creator"}
+                        <Ico n="article" /> Edit{isCreator ? "" : " in Creator"}
                       </button>
                     )}
                     {/* CROSS-SECTION BRIDGE — "use creator content on Marketing":
@@ -1163,7 +1186,7 @@ export default function WebArchive() {
                     {/* A piece whose render we lost is replaced on us, so the
                         button must not quote a price the merchant will not pay. */}
                     {!viewer.isAudio && (
-                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "✨ Make it again" : "✨ Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens · +${xpForSpend(costOf(viewer.type))} XP`}</span></button>
+                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "Make it again" : "Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens · +${xpForSpend(costOf(viewer.type))} XP`}</span></button>
                     )}
                     <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
                   </div>
@@ -1174,7 +1197,7 @@ export default function WebArchive() {
                         rows={5}
                         value={caption}
                         disabled={draftPending}
-                        placeholder={draftPending ? "✨ Writing a caption for you…" : "Write your caption…"}
+                        placeholder={draftPending ? "Writing a caption for you…" : "Write your caption…"}
                         onChange={(e) => setCaption(e.target.value)}
                       />
                       <div className="wa-caprow">

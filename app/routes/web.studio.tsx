@@ -48,10 +48,10 @@ const CONTENT_TYPES = [
 
 // Casual (Creator) reframes the kept video types in its own, non-sell language —
 // same pipelines, creator-native names. Only the three casual keeps it shows.
-const CASUAL_VIDEO_COPY: Record<string, { name: string; sub: string; emoji: string }> = {
-  cartoon: { name: "Cartoon", sub: "Your idea, redrawn & animated viral-style", emoji: "🎨" },
-  highlight: { name: "Showcase", sub: "Cinematic motion from your photo or idea", emoji: "🎬" },
-  asmr: { name: "Satisfying", sub: "Macro textures in slow-mo — the loop nobody scrolls past", emoji: "✨" },
+const CASUAL_VIDEO_COPY: Record<string, { name: string; sub: string; icon: string }> = {
+  cartoon: { name: "Cartoon", sub: "Your idea, redrawn & animated viral-style", icon: "palette" },
+  highlight: { name: "Showcase", sub: "Cinematic motion from your photo or idea", icon: "film" },
+  asmr: { name: "Satisfying", sub: "Macro textures in slow-mo — the loop nobody scrolls past", icon: "sparkle" },
 };
 
 // Pick-by-look art-style swatches — each background is CRAFTED to evoke the
@@ -75,9 +75,9 @@ const STYLE_SWATCH: Record<string, string> = {
 // One-tap photo-edit ops (casual "Edit a photo"). Shown as a collapsed
 // disclosure below the describe box so they don't crowd it.
 const EDIT_QUICK_ACTIONS: [string, string][] = [
-  ["restyle", "🎨 Restyle"], ["cartoonize", "✏️ Cartoonize"], ["replace", "🔁 Replace"],
-  ["colorize", "🌈 Colorize"], ["upscale", "🔍 Upscale"], ["bgswap", "🖼 Swap background"],
-  ["bgremove", "✂️ Remove background"],
+  ["restyle", "Restyle"], ["cartoonize", "Cartoonize"], ["replace", "Replace"],
+  ["colorize", "Colorize"], ["upscale", "Upscale"], ["bgswap", "Swap background"],
+  ["bgremove", "Remove background"],
 ];
 
 // The three PRESET types ride the avatar/highlight pipelines with a baked-in
@@ -623,7 +623,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // fail BEFORE tokens are spent, not in the pipeline.
       const presenterVideo = !!avatarId && contentType !== "cartoon" && contentType !== "jingle";
       if (presenterVideo && !productImageUrl && !service) {
-        return json({ error: "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to ✨ Service / offer.)" });
+        return json({ error: "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to Service / offer.)" });
       }
       // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
       // not use one: it goes through the lipsync chain (HeyGen/omni-human), so
@@ -1693,9 +1693,8 @@ export default function WebStudio() {
       <h1 className="wb-h1">{casual ? "Create" : "Content Studio"}</h1>
       <p className="wb-sub">
         {casual
-          ? <>Upload a photo to edit, or make an image or video to share — it lands in your <Link to="/web/archive?section=creator">gallery</Link>. </>
-          : <>Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>. </>}
-        Balance: <Ico n="coin" /> {d.tokens.toLocaleString("en-US")}
+          ? <>Upload a photo to edit, or make an image or video to share — it lands in your <Link to="/web/archive?section=creator">gallery</Link>.</>
+          : <>Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>.</>}
       </p>
       {!d.hasBrand && !casual && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
       {!d.hasPlan && <div className="wb-err">Pick a <Link to="/web">plan</Link> first — content runs on tokens.</div>}
@@ -1817,7 +1816,7 @@ export default function WebStudio() {
                     onClick={() => (locked ? setUpsell({ name: ct.name, tier: ct.tier, price: ct.price }) : (setContentType(ct.key), setUpsell(null)))}>
                     <span className={`ws-tile-img${casual && CASUAL_VIDEO_COPY[ct.key] ? " ws-tile-casual" : ""}`}
                       style={casual && CASUAL_VIDEO_COPY[ct.key] ? undefined : { backgroundImage: `url(${ct.cover})` }}>
-                      {casual && CASUAL_VIDEO_COPY[ct.key] ? <span className="ws-tile-emoji" aria-hidden="true">{CASUAL_VIDEO_COPY[ct.key].emoji}</span> : null}
+                      {casual && CASUAL_VIDEO_COPY[ct.key] ? <span className="ws-tile-emoji" aria-hidden="true"><Ico n={CASUAL_VIDEO_COPY[ct.key].icon} size={32} /></span> : null}
                       {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {ct.tier}</span>}
                     </span>
                     <b>{casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].name : ct.name}</b>
@@ -2228,7 +2227,7 @@ export default function WebStudio() {
                 <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? "…or https://example.com/my-photo.jpg" : "…or https://yourstore.com/cdn/product.jpg"} style={{ marginTop: 8 }} />
                 {casual && tab === "video" && !hasFile && !imageUrl.trim() && (
                   <p className="ws-note">
-                    ✨ No photo? We&apos;ll create your whole video from your words. Add one above to feature a <b>real</b> product.
+                    <Ico n="sparkle" /> No photo? We&apos;ll create your whole video from your words. Add one above to feature a <b>real</b> product.
                   </p>
                 )}
                 {needsPhoto && (
@@ -2291,7 +2290,7 @@ export default function WebStudio() {
                     onChange={(e) => setDirection(e.target.value)} />
                   <div className="ws-chips" style={{ marginTop: 8 }}>
                     {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
-                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}>✨ {ex}</button>
+                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {ex}</button>
                     ))}
                   </div>
                 </>
@@ -2302,14 +2301,14 @@ export default function WebStudio() {
                 </div>
                 {!advanced ? (
                   <>
-                    <div className="ws-autobox">✨ <b>EasyMode decides</b> the scene &amp; script from your brand voice. Tap <b>Advanced</b> to direct it yourself — or drop a quick direction below.</div>
+                    <div className="ws-autobox"><Ico n="sparkle" /> <b>EasyMode decides</b> the scene &amp; script from your brand voice. Tap <b>Advanced</b> to direct it yourself — or drop a quick direction below.</div>
                     <input className="wb-in" value={direction} maxLength={300} placeholder="cozy autumn morning energy, focus on the aroma" onChange={(e) => setDirection(e.target.value)} />
                     {/* Blank boxes freeze people. Three tappable directions
                         show the register and prove a single sentence is
                         enough — tap to fill, tap again to clear. */}
                     <div className="ws-chips" style={{ marginTop: 8 }}>
                       {["golden-hour rooftop, confident and premium", "fast + funny, lead with the price", "cozy at home, make it feel like a gift"].map((ex) => (
-                        <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}>✨ {ex}</button>
+                        <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {ex}</button>
                       ))}
                     </div>
                   </>
@@ -2365,7 +2364,7 @@ export default function WebStudio() {
                   <>
                     <div className="ws-lbl">Format</div>
                     <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
-                      {([["motivational", "💪 Motivational"], ["facts", "💡 Facts"], ["storytime", "📖 Storytime"], ["listicle", "🔢 Listicle"]] as [string, string][]).map(([k, label]) => (
+                      {([["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]] as [string, string][]).map(([k, label]) => (
                         <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
                           className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
                       ))}
@@ -2440,7 +2439,7 @@ export default function WebStudio() {
                 {isFaceless && (
                   <div className="ws-chips" style={{ marginTop: 8 }}>
                     {["5 mind-blowing facts about the deep ocean", "a 30-second motivational pep talk", "storytime: the day everything changed"].map((ex) => (
-                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}>✨ {ex}</button>
+                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {ex}</button>
                     ))}
                   </div>
                 )}
@@ -2488,7 +2487,7 @@ export default function WebStudio() {
                 <button type="button" className={`ws-styletoggle${showStyle ? " open" : ""}`}
                   aria-expanded={showStyle} onClick={() => setShowStyle((v) => !v)}>
                   <span className="ws-styletoggle-l">
-                    <span aria-hidden="true">🎨</span>
+                    <span aria-hidden="true"><Ico n="palette" /></span>
                     {createStyle
                       ? <>Style: <b>{CREATE_STYLES.find((s) => s.key === createStyle)?.name}</b></>
                       : <>Steer the look</>}
@@ -2539,9 +2538,9 @@ export default function WebStudio() {
                   <button type="button" className={`ws-styletoggle${showEditOps ? " open" : ""}`}
                     aria-expanded={showEditOps} onClick={() => setShowEditOps((v) => !v)}>
                     <span className="ws-styletoggle-l">
-                      <span aria-hidden="true">⚡</span>
+                      <span aria-hidden="true"><Ico n="bolt" /></span>
                       {editOp
-                        ? <>Quick action: <b>{EDIT_QUICK_ACTIONS.find(([k]) => k === editOp)?.[1].replace(/^\S+\s/, "")}</b></>
+                        ? <>Quick action: <b>{EDIT_QUICK_ACTIONS.find(([k]) => k === editOp)?.[1]}</b></>
                         : <>Quick actions</>}
                     </span>
                     <span className="ws-styletoggle-r">
@@ -2590,7 +2589,7 @@ export default function WebStudio() {
               <div className="ws-genopts">
                 <div className="ws-lbl">Format</div>
                 <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
-                  {([["motivational", "💪 Motivational"], ["facts", "💡 Facts"], ["storytime", "📖 Storytime"], ["listicle", "🔢 Listicle"]] as [string, string][]).map(([k, label]) => (
+                  {([["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]] as [string, string][]).map(([k, label]) => (
                     <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
                       className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
                   ))}
@@ -2716,10 +2715,10 @@ export default function WebStudio() {
                  {!stageResult.isVideo && !stageResult.isAudio && (
                    <div className="ws-quick">
                      <span className="ws-quick-lbl">Quick edit · {d.costs.quickEdit} ea</span>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("upscale")}>✨ Enhance</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent.")}>🔭 Zoom out</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent.")}>🔎 Zoom in</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("bgremove")}>✂ Remove bg</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("upscale")}><Ico n="sparkle" size={14} /> Enhance</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent.")}><Ico n="search" size={14} /> Zoom out</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent.")}><Ico n="search" size={14} /> Zoom in</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("bgremove")}><Ico n="scissors" size={14} /> Remove bg</button>
                    </div>
                  )}
                  <div className="ws-verbs">
@@ -2731,7 +2730,7 @@ export default function WebStudio() {
                </div>
              ) : genError ? (
                <div className={`ws-easelph ws-generr${genError.kind === "unsafe" ? " unsafe" : ""}`} role="alert">
-                 <span className="ws-generr-ico" aria-hidden="true">{genError.kind === "unsafe" ? "⚠" : "!"}</span>
+                 <span className="ws-generr-ico" aria-hidden="true">{genError.kind === "unsafe" ? <Ico n="warning" size={24} /> : "!"}</span>
                  <div className="ws-easel-cap">{genError.kind === "unsafe" ? "Sorry, we can’t make that one" : "That didn’t finish"}</div>
                  <div className="ws-easel-sub">{genError.message}</div>
                  <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>{genError.kind === "unsafe" ? "Try another" : "Got it"}</button>
@@ -2788,8 +2787,8 @@ export default function WebStudio() {
               <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className="ws-shelf-piece" title={`${p.title} — open on the Stage`}>
                 <span className="ws-shelf-thumb" style={!p.isVideo && !p.isAudio && p.media ? { backgroundImage: `url(${p.media})` } : undefined}>
                   {p.isVideo && p.media ? <video src={`${p.media}#t=0.1`} muted playsInline preload="metadata" /> : null}
-                  {p.isAudio ? <span className="ws-shelf-aud" aria-hidden="true">♪</span> : null}
-                  <span className="ws-shelf-tag">{p.isVideo ? "▶ Video" : p.isAudio ? "♪ Music" : "Image"}</span>
+                  {p.isAudio ? <span className="ws-shelf-aud" aria-hidden="true"><Ico n="music" size={26} /></span> : null}
+                  <span className="ws-shelf-tag">{p.isVideo ? "▶ Video" : p.isAudio ? "Music" : "Image"}</span>
                 </span>
                 <span className="ws-shelf-pt">{p.title}</span>
               </button>

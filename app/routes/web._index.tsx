@@ -228,7 +228,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Mirror locally for an instant UI update; the subscription.updated webhook
       // re-affirms it from the subscription metadata (the source of truth).
       await db.plan.updateMany({ where: { shopId: shop.id }, data: { creatorAddon: withCreator } }).catch(() => { /* non-fatal */ });
-      return json({ ok: withCreator ? "Creator added to your plan — your Create section is unlocked. 🎨" : "Creator removed from your plan." });
+      return json({ ok: withCreator ? "Creator added to your plan — your Create section is unlocked." : "Creator removed from your plan." });
     }
     // ...but that guard can only read what the WEBHOOK writes, and Stripe
     // redirects the merchant back the instant checkout completes. For the first
@@ -641,7 +641,7 @@ export default function WebDashboard() {
           once Creator is active on their account. */}
       {d.billingOn && (d.hasCreator ? (
         <div className="wb-card wd-solo">
-          <span className="wd-solo-emoji" aria-hidden="true">🎨</span>
+          <span className="wd-solo-emoji" aria-hidden="true"><Ico n="palette" size={28} /></span>
           <div className="wd-solo-txt">
             <b>Creator section — included with your plan ✓</b>
             <p>Make AI images, edit your photos and generate music with Helpurr.</p>
@@ -650,7 +650,7 @@ export default function WebDashboard() {
         </div>
       ) : !d.tier ? (
         <div className="wb-card wd-solo">
-          <span className="wd-solo-emoji" aria-hidden="true">🎨</span>
+          <span className="wd-solo-emoji" aria-hidden="true"><Ico n="palette" size={28} /></span>
           <div className="wd-solo-txt">
             <b>Just want the creative tools?</b>
             <p>Skip the marketing plans — get Creator on its own: AI images, photo editing &amp; music with Helpurr. <b>${CREATOR_PRICE}/mo</b>, no marketing plan needed.</p>

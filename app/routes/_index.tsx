@@ -633,7 +633,7 @@ html,body{margin:0;padding:0}
   .lz-nav{padding:14px 16px;gap:8px;}
   .lz-brand{font-size:16px;gap:7px;}
   .lz-lang{font-size:12px;gap:3px;}
-  .lz-lang select{padding:7px 6px;font-size:12px;max-width:78px;}
+  .lz-lang select{padding:7px 6px;font-size:12px;max-width:94px;}
   .lz-navlink{font-weight:800;font-size:12.5px;color:var(--ink);padding:9px 13px;border-radius:11px;
     background:var(--card);border:1px solid var(--line);box-shadow:0 2px 6px rgba(20,32,26,.06);}
   .lz-navcta{font-size:12.5px;padding:10px 15px;}
@@ -646,7 +646,7 @@ html,body{margin:0;padding:0}
   .lz-nav{gap:6px;padding:12px 12px;}
   .lz-brand{font-size:15px;gap:6px;}
   .lz-lang{font-size:0;gap:0;}
-  .lz-lang select{max-width:54px;padding:7px 3px;font-size:11.5px;}
+  .lz-lang select{max-width:84px;padding:7px 4px;font-size:11.5px;}
   .lz-navlink{padding:9px 10px;font-size:12px;}
   .lz-navcta{padding:9px 12px;font-size:12px;}
 }

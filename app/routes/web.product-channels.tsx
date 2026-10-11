@@ -15,12 +15,13 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { Ico } from "../lib/icons";
 
 export const meta = () => [{ title: "Product Channels · EasyMode" }];
 
 const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
-const ANGLES: [string, string][] = [["spotlight", "✨ Spotlight"], ["hype", "🔥 Hype"], ["story", "📖 Storytime"], ["value", "💎 Value"]];
+const ANGLES: [string, string][] = [["spotlight", "Spotlight"], ["hype", "Hype"], ["story", "Storytime"], ["value", "Value"]];
 const VOICES: [string, string][] = [["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -159,7 +160,7 @@ export default function ProductChannels() {
 
       {!canUse && (
         <div className="pc-upsell">
-          <div className="pc-upsell-ic">🎬</div>
+          <div className="pc-upsell-ic"><Ico n="film" size={30} /></div>
           <div><b>Product Channels run on video.</b><p>That's on the Studio &amp; Anthem plans. Upgrade and your store can start posting today.</p></div>
           <Link to="/web#plans" className="pc-go sm">See plans</Link>
         </div>
@@ -167,7 +168,7 @@ export default function ProductChannels() {
 
       {canUse && productCount === 0 && (
         <div className="pc-upsell">
-          <div className="pc-upsell-ic">📦</div>
+          <div className="pc-upsell-ic"><Ico n="box" size={30} /></div>
           <div><b>Import your store first.</b><p>Product Channels feature your real products — bring your catalogue in and you're ready.</p></div>
           <Link to="/web/studio" className="pc-go sm">Import store</Link>
         </div>
@@ -247,8 +248,8 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
 
       <label className="pc-lbl">Posting</label>
       <div className="pc-modes">
-        <button type="button" className={`pc-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}><b>✨ Post automatically</b><span>Each video posts to your socials with a link to the product.</span></button>
-        <button type="button" className={`pc-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}><b>👁 Let me approve each one</b><span>Videos wait in your Archive — you post with one tap.</span></button>
+        <button type="button" className={`pc-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}><b><Ico n="sparkle" /> Post automatically</b><span>Each video posts to your socials with a link to the product.</span></button>
+        <button type="button" className={`pc-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}><b><Ico n="eye" /> Let me approve each one</b><span>Videos wait in your Archive — you post with one tap.</span></button>
       </div>
 
       <div className="pc-summary"><span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens · <b>+{xpForSpend(weeklyTokens)}</b> XP / wk</span><span className="pc-bal">{tokens} tokens in wallet</span></div>
@@ -256,7 +257,7 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
       {error && <div className="pc-err">{error}</div>}
       {!canAfford && <div className="pc-err">You need at least {facelessCost} tokens to run a channel — <Link to="/web#plans" className="pc-link">top up</Link>.</div>}
 
-      <button className="pc-go" type="submit" disabled={disabled}><span className="pc-go-flower" aria-hidden="true" />{creating ? "Starting…" : "Start my product channel 🚀"}</button>
+      <button className="pc-go" type="submit" disabled={disabled}><span className="pc-go-flower" aria-hidden="true" />{creating ? "Starting…" : "Start my product channel"}</button>
     </Form>
   );
 }
@@ -273,7 +274,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       </div>
       <div className="pc-card-meta">
         <span><b>{s.perWeek}</b> videos/week</span>
-        <span>{s.autoPost ? "✨ auto-post" : "👁 approve"}</span>
+        <span>{s.autoPost ? "auto-post" : "approve"}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
       {s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> Next drop {relTime(s.nextRunAt) || "soon"}</div>}

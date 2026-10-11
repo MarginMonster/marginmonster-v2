@@ -14,6 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { Ico } from "../lib/icons";
 
 export const meta = () => [{ title: "Channels · EasyMode" }];
 
@@ -146,7 +147,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 /* ---------------- UI ---------------- */
 
-const FORMATS: [string, string][] = [["motivational", "💪 Motivational"], ["facts", "💡 Facts"], ["storytime", "📖 Storytime"], ["listicle", "🔢 Listicle"]];
+const FORMATS: [string, string][] = [["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]];
 const VOICES: [string, string][] = [["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]];
 const NICHES = ["Deep ocean facts", "Stoic motivation", "Weird history", "Money & side hustles", "Mind-blowing science", "Space facts", "Fitness tips", "Life hacks", "Mythology stories", "True crime shorts"];
 
@@ -187,7 +188,7 @@ export default function Channels() {
 
       {!canUse && (
         <div className="ch-upsell">
-          <div className="ch-upsell-ic">🎬</div>
+          <div className="ch-upsell-ic"><Ico n="film" size={28} /></div>
           <div>
             <b>Channels run on faceless video.</b>
             <p>That's on the Studio &amp; Anthem plans. Upgrade and your channel can start posting today.</p>
@@ -295,10 +296,10 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
       <label className="ch-lbl">Posting</label>
       <div className="ch-modes">
         <button type="button" className={`ch-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}>
-          <b>✨ Post automatically</b><span>Each drop goes straight to your socials.</span>
+          <b><Ico n="sparkle" /> Post automatically</b><span>Each drop goes straight to your socials.</span>
         </button>
         <button type="button" className={`ch-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}>
-          <b>👁 Let me approve each one</b><span>Drops wait in your Gallery — you post with one tap.</span>
+          <b><Ico n="eye" /> Let me approve each one</b><span>Drops wait in your Gallery — you post with one tap.</span>
         </button>
       </div>
 
@@ -312,7 +313,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
 
       <button className="ch-go" type="submit" disabled={disabled}>
         <span className="ch-go-flower" aria-hidden="true" />
-        {creating ? "Starting…" : "Start my channel 🚀"}
+        {creating ? "Starting…" : <>Start my channel <Ico n="rocket" /></>}
       </button>
     </Form>
   );
@@ -339,7 +340,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
 
       <div className="ch-card-meta">
         <span><b>{s.perWeek}</b> videos/week</span>
-        <span>{s.autoPost ? "✨ auto-post" : "👁 approve"}</span>
+        <span>{s.autoPost ? <><Ico n="sparkle" /> auto-post</> : <><Ico n="eye" /> approve</>}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
 
