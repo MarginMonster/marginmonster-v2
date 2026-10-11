@@ -1,10 +1,11 @@
 /* Web front-door layout — the non-Shopify shell around dashboard, studio and
  * archive. Same engine, no Polaris/App Bridge; styled to match the landing. */
 
-import { json, type LoaderFunctionArgs } from "@remix-run/node";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useFetcher, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
+import { db } from "../db.server";
 import { tokensRemainingLive, planTrialing, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
@@ -68,6 +69,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       resetShort,
     },
   });
+};
+
+/* The shell carries one action: the header content-language toggle. The toggle
+ * lives in THIS layout, and a fetcher submitting to "/web" resolves to this
+ * layout route (not the index child), so the setLang handler belongs here. */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const id = await getWebIdentity(request);
+  if (!id) return json({ ok: false });
+  const form = await request.formData();
+  if ((form.get("intent") as string) === "setLang") {
+    const lang = normalizeContentLang((form.get("contentLang") as string) || "");
+    await db.shop.update({ where: { id: id.shop.id }, data: { contentLang: lang } });
+    return json({ ok: true, lang });
+  }
+  return json({ ok: false });
 };
 
 export default function WebLayout() {
