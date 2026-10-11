@@ -518,9 +518,12 @@ const CSS = `
 @keyframes wbDrift{to{transform:rotate(360deg)}}
 @keyframes wbDriftBack{to{transform:rotate(-360deg)}}
 @media (prefers-reduced-motion:reduce){.wb::before,.wb::after,.wb-chooser::before,.wb-chooser::after,.wb-ch-go::after{animation:none}}
-/* Everything real sits above the ambient layer. */
-.wb-nav,.wb-hud,.wb-main{position:relative;z-index:1;}
-.wb-nav{display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
+/* Everything real sits above the ambient layer. The nav sits ABOVE the HUD and
+   main so the language dropdown — which overflows the header downward — paints
+   over them instead of being hidden behind the HUD pill (which also stole the
+   taps meant for the lower menu items, so Chinese couldn't be selected). */
+.wb-hud,.wb-main{position:relative;z-index:1;}
+.wb-nav{position:relative;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
 .wb-brand{display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
 .wb-brand b{color:var(--gold)}
 .wb-tabs{display:flex;gap:6px;}
