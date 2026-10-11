@@ -8,6 +8,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { connectUrl, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { externalOrigin } from "../lib/origin.server";
 import { Ico } from "../lib/icons";
+import { useT } from "../lib/ui-lang";
 
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
@@ -37,16 +38,17 @@ export default function WebConnect() {
   const actionData = useActionData<typeof action>();
   const actionError = actionData && "error" in actionData ? actionData.error : null;
   const nav = useNavigation();
+  const t = useT();
   const linkedNames = PLATFORMS.filter((p) => linked.includes(p)).map((p) => PLAT_LABEL[p]);
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: CONNECT_CSS }} />
-      <h1 className="wb-h1">Auto-posting</h1>
-      <p className="wb-sub">Link your socials once — then every piece can post itself with an AI caption (and the #EasyModeAi disclosure) in one tap from the Archive.</p>
-      {!enabled && <div className="wb-err">Social posting is coming online — check back shortly.</div>}
+      <h1 className="wb-h1">{t("Auto-posting")}</h1>
+      <p className="wb-sub">{t("Link your socials once — then every piece can post itself with an AI caption (and the #EasyModeAi disclosure) in one tap from the Archive.")}</p>
+      {!enabled && <div className="wb-err">{t("Social posting is coming online — check back shortly.")}</div>}
       {actionError && <div className="wb-err">{actionError}</div>}
       <div className="wb-card" style={{ maxWidth: 480 }}>
-        <div className="wb-price-name">Connected accounts</div>
+        <div className="wb-price-name">{t("Connected accounts")}</div>
         <div className="wc-chips">
           {PLATFORMS.map((p) => {
             const on = linked.includes(p);
@@ -54,24 +56,24 @@ export default function WebConnect() {
               <span className={`wc-chip${on ? " on" : ""}`} key={p}>
                 <i className="wc-dot" aria-hidden="true">{on ? "✓" : ""}</i>
                 {PLAT_LABEL[p]}
-                {!on && <em>not linked</em>}
+                {!on && <em>{t("not linked")}</em>}
               </span>
             );
           })}
         </div>
         {linkedNames.length > 0 ? (
-          <p className="wc-armed"><Ico n="bolt" /> Armed on {linkedNames.join(linkedNames.length === 2 ? " and " : ", ")} — pieces can post themselves from the Archive.</p>
+          <p className="wc-armed"><Ico n="bolt" /> {t("Armed on {names} — pieces can post themselves from the Archive.", { names: linkedNames.join(linkedNames.length === 2 ? t(" and ") : ", ") })}</p>
         ) : (
-          <p className="wb-note" style={{ margin: "10px 0 14px" }}>Nothing linked yet.</p>
+          <p className="wb-note" style={{ margin: "10px 0 14px" }}>{t("Nothing linked yet.")}</p>
         )}
         <Form method="post">
           <button className="wb-btn" disabled={!enabled || nav.state !== "idle"}>
-            {linked.length ? "Manage / link more →" : "Link TikTok, Instagram & Facebook →"}
+            {linked.length ? <>{t("Manage / link more")} →</> : <>{t("Link TikTok, Instagram & Facebook")} →</>}
           </button>
         </Form>
       </div>
       <p className="wb-note" style={{ marginTop: 18 }}>
-        Linked already? Post anything from the <Link to="/web/archive">Archive</Link>.
+        {t("Linked already? Post anything from the")} <Link to="/web/archive">{t("Archive")}</Link>.
       </p>
     </div>
   );

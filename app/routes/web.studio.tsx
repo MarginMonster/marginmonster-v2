@@ -13,6 +13,7 @@ import { LangToggle } from "../components/LangToggle";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
 import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
+import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
@@ -932,6 +933,7 @@ type CastItem = { id: string; name: string; img: string; designed: boolean };
  *  in the same tile geometry the presenter row uses, with a real elapsed clock.
  *  When the job lands, these swap for the actual faces. */
 function ForgingPresenter({ name, status, startedAt }: { name: string; status: string; startedAt: string }) {
+  const t = useT();
   const revalidator = useRevalidator();
   const [elapsed, setElapsed] = useState(0);
   const failed = status === "failed";
@@ -958,8 +960,8 @@ function ForgingPresenter({ name, status, startedAt }: { name: string; status: s
   if (failed) {
     return (
       <div className="ws-forge ws-forge-bad" role="status">
-        <b>{name} couldn&rsquo;t be forged.</b>
-        <span>The reference photo didn&rsquo;t give us enough to work with — try a clearer, front-facing image.</span>
+        <b>{t("{name} couldn’t be forged.", { name })}</b>
+        <span>{t("The reference photo didn’t give us enough to work with — try a clearer, front-facing image.")}</span>
       </div>
     );
   }
@@ -970,15 +972,15 @@ function ForgingPresenter({ name, status, startedAt }: { name: string; status: s
       <div className="ws-forge-hd">
         <span className="ws-forge-spin" aria-hidden="true" />
         <div>
-          <b>Forging {name}…</b>
-          <span>Four outfits, {mm > 0 ? `${mm}m ${ss}s` : `${ss}s`} elapsed — usually a minute or two. You can keep working.</span>
+          <b>{t("Forging {name}…", { name })}</b>
+          <span>{t("Four outfits, {elapsed} elapsed — usually a minute or two. You can keep working.", { elapsed: mm > 0 ? `${mm}m ${ss}s` : `${ss}s` })}</span>
         </div>
       </div>
       <div className="ws-forge-row">
         {["Casual", "Smart", "Branded", "Outdoor"].map((o, i) => (
           <div className="ws-forge-card" key={o} style={{ animationDelay: `${i * 0.18}s` }}>
             <span className="ws-forge-img" aria-hidden="true" />
-            <span className="ws-forge-nm">{o}</span>
+            <span className="ws-forge-nm">{t(o)}</span>
           </div>
         ))}
       </div>
@@ -993,6 +995,7 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
   optional?: boolean;
   brandFaceId: string | null;
 }) {
+  const t = useT();
   // Voice preview: one sample at a time. Designed ("true voice") faces get a
   // lip-sync video instead of the mp3 snippet.
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1022,31 +1025,31 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
 
   return (
     <>
-      <div className="ws-lbl">Presenter{optional ? <span className="ws-opt">optional</span> : null}</div>
+      <div className="ws-lbl">{t("Presenter")}{optional ? <span className="ws-opt">{t("optional")}</span> : null}</div>
       <div className="ws-castsearch">
-        <input className="wb-in" type="search" value={q} placeholder={`Search ${cast.length} presenters by name…`}
-          onChange={(e) => setQ(e.target.value)} aria-label="Search presenters by name" />
-        {needle && <button type="button" className="ws-cs-clr" onClick={() => setQ("")} aria-label="Clear search">✕</button>}
+        <input className="wb-in" type="search" value={q} placeholder={t("Search {n} presenters by name…", { n: cast.length })}
+          onChange={(e) => setQ(e.target.value)} aria-label={t("Search presenters by name")} />
+        {needle && <button type="button" className="ws-cs-clr" onClick={() => setQ("")} aria-label={t("Clear search")}>✕</button>}
       </div>
-      {needle && shown.length === 0 && <p className="ws-offernote">No presenter called “{q.trim()}”.</p>}
+      {needle && shown.length === 0 && <p className="ws-offernote">{t("No presenter called “{q}”.", { q: q.trim() })}</p>}
       <div className="ws-cast">
         {optional && !needle && (
           <button type="button" className={`ws-face${avatarId === null ? " sel" : ""}`} onClick={() => setAvatarId(null)}>
-            <span className="ws-face-img none">✕</span><span>None</span>
+            <span className="ws-face-img none">✕</span><span>{t("None")}</span>
           </button>
         )}
         {shown.map((c) => {
           const bf = c.id === brandFaceId;
           return (
             <div key={c.id} className={`ws-face${avatarId === c.id ? " sel" : ""}${bf ? " bf" : ""}`}>
-              <button type="button" className="ws-face-pick" onClick={() => setAvatarId(c.id)} aria-label={`Cast ${c.name}`}>
+              <button type="button" className="ws-face-pick" onClick={() => setAvatarId(c.id)} aria-label={t("Cast {name}", { name: c.name })}>
                 <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
               </button>
               <button type="button" className={`ws-samp${playing === c.id ? " on" : ""}${c.designed ? " prem" : ""}`} onClick={() => sample(c)}
-                title={c.designed ? `Watch ${c.name} speak` : `Hear ${c.name}`} aria-label={c.designed ? `Watch ${c.name} speak` : `Hear ${c.name}'s voice`}>
+                title={c.designed ? t("Watch {name} speak", { name: c.name }) : t("Hear {name}", { name: c.name })} aria-label={c.designed ? t("Watch {name} speak", { name: c.name }) : t("Hear {name}’s voice", { name: c.name })}>
                 <Ico n={playing === c.id ? "music" : c.designed ? "play" : "sound"} size={15} />
               </button>
-              <span>{bf ? <><Ico n="star" size={12} /> Brand face</> : c.name}</span>
+              <span>{bf ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
             </div>
           );
         })}
@@ -1068,6 +1071,7 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
  * a dark panel, a live elapsed clock, and the page quietly revalidating so the
  * grid appears the moment the import lands — nobody has to guess or refresh. */
 function CatalogSync({ startedAt }: { startedAt: string | null }) {
+  const t = useT();
   const revalidator = useRevalidator();
   const [elapsed, setElapsed] = useState(0);
 
@@ -1096,12 +1100,12 @@ function CatalogSync({ startedAt }: { startedAt: string | null }) {
     <div className="ws-catload" role="status" aria-live="polite">
       <span className="ws-catload-spin" aria-hidden="true" />
       <div className="ws-catload-txt">
-        <b>Pulling your products in…</b>
+        <b>{t("Pulling your products in…")}</b>
         <span>
-          {mm > 0 ? `${mm}m ${ss}s` : `${ss}s`} — reading your storefront.
-          {elapsed > 90 ? " Big catalogues take a few minutes." : ""}
+          {t("{elapsed} — reading your storefront.", { elapsed: mm > 0 ? `${mm}m ${ss}s` : `${ss}s` })}
+          {elapsed > 90 ? " " + t("Big catalogues take a few minutes.") : ""}
         </span>
-        <i>This page updates itself the moment it lands.</i>
+        <i>{t("This page updates itself the moment it lands.")}</i>
       </div>
     </div>
   );
@@ -1179,6 +1183,7 @@ function TabIcon({ kind }: { kind: Tab }) {
 }
 
 export default function WebStudio() {
+  const t = useT();
   const d = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   // Creation mode from the shell (web.tsx). "casual" reframes the Studio for
@@ -1470,7 +1475,7 @@ export default function WebStudio() {
       // The prompt was blocked BEFORE the pipeline — show it on the Stage as a
       // guidelines block (distinct from a technical failure), no spinner.
       setMaking(false);
-      setGenError({ kind: "unsafe", message: (actionData as { error?: string }).error || "That prompt is against our content guidelines." });
+      setGenError({ kind: "unsafe", message: (actionData as { error?: string }).error || t("That prompt is against our content guidelines.") });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionData]);
@@ -1486,7 +1491,7 @@ export default function WebStudio() {
     const iv = setInterval(() => {
       if (Date.now() - started > capMs) {
         setMaking(false);
-        setGenError({ kind: "failed", message: "This is taking longer than usual. It may still land in your gallery shortly — or try again." });
+        setGenError({ kind: "failed", message: t("This is taking longer than usual. It may still land in your gallery shortly — or try again.") });
         return;
       }
       if (stageRev.state === "idle") stageRev.revalidate();
@@ -1516,8 +1521,8 @@ export default function WebStudio() {
       const errStr = (lg.error || "").toLowerCase();
       const isSafety = /safet|flag|content polic|sensitive|nsfw|not allowed|blocked|moderat|csam|prohibit|violat|e005/.test(errStr);
       setGenError(isSafety
-        ? { kind: "unsafe", message: "Sorry — this one looks like it touches on something we can't create, so the model held back. You've been refunded, no worries. Try rewording it or a different idea and we'll get right on it." }
-        : { kind: "failed", message: "That one didn't come through — it may have hit a snag. Your tokens were refunded; try again." });
+        ? { kind: "unsafe", message: t("Sorry — this one looks like it touches on something we can’t create, so the model held back. You’ve been refunded, no worries. Try rewording it or a different idea and we’ll get right on it.") }
+        : { kind: "failed", message: t("That one didn’t come through — it may have hit a snag. Your tokens were refunded; try again.") });
       setMaking(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1700,17 +1705,17 @@ export default function WebStudio() {
   return (
     <div className={casual ? "ws-casual" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
-      <h1 className="wb-h1">{casual ? "Create" : "Content Studio"}</h1>
+      <h1 className="wb-h1">{casual ? t("Create") : t("Content Studio")}</h1>
       <p className="wb-sub">
         {casual
-          ? <>Upload a photo to edit, or make an image or video to share — it lands in your <Link to="/web/archive?section=creator">gallery</Link>.</>
-          : <>Make one piece by hand, in your voice — it lands in your <Link to="/web/archive">Archive</Link>.</>}
+          ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</>
+          : <>{t("Make one piece by hand, in your voice — it lands in your ")}<Link to="/web/archive">{t("Archive")}</Link>.</>}
       </p>
-      {!d.hasBrand && !casual && <div className="wb-err">Set your <Link to="/web">brand voice</Link> first so content sounds like you.</div>}
-      {!d.hasPlan && <div className="wb-err">Pick a <Link to="/web">plan</Link> first — content runs on tokens.</div>}
+      {!d.hasBrand && !casual && <div className="wb-err">{t("Set your ")}<Link to="/web">{t("brand voice")}</Link>{t(" first so content sounds like you.")}</div>}
+      {!d.hasPlan && <div className="wb-err">{t("Pick a ")}<Link to="/web">{t("plan")}</Link>{t(" first — content runs on tokens.")}</div>}
       {/* Top banner too — a failure must be visible even when the config
           section that holds the inline error is collapsed or scrolled away. */}
-      {err && <div className="wb-err">Couldn&apos;t generate: {err}</div>}
+      {err && <div className="wb-err">{t("Couldn’t generate: {err}", { err })}</div>}
 
       {/* THE EASEL (casual) — a left instrument rail + controls beside a Stage,
           with a creations shelf below. Marketing is untouched: its wrappers are
@@ -1722,7 +1727,7 @@ export default function WebStudio() {
             store-catalogue concept) — it's about making & editing, not merchandising. */}
         {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
-            <TabIcon kind={k} />{label}
+            <TabIcon kind={k} />{t(label)}
           </button>
         ))}
       </div>
@@ -1733,19 +1738,16 @@ export default function WebStudio() {
              so this tab is about kicking them off and watching them land. ---- */}
         {tab === "import" && (
           <div className="ws-import-tab">
-            <div className="ws-lbl">Bring your store in</div>
+            <div className="ws-lbl">{t("Bring your store in")}</div>
             {d.catalog.length > 0 ? (
               <p className="ws-offernote">
-                <b>{d.catalogCount} product{d.catalogCount === 1 ? "" : "s"}</b> imported.
-                {d.catalogTruncated ? " That’s our maximum for a single import, so if your store has more they aren’t here yet." : ""}{" "}
-                Pick one from the grid
-                whenever you make something — no more hunting down links. Re-run this any time your catalogue changes.
+                <b>{d.catalogCount === 1 ? t("{n} product", { n: d.catalogCount }) : t("{n} products", { n: d.catalogCount })}</b>{" "}{t("imported.")}
+                {d.catalogTruncated ? " " + t("That’s our maximum for a single import, so if your store has more they aren’t here yet.") : ""}{" "}
+                {t("Pick one from the grid whenever you make something — no more hunting down links. Re-run this any time your catalogue changes.")}
               </p>
             ) : (
               <p className="ws-offernote">
-                Paste your store address once and we pull your products in — photos, titles and links. After that
-                you choose from a grid instead of pasting a link every time, and the product page rides along to
-                the post so shoppers land on the buy page.
+                {t("Paste your store address once and we pull your products in — photos, titles and links. After that you choose from a grid instead of pasting a link every time, and the product page rides along to the post so shoppers land on the buy page.")}
               </p>
             )}
             <div className="ws-import">
@@ -1753,29 +1755,28 @@ export default function WebStudio() {
                 onChange={(e) => setStoreInput(e.target.value)} />
               <button type="button" className="wb-btn" disabled={busy || d.catalogSyncing || !storeInput.trim()}
                 onClick={() => submit({ intent: "importCatalog", storeUrl: storeInput.trim() }, { method: "post" })}>
-                {d.catalog.length > 0 ? "Re-import" : "Pull my products in"}
+                {d.catalog.length > 0 ? t("Re-import") : t("Pull my products in")}
               </button>
             </div>
             {actionData && "catalogError" in actionData && actionData.catalogError
               ? <div className="wb-err">{String(actionData.catalogError)}</div> : null}
             {actionData && "catalogQueued" in actionData && actionData.catalogQueued
-              ? <p className="ws-offernote">Import queued — your products will appear here shortly.</p> : null}
+              ? <p className="ws-offernote">{t("Import queued — your products will appear here shortly.")}</p> : null}
             {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
             {!d.catalogSyncing && d.catalogFailed && (
               <div className="wb-err" style={{ marginTop: 10 }}>
-                <b>That import didn&apos;t work.</b> {d.catalogFailed}
+                <b>{t("That import didn’t work.")}</b> {d.catalogFailed}
               </div>
             )}
 
             <div className="ws-lbl" style={{ marginTop: 26 }}>
-              <span>Turn your brand mascot into a marketing tool</span>
+              <span>{t("Turn your brand mascot into a marketing tool")}</span>
             </div>
             <p className="ws-offernote">
-              Upload your logo, mascot or spokesperson and we forge them into a presenter — four outfits, ready to
-              star in your videos. Yours alone: nobody else&rsquo;s Studio can cast them.
+              {t("Upload your logo, mascot or spokesperson and we forge them into a presenter — four outfits, ready to star in your videos. Yours alone: nobody else’s Studio can cast them.")}
             </p>
             <div className="ws-import ws-avatarforge">
-              <input className="wb-in" name="avatarName" placeholder="Presenter name (e.g. your mascot)"
+              <input className="wb-in" name="avatarName" placeholder={t("Presenter name (e.g. your mascot)")}
                 value={avatarName} onChange={(e) => setAvatarName(e.target.value)} />
               <input className="wb-in" type="file" accept="image/*"
                 onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} />
@@ -1788,13 +1789,13 @@ export default function WebStudio() {
                   if (avatarFile) fd.set("avatarPhoto", avatarFile);
                   submit(fd, { method: "post", encType: "multipart/form-data" });
                 }}>
-                Forge my presenter
+                {t("Forge my presenter")}
               </button>
             </div>
             <div className="ws-seg" style={{ marginTop: 10 }}>
               {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
                 <button type="button" key={g} className={avatarGender === g ? "sel" : ""}
-                  onClick={() => setAvatarGender(g)}>{label}</button>
+                  onClick={() => setAvatarGender(g)}>{t(label)}</button>
               ))}
             </div>
             {actionData && "avatarError" in actionData && actionData.avatarError
@@ -1810,7 +1811,7 @@ export default function WebStudio() {
         {/* ---- VIDEO: pick your content type (big live-render tiles) ---- */}
         {tab === "video" && !contentType && (
           <>
-            <div className="ws-lbl">{casual ? "What kind of video?" : "Pick your content type"}</div>
+            <div className="ws-lbl">{casual ? t("What kind of video?") : t("Pick your content type")}</div>
             <div className="ws-tiles ws-scrollbox">
               {CONTENT_TYPES.filter((ct) => !casual
                 // Casual = Creator: drop the presenter/ad formats (avatar,
@@ -1829,7 +1830,7 @@ export default function WebStudio() {
                       {casual && CASUAL_VIDEO_COPY[ct.key] ? <span className="ws-tile-emoji" aria-hidden="true"><Ico n={CASUAL_VIDEO_COPY[ct.key].icon} size={32} /></span> : null}
                       {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {ct.tier}</span>}
                     </span>
-                    <b>{casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].name : ct.name}</b>
+                    <b>{casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].name) : t(ct.name)}</b>
                     {/* The description, always. With no plan every tile is
                         locked, so this line used to replace all eight
                         explanations with “Unlock with Studio” — a merchant
@@ -1838,30 +1839,30 @@ export default function WebStudio() {
                         already said twice over by the badge and the tile
                         styling, and tapping one opens the panel that names the
                         tier and the price. */}
-                    <span className="ws-tile-sub" title={ct.sub}>{casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].sub : ct.sub}</span>
+                    <span className="ws-tile-sub" title={casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].sub) : t(ct.sub)}>{casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].sub) : t(ct.sub)}</span>
                   </button>
                 );
               })}
             </div>
             {upsell && (
               <div className="ws-upsell">
-                <b><Ico n="lock" size={15} /> {upsell.name} is a {upsell.tier} feature</b>
-                <p>Upgrade to {upsell.tier} (${upsell.price}/mo) to unlock it — everything you already have comes along.</p>
-                <div><Link to="/web" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>See plans</Link>
-                  <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setUpsell(null)}>Not now</button></div>
+                <b><Ico n="lock" size={15} /> {t("{name} is a {tier} feature", { name: upsell.name, tier: upsell.tier })}</b>
+                <p>{t("Upgrade to {tier} (${price}/mo) to unlock it — everything you already have comes along.", { tier: upsell.tier, price: upsell.price })}</p>
+                <div><Link to="/web" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>{t("See plans")}</Link>
+                  <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setUpsell(null)}>{t("Not now")}</button></div>
               </div>
             )}
           </>
         )}
         {tab === "video" && contentType && (
           <>
-            <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ Content type</button>
-            <StepHead n={1} title={casual ? "Set the look" : "Pick the look"} hint={casual ? "the style, and what it's about" : "who stars in it, and how it's shot"} />
+            <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>
+            <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
             {contentType === "jingle" && (
-              <p className="ws-note"><Ico n="music" /> <b>Anthem</b> — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter <i>sings it on camera</i>, lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.</p>
+              <p className="ws-note"><Ico n="music" /> <b>Anthem</b>{t(" — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter ")}<i>{t("sings it on camera")}</i>{t(", lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.")}</p>
             )}
             {/* Presenter FIRST — the style tiles below render as the chosen
               * presenter, so picking them in this order explains the art.
@@ -1870,67 +1871,67 @@ export default function WebStudio() {
               * "Cartoon" still shows the style grid below, but it animates the
               * described idea, not a presenter. */}
             {!casual && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
-            {contentType === "cartoon" && !avatarId && <p className="ws-note">No presenter — the ad goes product-hero in the picked style instead.</p>}
-            {contentType === "jingle" && !avatarId && <p className="ws-note">No singer picked — the anthem plays over a hero shot of your product instead.</p>}
+            {contentType === "cartoon" && !avatarId && <p className="ws-note">{t("No presenter — the ad goes product-hero in the picked style instead.")}</p>}
+            {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
             {showCartoonGrid && (
               <>
-                <div className="ws-lbl">{contentType === "jingle" ? "Singer style" : "Pick a cartoon avatar style"} <span className="ws-opt">previews show your chosen {contentType === "jingle" ? "singer" : "presenter"}</span></div>
+                <div className="ws-lbl">{contentType === "jingle" ? t("Singer style") : t("Pick a cartoon avatar style")} <span className="ws-opt">{contentType === "jingle" ? t("previews show your chosen singer") : t("previews show your chosen presenter")}</span></div>
                 <div className="ws-tiles styles ws-scrollbox">
                   {contentType === "jingle" && (
                     <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(null)}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(${d.cast.find((c) => c.id === styleChar)?.img || ""})` }}>{cartoonStyle === null && <span className="ws-chk">✓</span>}</span>
-                      <b><Ico n="camera" /> Photoreal</b>
+                      <b><Ico n="camera" /> {t("Photoreal")}</b>
                     </button>
                   )}
                   {CARTOON_STYLES.map((cs) => (
                     <button type="button" key={cs.key} className={`ws-tile small${cartoonStyle === cs.key ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(cs.key)}>
                       <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
-                      <b>{cs.name}</b>
+                      <b>{t(cs.name)}</b>
                     </button>
                   ))}
                 </div>
                 {contentType === "cartoon" && (cartoonStyle ? (
-                  <p className="ws-note"><Ico n="palette" /> <b>{CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name}</b> — {CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb}. Your presenter and product get redrawn in this style, then animated with a narrator.</p>
+                  <p className="ws-note"><Ico n="palette" /> <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "")}</b>{t(" — ")}{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb || "")}{t(". Your presenter and product get redrawn in this style, then animated with a narrator.")}</p>
                 ) : (
-                  <p className="ws-note">Pick the style — your presenter becomes the character, your product stays recognizable.</p>
+                  <p className="ws-note">{t("Pick the style — your presenter becomes the character, your product stays recognizable.")}</p>
                 ))}
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
             )}
-            {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>{casual ? "Showcase" : "Product Highlight"}</b> — {casual ? "cinematic motion from your idea or a photo." : "cinematic motion built around your product. No presenter needed."}</p>}
-            {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>Commercial</b> — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.</p>}
-            {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>Creator Demo</b> — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.</p>}
-            {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>Unboxing</b> — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.</p>}
-            {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>Satisfying Close-Up</b> — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.</p>}
+            {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>{casual ? t("Showcase") : t("Product Highlight")}</b>{" — "}{casual ? t("cinematic motion from your idea or a photo.") : t("cinematic motion built around your product. No presenter needed.")}</p>}
+            {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>{t("Commercial")}</b>{t(" — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.")}</p>}
+            {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>{t("Creator Demo")}</b>{t(" — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.")}</p>}
+            {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>{t("Unboxing")}</b>{t(" — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.")}</p>}
+            {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>{t("Satisfying Close-Up")}</b>{t(" — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.")}</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {!casual && (contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">
                 <input type="checkbox" name="commercial" value="1" checked={commercial}
                   onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
-                <span><b><Ico n="video" /> Commercial look</b> — big-budget studio spot: color-block set matched to your product, hero-lit</span>
+                <span><b><Ico n="video" /> {t("Commercial look")}</b>{t(" — big-budget studio spot: color-block set matched to your product, hero-lit")}</span>
               </label>
             )}
             {contentType === "highlight" && (
               <label className="ws-commercial">
                 <input type="checkbox" name="breakout" value="1" checked={breakout}
                   onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
-                <span><b><Ico n="burst" /> Breakout</b> — {casual ? "your subject bursts out of the frame in 3D — the scroll-stopper" : "your product bursts out of a social post frame in 3D, the scroll-stopper"}</span>
+                <span><b><Ico n="burst" /> {t("Breakout")}</b>{" — "}{casual ? t("your subject bursts out of the frame in 3D — the scroll-stopper") : t("your product bursts out of a social post frame in 3D, the scroll-stopper")}</span>
               </label>
             )}
-            <div className="ws-lbl">Video engine <span className="ws-opt">premium engines add tokens</span></div>
+            <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
             {!engineApplies && (
               <p className="ws-enginenote">
                 {engineForcedDefault
-                  ? "Commercials are built from several scenes, so they always render on our standard engine — no engine surcharge."
-                  : "Presenter ads are rendered by our lip-sync engine, so the engine choice and its surcharge don't apply here."}
+                  ? t("Commercials are built from several scenes, so they always render on our standard engine — no engine surcharge.")
+                  : t("Presenter ads are rendered by our lip-sync engine, so the engine choice and its surcharge don't apply here.")}
               </p>
             )}
             <div className={`ws-engines${engineApplies ? "" : " off"}`}>
               {VIDEO_ENGINES.map((e) => (
-                <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={e.blurb} onClick={() => setVideoEngine(e.key)}>
-                  <b>{e.name}</b><span>{e.surcharge > 0 ? `+${e.surcharge}` : "included"}</span>
+                <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={t(e.blurb)} onClick={() => setVideoEngine(e.key)}>
+                  <b>{t(e.name)}</b><span>{e.surcharge > 0 ? `+${e.surcharge}` : t("included")}</span>
                 </button>
               ))}
             </div>
@@ -1941,24 +1942,24 @@ export default function WebStudio() {
         {/* ---- IMAGE: product-ad templates or presenter-holding ---- */}
         {tab === "image" && !imageMode && (
           <>
-            <div className="ws-lbl">{casual ? "What do you want to make?" : "What kind of image ad?"}</div>
+            <div className="ws-lbl">{casual ? t("What do you want to make?") : t("What kind of image ad?")}</div>
             <div className={`ws-tiles${casual ? "" : " two"}`}>
               {casual && (
                 <button type="button" className="ws-tile" onClick={() => setImageMode("create")}>
                   <span className="ws-tile-img" style={{ backgroundImage: "url(/create/make-image.svg?v=1)", backgroundPosition: "center" }} />
-                  <b>Make an image</b><span className="ws-tile-sub">Type anything — pick an art style, generate</span>
+                  <b>{t("Make an image")}</b><span className="ws-tile-sub">{t("Type anything — pick an art style, generate")}</span>
                 </button>
               )}
               <button type="button" className="ws-tile" onClick={() => setImageMode("product")}>
                 <span className="ws-tile-img" style={{ backgroundImage: casual ? "url(/create/edit-photo.svg?v=1)" : "url(/ad-templates/format-offer.jpg?v=2)", ...(casual ? { backgroundPosition: "center" } : null) }} />
-                <b>{casual ? "Edit a photo" : "Product ad"}</b><span className="ws-tile-sub">{casual ? "Restyle, cartoonize, change the background" : "Your product in a famous ad format"}</span>
+                <b>{casual ? t("Edit a photo") : t("Product ad")}</b><span className="ws-tile-sub">{casual ? t("Restyle, cartoonize, change the background") : t("Your product in a famous ad format")}</span>
               </button>
               {/* "With presenter" is a marketing concept (brand mascot/spokesperson
                   selling a product) — never in casual, where there's no product to hold. */}
               {!casual && (
                 <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
                   <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
-                  <b>With presenter</b><span className="ws-tile-sub">A presenter holds it, poster copy on top</span>
+                  <b>{t("With presenter")}</b><span className="ws-tile-sub">{t("A presenter holds it, poster copy on top")}</span>
                 </button>
               )}
             </div>
@@ -1973,28 +1974,28 @@ export default function WebStudio() {
                 collapsed disclosure BELOW the box. Every other image mode keeps
                 the back link + header. */}
             {!(isCreate && casual) && (
-              <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ Image type</button>
+              <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ {t("Image type")}</button>
             )}
             {!((isCreate || isEdit) && casual) && (
-              <StepHead n={1} title={isCreate ? "Pick a style" : "Pick the look"} hint={isCreate ? "optional — pick a look, or skip for a natural photo" : casual ? "how your image is styled" : "the structure your ad is built on"} />
+              <StepHead n={1} title={isCreate ? t("Pick a style") : t("Pick the look")} hint={isCreate ? t("optional — pick a look, or skip for a natural photo") : casual ? t("how your image is styled") : t("the structure your ad is built on")} />
             )}
             {/* Casual photo-edit quick actions moved BELOW the describe box as a
                 collapsed disclosure (see the {isEdit && casual} block), so the
                 edit flow leads with the box — same clean shape as "Make an image". */}
             {imageMode === "product" && !service && !casual && (
               <>
-                <div className="ws-lbl">Ad format <span className="ws-opt">proven structures, not filters</span></div>
-                <div className="ws-fmtcats" role="tablist" aria-label="Ad format categories">
+                <div className="ws-lbl">{t("Ad format")} <span className="ws-opt">{t("proven structures, not filters")}</span></div>
+                <div className="ws-fmtcats" role="tablist" aria-label={t("Ad format categories")}>
                   {FORMAT_GROUPS.map((g) => (
                     <button type="button" key={g.key} role="tab" aria-selected={fmtGroup === g.key}
-                      className={`ws-fmtcat${fmtGroup === g.key ? " sel" : ""}`} title={g.blurb}
+                      className={`ws-fmtcat${fmtGroup === g.key ? " sel" : ""}`} title={t(g.blurb)}
                       onClick={() => setFmtGroup(g.key)}>
-                      <span aria-hidden="true">{g.emoji}</span> {g.name}
+                      <span aria-hidden="true">{g.emoji}</span> {t(g.name)}
                     </button>
                   ))}
                   <button type="button" role="tab" aria-selected={fmtGroup === "all"}
-                    className={`ws-fmtcat${fmtGroup === "all" ? " sel" : ""}`} title="Every format"
-                    onClick={() => setFmtGroup("all")}>All {AD_FORMATS.length}</button>
+                    className={`ws-fmtcat${fmtGroup === "all" ? " sel" : ""}`} title={t("Every format")}
+                    onClick={() => setFmtGroup("all")}>{t("All {n}", { n: AD_FORMATS.length })}</button>
                 </div>
                 {/* What's armed, shown above the tiles so a selection made in one
                     category isn't invisible while browsing another — otherwise a
@@ -2002,8 +2003,8 @@ export default function WebStudio() {
                     looking Offers tab. */}
                 {formatKey && AD_FORMAT_BY_KEY[formatKey] && (
                   <p className="ws-fmtsel">
-                    Selected: <b>{AD_FORMAT_BY_KEY[formatKey].name}</b>
-                    <button type="button" onClick={() => setFormatKey(null)} aria-label={`Clear ${AD_FORMAT_BY_KEY[formatKey].name}`}>✕</button>
+                    {t("Selected:")} <b>{t(AD_FORMAT_BY_KEY[formatKey].name)}</b>
+                    <button type="button" onClick={() => setFormatKey(null)} aria-label={t("Clear {name}", { name: AD_FORMAT_BY_KEY[formatKey].name })}>✕</button>
                   </p>
                 )}
                 {(() => {
@@ -2014,31 +2015,31 @@ export default function WebStudio() {
                     : grp.formats.map((k) => AD_FORMAT_BY_KEY[k]).filter((f): f is AdFormat => !!f && !f.retired);
                   return (
                     <>
-                      {grp && grp.key !== "popular" && <p className="ws-fmthint">{grp.blurb}</p>}
+                      {grp && grp.key !== "popular" && <p className="ws-fmthint">{t(grp.blurb)}</p>}
                       <div className={`ws-tiles fmt${scroll ? " ws-fmtbox" : ""}`}>
                         {shown.map((f, i) => (
-                          <button type="button" key={f.key} className={`ws-tile fmt${formatKey === f.key ? " sel" : ""}`} title={f.blurb}
+                          <button type="button" key={f.key} className={`ws-tile fmt${formatKey === f.key ? " sel" : ""}`} title={t(f.blurb)}
                             style={scroll ? { animationDelay: `${Math.min(i * 22, 550)}ms` } : undefined}
                             onClick={() => { setFormatKey(formatKey === f.key ? null : f.key); setTemplateKey(null); }}>
                             <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/format-${f.key}.jpg?v=2)` }}>{formatKey === f.key && <span className="ws-chk">✓</span>}</span>
-                            <b>{f.name}</b>
+                            <b>{t(f.name)}</b>
                           </button>
                         ))}
                       </div>
                     </>
                   );
                 })()}
-                <p className="ws-note">Each format is a different creative <b>structure</b> — copy is written fresh for your product, the layout is built around your real photo, and a vision check rejects garbled text before you ever see it.</p>
+                <p className="ws-note">{t("Each format is a different creative ")}<b>{t("structure")}</b>{t(" — copy is written fresh for your product, the layout is built around your real photo, and a vision check rejects garbled text before you ever see it.")}</p>
                 {formatKey && <input type="hidden" name="formatKey" value={formatKey} />}
                 <details>
-                  <summary className="ws-lbl" style={{ cursor: "pointer" }}>Backdrop scenes (classic){templateKey ? " · 1 selected" : ""}</summary>
+                  <summary className="ws-lbl" style={{ cursor: "pointer" }}>{t("Backdrop scenes (classic)")}{templateKey ? t(" · 1 selected") : ""}</summary>
                   <div className="ws-tiles styles ws-scrollbox">
-                    {d.templates.map((t) => (
-                      <button type="button" key={t.key} className={`ws-tile small${templateKey === t.key ? " sel" : ""}`} title={t.blurb}
-                        onClick={() => { setTemplateKey(templateKey === t.key ? null : t.key); setFormatKey(null); }}>
-                        <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${t.key}.jpg?v=10)` }}>{templateKey === t.key && <span className="ws-chk">✓</span>}</span>
-                        <b>{t.name}</b>
-                        <span className="ws-tile-sub">{t.kind === "exact" ? "Exact match — your product, this scene" : "AI-staged to match"}</span>
+                    {d.templates.map((tpl) => (
+                      <button type="button" key={tpl.key} className={`ws-tile small${templateKey === tpl.key ? " sel" : ""}`} title={t(tpl.blurb)}
+                        onClick={() => { setTemplateKey(templateKey === tpl.key ? null : tpl.key); setFormatKey(null); }}>
+                        <span className="ws-tile-img" style={{ backgroundImage: `url(/ad-templates/preview-${tpl.key}.jpg?v=10)` }}>{templateKey === tpl.key && <span className="ws-chk">✓</span>}</span>
+                        <b>{t(tpl.name)}</b>
+                        <span className="ws-tile-sub">{tpl.kind === "exact" ? t("Exact match — your product, this scene") : t("AI-staged to match")}</span>
                       </button>
                     ))}
                   </div>
@@ -2049,7 +2050,7 @@ export default function WebStudio() {
             {imageMode === "presenter" && (
               <>
                 <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} brandFaceId={d.brandFaceId} />
-                {avatarId && <p className="ws-note">{casual ? "The character will hold your subject in the shot — add a photo below." : "The presenter will hold your product in the shot — add a product photo below."}</p>}
+                {avatarId && <p className="ws-note">{casual ? t("The character will hold your subject in the shot — add a photo below.") : t("The presenter will hold your product in the shot — add a product photo below.")}</p>}
                 {avatarId && <input type="hidden" name="avatarId" value={avatarId} />}
               </>
             )}
@@ -2059,10 +2060,10 @@ export default function WebStudio() {
         {/* Outfit rotation + Brand Face crowning, wherever a presenter stars. */}
         {((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && avatarId && (
           <>
-            <p className="ws-note">{casual ? "Their outfit changes each time, so every shot looks a little different." : "Their outfit rotates each time, so your content never looks stale."}</p>
+            <p className="ws-note">{casual ? t("Their outfit changes each time, so every shot looks a little different.") : t("Their outfit rotates each time, so your content never looks stale.")}</p>
             {!casual && avatarId !== d.brandFaceId && (
               <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
-                <Ico n="star" size={13} /> Make {d.cast.find((c) => c.id === avatarId)?.name || "this presenter"} your Brand Face
+                <Ico n="star" size={13} /> {t("Make {name} your Brand Face", { name: d.cast.find((c) => c.id === avatarId)?.name || t("this presenter") })}
               </button>
             )}
           </>
@@ -2074,7 +2075,7 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
-            <StepHead n={2} title={casual ? (tab === "video" ? "Describe your video" : "Your subject") : "Your product"} hint={casual ? (tab === "video" ? "anything you like — no photo needed" : "what this is about") : "what we're actually selling"} />
+            <StepHead n={2} title={casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
             {/* ---- Catalogue picker ----
                 Pasting a link and retyping the title on every generation is a
@@ -2084,15 +2085,15 @@ export default function WebStudio() {
             {d.catalog.length > 0 && !casual ? (
               <>
                 <div className="ws-lbl">
-                  <span>Pick from your store</span>
+                  <span>{t("Pick from your store")}</span>
                   <span className="ws-opt">
                     {catShown.length < d.catalogCount
-                      ? `showing ${catShown.length} of ${d.catalogCount} — search for the rest`
-                      : `${d.catalogCount} product${d.catalogCount === 1 ? "" : "s"}`}
+                      ? t("showing {shown} of {total} — search for the rest", { shown: catShown.length, total: d.catalogCount })
+                      : (d.catalogCount === 1 ? t("{n} product", { n: d.catalogCount }) : t("{n} products", { n: d.catalogCount }))}
                   </span>
                 </div>
                 {d.catalog.length > 8 && (
-                  <input className="wb-in ws-catsearch" value={catQuery} placeholder="Search your catalogue…"
+                  <input className="wb-in ws-catsearch" value={catQuery} placeholder={t("Search your catalogue…")}
                     onChange={(e) => setCatQuery(e.target.value)} />
                 )}
                 <div className="ws-catgrid">
@@ -2118,7 +2119,7 @@ export default function WebStudio() {
                 <div className="ws-catfoot">
                   {!d.catalogSyncing && (
                     <button type="button" className="ws-addurl" onClick={() => setShowConnect((v) => !v)}>
-                      {showConnect ? "Cancel" : "↻ Refresh catalogue"}
+                      {showConnect ? t("Cancel") : <>↻ {t("Refresh catalogue")}</>}
                     </button>
                   )}
                 </div>
@@ -2126,16 +2127,16 @@ export default function WebStudio() {
               </>
             ) : !casual ? (
               <div className="ws-connect">
-                <b><Ico n="box" /> Bring your whole store in</b>
-                <p>Paste your store address once and we&rsquo;ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.</p>
+                <b><Ico n="box" /> {t("Bring your whole store in")}</b>
+                <p>{t("Paste your store address once and we’ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.")}</p>
                 {/* A failed import otherwise showed only on the Import tab, so a
                     merchant who came straight here to generate had no idea why
                     their store never appeared. */}
                 {!d.catalogSyncing && d.catalogFailed && (
-                  <div className="wb-err" style={{ marginBottom: 8 }}><b>That import didn&apos;t work.</b> {d.catalogFailed} You can paste a single product link below instead.</div>
+                  <div className="wb-err" style={{ marginBottom: 8 }}><b>{t("That import didn’t work.")}</b> {d.catalogFailed} {t("You can paste a single product link below instead.")}</div>
                 )}
                 {!d.catalogSyncing && (
-                  <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>Connect my store</button>
+                  <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>{t("Connect my store")}</button>
                 )}
               </div>
             ) : null}
@@ -2146,25 +2147,24 @@ export default function WebStudio() {
                   onChange={(e) => setStoreInput(e.target.value)} />
                 <button type="button" className="wb-btn" disabled={busy || !storeInput.trim()}
                   onClick={() => { submit({ intent: "importCatalog", storeUrl: storeInput.trim() }, { method: "post" }); setShowConnect(false); }}>
-                  Pull my products in
+                  {t("Pull my products in")}
                 </button>
               </div>
             )}
             {showWear && (
               <>
-                <div className="ws-lbl"><span>How big is it?</span> <span className="ws-opt">so the presenter holds it at the right size</span></div>
+                <div className="ws-lbl"><span>{t("How big is it?")}</span> <span className="ws-opt">{t("so the presenter holds it at the right size")}</span></div>
                 <div className="ws-seg ws-sizeseg">
-                  <button type="button" className={!productSize ? "sel" : ""} onClick={() => setProductSize("")}>Auto</button>
+                  <button type="button" className={!productSize ? "sel" : ""} onClick={() => setProductSize("")}>{t("Auto")}</button>
                   {SIZE_CHOICES.map((sz) => (
                     <button type="button" key={sz.key} className={productSize === sz.key ? "sel" : ""} onClick={() => setProductSize(sz.key)}>
-                      {sz.label}
+                      {t(sz.label)}
                     </button>
                   ))}
                 </div>
                 {productSize ? <input type="hidden" name="productSize" value={productSize} /> : null}
                 <p className="ws-offernote">
-                  A product photo on a white background carries no scale, so we read the size from your
-                  title. Set it yourself if a render comes out too big or too small.
+                  {t("A product photo on a white background carries no scale, so we read the size from your title. Set it yourself if a render comes out too big or too small.")}
                 </p>
               </>
             )}
@@ -2179,14 +2179,14 @@ export default function WebStudio() {
                 StepHead, so this row would only confuse a creator. */}
             {!casual && (
               <>
-                <div className="ws-lbl"><span>Product name</span>
-                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? "Cancel" : "＋ Add by URL"}</button>
+                <div className="ws-lbl"><span>{t("Product name")}</span>
+                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
                 </div>
                 {showImport && (
                   <div className="ws-import">
-                    <input className="wb-in" type="url" value={urlInput} placeholder="Paste a product link…" onChange={(e) => setUrlInput(e.target.value)}
+                    <input className="wb-in" type="url" value={urlInput} placeholder={t("Paste a product link…")} onChange={(e) => setUrlInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
-                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : "Import"}</button>
+                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
                   </div>
                 )}
                 {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
@@ -2196,19 +2196,19 @@ export default function WebStudio() {
                 product — the previous pick's link must not survive the swap. */}
             {!casual && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
               <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); }}>
-                ↺ Use last: {lastProd.title}
+                ↺ {t("Use last: {title}", { title: lastProd.title })}
               </button>
             )}
             {(casual && tab === "video") ? (
               <textarea className="wb-in ws-ta ws-hero" name="productTitle" required value={productTitle} rows={3}
                 onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }}
-                placeholder="Describe your video — e.g. a cozy autumn morning, steam rising off a mug by a rainy window" />
+                placeholder={t("Describe your video — e.g. a cozy autumn morning, steam rising off a mug by a rainy window")} />
             ) : (
-              <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? "Optional name for your edit" : casual ? "My dog Biscuit · Sunset at the lake" : "Midnight Roast — whole bean coffee"} />
+              <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
             )}
             {tab !== "blog" && (
               <>
-                <div className="ws-lbl">{isEdit ? <>Your photo <span className="ws-opt">drag &amp; drop, or click to upload</span></> : casual ? <>Photo <span className="ws-opt">optional — add one to feature a real product</span></> : <>Product photo <span className="ws-opt">powers videos &amp; image ads — upload or paste a URL</span></>}</div>
+                <div className="ws-lbl">{isEdit ? <>{t("Your photo")} <span className="ws-opt">{t("drag & drop, or click to upload")}</span></> : casual ? <>{t("Photo")} <span className="ws-opt">{t("optional — add one to feature a real product")}</span></> : <>{t("Product photo")} <span className="ws-opt">{t("powers videos & image ads — upload or paste a URL")}</span></>}</div>
                 {isEdit ? (
                   <div className={`ws-drop${editPreview ? " has" : ""}`}
                     onClick={() => photoInputRef.current?.click()}
@@ -2217,14 +2217,14 @@ export default function WebStudio() {
                     onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("drag"); takePhoto(e.dataTransfer.files?.[0]); }}>
                     {editPreview ? (
                       <>
-                        <img src={editPreview} alt="Your photo" className="ws-drop-img" />
-                        <span className="ws-drop-change">Drop a new one, or click to change</span>
+                        <img src={editPreview} alt={t("Your photo")} className="ws-drop-img" />
+                        <span className="ws-drop-change">{t("Drop a new one, or click to change")}</span>
                       </>
                     ) : (
                       <div className="ws-drop-empty">
                         <span className="ws-drop-ba" aria-hidden="true"><i className="before" /><em>→</em><i className="after" /></span>
-                        <b>Drop your photo here</b>
-                        <span className="ws-drop-sub">or click to upload — then describe your edits below</span>
+                        <b>{t("Drop your photo here")}</b>
+                        <span className="ws-drop-sub">{t("or click to upload — then describe your edits below")}</span>
                       </div>
                     )}
                     <input ref={photoInputRef} type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" className="ws-drop-input"
@@ -2234,17 +2234,17 @@ export default function WebStudio() {
                   <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
                     onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
                 )}
-                <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? "…or https://example.com/my-photo.jpg" : "…or https://yourstore.com/cdn/product.jpg"} style={{ marginTop: 8 }} />
+                <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? t("…or https://example.com/my-photo.jpg") : t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
                 {casual && tab === "video" && !hasFile && !imageUrl.trim() && (
                   <p className="ws-note">
-                    <Ico n="sparkle" /> No photo? We&apos;ll create your whole video from your words. Add one above to feature a <b>real</b> product.
+                    <Ico n="sparkle" /> {t("No photo? We’ll create your whole video from your words. Add one above to feature a ")}<b>{t("real")}</b>{t(" product.")}
                   </p>
                 )}
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12" }}>
                     {casual
-                      ? <>Add a photo so it&apos;s really <b>yours</b> — without one we&apos;d just be inventing something from the name.</>
-                      : <>Add a photo so the ad features <b>your</b> product — without one we&apos;d be inventing a product from the name. Promoting a service? Switch to <b>Service / offer</b> below.</>}
+                      ? <>{t("Add a photo so it’s really ")}<b>{t("yours")}</b>{t(" — without one we’d just be inventing something from the name.")}</>
+                      : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product — without one we’d be inventing a product from the name. Promoting a service? Switch to ")}<b>{t("Service / offer")}</b>{t(" below.")}</>}
                   </p>
                 )}
               </>
@@ -2252,21 +2252,21 @@ export default function WebStudio() {
 
             {showService && (
               <>
-                <div className="ws-lbl">What are you promoting?</div>
+                <div className="ws-lbl">{t("What are you promoting?")}</div>
                 <div className="ws-seg">
-                  <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}><Ico n="box" /> Physical product</button>
-                  <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}><Ico n="burst" /> Service / offer</button>
+                  <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}><Ico n="box" /> {t("Physical product")}</button>
+                  <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}><Ico n="burst" /> {t("Service / offer")}</button>
                 </div>
-                {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>The commercial tells your offer&apos;s <b>transformation story</b> — before, discovery, after — and closes on a branded end-card. No product shot needed.</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>The ad sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : tab === "image" ? <>We build a lifestyle scene that sells the <b>outcome</b> of your offer — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</> : <>The presenter explains your offer and sells the <b>outcome</b> — no product shot needed. Great for coaching, subscriptions, digital &amp; local services.</>}</p>}
+                {service && <p className="ws-svchint">{tab === "video" && contentType === "commercial" ? <>{t("The commercial tells your offer’s ")}<b>{t("transformation story")}</b>{t(" — before, discovery, after — and closes on a branded end-card. No product shot needed.")}</> : tab === "video" && (contentType === "cartoon" || contentType === "jingle" || baseOf(contentType) === "highlight") ? <>{t("The ad sells the ")}<b>{t("outcome")}</b>{t(" of your offer — no product shot needed. Great for coaching, subscriptions, digital & local services.")}</> : tab === "image" ? <>{t("We build a lifestyle scene that sells the ")}<b>{t("outcome")}</b>{t(" of your offer — no product shot needed. Great for coaching, subscriptions, digital & local services.")}</> : <>{t("The presenter explains your offer and sells the ")}<b>{t("outcome")}</b>{t(" — no product shot needed. Great for coaching, subscriptions, digital & local services.")}</>}</p>}
               </>
             )}
 
             {showWear && (
               <>
-                <div className="ws-lbl"><span>How they show it</span>{apparel && <span className="ws-opt">apparel detected</span>}</div>
+                <div className="ws-lbl"><span>{t("How they show it")}</span>{apparel && <span className="ws-opt">{t("apparel detected")}</span>}</div>
                 <div className="ws-seg">
-                  <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}><Ico n="figure" /> Holding it</button>
-                  <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}><Ico n="shirt" /> Wearing it <span className="ws-wq">(generally for apparel)</span></button>
+                  <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}><Ico n="figure" /> {t("Holding it")}</button>
+                  <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}><Ico n="shirt" /> {t("Wearing it")} <span className="ws-wq">{t("(generally for apparel)")}</span></button>
                 </div>
               </>
             )}
@@ -2276,15 +2276,14 @@ export default function WebStudio() {
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
             {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
-              <StepHead n={3} title={isFaceless ? "Your video" : isCreate || isMusic ? "Describe it" : `Direction & ${verb.toLowerCase()}`} hint={isFaceless ? "what's it about?" : isCreate || isMusic ? "the more detail, the better" : "leave it to EasyMode, or steer it"} />
+              <StepHead n={3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: verb.toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
             )}
             {tab === "image" && !casual && (
               <>
-                <div className="ws-lbl"><span>Running a promo?</span> <span className="ws-opt">optional</span></div>
-                <input className="wb-in" name="merchantOffer" maxLength={40} placeholder="e.g. 20% off first order" />
+                <div className="ws-lbl"><span>{t("Running a promo?")}</span> <span className="ws-opt">{t("optional")}</span></div>
+                <input className="wb-in" name="merchantOffer" maxLength={40} placeholder={t("e.g. 20% off first order")} />
                 <p className="ws-offernote">
-                  Only fill this in if you&rsquo;re <b>actually</b> running it — we never invent discounts, so
-                  offer-style ads sell on the product instead when this is blank.
+                  {t("Only fill this in if you’re ")}<b>{t("actually")}</b>{t(" running it — we never invent discounts, so offer-style ads sell on the product instead when this is blank.")}
                 </p>
               </>
             )}
@@ -2294,47 +2293,47 @@ export default function WebStudio() {
                    presenter "what do they say/do/where" (that's a marketing
                    spokesperson ad) — just describe the video you want. */
                 <>
-                  <div className="ws-lbl">Describe your video <span className="ws-opt">required</span></div>
+                  <div className="ws-lbl">{t("Describe your video")} <span className="ws-opt">{t("required")}</span></div>
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
-                    placeholder="e.g. a red fox running through a snowy forest at dawn, cinematic slow motion"
+                    placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
                     onChange={(e) => setDirection(e.target.value)} />
                   <div className="ws-chips" style={{ marginTop: 8 }}>
                     {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
-                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {ex}</button>
+                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
                     ))}
                   </div>
                 </>
               ) : (
               <>
-                <div className="ws-lbl"><span>Prompting</span>
-                  <button type="button" className="ws-addurl" onClick={() => setAdvanced((a) => !a)}>{advanced ? "Use auto" : "Advanced ▾"}</button>
+                <div className="ws-lbl"><span>{t("Prompting")}</span>
+                  <button type="button" className="ws-addurl" onClick={() => setAdvanced((a) => !a)}>{advanced ? t("Use auto") : <>{t("Advanced")} ▾</>}</button>
                 </div>
                 {!advanced ? (
                   <>
-                    <div className="ws-autobox"><Ico n="sparkle" /> <b>EasyMode decides</b> the scene &amp; script from your brand voice. Tap <b>Advanced</b> to direct it yourself — or drop a quick direction below.</div>
-                    <input className="wb-in" value={direction} maxLength={300} placeholder="cozy autumn morning energy, focus on the aroma" onChange={(e) => setDirection(e.target.value)} />
+                    <div className="ws-autobox"><Ico n="sparkle" /> <b>{t("EasyMode decides")}</b>{t(" the scene & script from your brand voice. Tap ")}<b>{t("Advanced")}</b>{t(" to direct it yourself — or drop a quick direction below.")}</div>
+                    <input className="wb-in" value={direction} maxLength={300} placeholder={t("cozy autumn morning energy, focus on the aroma")} onChange={(e) => setDirection(e.target.value)} />
                     {/* Blank boxes freeze people. Three tappable directions
                         show the register and prove a single sentence is
                         enough — tap to fill, tap again to clear. */}
                     <div className="ws-chips" style={{ marginTop: 8 }}>
                       {["golden-hour rooftop, confident and premium", "fast + funny, lead with the price", "cozy at home, make it feel like a gift"].map((ex) => (
-                        <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {ex}</button>
+                        <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
                       ))}
                     </div>
                   </>
                 ) : (
                   <div className="ws-3w">
                     <div>
-                      <span className="ws-w">{contentType === "jingle" ? "What should the anthem sing about?" : contentType === "cartoon" ? "What should the narrator say?" : "What do they say?"}</span>
-                      <textarea className="wb-in ws-ta" value={saySomething} maxLength={400} placeholder={contentType === "jingle" ? "Lines or claims to work into the lyrics…" : "The hook + a couple talking points, in your voice…"} onChange={(e) => setSaySomething(e.target.value)} />
+                      <span className="ws-w">{contentType === "jingle" ? t("What should the anthem sing about?") : contentType === "cartoon" ? t("What should the narrator say?") : t("What do they say?")}</span>
+                      <textarea className="wb-in ws-ta" value={saySomething} maxLength={400} placeholder={contentType === "jingle" ? t("Lines or claims to work into the lyrics…") : t("The hook + a couple talking points, in your voice…")} onChange={(e) => setSaySomething(e.target.value)} />
                     </div>
                     <div>
-                      <span className="ws-w">{contentType === "cartoon" || contentType === "jingle" ? "What happens in the scene?" : "What do they do?"}</span>
-                      <input className="wb-in" type="text" value={doWhat} maxLength={160} placeholder={contentType === "cartoon" || contentType === "jingle" ? "the product saves the day, sparkles, celebration…" : "unbox it, hold it up, demo a feature…"} onChange={(e) => setDoWhat(e.target.value)} />
+                      <span className="ws-w">{contentType === "cartoon" || contentType === "jingle" ? t("What happens in the scene?") : t("What do they do?")}</span>
+                      <input className="wb-in" type="text" value={doWhat} maxLength={160} placeholder={contentType === "cartoon" || contentType === "jingle" ? t("the product saves the day, sparkles, celebration…") : t("unbox it, hold it up, demo a feature…")} onChange={(e) => setDoWhat(e.target.value)} />
                     </div>
                     <div>
-                      <span className="ws-w">{contentType === "cartoon" || contentType === "jingle" ? "Where does it happen?" : "Where are they?"}</span>
-                      <input className="wb-in" type="text" value={where} maxLength={140} placeholder="a cozy cabin, a city rooftop, a snowy slope…" onChange={(e) => setWhere(e.target.value)} />
+                      <span className="ws-w">{contentType === "cartoon" || contentType === "jingle" ? t("Where does it happen?") : t("Where are they?")}</span>
+                      <input className="wb-in" type="text" value={where} maxLength={140} placeholder={t("a cozy cabin, a city rooftop, a snowy slope…")} onChange={(e) => setWhere(e.target.value)} />
                     </div>
                   </div>
                 )}
@@ -2344,10 +2343,10 @@ export default function WebStudio() {
               <>
                 {tab === "blog" && (
                   <>
-                    <div className="ws-lbl">Pick an angle <span className="ws-opt">optional</span></div>
+                    <div className="ws-lbl">{t("Pick an angle")} <span className="ws-opt">{t("optional")}</span></div>
                     <div className="ws-chips">
                       {BLOG_ANGLES.map((s, i) => (
-                        <button type="button" key={i} className={`ws-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}><Ico n={s.icon} /> {s.label}</button>
+                        <button type="button" key={i} className={`ws-chip${direction === s.prompt ? " sel" : ""}`} onClick={() => setDirection(direction === s.prompt ? "" : s.prompt)}><Ico n={s.icon} /> {t(s.label)}</button>
                       ))}
                     </div>
                   </>
@@ -2358,12 +2357,12 @@ export default function WebStudio() {
                     see the isMusic / isFaceless genopts further down. */}
                 {tab === "music" && !casual && (
                   <>
-                    <div className="ws-lbl">Genre / mood <span className="ws-opt">optional</span></div>
-                    <div className="ws-fmtcats" role="tablist" aria-label="Music style">
+                    <div className="ws-lbl">{t("Genre / mood")} <span className="ws-opt">{t("optional")}</span></div>
+                    <div className="ws-fmtcats" role="tablist" aria-label={t("Music style")}>
                       {MUSIC_STYLES.map((s) => (
                         <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
                           className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
-                          <Ico n={s.icon} /> {s.name}
+                          <Ico n={s.icon} /> {t(s.name)}
                         </button>
                       ))}
                     </div>
@@ -2372,23 +2371,23 @@ export default function WebStudio() {
                 )}
                 {tab === "faceless" && !casual && (
                   <>
-                    <div className="ws-lbl">Format</div>
-                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
+                    <div className="ws-lbl">{t("Format")}</div>
+                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Video format")}>
                       {([["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]] as [string, string][]).map(([k, label]) => (
                         <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
-                          className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
+                          className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{t(label)}</button>
                       ))}
                     </div>
-                    <div className="ws-lbl" style={{ marginTop: 12 }}>Voice</div>
-                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Voice">
+                    <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Voice")}</div>
+                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Voice")}>
                       {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
                         <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
-                          className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{label}</button>
+                          className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
                       ))}
                     </div>
                     <input type="hidden" name="facelessFormat" value={facelessFormat} />
                     <input type="hidden" name="voiceKey" value={voiceKey} />
-                    <p className="ws-note" style={{ marginTop: 12 }}>We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.</p>
+                    <p className="ws-note" style={{ marginTop: 12 }}>{t("We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.")}</p>
                   </>
                 )}
                 {/* WHAT THIS BOX DOES DEPENDS ON WHAT IS ABOVE IT.
@@ -2401,14 +2400,14 @@ export default function WebStudio() {
                 <div className="ws-lbl">
                   {tab === "image"
                     ? isCreate
-                      ? "Describe your image"
+                      ? t("Describe your image")
                       : isEdit
-                        ? editOp === "bgswap" ? "Describe the new background" : editOp === "replace" ? "What to change" : editOp === "cartoonize" ? "Cartoon style" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "No input needed" : editOp === "restyle" ? "Describe the look" : "Describe your edits"
-                        : templateKey ? "Tweaks" : formatKey ? "Anything to emphasise?" : "Describe it"
-                    : tab === "music" ? "Describe your music"
-                    : tab === "faceless" ? "What's your video about?"
-                    : "Topic"}{" "}
-                  <span className="ws-opt">{isCreate || isMusic || isFaceless ? "required" : isEdit && (editOp === "replace" || !editOp) ? "required" : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "nothing to add" : "optional"}</span>
+                        ? editOp === "bgswap" ? t("Describe the new background") : editOp === "replace" ? t("What to change") : editOp === "cartoonize" ? t("Cartoon style") : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? t("No input needed") : editOp === "restyle" ? t("Describe the look") : t("Describe your edits")
+                        : templateKey ? t("Tweaks") : formatKey ? t("Anything to emphasise?") : t("Describe it")
+                    : tab === "music" ? t("Describe your music")
+                    : tab === "faceless" ? t("What's your video about?")
+                    : t("Topic")}{" "}
+                  <span className="ws-opt">{isCreate || isMusic || isFaceless ? t("required") : isEdit && (editOp === "replace" || !editOp) ? t("required") : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? t("nothing to add") : t("optional")}</span>
                 </div>
                 {/* The text-to-create instruments (Make an image / Make music /
                     Faceless) lead with a BIG "describe anything" box — the
@@ -2418,10 +2417,10 @@ export default function WebStudio() {
                 {(isCreate || isMusic || isFaceless || (isEdit && casual)) ? (
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
                     placeholder={
-                      isMusic ? "e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat"
-                      : isFaceless ? "e.g. 5 mind-blowing facts about the deep ocean"
-                      : isEdit ? "e.g. make it terrifying · turn it into a watercolor painting · add a stormy sunset sky"
-                      : "e.g. a red panda astronaut floating over neon Tokyo at night"
+                      isMusic ? t("e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat")
+                      : isFaceless ? t("e.g. 5 mind-blowing facts about the deep ocean")
+                      : isEdit ? t("e.g. make it terrifying · turn it into a watercolor painting · add a stormy sunset sky")
+                      : t("e.g. a red panda astronaut floating over neon Tokyo at night")
                     }
                     onChange={(e) => setDirection(e.target.value)} />
                 ) : (
@@ -2429,27 +2428,27 @@ export default function WebStudio() {
                   disabled={isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")}
                   placeholder={
                     tab === "faceless"
-                      ? "e.g. 5 mind-blowing facts about the deep ocean"
+                      ? t("e.g. 5 mind-blowing facts about the deep ocean")
                     : tab === "music"
-                      ? "e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat"
+                      ? t("e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat")
                     : tab === "image"
                       ? isCreate
-                        ? "e.g. a red panda astronaut floating over neon Tokyo at night"
+                        ? t("e.g. a red panda astronaut floating over neon Tokyo at night")
                         : isEdit
-                        ? editOp === "bgswap" ? "e.g. a sunny marble kitchen counter" : editOp === "replace" ? "e.g. replace the sky with a sunset" : editOp === "cartoonize" ? "e.g. bold outlines, flat colors — or leave blank" : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? "Nothing to add — just hit Edit" : editOp === "restyle" ? "e.g. warm film look, soft golden light" : "e.g. make the shirt a purple hoodie, add a camera"
+                        ? editOp === "bgswap" ? t("e.g. a sunny marble kitchen counter") : editOp === "replace" ? t("e.g. replace the sky with a sunset") : editOp === "cartoonize" ? t("e.g. bold outlines, flat colors — or leave blank") : (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? t("Nothing to add — just hit Edit") : editOp === "restyle" ? t("e.g. warm film look, soft golden light") : t("e.g. make the shirt a purple hoodie, add a camera")
                         : templateKey
-                          ? "Any edits — e.g. make the wall sage green, add pine branches…"
+                          ? t("Any edits — e.g. make the wall sage green, add pine branches…")
                           : formatKey
-                            ? "e.g. lead with how fast it ships — or leave blank and we'll pick the angle"
-                            : "Describe the scene you want — or leave blank for bright & clean…"
-                      : "Tap an angle above, or describe your own topic…"
+                            ? t("e.g. lead with how fast it ships — or leave blank and we'll pick the angle")
+                            : t("Describe the scene you want — or leave blank for bright & clean…")
+                      : t("Tap an angle above, or describe your own topic…")
                   }
                   onChange={(e) => setDirection(e.target.value)} />
                 )}
                 {isFaceless && (
                   <div className="ws-chips" style={{ marginTop: 8 }}>
                     {["5 mind-blowing facts about the deep ocean", "a 30-second motivational pep talk", "storytime: the day everything changed"].map((ex) => (
-                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {ex}</button>
+                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
                     ))}
                   </div>
                 )}
@@ -2462,26 +2461,26 @@ export default function WebStudio() {
                 Both ride hidden inputs and are re-validated server-side. */}
             {isCreate && casual && (
               <div className="ws-genopts">
-                <div className="ws-lbl">Frame</div>
-                <div className="ws-frames" role="tablist" aria-label="Output frame">
+                <div className="ws-lbl">{t("Frame")}</div>
+                <div className="ws-frames" role="tablist" aria-label={t("Output frame")}>
                   {CREATE_ASPECTS.map((a) => (
-                    <button type="button" key={a.value} role="tab" aria-selected={createAspect === a.value} title={`${a.name} (${a.value})`}
+                    <button type="button" key={a.value} role="tab" aria-selected={createAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
                       className={`ws-frame${createAspect === a.value ? " sel" : ""}`} onClick={() => setCreateAspect(a.value)}>
                       <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
-                      <span className="ws-frame-nm">{a.name}</span>
+                      <span className="ws-frame-nm">{t(a.name)}</span>
                     </button>
                   ))}
                 </div>
-                <div className="ws-lbl" style={{ marginTop: 12 }}>Model</div>
-                <div className="ws-models" role="tablist" aria-label="AI model">
+                <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Model")}</div>
+                <div className="ws-models" role="tablist" aria-label={t("AI model")}>
                   {CREATE_MODELS.map((m) => (
                     <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
                       className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
-                      {m.name}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
+                      {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
                     </button>
                   ))}
                 </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{CREATE_MODELS.find((m) => m.key === createModel)?.blurb}</p>
+                <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === createModel)?.blurb || "")}</p>
                 <input type="hidden" name="createModel" value={createModel} />
                 <input type="hidden" name="createAspect" value={createAspect} />
               </div>
@@ -2499,25 +2498,25 @@ export default function WebStudio() {
                   <span className="ws-styletoggle-l">
                     <span aria-hidden="true"><Ico n="palette" /></span>
                     {createStyle
-                      ? <>Style: <b>{CREATE_STYLES.find((s) => s.key === createStyle)?.name}</b></>
-                      : <>Steer the look</>}
+                      ? <>{t("Style:")} <b>{t(CREATE_STYLES.find((s) => s.key === createStyle)?.name || "")}</b></>
+                      : t("Steer the look")}
                   </span>
                   <span className="ws-styletoggle-r">
-                    {!createStyle && <span className="ws-opt">optional</span>}
+                    {!createStyle && <span className="ws-opt">{t("optional")}</span>}
                     <span className="ws-chev" aria-hidden="true">⌄</span>
                   </span>
                 </button>
                 {showStyle && (
                   <>
-                    <p className="ws-note" style={{ marginTop: 8 }}>Pick an art style, or skip for a natural photo.</p>
-                    <div className="ws-stylegrid" role="tablist" aria-label="Art style">
+                    <p className="ws-note" style={{ marginTop: 8 }}>{t("Pick an art style, or skip for a natural photo.")}</p>
+                    <div className="ws-stylegrid" role="tablist" aria-label={t("Art style")}>
                       {CREATE_STYLES.map((s) => (
-                        <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={s.name}
+                        <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={t(s.name)}
                           className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
                           <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
                             <span className="ws-styletile-emoji" aria-hidden="true"><Ico n={s.icon} size={24} /></span>
                           </span>
-                          <span className="ws-styletile-nm">{s.name}</span>
+                          <span className="ws-styletile-nm">{t(s.name)}</span>
                         </button>
                       ))}
                     </div>
@@ -2533,16 +2532,16 @@ export default function WebStudio() {
                 the quick actions as a collapsed disclosure. */}
             {isEdit && casual && (
               <div className="ws-genopts">
-                <div className="ws-lbl">Model</div>
-                <div className="ws-models" role="tablist" aria-label="AI model">
+                <div className="ws-lbl">{t("Model")}</div>
+                <div className="ws-models" role="tablist" aria-label={t("AI model")}>
                   {CREATE_MODELS.map((m) => (
                     <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
                       className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
-                      {m.name}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
+                      {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
                     </button>
                   ))}
                 </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{CREATE_MODELS.find((m) => m.key === createModel)?.blurb}</p>
+                <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === createModel)?.blurb || "")}</p>
                 <input type="hidden" name="createModel" value={createModel} />
                 <div className="ws-styledisc" style={{ marginTop: 12 }}>
                   <button type="button" className={`ws-styletoggle${showEditOps ? " open" : ""}`}
@@ -2550,21 +2549,21 @@ export default function WebStudio() {
                     <span className="ws-styletoggle-l">
                       <span aria-hidden="true"><Ico n="bolt" /></span>
                       {editOp
-                        ? <>Quick action: <b>{EDIT_QUICK_ACTIONS.find(([k]) => k === editOp)?.[1]}</b></>
-                        : <>Quick actions</>}
+                        ? <>{t("Quick action:")} <b>{t(EDIT_QUICK_ACTIONS.find(([k]) => k === editOp)?.[1] || "")}</b></>
+                        : t("Quick actions")}
                     </span>
                     <span className="ws-styletoggle-r">
-                      {!editOp && <span className="ws-opt">optional</span>}
+                      {!editOp && <span className="ws-opt">{t("optional")}</span>}
                       <span className="ws-chev" aria-hidden="true">⌄</span>
                     </span>
                   </button>
                   {showEditOps && (
                     <>
-                      <p className="ws-note" style={{ marginTop: 8 }}>One-tap transforms — or just describe your edit above.</p>
-                      <div className="ws-fmtcats" role="tablist" aria-label="Photo edit">
+                      <p className="ws-note" style={{ marginTop: 8 }}>{t("One-tap transforms — or just describe your edit above.")}</p>
+                      <div className="ws-fmtcats" role="tablist" aria-label={t("Photo edit")}>
                         {EDIT_QUICK_ACTIONS.map(([k, label]) => (
                           <button type="button" key={k} role="tab" aria-selected={editOp === k}
-                            className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{label}</button>
+                            className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{t(label)}</button>
                         ))}
                       </div>
                     </>
@@ -2579,12 +2578,12 @@ export default function WebStudio() {
                 options row instead of crowding in over the box. */}
             {isMusic && (
               <div className="ws-genopts">
-                <div className="ws-lbl">Genre / mood <span className="ws-opt">optional</span></div>
-                <div className="ws-fmtcats" role="tablist" aria-label="Music style">
+                <div className="ws-lbl">{t("Genre / mood")} <span className="ws-opt">{t("optional")}</span></div>
+                <div className="ws-fmtcats" role="tablist" aria-label={t("Music style")}>
                   {MUSIC_STYLES.map((s) => (
                     <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
                       className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
-                      <Ico n={s.icon} /> {s.name}
+                      <Ico n={s.icon} /> {t(s.name)}
                     </button>
                   ))}
                 </div>
@@ -2597,34 +2596,34 @@ export default function WebStudio() {
                 .ws-genopts block. Flagship action, so both choices stay visible. */}
             {isFaceless && (
               <div className="ws-genopts">
-                <div className="ws-lbl">Format</div>
-                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Video format">
+                <div className="ws-lbl">{t("Format")}</div>
+                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Video format")}>
                   {([["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]] as [string, string][]).map(([k, label]) => (
                     <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
-                      className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{label}</button>
+                      className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{t(label)}</button>
                   ))}
                 </div>
-                <div className="ws-lbl" style={{ marginTop: 12 }}>Voice</div>
-                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label="Voice">
+                <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Voice")}</div>
+                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Voice")}>
                   {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
                     <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
-                      className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{label}</button>
+                      className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
                   ))}
                 </div>
-                <div className="ws-lbl" style={{ marginTop: 12 }}>Quality</div>
-                <div className="ws-models" role="tablist" aria-label="B-roll quality">
+                <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Quality")}</div>
+                <div className="ws-models" role="tablist" aria-label={t("B-roll quality")}>
                   {FACELESS_QUALITIES.map((q) => (
                     <button type="button" key={q.key} role="tab" aria-selected={facelessQuality === q.key}
                       className={`ws-model${facelessQuality === q.key ? " sel" : ""}`} onClick={() => setFacelessQuality(q.key)}>
-                      {q.name}{q.surcharge > 0 && <span className="ws-model-up">+{q.surcharge}</span>}
+                      {t(q.name)}{q.surcharge > 0 && <span className="ws-model-up">+{q.surcharge}</span>}
                     </button>
                   ))}
                 </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{FACELESS_QUALITIES.find((q) => q.key === facelessQuality)?.blurb}</p>
+                <p className="ws-note" style={{ marginTop: 6 }}>{t(FACELESS_QUALITIES.find((q) => q.key === facelessQuality)?.blurb || "")}</p>
                 <input type="hidden" name="facelessFormat" value={facelessFormat} />
                 <input type="hidden" name="voiceKey" value={voiceKey} />
                 <input type="hidden" name="facelessQuality" value={facelessQuality} />
-                <p className="ws-note" style={{ marginTop: 12 }}>We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.</p>
+                <p className="ws-note" style={{ marginTop: 12 }}>{t("We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.")}</p>
               </div>
             )}
 
@@ -2637,7 +2636,7 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            <div className="ws-tok"><span className="tt">This {noun}</span><span className="tb"><b>{cost}</b><i>tokens</i><em className="xp">+{xpForSpend(cost)} XP</em></span></div>
+            <div className="ws-tok"><span className="tt">{t("This {noun}", { noun })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
             {/* The trial cap is the ONE spend failure the merchant can clear
@@ -2645,11 +2644,11 @@ export default function WebStudio() {
                 them rather than three taps away on the plans page. */}
             {err && d.trialing && /free trial/i.test(err) && (
               <div className="ws-trialout">
-                <b>Don&rsquo;t want to wait?</b>
-                <p>Start your plan now and your full monthly allowance unlocks immediately — your card is charged today instead of on day 7.</p>
+                <b>{t("Don’t want to wait?")}</b>
+                <p>{t("Start your plan now and your full monthly allowance unlocks immediately — your card is charged today instead of on day 7.")}</p>
                 <button type="button" className="wb-btn" disabled={busy}
                   onClick={() => submit({ intent: "endTrial" }, { method: "post" })}>
-                  Start my plan now
+                  {t("Start my plan now")}
                 </button>
               </div>
             )}
@@ -2662,22 +2661,22 @@ export default function WebStudio() {
                 identical articles, and each one is a page not a thumbnail. */}
             {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && (
               <div className="ws-burst">
-                <span className="ws-burst-lbl">How many</span>
+                <span className="ws-burst-lbl">{t("How many")}</span>
                 <div className="ws-burst-steps">
                   {(tab === "video" ? BURST_STEPS.video : BURST_STEPS.image).map((n) => (
                     <button type="button" key={n} className={burst === n ? "sel" : ""}
                       onClick={() => setBurst(n)} aria-pressed={burst === n}>
-                      {n === 1 ? "Just one" : `×${n}`}
+                      {n === 1 ? t("Just one") : `×${n}`}
                     </button>
                   ))}
                 </div>
                 {burst > 1 && (
                   <p className="ws-burst-note">
                     {tab === "image" && !templateKey && !formatKey && imageMode !== "presenter" && !service && !casual
-                      ? `${burst} different ad layouts at once — a full set, all ready to post.`
+                      ? t("{n} different ad layouts at once — a full set, all ready to post.", { n: burst })
                       : casual
-                        ? `${burst} different looks at once — all yours to share.`
-                        : `${burst} takes at once — same setup, different angles, all yours to use.`}
+                        ? t("{n} different looks at once — all yours to share.", { n: burst })
+                        : t("{n} takes at once — same setup, different angles, all yours to use.", { n: burst })}
                   </p>
                 )}
               </div>
@@ -2685,32 +2684,39 @@ export default function WebStudio() {
             <input type="hidden" name="burst" value={burst} />
             {!isMusic && (
               <div className="ws-outlang">
-                <span className="ws-outlang-lbl">Writing in</span>
+                <span className="ws-outlang-lbl">{t("Writing in")}</span>
                 <LangToggle
                   value={outputLang} labels={CONTENT_LANG_NATIVE} align="left"
                   onPick={(c) => outLangFetcher.submit({ intent: "setLang", contentLang: c }, { method: "post", action: "/web" })}
-                  title="Output language — the language the generated copy, script & captions are written in. Keep the app in English and still make, say, Spanish ads."
+                  title={t("Output language — the language the generated copy, script & captions are written in. Keep the app in English and still make, say, Spanish ads.")}
                 />
               </div>
             )}
             <div className="ws-makebar" style={{ marginTop: 10 }}>
               <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
                 {busy
-                  ? "Sending to the studio…"
+                  ? t("Sending to the studio…")
                   : !d.hasPlan
-                    ? "Pick a plan to start"
+                    ? t("Pick a plan to start")
                   : shortBy > 0
-                    ? `Needs ${shortBy.toLocaleString("en-US")} more token${shortBy === 1 ? "" : "s"} — ${cost * burst} for ${burst > 1 ? `${burst} ${noun}s` : `this ${noun}`}`
+                    ? (shortBy === 1
+                        ? t("Needs {short} more token — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun }) : t("this {noun}", { noun }) })
+                        : t("Needs {short} more tokens — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun }) : t("this {noun}", { noun }) }))
                   : burst > 1
-                    ? `${verb} ${burst} ${noun}s — ${cost * burst} tokens · +${xpForSpend(cost * burst)} XP`
-                    : `${verb} ${noun} — ${cost} tokens${engineFee ? ` (incl. +${engineFee} engine)` : createFee ? ` (incl. +${createFee} ${CREATE_MODELS.find((m) => m.key === createModel)?.name || "premium"})` : facelessFee ? ` (incl. +${facelessFee} Ultra)` : ""} · +${xpForSpend(cost)} XP`}
+                    ? t("{verb} {n} {noun}s — {total} tokens · +{xp} XP", { verb, n: burst, noun, total: cost * burst, xp: xpForSpend(cost * burst) })
+                    : t("{verb} {noun} — {cost} tokens{extra} · +{xp} XP", {
+                        verb, noun, cost, xp: xpForSpend(cost),
+                        extra: engineFee ? t(" (incl. +{n} engine)", { n: engineFee })
+                             : createFee ? t(" (incl. +{n} {model})", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") })
+                             : facelessFee ? t(" (incl. +{n} Ultra)", { n: facelessFee })
+                             : "" })}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
-                  ? <>Your 7-day free trial unlocks every generator — <Link to="/web#plans">pick a plan</Link> to begin.</>
+                  ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
                   : shortBy > 0
-                    ? <>Wallet: {d.tokens.toLocaleString("en-US")} tokens · <Link to="/web#plans">Add tokens</Link>{burst > 1 ? " or make fewer at once" : ""}</>
-                    : `Wallet: ${d.tokens.toLocaleString("en-US")} tokens`}
+                    ? <>{t("Wallet: {n} tokens · ", { n: d.tokens.toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{burst > 1 ? t(" or make fewer at once") : ""}</>
+                    : t("Wallet: {n} tokens", { n: d.tokens.toLocaleString("en-US") })}
               </p>
             </div>
           </>
@@ -2734,26 +2740,26 @@ export default function WebStudio() {
                  </div>
                  {!stageResult.isVideo && !stageResult.isAudio && (
                    <div className="ws-quick">
-                     <span className="ws-quick-lbl">Quick edit · {d.costs.quickEdit} ea</span>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("upscale")}><Ico n="sparkle" size={14} /> Enhance</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent.")}><Ico n="search" size={14} /> Zoom out</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent.")}><Ico n="search" size={14} /> Zoom in</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("bgremove")}><Ico n="scissors" size={14} /> Remove bg</button>
+                     <span className="ws-quick-lbl">{t("Quick edit · {n} ea", { n: d.costs.quickEdit })}</span>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("upscale")}><Ico n="sparkle" size={14} /> {t("Enhance")}</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent.")}><Ico n="search" size={14} /> {t("Zoom out")}</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent.")}><Ico n="search" size={14} /> {t("Zoom in")}</button>
+                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("bgremove")}><Ico n="scissors" size={14} /> {t("Remove bg")}</button>
                    </div>
                  )}
                  <div className="ws-verbs">
-                   <a className="ws-verb gold" href={stageResult.media} download>⤓ Download</a>
-                   <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ Make another</button>
-                   <Link className="ws-verb" to="/web/archive?section=creator">Open gallery</Link>
-                   <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ Clear</button>
+                   <a className="ws-verb gold" href={stageResult.media} download>⤓ {t("Download")}</a>
+                   <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>
+                   <Link className="ws-verb" to="/web/archive?section=creator">{t("Open gallery")}</Link>
+                   <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ {t("Clear")}</button>
                  </div>
                </div>
              ) : genError ? (
                <div className={`ws-easelph ws-generr${genError.kind === "unsafe" ? " unsafe" : ""}`} role="alert">
                  <span className="ws-generr-ico" aria-hidden="true">{genError.kind === "unsafe" ? <Ico n="warning" size={24} /> : "!"}</span>
-                 <div className="ws-easel-cap">{genError.kind === "unsafe" ? "Sorry, we can’t make that one" : "That didn’t finish"}</div>
+                 <div className="ws-easel-cap">{genError.kind === "unsafe" ? t("Sorry, we can’t make that one") : t("That didn’t finish")}</div>
                  <div className="ws-easel-sub">{genError.message}</div>
-                 <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>{genError.kind === "unsafe" ? "Try another" : "Got it"}</button>
+                 <button type="button" className="ws-verb ws-generr-btn" onClick={() => setGenError(null)}>{genError.kind === "unsafe" ? t("Try another") : t("Got it")}</button>
                </div>
              ) : (isEdit && editPreview) ? (
                /* A photo loaded for editing shows ON the Stage (the canvas) — so
@@ -2763,19 +2769,19 @@ export default function WebStudio() {
                  <div className="ws-stagemedia ws-stagemedia-edit" role="button" tabIndex={0}
                    onClick={() => { if (!(making || busy)) stageUploadRef.current?.click(); }}
                    onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}>
-                   <img src={editPreview} alt="Your photo"
-                     onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setStageAspect(t.naturalWidth / t.naturalHeight); }} />
+                   <img src={editPreview} alt={t("Your photo")}
+                     onLoad={(e) => { const el = e.currentTarget; if (el.naturalWidth && el.naturalHeight) setStageAspect(el.naturalWidth / el.naturalHeight); }} />
                  </div>
                  <div className="ws-verbs">
-                   <span className="ws-editcap">{making || busy ? "Editing your photo…" : "Describe your edits, then Make"}</span>
+                   <span className="ws-editcap">{making || busy ? t("Editing your photo…") : t("Describe your edits, then Make")}</span>
                    {!(making || busy) && (
-                     <button type="button" className="ws-verb" onClick={() => { setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; }); setEditFile(null); setHasFile(false); }}>✕ Remove</button>
+                     <button type="button" className="ws-verb" onClick={() => { setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; }); setEditFile(null); setHasFile(false); }}>✕ {t("Remove")}</button>
                    )}
                  </div>
                </div>
              ) : (
                <div className={`ws-easelph ws-easelph-drop${(making || busy) ? " making" : ""}`}
-                 role="button" tabIndex={0} aria-label="Drop or upload a photo to edit"
+                 role="button" tabIndex={0} aria-label={t("Drop or upload a photo to edit")}
                  onClick={() => { if (!(making || busy)) stageUploadRef.current?.click(); }}
                  onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}
                  onDragOver={(e) => { if (making || busy) return; e.preventDefault(); e.currentTarget.classList.add("drag"); }}
@@ -2789,8 +2795,8 @@ export default function WebStudio() {
                      </span>
                    )}
                  </span>
-                 <div className="ws-easel-cap">{(making || busy) ? `Making your ${makingNounRef.current || noun}…` : `Add a photo, or make one`}</div>
-                 <div className="ws-easel-sub">{(making || busy) ? "This takes a few minutes — it'll land right here." : "Tap to upload or drop a photo to edit — or just describe what you want below."}</div>
+                 <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: makingNounRef.current || noun }) : t("Add a photo, or make one")}</div>
+                 <div className="ws-easel-sub">{(making || busy) ? t("This takes a few minutes — it'll land right here.") : t("Tap to upload or drop a photo to edit — or just describe what you want below.")}</div>
                </div>
              )}
            </div>
@@ -2801,14 +2807,14 @@ export default function WebStudio() {
 
       {casual && d.recent.length > 0 && (
         <section className="ws-shelf">
-          <div className="ws-shelf-h"><b>Your creations</b><Link to="/web/archive?section=creator" className="ws-shelf-all">Open gallery ›</Link></div>
+          <div className="ws-shelf-h"><b>{t("Your creations")}</b><Link to="/web/archive?section=creator" className="ws-shelf-all">{t("Open gallery")} ›</Link></div>
           <div className="ws-shelf-strip">
             {d.recent.map((p) => (
-              <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className="ws-shelf-piece" title={`${p.title} — open on the Stage`}>
+              <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className="ws-shelf-piece" title={t("{title} — open on the Stage", { title: p.title })}>
                 <span className="ws-shelf-thumb" style={!p.isVideo && !p.isAudio && p.media ? { backgroundImage: `url(${p.media})` } : undefined}>
                   {p.isVideo && p.media ? <video src={`${p.media}#t=0.1`} muted playsInline preload="metadata" /> : null}
                   {p.isAudio ? <span className="ws-shelf-aud" aria-hidden="true"><Ico n="music" size={26} /></span> : null}
-                  <span className="ws-shelf-tag">{p.isVideo ? "▶ Video" : p.isAudio ? "Music" : "Image"}</span>
+                  <span className="ws-shelf-tag">{p.isVideo ? <>▶ {t("Video")}</> : p.isAudio ? t("Music") : t("Image")}</span>
                 </span>
                 <span className="ws-shelf-pt">{p.title}</span>
               </button>
@@ -2829,10 +2835,10 @@ export default function WebStudio() {
               <span className="ws-flex-word">Easy<b>Mode</b></span>
               <span className="ws-flex-rule" />
             </div>
-            <b className="ws-mh">{queuedCount > 1 ? `Your ${queuedCount} ${queued}s are being made` : `Your ${queued === "faceless" ? "faceless video" : queued} is being made`}</b>
-            <p className="ws-mp">{queuedCount > 1 ? <>They land in your <b>{casual ? "gallery" : "Archive"}</b> over the next few minutes — a set of different takes, all ready to {casual ? "share" : "post"}.</> : <>It lands in your <b>{casual ? "gallery" : "Archive"}</b> in a few minutes — along with everything else EasyMode builds for you.</>}</p>
-            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued === "faceless" ? "video" : queued}${casual ? "&section=creator" : ""}`}>{casual ? "View gallery ›" : "View Archive ›"}</Link>
-            <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>Make another</button>
+            <b className="ws-mh">{queuedCount > 1 ? t("Your {n} {queued}s are being made", { n: queuedCount, queued }) : t("Your {queued} is being made", { queued: queued === "faceless" ? t("faceless video") : queued })}</b>
+            <p className="ws-mp">{queuedCount > 1 ? <>{t("They land in your ")}<b>{casual ? t("gallery") : t("Archive")}</b>{t(" over the next few minutes — a set of different takes, all ready to ")}{casual ? t("share") : t("post")}.</> : <>{t("It lands in your ")}<b>{casual ? t("gallery") : t("Archive")}</b>{t(" in a few minutes — along with everything else EasyMode builds for you.")}</>}</p>
+            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued === "faceless" ? "video" : queued}${casual ? "&section=creator" : ""}`}>{casual ? <>{t("View gallery")} ›</> : <>{t("View Archive")} ›</>}</Link>
+            <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>{t("Make another")}</button>
           </div>
         </div>
       )}

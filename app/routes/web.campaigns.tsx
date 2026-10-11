@@ -14,6 +14,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
 import { useState } from "react";
+import { useT } from "../lib/ui-lang";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { LIVE_AVATARS, avatarImg, privateCastFor } from "../lib/avatars";
@@ -341,6 +342,7 @@ export default function WebCampaigns() {
   const submit = useSubmit();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+  const t = useT();
 
   const [planKey, setPlanKey] = useState(d.plans[1]?.key || d.plans[0]?.key || "");
   const plan = d.plans.find((p) => p.key === planKey) || d.plans[0];
@@ -425,12 +427,12 @@ export default function WebCampaigns() {
 
       <div className="wc-head">
         <div>
-          <h1>Campaigns</h1>
-          <p>A month of content, created and posted for you. Pick a plan once — it runs itself from there.</p>
+          <h1>{t("Campaigns")}</h1>
+          <p>{t("A month of content, created and posted for you. Pick a plan once — it runs itself from there.")}</p>
         </div>
         {d.campaigns.length > 0 && (
           <button type="button" className="wb-btn wc-newbtn" onClick={() => setShowLaunch((s) => !s)}>
-            {showLaunch ? "Close" : "New campaign"}
+            {showLaunch ? t("Close") : t("New campaign")}
           </button>
         )}
       </div>
@@ -440,22 +442,26 @@ export default function WebCampaigns() {
       {actionData && "launched" in actionData && actionData.launched
         ? <p className="wc-ok">
             {"reposted" in actionData && actionData.reposted
-              ? `Scheduled ${actionData.reposted} post${actionData.reposted === 1 ? "" : "s"} from your Archive — no tokens spent.`
-              : "Campaign is live — the first drops are being created now."}
+              ? (actionData.reposted === 1
+                  ? t("Scheduled {n} post from your Archive — no tokens spent.", { n: actionData.reposted })
+                  : t("Scheduled {n} posts from your Archive — no tokens spent.", { n: actionData.reposted }))
+              : t("Campaign is live — the first drops are being created now.")}
             {/* Say what we dropped rather than silently scheduling fewer than
                 the merchant picked. */}
             {"tooMany" in actionData && Number(actionData.tooMany) > 0
-              ? ` One campaign holds 60 pieces, so ${Number(actionData.tooMany)} of your picks weren’t scheduled — they’re still in the Archive, ready for a second run.`
+              ? " " + t("One campaign holds 60 pieces, so {n} of your picks weren’t scheduled — they’re still in the Archive, ready for a second run.", { n: Number(actionData.tooMany) })
               : ""}
             {"alreadyQueued" in actionData && Number(actionData.alreadyQueued) > 0
-              ? ` ${Number(actionData.alreadyQueued)} of them ${Number(actionData.alreadyQueued) === 1 ? "was" : "were"} already scheduled, so ${Number(actionData.alreadyQueued) === 1 ? "it" : "they"} won't go out twice.`
+              ? (Number(actionData.alreadyQueued) === 1
+                  ? " " + t("{n} of them was already scheduled, so it won't go out twice.", { n: Number(actionData.alreadyQueued) })
+                  : " " + t("{n} of them were already scheduled, so they won't go out twice.", { n: Number(actionData.alreadyQueued) }))
               : ""}
           </p> : null}
 
       {/* ---- running campaigns ---- */}
       {d.campaigns.length > 0 && (
         <section className="wc-sec">
-          <div className="wc-lbl">Running</div>
+          <div className="wc-lbl">{t("Running")}</div>
           <div className="wc-cards">
             {d.campaigns.map((c) => (
               <div className={`wc-card${c.status === "PAUSED" ? " paused" : ""}`} key={c.id}>
@@ -465,21 +471,23 @@ export default function WebCampaigns() {
                     <b>{c.name}</b>
                     <span>
                       {c.status === "PAUSED"
-                        ? "Paused"
+                        ? t("Paused")
                         : c.next
-                          ? `Next drop ${c.next}`
+                          ? t("Next drop {next}", { next: c.next })
                           : c.overdue > 0
-                            ? `${c.overdue} drop${c.overdue === 1 ? "" : "s"} still waiting`
+                            ? (c.overdue === 1
+                                ? t("{n} drop still waiting", { n: c.overdue })
+                                : t("{n} drops still waiting", { n: c.overdue }))
                             : c.posted > 0
-                              ? "All drops posted"
-                              : "Nothing posted yet"}
+                              ? t("All drops posted")
+                              : t("Nothing posted yet")}
                     </span>
                   </div>
                 </div>
-                <div className="wc-bar" role="img" aria-label={`${c.posted} of ${c.total} posted`}>
+                <div className="wc-bar" role="img" aria-label={t("{posted} of {total} posted", { posted: c.posted, total: c.total })}>
                   <span style={{ width: `${c.total ? Math.round((c.posted / c.total) * 100) : 0}%` }} />
                 </div>
-                <div className="wc-prog">{c.posted} of {c.total} posted</div>
+                <div className="wc-prog">{t("{posted} of {total} posted", { posted: c.posted, total: c.total })}</div>
                 {c.upcoming.length > 0 && (
                   <ul className="wc-next">
                     {c.upcoming.map((u, i) => (
@@ -487,7 +495,7 @@ export default function WebCampaigns() {
                         <span className={`wc-dot t-${u.type}`} />
                         <span className="wc-when">{u.when}</span>
                         <span className="wc-what">{u.product || u.type}</span>
-                        <span className="wc-st">{STATUS_LABEL[u.status] || u.status}</span>
+                        <span className="wc-st">{t(STATUS_LABEL[u.status] || u.status)}</span>
                       </li>
                     ))}
                   </ul>
@@ -495,11 +503,11 @@ export default function WebCampaigns() {
                 <div className="wc-card-acts">
                   <button type="button" disabled={busy}
                     onClick={() => submit({ intent: "pauseToggle", campaignId: c.id }, { method: "post" })}>
-                    {c.status === "PAUSED" ? "Resume" : "Pause"}
+                    {c.status === "PAUSED" ? t("Resume") : t("Pause")}
                   </button>
                   <button type="button" className="danger" disabled={busy}
-                    onClick={() => { if (confirm(`Stop "${c.name}"? Drops that haven't started yet are cancelled and refunded — anything already made is yours to keep and is not refunded.`)) submit({ intent: "stop", campaignId: c.id }, { method: "post" }); }}>
-                    Stop
+                    onClick={() => { if (confirm(t('Stop "{name}"? Drops that haven\'t started yet are cancelled and refunded — anything already made is yours to keep and is not refunded.', { name: c.name }))) submit({ intent: "stop", campaignId: c.id }, { method: "post" }); }}>
+                    {t("Stop")}
                   </button>
                 </div>
               </div>
@@ -520,11 +528,11 @@ export default function WebCampaigns() {
           <div className="wc-slab-in">
             <div className="wc-slab-hd">
               <div className="wc-page">
-                <Link className="wc-nav" to={`?ym=${d.prevYm}`} aria-label="Previous month" prefetch="intent">‹</Link>
+                <Link className="wc-nav" to={`?ym=${d.prevYm}`} aria-label={t("Previous month")} prefetch="intent">‹</Link>
                 <span className="wc-mo">{d.monthLabel}</span>
-                <Link className="wc-nav" to={`?ym=${d.nextYm}`} aria-label="Next month" prefetch="intent">›</Link>
+                <Link className="wc-nav" to={`?ym=${d.nextYm}`} aria-label={t("Next month")} prefetch="intent">›</Link>
               </div>
-              <span className="wc-ct">{d.total} {d.total === 1 ? "DROP" : "DROPS"}</span>
+              <span className="wc-ct">{d.total} {d.total === 1 ? t("DROP") : t("DROPS")}</span>
             </div>
 
             <div className="wc-grid">
@@ -564,53 +572,55 @@ export default function WebCampaigns() {
             {nextUp && (
               <div className="wc-next-up">
                 <span className="wc-pulse" aria-hidden="true" />
-                <span>Next drop <b>{nextUp.when}</b>{nextUp.product ? <> · {nextUp.product}</> : null}</span>
+                <span>{t("Next drop")} <b>{nextUp.when}</b>{nextUp.product ? <> · {nextUp.product}</> : null}</span>
               </div>
             )}
 
             <div className="wc-posts">
-              <span className="wc-plabel">{allHeldForReview ? "You publish to" : "Auto-posts to"}</span>
+              <span className="wc-plabel">{allHeldForReview ? t("You publish to") : t("Auto-posts to")}</span>
               {d.linked.length
                 ? d.linked.map((p) => <span className="wc-pchip" key={p}>{PLAT_LABEL[p] || p}</span>)
-                : <Link className="wc-pchip off" to="/web/connect">Connect an account</Link>}
+                : <Link className="wc-pchip off" to="/web/connect">{t("Connect an account")}</Link>}
             </div>
             {allHeldForReview && (
               <p className="wc-hint">
-                You chose to approve each drop, so nothing posts on its own — each piece lands in your{" "}
-                <Link to="/web/archive">Archive</Link> and goes out when you send it.
+                {t("You chose to approve each drop, so nothing posts on its own — each piece lands in your")}{" "}
+                <Link to="/web/archive">{t("Archive")}</Link> {t("and goes out when you send it.")}
               </p>
             )}
           </div>
         </div>
         <div className="wc-key">
-          <span><i className="t-video" /> Video</span>
-          <span><i className="t-image" /> Image</span>
+          <span><i className="t-video" /> {t("Video")}</span>
+          <span><i className="t-image" /> {t("Image")}</span>
         </div>
       </section>
 
       {/* ---- launch a new one ---- */}
       {showLaunch && (
         <section className="wc-sec">
-          <div className="wc-lbl">Start a campaign</div>
+          <div className="wc-lbl">{t("Start a campaign")}</div>
 
           {/* Without a plan every "make a month" card reads "unlocks on the
               Studio plan" with a dead Start button and no way forward. Say where
               to go, and that scheduling what they already made is free. */}
           {!d.hasPlan && (
             <p className="wc-hint">
-              A created-and-posted campaign runs on a plan — <Link to="/web#plans">start your 7-day free trial</Link> to launch one.
-              Scheduling pieces you&rsquo;ve already made is always free.
+              {t("A created-and-posted campaign runs on a plan —")} <Link to="/web#plans">{t("start your 7-day free trial")}</Link> {t("to launch one.")}
+              {" "}{t("Scheduling pieces you’ve already made is always free.")}
             </p>
           )}
 
           <div className="wc-modes">
             <button type="button" className={mode === "new" ? "sel" : ""} onClick={() => setMode("new")} aria-pressed={mode === "new"}>
-              <b>Make a month of content</b>
-              <span>We create everything and post it. Costs tokens.</span>
+              <b>{t("Make a month of content")}</b>
+              <span>{t("We create everything and post it. Costs tokens.")}</span>
             </button>
             <button type="button" className={mode === "archive" ? "sel" : ""} onClick={() => setMode("archive")} aria-pressed={mode === "archive"}>
-              <b>Schedule what I&rsquo;ve already made</b>
-              <span>{d.archive.length} piece{d.archive.length === 1 ? "" : "s"} in your Archive · <em>free</em></span>
+              <b>{t("Schedule what I’ve already made")}</b>
+              <span>{d.archive.length === 1
+                ? t("{n} piece in your Archive", { n: d.archive.length })
+                : t("{n} pieces in your Archive", { n: d.archive.length })}{" · "}<em>{t("free")}</em></span>
             </button>
           </div>
 
@@ -618,16 +628,16 @@ export default function WebCampaigns() {
             <>
               {d.archive.length === 0 ? (
                 <p className="wc-hint">
-                  Nothing unscheduled in your Archive yet — anything you make in the{" "}
-                  <Link to="/web/studio">Studio</Link> shows up here to schedule for free.
+                  {t("Nothing unscheduled in your Archive yet — anything you make in the")}{" "}
+                  <Link to="/web/studio">{t("Studio")}</Link> {t("shows up here to schedule for free.")}
                 </p>
               ) : (
                 <>
                   <div className="wc-lbl sm">
-                    Pick what to post <span className="wc-cap">{pickedAssets.length} selected</span>
+                    {t("Pick what to post")} <span className="wc-cap">{t("{n} selected", { n: pickedAssets.length })}</span>
                     <button type="button" className="wc-selall"
                       onClick={() => setPickedAssets(pickedAssets.length === d.archive.length ? [] : d.archive.map((a) => a.id))}>
-                      {pickedAssets.length === d.archive.length ? "Clear all" : "Select all"}
+                      {pickedAssets.length === d.archive.length ? t("Clear all") : t("Select all")}
                     </button>
                   </div>
                   <div className="wc-arch">
@@ -648,29 +658,33 @@ export default function WebCampaigns() {
                     })}
                   </div>
 
-                  <div className="wc-lbl sm">Spread them over</div>
+                  <div className="wc-lbl sm">{t("Spread them over")}</div>
                   <div className="ws-seg">
                     {[7, 14, 30, 60].map((dd) => (
                       <button type="button" key={dd} className={spreadDays === dd ? "sel" : ""} onClick={() => setSpreadDays(dd)}>
-                        {dd} days
+                        {t("{n} days", { n: dd })}
                       </button>
                     ))}
                   </div>
                   {pickedAssets.length > 1 && (
                     <p className="wc-hint">
-                      Evenly spaced — about one post every{" "}
-                      {Math.max(1, Math.round(spreadDays / (pickedAssets.length - 1)))} day
-                      {Math.max(1, Math.round(spreadDays / (pickedAssets.length - 1))) === 1 ? "" : "s"}, at{" "}
-                      <input className="wc-time" type="time" value={postTime} onChange={(e) => setPostTime(e.target.value || "12:00")} aria-label="Post time" />.
+                      {t("Evenly spaced — about one post every")}{" "}
+                      {Math.max(1, Math.round(spreadDays / (pickedAssets.length - 1)))}{" "}
+                      {Math.max(1, Math.round(spreadDays / (pickedAssets.length - 1))) === 1 ? t("day, at") : t("days, at")}{" "}
+                      <input className="wc-time" type="time" value={postTime} onChange={(e) => setPostTime(e.target.value || "12:00")} aria-label={t("Post time")} />.
                     </p>
                   )}
                   <p className="wc-hint">
                     {d.linked.length
-                      ? `Posting to ${d.linked.join(", ")}.`
-                      : <>No accounts connected — <Link to="/web/connect">connect auto-posting</Link> first, or these will sit waiting.</>}
+                      ? t("Posting to {list}.", { list: d.linked.join(", ") })
+                      : <>{t("No accounts connected —")} <Link to="/web/connect">{t("connect auto-posting")}</Link> {t("first, or these will sit waiting.")}</>}
                   </p>
                   <button type="button" className="wb-btn wc-go" disabled={busy || pickedAssets.length === 0} onClick={repost}>
-                    {busy ? "Scheduling…" : `Schedule ${pickedAssets.length || ""} post${pickedAssets.length === 1 ? "" : "s"} — free`}
+                    {busy
+                      ? t("Scheduling…")
+                      : (pickedAssets.length === 1
+                          ? t("Schedule {n} post — free", { n: pickedAssets.length })
+                          : t("Schedule {n} posts — free", { n: pickedAssets.length || "" }))}
                   </button>
                 </>
               )}
@@ -683,52 +697,52 @@ export default function WebCampaigns() {
                 onClick={() => setPlanKey(p.key)} aria-pressed={p.key === planKey}>
                 <span className="wc-plan-top">
                   <span className="wc-plan-ic" aria-hidden="true">{p.icon}</span>
-                  <span className="wc-badge">{p.badge}</span>
+                  <span className="wc-badge">{t(p.badge)}</span>
                 </span>
                 <b>{p.name}</b>
                 <span className="wc-plan-mix">
-                  {p.mix.video > 0 && <em>{p.mix.video} video</em>}
-                  {p.mix.image > 0 && <em>{p.mix.image} image</em>}
+                  {p.mix.video > 0 && <em>{t("{n} video", { n: p.mix.video })}</em>}
+                  {p.mix.image > 0 && <em>{t("{n} image", { n: p.mix.image })}</em>}
                 </span>
-                <span className="wc-plan-pitch">{p.pitch}</span>
+                <span className="wc-plan-pitch">{t(p.pitch)}</span>
                 <span className="wc-plan-foot">
-                  <span>{p.drops} drops · {p.cadence}</span>
+                  <span>{t("{drops} drops · {cadence}", { drops: p.drops, cadence: p.cadence })}</span>
                   <span className={p.videoLocked ? "bad" : p.affordable ? "ok" : "warn"}>
                     {p.videoLocked
-                      ? "Video unlocks on the Studio plan"
+                      ? t("Video unlocks on the Studio plan")
                       : p.affordable
-                        ? `${p.cost.toLocaleString("en-US")} of your ${d.tokens.toLocaleString("en-US")} tokens · +${xpForSpend(p.cost).toLocaleString("en-US")} XP`
-                        : `${p.cost.toLocaleString("en-US")} tokens — top up to run this`}
+                        ? t("{cost} of your {tokens} tokens · +{xp} XP", { cost: p.cost.toLocaleString("en-US"), tokens: d.tokens.toLocaleString("en-US"), xp: xpForSpend(p.cost).toLocaleString("en-US") })
+                        : t("{cost} tokens — top up to run this", { cost: p.cost.toLocaleString("en-US") })}
                   </span>
                 </span>
-                <span className="wc-worth">{p.worth}</span>
+                <span className="wc-worth">{t(p.worth)}</span>
               </button>
             ))}
           </div>
 
           {/* presenter */}
-          <div className="wc-lbl sm">Who stars in it</div>
+          <div className="wc-lbl sm">{t("Who stars in it")}</div>
           <div className="ws-castsearch">
-            <input className="wb-in" type="search" value={castQ} placeholder={`Search ${d.cast.length} presenters by name…`}
-              onChange={(e) => setCastQ(e.target.value)} aria-label="Search presenters by name" />
-            {needle && <button type="button" className="ws-cs-clr" onClick={() => setCastQ("")} aria-label="Clear search">✕</button>}
+            <input className="wb-in" type="search" value={castQ} placeholder={t("Search {n} presenters by name…", { n: d.cast.length })}
+              onChange={(e) => setCastQ(e.target.value)} aria-label={t("Search presenters by name")} />
+            {needle && <button type="button" className="ws-cs-clr" onClick={() => setCastQ("")} aria-label={t("Clear search")}>✕</button>}
           </div>
-          {needle && castShown.length === 0 && <p className="wc-hint">No presenter called “{castQ.trim()}”.</p>}
+          {needle && castShown.length === 0 && <p className="wc-hint">{t("No presenter called “{name}”.", { name: castQ.trim() })}</p>}
           <div className="wc-cast">
             {castShown.map((c) => (
               <button type="button" key={c.id} className={`wc-face${avatarId === c.id ? " sel" : ""}`}
                 onClick={() => setAvatarId(c.id)} aria-pressed={avatarId === c.id}>
                 <span className="wc-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
-                <span>{c.id === d.brandFaceId ? <><Ico n="star" size={12} /> Brand face</> : c.name}</span>
+                <span>{c.id === d.brandFaceId ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
               </button>
             ))}
           </div>
 
           {/* products */}
-          <div className="wc-lbl sm">What it features <span className="wc-cap">{picked.length} of {cap}</span></div>
+          <div className="wc-lbl sm">{t("What it features")} <span className="wc-cap">{t("{n} of {cap}", { n: picked.length, cap })}</span></div>
           {d.catalog.length === 0 ? (
             <p className="wc-hint">
-              No products imported yet — <Link to="/web/studio?tab=import">pull your store in</Link> and they will appear here.
+              {t("No products imported yet —")} <Link to="/web/studio?tab=import">{t("pull your store in")}</Link> {t("and they will appear here.")}
             </p>
           ) : (
             <div className="wc-prods">
@@ -746,23 +760,23 @@ export default function WebCampaigns() {
           )}
 
           {/* review mode */}
-          <div className="wc-lbl sm">Before it posts</div>
+          <div className="wc-lbl sm">{t("Before it posts")}</div>
           <div className="ws-seg">
             <button type="button" className={reviewMode === "REVIEW_FIRST" ? "sel" : ""} onClick={() => setReviewMode("REVIEW_FIRST")}>
-              Let me approve each drop
+              {t("Let me approve each drop")}
             </button>
             <button type="button" className={reviewMode === "SET_AND_FORGET" ? "sel" : ""} onClick={() => setReviewMode("SET_AND_FORGET")}>
-              Post automatically
+              {t("Post automatically")}
             </button>
           </div>
           <p className="wc-hint">
             {d.linked.length
-              ? `Posting to ${d.linked.join(", ")}.`
-              : <>No accounts connected yet — drops will be saved to your Archive. <Link to="/web/connect">Connect auto-posting</Link>.</>}
+              ? t("Posting to {list}.", { list: d.linked.join(", ") })
+              : <>{t("No accounts connected yet — drops will be saved to your Archive.")} <Link to="/web/connect">{t("Connect auto-posting")}</Link>.</>}
           </p>
 
           <button type="button" className="wb-btn wc-go" disabled={busy || !picked.length || !plan || plan.videoLocked} onClick={launch}>
-            {busy ? "Starting…" : `Start ${plan?.name || "campaign"}`}
+            {busy ? t("Starting…") : t("Start {name}", { name: plan?.name || t("campaign") })}
           </button>
           </>
           )}

@@ -15,6 +15,7 @@ import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 import { Ico } from "../lib/icons";
+import { useT } from "../lib/ui-lang";
 
 export const meta = () => [{ title: "Channels · EasyMode" }];
 
@@ -165,6 +166,7 @@ function relTime(iso: string | null): string {
 type Series = ReturnType<typeof useLoaderData<typeof loader>>["series"][number];
 
 export default function Channels() {
+  const t = useT();
   const { name, tokens, facelessCost, canUse, linked, series, cadences } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as { error?: string } | undefined;
   const nav = useNavigation();
@@ -178,11 +180,11 @@ export default function Channels() {
 
       <header className="ch-head">
         <div>
-          <h1 className="ch-title">Channels</h1>
-          <p className="ch-sub">Put your content on autopilot — we write, voice &amp; post a fresh video on repeat. <span className="ch-accent">Hands off.</span></p>
+          <h1 className="ch-title">{t("Channels")}</h1>
+          <p className="ch-sub">{t("Put your content on autopilot — we write, voice & post a fresh video on repeat.")}{" "}<span className="ch-accent">{t("Hands off.")}</span></p>
         </div>
         {series.length > 0 && canUse && (
-          <button className="ch-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? "Close" : "＋ New channel"}</button>
+          <button className="ch-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : t("＋ New channel")}</button>
         )}
       </header>
 
@@ -190,10 +192,10 @@ export default function Channels() {
         <div className="ch-upsell">
           <div className="ch-upsell-ic"><Ico n="film" size={28} /></div>
           <div>
-            <b>Channels run on faceless video.</b>
-            <p>That's on the Studio &amp; Anthem plans. Upgrade and your channel can start posting today.</p>
+            <b>{t("Channels run on faceless video.")}</b>
+            <p>{t("That's on the Studio & Anthem plans. Upgrade and your channel can start posting today.")}</p>
           </div>
-          <Link to="/web#plans" className="ch-go sm">See plans</Link>
+          <Link to="/web#plans" className="ch-go sm">{t("See plans")}</Link>
         </div>
       )}
 
@@ -208,7 +210,7 @@ export default function Channels() {
       )}
 
       {canUse && series.length === 0 && !showForm && (
-        <div className="ch-empty">No channels yet — <button className="ch-link" onClick={() => setShowForm(true)}>start one</button>.</div>
+        <div className="ch-empty">{t("No channels yet —")} <button className="ch-link" onClick={() => setShowForm(true)}>{t("start one")}</button>.</div>
       )}
     </div>
   );
@@ -219,6 +221,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
   cadences: { key: string; label: string; perWeek: number }[];
   error?: string; creating: boolean; onCancel?: () => void;
 }) {
+  const t = useT();
   const [niche, setNiche] = useState("");
   const [name, setName] = useState("");
   const [format, setFormat] = useState("facts");
@@ -244,132 +247,133 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
       <input type="hidden" name="name" value={name || niche.slice(0, 48)} />
 
       <div className="ch-setup-head">
-        <span className="ch-spark">✦</span> Start a channel
+        <span className="ch-spark">✦</span> {t("Start a channel")}
         {onCancel && <button type="button" className="ch-x" onClick={onCancel}>✕</button>}
       </div>
 
-      <label className="ch-lbl">What's it about?</label>
-      <input className="ch-field" placeholder="e.g. mind-blowing deep ocean facts" value={niche} maxLength={160}
+      <label className="ch-lbl">{t("What's it about?")}</label>
+      <input className="ch-field" placeholder={t("e.g. mind-blowing deep ocean facts")} value={niche} maxLength={160}
         onChange={(e) => setNiche(e.target.value)} />
       <div className="ch-chips">
-        {NICHES.map((n) => <button type="button" key={n} className={`ch-chip${niche === n ? " on" : ""}`} onClick={() => setNiche(n)}>{n}</button>)}
+        {NICHES.map((n) => <button type="button" key={n} className={`ch-chip${niche === n ? " on" : ""}`} onClick={() => setNiche(n)}>{t(n)}</button>)}
       </div>
 
-      <label className="ch-lbl">Channel name <span className="ch-opt">(optional)</span></label>
-      <input className="ch-field" placeholder={niche ? niche.slice(0, 48) : "Deep Ocean Facts"} value={name} maxLength={60}
+      <label className="ch-lbl">{t("Channel name")} <span className="ch-opt">{t("(optional)")}</span></label>
+      <input className="ch-field" placeholder={niche ? niche.slice(0, 48) : t("Deep Ocean Facts")} value={name} maxLength={60}
         onChange={(e) => setName(e.target.value)} />
 
       <div className="ch-row2">
         <div>
-          <label className="ch-lbl">Format</label>
+          <label className="ch-lbl">{t("Format")}</label>
           <div className="ch-pills2">
-            {FORMATS.map(([k, l]) => <button type="button" key={k} className={`ch-pill${format === k ? " sel" : ""}`} onClick={() => setFormat(k)}>{l}</button>)}
+            {FORMATS.map(([k, l]) => <button type="button" key={k} className={`ch-pill${format === k ? " sel" : ""}`} onClick={() => setFormat(k)}>{t(l)}</button>)}
           </div>
         </div>
         <div>
-          <label className="ch-lbl">Voice</label>
+          <label className="ch-lbl">{t("Voice")}</label>
           <div className="ch-pills2">
-            {VOICES.map(([k, l]) => <button type="button" key={k} className={`ch-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{l}</button>)}
+            {VOICES.map(([k, l]) => <button type="button" key={k} className={`ch-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(l)}</button>)}
           </div>
         </div>
       </div>
 
-      <label className="ch-lbl">How often?</label>
+      <label className="ch-lbl">{t("How often?")}</label>
       <div className="ch-cads">
         {cadences.map((c) => (
           <button type="button" key={c.key} className={`ch-cad${cadence === c.key ? " sel" : ""}`} onClick={() => setCadence(c.key)}>
-            <b>{c.label}</b>
-            <span>{c.perWeek} videos/week</span>
+            <b>{t(c.label)}</b>
+            <span>{t("{n} videos/week", { n: c.perWeek })}</span>
           </button>
         ))}
       </div>
 
-      <label className="ch-lbl">Where it posts</label>
+      <label className="ch-lbl">{t("Where it posts")}</label>
       {linked.length > 0 ? (
         <div className="ch-chips">
           {linked.map((p) => <button type="button" key={p} className={`ch-chip plat${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) ? "✓ " : ""}{PLAT_LABEL[p]}</button>)}
         </div>
       ) : (
-        <div className="ch-connect">No socials linked yet — <Link to="/web/connect" className="ch-link">connect TikTok / Instagram / Facebook</Link> to post automatically. You can still start in approve mode below.</div>
+        <div className="ch-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="ch-link">{t("connect TikTok / Instagram / Facebook")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
       )}
 
-      <label className="ch-lbl">Posting</label>
+      <label className="ch-lbl">{t("Posting")}</label>
       <div className="ch-modes">
         <button type="button" className={`ch-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}>
-          <b><Ico n="sparkle" /> Post automatically</b><span>Each drop goes straight to your socials.</span>
+          <b><Ico n="sparkle" /> {t("Post automatically")}</b><span>{t("Each drop goes straight to your socials.")}</span>
         </button>
         <button type="button" className={`ch-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}>
-          <b><Ico n="eye" /> Let me approve each one</b><span>Drops wait in your Gallery — you post with one tap.</span>
+          <b><Ico n="eye" /> {t("Let me approve each one")}</b><span>{t("Drops wait in your Gallery — you post with one tap.")}</span>
         </button>
       </div>
 
       <div className="ch-summary">
-        <span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens · <b>+{xpForSpend(weeklyTokens)}</b> XP / wk</span>
-        <span className="ch-bal">{tokens} tokens in wallet</span>
+        <span><b>{perWeek}</b> {t("videos/week")} · ~<b>{weeklyTokens}</b> {t("tokens")} · <b>+{xpForSpend(weeklyTokens)}</b> {t("XP / wk")}</span>
+        <span className="ch-bal">{t("{tokens} tokens in wallet", { tokens })}</span>
       </div>
 
       {error && <div className="ch-err">{error}</div>}
-      {!canAfford && <div className="ch-err">You need at least {facelessCost} tokens to run a channel — <Link to="/web#plans" className="ch-link">top up</Link>.</div>}
+      {!canAfford && <div className="ch-err">{t("You need at least {n} tokens to run a channel —", { n: facelessCost })} <Link to="/web#plans" className="ch-link">{t("top up")}</Link>.</div>}
 
       <button className="ch-go" type="submit" disabled={disabled}>
         <span className="ch-go-flower" aria-hidden="true" />
-        {creating ? "Starting…" : <>Start my channel <Ico n="rocket" /></>}
+        {creating ? t("Starting…") : <>{t("Start my channel")} <Ico n="rocket" /></>}
       </button>
     </Form>
   );
 }
 
 function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; facelessCost: number }) {
+  const t = useT();
   const paused = s.status === "PAUSED";
   const fmtLabel = FORMATS.find(([k]) => k === s.format)?.[1] || s.format;
   const reasonText: Record<string, string> = {
-    "out-of-tokens": "Out of tokens",
-    "no-accounts": "No socials linked",
-    "needs-plan": "Plan changed",
-    user: "Paused by you",
+    "out-of-tokens": t("Out of tokens"),
+    "no-accounts": t("No socials linked"),
+    "needs-plan": t("Plan changed"),
+    user: t("Paused by you"),
   };
   return (
     <div className={`ch-card${paused ? " paused" : ""}`}>
       <div className="ch-card-top">
         <div>
           <div className="ch-card-name">{s.name}</div>
-          <div className="ch-card-niche">{fmtLabel} · {s.niche}</div>
+          <div className="ch-card-niche">{t(fmtLabel)} · {s.niche}</div>
         </div>
-        <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? "● Running" : "❙❙ Paused"}</span>
+        <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <>● {t("Running")}</> : <>❙❙ {t("Paused")}</>}</span>
       </div>
 
       <div className="ch-card-meta">
-        <span><b>{s.perWeek}</b> videos/week</span>
-        <span>{s.autoPost ? <><Ico n="sparkle" /> auto-post</> : <><Ico n="eye" /> approve</>}</span>
+        <span><b>{s.perWeek}</b> {t("videos/week")}</span>
+        <span>{s.autoPost ? <><Ico n="sparkle" /> {t("auto-post")}</> : <><Ico n="eye" /> {t("approve")}</>}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
 
       {s.status === "ACTIVE" && (
-        <div className="ch-next"><span className="ch-next-dot" /> Next drop {relTime(s.nextRunAt) || "soon"}</div>
+        <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt) || t("soon")}</div>
       )}
       {paused && s.pauseReason && (
         <div className="ch-paused-note">
-          {reasonText[s.pauseReason] || "Paused"}
-          {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="ch-link">top up</Link></>}
-          {s.pauseReason === "no-accounts" && <> — <Link to="/web/connect" className="ch-link">connect</Link></>}
+          {reasonText[s.pauseReason] || t("Paused")}
+          {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="ch-link">{t("top up")}</Link></>}
+          {s.pauseReason === "no-accounts" && <> — <Link to="/web/connect" className="ch-link">{t("connect")}</Link></>}
         </div>
       )}
 
       <div className="ch-card-stats">
-        <div><b>{s.dropsMade}</b><span>made</span></div>
-        <div><b>{s.dropsPosted}</b><span>posted</span></div>
-        <Link to="/web/archive?section=creator" className="ch-card-gal">Gallery →</Link>
+        <div><b>{s.dropsMade}</b><span>{t("made")}</span></div>
+        <div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div>
+        <Link to="/web/archive?section=creator" className="ch-card-gal">{t("Gallery")} →</Link>
       </div>
 
       <div className="ch-card-acts">
         {paused ? (
-          <Form method="post"><input type="hidden" name="intent" value="resume" /><input type="hidden" name="id" value={s.id} /><button className="ch-act primary" disabled={tokens < facelessCost}>Resume</button></Form>
+          <Form method="post"><input type="hidden" name="intent" value="resume" /><input type="hidden" name="id" value={s.id} /><button className="ch-act primary" disabled={tokens < facelessCost}>{t("Resume")}</button></Form>
         ) : (
-          <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="ch-act">Pause</button></Form>
+          <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="ch-act">{t("Pause")}</button></Form>
         )}
-        <Form method="post" onSubmit={(e) => { if (!confirm("End this channel? It stops making new videos (your Gallery keeps everything).")) e.preventDefault(); }}>
+        <Form method="post" onSubmit={(e) => { if (!confirm(t("End this channel? It stops making new videos (your Gallery keeps everything)."))) e.preventDefault(); }}>
           <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} />
-          <button className="ch-act ghost">End</button>
+          <button className="ch-act ghost">{t("End")}</button>
         </Form>
       </div>
     </div>

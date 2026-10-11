@@ -16,6 +16,7 @@ import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
 import { Ico } from "../lib/icons";
+import { useT } from "../lib/ui-lang";
 
 export const meta = () => [{ title: "Product Channels · EasyMode" }];
 
@@ -142,6 +143,7 @@ export default function ProductChannels() {
   const { tokens, facelessCost, canUse, linked, productCount, series, cadences } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as { error?: string } | undefined;
   const nav = useNavigation();
+  const t = useT();
   const creating = nav.state !== "idle" && nav.formData?.get("intent") === "create";
   const [showForm, setShowForm] = useState(series.length === 0);
 
@@ -150,27 +152,27 @@ export default function ProductChannels() {
       <style dangerouslySetInnerHTML={{ __html: PC_CSS }} />
       <header className="pc-head">
         <div>
-          <h1 className="pc-title">Product Channels</h1>
-          <p className="pc-sub">Your store, on autopilot — we turn each product into a short video &amp; post it on repeat. <span className="pc-accent">Hands off.</span></p>
+          <h1 className="pc-title">{t("Product Channels")}</h1>
+          <p className="pc-sub">{t("Your store, on autopilot — we turn each product into a short video & post it on repeat.")} <span className="pc-accent">{t("Hands off.")}</span></p>
         </div>
         {series.length > 0 && canUse && productCount > 0 && (
-          <button className="pc-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? "Close" : "＋ New channel"}</button>
+          <button className="pc-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : t("＋ New channel")}</button>
         )}
       </header>
 
       {!canUse && (
         <div className="pc-upsell">
           <div className="pc-upsell-ic"><Ico n="film" size={30} /></div>
-          <div><b>Product Channels run on video.</b><p>That's on the Studio &amp; Anthem plans. Upgrade and your store can start posting today.</p></div>
-          <Link to="/web#plans" className="pc-go sm">See plans</Link>
+          <div><b>{t("Product Channels run on video.")}</b><p>{t("That's on the Studio & Anthem plans. Upgrade and your store can start posting today.")}</p></div>
+          <Link to="/web#plans" className="pc-go sm">{t("See plans")}</Link>
         </div>
       )}
 
       {canUse && productCount === 0 && (
         <div className="pc-upsell">
           <div className="pc-upsell-ic"><Ico n="box" size={30} /></div>
-          <div><b>Import your store first.</b><p>Product Channels feature your real products — bring your catalogue in and you're ready.</p></div>
-          <Link to="/web/studio" className="pc-go sm">Import store</Link>
+          <div><b>{t("Import your store first.")}</b><p>{t("Product Channels feature your real products — bring your catalogue in and you're ready.")}</p></div>
+          <Link to="/web/studio" className="pc-go sm">{t("Import store")}</Link>
         </div>
       )}
 
@@ -183,7 +185,7 @@ export default function ProductChannels() {
       )}
 
       {canUse && productCount > 0 && series.length === 0 && !showForm && (
-        <div className="pc-empty">No product channels yet — <button className="pc-link" onClick={() => setShowForm(true)}>start one</button>.</div>
+        <div className="pc-empty">{t("No product channels yet —")} <button className="pc-link" onClick={() => setShowForm(true)}>{t("start one")}</button>.</div>
       )}
     </div>
   );
@@ -194,6 +196,7 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
   cadences: { key: string; label: string; perWeek: number }[];
   error?: string; creating: boolean; onCancel?: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [angle, setAngle] = useState("spotlight");
   const [voiceKey, setVoiceKey] = useState("f-warm");
@@ -216,82 +219,83 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
       <input type="hidden" name="autoPost" value={autoPost ? "1" : "0"} />
       <input type="hidden" name="name" value={name || "My product channel"} />
 
-      <div className="pc-setup-head"><span className="pc-spark">✦</span> Start a product channel {onCancel && <button type="button" className="pc-x" onClick={onCancel}>✕</button>}</div>
+      <div className="pc-setup-head"><span className="pc-spark">✦</span> {t("Start a product channel")} {onCancel && <button type="button" className="pc-x" onClick={onCancel}>✕</button>}</div>
 
-      <div className="pc-feats">Rotates all <b>{productCount}</b> of your products — one video per drop, with the real product.</div>
+      <div className="pc-feats">{t("Rotates all")} <b>{productCount}</b> {t("of your products — one video per drop, with the real product.")}</div>
 
-      <label className="pc-lbl">Channel name <span className="pc-opt">(optional)</span></label>
-      <input className="pc-field" placeholder="My product channel" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+      <label className="pc-lbl">{t("Channel name")} <span className="pc-opt">{t("(optional)")}</span></label>
+      <input className="pc-field" placeholder={t("My product channel")} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
 
       <div className="pc-row2">
         <div>
-          <label className="pc-lbl">Angle</label>
-          <div className="pc-pills2">{ANGLES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${angle === k ? " sel" : ""}`} onClick={() => setAngle(k)}>{l}</button>)}</div>
+          <label className="pc-lbl">{t("Angle")}</label>
+          <div className="pc-pills2">{ANGLES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${angle === k ? " sel" : ""}`} onClick={() => setAngle(k)}>{t(l)}</button>)}</div>
         </div>
         <div>
-          <label className="pc-lbl">Voice</label>
-          <div className="pc-pills2">{VOICES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{l}</button>)}</div>
+          <label className="pc-lbl">{t("Voice")}</label>
+          <div className="pc-pills2">{VOICES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(l)}</button>)}</div>
         </div>
       </div>
 
-      <label className="pc-lbl">How often?</label>
+      <label className="pc-lbl">{t("How often?")}</label>
       <div className="pc-cads">{cadences.map((c) => (
-        <button type="button" key={c.key} className={`pc-cad${cadence === c.key ? " sel" : ""}`} onClick={() => setCadence(c.key)}><b>{c.label}</b><span>{c.perWeek} videos/week</span></button>
+        <button type="button" key={c.key} className={`pc-cad${cadence === c.key ? " sel" : ""}`} onClick={() => setCadence(c.key)}><b>{t(c.label)}</b><span>{t("{n} videos/week", { n: c.perWeek })}</span></button>
       ))}</div>
 
-      <label className="pc-lbl">Where it posts</label>
+      <label className="pc-lbl">{t("Where it posts")}</label>
       {linked.length > 0 ? (
         <div className="pc-chips">{linked.map((p) => <button type="button" key={p} className={`pc-chip${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) ? "✓ " : ""}{PLAT_LABEL[p]}</button>)}</div>
       ) : (
-        <div className="pc-connect">No socials linked yet — <Link to="/web/connect" className="pc-link">connect TikTok / Instagram / Facebook</Link> to post automatically. You can still start in approve mode below.</div>
+        <div className="pc-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="pc-link">{t("connect TikTok / Instagram / Facebook")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
       )}
 
-      <label className="pc-lbl">Posting</label>
+      <label className="pc-lbl">{t("Posting")}</label>
       <div className="pc-modes">
-        <button type="button" className={`pc-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}><b><Ico n="sparkle" /> Post automatically</b><span>Each video posts to your socials with a link to the product.</span></button>
-        <button type="button" className={`pc-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}><b><Ico n="eye" /> Let me approve each one</b><span>Videos wait in your Archive — you post with one tap.</span></button>
+        <button type="button" className={`pc-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}><b><Ico n="sparkle" /> {t("Post automatically")}</b><span>{t("Each video posts to your socials with a link to the product.")}</span></button>
+        <button type="button" className={`pc-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}><b><Ico n="eye" /> {t("Let me approve each one")}</b><span>{t("Videos wait in your Archive — you post with one tap.")}</span></button>
       </div>
 
-      <div className="pc-summary"><span><b>{perWeek}</b> videos/week · ~<b>{weeklyTokens}</b> tokens · <b>+{xpForSpend(weeklyTokens)}</b> XP / wk</span><span className="pc-bal">{tokens} tokens in wallet</span></div>
+      <div className="pc-summary"><span><b>{perWeek}</b> {t("videos/week")} · ~<b>{weeklyTokens}</b> {t("tokens")} · <b>+{xpForSpend(weeklyTokens)}</b> {t("XP / wk")}</span><span className="pc-bal">{t("{n} tokens in wallet", { n: tokens })}</span></div>
 
-      {error && <div className="pc-err">{error}</div>}
-      {!canAfford && <div className="pc-err">You need at least {facelessCost} tokens to run a channel — <Link to="/web#plans" className="pc-link">top up</Link>.</div>}
+      {error && <div className="pc-err">{t(error)}</div>}
+      {!canAfford && <div className="pc-err">{t("You need at least {n} tokens to run a channel —", { n: facelessCost })} <Link to="/web#plans" className="pc-link">{t("top up")}</Link>.</div>}
 
-      <button className="pc-go" type="submit" disabled={disabled}><span className="pc-go-flower" aria-hidden="true" />{creating ? "Starting…" : "Start my product channel"}</button>
+      <button className="pc-go" type="submit" disabled={disabled}><span className="pc-go-flower" aria-hidden="true" />{creating ? t("Starting…") : t("Start my product channel")}</button>
     </Form>
   );
 }
 
 function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; facelessCost: number }) {
+  const t = useT();
   const paused = s.status === "PAUSED";
   const angleLabel = ANGLES.find(([k]) => k === s.format)?.[1] || s.format;
-  const reasonText: Record<string, string> = { "out-of-tokens": "Out of tokens", "no-accounts": "No socials linked", "no-products": "No products imported", "needs-plan": "Plan changed", user: "Paused by you" };
+  const reasonText: Record<string, string> = { "out-of-tokens": t("Out of tokens"), "no-accounts": t("No socials linked"), "no-products": t("No products imported"), "needs-plan": t("Plan changed"), user: t("Paused by you") };
   return (
     <div className={`pc-card${paused ? " paused" : ""}`}>
       <div className="pc-card-top">
-        <div><div className="pc-card-name">{s.name}</div><div className="pc-card-niche">{angleLabel} · your store</div></div>
-        <span className={`pc-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? "● Running" : "❙❙ Paused"}</span>
+        <div><div className="pc-card-name">{s.name}</div><div className="pc-card-niche">{t(angleLabel)} · {t("your store")}</div></div>
+        <span className={`pc-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? t("● Running") : t("❙❙ Paused")}</span>
       </div>
       <div className="pc-card-meta">
-        <span><b>{s.perWeek}</b> videos/week</span>
-        <span>{s.autoPost ? "auto-post" : "approve"}</span>
+        <span><b>{s.perWeek}</b> {t("videos/week")}</span>
+        <span>{s.autoPost ? t("auto-post") : t("approve")}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
-      {s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> Next drop {relTime(s.nextRunAt) || "soon"}</div>}
+      {s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt) || t("soon")}</div>}
       {paused && s.pauseReason && (
-        <div className="pc-paused-note">{reasonText[s.pauseReason] || "Paused"}
-          {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="pc-link">top up</Link></>}
-          {s.pauseReason === "no-accounts" && <> — <Link to="/web/connect" className="pc-link">connect</Link></>}
-          {s.pauseReason === "no-products" && <> — <Link to="/web/studio" className="pc-link">import store</Link></>}
+        <div className="pc-paused-note">{reasonText[s.pauseReason] || t("Paused")}
+          {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="pc-link">{t("top up")}</Link></>}
+          {s.pauseReason === "no-accounts" && <> — <Link to="/web/connect" className="pc-link">{t("connect")}</Link></>}
+          {s.pauseReason === "no-products" && <> — <Link to="/web/studio" className="pc-link">{t("import store")}</Link></>}
         </div>
       )}
-      <div className="pc-card-stats"><div><b>{s.dropsMade}</b><span>made</span></div><div><b>{s.dropsPosted}</b><span>posted</span></div><Link to="/web/archive" className="pc-card-gal">Archive →</Link></div>
+      <div className="pc-card-stats"><div><b>{s.dropsMade}</b><span>{t("made")}</span></div><div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div><Link to="/web/archive" className="pc-card-gal">{t("Archive")} →</Link></div>
       <div className="pc-card-acts">
         {paused
-          ? <Form method="post"><input type="hidden" name="intent" value="resume" /><input type="hidden" name="id" value={s.id} /><button className="pc-act primary" disabled={tokens < facelessCost}>Resume</button></Form>
-          : <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="pc-act">Pause</button></Form>}
-        <Form method="post" onSubmit={(e) => { if (!confirm("End this channel? It stops making new videos (your Archive keeps everything).")) e.preventDefault(); }}>
-          <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} /><button className="pc-act ghost">End</button>
+          ? <Form method="post"><input type="hidden" name="intent" value="resume" /><input type="hidden" name="id" value={s.id} /><button className="pc-act primary" disabled={tokens < facelessCost}>{t("Resume")}</button></Form>
+          : <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="pc-act">{t("Pause")}</button></Form>}
+        <Form method="post" onSubmit={(e) => { if (!confirm(t("End this channel? It stops making new videos (your Archive keeps everything)."))) e.preventDefault(); }}>
+          <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} /><button className="pc-act ghost">{t("End")}</button>
         </Form>
       </div>
     </div>

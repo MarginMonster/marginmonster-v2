@@ -332,6 +332,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     // Refresh a lone, not-yet-replied greeting when the mode flips, but never
@@ -340,14 +341,14 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       const name = authed && hud.name ? hud.name.split(" ")[0] : null;
       const greet = mode === "casual"
         ? (name
-            ? `Hey ${name}! I'm Helpurr, your AI helper — got ${hud.ads} images' worth of tokens to play with. Want to edit a photo or make something fun to post?`
-            : "Hey — I'm Helpurr your AI helper. Upload a photo and we'll restyle it, swap the background, or make something fun to share.")
+            ? t("Hey {name}! I'm Helpurr, your AI helper — got {ads} images' worth of tokens to play with. Want to edit a photo or make something fun to post?", { name, ads: hud.ads })
+            : t("Hey — I'm Helpurr your AI helper. Upload a photo and we'll restyle it, swap the background, or make something fun to share."))
         : (name
-            ? `Hey ${name}! I'm Helpurr, your AI helper — you've got ${hud.ads} ads' worth of tokens in the tank. What are we making?`
-            : "Hey — I'm Helpurr your AI helper for ads & videos. Tell me what you're selling and let's make something scroll-stopping.");
+            ? t("Hey {name}! I'm Helpurr, your AI helper — you've got {ads} ads' worth of tokens in the tank. What are we making?", { name, ads: hud.ads })
+            : t("Hey — I'm Helpurr your AI helper for ads & videos. Tell me what you're selling and let's make something scroll-stopping."));
       setMsgs([{ role: "assistant", content: greet }]);
     }
-  }, [open, msgs.length, authed, hud.name, hud.ads, mode]);
+  }, [open, msgs.length, authed, hud.name, hud.ads, mode, t]);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
   // Let any page open the chat — the Creator home's "Ask Helpurr" card fires this.
   useEffect(() => {
@@ -355,44 +356,44 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       setOpen(true);
       // The Creator home's Chat mode passes the typed prompt — prefill the box
       // so the user just hits send (we don't auto-send; let them confirm).
-      const t = (e as CustomEvent<{ text?: string }>).detail?.text;
-      if (typeof t === "string" && t.trim()) setInput(t);
+      const prefill = (e as CustomEvent<{ text?: string }>).detail?.text;
+      if (typeof prefill === "string" && prefill.trim()) setInput(prefill);
     };
     window.addEventListener("helpurr:open", h);
     return () => window.removeEventListener("helpurr:open", h);
   }, []);
 
   const send = async (text: string) => {
-    const t = text.trim();
-    if (!t || busy) return;
-    const next: MMMsg[] = [...msgs, { role: "user", content: t }];
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
+    const next: MMMsg[] = [...msgs, { role: "user", content: trimmed }];
     setMsgs(next); setInput(""); setBusy(true);
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), path: loc.pathname, mode }) });
       const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[] };
       setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [] }]);
     } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: "Connection blipped — mind trying again?" }]);
+      setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); }
   };
 
   const go = (to: string) => { setOpen(false); if (to.startsWith("/web#")) { window.location.href = to; } else { nav(to); } };
   const chips = mode === "casual"
-    ? ["Edit one of my photos", "Make a fun post", "Turn this into a sticker"]
-    : ["Make me an ad", "Which format converts best?", "Give me an idea for a video"];
+    ? [t("Edit one of my photos"), t("Make a fun post"), t("Turn this into a sticker")]
+    : [t("Make me an ad"), t("Which format converts best?"), t("Give me an idea for a video")];
 
   return (
     <>
-      <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label="Chat with Helpurr, your AI helper">
+      <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={t("Chat with Helpurr, your AI helper")}>
         <Familiar />
         {!open && <span className="mm-fab-dot" aria-hidden="true" />}
       </button>
       {open && (
-        <div className="mm-panel" role="dialog" aria-label="Helpurr chat">
+        <div className="mm-panel" role="dialog" aria-label={t("Helpurr chat")}>
           <div className="mm-head">
             <span className="mm-head-crest"><Familiar think={busy} /></span>
-            <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? "thinking…" : "your AI helper"}</span></div>
-            <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label="Close chat">×</button>
+            <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
+            <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label={t("Close chat")}>×</button>
           </div>
           <div className="mm-list" ref={listRef}>
             {msgs.map((m, i) => (
@@ -409,8 +410,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             )}
           </div>
           <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Helpurr…" aria-label="Message Helpurr" />
-            <button type="submit" disabled={busy || !input.trim()} aria-label="Send">➤</button>
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
+            <button type="submit" disabled={busy || !input.trim()} aria-label={t("Send")}>➤</button>
           </form>
         </div>
       )}

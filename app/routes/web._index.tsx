@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { Ico } from "../lib/icons";
+import { useT } from "../lib/ui-lang";
 import {
   PLAN_TIERS, MARKETING_TIERS, PLAN_BY_KEY, CREATOR_PRICE, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
   annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
@@ -336,6 +337,7 @@ export default function WebDashboard() {
   const submit = useSubmit();
   const [params] = useSearchParams();
   const busy = nav.state !== "idle";
+  const t = useT();
 
   // ── Purchase-success celebration modal (replaces the old flat banners).
   // Initialized from ?welcome= / ?topped=; the params are scrubbed on dismiss.
@@ -371,7 +373,7 @@ export default function WebDashboard() {
   const referralApplied = !!(actionData && "referralApplied" in actionData);
   const copyReferral = () => {
     if (!d.referral) return;
-    const msg = `Try EasyMode — AI videos, image ads & articles for your store, made and posted for you. Use my code ${d.referral.code} when you pick a plan and we both get ${d.referral.reward} free tokens. https://easymodeapp.com`;
+    const msg = t("Try EasyMode — AI videos, image ads & articles for your store, made and posted for you. Use my code {code} when you pick a plan and we both get {reward} free tokens. https://easymodeapp.com", { code: d.referral.code, reward: d.referral.reward });
     navigator.clipboard?.writeText(msg).then(() => { setRefCopied(true); setTimeout(() => setRefCopied(false), 1800); }).catch(() => { /* blocked */ });
   };
 
@@ -379,10 +381,10 @@ export default function WebDashboard() {
   const ok = actionData && "ok" in actionData ? (actionData.ok as string) : null;
 
   const steps = [
-    { key: "brand", label: "Set your brand voice", hint: "So content sounds like you", done: d.launch.brand, href: "#brand" },
-    { key: "plan", label: "Pick your plan", hint: "Start your 7-day free trial", done: d.launch.plan, href: "#plans" },
-    { key: "social", label: "Link your socials", hint: "So pieces can post themselves", done: d.launch.social, href: "/web/connect" },
-    { key: "content", label: "Make your first piece", hint: "A video, image ad or article", done: d.launch.content, href: "/web/studio" },
+    { key: "brand", label: t("Set your brand voice"), hint: t("So content sounds like you"), done: d.launch.brand, href: "#brand" },
+    { key: "plan", label: t("Pick your plan"), hint: t("Start your 7-day free trial"), done: d.launch.plan, href: "#plans" },
+    { key: "social", label: t("Link your socials"), hint: t("So pieces can post themselves"), done: d.launch.social, href: "/web/connect" },
+    { key: "content", label: t("Make your first piece"), hint: t("A video, image ad or article"), done: d.launch.content, href: "/web/studio" },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   const allDone = doneCount === steps.length;
@@ -391,55 +393,55 @@ export default function WebDashboard() {
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: DASH_CSS }} />
-      <h1 className="wb-h1">Welcome, {d.name}.</h1>
+      <h1 className="wb-h1">{t("Welcome, {name}.", { name: d.name })}</h1>
       <p className="wb-sub">
         {d.tierName
-          ? <>You&apos;re on <b>{d.tierName}</b>{d.trialing ? " (free trial)" : ""} with <b>{d.tokens.toLocaleString("en-US")}</b> tokens ready.</>
-          : "Two steps to your first AI content drop: set your brand voice, pick a plan."}
+          ? <>{t("You're on")} <b>{d.tierName}</b>{d.trialing ? ` ${t("(free trial)")}` : ""} {t("with")} <b>{d.tokens.toLocaleString("en-US")}</b> {t("tokens ready.")}</>
+          : t("Two steps to your first AI content drop: set your brand voice, pick a plan.")}
       </p>
 
       {success && (
-        <div className="ws-scrim" role="dialog" aria-label="Purchase confirmed" onClick={closeSuccess}>
+        <div className="ws-scrim" role="dialog" aria-label={t("Purchase confirmed")} onClick={closeSuccess}>
           <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
             <span className="ws-mrose" aria-hidden="true" />
             <div className="ws-mi"><Ico n={success.kind === "plan" ? "check" : "coin"} size={30} /></div>
             {success.kind === "plan" ? (
               <>
-                <b className="ws-mh">{PLAN_BY_KEY[success.key]?.name ?? "Your plan"} is live</b>
+                <b className="ws-mh">{PLAN_BY_KEY[success.key]?.name ?? t("Your plan")} {t("is live")}</b>
                 {/* Only the FIRST subscription gets a trial. Someone changing tier,
                     or coming back after a lapse, is charged in full at Stripe —
                     and was then told on landing that their free trial had just
                     started. */}
                 <p className="ws-mp">
-                  Your marketing just leveled up —{" "}
+                  {t("Your marketing just leveled up —")}{" "}
                   {d.trialing
-                    ? <>your 7-day free trial starts now, with </>
-                    : <>you&apos;re on {PLAN_BY_KEY[success.key]?.name}, with </>}
-                  {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} <Ico n="coin" /> tokens loading every month.
+                    ? <>{t("your 7-day free trial starts now, with ")}</>
+                    : <>{t("you're on")} {PLAN_BY_KEY[success.key]?.name}{t(", with ")}</>}
+                  {PLAN_BY_KEY[success.key]?.monthlyTokens.toLocaleString("en-US")} <Ico n="coin" /> {t("tokens loading every month.")}
                 </p>
               </>
             ) : (
               <>
-                <b className="ws-mh">+{success.n.toLocaleString("en-US")} tokens</b>
-                <p className="ws-mp">They&apos;re landing on your balance now — spend them on anything your plan unlocks.</p>
+                <b className="ws-mh">+{success.n.toLocaleString("en-US")} {t("tokens")}</b>
+                <p className="ws-mp">{t("They're landing on your balance now — spend them on anything your plan unlocks.")}</p>
               </>
             )}
-            <Link className="wb-btn ws-mcta" to="/web/studio" onClick={closeSuccess}>Open the Studio →</Link>
-            <button type="button" className="ws-mclose" onClick={closeSuccess}>Not now</button>
+            <Link className="wb-btn ws-mcta" to="/web/studio" onClick={closeSuccess}>{t("Open the Studio")} →</Link>
+            <button type="button" className="ws-mclose" onClick={closeSuccess}>{t("Not now")}</button>
           </div>
         </div>
       )}
 
       {err && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
-      {referralApplied && <div className="wb-ok">Code applied ✓ — your bonus tokens land when your paid plan starts.</div>}
+      {referralApplied && <div className="wb-ok">{t("Code applied ✓ — your bonus tokens land when your paid plan starts.")}</div>}
 
       {/* ── Launch tracker ─────────────────────────────────────────────── */}
       {!allDone && !launchHidden && (
         <div className="wd-launch">
           <div className="wdl-top">
-            <div className="wdl-title"><Ico n="rocket" /> Launch tracker <span>{doneCount}/{steps.length}</span></div>
-            <button type="button" className="wdl-x" onClick={dismissLaunch} aria-label="Dismiss">✕</button>
+            <div className="wdl-title"><Ico n="rocket" /> {t("Launch tracker")} <span>{doneCount}/{steps.length}</span></div>
+            <button type="button" className="wdl-x" onClick={dismissLaunch} aria-label={t("Dismiss")}>✕</button>
           </div>
           <div className="wdl-bar"><i style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
           <div className="wdl-steps">
@@ -449,7 +451,7 @@ export default function WebDashboard() {
                 <>
                   <span className={`wdl-tick${s.done ? " on" : ""}`}>{s.done ? "✓" : ""}</span>
                   <span className="wdl-lab"><b>{s.label}</b><em>{s.hint}</em></span>
-                  {isNext && <span className="wdl-go">Start ›</span>}
+                  {isNext && <span className="wdl-go">{t("Start")} ›</span>}
                 </>
               );
               const cls = `wdl-step${s.done ? " done" : ""}${isNext ? " next" : ""}`;
@@ -466,18 +468,18 @@ export default function WebDashboard() {
         <div className="wd-week">
           <div className="wdw-big">
             {d.week.made > 0
-              ? <>This week you made <b>{d.week.made}</b> {d.week.made === 1 ? "piece" : "pieces"}{d.week.posted > 0 ? <> and posted <b>{d.week.posted}</b></> : null}.</>
-              : "Nothing made this week yet — the Studio is one click away."}
+              ? <>{t("This week you made")} <b>{d.week.made}</b> {d.week.made === 1 ? t("piece") : t("pieces")}{d.week.posted > 0 ? <> {t("and posted")} <b>{d.week.posted}</b></> : null}.</>
+              : t("Nothing made this week yet — the Studio is one click away.")}
           </div>
           <div className="wdw-row">
-            <div className="wdw-st"><div className="n">{d.week.made}</div><div className="k">Made</div></div>
-            <div className="wdw-st"><div className="n">{d.week.posted}</div><div className="k">Posted</div></div>
-            <div className="wdw-st"><div className="n">{d.week.toReview}</div><div className="k">To review</div></div>
+            <div className="wdw-st"><div className="n">{d.week.made}</div><div className="k">{t("Made")}</div></div>
+            <div className="wdw-st"><div className="n">{d.week.posted}</div><div className="k">{t("Posted")}</div></div>
+            <div className="wdw-st"><div className="n">{d.week.toReview}</div><div className="k">{t("To review")}</div></div>
           </div>
           {d.week.toReview > 0 && (
             <Link className="wdw-review" to="/web/archive">
               <span className="rv-n">{d.week.toReview}</span>
-              {d.week.toReview === 1 ? "new piece in your Archive" : "new pieces in your Archive"} →
+              {d.week.toReview === 1 ? t("new piece in your Archive") : t("new pieces in your Archive")} →
             </Link>
           )}
         </div>
@@ -486,14 +488,14 @@ export default function WebDashboard() {
       {/* ── Results tiles (only when real numbers exist) ───────────────── */}
       {d.wins.hasData && (() => {
         const tiles = [
-          d.wins.reach > 0 && { n: d.wins.reach, k: "reached" },
-          d.wins.views > 0 && { n: d.wins.views, k: "views" },
-          d.wins.engagement > 0 && { n: d.wins.engagement, k: "engagements" },
-          d.wins.followers > 0 && { n: d.wins.followers, k: "followers" },
+          d.wins.reach > 0 && { n: d.wins.reach, k: t("reached") },
+          d.wins.views > 0 && { n: d.wins.views, k: t("views") },
+          d.wins.engagement > 0 && { n: d.wins.engagement, k: t("engagements") },
+          d.wins.followers > 0 && { n: d.wins.followers, k: t("followers") },
         ].filter(Boolean).slice(0, 4) as { n: number; k: string }[];
         return (
           <div className="wd-wins">
-            <div className="wdn-tag" style={{ marginBottom: 8 }}><Ico n="trend" /> Your content is working</div>
+            <div className="wdn-tag" style={{ marginBottom: 8 }}><Ico n="trend" /> {t("Your content is working")}</div>
             <div className="wdw-grid">
               {tiles.map((t) => (
                 <div className="wdw-tile" key={t.k}><b>{fmtK(t.n)}</b><span>{t.k}</span></div>
@@ -506,22 +508,22 @@ export default function WebDashboard() {
       {/* ── Next best move ─────────────────────────────────────────────── */}
       {d.nextMove && (
         <Link className="wd-next" to="/web/studio">
-          <div className="wdn-tag">Your next move</div>
+          <div className="wdn-tag">{t("Your next move")}</div>
           <div className="wdn-row">
             <span className="wdn-kind"><Ico n={d.nextMove.kind === "video" ? "video" : d.nextMove.kind === "image" ? "image" : "article"} size={22} /></span>
             <div className="wdn-body">
-              <b>Make {d.nextMove.kind === "video" ? "a product video" : d.nextMove.kind === "image" ? "an image ad" : "an article"}</b>
+              <b>{d.nextMove.kind === "video" ? t("Make a product video") : d.nextMove.kind === "image" ? t("Make an image ad") : t("Make an article")}</b>
               <p>{d.nextMove.reason}</p>
             </div>
           </div>
-          <span className="wdn-cta">Create it — {d.nextMove.cost} tokens · +{xpForSpend(d.nextMove.cost)} XP →</span>
+          <span className="wdn-cta">{t("Create it — {cost} tokens · +{xp} XP", { cost: d.nextMove.cost, xp: xpForSpend(d.nextMove.cost) })} →</span>
         </Link>
       )}
 
       {/* ── Brand voice ────────────────────────────────────────────────── */}
       <div id="brand" className="wb-card" style={{ marginBottom: 22, scrollMarginTop: 80 }}>
-        <div className="wb-price-name">1 · Brand voice {d.hasBrand && "✓"}</div>
-        <p className="wb-note" style={{ margin: "6px 0 0" }}>Every script, caption and article is written in your voice.</p>
+        <div className="wb-price-name">{t("1 · Brand voice")} {d.hasBrand && "✓"}</div>
+        <p className="wb-note" style={{ margin: "6px 0 0" }}>{t("Every script, caption and article is written in your voice.")}</p>
         {d.hasBrand && d.brand && (d.brand.tagline || d.brand.tone || d.brand.about) && (
           <div className="wd-voice">
             {d.brand.tagline && <div className="wdv-quote">“{d.brand.tagline}”</div>}
@@ -533,76 +535,75 @@ export default function WebDashboard() {
         )}
         <Form method="post">
           <input type="hidden" name="intent" value="brand" />
-          <label className="wb-lbl">What do you sell, and to whom?</label>
-          <textarea className="wb-ta" name="about" placeholder="Handmade ceramic mugs for coffee people who like slow mornings…" defaultValue={d.brand?.about || ""} />
-          <label className="wb-lbl">Tone (optional)</label>
-          <input className="wb-in" name="tone" placeholder="warm, playful, a little cheeky" defaultValue={d.brand?.tone || ""} />
-          <label className="wb-lbl">Tagline (optional)</label>
-          <input className="wb-in" name="tagline" placeholder="Slow mornings, served hot." defaultValue={d.brand?.tagline || ""} />
-          <label className="wb-lbl">Content language — everything generates in this language</label>
+          <label className="wb-lbl">{t("What do you sell, and to whom?")}</label>
+          <textarea className="wb-ta" name="about" placeholder={t("Handmade ceramic mugs for coffee people who like slow mornings…")} defaultValue={d.brand?.about || ""} />
+          <label className="wb-lbl">{t("Tone (optional)")}</label>
+          <input className="wb-in" name="tone" placeholder={t("warm, playful, a little cheeky")} defaultValue={d.brand?.tone || ""} />
+          <label className="wb-lbl">{t("Tagline (optional)")}</label>
+          <input className="wb-in" name="tagline" placeholder={t("Slow mornings, served hot.")} defaultValue={d.brand?.tagline || ""} />
+          <label className="wb-lbl">{t("Content language — everything generates in this language")}</label>
           <select className="wb-sel" name="contentLang" defaultValue={d.contentLang}>
             {Object.entries(d.langs).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
           </select>
           <div style={{ marginTop: 14 }}>
-            <button className="wb-btn ghost" disabled={busy}>{d.hasBrand ? "Update brand voice" : "Save brand voice"}</button>
+            <button className="wb-btn ghost" disabled={busy}>{d.hasBrand ? t("Update brand voice") : t("Save brand voice")}</button>
           </div>
         </Form>
       </div>
 
       {/* ── Plans ──────────────────────────────────────────────────────── */}
-      <div id="plans" className="wb-price-name" style={{ marginBottom: 10, scrollMarginTop: 80 }}>2 · Your plan</div>
-      {!d.billingOn && <div className="wb-err">Billing is coming online — plans can&apos;t be purchased on the web quite yet.</div>}
-      <div className="wd-toggle" role="group" aria-label="Billing period">
-        <button type="button" className={annual ? "" : "on"} onClick={() => setAnnual(false)}>Monthly</button>
-        <button type="button" className={annual ? "on" : ""} onClick={() => setAnnual(true)}>Annual <span>2 months free</span></button>
+      <div id="plans" className="wb-price-name" style={{ marginBottom: 10, scrollMarginTop: 80 }}>{t("2 · Your plan")}</div>
+      {!d.billingOn && <div className="wb-err">{t("Billing is coming online — plans can't be purchased on the web quite yet.")}</div>}
+      <div className="wd-toggle" role="group" aria-label={t("Billing period")}>
+        <button type="button" className={annual ? "" : "on"} onClick={() => setAnnual(false)}>{t("Monthly")}</button>
+        <button type="button" className={annual ? "on" : ""} onClick={() => setAnnual(true)}>{t("Annual")} <span>{t("2 months free")}</span></button>
       </div>
       <div className="wb-grid" style={{ marginBottom: 22 }}>
-        {d.tiers.map((t) => {
-          const isCurrent = d.tier === t.key;
+        {d.tiers.map((tier) => {
+          const isCurrent = d.tier === tier.key;
           return (
-          <div className={`wb-card wd-plancard${t.highlight ? " hot" : ""}`} key={t.key}>
-            {t.highlight && <div className="wd-ribbon">Most popular</div>}
-            <div className="wb-price-name">{t.name} {isCurrent && "· your plan ✓"}</div>
-            <div className="wd-tagline">{t.tagline}</div>
+          <div className={`wb-card wd-plancard${tier.highlight ? " hot" : ""}`} key={tier.key}>
+            {tier.highlight && <div className="wd-ribbon">{t("Most popular")}</div>}
+            <div className="wb-price-name">{tier.name} {isCurrent && t("· your plan ✓")}</div>
+            <div className="wd-tagline">{tier.tagline}</div>
             <div className="wb-price-amt">
-              {annual ? <>${t.yearly.toLocaleString("en-US")}<small>/yr</small></> : <>${t.price}<small>/mo</small></>}
+              {annual ? <>${tier.yearly.toLocaleString("en-US")}<small>{t("/yr")}</small></> : <>${tier.price}<small>{t("/mo")}</small></>}
             </div>
-            <div className="wb-note">{annual ? `Just $${Math.round((t.price * 10) / 12)}/mo, billed yearly · 2 months free` : "billed monthly"}</div>
-            <div className="wb-note"><Ico n="coin" /> {t.tokens.toLocaleString("en-US")} tokens/mo</div>
-            <div className="wb-note">{t.capacity}</div>
-            <ul className="wb-feats">{t.features.map((f) => <li key={f}>{f}</li>)}</ul>
+            <div className="wb-note">{annual ? t("Just ${price}/mo, billed yearly · 2 months free", { price: Math.round((tier.price * 10) / 12) }) : t("billed monthly")}</div>
+            <div className="wb-note"><Ico n="coin" /> {t("{tokens} tokens/mo", { tokens: tier.tokens.toLocaleString("en-US") })}</div>
+            <div className="wb-note">{tier.capacity}</div>
+            <ul className="wb-feats">{tier.features.map((f) => <li key={f}>{f}</li>)}</ul>
 
             {/* Flipping to Annual re-prices every card, including the one the
                 merchant is already on — which had no buy button, because the
                 subscribe form only renders for OTHER tiers. Say the path. */}
             {isCurrent && annual && (
               <p className="wb-note" style={{ marginTop: 8 }}>
-                Already on this plan. To move it to annual billing, email{" "}
+                {t("Already on this plan. To move it to annual billing, email")}{" "}
                 <a href="mailto:hello@easymodeapp.com?subject=Switch%20me%20to%20annual%20billing">hello@easymodeapp.com</a>{" "}
-                and we&apos;ll switch it over without you losing the period you&apos;ve paid for.
+                {t("and we'll switch it over without you losing the period you've paid for.")}
               </p>
             )}
             {isCurrent && d.billingOn && (
               d.cancelPending ? (
                 <>
                   <p className="wb-note" style={{ marginTop: 8 }}>
-                    Cancelled — this plan won&apos;t renew. You keep every generator and every token
-                    until the period you&apos;ve paid for ends.
+                    {t("Cancelled — this plan won't renew. You keep every generator and every token until the period you've paid for ends.")}
                   </p>
                   <Form method="post">
                     <input type="hidden" name="intent" value="resumePlan" />
-                    <button className="wb-btn" disabled={busy}>Keep my plan</button>
+                    <button className="wb-btn" disabled={busy}>{t("Keep my plan")}</button>
                   </Form>
                 </>
               ) : (
                 <Form
                   method="post"
                   onSubmit={(e) => {
-                    if (!confirm("Cancel your plan? It stays active — with all your tokens — until the end of the period you've already paid for, then stops renewing.")) e.preventDefault();
+                    if (!confirm(t("Cancel your plan? It stays active — with all your tokens — until the end of the period you've already paid for, then stops renewing."))) e.preventDefault();
                   }}
                 >
                   <input type="hidden" name="intent" value="cancelPlan" />
-                  <button className="wb-btn ghost" disabled={busy}>Cancel plan</button>
+                  <button className="wb-btn ghost" disabled={busy}>{t("Cancel plan")}</button>
                 </Form>
               )
             )}
@@ -610,24 +611,24 @@ export default function WebDashboard() {
               <>
                 <Form method="post">
                   <input type="hidden" name="intent" value="subscribe" />
-                  <input type="hidden" name="tier" value={t.key} />
+                  <input type="hidden" name="tier" value={tier.key} />
                   {annual && <input type="hidden" name="annual" value="1" />}
                   {/* Say what will happen. A merchant already inside their one
                       trial is CHANGING tier and keeps the original end date;
                       one who has spent it is charged today. Neither is
                       “Start free trial”. */}
                   <button className="wb-btn" disabled={busy || !d.billingOn}>
-                    {d.trialAvailable ? "Start free trial" : d.trialing ? `Switch to ${t.name}` : `Get ${t.name}`}
+                    {d.trialAvailable ? t("Start free trial") : d.trialing ? t("Switch to {name}", { name: tier.name }) : t("Get {name}", { name: tier.name })}
                   </button>
                 </Form>
                 {/* The trial ceiling is a CAP, not a grant: what a trialist can
                     actually spend is min(the tier’s own allowance, the cap). */}
                 <div className="wd-trial">
                   {d.trialAvailable
-                    ? <>7-day free trial ({Math.min(t.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US")} tokens to play) · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</>
+                    ? <>{t("7-day free trial ({tokens} tokens to play) · then {price}", { tokens: Math.min(tier.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US"), price: annual ? `$${tier.yearly.toLocaleString("en-US")}/yr` : `$${tier.price}/mo` })}</>
                     : d.trialing
-                      ? <>Keeps your current trial end date · then ${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}</>
-                      : <>${annual ? `${t.yearly.toLocaleString("en-US")}/yr` : `${t.price}/mo`}, billed today · your free trial is already used</>}
+                      ? <>{t("Keeps your current trial end date · then {price}", { price: annual ? `$${tier.yearly.toLocaleString("en-US")}/yr` : `$${tier.price}/mo` })}</>
+                      : <>{t("{price}, billed today · your free trial is already used", { price: annual ? `$${tier.yearly.toLocaleString("en-US")}/yr` : `$${tier.price}/mo` })}</>}
                 </div>
               </>
             )}
@@ -644,42 +645,40 @@ export default function WebDashboard() {
         <div className="wb-card wd-solo">
           <span className="wd-solo-emoji" aria-hidden="true"><Ico n="palette" size={28} /></span>
           <div className="wd-solo-txt">
-            <b>Creator section — included with your plan ✓</b>
-            <p>Make AI images, edit your photos and generate music with Helpurr.</p>
+            <b>{t("Creator section — included with your plan")} ✓</b>
+            <p>{t("Make AI images, edit your photos and generate music with Helpurr.")}</p>
           </div>
-          <Link to="/web/studio" className="wb-btn ghost wd-solo-cta">Open Creator →</Link>
+          <Link to="/web/studio" className="wb-btn ghost wd-solo-cta">{t("Open Creator")} →</Link>
         </div>
       ) : !d.tier ? (
         <div className="wb-card wd-solo">
           <span className="wd-solo-emoji" aria-hidden="true"><Ico n="palette" size={28} /></span>
           <div className="wd-solo-txt">
-            <b>Just want the creative tools?</b>
-            <p>Skip the marketing plans — get Creator on its own: AI images, photo editing &amp; music with Helpurr. <b>${CREATOR_PRICE}/mo</b>, no marketing plan needed.</p>
+            <b>{t("Just want the creative tools?")}</b>
+            <p>{t("Skip the marketing plans — get Creator on its own: AI images, photo editing & music with Helpurr.")} <b>${CREATOR_PRICE}/mo</b>{t(", no marketing plan needed.")}</p>
           </div>
           <Form method="post" className="wd-solo-cta">
             <input type="hidden" name="intent" value="subscribe" />
             <input type="hidden" name="tier" value="CREATOR" />
-            <button className="wb-btn" disabled={busy || !d.billingOn}>Get Creator — ${CREATOR_PRICE}/mo</button>
+            <button className="wb-btn" disabled={busy || !d.billingOn}>{t("Get Creator — ${price}/mo", { price: CREATOR_PRICE })}</button>
           </Form>
         </div>
       ) : null)}
 
       {/* One balance, one currency — what each action costs */}
       <div className="wd-legend">
-        <div className="wdg-h">One balance runs everything</div>
+        <div className="wdg-h">{t("One balance runs everything")}</div>
         <div className="wdg-row">
           {TOKEN_COST_LEGEND.map((l) => (
             <div className="wdg-item" key={l.action}><b>{l.cost}</b><span>{l.label}</span></div>
           ))}
         </div>
-        <div className="wdg-note">Your plan unlocks WHICH generators you can use; tokens meter HOW MUCH you make. Run out mid-month? Top up below — tokens never unlock a generator your plan doesn&apos;t include.</div>
+        <div className="wdg-note">{t("Your plan unlocks WHICH generators you can use; tokens meter HOW MUCH you make. Run out mid-month? Top up below — tokens never unlock a generator your plan doesn't include.")}</div>
       </div>
 
       {d.tier && d.trialing && (
         <div className="wb-note" style={{ marginBottom: 22 }}>
-          <b>Top-ups unlock when your trial converts.</b> Extra tokens can&apos;t be spent during the
-          trial, so we don&apos;t sell them yet — start your plan from the Studio whenever you&apos;re ready
-          and your full balance opens up.
+          <b>{t("Top-ups unlock when your trial converts.")}</b> {t("Extra tokens can't be spent during the trial, so we don't sell them yet — start your plan from the Studio whenever you're ready and your full balance opens up.")}
         </div>
       )}
 
@@ -690,18 +689,18 @@ export default function WebDashboard() {
           refuses it too — this only stops us asking. */}
       {d.tier && !d.trialing && (
         <>
-          <div className="wb-price-name" style={{ marginBottom: 10 }}>Top up tokens</div>
+          <div className="wb-price-name" style={{ marginBottom: 10 }}>{t("Top up tokens")}</div>
           <div className="wb-grid">
             {d.packs.map((p) => (
               <div className={`wb-card wd-plancard${p.best ? " hot" : ""}`} key={p.tokens}>
                 {p.best && <div className="wd-ribbon gold">Best value</div>}
-                <div className="wb-price-name">+{p.tokens.toLocaleString("en-US")} tokens</div>
-                <p className="wb-note" style={{ margin: "6px 0 4px" }}>{PACK_FRAMING[p.tokens] || "Extra fuel for anything your plan unlocks."}</p>
-                <div className="wb-note" style={{ margin: "0 0 12px" }}>One-time · they never expire</div>
+                <div className="wb-price-name">+{p.tokens.toLocaleString("en-US")} {t("tokens")}</div>
+                <p className="wb-note" style={{ margin: "6px 0 4px" }}>{PACK_FRAMING[p.tokens] ? t(PACK_FRAMING[p.tokens]) : t("Extra fuel for anything your plan unlocks.")}</p>
+                <div className="wb-note" style={{ margin: "0 0 12px" }}>{t("One-time · they never expire")}</div>
                 <Form method="post">
                   <input type="hidden" name="intent" value="pack" />
                   <input type="hidden" name="tokens" value={p.tokens} />
-                  <button className="wb-btn gold" disabled={busy || !d.billingOn}>Buy for ${p.price}</button>
+                  <button className="wb-btn gold" disabled={busy || !d.billingOn}>{t("Buy for ${price}", { price: p.price })}</button>
                 </Form>
               </div>
             ))}
@@ -715,11 +714,11 @@ export default function WebDashboard() {
           {/* Sharing pays only once this store is itself on a plan. */}
           {d.referral.canEarn && (
             <div className="wdr-main">
-              <b>Refer a friend — you both get {d.referral.reward} <Ico n="coin" /></b>
-              <span>Share your code; tokens land in both wallets when they start a paid plan.</span>
+              <b>{t("Refer a friend — you both get {reward}", { reward: d.referral.reward })} <Ico n="coin" /></b>
+              <span>{t("Share your code; tokens land in both wallets when they start a paid plan.")}</span>
               <div className="wdr-act">
                 <span className="wdr-code">{d.referral.code}</span>
-                <button type="button" className="wb-btn" onClick={copyReferral}>{refCopied ? "Copied ✓" : "Copy invite"}</button>
+                <button type="button" className="wb-btn" onClick={copyReferral}>{refCopied ? t("Copied ✓") : t("Copy invite")}</button>
               </div>
             </div>
           )}
@@ -727,26 +726,26 @@ export default function WebDashboard() {
               the same condition applyReferralCode enforces. */}
           {!d.referral.canEarn && !d.referral.referredBy && !referralApplied && (
             <div className="wdr-enter">
-              <label className="wb-lbl" style={{ margin: "0 0 6px" }}>Got a code from someone?</label>
+              <label className="wb-lbl" style={{ margin: "0 0 6px" }}>{t("Got a code from someone?")}</label>
               <div className="wdr-row">
-                <input className="wb-in" value={refInput} maxLength={12} placeholder="ENTER CODE" onChange={(e) => setRefInput(e.target.value.toUpperCase())} />
+                <input className="wb-in" value={refInput} maxLength={12} placeholder={t("ENTER CODE")} onChange={(e) => setRefInput(e.target.value.toUpperCase())} />
                 <button
                   type="button"
                   className="wb-btn ghost"
                   disabled={busy || refInput.trim().length < 5}
                   onClick={() => submit({ intent: "applyReferral", code: refInput.trim() }, { method: "post" })}
-                >Apply</button>
+                >{t("Apply")}</button>
               </div>
             </div>
           )}
           {d.referral.referredBy && (
-            <div className="wdr-enter"><div className="wb-note">You joined with a referral — enjoy your bonus tokens.</div></div>
+            <div className="wdr-enter"><div className="wb-note">{t("You joined with a referral — enjoy your bonus tokens.")}</div></div>
           )}
         </div>
       )}
 
       <p className="wb-note" style={{ marginTop: 26 }}>
-        Ready to create? <Link to="/web/studio">Open the Studio →</Link>
+        {t("Ready to create?")} <Link to="/web/studio">{t("Open the Studio")} →</Link>
       </p>
     </div>
   );

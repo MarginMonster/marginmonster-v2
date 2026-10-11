@@ -7,6 +7,7 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Ico } from "../lib/icons";
+import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { isExpiringUrl } from "../lib/image-generation.server";
 import { db } from "../db.server";
@@ -809,6 +810,7 @@ const WA_CSS = `
 `;
 
 export default function WebArchive() {
+  const t = useT();
   const { section, assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
   const isCreator = section === "creator";
   // Preserve the section across tab links, "show more", and revalidation so the
@@ -889,8 +891,8 @@ export default function WebArchive() {
 
   const chipFor = (a: { type: string; status: string }): [string, string] =>
     a.type === "BLOG_POST"
-      ? a.status === "PUBLISHED" ? ["posted", "Published"] : a.status === "APPROVED" ? ["kept", "Kept"] : ["new", "Ready"]
-      : a.status === "PUBLISHED" ? ["posted", "Posted"] : a.status === "APPROVED" ? ["kept", "Kept"] : ["new", "New"];
+      ? a.status === "PUBLISHED" ? ["posted", t("Published")] : a.status === "APPROVED" ? ["kept", t("Kept")] : ["new", t("Ready")]
+      : a.status === "PUBLISHED" ? ["posted", t("Posted")] : a.status === "APPROVED" ? ["kept", t("Kept")] : ["new", t("New")];
   const costOf = (t: string) => (t === "VIDEO_AD" ? cost.video : t === "IMAGE_AD" ? cost.image : t === "AUDIO" ? cost.music : cost.blog);
   const copyHtml = (html: string) => { navigator.clipboard.writeText(html).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => { /* ignore */ }); };
   const downloadHtml = (title: string, html: string) => {
@@ -909,23 +911,22 @@ export default function WebArchive() {
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
-      <h1 className="wb-h1">{isCreator ? "Gallery" : "Archive"}</h1>
+      <h1 className="wb-h1">{isCreator ? t("Gallery") : t("Archive")}</h1>
       <p className="wb-sub">
-        {isCreator ? "Everything you've made in Creator" : "Everything you've made"} — tap a piece to watch it big, keep it, download it{canPost ? `, or ${isCreator ? "share" : "post"} it to your ${linkedCount} linked account${linkedCount > 1 ? "s" : ""}` : ""}.
-        {cooking > 0 && <> · <b>{cooking} piece{cooking > 1 ? "s" : ""} cooking below</b> — this page updates itself.</>}
+        {isCreator ? t("Everything you've made in Creator") : t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (isCreator ? (linkedCount > 1 ? t(", or share it to your {n} linked accounts", { n: linkedCount }) : t(", or share it to your {n} linked account", { n: linkedCount })) : (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount }))) : ""}.
+        {cooking > 0 && <> · <b>{cooking > 1 ? t("{n} pieces cooking below", { n: cooking }) : t("{n} piece cooking below", { n: cooking })}</b> — {t("this page updates itself.")}</>}
       </p>
-      {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>Want one-tap posting? <Link to="/web/connect">Link your socials</Link>.</p>}
-      <p className="wa-wallet">{hasPlan ? `Wallet: ${tokens.toLocaleString("en-US")} tokens` : "Pick a plan to generate."}</p>
+      {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link>.</p>}
+      <p className="wa-wallet">{hasPlan ? t("Wallet: {n} tokens", { n: tokens.toLocaleString("en-US") }) : t("Pick a plan to generate.")}</p>
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
       {remixed && (
         <div className="wb-ok">
-          <Ico n="sparkle" /> {remixFree ? "Making it again, on us" : "Remixing"} — a fresh {remixed === "blog" ? "article" : remixed} is on the way.
-          It&apos;ll land on this shelf in a minute.{remixFree ? " No tokens spent." : ""}
+          <Ico n="sparkle" /> {remixFree ? t("Making it again, on us") : t("Remixing")} — {t("a fresh {kind} is on the way. It'll land on this shelf in a minute.", { kind: remixed === "blog" ? t("article") : remixed })}{remixFree ? t(" No tokens spent.") : ""}
         </div>
       )}
       <div className="ws-tabs" style={{ marginBottom: 16 }}>
-        {([["video", "video", "Videos"], ["image", "image", "Images"], ["music", "music", "Music"], ["blog", "article", "Articles"]] as [ATab, string, string][]).map(([k, icon, label]) => {
+        {([["video", "video", t("Videos")], ["image", "image", t("Images")], ["music", "music", t("Music")], ["blog", "article", t("Articles")]] as [ATab, string, string][]).map(([k, icon, label]) => {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
           // how much the merchant actually owned.
@@ -939,7 +940,7 @@ export default function WebArchive() {
         })}
       </div>
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
-        <p className="wa-shelfnote"><Ico n="hourglass" /> Un-kept videos &amp; photos clear after 30 days — open a piece and hit <b>Keep</b> to save it for good.</p>
+        <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and hit")} <b>{t("Keep")}</b> {t("to save it for good.")}</p>
       )}
       {/* Only when there is genuinely more of THIS type to load. The library
           can be past the page size while the open tab is already complete —
@@ -954,13 +955,13 @@ export default function WebArchive() {
         // disagreed with no explanation, and the note said "60 of 87" on a tab
         // showing neither number.
         <p className="wa-shelfnote">
-          Showing <b>{shelf.length}</b> of <b>{tabTotal}</b>{" "}
-          {tab === "blog" ? "articles" : tab === "music" ? "tracks" : `${tab}s`}.{" "}
-          <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>Show older pieces →</Link>
+          {t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}
+          {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`}.{" "}
+          <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
         </p>
       )}
       {shelf.length === 0 && genCards.length === 0 && failCards.length === 0 && (
-        <div className="wb-card">No {tab === "blog" ? "articles" : tab === "music" ? "tracks" : `${tab}s`} yet — make one in the <Link to="/web/studio">Studio</Link>.</div>
+        <div className="wb-card">{t("No")} {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`} {t("yet — make one in the")} <Link to="/web/studio">Studio</Link>.</div>
       )}
 
       {/* Cooking tiles stay pinned at the top of the shelf. */}
@@ -975,8 +976,10 @@ export default function WebArchive() {
                 <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</span></span>
               </div>
               <div className="m">
-                {j.kind === "blog" ? `Writing${j.productTitle ? ` about ${j.productTitle}` : " your article"}…` : `Creating your ${j.kind}${j.productTitle ? ` — ${j.productTitle}` : ""}…`}
-                <div className="s">Rendering · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</div>
+                {j.kind === "blog"
+                  ? (j.productTitle ? t("Writing about {title}…", { title: j.productTitle }) : t("Writing your article…"))
+                  : (j.productTitle ? t("Creating your {kind} — {title}…", { kind: j.kind, title: j.productTitle }) : t("Creating your {kind}…", { kind: j.kind }))}
+                <div className="s">{t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</div>
               </div>
             </div>
           ))}
@@ -995,7 +998,7 @@ export default function WebArchive() {
                   {a.snippet && <p>{a.snippet}…</p>}
                   <span className={`wa-chip ${cc}`}>{cl}</span>
                 </button>
-                <button type="button" className="wa-icon" title="Delete this article" disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
+                <button type="button" className="wa-icon" title={t("Delete this article")} disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
               </div>
             );
           })}
@@ -1006,7 +1009,7 @@ export default function WebArchive() {
             const [cc, cl] = chipFor(a);
             return (
               <div className="wb-asset" key={a.id}>
-                <button type="button" className="wa-poster" onClick={() => setViewer(a)} title={a.isAudio ? "Open & play" : "Open it big"}>
+                <button type="button" className="wa-poster" onClick={() => setViewer(a)} title={a.isAudio ? t("Open & play") : t("Open it big")}>
                   {a.isVideo && a.media && <video src={`${a.media}#t=0.1`} muted playsInline preload="metadata" />}
                   {!a.isVideo && !a.isAudio && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
                   {/* Audio has no still — the tile is a play affordance; the real
@@ -1021,7 +1024,7 @@ export default function WebArchive() {
                   {!a.media && (
                     <div style={{ height: 220, display: "grid", placeItems: "center", gap: 6, textAlign: "center", color: "#E7C879" }}>
                       <span style={{ display: "grid", placeItems: "center", opacity: .5 }}><Ico n={a.isVideo ? "video" : a.isAudio ? "music" : "image"} size={32} /></span>
-                      {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>The render for this one is gone — make it again.</span>}
+                      {a.expired && <span style={{ fontSize: 11, opacity: 0.75, padding: "0 14px" }}>{t("The render for this one is gone — make it again.")}</span>}
                     </div>
                   )}
                   {a.isVideo && a.media && <span className="wa-play" aria-hidden>▶</span>}
@@ -1030,7 +1033,7 @@ export default function WebArchive() {
                       the same time — one says it is lost, the other says it is
                       safe for a month. The countdown is about un-kept media
                       clearing; there is nothing here left to clear. */}
-                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={`Auto-clears in ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} — open it and hit Keep`}><Ico n="hourglass" /> {a.daysLeft}d</span>}
+                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={a.daysLeft === 1 ? t("Auto-clears in {n} day — open it and hit Keep", { n: a.daysLeft }) : t("Auto-clears in {n} days — open it and hit Keep", { n: a.daysLeft })}><Ico n="hourglass" /> {a.daysLeft}d</span>}
                 </button>
                 <div className="m">
                   {a.title}
@@ -1041,11 +1044,11 @@ export default function WebArchive() {
                       "switch to client rendering"), which is why the Archive
                       re-rendered itself from scratch on every visit. Keep the
                       local date; let React reconcile this one node. */}
-                  <div className="s">{a.isVideo ? "Video" : a.isAudio ? "Music" : "Image ad"} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
+                  <div className="s">{a.isVideo ? t("Video") : a.isAudio ? t("Music") : t("Image ad")} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
-                    {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title="Download"><Ico n="download" /></a>}
-                    <button type="button" className="wa-icon" title="Delete" disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
+                    {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title={t("Download")}><Ico n="download" /></a>}
+                    <button type="button" className="wa-icon" title={t("Delete")} disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
                   </div>
                 </div>
               </div>
@@ -1057,7 +1060,7 @@ export default function WebArchive() {
       {/* Wipeouts live below the finished work, not mixed into it. */}
       {failCards.length > 0 && (
         <div className="wa-failsec">
-          <div className="wa-faildiv"><span>Didn&apos;t come through — retry or clear it</span></div>
+          <div className="wa-faildiv"><span>{t("Didn't come through — retry or clear it")}</span></div>
           <div className="wb-assets">
             {failCards.map((j) => (
               <div className="wb-asset" key={j.jobId}>
@@ -1068,13 +1071,13 @@ export default function WebArchive() {
                   <span className="wb-failbadge">✕</span>
                 </div>
                 <div className="m">
-                  This {j.kind} didn&apos;t make it{j.refunded ? " — tokens refunded" : ""}.
-                  <div className="s">Failed — retry it right here</div>
+                  {t("This {kind} didn't make it", { kind: j.kind })}{j.refunded ? t(" — tokens refunded") : ""}.
+                  <div className="s">{t("Failed — retry it right here")}</div>
                   <div className="wa-jacts">
                     <button type="button" className="wb-btn" style={{ padding: "8px 16px", fontSize: 12.5 }} disabled={busy} onClick={() => retryJob(j.jobId)}>
-                      {j.retryCost > 0 ? `Retry · ${j.retryCost} tokens · +${xpForSpend(j.retryCost)} XP` : "Retry free"}
+                      {j.retryCost > 0 ? t("Retry · {n} tokens · +{xp} XP", { n: j.retryCost, xp: xpForSpend(j.retryCost) }) : t("Retry free")}
                     </button>
-                    <button type="button" className="wb-btn ghost" style={{ padding: "8px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => dismissJob(j.jobId)}>Dismiss</button>
+                    <button type="button" className="wb-btn ghost" style={{ padding: "8px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => dismissJob(j.jobId)}>{t("Dismiss")}</button>
                   </div>
                 </div>
               </div>
@@ -1087,18 +1090,18 @@ export default function WebArchive() {
       {viewer && (
         <div className="wa-scrim" onClick={() => setViewer(null)}>
           <div className="wa-viewer" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="wa-vx" aria-label="Close" onClick={() => setViewer(null)}>✕</button>
+            <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
             {shelf.length > 1 && vIdx >= 0 && (
               <>
-                <button type="button" className="wa-vnav prev" aria-label="Previous" onClick={() => openAt(vIdx - 1)}>‹</button>
-                <button type="button" className="wa-vnav next" aria-label="Next" onClick={() => openAt(vIdx + 1)}>›</button>
+                <button type="button" className="wa-vnav prev" aria-label={t("Previous")} onClick={() => openAt(vIdx - 1)}>‹</button>
+                <button type="button" className="wa-vnav next" aria-label={t("Next")} onClick={() => openAt(vIdx + 1)}>›</button>
                 <span className="wa-vcount">{vIdx + 1} / {shelf.length}</span>
               </>
             )}
             {viewer.type === "BLOG_POST" ? (
               viewer.html
                 ? <div className="wa-read" dangerouslySetInnerHTML={{ __html: viewer.html }} />
-                : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || "Still being written…"}</p></div>
+                : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || t("Still being written…")}</p></div>
             ) : viewer.isVideo && viewer.media ? (
               <video className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
             ) : viewer.isAudio && viewer.media ? (
@@ -1109,19 +1112,19 @@ export default function WebArchive() {
             ) : viewer.media ? (
               <img className="wa-vfull" src={viewer.media} alt={viewer.title} />
             ) : (
-              <div className="wa-read"><p>Still being made…</p></div>
+              <div className="wa-read"><p>{t("Still being made…")}</p></div>
             )}
             <div className="wa-vmeta">
               <div className="wa-vtitle">
                 <b>{viewer.title}</b>
-                {viewer.recipe && <span className="wa-recipe" title="The recipe this ad was built with"><Ico n="sliders" /> {viewer.recipe}</span>}
-                {posted && postedAssetId === viewer.id ? <span className="wa-vok">Posted to {posted} ✓</span>
+                {viewer.recipe && <span className="wa-recipe" title={t("The recipe this ad was built with")}><Ico n="sliders" /> {viewer.recipe}</span>}
+                {posted && postedAssetId === viewer.id ? <span className="wa-vok">{t("Posted to {where}", { where: posted })} ✓</span>
                   : err ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>
               {viewer.missed && (
                 <span className="wa-vmissed">
-                  <Ico n="warning" /> The <b>{viewer.missed}</b> layout didn&apos;t render cleanly, so this went out as a plain product ad instead. <b>Remix</b> re-rolls it.
+                  <Ico n="warning" /> {t("The")} <b>{viewer.missed}</b> {t("layout didn't render cleanly, so this went out as a plain product ad instead.")} <b>{t("Remix")}</b> {t("re-rolls it.")}
                 </span>
               )}
               {/* Post tracking + the Boost Bridge. Clicks come from the /go/a
@@ -1130,36 +1133,36 @@ export default function WebArchive() {
                   the SMB way to put spend behind a winner, no ads API needed. */}
               {(viewer.clicks > 0 || viewer.postedUrls) && (
                 <div className="wa-track">
-                  <span className="wa-clicks" title="Shoppers who tapped the link in this post's caption"><Ico n="link" /> {viewer.clicks} click{viewer.clicks === 1 ? "" : "s"}</span>
+                  <span className="wa-clicks" title={t("Shoppers who tapped the link in this post's caption")}><Ico n="link" /> {viewer.clicks === 1 ? t("{n} click", { n: viewer.clicks }) : t("{n} clicks", { n: viewer.clicks })}</span>
                   {viewer.postedUrls && Object.entries(viewer.postedUrls).map(([p, u]) => (
-                    <a key={p} className="wa-boost" href={u} target="_blank" rel="noreferrer"><Ico n="bolt" /> Boost on {p.charAt(0).toUpperCase() + p.slice(1)} ↗</a>
+                    <a key={p} className="wa-boost" href={u} target="_blank" rel="noreferrer"><Ico n="bolt" /> {t("Boost on {platform}", { platform: p.charAt(0).toUpperCase() + p.slice(1) })} ↗</a>
                   ))}
                   {viewer.postedUrls && (
-                    <span className="wa-boosthint">Open the post → tap <b>⋯ / Boost</b>. Suggested start: $10/day × 3 days, Advantage+ audience. Clicks above tell you which piece earned the spend.</span>
+                    <span className="wa-boosthint">{t("Open the post")} → {t("tap")} <b>⋯ / Boost</b>. {t("Suggested start: $10/day × 3 days, Advantage+ audience. Clicks above tell you which piece earned the spend.")}</span>
                   )}
                 </div>
               )}
               {viewer.daysLeft != null && !posted && !viewer.expired && (
-                <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> Clears in {viewer.daysLeft} day{viewer.daysLeft === 1 ? "" : "s"} — <b>Keep</b> saves it for good.</span>
+                <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> {viewer.daysLeft === 1 ? t("Clears in {n} day", { n: viewer.daysLeft }) : t("Clears in {n} days", { n: viewer.daysLeft })} — <b>{t("Keep")}</b> {t("saves it for good.")}</span>
               )}
-              {viewer.type !== "BLOG_POST" && <span className="wa-aitag">✦ AI-generated · review before posting</span>}
+              {viewer.type !== "BLOG_POST" && <span className="wa-aitag">✦ {t("AI-generated · review before posting")}</span>}
               {viewer.type === "BLOG_POST" ? (
                 <div className="wa-vacts">
-                  {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? "Copied ✓" : "Copy HTML"}</button>}
-                  {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> Download</button>}
-                  <button type="button" className="wa-vbtn gold" disabled={busy} title="Write a fresh article on the same product" onClick={() => remix(viewer.id)}><Ico n="sparkle" /> Remix<span className="c">{costOf(viewer.type)} tokens · +{xpForSpend(costOf(viewer.type))} XP</span></button>
-                  <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
+                  {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? t("Copied ✓") : t("Copy HTML")}</button>}
+                  {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> {t("Download")}</button>}
+                  <button type="button" className="wa-vbtn gold" disabled={busy} title={t("Write a fresh article on the same product")} onClick={() => remix(viewer.id)}><Ico n="sparkle" /> {t("Remix")}<span className="c">{t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
+                  <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>{t("Delete")}</button>
                 </div>
               ) : (
                 <>
                   <div className="wa-vacts">
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
-                      <button type="button" className="wa-vbtn" disabled={busy} onClick={() => startPost(viewer.id)}>Post to socials</button>
+                      <button type="button" className="wa-vbtn" disabled={busy} onClick={() => startPost(viewer.id)}>{t("Post to socials")}</button>
                     )}
                     {viewer.status !== "APPROVED" && viewer.status !== "PUBLISHED" && (
-                      <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>Keep</button>
+                      <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>{t("Keep")}</button>
                     )}
-                    {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> Download</a>}
+                    {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
                         image in the Creator editor (seeds ?src=; the full
                         describe-first edit flow runs on it). Image-only — the
@@ -1167,9 +1170,9 @@ export default function WebArchive() {
                         edit lands back in the Creator Gallery. */}
                     {!viewer.isVideo && !viewer.isAudio && viewer.media && (
                       <button type="button" className="wa-vbtn ghost" disabled={busy}
-                        title="Open this image in the Creator editor"
+                        title={t("Open this image in the Creator editor")}
                         onClick={() => { try { localStorage.setItem("emMode", "casual"); } catch { /* */ } window.location.href = `/web/studio?do=edit&src=${encodeURIComponent(viewer.media!)}`; }}>
-                        <Ico n="article" /> Edit{isCreator ? "" : " in Creator"}
+                        <Ico n="article" /> {t("Edit")}{isCreator ? "" : t(" in Creator")}
                       </button>
                     )}
                     {/* CROSS-SECTION BRIDGE — "use creator content on Marketing":
@@ -1178,17 +1181,17 @@ export default function WebArchive() {
                         layered on, so no fabrication risk). Flips to marketing. */}
                     {isCreator && !viewer.isAudio && viewer.media && (
                       <button type="button" className="wa-vbtn ghost" disabled={busy}
-                        title="Schedule this into a marketing campaign"
+                        title={t("Schedule this into a marketing campaign")}
                         onClick={() => { try { localStorage.setItem("emMode", "marketing"); } catch { /* */ } window.location.href = `/web/campaigns?pick=${encodeURIComponent(viewer.id)}`; }}>
-                        ➜ Use in a campaign
+                        ➜ {t("Use in a campaign")}
                       </button>
                     )}
                     {/* A piece whose render we lost is replaced on us, so the
                         button must not quote a price the merchant will not pay. */}
                     {!viewer.isAudio && (
-                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? "We lost this render — make it again, on us" : "Make a fresh variation of this piece"} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? "Make it again" : "Remix"}<span className="c">{viewer.freeRemake ? "free — on us" : `${costOf(viewer.type)} tokens · +${xpForSpend(costOf(viewer.type))} XP`}</span></button>
+                      <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? t("We lost this render — make it again, on us") : t("Make a fresh variation of this piece")} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? t("Make it again") : t("Remix")}<span className="c">{viewer.freeRemake ? t("free — on us") : t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
                     )}
-                    <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>Delete</button>
+                    <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>{t("Delete")}</button>
                   </div>
                   {capOpen && (
                     <div className="wa-cap">
@@ -1197,14 +1200,14 @@ export default function WebArchive() {
                         rows={5}
                         value={caption}
                         disabled={draftPending}
-                        placeholder={draftPending ? "Writing a caption for you…" : "Write your caption…"}
+                        placeholder={draftPending ? t("Writing a caption for you…") : t("Write your caption…")}
                         onChange={(e) => setCaption(e.target.value)}
                       />
                       <div className="wa-caprow">
-                        <button type="button" className="wa-vbtn" disabled={busy || draftPending || !caption.trim()} onClick={() => doPost(viewer.id)}>{busy && !draftPending ? "Posting…" : "Post now"}</button>
-                        <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => setCapOpen(false)}>Cancel</button>
+                        <button type="button" className="wa-vbtn" disabled={busy || draftPending || !caption.trim()} onClick={() => doPost(viewer.id)}>{busy && !draftPending ? t("Posting…") : t("Post now")}</button>
+                        <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => setCapOpen(false)}>{t("Cancel")}</button>
                       </div>
-                      <span className="wa-caphint">Posts to {linked.join(" · ")}. Tweak it or post as-is — the #EasyModeAi disclosure rides along either way.</span>
+                      <span className="wa-caphint">{t("Posts to {where}.", { where: linked.join(" · ") })} {t("Tweak it or post as-is — the #EasyModeAi disclosure rides along either way.")}</span>
                     </div>
                   )}
                 </>
