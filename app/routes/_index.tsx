@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MARKETING_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { LANDING_I18N, LANG_LABELS, detectLang, type LangKey } from "../lib/landing-i18n";
+import { LangToggle } from "../components/LangToggle";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -98,21 +99,9 @@ export default function Index() {
             <span>Easy<b>Mode</b></span>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <label className="lz-lang">
-              {/* was a 🌐 emoji, which rendered as a different picture on every
-                  OS and sat at a different baseline than the select beside it */}
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-                   strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M3.2 9.4h17.6M3.2 14.6h17.6" />
-                <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
-              </svg>
-              <select value={lang} onChange={(e) => pick(e.target.value as LangKey)} aria-label="Language">
-                {(Object.keys(LANG_LABELS) as LangKey[]).map((l) => (
-                  <option key={l} value={l}>{LANG_LABELS[l]}</option>
-                ))}
-              </select>
-            </label>
+            {/* A compact globe+code+caret pill (store-header style) — no label
+                truncation, drops down the native language names. */}
+            <LangToggle value={lang} labels={LANG_LABELS} onPick={(c) => pick(c as LangKey)} title="Language" />
             <a className="lz-navlink" href="/web/login">{t.nav.login}</a>
             <a className="lz-navcta" href="/web/signup">{t.nav.start}</a>
           </div>

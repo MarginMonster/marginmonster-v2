@@ -13,6 +13,16 @@ export const CONTENT_LANGS: Record<string, string> = {
   zh: "Simplified Chinese",
 };
 
+/** Native display names for the language toggle (friendlier than the English
+ *  names above). Same keys as CONTENT_LANGS. Client-safe. */
+export const CONTENT_LANG_NATIVE: Record<string, string> = {
+  en: "English",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  zh: "中文",
+};
+
 export function normalizeContentLang(v: string | null | undefined): string {
   if (!v) return "en";
   const code = v.toLowerCase().slice(0, 2);

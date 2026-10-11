@@ -148,6 +148,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // (dropped as mixed content on their https page) and for success_url.
   const baseUrl = externalOrigin(request);
 
+  // Standalone content-language change from the app-shell toggle — updates ONLY
+  // the shop's contentLang (the brand "save" intent also sets it, but bundled
+  // with the full voice form; this lets the header pill change it in one tap).
+  if (intent === "setLang") {
+    const { normalizeContentLang } = await import("../lib/content-lang");
+    const lang = normalizeContentLang((form.get("contentLang") as string) || "");
+    await db.shop.update({ where: { id: shop.id }, data: { contentLang: lang } });
+    return json({ ok: true, lang });
+  }
+
   if (intent === "brand") {
     const tone = ((form.get("tone") as string) || "").trim();
     const tagline = ((form.get("tagline") as string) || "").trim();
