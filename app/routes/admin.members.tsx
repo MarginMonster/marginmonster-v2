@@ -15,27 +15,10 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { db } from "../db.server";
-import { getWebIdentity } from "../lib/web-auth.server";
+import { isOwner } from "../lib/admin.server";
 import type { PlanType } from "@prisma/client";
 
 export const meta = () => [{ title: "Members · EasyMode" }];
-
-/** True only for the owner: a logged-in session whose email is allow-listed in
- *  ADMIN_EMAILS, OR the shared PURGE_KEY secret in the URL. Both env values are
- *  unset by default, so the page is unreachable until one is configured. */
-async function isOwner(request: Request): Promise<boolean> {
-  const admins = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  if (admins.length) {
-    const id = await getWebIdentity(request);
-    if (id && admins.includes(id.account.email.toLowerCase())) return true;
-  }
-  const key = process.env.PURGE_KEY;
-  if (key && new URL(request.url).searchParams.get("key") === key) return true;
-  return false;
-}
 
 /** "Oct 11, 2026" — formatted on the server so SSR and the client agree. */
 function fmtDate(d: Date): string {

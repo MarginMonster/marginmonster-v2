@@ -5,13 +5,24 @@
  * cookie and the whole app re-renders in the new language, server-side, with
  * no flash of the old one. */
 
-import type { ActionFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { normalizeUiLang, uiLangCookie } from "../lib/ui-i18n";
 
-// A direct GET has nothing to do — the route only exists to receive the toggle
-// POST. Send stray visitors home rather than erroring.
-export const loader = async () => redirect("/");
+// A direct GET normally has nothing to do — except as a SHAREABLE ENTRY LINK:
+// /set-ui-lang?lang=zh&to=/web/login sets the UI language cookie and lands the
+// visitor on `to` already in that language (handy for beta testers). Without a
+// lang param, send stray visitors home.
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  const langParam = url.searchParams.get("lang");
+  if (!langParam) throw redirect("/");
+  const lang = normalizeUiLang(langParam);
+  // Same-origin, absolute-path destinations only (open-redirect guard).
+  const toParam = url.searchParams.get("to") || "";
+  const to = toParam.startsWith("/") && !toParam.startsWith("//") ? toParam : "/web/login";
+  return redirect(to, { headers: { "Set-Cookie": uiLangCookie(lang) } });
+};
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const form = await request.formData();
