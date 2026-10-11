@@ -221,7 +221,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     appListingUrl: process.env.SHOPIFY_APP_LISTING_URL || "https://apps.shopify.com",
     welcome: url.searchParams.get("welcome"),
     topped: url.searchParams.get("topped"),
-    packs: TOKEN_PACKS.map((p, i) => ({
+    // The sub-250 "budget" packs (e.g. 50/$4.99) are WEB-only — they're priced
+    // for casual creators on the Stripe path and have no Shopify billing plan in
+    // TOKEN_PACK_PLANS. Filter them out so the index→key map below stays aligned
+    // to the three Shopify-billed packs (adding one here would shift every key).
+    packs: TOKEN_PACKS.filter((p) => p.tokens >= 250).map((p, i) => ({
       tokens: p.tokens,
       price: p.price,
       label: p.label,

@@ -317,7 +317,13 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
 // Top-up packs — one currency, spend on anything YOUR TIER UNLOCKS. Priced
 // ~$0.10-0.12/token so even the priciest generation path (anthem video ≈
 // $3.50 COGS vs 150 tokens ≈ $15) holds well over 30% gross margin.
+// The 50/$4.99 "budget top-up" is the cheapest ENTRY for a casual creator who
+// runs low mid-month — ~10 premium images or a casual video. At $0.0998/token
+// it is still the standard entry rate (small packs cost the most per token),
+// and COGS is a few cents, so margin is huge. Decimal price → round the cents
+// in createPackCheckout (4.99*100 floats to 498.999… in JS).
 export const TOKEN_PACKS = [
+  { tokens: 50, price: 4.99, label: "50 tokens" },
   { tokens: 250, price: 25, label: "250 tokens" },
   { tokens: 750, price: 60, label: "750 tokens", best: false },
   { tokens: 2000, price: 140, label: "2,000 tokens", best: true },

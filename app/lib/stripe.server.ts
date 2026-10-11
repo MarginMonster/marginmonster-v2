@@ -451,7 +451,7 @@ export async function createPackCheckout(opts: {
     customer_email: opts.email,
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": "usd",
-    "line_items[0][price_data][unit_amount]": String(pack.price * 100),
+    "line_items[0][price_data][unit_amount]": String(Math.round(pack.price * 100)),
     "line_items[0][price_data][product_data][name]": `EasyMode ${pack.tokens.toLocaleString()} token pack`,
     // "any generator your plan includes" — tokens meter HOW MUCH you make, the
     // plan gates WHICH generators, and the app enforces exactly that. The bare

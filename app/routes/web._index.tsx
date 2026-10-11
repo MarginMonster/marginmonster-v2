@@ -323,6 +323,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 const fmtK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
 
 const PACK_FRAMING: Record<number, string> = {
+  50: "The budget top-up — about ten more images or a video, for when you run low.",
   250: "A quick refill — a handful of extra videos or a full image campaign.",
   750: "The workhorse pack — a whole campaign with room to spare.",
   2000: "The best rate per token in the shop — go all-in.",

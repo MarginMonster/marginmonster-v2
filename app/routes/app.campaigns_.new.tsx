@@ -84,7 +84,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasPlan: !!plan?.active,
     planName: tier?.name ?? null,
     allowance,
-    packs: TOKEN_PACKS,
+    // Shopify-billed packs only — the sub-250 web budget pack (50/$4.99) has no
+    // Shopify billing plan, so never suggest it as a shortfall top-up here.
+    packs: TOKEN_PACKS.filter((p) => p.tokens >= 250),
     tiers: MARKETING_TIERS.map((t) => ({ name: t.name, monthlyTokens: t.monthlyTokens, price: t.price })),
     tokens: tokensRemainingLive(plan),
     linked,
