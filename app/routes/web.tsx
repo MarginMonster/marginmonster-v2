@@ -669,9 +669,11 @@ const CSS = `
 @media(max-width:760px){
   .wb-nav{padding:12px 16px;gap:10px;}
   .wb-brand{font-size:16px;gap:7px;}
-  .wb-tabs{order:3;flex:1 0 100%;gap:5px;overflow-x:auto;scrollbar-width:none;
-    -webkit-overflow-scrolling:touch;padding-bottom:2px;margin-top:2px;}
-  .wb-tabs::-webkit-scrollbar{display:none}
+  /* WRAP, don't hidden-scroll. Marketing has 6 tabs that need ~540px — at phone
+     width they used to overflow a scrollbar-less strip, so Archive/Auto-posting
+     sat off-screen with no hint to scroll ("I don't see the archives"). Wrapping
+     to a second line keeps every tab visible; Creator's 4 tabs still fit on one. */
+  .wb-tabs{order:3;flex:1 0 100%;gap:5px;flex-wrap:wrap;margin-top:2px;}
   .wb-tab{flex:0 0 auto;white-space:nowrap;padding:7px 13px;font-size:12.5px;}
   .wb-me{margin-left:auto;gap:8px;}
   .wb-out{padding:7px 10px;font-size:12.5px;}
