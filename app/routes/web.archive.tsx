@@ -671,7 +671,7 @@ const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUD
 // chips, caption box, failed section). Matches the web front-door look:
 // paper #F4F1E6 / card #FDFCF7 / ink #14201A / green #12A85E / gold #B08526.
 const WA_CSS = `
-.wa-wallet{font-size:13px;font-weight:800;color:#0C7A46;margin:0 0 12px;}
+.wa-wallet{font-size:13px;font-weight:800;color:var(--green);margin:0 0 12px;}
 .wa-shelfnote{font-size:12.5px;color:var(--ink2,#5b6b61);margin:-4px 0 14px;}
 .wa-poster{position:relative;display:block;width:100%;padding:0;border:0;background:#0b0f0d;cursor:pointer;font:inherit;color:inherit;}
 .wa-poster video,.wa-poster img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;pointer-events:none;}
@@ -679,10 +679,10 @@ const WA_CSS = `
 /* Audio has no still — a soft green-on-cream panel with a music glyph stands
    in on the tile; the real <audio> player lives in the viewer. */
 .wa-audiotile{position:relative;width:100%;aspect-ratio:4/5;display:grid;place-items:center;background:linear-gradient(150deg,#0C7A46,#14201A);}
-.wa-audiotile .wa-audio-ico{color:#F4F1E6;opacity:.9;}
+.wa-audiotile .wa-audio-ico{color:var(--paper);opacity:.9;}
 .wa-audiotile .wa-play{font-size:26px;opacity:.85;}
 .wa-audiofull{width:100%;background:linear-gradient(150deg,#0C7A46,#14201A);display:flex;flex-direction:column;align-items:center;gap:16px;padding:40px 20px;}
-.wa-audiofull .wa-audio-ico{color:#F4F1E6;opacity:.92;}
+.wa-audiofull .wa-audio-ico{color:var(--paper);opacity:.92;}
 .wa-audiofull audio{width:min(420px,88%);}
 .wa-cd{position:absolute;top:8px;left:8px;background:rgba(20,32,26,.8);color:#E7C879;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;letter-spacing:.02em;}
 .wa-cd.urgent{background:#8C2E1B;color:#fff;}
@@ -695,7 +695,7 @@ const WA_CSS = `
   background:#F3F1E4;color:#6B5312;border:1px solid rgba(176,133,38,.32);}
 .wa-chip{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
 .wa-chip.new{background:#FBF4E2;color:#8a6207;border:1px solid #E7C879;}
-.wa-chip.kept{background:#EAF6EF;color:#0C7A46;border:1px solid #BFE2CD;}
+.wa-chip.kept{background:#EAF6EF;color:var(--green);border:1px solid #BFE2CD;}
 .wa-chip.posted{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;border:1px solid transparent;}
 .wa-tileacts{display:flex;gap:8px;align-items:center;margin-top:8px;}
 .wa-jacts{display:flex;gap:8px;margin-top:8px;}
@@ -732,7 +732,7 @@ const WA_CSS = `
 .wa-vmeta{padding:14px 18px 18px;border-top:1px solid var(--line,#E5E0CF);overflow:auto;}
 .wa-vtitle{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .wa-vtitle b{font-family:Poppins,sans-serif;font-size:14.5px;}
-.wa-vok{font-size:12.5px;font-weight:800;color:#0C7A46;}
+.wa-vok{font-size:12.5px;font-weight:800;color:var(--green);}
 .wa-verr{font-size:12.5px;font-weight:700;color:#8C2E1B;}
 .wa-vcdnote{display:block;margin-top:6px;font-size:12px;color:#8a6207;font-weight:600;}
 .wa-vmissed{display:block;margin-top:8px;padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.45;

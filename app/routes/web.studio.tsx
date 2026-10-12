@@ -2952,7 +2952,7 @@ const WS_STYLE = `
 .ws-forge-hd{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
 .ws-forge-hd b{display:block;font-size:13.5px;color:var(--ink,#14201A)}
 .ws-forge-hd span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:2px}
-.ws-forge-spin{flex:0 0 auto;width:16px;height:16px;margin-top:2px;border-radius:50%;border:2px solid rgba(18,168,94,.25);border-top-color:#12A85E;animation:wsforgespin .8s linear infinite}
+.ws-forge-spin{flex:0 0 auto;width:16px;height:16px;margin-top:2px;border-radius:50%;border:2px solid rgba(18,168,94,.25);border-top-color:var(--green2);animation:wsforgespin .8s linear infinite}
 @keyframes wsforgespin{to{transform:rotate(360deg)}}
 .ws-forge-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
 .ws-forge-card{animation:wsforgepulse 1.5s ease-in-out infinite;text-align:center}
@@ -2972,28 +2972,28 @@ const WS_STYLE = `
 .ws-face{position:relative}
 .ws-face-pick{display:block;width:100%;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:center}
 .ws-samp{position:absolute;top:46px;right:0;width:24px;height:24px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font-size:11px;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(20,32,26,.14);z-index:2;padding:0}
-.ws-samp.on{border-color:#12A85E;color:#12A85E}
+.ws-samp.on{border-color:var(--green2);color:var(--green2)}
 .ws-samp.prem{border-color:#E7C879;background:#FFFBEF}
-.ws-face.bf .ws-face-img{border-color:#B08526;box-shadow:0 0 0 2px rgba(176,133,38,.35)}
-.ws-face.bf>span:last-child{color:#7E5E13;font-weight:700}
+.ws-face.bf .ws-face-img{border-color:var(--gold);box-shadow:0 0 0 2px rgba(176,133,38,.35)}
+.ws-face.bf>span:last-child{color:var(--gold-deep);font-weight:700}
 .ws-vscrim{position:fixed;inset:0;z-index:10600;background:rgba(12,18,14,.6);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px}
 .ws-vbox{position:relative;width:min(420px,92vw)}
 .ws-video{width:100%;border-radius:16px;display:block;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.4)}
-.ws-vx{position:absolute;top:-10px;right:-10px;width:30px;height:30px;border-radius:50%;border:0;background:#FDFCF7;color:#14201A;font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}
-.ws-setbf{display:inline-block;margin:2px 0 6px;padding:8px 14px;border-radius:999px;border:1px solid #E7C879;background:#FFFBEF;color:#7E5E13;font-weight:700;font-size:12.5px;cursor:pointer}
+.ws-vx{position:absolute;top:-10px;right:-10px;width:30px;height:30px;border-radius:50%;border:0;background:var(--card);color:var(--ink);font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.ws-setbf{display:inline-block;margin:2px 0 6px;padding:8px 14px;border-radius:999px;border:1px solid #E7C879;background:#FFFBEF;color:var(--gold-deep);font-weight:700;font-size:12.5px;cursor:pointer}
 .ws-seg{display:flex;gap:8px;flex-wrap:wrap}
 .ws-seg button{padding:9px 14px;border-radius:11px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12.5px;cursor:pointer}
-.ws-seg button.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;color:var(--ink,#14201A);background:#F0FAF4}
+.ws-seg button.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);color:var(--ink,#14201A);background:#F0FAF4}
 .ws-wq{font-weight:500;font-size:11px;color:var(--ink2,#4A554E)}
 .ws-svchint{font-size:12.5px;color:var(--ink2,#4A554E);background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:10px 13px;margin:8px 0 0}
-.ws-autobox{font-size:13px;color:var(--ink,#14201A);background:var(--paper,#F4F1E6);border:1px dashed #B08526;border-radius:12px;padding:11px 14px;margin:2px 0 8px}
+.ws-autobox{font-size:13px;color:var(--ink,#14201A);background:var(--paper,#F4F1E6);border:1px dashed var(--gold);border-radius:12px;padding:11px 14px;margin:2px 0 8px}
 .ws-3w{display:flex;flex-direction:column;gap:10px;margin-top:2px}
 .ws-w{display:block;font-size:12px;font-weight:700;color:var(--ink,#14201A);margin-bottom:5px}
 .ws-ta{min-height:74px;resize:vertical;font:inherit;width:100%}
 /* The "describe anything" hero box — the DeepAI-style text-to-create input for
    Make an image / Make music / Faceless. Bigger, softer, with a green focus ring. */
 .ws-hero{min-height:112px;font-size:16px;line-height:1.45;padding:14px 15px;border-radius:14px;border:1.5px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.05);transition:border-color .12s,box-shadow .12s}
-.ws-hero:focus{outline:none;border-color:#12A85E;box-shadow:0 0 0 3px rgba(18,168,94,.16)}
+.ws-hero:focus{outline:none;border-color:var(--green2);box-shadow:0 0 0 3px rgba(18,168,94,.16)}
 .ws-hero::placeholder{color:#9AA69E}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
@@ -3001,21 +3001,21 @@ const WS_STYLE = `
 .ws-fmtcats{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .ws-fmtcat{padding:8px 14px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12.5px;line-height:1;white-space:nowrap;cursor:pointer}
 .ws-fmtcat:hover{border-color:#9CCBB1}
-.ws-fmtcat.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
+.ws-fmtcat.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);background:#F0FAF4;color:var(--ink,#14201A)}
 .ws-fmtcats.ws-pills2{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:visible}
 .ws-pills2 .ws-fmtcat{width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:9px 12px}
 .ws-fmthint{margin:-4px 0 10px;font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-fmtsel{display:flex;align-items:center;gap:8px;margin:0 0 11px;font-size:12.5px;color:var(--ink2,#4A554E)}
-.ws-fmtsel b{color:#0C7A46;font-size:12.5px}
+.ws-fmtsel b{color:var(--green);font-size:12.5px}
 .ws-fmtsel button{width:20px;height:20px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-size:10px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
-.ws-fmtsel button:hover{border-color:#12A85E;color:#12A85E}
+.ws-fmtsel button:hover{border-color:var(--green2);color:var(--green2)}
 @media (max-width:620px){
   .ws-fmtcats{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}
   .ws-fmtcats::-webkit-scrollbar{display:none}
 }
 .ws-chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
 .ws-chip{padding:8px 13px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink,#14201A);font-weight:600;font-size:12.5px;cursor:pointer}
-.ws-chip.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4}
+.ws-chip.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);background:#F0FAF4}
 .ws-lastchip{display:block;margin:0 0 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .ws-import{display:flex;gap:8px;margin-bottom:8px}
 /* Burst — make several at once rather than tapping generate over and over. */
@@ -3025,7 +3025,7 @@ const WS_STYLE = `
 /* 44px min target — these pick how many PAID renders fire, so a mis-tap on a
    phone costs real tokens; they were 31px tall and 7px apart. */
 .ws-burst-steps button{min-height:44px;min-width:56px;padding:11px 18px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
-.ws-burst-steps button.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;background:#F0FAF4;color:var(--ink,#14201A)}
+.ws-burst-steps button.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);background:#F0FAF4;color:var(--ink,#14201A)}
 .ws-burst-note{margin:8px 0 0;font-size:12px;color:var(--ink2,#4A554E)}
 /* Import tab: the setup surface — pull the catalogue in, forge a presenter. */
 .ws-import-tab{padding:2px 0 6px}
@@ -3034,13 +3034,13 @@ const WS_STYLE = `
 .ws-avatarforge input[type=file]{padding:9px 10px;font-size:13px}
 .ws-import input{flex:1;min-width:0}
 .ws-impbtn{padding:9px 18px;font-size:13px;flex:0 0 auto}
-.ws-addurl{border:0;background:none;color:#0C7A46;font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:auto}
+.ws-addurl{border:0;background:none;color:var(--green);font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:auto}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
 .ws-tok .tb i{font-style:normal;font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);margin-left:5px}
 .ws-tok .tb em.xp{font-style:normal;font-size:11px;font-weight:800;color:var(--brand,#0C7A46);background:rgba(12,122,70,.1);border-radius:999px;padding:2px 7px;margin-left:8px;vertical-align:middle}
-.ws-wallet{margin-top:8px;font-size:12.5px;font-weight:600;color:#7E5E13}
+.ws-wallet{margin-top:8px;font-size:12.5px;font-weight:600;color:var(--gold-deep)}
 /* Output-language chip — subtle, right above Make; not part of the main option
    stack so it never clutters a flow that rarely changes it. */
 .ws-outlang{display:flex;align-items:center;gap:7px;margin:2px 0;font-size:12px;color:var(--ink2,#8A968E)}
@@ -3067,7 +3067,7 @@ const WS_STYLE = `
 /* Selection pills get depth + lift; active in the brand green. */
 .ws-casual .ws-fmtcat,.ws-casual .ws-chip{box-shadow:0 1px 2px rgba(20,32,26,.05);font-family:Poppins,sans-serif;transition:transform .12s,box-shadow .12s,border-color .12s,background .12s}
 .ws-casual .ws-fmtcat:hover,.ws-casual .ws-chip:hover{transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(20,32,26,.3)}
-.ws-casual .ws-fmtcat.sel,.ws-casual .ws-chip.sel{border-color:#0C7A46;background:#EAF6EF;box-shadow:0 0 0 3px rgba(12,122,70,.14);color:var(--ink,#14201A)}
+.ws-casual .ws-fmtcat.sel,.ws-casual .ws-chip.sel{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 3px rgba(12,122,70,.14);color:var(--ink,#14201A)}
 /* The describe/prompt field → a premium ask-field. */
 /* 16px (not 15) is deliberate: iOS Safari auto-zooms any focused field below
    16px, and this selector outranks the base .wb-in / .ws-hero — that 1px was
@@ -3099,12 +3099,12 @@ const WS_STYLE = `
 /* The idle Stage is a drop/upload target (DeepAI-style). */
 .ws-easelph-drop{cursor:pointer;width:100%;height:100%;justify-content:center;border-radius:20px;transition:background .14s}
 .ws-easelph-drop:hover{background:rgba(12,122,70,.04)}
-.ws-easelph-drop:focus-visible{outline:2px solid #12A85E;outline-offset:-8px}
-.ws-easelph-drop.drag{background:rgba(12,122,70,.08);outline:2px dashed #12A85E;outline-offset:-12px}
+.ws-easelph-drop:focus-visible{outline:2px solid var(--green2);outline-offset:-8px}
+.ws-easelph-drop.drag{background:rgba(12,122,70,.08);outline:2px dashed var(--green2);outline-offset:-12px}
 .ws-easelph-drop.making{cursor:default}
 /* Add-photo affordance: a solid + badge nested in the rosette's hollow centre. */
 .ws-easel-mark{position:relative;display:grid;place-items:center}
-.ws-dropplus{position:absolute;inset:0;margin:auto;width:46px;height:46px;display:grid;place-items:center;border-radius:999px;background:#0C7A46;color:#fff;border:2.5px solid #fff;box-shadow:0 6px 16px rgba(12,122,70,.32);transition:transform .14s}
+.ws-dropplus{position:absolute;inset:0;margin:auto;width:46px;height:46px;display:grid;place-items:center;border-radius:999px;background:var(--green);color:#fff;border:2.5px solid #fff;box-shadow:0 6px 16px rgba(12,122,70,.32);transition:transform .14s}
 .ws-easelph-drop:hover .ws-dropplus{transform:scale(1.07)}
 .ws-rose{width:112px;height:112px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.85;animation:wsrose 3.8s ease-in-out infinite}
 @keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.05) rotate(4deg);opacity:1}}
@@ -3120,7 +3120,7 @@ const WS_STYLE = `
    height:min(66vh,560px)+max-width:100% silently overrode aspect-ratio and
    forced every result into a fixed ~portrait box. The dark matte now only shows
    behind a portrait's side margins (a normal, intentional look). */
-.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:#14201A;min-height:0;height:auto;width:100%;max-width:min(100%,560px);display:block;margin-inline:auto}
+.ws-stage-frame.has-result{border-style:solid;border-color:var(--line,#E4DFCF);background:var(--ink);min-height:0;height:auto;width:100%;max-width:min(100%,560px);display:block;margin-inline:auto}
 .ws-stage-frame.has-result::after{display:none}
 .ws-stageresult{position:relative;display:flex;flex-direction:column}
 .ws-stagemedia{display:grid;place-items:center;overflow:hidden;background:transparent}
@@ -3166,8 +3166,8 @@ const WS_STYLE = `
 .ws-generr-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#F5E6C8;color:#9A5B12;font-weight:900;font-size:24px;border:2px solid #E7C98F}
 /* The unsafe card stays warm/amber (not alarm-red) so the tone matches the
    gentle, apologetic copy. */
-.ws-generr-btn{margin-top:6px;color:#0C7A46;background:#fff;border:1.5px solid var(--line,#E4DFCF)}
-.ws-generr-btn:hover{background:rgba(12,122,70,.06);border-color:#12A85E;color:#0C7A46}
+.ws-generr-btn{margin-top:6px;color:var(--green);background:#fff;border:1.5px solid var(--line,#E4DFCF)}
+.ws-generr-btn:hover{background:rgba(12,122,70,.06);border-color:var(--green2);color:var(--green)}
 /* Creator-native Video cards: brand tile + emoji instead of product/presenter cover art. */
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
@@ -3180,22 +3180,22 @@ const WS_STYLE = `
 .ws-genopts{margin-top:4px}
 .ws-frames{display:flex;gap:8px;margin-top:4px}
 .ws-frame{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:9px 4px;border:1.5px solid var(--line,#E4E7E1);border-radius:12px;background:var(--card,#fff);font:inherit;cursor:pointer;transition:border-color .14s,background .14s}
-.ws-frame:hover{border-color:#12A85E}
-.ws-frame.sel{border-color:#0C7A46;background:rgba(12,122,70,.06)}
+.ws-frame:hover{border-color:var(--green2)}
+.ws-frame.sel{border-color:var(--green);background:rgba(12,122,70,.06)}
 .ws-frame-shape{height:22px;width:auto;border:2px solid #B9C2BB;border-radius:3px;background:rgba(12,122,70,.05)}
-.ws-frame.sel .ws-frame-shape{border-color:#0C7A46;background:rgba(12,122,70,.12)}
+.ws-frame.sel .ws-frame-shape{border-color:var(--green);background:rgba(12,122,70,.12)}
 .ws-frame-nm{font-size:11px;font-weight:700;color:var(--ink,#14201A)}
 /* AI MODEL picker — compact pills; the selected one's blurb shows below. */
 .ws-models{display:flex;gap:8px;margin-top:4px}
 .ws-model{flex:1;padding:10px 8px;border:1.5px solid var(--line,#E4E7E1);border-radius:12px;background:var(--card,#fff);font:inherit;font-weight:800;font-size:13px;color:var(--ink,#14201A);cursor:pointer;transition:border-color .14s,background .14s}
-.ws-model:hover{border-color:#12A85E}
-.ws-model.sel{border-color:#0C7A46;background:rgba(12,122,70,.06);box-shadow:inset 0 0 0 1px rgba(12,122,70,.25)}
+.ws-model:hover{border-color:var(--green2)}
+.ws-model.sel{border-color:var(--green);background:rgba(12,122,70,.06);box-shadow:inset 0 0 0 1px rgba(12,122,70,.25)}
 .ws-model-up{display:inline-block;margin-left:5px;font-size:10px;font-weight:800;color:#8A6A12;background:rgba(255,210,74,.32);border-radius:999px;padding:1px 6px;vertical-align:middle}
 /* Collapsed art-style disclosure — a single row that reveals the grid on click. */
 .ws-styledisc{margin-top:4px}
 .ws-styletoggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:var(--card,#fff);border:1.5px solid var(--line,#E4E7E1);border-radius:12px;padding:11px 14px;font:inherit;cursor:pointer;color:var(--ink,#14201A);transition:border-color .14s,background .14s}
-.ws-styletoggle:hover{border-color:#12A85E}
-.ws-styletoggle.open{border-color:#12A85E;background:rgba(12,122,70,.03)}
+.ws-styletoggle:hover{border-color:var(--green2)}
+.ws-styletoggle.open{border-color:var(--green2);background:rgba(12,122,70,.03)}
 .ws-styletoggle-l{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-styletoggle-l b{font-weight:800}
 .ws-styletoggle-r{display:inline-flex;align-items:center;gap:8px;flex-shrink:0}
@@ -3206,12 +3206,12 @@ const WS_STYLE = `
 .ws-styletile-emoji{position:absolute;left:6px;top:5px;font-size:16px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
 .ws-styletile-nm{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;font-weight:700;color:#fff;letter-spacing:.01em;padding:11px 3px 4px;background:linear-gradient(transparent,rgba(12,18,14,.6));text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-styletile:hover .ws-styletile-face{transform:translateY(-2px);box-shadow:0 8px 16px -8px rgba(20,32,26,.4),inset 0 0 0 1px rgba(255,255,255,.18)}
-.ws-styletile.sel .ws-styletile-face{box-shadow:0 0 0 2px #0C7A46,0 0 0 5px rgba(12,122,70,.18),inset 0 0 0 1px rgba(255,255,255,.2)}
+.ws-styletile.sel .ws-styletile-face{box-shadow:0 0 0 2px var(--green),0 0 0 5px rgba(12,122,70,.18),inset 0 0 0 1px rgba(255,255,255,.2)}
 @media(max-width:560px){.ws-stylegrid{grid-template-columns:repeat(4,1fr)}}
 /* Photo-editor drag & drop zone (casual Edit) + a DeepAI-style before→after hint. */
 .ws-drop{position:relative;border:2px dashed #CFC8B2;border-radius:16px;background:#F7F4EC;min-height:150px;display:grid;place-items:center;text-align:center;cursor:pointer;overflow:hidden;transition:border-color .15s,background .15s}
 .ws-drop:hover{border-color:#9CCBB1;background:#F3F9F4}
-.ws-drop.drag{border-color:#0C7A46;background:#EAF6EF}
+.ws-drop.drag{border-color:var(--green);background:#EAF6EF}
 .ws-drop.has{border-style:solid;border-color:var(--line,#E4DFCF);background:#0f1713;padding:0;min-height:0}
 .ws-drop-input{display:none}
 .ws-drop-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 18px;pointer-events:none}
@@ -3223,12 +3223,12 @@ const WS_STYLE = `
 .ws-drop-ba i{width:46px;height:46px;border-radius:10px;box-shadow:0 1px 3px rgba(20,32,26,.14);display:block}
 .ws-drop-ba i.before{background:linear-gradient(135deg,#cfc7b6,#9a917c);filter:grayscale(.3) brightness(.95)}
 .ws-drop-ba i.after{background:radial-gradient(circle at 35% 30%,#ffe8a3,transparent 55%),linear-gradient(135deg,#12A85E,#7b3f9e)}
-.ws-drop-ba em{font-style:normal;font-weight:800;color:#0C7A46;font-size:15px}
+.ws-drop-ba em{font-style:normal;font-weight:800;color:var(--green);font-size:15px}
 /* creations shelf */
 .ws-shelf{margin-top:20px}
 .ws-shelf-h{display:flex;align-items:baseline;gap:12px;margin:0 2px 11px}
 .ws-shelf-h b{font-size:14px;font-weight:800;color:var(--ink,#14201A)}
-.ws-shelf-all{margin-left:auto;font-size:12.5px;font-weight:700;color:#0C7A46;text-decoration:none}
+.ws-shelf-all{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--green);text-decoration:none}
 .ws-shelf-strip{position:relative;display:flex;gap:12px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:thin}
 .ws-shelf-strip::after{content:"";position:absolute;left:4px;right:4px;bottom:2px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(12,122,70,.3),transparent)}
 .ws-shelf-piece{flex:0 0 auto;width:112px;text-decoration:none;border:0;background:none;padding:0;margin:0;font:inherit;cursor:pointer;text-align:left;display:block}

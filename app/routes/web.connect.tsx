@@ -89,7 +89,7 @@ const CONNECT_CSS = `
 .wc-chip.on{color:#0A3D26;background:#EAF6EF;border-color:#BFE2CD;}
 .wc-dot{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:900;color:#fff;
   background:#D8D3C2;flex:0 0 auto;}
-.wc-chip.on .wc-dot{background:#12A85E;}
+.wc-chip.on .wc-dot{background:var(--green2);}
 .wc-armed{margin:10px 0 14px;font-size:13px;font-weight:600;color:#0A3D26;background:#EAF6EF;border:1px solid #BFE2CD;
   border-radius:12px;padding:9px 13px;}
 `;

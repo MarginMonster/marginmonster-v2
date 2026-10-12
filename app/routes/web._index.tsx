@@ -798,7 +798,7 @@ const DASH_CSS = `
 .wdl-step.done{opacity:.62;}
 .wdl-tick{flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--line);
   font-size:12px;font-weight:900;color:#fff;background:#fff;}
-.wdl-tick.on{background:#12A85E;border-color:#12A85E;}
+.wdl-tick.on{background:var(--green2);border-color:var(--green2);}
 .wdl-lab{display:flex;flex-direction:column;min-width:0;}
 .wdl-lab b{font-size:12.5px;font-weight:700;color:var(--ink);}
 .wdl-lab em{font-style:normal;font-size:11px;color:var(--ink2);}
@@ -813,7 +813,7 @@ const DASH_CSS = `
 .wdw-st .k{font-size:11px;color:var(--ink2);font-weight:600;letter-spacing:.03em;text-transform:uppercase;}
 .wdw-review{display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-weight:700;font-size:13px;color:var(--green);text-decoration:none;}
 .wdw-review:hover{text-decoration:underline}
-.wdw-review .rv-n{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#12A85E;color:#fff;font-size:12px;font-weight:800;}
+.wdw-review .rv-n{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--green2);color:#fff;font-size:12px;font-weight:800;}
 /* results tiles */
 .wd-wins{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;}

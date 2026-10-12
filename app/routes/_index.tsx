@@ -576,7 +576,7 @@ html,body{margin:0;padding:0}
 .lz-vs-col.them li{color:var(--ink2);}
 .lz-vs-col.them li::before{content:"–";position:absolute;left:6px;color:#B0A98E;font-weight:800;}
 .lz-vs-col.us li{color:#EAF4EE;}
-.lz-vs-col.us li::before{content:"✓";position:absolute;left:2px;color:#7FE0AC;font-weight:900;}
+.lz-vs-col.us li::before{content:"✓";position:absolute;left:2px;color:var(--mint);font-weight:900;}
 @media(max-width:600px){.lz-vs{grid-template-columns:1fr}}
 /* GStyle rosettes — the REAL engine-turned figure, the same hypotrochoid the
    embedded app spins, served as an asset. Conic gradients can only fake radial

@@ -323,7 +323,7 @@ const PC_CSS = `
 .pc-feats b{color:var(--ink);}
 .pc-lbl{display:block;font-weight:700;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink2);margin:16px 0 8px;}
 .pc-opt{text-transform:none;letter-spacing:0;color:var(--ink3);font-weight:500;}
-.pc-field{width:100%;box-sizing:border-box;background:#F4F1E6;border:1px solid #E2DCC8;border-radius:14px;padding:13px 15px;font:inherit;font-size:14.5px;color:var(--ink);box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:all .15s;}
+.pc-field{width:100%;box-sizing:border-box;background:var(--paper);border:1px solid #E2DCC8;border-radius:14px;padding:13px 15px;font:inherit;font-size:14.5px;color:var(--ink);box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:all .15s;}
 .pc-field:focus{outline:none;border-color:#9CCBB1;box-shadow:inset 0 1px 3px rgba(20,32,26,.045),0 0 0 3px rgba(12,122,70,.14);}
 .pc-field::placeholder{color:#A9B2AA;}
 .pc-row2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
@@ -361,7 +361,7 @@ const PC_CSS = `
 .pc-card-name{font-weight:800;font-size:16px;letter-spacing:-.01em;}
 .pc-card-niche{color:var(--ink3);font-size:12px;font-weight:500;margin-top:2px;}
 .pc-badge{flex:0 0 auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;}
-.pc-badge.live{color:#0C7A46;background:#EAF6EF;}.pc-badge.off{color:#8A7A3A;background:#F6F0DE;}
+.pc-badge.live{color:var(--green);background:#EAF6EF;}.pc-badge.off{color:#8A7A3A;background:#F6F0DE;}
 .pc-card-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0;font-size:12px;color:var(--ink2);font-weight:600;}.pc-card-meta b{color:var(--ink);}
 .pc-next{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--g);font-weight:700;}
 .pc-next-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 3px rgba(18,168,94,.18);}

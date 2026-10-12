@@ -879,7 +879,7 @@ const CSS = `
   box-shadow:0 1px 2px rgba(20,32,26,.05),0 12px 30px -18px rgba(20,32,26,.16);}
 .wb-hud-lite::after{display:none;}
 .wb-hud-lite .wb-hud-top{margin-bottom:8px;}
-.wb-hud-lite .wb-hud-lvl{background:#F3F0E4;color:#7E5E13;border-color:rgba(176,133,38,.26);box-shadow:none;}
+.wb-hud-lite .wb-hud-lvl{background:#F3F0E4;color:var(--gold-deep);border-color:rgba(176,133,38,.26);box-shadow:none;}
 .wb-hud-lite .wb-hud-barlabel{margin:7px 0 3px;}
 .wb-hud-lite .wb-hud-hp,.wb-hud-lite .wb-hud-xp{height:6px;}
 .wb-hud-lite .wb-hud-stats{margin-top:9px;font-size:11.5px;}
@@ -1050,7 +1050,7 @@ const CSS = `
 .ws-tile{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:0 0 12px;
   cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;overflow:hidden;}
 .ws-tile:hover{transform:translateY(-3px);border-color:var(--green2);box-shadow:0 12px 30px rgba(12,122,70,.14);}
-.ws-tile.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E,0 8px 22px rgba(12,122,70,.16);}
+.ws-tile.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2),0 8px 22px rgba(12,122,70,.16);}
 .ws-tile b{display:block;padding:10px 12px 0;font-family:Poppins,sans-serif;font-size:13.5px;color:var(--ink);}
 .ws-tile-sub{display:block;padding:3px 12px 0;font-size:11.5px;color:var(--ink2);line-height:1.4;}
 /* Every picker card shares the tall square art treatment — the art IS the
@@ -1113,7 +1113,7 @@ const CSS = `
 .ws-lock{position:absolute;top:8px;right:8px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;
   color:#fff;background:rgba(10,14,12,.78);border:1px solid rgba(255,255,255,.35);}
 .ws-chk{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
-  background:#12A85E;color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.3);}
+  background:var(--green2);color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 .ws-back{border:0;background:none;color:var(--green);font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-bottom:6px;}
 .ws-note{font-size:13px;color:var(--ink2);background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:8px 0;}
 .ws-cast{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scrollbar-gutter:stable;}
@@ -1121,9 +1121,9 @@ const CSS = `
 .ws-face-img{position:relative;display:block;width:68px;height:68px;margin:0 auto 5px;border-radius:50%;background-size:cover;background-position:center 20%;
   border:2px solid var(--line);}
 .ws-face-img.none{display:grid;place-items:center;font-size:18px;color:var(--ink2);background:var(--paper);}
-.ws-face.sel .ws-face-img{border-color:#12A85E;box-shadow:0 0 0 2px rgba(18,168,94,.25);}
+.ws-face.sel .ws-face-img{border-color:var(--green2);box-shadow:0 0 0 2px rgba(18,168,94,.25);}
 .ws-face-img b{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
-  background:#12A85E;color:#fff;font-size:11px;}
+  background:var(--green2);color:#fff;font-size:11px;}
 .ws-engines{display:flex;gap:8px;flex-wrap:wrap;}
 /* Dimmed, not hidden: the merchant should still see the engines exist and
    why they aren't in play, rather than the row silently vanishing. */
@@ -1134,10 +1134,10 @@ const CSS = `
   border:1px solid var(--line);background:#fff;}
 .ws-engine b{font-size:12px;color:var(--ink);}
 .ws-engine span{font-size:10px;color:var(--ink2);}
-.ws-engine.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;}
+.ws-engine.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);}
 .ws-commercial{display:flex;align-items:center;gap:10px;margin:14px 0 2px;padding:11px 14px;border-radius:12px;
   border:1px solid var(--line);background:#fff;font-size:12.5px;color:var(--ink2);cursor:pointer;line-height:1.45;}
-.ws-commercial input{accent-color:#12A85E;width:16px;height:16px;flex:0 0 auto;}
+.ws-commercial input{accent-color:var(--green2);width:16px;height:16px;flex:0 0 auto;}
 .ws-commercial b{color:var(--ink);}
 .ws-upsell{margin-top:14px;padding:16px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:center;}
 /* Trial cap escape hatch. Sits under the red spend error, so it reads as the
@@ -1179,7 +1179,7 @@ const CSS = `
 .ws-cat{position:relative;text-align:left;border:1px solid var(--line2);border-radius:13px;background:#fff;padding:0 0 8px;
   cursor:pointer;overflow:hidden;transition:transform .12s,border-color .12s,box-shadow .12s;font:inherit;color:inherit;}
 .ws-cat:hover{transform:translateY(-2px);border-color:var(--green2);box-shadow:0 8px 20px rgba(12,122,70,.12);}
-.ws-cat.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E,0 6px 16px rgba(12,122,70,.16);}
+.ws-cat.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2),0 6px 16px rgba(12,122,70,.16);}
 .ws-cat-img{position:relative;display:grid;place-items:center;aspect-ratio:1/1;background:#F2F0E6 center/cover no-repeat;font-size:22px;color:#B6B0A0;}
 .ws-cat b{display:block;padding:7px 9px 0;font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;line-height:1.3;color:var(--ink);
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
@@ -1262,7 +1262,7 @@ const CSS = `
 @media (prefers-reduced-motion:reduce){.mm-fam-img{transform:none!important}}
 .mm-panel{position:fixed;z-index:10600;bottom:94px;right:22px;width:min(360px,calc(100vw - 32px));height:min(520px,70vh);
   display:flex;flex-direction:column;border-radius:20px;overflow:hidden;background:linear-gradient(178deg,#FEFDF9,#F5F2E8);
-  border:1px solid #D7DCCB;box-shadow:0 24px 60px rgba(10,20,14,.32),inset 0 1px 0 rgba(255,255,255,.8);
+  border:1px solid var(--line2);box-shadow:0 24px 60px rgba(10,20,14,.32),inset 0 1px 0 rgba(255,255,255,.8);
   animation:mmUp .28s cubic-bezier(.2,1.3,.4,1) both;}
 @keyframes mmUp{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.mm-panel{animation:none}}
@@ -1274,15 +1274,15 @@ const CSS = `
 .mm-x{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.85);font-size:23px;line-height:1;cursor:pointer;padding:2px 5px;}
 .mm-x:hover{color:#fff;}
 /* Chat tabs (projects) — a scrollable chip row under the header. */
-.mm-tabs{display:flex;gap:5px;align-items:center;padding:7px 9px;background:#F3F0E4;border-bottom:1px solid #E1DECD;overflow-x:auto;scrollbar-width:none;}
+.mm-tabs{display:flex;gap:5px;align-items:center;padding:7px 9px;background:#F3F0E4;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;}
 .mm-tabs::-webkit-scrollbar{display:none;}
-.mm-tab{flex:0 0 auto;max-width:132px;font:inherit;font-size:11.5px;font-weight:700;color:#4A554E;background:#fff;border:1px solid #E1DECD;border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s,border-color .12s;}
-.mm-tab:hover{border-color:#12A85E;}
+.mm-tab{flex:0 0 auto;max-width:132px;font:inherit;font-size:11.5px;font-weight:700;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s,border-color .12s;}
+.mm-tab:hover{border-color:var(--green2);}
 .mm-tab.on{background:linear-gradient(135deg,#12A85E,#0B6B3E);color:#fff;border-color:transparent;}
-.mm-tab-new{font-size:15px;font-weight:800;color:#0C7A46;padding:4px 10px;line-height:1;}
+.mm-tab-new{font-size:15px;font-weight:800;color:var(--green);padding:4px 10px;line-height:1;}
 .mm-list{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
 .mm-msg{max-width:84%;padding:9px 13px;border-radius:15px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
-.mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid #E1DECD;color:#14201A;border-bottom-left-radius:5px;}
+.mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px;}
 .mm-msg.user{align-self:flex-end;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
 .mm-row{display:flex;flex-direction:column;gap:7px;}
 .mm-row.user{align-items:flex-end;}
@@ -1305,11 +1305,11 @@ const CSS = `
 @keyframes mmBlink{0%,60%,100%{opacity:.3}30%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.mm-typing i{animation:none;opacity:.6}}
 .mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
-.mm-chips button{font:inherit;font-size:12px;font-weight:600;color:#0C7A46;background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:6px 11px;cursor:pointer;}
+.mm-chips button{font:inherit;font-size:12px;font-weight:600;color:var(--green);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:6px 11px;cursor:pointer;}
 .mm-chips button:hover{background:#DCF0E5;}
-.mm-input{display:flex;gap:8px;padding:11px;border-top:1px solid #E1DECD;background:#FDFCF7;}
-.mm-input input{flex:1;border:1px solid #D7DCCB;border-radius:999px;padding:10px 15px;font:inherit;font-size:16px;background:#fff;color:#14201A;outline:none;}
-.mm-input input:focus{border-color:#12A85E;}
+.mm-input{display:flex;gap:8px;padding:11px;border-top:1px solid var(--line);background:var(--card);}
+.mm-input input{flex:1;border:1px solid var(--line2);border-radius:999px;padding:10px 15px;font:inherit;font-size:16px;background:#fff;color:var(--ink);outline:none;}
+.mm-input input:focus{border-color:var(--green2);}
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
 @media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}}
