@@ -1530,10 +1530,21 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.recent, d.lastGen, making]);
-  // POST-GENERATION QUICK EDITS — one tap turns a finished image into the next
+  // POST-GENERATION QUICK EDITS — turn a finished image into the next one
   // (Enhance / Zoom out / Zoom in / Remove bg). Reuses the edit pipeline on the
   // result's OWN url (a small "quickedit" charge). Submitted programmatically
   // because the Stage lives outside the <Form>.
+  //
+  // Flow is SELECT-then-CONFIRM: tapping a chip only selects the edit type; the
+  // green "Apply" button is what spends the tokens. (Was charge-on-tap, which
+  // debited the wallet the instant a chip was touched — too easy to misfire.)
+  const QUICK_OPS: { key: string; op: string; icon: string; label: string; dir?: string }[] = [
+    { key: "enhance", op: "upscale", icon: "sparkle", label: t("Enhance") },
+    { key: "zoomout", op: "replace", icon: "search", label: t("Zoom out"), dir: "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent." },
+    { key: "zoomin", op: "replace", icon: "search", label: t("Zoom in"), dir: "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent." },
+    { key: "bgremove", op: "bgremove", icon: "scissors", label: t("Remove bg") },
+  ];
+  const [quickSel, setQuickSel] = useState<string | null>(null);
   const quickEdit = (op: string, dir?: string) => {
     if (!stageResult || stageResult.isVideo || stageResult.isAudio || making || busy) return;
     const abs = stageResult.media.startsWith("http") ? stageResult.media : `${window.location.origin}${stageResult.media}`;
@@ -1546,6 +1557,9 @@ export default function WebStudio() {
     fd.set("productTitle", "Quick edit");
     submit(fd, { method: "post", encType: "multipart/form-data" });
   };
+  // Clear the pending selection whenever the staged image changes — after an
+  // edit lands (new media), when a different creation is loaded, or on clear.
+  useEffect(() => { setQuickSel(null); }, [stageResult?.media]);
   // Click a creation in the shelf → bring it back UP onto the Stage (for viewing
   // + quick edits), instead of leaving to the gallery.
   const loadToStage = (p: StagePiece) => {
@@ -2741,15 +2755,6 @@ export default function WebStudio() {
                        : <img src={stageResult.media} alt={stageResult.title}
                            onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setStageAspect(t.naturalWidth / t.naturalHeight); }} />}
                  </div>
-                 {!stageResult.isVideo && !stageResult.isAudio && (
-                   <div className="ws-quick">
-                     <span className="ws-quick-lbl">{t("Quick edit · {n} ea", { n: d.costs.quickEdit })}</span>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("upscale")}><Ico n="sparkle" size={14} /> {t("Enhance")}</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom out and reveal more of the scene around the subject — a wider framing of this same image, keep the style and subject consistent.")}><Ico n="search" size={14} /> {t("Zoom out")}</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("replace", "Zoom in closer on the main subject — a tighter crop that fills the frame, keep the style and subject consistent.")}><Ico n="search" size={14} /> {t("Zoom in")}</button>
-                     <button type="button" className="ws-quickbtn" disabled={making || busy} onClick={() => quickEdit("bgremove")}><Ico n="scissors" size={14} /> {t("Remove bg")}</button>
-                   </div>
-                 )}
                  <div className="ws-verbs">
                    <a className="ws-verb gold" href={stageResult.media} download>⤓ {t("Download")}</a>
                    <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>
@@ -2803,6 +2808,33 @@ export default function WebStudio() {
                </div>
              )}
            </div>
+           {/* QUICK EDIT — a clean panel UNDER the photo (not an overlay on it).
+               Pick an edit type, then the green button confirms and spends. */}
+           {stageResult && !stageResult.isVideo && !stageResult.isAudio && (
+             <div className="ws-qedit">
+               <div className="ws-qedit-h">
+                 <span className="ws-qedit-t">{t("Quick edit")}</span>
+                 <span className="ws-qedit-sub">{t("{n} tokens each", { n: d.costs.quickEdit })}</span>
+               </div>
+               <div className="ws-qedit-chips" role="radiogroup" aria-label={t("Quick edit type")}>
+                 {QUICK_OPS.map((o) => (
+                   <button key={o.key} type="button" role="radio" aria-checked={quickSel === o.key}
+                     className={`ws-qchip${quickSel === o.key ? " on" : ""}`} disabled={making || busy}
+                     onClick={() => setQuickSel((s) => (s === o.key ? null : o.key))}>
+                     <Ico n={o.icon} size={15} /> {o.label}
+                   </button>
+                 ))}
+               </div>
+               <button type="button" className="ws-qedit-go" disabled={!quickSel || making || busy}
+                 onClick={() => { const o = QUICK_OPS.find((x) => x.key === quickSel); if (o) quickEdit(o.op, o.dir); }}>
+                 {(making || busy)
+                   ? t("Applying your edit…")
+                   : quickSel
+                     ? t("Apply {label} — {n} tokens · +{xp} XP", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "", n: d.costs.quickEdit, xp: xpForSpend(d.costs.quickEdit) })
+                     : t("Pick an edit above to apply")}
+               </button>
+             </div>
+           )}
            <input ref={stageUploadRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => onStagePhoto(e.currentTarget.files?.[0])} />
          </aside>
        )}
@@ -3048,11 +3080,26 @@ const WS_STYLE = `
 .ws-stagemedia-edit{cursor:pointer}
 .ws-editcap{margin-right:auto;align-self:center;padding-left:4px;font-size:12px;font-weight:700;color:#d9f3e5}
 /* Post-generation quick edits (Enhance / Zoom out / Zoom in / Remove bg). */
-.ws-quick{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;background:#0b120e;border-top:1px solid rgba(255,255,255,.08)}
-.ws-quick-lbl{font-size:10px;font-weight:800;letter-spacing:.03em;color:#9fdcbf;text-transform:uppercase;margin-right:2px}
-.ws-quickbtn{font:inherit;font-weight:700;font-size:12px;color:#eafff4;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:6px 11px;cursor:pointer;transition:background .12s,border-color .12s}
-.ws-quickbtn:hover:not(:disabled){background:rgba(18,168,94,.28);border-color:rgba(18,168,94,.55);color:#fff}
-.ws-quickbtn:disabled{opacity:.5;cursor:default}
+/* QUICK EDIT — a clean light panel UNDER the photo card (not a dark overlay on
+   the image). Select a chip, then the green button confirms + spends. */
+.ws-qedit{max-width:min(100%,560px);margin:12px auto 0;padding:13px 14px 14px;border-radius:16px;
+  background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF);box-shadow:0 2px 10px rgba(20,32,26,.06)}
+.ws-qedit-h{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.ws-qedit-t{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A)}
+.ws-qedit-sub{font-size:11px;font-weight:700;color:var(--ink2,#4A554E);letter-spacing:.02em}
+.ws-qedit-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ws-qchip{display:inline-flex;align-items:center;gap:6px;font:inherit;font-weight:700;font-size:12.5px;color:var(--ink,#14201A);
+  background:#F3F0E4;border:1.5px solid transparent;border-radius:999px;padding:7px 13px;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.ws-qchip svg{color:var(--ink2,#4A554E)}
+.ws-qchip:hover:not(:disabled){background:#EAE6D6}
+.ws-qchip.on{background:#E7F5EC;border-color:var(--green2,#12A85E);color:var(--green,#0C7A46)}
+.ws-qchip.on svg{color:var(--green2,#12A85E)}
+.ws-qchip:disabled{opacity:.5;cursor:default}
+.ws-qedit-go{margin-top:12px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;
+  font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;color:#fff;border:0;border-radius:12px;padding:12px;cursor:pointer;
+  background:linear-gradient(168deg,#16B866,#0B6B3E);box-shadow:0 3px 12px rgba(12,122,70,.28);transition:filter .12s,opacity .12s}
+.ws-qedit-go:hover:not(:disabled){filter:brightness(1.05)}
+.ws-qedit-go:disabled{opacity:.5;cursor:default;box-shadow:none}
 /* Failed-generation card (shown on the Stage instead of spinning forever). */
 .ws-generr{gap:10px}
 .ws-generr-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#F5E6C8;color:#9A5B12;font-weight:900;font-size:24px;border:2px solid #E7C98F}
