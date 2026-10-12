@@ -17,7 +17,7 @@ import { UI_LANG_NATIVE } from "../lib/ui-i18n";
 import { useT, useUiLang } from "../lib/ui-lang";
 
 const EMPTY_HUD = {
-  name: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
+  name: "", email: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
   tokens: 0, tokensMax: 0, tokensPct: 0, videos: 0, ads: 0,
   planLabel: null as string | null,
   // Value meter — what the plan includes each month, how much is used, and when
@@ -54,6 +54,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     isAdmin: isAdminEmail(account.email),
     hud: {
       name: account.name?.trim() || account.email.split("@")[0],
+      email: account.email,
       level: shop.level,
       xpInto,
       xpNeed,
@@ -109,19 +110,6 @@ export default function WebLayout() {
   const [mode, setMode] = useState<"marketing" | "casual">("marketing");
   useEffect(() => { try { const m = localStorage.getItem("emMode"); if (m === "casual" || m === "marketing") setMode(m); } catch { /* storage is a nicety */ } }, []);
   const chooseMode = (m: "marketing" | "casual") => { setMode(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
-
-  // HUD collapse — PER MODE, read after mount so SSR matches. The Creator
-  // section defaults to the clean collapsed mini-pill; Marketing defaults
-  // expanded. Each remembers its own toggle per browser.
-  const [hudMin, setHudMin] = useState(false);
-  const hudKey = (m: "marketing" | "casual") => (m === "casual" ? "wbHudMin_casual" : "wbHudMin");
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(hudKey(mode));
-      setHudMin(stored != null ? stored === "1" : mode === "casual");
-    } catch { setHudMin(mode === "casual"); }
-  }, [mode]);
-  const toggleHud = () => setHudMin((m) => { try { localStorage.setItem(hudKey(mode), m ? "0" : "1"); } catch { /* ignore */ } return !m; });
 
   // THE FRONT DOOR — a dedicated path chooser (Marketing vs Creator) so an
   // arrival explicitly picks their side instead of silently landing in the
@@ -226,95 +214,10 @@ export default function WebLayout() {
               </Link>
             )}
             {authed
-              ? <Link to="/web/logout" className="wb-out">{t("Log out")}</Link>
+              ? <AccountMenu hud={hud} />
               : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
           </div>
         </header>
-
-        {/* Player HUD — the app's arcade status bar, ported to the web shell.
-            Level, token reserve, XP to the next level and what the wallet
-            currently affords, all in one glance. */}
-        {authed && (
-          <div className={`wb-hud${hudMin ? " min" : ""}${mode === "casual" ? " wb-hud-lite" : ""}`} aria-label={t("Player status")}>
-            {hudMin ? (
-              <button
-                type="button" className="wb-hud-mini" onClick={toggleHud}
-                title={t("LVL {n} · {tokens} tokens — tap to expand", { n: hud.level, tokens: hud.tokens.toLocaleString() })}
-                aria-label={t("Expand player status")}
-              >
-                <Crest size={22} />
-                <span className="wb-hud-lvl">LVL {hud.level}</span>
-                <span className="wb-hud-mini-tok"><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
-                <span className="wb-hud-caret">▾</span>
-              </button>
-            ) : (
-              <>
-                <div className="wb-hud-top">
-                  <Crest size={26} />
-                  <span className="wb-hud-name">{hud.name}</span>
-                  <span className="wb-hud-lvl" title={t("Your store's level — every level pays out free tokens")}>LVL {hud.level}</span>
-                  {hud.planLabel
-                    ? <Link to="/web#plans" className="wb-hud-plan" title={t("Manage your plan")}>{hud.planLabel}</Link>
-                    : <Link to="/web#plans" className="wb-hud-plan off">{t("No plan")}</Link>}
-                  <button type="button" className="wb-hud-toggle" onClick={toggleHud} title={t("Collapse")} aria-label={t("Collapse player status")}>▴</button>
-                </div>
-
-                <div className="wb-hud-barlabel"><span>{t("Token reserve")}</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
-                <div className="wb-hud-hp" title={t("{pct}% of your wallet remaining", { pct: hud.tokensPct })}><i style={{ width: `${hud.tokensPct}%` }} /></div>
-
-                {/* VALUE METER — frames the plan as a benefit, not a cost: what
-                    it includes every month, how much is used this cycle, and
-                    when it refills. Top-ups (which never expire) ride a line
-                    below so the two kinds of tokens never read as one pool. */}
-                {hud.planActive && (
-                  <div className="wb-hud-meter">
-                    {hud.trialing ? (
-                      <span className="wb-hud-meter-l">
-                        {t("Trial · {monthly}/mo unlocks when your plan starts", { monthly: hud.monthly.toLocaleString() })}
-                      </span>
-                    ) : (
-                      <>
-                        <span className="wb-hud-meter-l">
-                          {t("{monthly} tokens included monthly · {used} used", { monthly: hud.monthly.toLocaleString(), used: hud.used.toLocaleString() })}
-                        </span>
-                        {hud.resetShort && (
-                          <span className="wb-hud-meter-r" title={t("When your monthly tokens refill")}>{t("↻ refills {date}", { date: hud.resetShort })}</span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-                {hud.planActive && !hud.trialing && hud.extra > 0 && (
-                  <div className="wb-hud-extra" title={t("Purchased tokens — they roll over and never expire")}>
-                    <Ico n="coin" /> {t("+{extra} top-up tokens · never expire", { extra: hud.extra.toLocaleString() })}
-                  </div>
-                )}
-
-                <div className="wb-hud-barlabel">
-                  <span>{t("XP · Level {n}", { n: hud.level })}</span>
-                  <span>{t("{into} / {need} · {left} to LVL {next}", { into: hud.xpInto.toLocaleString(), need: hud.xpNeed.toLocaleString(), left: (hud.xpNeed - hud.xpInto).toLocaleString(), next: hud.level + 1 })}</span>
-                </div>
-                <div className="wb-hud-xp" title={t("{pct}% of the way to level {next}", { pct: hud.xpPct, next: hud.level + 1 })}><i style={{ width: `${hud.xpPct}%` }} /></div>
-
-                <div className="wb-hud-stats">
-                  <Link to="/web#plans" className="wb-hud-topup" title={t("Get more tokens")}>
-                    <span><Ico n="coin" /> {hud.tokens.toLocaleString()}</span><b>{t("Add tokens")}</b>
-                  </Link>
-                  {/* These are what the BALANCE AFFORDS, not what the merchant
-                      owns — but the label said "3 Videos", which on the Archive
-                      page sits inches from that page’s own "Videos · 9" tab and
-                      reads as a count of their library. The only thing
-                      distinguishing them was a title attribute, which does not
-                      exist on touch. Say what the number means. */}
-                  {/* "1 videos' worth" was live in the HUD the moment a trialist
-                      made one 225-token video. Pluralise on the count. */}
-                  <span className="wb-hud-stat" title={t("How many product videos your balance covers")}><Ico n="video" /> {hud.videos === 1 ? t("{n} video’s worth", { n: hud.videos }) : t("{n} videos’ worth", { n: hud.videos })}</span>
-                  <span className="wb-hud-stat" title={t("How many image ads your balance covers")}><Ico n="image" /> {hud.ads === 1 ? t("{n} image’s worth", { n: hud.ads }) : t("{n} images’ worth", { n: hud.ads })}</span>
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
         <main className="wb-main">
           <Outlet context={{ mode, setMode: chooseMode }} />
@@ -487,14 +390,150 @@ function Familiar({ think }: { think?: boolean }) {
   );
 }
 
-/* The EasyMode mark. The raw tile is deep green and reads as a dark blob on
- * cream, so it's set in a gold-rimmed crest and lifted — an emblem, not a
- * smudge. Same mark as the embedded app, legible on a light page. */
+/* The EasyMode mark — Helpurr's head. A clean pixel-art cutout (no tile, no
+ * rim): just the cat, ears and glasses, floating on the page the way a mascot
+ * mark should. Helpurr is the brand face everywhere the old gold "E" used to
+ * sit. The account avatar (which a member can swap for their own photo) is a
+ * SEPARATE thing — see AccountMenu. */
 function Crest({ size }: { size: number }) {
   return (
     <span className="wb-crest" style={{ width: size, height: size }} aria-hidden="true">
-      <img src="/easymode-head.png?v=2" alt="" />
+      <img src="/helpurr-head.png?v=2" alt="" />
     </span>
+  );
+}
+
+/* Account menu — the member's hub. Replaces BOTH the old "Log out" link and
+ * the big arcade HUD: a compact chip (avatar · level · tokens) in the header
+ * that drops a panel carrying everything the HUD used to show — XP/level
+ * progress (the rewards track), the token wallet + value meter, what the
+ * balance affords — plus plan management, a changeable avatar, and log out.
+ * The avatar personalises PER BROWSER (a downscaled data-URL in localStorage);
+ * Helpurr stays the default and the brand mark is always Helpurr. A
+ * server-backed avatar can replace the localStorage one later. */
+function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Personal avatar is a per-browser nicety — load after mount so SSR is stable.
+  useEffect(() => { try { const a = localStorage.getItem("emAvatar"); if (a) setAvatar(a); } catch { /* ignore */ } }, []);
+  // Close on outside-click and on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  const pickAvatar = () => fileRef.current?.click();
+  const onFile = (input: HTMLInputElement) => {
+    const file = input.files?.[0];
+    input.value = ""; // allow re-selecting the same file
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        // Square-crop + downscale to 128px so the data URL stays tiny in storage.
+        const S = 128, cv = document.createElement("canvas");
+        cv.width = S; cv.height = S;
+        const ctx = cv.getContext("2d"); if (!ctx) return;
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, S, S);
+        const url = cv.toDataURL("image/png");
+        setAvatar(url);
+        try { localStorage.setItem("emAvatar", url); } catch { /* ignore */ }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+  const resetAvatar = () => { setAvatar(null); try { localStorage.removeItem("emAvatar"); } catch { /* ignore */ } };
+
+  const avatarSrc = avatar || "/helpurr-head.png?v=2";
+  const toNext = Math.max(0, hud.xpNeed - hud.xpInto);
+
+  return (
+    <div className="wb-acct" ref={wrapRef}>
+      <button
+        type="button"
+        className={`wb-chip${open ? " on" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu" aria-expanded={open}
+        aria-label={t("Account menu — level {lvl}, {tokens} tokens", { lvl: hud.level, tokens: hud.tokens.toLocaleString() })}
+      >
+        <span className={`wb-chip-ava${avatar ? " photo" : ""}`}><img src={avatarSrc} alt="" /></span>
+        <span className="wb-chip-lvl">LVL {hud.level}</span>
+        <span className="wb-chip-tok"><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
+        <span className="wb-chip-caret" aria-hidden="true">▾</span>
+      </button>
+
+      {open && (
+        <div className="wb-menu" role="menu">
+          {/* Identity + changeable avatar */}
+          <div className="wb-menu-id">
+            <button type="button" className={`wb-menu-ava${avatar ? " photo" : ""}`} onClick={pickAvatar} title={t("Change your avatar")} aria-label={t("Change your avatar")}>
+              <img src={avatarSrc} alt="" />
+              <span className="wb-menu-cam" aria-hidden="true"><Ico n="camera" /></span>
+            </button>
+            <div className="wb-menu-idtxt">
+              <b>{hud.name}</b>
+              {hud.email && <span className="wb-menu-email">{hud.email}</span>}
+            </div>
+            {hud.planLabel
+              ? <Link to="/web#plans" className="wb-menu-plan" onClick={() => setOpen(false)}>{hud.planLabel}</Link>
+              : <Link to="/web#plans" className="wb-menu-plan off" onClick={() => setOpen(false)}>{t("No plan")}</Link>}
+          </div>
+
+          {/* XP / level — the rewards track: every level pays out free tokens */}
+          <div className="wb-menu-sec">
+            <div className="wb-menu-barlabel">
+              <span>{t("XP · Level {n}", { n: hud.level })}</span>
+              <span>{t("{left} to LVL {next}", { left: toNext.toLocaleString(), next: hud.level + 1 })}</span>
+            </div>
+            <div className="wb-menu-xp" title={t("{pct}% of the way to level {next}", { pct: hud.xpPct, next: hud.level + 1 })}><i style={{ width: `${hud.xpPct}%` }} /></div>
+            <div className="wb-menu-hint"><Ico n="gift" /> {t("Every level pays out free tokens.")}</div>
+          </div>
+
+          {/* Token wallet + value meter */}
+          <div className="wb-menu-sec">
+            <div className="wb-menu-barlabel"><span>{t("Token reserve")}</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
+            <div className="wb-menu-hp" title={t("{pct}% of your wallet remaining", { pct: hud.tokensPct })}><i style={{ width: `${hud.tokensPct}%` }} /></div>
+            {hud.planActive && (
+              <div className="wb-menu-meter">
+                {hud.trialing
+                  ? t("Trial · {monthly}/mo unlocks when your plan starts", { monthly: hud.monthly.toLocaleString() })
+                  : t("{monthly} tokens included monthly · {used} used", { monthly: hud.monthly.toLocaleString(), used: hud.used.toLocaleString() })}
+                {hud.planActive && !hud.trialing && hud.resetShort && <span className="wb-menu-meter-r"> · {t("↻ refills {date}", { date: hud.resetShort })}</span>}
+              </div>
+            )}
+            {hud.planActive && !hud.trialing && hud.extra > 0 && (
+              <div className="wb-menu-extra"><Ico n="coin" /> {t("+{extra} top-up tokens · never expire", { extra: hud.extra.toLocaleString() })}</div>
+            )}
+            <div className="wb-menu-affords">
+              <span><Ico n="video" /> {hud.videos === 1 ? t("{n} video’s worth", { n: hud.videos }) : t("{n} videos’ worth", { n: hud.videos })}</span>
+              <span><Ico n="image" /> {hud.ads === 1 ? t("{n} image’s worth", { n: hud.ads }) : t("{n} images’ worth", { n: hud.ads })}</span>
+            </div>
+            <Link to="/web#plans" className="wb-menu-topup" onClick={() => setOpen(false)}><Ico n="coin" /> {t("Add tokens")}</Link>
+          </div>
+
+          {/* Actions */}
+          <div className="wb-menu-links">
+            <button type="button" className="wb-menu-link" onClick={pickAvatar}><Ico n="camera" /> {t("Change avatar")}</button>
+            {avatar && <button type="button" className="wb-menu-link" onClick={resetAvatar}><Ico n="paw" /> {t("Use Helpurr")}</button>}
+            <Link to="/web/logout" className="wb-menu-link danger">{t("Log out")}</Link>
+          </div>
+
+          <input ref={fileRef} type="file" accept="image/*" onChange={(e) => onFile(e.currentTarget)} hidden />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -608,13 +647,78 @@ const CSS = `
   .wb-ch-nav{display:none}
   .wb-ch-go{padding:8px 14px}
 }
-/* The mark: gold-rimmed crest so the deep-green tile reads as an emblem
-   against cream instead of a dark smudge. */
-.wb-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;border-radius:8px;overflow:hidden;
-  border:1.5px solid rgba(199,158,63,.75);box-shadow:0 1px 3px rgba(20,32,26,.18),0 0 0 2px rgba(231,200,121,.16);}
-.wb-crest img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated;filter:brightness(1.16) saturate(1.06);}
-.wb-crest::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(150deg,rgba(255,255,255,.24),transparent 52%);}
+/* The mark: Helpurr's head as a clean cutout — no tile, no rim. The pixel art
+   is set a touch larger than its box so the ears reach the edges, and a soft
+   drop-shadow lifts it off the cream. */
+.wb-crest{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;}
+.wb-crest img{width:118%;height:118%;object-fit:contain;display:block;image-rendering:pixelated;
+  filter:drop-shadow(0 1.5px 1.5px rgba(20,32,26,.22));}
+
+/* ---- Account chip + dropdown (replaces the old Log-out link AND the big HUD) ---- */
+.wb-acct{position:relative;flex:0 0 auto;}
+.wb-chip{display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:5px 11px 5px 6px;border-radius:999px;
+  background:var(--card);border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,32,26,.06);font-family:inherit;color:var(--ink);
+  transition:border-color .14s,box-shadow .14s;}
+.wb-chip:hover,.wb-chip.on{border-color:var(--green2);box-shadow:0 2px 9px rgba(12,122,70,.15);}
+.wb-chip-ava{width:30px;height:30px;flex:0 0 auto;display:inline-grid;place-items:center;}
+.wb-chip-ava img{width:120%;height:120%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(20,32,26,.22));}
+.wb-chip-ava.photo{border-radius:50%;box-shadow:0 0 0 2px var(--card),0 0 0 3px rgba(12,122,70,.38);}
+.wb-chip-ava.photo img{width:100%;height:100%;object-fit:cover;border-radius:50%;image-rendering:auto;filter:none;}
+.wb-chip-lvl{font-family:Poppins,sans-serif;font-weight:800;font-size:10.5px;letter-spacing:.04em;color:#3A2A05;
+  background:linear-gradient(168deg,#F6E6B4,#E7C879);padding:2px 7px;border-radius:999px;box-shadow:inset 0 0 0 1px rgba(176,133,38,.3);}
+.wb-chip-tok{display:inline-flex;align-items:center;gap:4px;font-weight:800;font-size:12.5px;color:var(--gold-deep);font-variant-numeric:tabular-nums;}
+.wb-chip-tok svg{width:14px;height:14px;}
+.wb-chip-caret{font-size:9px;color:var(--ink2);margin-left:-3px;}
+.wb-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:60;width:min(322px,calc(100vw - 24px));
+  background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:0 18px 46px rgba(20,32,26,.19),0 3px 10px rgba(20,32,26,.08);animation:wbMenuIn .14s ease;}
+@keyframes wbMenuIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.wb-menu>*{padding-left:14px;padding-right:14px;}
+.wb-menu-id{display:flex;align-items:center;gap:11px;padding-top:14px;padding-bottom:13px;border-bottom:1px solid var(--line);}
+.wb-menu-ava{position:relative;width:46px;height:46px;flex:0 0 auto;border:0;background:none;padding:0;cursor:pointer;display:inline-grid;place-items:center;}
+.wb-menu-ava img{width:124%;height:124%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 1.5px 1.5px rgba(20,32,26,.22));}
+.wb-menu-ava.photo img{width:100%;height:100%;object-fit:cover;border-radius:50%;image-rendering:auto;
+  filter:none;box-shadow:0 0 0 2px var(--card),0 0 0 3px rgba(12,122,70,.38);}
+.wb-menu-cam{position:absolute;right:-3px;bottom:-3px;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 1px 3px rgba(20,32,26,.3);}
+.wb-menu-cam svg{width:11px;height:11px;color:#fff;}
+.wb-menu-ava:hover .wb-menu-cam{filter:brightness(1.1);}
+.wb-menu-idtxt{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px;}
+.wb-menu-idtxt b{font-family:Poppins,sans-serif;font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wb-menu-email{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wb-menu-plan{align-self:flex-start;font-family:Poppins,sans-serif;font-weight:800;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  text-decoration:none;color:#3A2A05;background:linear-gradient(168deg,#F6E6B4,#E7C879);padding:4px 9px;border-radius:999px;
+  box-shadow:inset 0 0 0 1px rgba(176,133,38,.3);white-space:nowrap;}
+.wb-menu-plan.off{background:#DED9C7;color:#5A5347;box-shadow:none;}
+.wb-menu-plan:hover{filter:brightness(1.05);}
+.wb-menu-sec{padding-top:12px;padding-bottom:12px;border-bottom:1px solid var(--line);}
+.wb-menu-barlabel{display:flex;justify-content:space-between;gap:10px;font-size:9.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--ink2);margin-bottom:6px;}
+.wb-menu-barlabel span:last-child{color:var(--ink);letter-spacing:.02em;text-transform:none;font-variant-numeric:tabular-nums;}
+.wb-menu-hp,.wb-menu-xp{height:8px;border-radius:99px;background:#E6E1D0;overflow:hidden;border:1px solid rgba(20,32,26,.07);}
+.wb-menu-hp>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#0C7A46,#3FD186);transition:width .5s ease;}
+.wb-menu-xp>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#B08526,#F3D98C);transition:width .5s ease;}
+.wb-menu-hint{margin-top:7px;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--gold-deep);}
+.wb-menu-hint svg{width:13px;height:13px;flex:0 0 auto;}
+.wb-menu-meter{margin-top:8px;font-size:11.5px;color:var(--ink2);line-height:1.45;}
+.wb-menu-meter-r{color:var(--gold-deep);font-weight:600;white-space:nowrap;}
+.wb-menu-extra{margin-top:5px;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gold-deep);}
+.wb-menu-extra svg{width:13px;height:13px;}
+.wb-menu-affords{margin-top:9px;display:flex;gap:15px;font-size:11.5px;font-weight:700;color:var(--ink2);}
+.wb-menu-affords span{display:inline-flex;align-items:center;gap:5px;}
+.wb-menu-affords svg{width:14px;height:14px;}
+.wb-menu-topup{margin-top:11px;display:flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;
+  font-family:Poppins,sans-serif;font-weight:800;font-size:12.5px;color:#fff;
+  background:linear-gradient(168deg,#12A85E,#0B6B3E);padding:9px;border-radius:11px;box-shadow:0 2px 8px rgba(12,122,70,.25);}
+.wb-menu-topup:hover{filter:brightness(1.06);}
+.wb-menu-topup svg{width:15px;height:15px;}
+.wb-menu-links{padding-top:9px;padding-bottom:9px;display:flex;flex-direction:column;gap:1px;}
+.wb-menu-link{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:0;background:none;cursor:pointer;
+  font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);padding:9px 8px;border-radius:9px;text-decoration:none;transition:background .12s;}
+.wb-menu-link:hover{background:rgba(12,122,70,.07);}
+.wb-menu-link svg{width:15px;height:15px;color:var(--ink2);flex:0 0 auto;}
+.wb-menu-link.danger{color:#A23A2A;justify-content:flex-start;}
+.wb-menu-link.danger:hover{background:rgba(162,58,42,.08);}
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
 
 /* ---- Player HUD — the app's arcade status bar, GStyle for the web shell ---- */
@@ -691,15 +795,14 @@ const CSS = `
      to a second line keeps every tab visible; Creator's 4 tabs still fit on one. */
   .wb-tabs{order:3;flex:1 0 100%;gap:5px;flex-wrap:wrap;margin-top:2px;}
   .wb-tab{flex:0 0 auto;white-space:nowrap;padding:7px 13px;font-size:12.5px;}
-  .wb-me{margin-left:auto;gap:8px;}
-  .wb-out{padding:7px 10px;font-size:12.5px;}
+  .wb-me{margin-left:auto;gap:7px;}
   .wb-login{padding:8px 15px;font-size:12.5px;}
+  /* Compact chip on phones: drop the LVL pill, keep avatar + balance + caret so
+     the top row stays next to the brand without overflowing. */
+  .wb-chip{padding:4px 9px 4px 5px;gap:6px;}
+  .wb-chip-lvl{display:none;}
+  .wb-chip-ava{width:27px;height:27px;}
   .wb-main{padding:10px 16px 70px;}
-  .wb-hud{width:calc(100% - 32px);padding:11px 13px;}
-  .wb-hud-name{max-width:52vw;font-size:13px;}
-  .wb-hud-barlabel{font-size:9.5px;}
-  .wb-hud-barlabel span:last-child{font-size:10.5px;}
-  .wb-hud-stats{font-size:11.5px;gap:8px;}
 }
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;overflow-wrap:anywhere;}
 .wb-sub{color:var(--ink2);font-size:14.5px;line-height:1.55;margin:0 0 24px;max-width:60ch;}
