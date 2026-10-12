@@ -398,7 +398,7 @@ function Familiar({ think }: { think?: boolean }) {
 function Crest({ size }: { size: number }) {
   return (
     <span className="wb-crest" style={{ width: size, height: size }} aria-hidden="true">
-      <img src="/helpurr-head.png?v=3" alt="" />
+      <img src="/helpurr-head.png?v=4" alt="" />
     </span>
   );
 }
