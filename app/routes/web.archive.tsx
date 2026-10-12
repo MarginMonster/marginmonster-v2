@@ -957,12 +957,18 @@ export default function WebArchive() {
         // disagreed with no explanation, and the note said "60 of 87" on a tab
         // showing neither number.
         <p className="wa-shelfnote">
-          {t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}
-          {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`}.{" "}
+          {shelf.length === 0
+            // None of THIS type are in the recent window (older ones got crowded
+            // out by newer pieces of other types) — don't pretend there are none.
+            ? <>{t("Your")} <b>{tabTotal}</b> {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`} {t("are further back.")}{" "}</>
+            : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`}.{" "}</>}
           <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
         </p>
       )}
-      {shelf.length === 0 && genCards.length === 0 && failCards.length === 0 && (
+      {/* "Yet — make one" only when there are GENUINELY none of this type —
+          tabTotal === 0 — not merely none in the current page (which is the
+          "are further back" note above). */}
+      {shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
         <div className="wb-card">{t("No")} {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`} {t("yet — make one in the")} <Link to="/web/studio">Studio</Link>.</div>
       )}
 

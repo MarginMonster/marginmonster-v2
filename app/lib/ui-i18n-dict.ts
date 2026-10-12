@@ -11,6 +11,8 @@ import type { UiLang } from "./ui-i18n";
 const es: Record<string, string> = {
   "Quick edit": "Edición rápida",
   "~{n} tokens →": "~{n} tokens →",
+  "Your": "Tus",
+  "are further back.": "están más atrás.",
   "Quick edit type": "Tipo de edición rápida",
   "{left} to LVL {next}": "{left} para NIV {next}",
   "{n} tokens each": "{n} tokens cada una",
@@ -1150,6 +1152,8 @@ const es: Record<string, string> = {
 const fr: Record<string, string> = {
   "Quick edit": "Édition rapide",
   "~{n} tokens →": "~{n} jetons →",
+  "Your": "Tes",
+  "are further back.": "sont plus loin.",
   "Quick edit type": "Type d'édition rapide",
   "{left} to LVL {next}": "{left} jusqu'au NIV {next}",
   "{n} tokens each": "{n} jetons chacune",
@@ -2278,6 +2282,8 @@ const fr: Record<string, string> = {
 const de: Record<string, string> = {
   "Quick edit": "Schnellbearbeitung",
   "~{n} tokens →": "~{n} Tokens →",
+  "Your": "Deine",
+  "are further back.": "liegen weiter hinten.",
   "Quick edit type": "Art der Schnellbearbeitung",
   "{left} to LVL {next}": "{left} bis LVL {next}",
   "{n} tokens each": "{n} Tokens pro Stück",
@@ -3414,6 +3420,8 @@ const de: Record<string, string> = {
 const zh: Record<string, string> = {
   "Quick edit": "快速编辑",
   "~{n} tokens →": "约 {n} 个 token →",
+  "Your": "你的",
+  "are further back.": "在更早的位置。",
   "Quick edit type": "快速编辑类型",
   "{left} to LVL {next}": "距 {next} 级还差 {left}",
   "{n} tokens each": "每次 {n} 个 token",
