@@ -81,8 +81,14 @@ export function LangToggle({ value, labels, onPick, align = "right", title }: La
     const next: MenuPos = { up };
     if (up) next.bottom = Math.round(vh - b.top + 6);
     else next.top = Math.round(b.bottom + 6);
-    if (align === "right") next.right = Math.round(Math.max(8, vw - b.right));
-    else next.left = Math.round(Math.max(8, b.left));
+    // Horizontal: anchor to the chosen edge, then CLAMP so the whole menu stays
+    // on-screen. A right-aligned pill near the LEFT viewport edge (the app
+    // shell's language pill on mobile) would otherwise push the fixed-width menu
+    // off the left side and clip every label. Positioning by `left` with a
+    // measured width lets us keep both edges inside the viewport.
+    const mw = Math.min(menuRef.current?.getBoundingClientRect().width || 168, vw - 16);
+    const anchored = align === "right" ? b.right - mw : b.left;
+    next.left = Math.round(Math.max(8, Math.min(anchored, vw - mw - 8)));
     setPos(next);
   };
 
