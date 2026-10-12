@@ -4503,7 +4503,11 @@ export async function renderFormatFrame(
   try {
     const { AD_FORMAT_BY_KEY } = await import("./ad-formats");
     const f = AD_FORMAT_BY_KEY[formatKey];
-    if (!f) return null;
+    // Reject retired formats here too (AD_FORMAT_BY_KEY still holds them for
+    // remixing old assets). Today the only caller passes "breakout", so this
+    // changes nothing now — it just stops a future caller rendering a retired
+    // (claims-risky) format through this video-keyframe path.
+    if (!f || f.retired) return null;
     const copy = await formatCopy(f.key, f.fields, productTitle, tone, direction, contentLang);
     if (!copy) return null;
     const prompt = formatLayoutPrompt(f.key, copy, undefined, "vertical 9:16");
