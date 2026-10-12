@@ -354,52 +354,81 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual"): Promise<
 // where it left off), plus a fresh proactive suggestion for the opener/nudge.
 export async function loader({ request }: LoaderFunctionArgs) {
   const id = await getWebIdentity(request);
-  if (!id) return json({ history: [] as Array<{ role: string; content: string }>, proactive: null as null | { reply: string; pendingAction?: PendingAction } });
+  const empty = { threads: [{ id: "main", title: "Main" }], activeThreadId: "main", history: [] as Array<{ role: string; content: string }>, proactive: null as null | { reply: string; pendingAction?: PendingAction } };
+  if (!id) return json(empty);
   const url = new URL(request.url);
   const mode: "marketing" | "casual" = url.searchParams.get("mode") === "casual" ? "casual" : "marketing";
+  const reqThread = url.searchParams.get("thread") || "";
+  const shopId = id.shop.id;
+
+  // "Main" is the implicit default thread (threadId NULL — also every pre-threads
+  // message). Named threads are the extra projects, in a stable creation order.
+  const named = await db.buddyThread.findMany({ where: { shopId, mode }, orderBy: { createdAt: "asc" }, select: { id: true, title: true } }).catch(() => []);
+  const threads = [{ id: "main", title: "Main" }, ...named];
+  const activeThreadId = reqThread === "main" || named.some((t) => t.id === reqThread) ? reqThread : "main";
+
   const [history, proactive] = await Promise.all([
     (async () => {
       try {
         const rows = await db.buddyMessage.findMany({
-          where: { shopId: id.shop.id, mode }, orderBy: { createdAt: "desc" }, take: 60,
-          select: { role: true, content: true },
+          where: { shopId, mode, threadId: activeThreadId === "main" ? null : activeThreadId },
+          orderBy: { createdAt: "desc" }, take: 60, select: { role: true, content: true },
         });
         return rows.reverse();
       } catch { return [] as Array<{ role: string; content: string }>; }
     })(),
     buildProactive(id, mode),
   ]);
-  return json({ history, proactive });
+  return json({ threads, activeThreadId, history, proactive });
 }
 
 // Persist the latest exchange (the user's new message + Helpurr's reply) and
 // trim the shop+mode thread back to the rolling window. Best-effort: a storage
 // hiccup must never break the live chat.
-async function remember(shopId: string, mode: "marketing" | "casual", userMsg: string, reply: string) {
+async function remember(shopId: string, mode: "marketing" | "casual", threadId: string | null, userMsg: string, reply: string) {
   try {
-    const data: Array<{ shopId: string; mode: string; role: string; content: string }> = [];
-    if (userMsg.trim()) data.push({ shopId, mode, role: "user", content: userMsg.trim().slice(0, 4000) });
-    if (reply.trim()) data.push({ shopId, mode, role: "assistant", content: reply.trim().slice(0, 4000) });
+    const data: Array<{ shopId: string; mode: string; threadId: string | null; role: string; content: string }> = [];
+    if (userMsg.trim()) data.push({ shopId, mode, threadId, role: "user", content: userMsg.trim().slice(0, 4000) });
+    if (reply.trim()) data.push({ shopId, mode, threadId, role: "assistant", content: reply.trim().slice(0, 4000) });
     if (!data.length) return;
     await db.buddyMessage.createMany({ data });
     const stale = await db.buddyMessage.findMany({
-      where: { shopId, mode }, orderBy: { createdAt: "desc" }, skip: BUDDY_KEEP, take: 200, select: { id: true },
+      where: { shopId, mode, threadId }, orderBy: { createdAt: "desc" }, skip: BUDDY_KEEP, take: 200, select: { id: true },
     });
     if (stale.length) await db.buddyMessage.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
+    // Touch the named thread (updatedAt) and auto-name it from the first message.
+    if (threadId) {
+      const th = await db.buddyThread.findUnique({ where: { id: threadId }, select: { title: true } });
+      if (th) {
+        const title = th.title === "New chat" && userMsg.trim() ? userMsg.trim().replace(/\s+/g, " ").slice(0, 42) : th.title;
+        await db.buddyThread.update({ where: { id: threadId }, data: { title } });
+      }
+    }
   } catch { /* best-effort memory */ }
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
-  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string };
+  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string };
   try { body = await request.json(); } catch { return json({ reply: "Hmm, I didn't catch that — try again?" }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
   // Default to marketing when absent (a stale client, or a direct call) so the
   // live merchant experience is unchanged unless casual is explicitly asked for.
   const mode: "marketing" | "casual" = body.mode === "casual" ? "casual" : "marketing";
+  // Which project/thread this chat belongs to ("main" / absent = the default).
+  const threadId = typeof body.threadId === "string" && body.threadId && body.threadId !== "main" ? body.threadId : null;
 
   const id = await getWebIdentity(request);
+
+  // Create a new project/thread (chat tab) and hand its id back.
+  if (body.intent === "newThread") {
+    if (!id) return json({ error: "auth" }, { status: 401 });
+    try {
+      const th = await db.buddyThread.create({ data: { shopId: id.shop.id, mode, title: "New chat" } });
+      return json({ threadId: th.id, title: th.title });
+    } catch { return json({ error: "create" }, { status: 500 }); }
+  }
 
   // The conversation as proper role-messages for the tool loop. Drop leading
   // assistant turns (a greeting) so it starts with the user, and cap to the
@@ -449,7 +478,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // bubble renders plain text and "**Studio**" would show the asterisks.
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
-    if (id) await remember(id.shop.id, mode, lastUser, clean);
+    if (id) await remember(id.shop.id, mode, threadId, lastUser, clean);
     return json({ reply: clean || "I'm here — tell me what you're working on!", actions: suggestActions(lastUser, mode), pendingAction: pending.action });
   } catch {
     // Never leave the chat hanging on an outage.

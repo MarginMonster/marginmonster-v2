@@ -168,6 +168,7 @@ model Shop {
   creatorSeries      CreatorSeries[]
   buddyMessages      BuddyMessage[]
   buddyFacts         BuddyFact[]
+  buddyThreads       BuddyThread[]
 }
 
 /// Helpurr conversation memory — one row per message so the chat survives
@@ -180,10 +181,28 @@ model BuddyMessage {
   role      String // "user" | "assistant"
   content   String
   mode      String   @default("marketing") // "marketing" | "casual"
+  // Which project/thread this belongs to. NULL = the default "Main" thread
+  // (also where every pre-threads message lives), else a BuddyThread id.
+  threadId  String?
   createdAt DateTime @default(now())
   shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
-  @@index([shopId, mode, createdAt])
+  @@index([shopId, mode, threadId, createdAt])
+}
+
+/// A named Helpurr conversation — a "project" the merchant can switch between
+/// (chat tabs). The default "Main" thread is implicit (threadId NULL on its
+/// messages); these are the extra ones they create. Per shop + mode.
+model BuddyThread {
+  id        String   @id @default(cuid())
+  shopId    String
+  mode      String   @default("marketing")
+  title     String   @default("New chat")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, mode, updatedAt])
 }
 
 /// Helpurr long-term MEMORY — durable facts it has learned about the merchant,

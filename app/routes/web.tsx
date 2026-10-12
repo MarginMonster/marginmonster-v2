@@ -249,8 +249,15 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // greeting may fire. Starts false so we don't greet over a conversation that's
   // about to load back in from the server.
   const [histReady, setHistReady] = useState(false);
+  // Chat tabs (projects). "main" is the default thread; others are created on
+  // demand. Threads are per mode (marketing/casual keep separate sets).
+  const [threads, setThreads] = useState<Array<{ id: string; title: string }>>([{ id: "main", title: "Main" }]);
+  const [activeThreadId, setActiveThreadId] = useState("main");
   const listRef = useRef<HTMLDivElement>(null);
   const t = useT();
+
+  // Flipping mode is a different project set — back to that mode's Main thread.
+  useEffect(() => { setActiveThreadId("main"); }, [mode]);
 
   // Load Helpurr's saved conversation for this mode when the chat opens, so it
   // continues where it left off instead of starting fresh each reload. Marketing
@@ -263,9 +270,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       try {
         // Cache-buster: the proactive suggestion is freshly randomised server-side,
         // so bypass the browser's GET cache to get a new one each open.
-        const res = await fetch(`/api/buddy?mode=${mode}&_=${Date.now()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null } | null };
+        const res = await fetch(`/api/buddy?mode=${mode}&thread=${activeThreadId}&_=${Date.now()}`, { cache: "no-store" });
+        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null } | null; threads?: Array<{ id: string; title: string }> };
         if (cancelled) return;
+        if (Array.isArray(data.threads) && data.threads.length) setThreads(data.threads);
         const hist = (Array.isArray(data.history) ? data.history : [])
           .filter((m) => m && typeof m.content === "string" && m.content.trim())
           .map((m): MMMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content as string }));
@@ -279,7 +287,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       finally { if (!cancelled) setHistReady(true); }
     })();
     return () => { cancelled = true; };
-  }, [open, authed, mode]);
+  }, [open, authed, mode, activeThreadId]);
 
   useEffect(() => {
     // Fallback greeting only when the load effect left the chat empty — i.e. no
@@ -316,13 +324,29 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     if (!trimmed || busy) return;
     const next: MMMsg[] = [...msgs, { role: "user", content: trimmed }];
     setMsgs(next); setInput(""); setBusy(true);
+    // Optimistically name a brand-new thread from the first message (the server
+    // does the same; this just avoids a flash of "New chat" on the tab).
+    if (activeThreadId !== "main") setThreads((ts) => ts.map((th) => (th.id === activeThreadId && th.title === "New chat" ? { ...th, title: trimmed.slice(0, 42) } : th)));
     try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode }) });
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId }) });
       const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null };
       setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); }
+  };
+
+  // Create a fresh project/thread and switch to it (loads empty → proactive opener).
+  const newThread = async () => {
+    if (busy) return;
+    try {
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "newThread", mode }) });
+      const data = await res.json().catch(() => ({})) as { threadId?: string; title?: string };
+      if (data.threadId) {
+        setThreads((ts) => [...ts, { id: data.threadId as string, title: data.title || "New chat" }]);
+        setActiveThreadId(data.threadId);
+      }
+    } catch { /* ignore */ }
   };
 
   const go = (to: string) => { setOpen(false); if (to.startsWith("/web#")) { window.location.href = to; } else { nav(to); } };
@@ -343,6 +367,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
             <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label={t("Close chat")}>×</button>
           </div>
+          {authed && (
+            <div className="mm-tabs" role="tablist" aria-label={t("Your chats")}>
+              {threads.map((th) => (
+                <button key={th.id} type="button" role="tab" aria-selected={th.id === activeThreadId}
+                  className={`mm-tab${th.id === activeThreadId ? " on" : ""}`}
+                  onClick={() => { if (th.id !== activeThreadId && !busy) setActiveThreadId(th.id); }} title={th.title}>
+                  {th.title}
+                </button>
+              ))}
+              <button type="button" className="mm-tab mm-tab-new" onClick={newThread} title={t("New chat")} aria-label={t("Start a new chat")}>+</button>
+            </div>
+          )}
           <div className="mm-list" ref={listRef}>
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
@@ -1230,6 +1266,13 @@ const CSS = `
 .mm-head-txt span{font-size:11px;color:rgba(244,234,200,.72);}
 .mm-x{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.85);font-size:23px;line-height:1;cursor:pointer;padding:2px 5px;}
 .mm-x:hover{color:#fff;}
+/* Chat tabs (projects) — a scrollable chip row under the header. */
+.mm-tabs{display:flex;gap:5px;align-items:center;padding:7px 9px;background:#F3F0E4;border-bottom:1px solid #E1DECD;overflow-x:auto;scrollbar-width:none;}
+.mm-tabs::-webkit-scrollbar{display:none;}
+.mm-tab{flex:0 0 auto;max-width:132px;font:inherit;font-size:11.5px;font-weight:700;color:#4A554E;background:#fff;border:1px solid #E1DECD;border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s,border-color .12s;}
+.mm-tab:hover{border-color:#12A85E;}
+.mm-tab.on{background:linear-gradient(135deg,#12A85E,#0B6B3E);color:#fff;border-color:transparent;}
+.mm-tab-new{font-size:15px;font-weight:800;color:#0C7A46;padding:4px 10px;line-height:1;}
 .mm-list{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
 .mm-msg{max-width:84%;padding:9px 13px;border-radius:15px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
 .mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid #E1DECD;color:#14201A;border-bottom-left-radius:5px;}
