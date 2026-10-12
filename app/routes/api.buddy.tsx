@@ -9,10 +9,12 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
-import { tokensRemainingLive } from "../lib/tokens.server";
-import { resolveTierKey, PLAN_BY_KEY } from "../lib/plan-config";
-import { anthropicText } from "../lib/anthropic.server";
+import { tokensRemainingLive, monthlyUsageSummary } from "../lib/tokens.server";
+import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
+import { anthropicToolLoop, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { db } from "../db.server";
+
+type WebId = NonNullable<Awaited<ReturnType<typeof getWebIdentity>>>;
 
 // Rolling window kept per shop+mode — enough for real continuity across
 // sessions without the table growing unbounded (messages are tiny text rows).
@@ -99,6 +101,102 @@ function contextLine(id: Awaited<ReturnType<typeof getWebIdentity>>, path: strin
   return `You're talking to ${name}, level ${id.shop.level}, plan: ${plan}, about ${tokens.toLocaleString()} tokens left, ${where}.${modeLine}`;
 }
 
+// PHASE 1 — read-only agency. Helpurr can now LOOK UP the user's real store
+// data instead of guessing, so "knows everything" is actually true. Every tool
+// is read-only and scoped to this shop; nothing here changes data, spends
+// tokens, or posts — that's Phase 2 (and will be gated behind a confirm).
+const BUDDY_TOOLS: ToolDef[] = [
+  {
+    name: "get_store_snapshot",
+    description: "The user's current plan, token balance, what that balance can make, level/XP and content language. Use for any question about their plan, tokens, what they can afford, or progress.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_recent_work",
+    description: "The user's most recent creations (image ads, videos, blogs, photo edits) with type, status and when, plus how many they made in the last 7 days. Use for 'what have I made', 'how many this week', 'what did I just make'.",
+    input_schema: { type: "object", properties: { limit: { type: "integer", description: "How many recent items to return (default 8, max 20)" } } },
+  },
+  {
+    name: "get_catalog",
+    description: "The products EasyMode has learned for this store (how many, plus a sample of titles and prices). Use for 'what products do I have', 'what's in my catalog', or to ground a suggestion in their real products.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_campaigns",
+    description: "The user's content campaigns (questlines) that run content on a schedule: name, status, progress and the product. Use for 'what are my campaigns doing', 'is my campaign running'.",
+    input_schema: { type: "object", properties: {} },
+  },
+];
+
+function relTime(d: Date): string {
+  const ms = Date.now() - d.getTime();
+  const min = Math.round(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  return day <= 1 ? "yesterday" : `${day}d ago`;
+}
+
+async function runBuddyTool(id: WebId, name: string, input: Record<string, unknown>): Promise<string> {
+  const shopId = id.shop.id;
+  if (name === "get_store_snapshot") {
+    const plan = id.shop.activePlan;
+    const tier = plan?.active ? resolveTierKey(plan.type) : null;
+    const tokens = tokensRemainingLive(plan);
+    const tokensMax = plan?.active
+      ? Math.max(1, (tier ? PLAN_BY_KEY[tier].monthlyTokens : plan.tokensIncluded) + plan.tokensExtra)
+      : 0;
+    const usage = monthlyUsageSummary(plan);
+    return JSON.stringify({
+      plan: tier ? PLAN_BY_KEY[tier].name : "no plan yet (on a free trial or unsubscribed)",
+      planActive: !!plan?.active,
+      trialing: usage.trialing,
+      tokensRemaining: tokens,
+      tokensMax,
+      monthlyAllowance: usage.monthly,
+      usedThisCycle: usage.used,
+      topUpTokens: usage.extra,
+      affords: { productVideos: Math.floor(tokens / TOKEN_COST.video), imageAds: Math.floor(tokens / TOKEN_COST.image) },
+      level: id.shop.level,
+      xp: id.shop.xp,
+      contentLanguage: id.shop.contentLang || "English (default)",
+    });
+  }
+  if (name === "get_recent_work") {
+    const limit = Math.min(20, Math.max(1, Number(input.limit) || 8));
+    const rows = await db.asset.findMany({
+      where: { shopId }, orderBy: { createdAt: "desc" }, take: limit,
+      select: { type: true, status: true, title: true, createdAt: true, metaJson: true },
+    });
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000);
+    const madeThisWeek = await db.asset.count({ where: { shopId, createdAt: { gte: weekAgo } } });
+    const items = rows.map((r) => {
+      let section: string | undefined;
+      try { section = (JSON.parse(r.metaJson) as { section?: string }).section; } catch { /* ignore */ }
+      return { kind: r.type, status: r.status, title: r.title || null, section: section || "marketing", when: relTime(r.createdAt) };
+    });
+    return JSON.stringify({ madeThisWeek, recent: items });
+  }
+  if (name === "get_catalog") {
+    const productCount = await db.catalogProduct.count({ where: { shopId } });
+    const sample = await db.catalogProduct.findMany({
+      where: { shopId }, orderBy: { position: "asc" }, take: 12,
+      select: { title: true, priceText: true },
+    });
+    return JSON.stringify({ productCount, sample: sample.map((p) => ({ title: p.title, price: p.priceText || null })) });
+  }
+  if (name === "get_campaigns") {
+    const qs = await db.questline.findMany({
+      where: { shopId }, orderBy: { createdAt: "desc" }, take: 10,
+      select: { name: true, status: true, progress: true, productTitle: true, durationDays: true },
+    });
+    return JSON.stringify({ campaigns: qs.map((q) => ({ name: q.name, status: q.status, progressPct: q.progress, product: q.productTitle || null, days: q.durationDays })) });
+  }
+  return "(unknown tool)";
+}
+
 // GET — the widget loads the saved conversation on open, so Helpurr picks up
 // exactly where it left off instead of greeting from scratch every reload.
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -147,17 +245,31 @@ export async function action({ request }: ActionFunctionArgs) {
   const mode: "marketing" | "casual" = body.mode === "casual" ? "casual" : "marketing";
 
   const id = await getWebIdentity(request);
-  const convo = messages
-    .slice(-14)
+
+  // The conversation as proper role-messages for the tool loop. Drop leading
+  // assistant turns (a greeting) so it starts with the user, and cap to the
+  // recent tail — the saved thread can be long.
+  let chat: ChatMsg[] = messages
     .filter((m) => m && typeof m.content === "string" && m.content.trim())
-    .map((m) => `${m.role === "assistant" ? "Helpurr" : "User"}: ${(m.content || "").trim().slice(0, 1200)}`)
-    .join("\n");
-  if (!convo) return json({ reply: "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?" });
+    .map((m): ChatMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: (m.content || "").trim().slice(0, 1200) }));
+  chat = chat.slice(-14);
+  while (chat.length && chat[0].role === "assistant") chat = chat.slice(1);
+  if (!chat.length) return json({ reply: "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?" });
 
   const persona = mode === "casual" ? PERSONA_CASUAL : PERSONA;
-  const prompt = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}\n\nConversation so far:\n${convo}\n\nReply as Helpurr — warm and genuinely conversational, as tight or as full as the question deserves:`;
+  const toolNote = id
+    ? "\n\nYOU CAN LOOK THINGS UP: the tools provided return this user's REAL store data — plan, tokens, what they've made, their catalog, their campaigns. When a question touches their actual data, CALL the right tool and answer from what it returns; never guess or invent a number. One or two quick lookups is plenty. Keep replies warm and plain text."
+    : "";
+  const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}`;
   try {
-    const reply = await anthropicText(prompt, { model: "claude-haiku-4-5-20251001", maxTokens: 500 });
+    const reply = await anthropicToolLoop({
+      system,
+      messages: chat,
+      tools: id ? BUDDY_TOOLS : [],
+      runTool: async (n, i) => (id ? runBuddyTool(id, n, i) : "(not signed in)"),
+      model: "claude-haiku-4-5-20251001",
+      maxTokens: 700,
+    });
     // Belt-and-braces: strip any markdown emphasis the model slips in, since the
     // bubble renders plain text and "**Studio**" would show the asterisks.
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");

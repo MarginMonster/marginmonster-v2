@@ -121,6 +121,86 @@ export async function anthropicText(
   return block?.text || "";
 }
 
+export interface ToolDef {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+export type ChatMsg = { role: "user" | "assistant"; content: unknown };
+
+/** Multi-turn TOOL-USE loop. Sends the conversation with the given tools; when
+ *  the model calls a tool, runs it via `runTool`, feeds the result back, and
+ *  repeats up to `maxRounds` until the model returns a final text answer. Same
+ *  raw-fetch client + retry as anthropicText. The caller decides what the tools
+ *  do — keep them READ-ONLY and this loop is safe. Returns the final text (or
+ *  the best text seen if it runs out of rounds). */
+export async function anthropicToolLoop(opts: {
+  system: string;
+  messages: ChatMsg[];
+  tools: ToolDef[];
+  runTool: (name: string, input: Record<string, unknown>) => Promise<string>;
+  model?: string;
+  maxTokens?: number;
+  maxRounds?: number;
+}): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) throw new Error("ANTHROPIC_API_KEY not set");
+  const model = opts.model || "claude-haiku-4-5-20251001";
+  const maxTokens = opts.maxTokens || 700;
+  const maxRounds = Math.max(1, opts.maxRounds ?? 5);
+  const messages: ChatMsg[] = [...opts.messages];
+
+  let lastText = "";
+  for (let round = 0; round < maxRounds; round++) {
+    let res: Response;
+    try {
+      res = await fetchRetry(
+        ANTHROPIC_URL,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model,
+            max_tokens: maxTokens,
+            ...thinkingFieldFor(model),
+            system: opts.system,
+            ...(opts.tools.length ? { tools: opts.tools } : {}),
+            messages,
+          }),
+        },
+        { label: "anthropic-tools", attempts: 5, totalCapMs: 90_000 }
+      );
+    } catch (e) {
+      throw new Error(`Network error reaching Anthropic: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const bodyText = await res.text();
+    if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${bodyText.slice(0, 400)}`);
+    let json: { stop_reason?: string; content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> };
+    try { json = JSON.parse(bodyText); } catch { throw new Error("Anthropic returned invalid JSON"); }
+    const content = json.content || [];
+    const text = content.filter((c) => c.type === "text").map((c) => c.text || "").join("").trim();
+    if (text) lastText = text;
+
+    if (json.stop_reason === "tool_use") {
+      messages.push({ role: "assistant", content });
+      const results: Array<{ type: string; tool_use_id: string; content: string }> = [];
+      for (const block of content) {
+        if (block.type === "tool_use" && block.id && block.name) {
+          let out = "";
+          try { out = await opts.runTool(block.name, (block.input as Record<string, unknown>) || {}); }
+          catch (e) { out = `Error running ${block.name}: ${e instanceof Error ? e.message.slice(0, 200) : "failed"}`; }
+          results.push({ type: "tool_result", tool_use_id: block.id, content: (out || "(no data)").slice(0, 6000) });
+        }
+      }
+      if (!results.length) break;
+      messages.push({ role: "user", content: results });
+      continue;
+    }
+    return lastText;
+  }
+  return lastText;
+}
+
 /** Shopify CDN serves ORIGINALS — routinely past the API's 8000px image
  *  limit — and a ten-product sweep lost three products to 400s because of it.
  *  Worse, the production gate swallows that 400 as a QA outage and passes the
