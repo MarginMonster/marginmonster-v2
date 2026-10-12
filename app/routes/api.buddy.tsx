@@ -11,6 +11,7 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
+import { capabilitiesFor } from "../lib/capabilities.server";
 import { anthropicToolLoop, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { db } from "../db.server";
 
@@ -277,17 +278,38 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual"): Promise<
     if (tokens < TOKEN_COST.image) {
       return { reply: `Hey ${first}! 🐾 You're low on tokens (${tokens} left) — top up and I'll help you turn your products into a whole week of content.`, pendingAction: { label: "Add tokens", to: "/web#plans", cost: 0, kind: "plans" } };
     }
-    // Feature a product, rotating by day so the nudge stays fresh.
-    const idx = new Date().getUTCDate() % catCount;
-    const product = (await db.catalogProduct.findFirst({ where: { shopId }, orderBy: { position: "asc" }, skip: idx, select: { title: true } }))
+    // Feature a RANDOM product so it stays fresh across opens.
+    const skip = Math.floor(Math.random() * Math.max(1, catCount));
+    const product = (await db.catalogProduct.findFirst({ where: { shopId }, orderBy: { position: "asc" }, skip, select: { title: true } }))
       || (await db.catalogProduct.findFirst({ where: { shopId }, orderBy: { position: "asc" }, select: { title: true } }));
     if (!product) return null;
-    const { action } = buildTask({ kind: "image_ad", product: product.title });
-    const opener = activeQ > 0
-      ? `Hey ${first}! 🐾 Your campaign's running nicely. Want a one-off ad too? I can line one up for ${product.title}.`
-      : madeWeek > 0
-        ? `Hey ${first}! 🐾 ${madeWeek} pieces this week — nice pace. Want to keep it rolling? A fresh ad for ${product.title} is ready when you are.`
-        : `Hey ${first}! 🐾 Want to get ahead today? I can line up an image ad for ${product.title} — about a minute to make.`;
+
+    // Mix up WHAT it suggests — not just ads — so Helpurr feels alive. Only offer
+    // what the plan + wallet actually allow, so a nudge is never a dead end.
+    // Weighted toward image ads (the staple), with video/blog genuinely in the mix.
+    const caps = capabilitiesFor(id.shop.activePlan);
+    const ideas: Array<{ kind: "image_ad" | "video" | "blog"; weight: number; line: string }> = [
+      { kind: "image_ad", weight: 3, line: `a scroll-stopping image ad for ${product.title}` },
+    ];
+    if (caps.has("blog") && tokens >= TOKEN_COST.blog) ideas.push({ kind: "blog", weight: 2, line: `an SEO blog post around ${product.title}` });
+    if (caps.has("video") && tokens >= TOKEN_COST.video) ideas.push({ kind: "video", weight: 2, line: `a product video for ${product.title}` });
+    const totalW = ideas.reduce((s, i) => s + i.weight, 0);
+    let r = Math.random() * totalW;
+    const idea = ideas.find((i) => (r -= i.weight) < 0) || ideas[0];
+    const { action } = buildTask({ kind: idea.kind, product: product.title });
+
+    // Varied openers so it never reads like a broken record.
+    const openers = [
+      `Hey ${first}! 🐾 Want to get ahead today? I could set up ${idea.line} — about a minute.`,
+      `Hey ${first}! 🐾 Fresh idea: ${idea.line}. Want me to line it up?`,
+      madeWeek > 0
+        ? `Hey ${first}! 🐾 ${madeWeek} pieces this week — nice pace. Want ${idea.line} next?`
+        : `Hey ${first}! 🐾 Nothing in motion yet — want ${idea.line} to kick things off?`,
+      activeQ > 0
+        ? `Hey ${first}! 🐾 Your campaign's humming along. Want ${idea.line} as a one-off too?`
+        : `Hey ${first}! 🐾 Got a minute? I could whip up ${idea.line}.`,
+    ];
+    const opener = openers[Math.floor(Math.random() * openers.length)];
     return { reply: opener, pendingAction: action || undefined };
   } catch {
     return null;
