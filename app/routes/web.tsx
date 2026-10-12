@@ -1326,6 +1326,9 @@ const CSS = `
   .wb-login{min-height:44px;display:inline-flex;align-items:center}
   .wb-chip{min-height:44px}
   .wb-mode-opt{min-height:44px;display:inline-flex;align-items:center}
+  /* shared classes used by studio + archive marketing views */
+  .ws-tab{min-height:44px}
+  .ws-engine{min-height:44px}
 }
 @media(max-width:620px){
   .mm-x{min-width:44px;min-height:44px}

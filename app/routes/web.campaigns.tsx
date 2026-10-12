@@ -969,6 +969,6 @@ const WC_STYLE = `
   .wc-pchip.off{display:inline-flex;align-items:center;min-height:44px}
   .ws-cs-clr{width:44px;height:44px}
   .ws-castsearch .wb-in{padding-right:48px}
-  .wc-nav{width:44px;height:44px;border-radius:12px}
+  .wc-nav{width:44px;height:44px;min-width:44px;flex:0 0 auto;border-radius:12px}
 }
 `;
