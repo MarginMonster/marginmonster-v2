@@ -2755,12 +2755,6 @@ export default function WebStudio() {
                        : <img src={stageResult.media} alt={stageResult.title}
                            onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setStageAspect(t.naturalWidth / t.naturalHeight); }} />}
                  </div>
-                 <div className="ws-verbs">
-                   <a className="ws-verb gold" href={stageResult.media} download>⤓ {t("Download")}</a>
-                   <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>
-                   <Link className="ws-verb" to="/web/archive?section=creator">{t("Open gallery")}</Link>
-                   <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ {t("Clear")}</button>
-                 </div>
                </div>
              ) : genError ? (
                <div className={`ws-easelph ws-generr${genError.kind === "unsafe" ? " unsafe" : ""}`} role="alert">
@@ -2808,31 +2802,42 @@ export default function WebStudio() {
                </div>
              )}
            </div>
-           {/* QUICK EDIT — a clean panel UNDER the photo (not an overlay on it).
-               Pick an edit type, then the green button confirms and spends. */}
-           {stageResult && !stageResult.isVideo && !stageResult.isAudio && (
-             <div className="ws-qedit">
-               <div className="ws-qedit-h">
-                 <span className="ws-qedit-t">{t("Quick edit")}</span>
-                 <span className="ws-qedit-sub">{t("{n} tokens each", { n: d.costs.quickEdit })}</span>
-               </div>
-               <div className="ws-qedit-chips" role="radiogroup" aria-label={t("Quick edit type")}>
-                 {QUICK_OPS.map((o) => (
-                   <button key={o.key} type="button" role="radio" aria-checked={quickSel === o.key}
-                     className={`ws-qchip${quickSel === o.key ? " on" : ""}`} disabled={making || busy}
-                     onClick={() => setQuickSel((s) => (s === o.key ? null : o.key))}>
-                     <Ico n={o.icon} size={15} /> {o.label}
+           {/* RESULT CONTROLS — everything lives in its OWN area UNDER the photo
+               (nothing is painted on top of the image any more): the quick-edit
+               picker first, then the download/make-another/clear actions. */}
+           {stageResult && (
+             <div className="ws-resultctl">
+               {!stageResult.isVideo && !stageResult.isAudio && (
+                 <div className="ws-qedit">
+                   <div className="ws-qedit-h">
+                     <span className="ws-qedit-t">{t("Quick edit")}</span>
+                     <span className="ws-qedit-sub">{t("{n} tokens each", { n: d.costs.quickEdit })}</span>
+                   </div>
+                   <div className="ws-qedit-chips" role="radiogroup" aria-label={t("Quick edit type")}>
+                     {QUICK_OPS.map((o) => (
+                       <button key={o.key} type="button" role="radio" aria-checked={quickSel === o.key}
+                         className={`ws-qchip${quickSel === o.key ? " on" : ""}`} disabled={making || busy}
+                         onClick={() => setQuickSel((s) => (s === o.key ? null : o.key))}>
+                         <Ico n={o.icon} size={15} /> {o.label}
+                       </button>
+                     ))}
+                   </div>
+                   <button type="button" className="wb-btn ws-qedit-go" disabled={!quickSel || making || busy}
+                     onClick={() => { const o = QUICK_OPS.find((x) => x.key === quickSel); if (o) quickEdit(o.op, o.dir); }}>
+                     {(making || busy)
+                       ? t("Applying your edit…")
+                       : quickSel
+                         ? t("Apply {label} — {n} tokens · +{xp} XP", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "", n: d.costs.quickEdit, xp: xpForSpend(d.costs.quickEdit) })
+                         : t("Pick an edit above to apply")}
                    </button>
-                 ))}
+                 </div>
+               )}
+               <div className="ws-verbs">
+                 <a className="ws-verb gold" href={stageResult.media} download>⤓ {t("Download")}</a>
+                 <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>
+                 <Link className="ws-verb" to="/web/archive?section=creator">{t("Open gallery")}</Link>
+                 <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ {t("Clear")}</button>
                </div>
-               <button type="button" className="ws-qedit-go" disabled={!quickSel || making || busy}
-                 onClick={() => { const o = QUICK_OPS.find((x) => x.key === quickSel); if (o) quickEdit(o.op, o.dir); }}>
-                 {(making || busy)
-                   ? t("Applying your edit…")
-                   : quickSel
-                     ? t("Apply {label} — {n} tokens · +{xp} XP", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "", n: d.costs.quickEdit, xp: xpForSpend(d.costs.quickEdit) })
-                     : t("Pick an edit above to apply")}
-               </button>
              </div>
            )}
            <input ref={stageUploadRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => onStagePhoto(e.currentTarget.files?.[0])} />
@@ -3082,7 +3087,7 @@ const WS_STYLE = `
 /* Post-generation quick edits (Enhance / Zoom out / Zoom in / Remove bg). */
 /* QUICK EDIT — a clean light panel UNDER the photo card (not a dark overlay on
    the image). Select a chip, then the green button confirms + spends. */
-.ws-qedit{max-width:min(100%,560px);margin:12px auto 0;padding:13px 14px 14px;border-radius:16px;
+.ws-qedit{padding:13px 14px 14px;border-radius:16px;
   background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF);box-shadow:0 2px 10px rgba(20,32,26,.06)}
 .ws-qedit-h{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
 .ws-qedit-t{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A)}
@@ -3095,11 +3100,18 @@ const WS_STYLE = `
 .ws-qchip.on{background:#E7F5EC;border-color:var(--green2,#12A85E);color:var(--green,#0C7A46)}
 .ws-qchip.on svg{color:var(--green2,#12A85E)}
 .ws-qchip:disabled{opacity:.5;cursor:default}
-.ws-qedit-go{margin-top:12px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;
-  font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;color:#fff;border:0;border-radius:12px;padding:12px;cursor:pointer;
-  background:linear-gradient(168deg,#16B866,#0B6B3E);box-shadow:0 3px 12px rgba(12,122,70,.28);transition:filter .12s,opacity .12s}
-.ws-qedit-go:hover:not(:disabled){filter:brightness(1.05)}
-.ws-qedit-go:disabled{opacity:.5;cursor:default;box-shadow:none}
+/* The Apply button reuses .wb-btn — green gradient + gold rule + the drifting
+   gold rosette medallion, same as the main "Make" CTA. This only makes it a
+   full-width block sitting under the chips. */
+.ws-qedit-go{margin-top:12px;width:100%;display:block}
+/* RESULT CONTROLS wrapper — holds the quick-edit panel + the action verbs in
+   their own area UNDER the photo. The verbs are relit for this light area
+   (the base .ws-verbs stays dark for the on-frame edit-preview state). */
+.ws-resultctl{max-width:min(100%,560px);margin:14px auto 0;display:flex;flex-direction:column;gap:10px}
+.ws-resultctl .ws-verbs{justify-content:center;background:none;border-top:0;padding:0}
+.ws-resultctl .ws-verb{color:var(--ink2,#4A554E);background:var(--card,#FDFCF7);border-color:var(--line,#E4DFCF)}
+.ws-resultctl .ws-verb:hover{color:var(--green,#0C7A46);background:#EAF6EE;border-color:var(--green2,#12A85E)}
+.ws-resultctl .ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
 /* Failed-generation card (shown on the Stage instead of spinning forever). */
 .ws-generr{gap:10px}
 .ws-generr-ico{display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#F5E6C8;color:#9A5B12;font-weight:900;font-size:24px;border:2px solid #E7C98F}
