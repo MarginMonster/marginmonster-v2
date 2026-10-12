@@ -3281,4 +3281,22 @@ const WS_STYLE = `
   .ws-casual .ws-shelf-thumb{height:128px}
 }
 @media (prefers-reduced-motion:reduce){.ws-rose{animation:none}}
+/* ── 44px tap-target floor (mobile touch). Appended so source order wins; only
+   hit boxes grow, glyph sizes unchanged. ── */
+.ws-vx{width:44px;height:44px}
+.ws-setbf{min-height:44px;display:inline-flex;align-items:center}
+.ws-impbtn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+.ws-styletoggle{min-height:44px}
+@media(max-width:620px){
+  .ws-addurl{min-height:44px;display:inline-flex;align-items:center}
+  .ws-fmtsel button{width:44px;height:44px}
+  .ws-cs-clr{width:44px;height:44px;background:transparent}
+  .ws-samp{width:44px;height:44px}
+  .ws-fmtcat{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .ws-verb{min-height:44px;display:inline-flex;align-items:center}
+  .ws-qchip{min-height:44px}
+  .ws-chip{min-height:44px;padding-top:12px;padding-bottom:12px}
+  .ws-seg button{min-height:44px;display:inline-flex;align-items:center}
+  .ws-model{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+}
 `;

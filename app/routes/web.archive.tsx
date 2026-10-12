@@ -813,6 +813,19 @@ const WA_CSS = `
 .wa-creator .wb-asset{transition:transform .14s ease,box-shadow .14s ease;}
 .wa-creator .wb-asset:hover{transform:translateY(-3px);}
 @media(max-width:620px){.wa-creator .wb-h1{font-size:27px;}}
+/* ── 44px tap-target floor (mobile touch). Appended so source order wins over
+   the shrunk mobile icon rules above; glyph sizes unchanged, only hit boxes. ── */
+@media(max-width:640px){
+  .wa-boost{min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center}
+  .wa-icon{width:44px;height:44px;border-radius:9px;font-size:13px}
+  .wa-jacts .wb-btn{min-height:44px !important;box-sizing:border-box !important}
+  .wa-vx{width:44px;height:44px;font-size:14px}
+  .wa-vbtn{min-height:44px;box-sizing:border-box}
+  .wa-vnav{width:44px;height:44px;font-size:21px}
+}
+@media(max-width:620px){
+  .wa-creator .ws-tab{min-height:44px;box-sizing:border-box}
+}
 `;
 
 export default function WebArchive() {

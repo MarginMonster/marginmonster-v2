@@ -1313,4 +1313,27 @@ const CSS = `
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
 @media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}}
+/* ── 44px tap-target floor (mobile touch). Appended so source order wins over
+   the compact sizing above; icon glyph sizes are untouched, only hit boxes grow.
+   Header controls use the 760px header breakpoint; Helpurr uses 620px. ── */
+.wb-menu-plan{min-height:44px;display:inline-flex;align-items:center}
+.wb-menu-topup{min-height:44px}
+.wb-menu-link{min-height:44px}
+.ws-mclose{min-height:44px;padding:0 16px;display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:760px){
+  .wb-tab{min-height:44px;display:flex;align-items:center}
+  .wb-admin{min-width:44px;min-height:44px}
+  .wb-login{min-height:44px;display:inline-flex;align-items:center}
+  .wb-chip{min-height:44px}
+  .wb-mode-opt{min-height:44px;display:inline-flex;align-items:center}
+}
+@media(max-width:620px){
+  .mm-x{min-width:44px;min-height:44px}
+  .mm-tab{min-height:44px;display:inline-flex;align-items:center}
+  .mm-chips button{min-height:44px;display:inline-flex;align-items:center}
+  .mm-act{min-height:44px;display:inline-flex;align-items:center}
+  .mm-make{min-height:44px}
+  .mm-input input{min-height:44px}
+  .mm-input button{min-width:44px;min-height:44px}
+}
 `;

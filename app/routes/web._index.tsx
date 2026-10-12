@@ -858,4 +858,10 @@ const DASH_CSS = `
 .wdv-chips{display:flex;gap:8px;flex-wrap:wrap;}
 .wdv-chip{font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600;}
 .wdv-chip.tone{color:#0A3D26;background:#EAF6EF;border-color:#BFE2CD;}
+/* ── 44px tap-target floor (mobile touch) ── */
+.wdw-review{min-height:44px}
+@media(max-width:620px){
+  .wdl-x{min-width:44px;min-height:44px;display:grid;place-items:center;padding:0}
+  .wd-toggle button{min-height:44px}
+}
 `;

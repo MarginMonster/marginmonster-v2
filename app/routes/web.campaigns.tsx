@@ -775,7 +775,13 @@ export default function WebCampaigns() {
               : <>{t("No accounts connected yet — drops will be saved to your Archive.")} <Link to="/web/connect">{t("Connect auto-posting")}</Link>.</>}
           </p>
 
-          <button type="button" className="wb-btn wc-go" disabled={busy || !picked.length || !plan || plan.videoLocked} onClick={launch}>
+          {plan && !plan.videoLocked && !plan.affordable && (
+            <p className="wc-hint wc-afford">
+              {t("This runs {cost} tokens and you have {tokens} —", { cost: plan.cost.toLocaleString("en-US"), tokens: d.tokens.toLocaleString("en-US") })}{" "}
+              <Link to="/web#plans">{t("top up")}</Link>.
+            </p>
+          )}
+          <button type="button" className="wb-btn wc-go" disabled={busy || !picked.length || !plan || plan.videoLocked || !plan.affordable} onClick={launch}>
             {busy ? t("Starting…") : t("Start {name}", { name: plan?.name || t("campaign") })}
           </button>
           </>
@@ -799,6 +805,8 @@ const WC_STYLE = `
 .wc-lblrow{display:flex;align-items:center;justify-content:space-between}
 .wc-cap{font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink3,#8A938D)}
 .wc-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:8px 0 0}
+.wc-afford{color:#A33232;font-weight:600}
+.wc-afford a{color:#A33232;text-decoration:underline}
 /* segmented control — the studio sheet that normally defines .ws-seg is not
    loaded on this route, so without this block the selected pill is invisible. */
 .ws-seg{display:flex;gap:8px;flex-wrap:wrap}
@@ -950,5 +958,17 @@ const WC_STYLE = `
   .wc-t{font-size:8.5px;padding:1px 3px}
   .wc-rose.a{width:280px;top:-100px;right:-90px}
   .wc-rose.b{width:220px;bottom:-90px;left:-70px}
+}
+/* ── 44px tap-target floor (mobile touch). Appended so source order wins. ── */
+.wc-card-acts button{min-height:44px}
+.wc-newbtn{min-height:44px}
+.wc-go{min-height:44px}
+@media (max-width:640px){
+  .wc-selall{min-height:44px;display:inline-flex;align-items:center}
+  .wc-time{min-height:44px}
+  .wc-pchip.off{display:inline-flex;align-items:center;min-height:44px}
+  .ws-cs-clr{width:44px;height:44px}
+  .ws-castsearch .wb-in{padding-right:48px}
+  .wc-nav{width:44px;height:44px;border-radius:12px}
 }
 `;

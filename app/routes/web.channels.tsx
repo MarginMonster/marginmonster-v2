@@ -236,7 +236,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
   const weeklyTokens = perWeek * facelessCost;
   const canAfford = tokens >= facelessCost;
   const togglePlat = (p: string) => setPlats((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
-  const disabled = creating || !niche.trim() || (autoPost && plats.length === 0);
+  const disabled = creating || !niche.trim() || (autoPost && plats.length === 0) || !canAfford;
 
   return (
     <Form method="post" className="ch-setup">
@@ -469,4 +469,13 @@ const CH_CSS = `
 .ch-empty{margin-top:10px;padding:22px;border-radius:16px;background:#fff;border:1px dashed var(--l);font-size:14px;color:var(--ink2);text-align:center;}
 .ch-link{color:var(--g);font-weight:700;background:none;border:0;cursor:pointer;font:inherit;text-decoration:underline;padding:0;}
 @media(max-width:560px){.ch-row2{grid-template-columns:1fr;}.ch-modes{grid-template-columns:1fr;}.ch-title{font-size:25px;}}
+/* ── 44px tap-target floor (mobile touch). Appended so source order wins. ── */
+.ch-go.sm{box-sizing:border-box;min-height:44px}
+@media(max-width:620px){
+  .ch-x{box-sizing:border-box;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .ch-chip{box-sizing:border-box;min-height:44px}
+  .ch-act{box-sizing:border-box;min-height:44px}
+  .ch-newbtn{box-sizing:border-box;min-height:44px}
+  .ch-pill{box-sizing:border-box;min-height:44px}
+}
 `;

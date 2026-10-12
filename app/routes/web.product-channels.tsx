@@ -378,4 +378,14 @@ const PC_CSS = `
 .pc-empty{margin-top:10px;padding:22px;border-radius:16px;background:#fff;border:1px dashed var(--l);font-size:14px;color:var(--ink2);text-align:center;}
 .pc-link{color:var(--g);font-weight:700;background:none;border:0;cursor:pointer;font:inherit;text-decoration:underline;padding:0;}
 @media(max-width:560px){.pc-row2{grid-template-columns:1fr;}.pc-modes{grid-template-columns:1fr;}.pc-title{font-size:25px;}}
+/* ── 44px tap-target floor (mobile touch). Appended so source order wins. ── */
+.pc-act{min-height:44px;box-sizing:border-box}
+.pc-newbtn{min-height:44px;box-sizing:border-box}
+.pc-go.sm{min-height:44px;box-sizing:border-box}
+@media(max-width:560px){
+  .pc-x{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .pc-card-gal{min-height:44px;display:inline-flex;align-items:center}
+  .pc-chip{min-height:44px;box-sizing:border-box}
+  .pc-pill{min-height:44px;box-sizing:border-box}
+}
 `;
