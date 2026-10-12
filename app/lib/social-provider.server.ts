@@ -89,11 +89,16 @@ export async function connectUrl(shopId: string, returnUrl?: string): Promise<st
 /** Refresh + cache the platforms the merchant actually linked. */
 export async function refreshLinkedPlatforms(shopId: string): Promise<string[]> {
   if (!socialProviderEnabled()) return [];
-  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { socialProfileKey: true } });
+  const shop = await db.shop.findUnique({ where: { id: shopId }, select: { socialProfileKey: true, socialsJson: true } });
   if (!shop?.socialProfileKey) return [];
+  // A provider hiccup must NOT make linked accounts vanish from the UI — a
+  // transient failure falls back to the last-known cache instead of []. Only a
+  // SUCCESSFUL response (which may legitimately be empty, e.g. the merchant
+  // unlinked) is trusted to overwrite that cache.
+  const cached = linkedFromCache(shop.socialsJson);
   try {
     const r = await fetch(`${API}/uploadposts/users/${encodeURIComponent(shop.socialProfileKey)}`, { headers: authHeader() });
-    if (!r.ok) return [];
+    if (!r.ok) return cached;
     const j = (await r.json()) as { profile?: { social_accounts?: Record<string, unknown> }; social_accounts?: Record<string, unknown> };
     const accounts = j.profile?.social_accounts || j.social_accounts || {};
     const platforms = Object.entries(accounts)
@@ -103,7 +108,7 @@ export async function refreshLinkedPlatforms(shopId: string): Promise<string[]> 
     return platforms;
   } catch (e) {
     console.error("[social] user fetch failed:", e);
-    return [];
+    return cached;
   }
 }
 

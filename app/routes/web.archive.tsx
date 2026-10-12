@@ -700,6 +700,9 @@ const WA_CSS = `
 .wa-tileacts{display:flex;gap:8px;align-items:center;margin-top:8px;}
 .wa-jacts{display:flex;gap:8px;margin-top:8px;}
 .wa-icon{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:10px;border:1px solid var(--line,#E5E0CF);background:#fff;color:var(--ink,#14201A);cursor:pointer;font-size:14px;text-decoration:none;padding:0;}
+/* armed delete — first tap turns the trash red; a second tap within 4s deletes. */
+.wa-icon.armed{border-color:#C0392B;background:#FBEAE7;color:#8C2E1B;box-shadow:0 0 0 2px rgba(192,57,43,.28);animation:waArm .18s ease}
+@keyframes waArm{from{transform:scale(.88)}to{transform:scale(1)}}
 .wa-icon:hover{filter:brightness(.97)}
 .wa-icon[disabled]{opacity:.5;cursor:not-allowed}
 .wa-blogrows{display:grid;gap:12px;}
@@ -742,6 +745,7 @@ const WA_CSS = `
 .wa-vbtn.gold{background:linear-gradient(165deg,#C98F12,#8a6207);box-shadow:0 4px 12px rgba(176,133,38,.3);}
 .wa-vbtn.ghost{background:#fff;color:var(--ink,#14201A);border:1px solid var(--line,#E5E0CF);box-shadow:none;}
 .wa-vbtn.danger{background:#fff;color:#8C2E1B;border:1px solid #E8C4BC;box-shadow:none;}
+.wa-vbtn.danger.armed{background:#8C2E1B;color:#fff;border-color:#8C2E1B;}
 .wa-vbtn[disabled]{opacity:.5;cursor:not-allowed}
 .wa-vbtn .c{display:block;font-size:10px;font-weight:700;opacity:.85;margin-top:1px;}
 .wa-cap{margin-top:12px;background:#FBF9F0;border:1px solid var(--line,#E5E0CF);border-radius:14px;padding:12px;}
@@ -857,6 +861,19 @@ export default function WebArchive() {
   const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
   const remix = (assetId: string) => submit({ intent: "remix", assetId }, { method: "post" });
+  // Delete is permanent and the trash icons are small and easy to mis-tap, so
+  // guard it behind a confirm: the first tap arms the button, a second tap
+  // within 4s actually deletes. Arming auto-clears so a stray tap is harmless.
+  const [armedDel, setArmedDel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armedDel) return;
+    const timer = setTimeout(() => setArmedDel(null), 4000);
+    return () => clearTimeout(timer);
+  }, [armedDel]);
+  const askDelete = (assetId: string) => {
+    if (armedDel === assetId) { setArmedDel(null); deleteAsset(assetId); }
+    else setArmedDel(assetId);
+  };
 
   // Editable caption preview: "Post to socials" opens one caption box pre-filled
   // with an AI suggestion (intent "draft") the merchant can tweak or post as-is.
@@ -1006,7 +1023,7 @@ export default function WebArchive() {
                   {a.snippet && <p>{a.snippet}…</p>}
                   <span className={`wa-chip ${cc}`}>{cl}</span>
                 </button>
-                <button type="button" className="wa-icon" title={t("Delete this article")} disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
+                <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete — can't be undone") : t("Delete this article")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
               </div>
             );
           })}
@@ -1056,7 +1073,7 @@ export default function WebArchive() {
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title={t("Download")}><Ico n="download" /></a>}
-                    <button type="button" className="wa-icon" title={t("Delete")} disabled={busy} onClick={() => deleteAsset(a.id)}><Ico n="trash" /></button>
+                    <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete — can't be undone") : t("Delete")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
                   </div>
                 </div>
               </div>
@@ -1159,7 +1176,7 @@ export default function WebArchive() {
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? t("Copied ✓") : t("Copy HTML")}</button>}
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> {t("Download")}</button>}
                   <button type="button" className="wa-vbtn gold" disabled={busy} title={t("Write a fresh article on the same product")} onClick={() => remix(viewer.id)}><Ico n="sparkle" /> {t("Remix")}<span className="c">{t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
-                  <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>{t("Delete")}</button>
+                  <button type="button" className={`wa-vbtn danger${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
                 </div>
               ) : (
                 <>
@@ -1199,7 +1216,7 @@ export default function WebArchive() {
                     {!viewer.isAudio && (
                       <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? t("We lost this render — make it again, on us") : t("Make a fresh variation of this piece")} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? t("Make it again") : t("Remix")}<span className="c">{viewer.freeRemake ? t("free — on us") : t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
                     )}
-                    <button type="button" className="wa-vbtn danger" disabled={busy} onClick={() => deleteAsset(viewer.id)}>{t("Delete")}</button>
+                    <button type="button" className={`wa-vbtn danger${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
                   </div>
                   {capOpen && (
                     <div className="wa-cap">

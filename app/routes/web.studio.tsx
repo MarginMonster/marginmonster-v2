@@ -1580,6 +1580,32 @@ export default function WebStudio() {
     fd.set("productTitle", "Quick edit");
     submit(fd, { method: "post", encType: "multipart/form-data" });
   };
+  // Save the staged result. A plain <a download> only works same-origin — our
+  // renders live at /renders but fal/replicate/CDN results are cross-origin
+  // expiring URLs, where the browser silently IGNORES `download` and just opens
+  // the file. So for those we pull the bytes and save a blob, falling back to a
+  // new-tab open if the host blocks the fetch (never worse than before).
+  const downloadMedia = async (url: string) => {
+    const base = url.split("?")[0];
+    const ext = (base.match(/\.(mp4|webm|mov|png|jpe?g|webp|gif|mp3|wav|m4a)$/i)?.[1] || (stageResult?.isVideo ? "mp4" : stageResult?.isAudio ? "mp3" : "png")).toLowerCase();
+    const name = `easymode-${Date.now()}.${ext}`;
+    const save = (href: string, revoke?: string) => {
+      const a = document.createElement("a");
+      a.href = href; a.download = name; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+      if (revoke) setTimeout(() => URL.revokeObjectURL(revoke), 4000);
+    };
+    const sameOrigin = url.startsWith("data:") || url.startsWith("/") || (typeof window !== "undefined" && url.startsWith(window.location.origin));
+    if (sameOrigin) { save(url); return; }
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      if (!res.ok) throw new Error(String(res.status));
+      const obj = URL.createObjectURL(await res.blob());
+      save(obj, obj);
+    } catch {
+      window.open(url, "_blank", "noopener"); // CORS-blocked: at least show it
+    }
+  };
   // Clear the pending selection whenever the staged image changes — after an
   // edit lands (new media), when a different creation is loaded, or on clear.
   useEffect(() => { setQuickSel(null); }, [stageResult?.media]);
@@ -2856,7 +2882,7 @@ export default function WebStudio() {
                  </div>
                )}
                <div className="ws-verbs">
-                 <a className="ws-verb gold" href={stageResult.media} download>⤓ {t("Download")}</a>
+                 <button type="button" className="ws-verb gold" onClick={() => downloadMedia(stageResult.media)}>⤓ {t("Download")}</button>
                  <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>
                  <Link className="ws-verb" to="/web/archive?section=creator">{t("Open gallery")}</Link>
                  <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ {t("Clear")}</button>

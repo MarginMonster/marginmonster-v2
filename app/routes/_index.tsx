@@ -510,8 +510,8 @@ html,body{margin:0;padding:0}
 .lz-pow:hover{opacity:1;filter:none;}
 .lz-pow img{width:26px;height:26px;display:block;}
 .lz-pow b{font-family:Poppins,sans-serif;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--ink);}
-.lz-pow i{font-style:normal;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
-.lz-pow-note{max-width:560px;margin:0 auto;font-size:13.5px;line-height:1.55;color:var(--muted);}
+.lz-pow i{font-style:normal;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);opacity:.75;}
+.lz-pow-note{max-width:560px;margin:0 auto;font-size:13.5px;line-height:1.55;color:var(--ink2);opacity:.85;}
 @media(max-width:620px){.lz-pow-row{gap:12px 22px;}.lz-pow b{font-size:15px;}}
 /* Fixed 4-up, not auto-fit. auto-fit resolved to 5 columns at this max-width,
    so the 8 cards landed 5 + 3 and the second row trailed off with two empty

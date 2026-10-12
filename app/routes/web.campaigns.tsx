@@ -799,6 +799,16 @@ const WC_STYLE = `
 .wc-lblrow{display:flex;align-items:center;justify-content:space-between}
 .wc-cap{font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink3,#8A938D)}
 .wc-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:8px 0 0}
+/* segmented control — the studio sheet that normally defines .ws-seg is not
+   loaded on this route, so without this block the selected pill is invisible. */
+.ws-seg{display:flex;gap:8px;flex-wrap:wrap}
+.ws-seg button{min-height:44px;padding:9px 15px;border-radius:11px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer}
+.ws-seg button:hover{border-color:#12A85E}
+.ws-seg button.sel{border-color:#12A85E;box-shadow:0 0 0 1px #12A85E;color:var(--ink,#14201A);background:#F0FAF4}
+/* presenter search box — also defined only on the studio sheet. */
+.ws-castsearch{position:relative;margin:0 0 8px}
+.ws-castsearch .wb-in{width:100%;padding-right:34px}
+.ws-cs-clr{position:absolute;top:50%;right:8px;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;border:0;background:var(--paper,#F4F1E6);color:var(--ink2,#4A554E);font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
 
 /* running campaigns */
 .wc-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}

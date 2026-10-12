@@ -222,7 +222,7 @@ export default function WebLayout() {
         <main className="wb-main">
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
-        <Buddy hud={hud} authed={authed} mode={mode} />
+        {!showChooser && <Buddy hud={hud} authed={authed} mode={mode} />}
       </div>
     </>
   );
@@ -657,6 +657,13 @@ const CSS = `
    the TOP row at the RIGHT, with the nav tabs on their own row below. The
    account controls used to wrap UNDER the tabs on the left at desktop width —
    this pins them top-right and pushes the tabs to row two. */
+/* Keyboard focus ring — the shell had no :focus-visible at all, so tabbing
+   through it was invisible. One token-based ring for every focusable control
+   (outline follows each element's own radius; no layout shift). */
+.wb a:focus-visible,.wb button:focus-visible,.wb input:focus-visible,.wb select:focus-visible,.wb textarea:focus-visible,.wb [tabindex]:focus-visible,
+.wb-chooser a:focus-visible,.wb-chooser button:focus-visible{
+  outline:2px solid var(--green2,#12A85E);outline-offset:2px;
+}
 .wb-nav{position:relative;z-index:30;display:flex;align-items:center;gap:14px 18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
 .wb-brand{order:1;display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
 .wb-brand b{color:var(--gold)}
