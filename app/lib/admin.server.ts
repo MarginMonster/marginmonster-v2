@@ -4,6 +4,17 @@
  * unset by default, so these tools are unreachable until one is configured. */
 import { getWebIdentity } from "./web-auth.server";
 
+/** True if this email is on the ADMIN_EMAILS allowlist. Used to show the owner
+ *  a discreet admin link in the shell (invisible to everyone else). */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const admins = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return admins.includes(email.toLowerCase());
+}
+
 export async function isOwner(request: Request): Promise<boolean> {
   const admins = (process.env.ADMIN_EMAILS || "")
     .split(",")

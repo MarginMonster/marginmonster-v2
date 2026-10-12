@@ -5,6 +5,7 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
+import { isAdminEmail } from "../lib/admin.server";
 import { db } from "../db.server";
 import { tokensRemainingLive, planTrialing, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
@@ -27,7 +28,7 @@ const EMPTY_HUD = {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
-  if (!id) return json({ authed: false, hud: EMPTY_HUD });
+  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false });
   const { account, shop } = id;
   const plan = shop.activePlan;
   const tier = plan?.active ? resolveTierKey(plan.type) : null;
@@ -50,6 +51,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
   return json({
     authed: true,
+    isAdmin: isAdminEmail(account.email),
     hud: {
       name: account.name?.trim() || account.email.split("@")[0],
       level: shop.level,
@@ -88,7 +90,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function WebLayout() {
-  const { authed, hud } = useLoaderData<typeof loader>();
+  const { authed, hud, isAdmin } = useLoaderData<typeof loader>();
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
   // UI display language — the header pill. t() translates chrome; the pill
@@ -217,6 +219,11 @@ export default function WebLayout() {
                 <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Sell your products — ads, campaigns, the works")}>{t("Marketing")}</button>
                 <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title={t("Create for yourself — images, videos & music, no store needed")}>{t("Creator")}</button>
               </div>
+            )}
+            {isAdmin && (
+              <Link to="/admin/dashboard" className="wb-admin" title="Admin dashboard" aria-label="Admin dashboard">
+                <Ico n="trend" />
+              </Link>
             )}
             {authed
               ? <Link to="/web/logout" className="wb-out">{t("Log out")}</Link>
@@ -531,6 +538,11 @@ const CSS = `
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-me{display:flex;align-items:center;gap:12px;}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;padding:8px 12px;border-radius:10px;}
+/* Discreet owner-only link to /admin/dashboard — muted, small, only rendered
+   when the logged-in email is on ADMIN_EMAILS. */
+.wb-admin{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;color:var(--ink2);opacity:.55;transition:opacity .14s,background .14s;}
+.wb-admin:hover{opacity:1;background:var(--card);}
+.wb-admin svg{width:17px;height:17px;}
 .wb-out:hover{color:var(--ink);background:rgba(20,32,26,.05);}
 /* Logged-out "Log in" is a real target, not stray text floating in the bar. */
 .wb-login{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;text-decoration:none;color:var(--ink);
