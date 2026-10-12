@@ -253,24 +253,67 @@ async function runBuddyTool(id: WebId, name: string, input: Record<string, unkno
   return "(unknown tool)";
 }
 
-// GET — the widget loads the saved conversation on open, so Helpurr picks up
-// exactly where it left off instead of greeting from scratch every reload.
+// PROACTIVE SUGGESTION — Helpurr opens with a SPECIFIC, store-grounded nudge
+// instead of a generic hello: looks at the real catalogue, tokens and recent
+// activity, picks the most useful next move, and attaches a ready confirm
+// button. Deterministic (no LLM cost on open) and grounded; rotates the featured
+// product by day so it doesn't feel canned.
+async function buildProactive(id: WebId, mode: "marketing" | "casual"): Promise<{ reply: string; pendingAction?: PendingAction } | null> {
+  const shopId = id.shop.id;
+  const first = (id.account.name?.trim() || id.account.email.split("@")[0]).split(" ")[0];
+  try {
+    if (mode === "casual") {
+      return { reply: `Hey ${first}! 🐾 Up for making something? Drop a photo to restyle, or let's create something new from scratch — your call.`, pendingAction: { label: "Open the Studio", to: "/web/studio", cost: 0, kind: "studio" } };
+    }
+    const [catCount, madeWeek, activeQ] = await Promise.all([
+      db.catalogProduct.count({ where: { shopId } }),
+      db.asset.count({ where: { shopId, createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } } }),
+      db.questline.count({ where: { shopId, status: "ACTIVE" } }),
+    ]);
+    const tokens = tokensRemainingLive(id.shop.activePlan);
+    if (catCount === 0) {
+      return { reply: `Hey ${first}! 🐾 I don't see your products yet — pull your store in and I'll start turning your real catalogue into ads.`, pendingAction: { label: "Import my products", to: "/web/studio?tab=import", cost: 0, kind: "import" } };
+    }
+    if (tokens < TOKEN_COST.image) {
+      return { reply: `Hey ${first}! 🐾 You're low on tokens (${tokens} left) — top up and I'll help you turn your products into a whole week of content.`, pendingAction: { label: "Add tokens", to: "/web#plans", cost: 0, kind: "plans" } };
+    }
+    // Feature a product, rotating by day so the nudge stays fresh.
+    const idx = new Date().getUTCDate() % catCount;
+    const product = (await db.catalogProduct.findFirst({ where: { shopId }, orderBy: { position: "asc" }, skip: idx, select: { title: true } }))
+      || (await db.catalogProduct.findFirst({ where: { shopId }, orderBy: { position: "asc" }, select: { title: true } }));
+    if (!product) return null;
+    const { action } = buildTask({ kind: "image_ad", product: product.title });
+    const opener = activeQ > 0
+      ? `Hey ${first}! 🐾 Your campaign's running nicely. Want a one-off ad too? I can line one up for ${product.title}.`
+      : madeWeek > 0
+        ? `Hey ${first}! 🐾 ${madeWeek} pieces this week — nice pace. Want to keep it rolling? A fresh ad for ${product.title} is ready when you are.`
+        : `Hey ${first}! 🐾 Want to get ahead today? I can line up an image ad for ${product.title} — about a minute to make.`;
+    return { reply: opener, pendingAction: action || undefined };
+  } catch {
+    return null;
+  }
+}
+
+// GET — the widget loads the saved conversation on open (so Helpurr picks up
+// where it left off), plus a fresh proactive suggestion for the opener/nudge.
 export async function loader({ request }: LoaderFunctionArgs) {
   const id = await getWebIdentity(request);
-  if (!id) return json({ history: [] as Array<{ role: string; content: string }> });
+  if (!id) return json({ history: [] as Array<{ role: string; content: string }>, proactive: null as null | { reply: string; pendingAction?: PendingAction } });
   const url = new URL(request.url);
   const mode: "marketing" | "casual" = url.searchParams.get("mode") === "casual" ? "casual" : "marketing";
-  try {
-    const rows = await db.buddyMessage.findMany({
-      where: { shopId: id.shop.id, mode },
-      orderBy: { createdAt: "desc" },
-      take: 60,
-      select: { role: true, content: true },
-    });
-    return json({ history: rows.reverse() });
-  } catch {
-    return json({ history: [] as Array<{ role: string; content: string }> });
-  }
+  const [history, proactive] = await Promise.all([
+    (async () => {
+      try {
+        const rows = await db.buddyMessage.findMany({
+          where: { shopId: id.shop.id, mode }, orderBy: { createdAt: "desc" }, take: 60,
+          select: { role: true, content: true },
+        });
+        return rows.reverse();
+      } catch { return [] as Array<{ role: string; content: string }>; }
+    })(),
+    buildProactive(id, mode),
+  ]);
+  return json({ history, proactive });
 }
 
 // Persist the latest exchange (the user's new message + Helpurr's reply) and

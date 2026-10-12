@@ -262,12 +262,17 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     (async () => {
       try {
         const res = await fetch(`/api/buddy?mode=${mode}`);
-        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }> };
+        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null } | null };
         if (cancelled) return;
         const hist = (Array.isArray(data.history) ? data.history : [])
           .filter((m) => m && typeof m.content === "string" && m.content.trim())
           .map((m): MMMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content as string }));
-        setMsgs(hist); // empty → the greeting effect fills it below
+        // Proactive, store-grounded suggestion: the opener for a fresh thread, or
+        // a fresh nudge at the end of an existing one. Not saved (transient).
+        const nudge: MMMsg | null = data.proactive && data.proactive.reply
+          ? { role: "assistant", content: data.proactive.reply, pending: data.proactive.pendingAction || undefined }
+          : null;
+        setMsgs(hist.length ? (nudge ? [...hist, nudge] : hist) : (nudge ? [nudge] : [])); // empty → the greeting effect fills it below
       } catch { if (!cancelled) setMsgs([]); }
       finally { if (!cancelled) setHistReady(true); }
     })();
@@ -275,9 +280,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   }, [open, authed, mode]);
 
   useEffect(() => {
-    // Refresh a lone, not-yet-replied greeting when the mode flips, but never
-    // wipe a started conversation — length stays 1, so this doesn't re-fire.
-    if (open && histReady && (msgs.length === 0 || (msgs.length === 1 && msgs[0].role === "assistant"))) {
+    // Fallback greeting only when the load effect left the chat empty — i.e. no
+    // saved history AND no proactive suggestion (a guest, or a server hiccup).
+    // Authed users get the store-grounded proactive opener from the load effect.
+    if (open && histReady && msgs.length === 0) {
       const name = authed && hud.name ? hud.name.split(" ")[0] : null;
       const greet = mode === "casual"
         ? (name
