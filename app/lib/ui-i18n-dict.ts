@@ -9,6 +9,18 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Quick edit": "Edición rápida",
+  "Quick edit type": "Tipo de edición rápida",
+  "{left} to LVL {next}": "{left} para NIV {next}",
+  "{n} tokens each": "{n} tokens cada una",
+  "Applying your edit…": "Aplicando tu edición…",
+  "Pick an edit above to apply": "Elige una edición arriba para aplicar",
+  "Apply {label} — {n} tokens · +{xp} XP": "Aplicar {label} — {n} tokens · +{xp} XP",
+  "Change avatar": "Cambiar avatar",
+  "Remove photo": "Quitar foto",
+  "Change your avatar": "Cambia tu avatar",
+  "Every level pays out free tokens.": "Cada nivel reparte tokens gratis.",
+  "Account menu — level {lvl}, {tokens} tokens": "Menú de cuenta — nivel {lvl}, {tokens} tokens",
   " (incl. +{n} engine)": " (incl. +{n} motor)",
   " No tokens spent.": " No se gastaron tokens.",
   " and ": " y ",
@@ -1135,6 +1147,18 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Quick edit": "Édition rapide",
+  "Quick edit type": "Type d'édition rapide",
+  "{left} to LVL {next}": "{left} jusqu'au NIV {next}",
+  "{n} tokens each": "{n} jetons chacune",
+  "Applying your edit…": "Application de ta modification…",
+  "Pick an edit above to apply": "Choisis une édition ci-dessus pour l'appliquer",
+  "Apply {label} — {n} tokens · +{xp} XP": "Appliquer {label} — {n} jetons · +{xp} XP",
+  "Change avatar": "Changer d'avatar",
+  "Remove photo": "Retirer la photo",
+  "Change your avatar": "Change ton avatar",
+  "Every level pays out free tokens.": "Chaque niveau rapporte des jetons gratuits.",
+  "Account menu — level {lvl}, {tokens} tokens": "Menu du compte — niveau {lvl}, {tokens} jetons",
   " (incl. +{n} Ultra)": " (dont +{n} Ultra)",
   " (incl. +{n} engine)": " (dont +{n} moteur)",
   " (incl. +{n} {model})": " (dont +{n} {model})",
@@ -2250,6 +2274,18 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Quick edit": "Schnellbearbeitung",
+  "Quick edit type": "Art der Schnellbearbeitung",
+  "{left} to LVL {next}": "{left} bis LVL {next}",
+  "{n} tokens each": "{n} Tokens pro Stück",
+  "Applying your edit…": "Bearbeitung wird angewendet…",
+  "Pick an edit above to apply": "Wähle oben eine Bearbeitung zum Anwenden",
+  "Apply {label} — {n} tokens · +{xp} XP": "{label} anwenden — {n} Tokens · +{xp} XP",
+  "Change avatar": "Avatar ändern",
+  "Remove photo": "Foto entfernen",
+  "Change your avatar": "Ändere deinen Avatar",
+  "Every level pays out free tokens.": "Jedes Level bringt kostenlose Tokens.",
+  "Account menu — level {lvl}, {tokens} tokens": "Kontomenü — Level {lvl}, {tokens} Tokens",
   " (incl. +{n} Ultra)": " (inkl. +{n} Ultra)",
   " (incl. +{n} engine)": " (inkl. +{n} Engine)",
   " (incl. +{n} {model})": " (inkl. +{n} {model})",
@@ -3373,6 +3409,18 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Quick edit": "快速编辑",
+  "Quick edit type": "快速编辑类型",
+  "{left} to LVL {next}": "距 {next} 级还差 {left}",
+  "{n} tokens each": "每次 {n} 个 token",
+  "Applying your edit…": "正在应用你的编辑…",
+  "Pick an edit above to apply": "请在上方选择一种编辑后应用",
+  "Apply {label} — {n} tokens · +{xp} XP": "应用{label} — {n} 个 token · +{xp} XP",
+  "Change avatar": "更换头像",
+  "Remove photo": "移除照片",
+  "Change your avatar": "更换你的头像",
+  "Every level pays out free tokens.": "每升一级都奖励免费 token。",
+  "Account menu — level {lvl}, {tokens} tokens": "账户菜单 — {lvl} 级，{tokens} 个 token",
   " (incl. +{n} Ultra)": "（含 +{n} Ultra）",
   " (incl. +{n} engine)": "（含 +{n} 引擎）",
   " (incl. +{n} {model})": "（含 +{n} {model}）",
