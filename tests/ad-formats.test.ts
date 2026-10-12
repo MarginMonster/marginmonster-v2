@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS } from "../app/lib/ad-formats.ts";
 
 test("there are formats to check, and each has a key and fields", () => {
-  assert.ok(AD_FORMATS.length >= 40, `expected the full format set, got ${AD_FORMATS.length}`);
+  assert.ok(AD_FORMATS.length >= 39, `expected the full format set, got ${AD_FORMATS.length}`);
   for (const f of AD_FORMATS) {
     assert.ok(f.key, "a format has no key");
     assert.ok(Array.isArray(f.fields) && f.fields.length > 0, `${f.key} declares no copy fields`);

@@ -232,7 +232,11 @@ const ALL_AD_FORMATS: AdFormat[] = [
     preview: { headline: "The gift that always wins", badge: "Editor's Pick", sub: "Wool socks they'll actually wear out." },
   },
   {
-    key: "restock", name: "Selling Fast", emoji: "🔥",
+    // RETIRED — the layout paints an almost-empty shelf with "others clearly
+    // sold" and an urgency chip: fabricated scarcity baked into the IMAGE, where
+    // the copy guardrails can't reach it. Re-enable only grounded in a REAL
+    // low-stock/restock signal (e.g. live Shopify inventory).
+    key: "restock", name: "Selling Fast", emoji: "🔥", retired: true, // fabricated scarcity in the layout
     blurb: "Back-in-stock urgency — the shelf that's almost empty",
     fields: ["headline", "urgency", "cta"],
     hero: "a matcha green tea powder tin with a bamboo scoop",
@@ -458,7 +462,7 @@ export const FORMAT_GROUPS: FormatGroup[] = [
   {
     key: "offers", name: "Offers & gifting", emoji: "💥",
     blurb: "Deals, bundles, urgency and gift-guide money-makers",
-    formats: ["offer", "restock", "seasonal", "pricemath", "receipt", "bundle", "duo", "gift"],
+    formats: ["offer", "seasonal", "pricemath", "receipt", "bundle", "duo", "gift"],
   },
   {
     key: "social", name: "Social & native", emoji: "📱",
