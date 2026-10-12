@@ -13,7 +13,7 @@
 
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { Link, useLoaderData } from "@remix-run/react";
 import { db } from "../db.server";
 import { isOwner } from "../lib/admin.server";
 import type { PlanType } from "@prisma/client";
@@ -42,6 +42,7 @@ type Row = {
   store: string | null;
   lang: string | null;
   tz: string | null;
+  shopId: string | null;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -91,6 +92,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       store: shop?.storeUrl ?? null,
       lang: shop?.contentLang ?? null,
       tz: shop?.timezone ?? null,
+      shopId: shopId ?? null,
     };
   });
 
@@ -156,6 +158,7 @@ export default function AdminMembers() {
                 <th>Store</th>
                 <th>Lang</th>
                 <th>Timezone</th>
+                <th>Made</th>
               </tr>
             </thead>
             <tbody>
@@ -191,6 +194,7 @@ export default function AdminMembers() {
                   </td>
                   <td className="am-nowrap">{(r.lang || "—").toUpperCase()}</td>
                   <td className="am-nowrap am-tz">{r.tz || "—"}</td>
+                  <td className="am-nowrap">{r.shopId ? <Link to={`/admin/member/${r.shopId}`} className="am-view">view →</Link> : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -240,6 +244,8 @@ const CSS = `
 .am-tz{color:#5a6b61;font-size:12px}
 .am-store a{color:#0C7A46;text-decoration:none}
 .am-store a:hover{text-decoration:underline}
+.am-view{color:#0C7A46;text-decoration:none;font-weight:600;white-space:nowrap}
+.am-view:hover{text-decoration:underline}
 .am-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;vertical-align:middle}
 .am-badge-paid{background:#0C7A46;color:#fff}
 .am-badge-trial{background:#fdecc8;color:#8a5a00}

@@ -1,0 +1,177 @@
+/* Owner-only view of ONE member's generations — every image, video, song, blog
+ * and ad they've made, newest first. This shows a specific user's private
+ * content, so it is gated exactly like /admin/members: owner session
+ * (ADMIN_EMAILS) or ?key=<PURGE_KEY>, and 404s for everyone else so the route's
+ * existence stays hidden. Read-only; the member is not notified (standard
+ * operator access to content stored on your own platform).
+ *
+ * Reached from the "view" link on each row of /admin/members. */
+
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { Link, useLoaderData } from "@remix-run/react";
+import { db } from "../db.server";
+import { isOwner } from "../lib/admin.server";
+
+export const meta = () => [{ title: "Member generations · EasyMode" }];
+
+function fmtWhen(d: Date): string {
+  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+}
+
+// A friendly label for each AssetType the archive stores.
+function kindLabel(t: string): string {
+  switch (t) {
+    case "IMAGE_AD": return "Image";
+    case "VIDEO_AD": return "Video";
+    case "AUDIO": return "Song";
+    case "BLOG_POST": return "Blog";
+    case "AD_COPY": return "Ad copy";
+    case "EMAIL": return "Email";
+    case "LANDING_PAGE": return "Landing page";
+    default: return t.replace(/_/g, " ").toLowerCase();
+  }
+}
+
+type Tile = {
+  id: string;
+  kind: string;
+  label: string;
+  status: string;
+  title: string;
+  when: string;
+  media: string | null; // image/video/audio URL when present
+  isVideo: boolean;
+  isAudio: boolean;
+  text: string | null; // a short snippet for text types (blog/copy/email)
+  section: string | null; // "creator" | "marketing" (from metaJson)
+};
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  // Private content — reveal nothing (not even existence) to non-owners.
+  if (!(await isOwner(request))) throw new Response("Not Found", { status: 404 });
+  const shopId = params.shopId || "";
+
+  const [conn, shop, assets] = await Promise.all([
+    db.connection.findFirst({ where: { externalId: shopId, kind: "web" }, include: { account: { select: { email: true, name: true } } } }),
+    db.shop.findUnique({ where: { id: shopId }, select: { storeUrl: true, domain: true, level: true } }),
+    db.asset.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: 240, select: { id: true, type: true, status: true, title: true, bodyJson: true, metaJson: true, createdAt: true } }),
+  ]);
+  if (!shop) throw new Response("Not Found", { status: 404 });
+
+  const tiles: Tile[] = assets.map((a) => {
+    let media: string | null = null;
+    let text: string | null = null;
+    try {
+      const b = JSON.parse(a.bodyJson) as Record<string, unknown>;
+      media = (b.videoUrl as string) || (b.imageUrl as string) || (b.audioUrl as string) || (b.url as string) || null;
+      // For text creations, show a short readable snippet instead of a thumbnail.
+      const raw = (b.blogHtml as string) || (b.html as string) || (b.body as string) || (b.adCopy as string) || (b.copy as string) || (b.caption as string) || "";
+      if (!media && raw) text = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+    } catch { /* unreadable body → no media */ }
+    let section: string | null = null;
+    try { section = (JSON.parse(a.metaJson) as { section?: string }).section || null; } catch { /* */ }
+    return {
+      id: a.id,
+      kind: a.type,
+      label: kindLabel(a.type),
+      status: a.status,
+      title: a.title || kindLabel(a.type),
+      when: fmtWhen(a.createdAt),
+      media,
+      isVideo: a.type === "VIDEO_AD" || /\.(mp4|webm|mov)(\?|$)/i.test(media || ""),
+      isAudio: a.type === "AUDIO" || /\.(mp3|wav|m4a|aac)(\?|$)/i.test(media || ""),
+      text,
+      section,
+    };
+  });
+
+  return json({
+    member: { email: conn?.account.email || "(unknown)", name: conn?.account.name || "—", store: shop.storeUrl || null, domain: shop.domain || null, level: shop.level },
+    tiles,
+    total: tiles.length,
+    generatedAt: fmtWhen(new Date()),
+  });
+};
+
+export default function AdminMemberGenerations() {
+  const { member, tiles, total } = useLoaderData<typeof loader>();
+  return (
+    <div className="mg-wrap">
+      <style>{CSS}</style>
+      <header className="mg-head">
+        <Link to="/admin/members" className="mg-back">← Members</Link>
+        <h1 className="mg-title">{member.name === "—" ? member.email : member.name}</h1>
+        <p className="mg-sub">
+          {member.email} · level {member.level} · {total} {total === 1 ? "creation" : "creations"}
+          {member.store ? <> · <a href={member.store} target="_blank" rel="noreferrer">{hostOf(member.store)}</a></> : null}
+        </p>
+      </header>
+
+      {tiles.length === 0 ? (
+        <p className="mg-empty">This member hasn't generated anything yet.</p>
+      ) : (
+        <div className="mg-grid">
+          {tiles.map((tInfo) => (
+            <div key={tInfo.id} className="mg-tile">
+              <div className="mg-media">
+                {tInfo.isVideo && tInfo.media ? (
+                  <video src={tInfo.media} controls preload="metadata" playsInline />
+                ) : tInfo.isAudio && tInfo.media ? (
+                  <div className="mg-aud"><span>♪</span><audio src={tInfo.media} controls /></div>
+                ) : tInfo.media ? (
+                  <a href={tInfo.media} target="_blank" rel="noreferrer"><img src={tInfo.media} alt={tInfo.title} loading="lazy" /></a>
+                ) : tInfo.text ? (
+                  <div className="mg-text">{tInfo.text}{tInfo.text.length >= 240 ? "…" : ""}</div>
+                ) : (
+                  <div className="mg-none">{tInfo.status === "PENDING" ? "still rendering…" : tInfo.status === "FAILED" ? "failed" : "no preview"}</div>
+                )}
+              </div>
+              <div className="mg-meta">
+                <span className={"mg-kind mg-kind-" + tInfo.kind.toLowerCase()}>{tInfo.label}</span>
+                {tInfo.section === "creator" && <span className="mg-tag">Creator</span>}
+                {tInfo.status !== "COMPLETED" && <span className="mg-st">{tInfo.status.toLowerCase()}</span>}
+                <span className="mg-when">{tInfo.when}</span>
+              </div>
+              <div className="mg-ttl" title={tInfo.title}>{tInfo.title}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).host.replace(/^www\./, ""); } catch { return url; }
+}
+
+const CSS = `
+.mg-wrap{max-width:1160px;margin:0 auto;padding:28px 18px 64px;color:#14201A;font-family:Poppins,system-ui,sans-serif}
+.mg-head{margin-bottom:20px}
+.mg-back{color:#0C7A46;text-decoration:none;font-size:13px;font-weight:600}
+.mg-back:hover{text-decoration:underline}
+.mg-title{font-size:28px;font-weight:700;margin:8px 0 0;letter-spacing:-.01em}
+.mg-sub{margin:4px 0 0;color:#5a6b61;font-size:14px}
+.mg-sub a{color:#0C7A46;text-decoration:none}
+.mg-sub a:hover{text-decoration:underline}
+.mg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.mg-tile{background:#fff;border:1px solid #e3e9e4;border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.mg-media{aspect-ratio:1/1;background:#0f1713;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.mg-media img,.mg-media video{width:100%;height:100%;object-fit:cover;display:block}
+.mg-aud{display:flex;flex-direction:column;align-items:center;gap:10px;color:#9fdcbf;padding:14px}
+.mg-aud span{font-size:34px}
+.mg-aud audio{width:90%}
+.mg-text{padding:14px;font-size:12px;line-height:1.5;color:#dfeee6;overflow:hidden}
+.mg-none{color:#7f9488;font-size:12px}
+.mg-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:9px 11px 0}
+.mg-kind{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:#eef4ef;color:#0C7A46}
+.mg-kind-video_ad{background:#e7effd;color:#2558b8}
+.mg-kind-audio{background:#f3e9fd;color:#7a3fb8}
+.mg-kind-blog_post{background:#fdf3e3;color:#9a6a12}
+.mg-tag{font-size:10px;font-weight:700;color:#7a3fb8;background:#f3e9fd;padding:2px 7px;border-radius:999px}
+.mg-st{font-size:10px;font-weight:700;color:#8a5a00;background:#fdecc8;padding:2px 7px;border-radius:999px;text-transform:uppercase}
+.mg-when{margin-left:auto;font-size:11px;color:#8a9a90;white-space:nowrap}
+.mg-ttl{padding:4px 11px 11px;font-size:12.5px;font-weight:600;color:#2a3b33;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mg-empty{color:#5a6b61;font-size:15px;padding:50px 0;text-align:center}
+`;
