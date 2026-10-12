@@ -45,6 +45,7 @@ type Tile = {
   isAudio: boolean;
   text: string | null; // a short snippet for text types (blog/copy/email)
   section: string | null; // "creator" | "marketing" (from metaJson)
+  prompt: string | null; // the generation prompt / instruction that drove it
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -62,9 +63,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const tiles: Tile[] = assets.map((a) => {
     let media: string | null = null;
     let text: string | null = null;
+    let prompt: string | null = null;
     try {
       const b = JSON.parse(a.bodyJson) as Record<string, unknown>;
       media = (b.videoUrl as string) || (b.imageUrl as string) || (b.audioUrl as string) || (b.url as string) || null;
+      // The prompt / instruction that drove the generation (for accuracy review).
+      const p = (b.prompt as string) || (b.script as string) || (b.editPrompt as string) || (b.direction as string) || (b.customPrompt as string) || "";
+      if (p) prompt = p.replace(/\s+/g, " ").trim().slice(0, 400);
       // For text creations, show a short readable snippet instead of a thumbnail.
       const raw = (b.blogHtml as string) || (b.html as string) || (b.body as string) || (b.adCopy as string) || (b.copy as string) || (b.caption as string) || "";
       if (!media && raw) text = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
@@ -83,19 +88,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       isAudio: a.type === "AUDIO" || /\.(mp3|wav|m4a|aac)(\?|$)/i.test(media || ""),
       text,
       section,
+      prompt,
     };
   });
+
+  // Breakdown by kind so it's obvious at a glance whether they make videos, etc.
+  const counts: Record<string, number> = {};
+  for (const tInfo of tiles) counts[tInfo.label] = (counts[tInfo.label] || 0) + 1;
+  const breakdown = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([label, n]) => `${n} ${label.toLowerCase()}${n === 1 ? "" : "s"}`);
 
   return json({
     member: { email: conn?.account.email || "(unknown)", name: conn?.account.name || "—", store: shop.storeUrl || null, domain: shop.domain || null, level: shop.level },
     tiles,
     total: tiles.length,
+    breakdown,
     generatedAt: fmtWhen(new Date()),
   });
 };
 
 export default function AdminMemberGenerations() {
-  const { member, tiles, total } = useLoaderData<typeof loader>();
+  const { member, tiles, total, breakdown } = useLoaderData<typeof loader>();
   return (
     <div className="mg-wrap">
       <style>{CSS}</style>
@@ -106,6 +118,7 @@ export default function AdminMemberGenerations() {
           {member.email} · level {member.level} · {total} {total === 1 ? "creation" : "creations"}
           {member.store ? <> · <a href={member.store} target="_blank" rel="noreferrer">{hostOf(member.store)}</a></> : null}
         </p>
+        {breakdown.length > 0 && <p className="mg-breakdown">{breakdown.join(" · ")}</p>}
       </header>
 
       {tiles.length === 0 ? (
@@ -134,6 +147,7 @@ export default function AdminMemberGenerations() {
                 <span className="mg-when">{tInfo.when}</span>
               </div>
               <div className="mg-ttl" title={tInfo.title}>{tInfo.title}</div>
+              {tInfo.prompt && <div className="mg-prompt" title={tInfo.prompt}>“{tInfo.prompt}”</div>}
             </div>
           ))}
         </div>
@@ -172,6 +186,8 @@ const CSS = `
 .mg-tag{font-size:10px;font-weight:700;color:#7a3fb8;background:#f3e9fd;padding:2px 7px;border-radius:999px}
 .mg-st{font-size:10px;font-weight:700;color:#8a5a00;background:#fdecc8;padding:2px 7px;border-radius:999px;text-transform:uppercase}
 .mg-when{margin-left:auto;font-size:11px;color:#8a9a90;white-space:nowrap}
-.mg-ttl{padding:4px 11px 11px;font-size:12.5px;font-weight:600;color:#2a3b33;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mg-ttl{padding:4px 11px 2px;font-size:12.5px;font-weight:600;color:#2a3b33;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mg-breakdown{margin:8px 0 0;color:#2a3b33;font-size:13px;font-weight:600}
+.mg-prompt{padding:0 11px 11px;font-size:11.5px;line-height:1.4;color:#6a7c72;font-style:italic;cursor:help;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .mg-empty{color:#5a6b61;font-size:15px;padding:50px 0;text-align:center}
 `;
