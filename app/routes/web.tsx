@@ -573,13 +573,17 @@ const CSS = `
    over them instead of being hidden behind the HUD pill (which also stole the
    taps meant for the lower menu items, so Chinese couldn't be selected). */
 .wb-hud,.wb-main{position:relative;z-index:1;}
-.wb-nav{position:relative;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
-.wb-brand{display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
+/* Two-tier header: brand (left) + account controls (lang · mode · account) on
+   the TOP row at the RIGHT, with the nav tabs on their own row below. The
+   account controls used to wrap UNDER the tabs on the left at desktop width —
+   this pins them top-right and pushes the tabs to row two. */
+.wb-nav{position:relative;z-index:30;display:flex;align-items:center;gap:14px 18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
+.wb-brand{order:1;display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
 .wb-brand b{color:var(--gold)}
-.wb-tabs{display:flex;gap:6px;}
+.wb-tabs{order:3;flex-basis:100%;display:flex;gap:6px;margin-top:2px;}
 .wb-tab{padding:8px 16px;border-radius:11px;text-decoration:none;font-weight:700;font-size:13.5px;color:var(--ink2);}
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
-.wb-me{display:flex;align-items:center;gap:12px;}
+.wb-me{order:2;margin-left:auto;display:flex;align-items:center;gap:12px;}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;padding:8px 12px;border-radius:10px;}
 /* Discreet owner-only link to /admin/dashboard — muted, small, only rendered
    when the logged-in email is on ADMIN_EMAILS. */
