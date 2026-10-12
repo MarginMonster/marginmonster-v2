@@ -4242,7 +4242,11 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
     return await repRun(modelId, input);
   } catch (e) {
     console.log("[photo-edit] primary editor unavailable/refused, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
-    return await repRun("black-forest-labs/flux-kontext-pro", { prompt, input_image: imageUrl, output_format: "jpg" });
+    // Give the fallback a real quality floor (flux accepts output_quality; the
+    // primary nano-banana may 422 on it, which would force EVERY edit down here
+    // — so it stays only on the fallback). This is the path that was shipping
+    // the crude, low-quality renders when the primary refused.
+    return await repRun("black-forest-labs/flux-kontext-pro", { prompt, input_image: imageUrl, output_format: "jpg", output_quality: 92 });
   }
 }
 
@@ -4339,7 +4343,12 @@ export async function editImage(opts: {
     // "replace" quick-action share it). The model does exactly what's asked and
     // leaves the rest alone.
     if (!prompt) throw new Error("Describe the changes you want — e.g. 'make the shirt a purple hoodie'.");
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Apply exactly that change and keep everything else in the image the same — same subject, composition, framing and style. No added text, no watermark.`, editModelId), "jpg");
+    // Additive-safe phrasing: the old suffix said "keep EVERYTHING the same",
+    // which contradicts additive asks ("add a group of people") and made the
+    // model emit half-formed figures and dark smudges in empty regions. Preserve
+    // the scene without forbidding the requested change, and (since Gemini takes
+    // no negative prompt) bake the anti-artifact cues into positive text.
+    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Keep the original scene, background, framing and lighting intact; blend any new elements in photorealistically with matching perspective, scale, lighting and shadows. Produce a seamless, high-detail, hyper-realistic result — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`, editModelId), "jpg");
     label = "edited";
   } else {
     const stylePrompt = editOp === "cartoonize"
