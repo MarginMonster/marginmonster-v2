@@ -385,6 +385,25 @@ export default function WebDashboard() {
   const err = actionData && "error" in actionData ? (actionData.error as string) : null;
   const ok = actionData && "ok" in actionData ? (actionData.ok as string) : null;
 
+  // Action feedback (voice, referral, plan change, pack) is triggered from
+  // controls spread down the page, but the banner used to render at the top of
+  // the body — so after, say, cancelling a plan far down, the confirmation
+  // landed off-screen and the click looked like it did nothing. Lift it into a
+  // fixed top-center toast that's always visible: success auto-clears after a
+  // few seconds, errors stay until dismissed.
+  const [toast, setToast] = useState<{ kind: "err" | "ok"; msg: string } | null>(null);
+  useEffect(() => {
+    if (!actionData) return;
+    if (err) setToast({ kind: "err", msg: err });
+    else if (ok) setToast({ kind: "ok", msg: ok });
+    else if (referralApplied) setToast({ kind: "ok", msg: t("Code applied ✓ — your bonus tokens land when your paid plan starts.") });
+  }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (toast?.kind !== "ok") return;
+    const tm = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(tm);
+  }, [toast]);
+
   const steps = [
     { key: "brand", label: t("Set your brand voice"), hint: t("So content sounds like you"), done: d.launch.brand, href: "#brand" },
     { key: "plan", label: t("Pick your plan"), hint: t("Start your 7-day free trial"), done: d.launch.plan, href: "#plans" },
@@ -437,9 +456,12 @@ export default function WebDashboard() {
         </div>
       )}
 
-      {err && <div className="wb-err">{err}</div>}
-      {ok && <div className="wb-ok">{ok}</div>}
-      {referralApplied && <div className="wb-ok">{t("Code applied ✓ — your bonus tokens land when your paid plan starts.")}</div>}
+      {toast && (
+        <div className={`wd-toast ${toast.kind === "err" ? "wb-err" : "wb-ok"}`} role="status" aria-live="polite">
+          <span>{toast.msg}</span>
+          <button type="button" className="wd-toast-x" onClick={() => setToast(null)} aria-label={t("Dismiss")}>✕</button>
+        </div>
+      )}
 
       {/* ── Launch tracker ─────────────────────────────────────────────── */}
       {!allDone && !launchHidden && (
@@ -858,6 +880,15 @@ const DASH_CSS = `
 .wdv-chips{display:flex;gap:8px;flex-wrap:wrap;}
 .wdv-chip{font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600;}
 .wdv-chip.tone{color:#0A3D26;background:#EAF6EF;border-color:#BFE2CD;}
+/* Action-feedback toast — fixed top-center so confirmation/errors from any
+   control on the page are seen, not stranded at the body top. Reuses the
+   .wb-ok/.wb-err colours; this only repositions + adds the dismiss ✕. */
+.wd-toast{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:400;margin:0;width:max-content;max-width:min(520px,calc(100vw - 24px));display:flex;align-items:center;gap:10px;box-shadow:0 14px 36px rgba(20,32,26,.2);animation:wdToastIn .22s ease both}
+@keyframes wdToastIn{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
+.wd-toast>span{flex:1 1 auto}
+.wd-toast-x{flex:0 0 auto;border:0;background:none;cursor:pointer;color:inherit;opacity:.55;font-size:13px;line-height:1;padding:0;min-width:32px;min-height:32px;display:grid;place-items:center;border-radius:8px}
+.wd-toast-x:hover{opacity:1}
+@media(prefers-reduced-motion:reduce){.wd-toast{animation:none}}
 /* ── 44px tap-target floor (mobile touch) ── */
 .wdw-review{min-height:44px}
 @media(max-width:620px){
