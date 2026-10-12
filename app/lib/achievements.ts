@@ -12,30 +12,38 @@ export type AchievementDef = {
   tokens: number; // token bonus on unlock
 };
 
+// NOTE: `key` is the persisted identifier (unlocks are stored by key), so the
+// keys below keep their original names even where the theme has moved on — only
+// the player-facing icon / label / desc are themed to the current EasyMode
+// voice. XP + token bonuses are unchanged, so no one's progress resets.
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { key: "SCANNER", icon: "🔍", label: "Scanner", desc: "Analyze your store's brand voice", xp: 20, tokens: 0 },
-  { key: "INSERT_COIN", icon: "🕹️", label: "Insert Coin", desc: "Choose your partner", xp: 30, tokens: 0 },
-  { key: "FIRST_FORGE", icon: "✨", label: "First Spark", desc: "Create your first listing", xp: 15, tokens: 5 },
-  { key: "HAMMER_TIME", icon: "🔥", label: "On a Roll", desc: "Create 10 listings", xp: 40, tokens: 10 },
-  { key: "SHIPPED_IT", icon: "🚀", label: "Shipped It", desc: "Apply a finished listing to your store", xp: 20, tokens: 5 },
-  { key: "BATCH_MASTER", icon: "📦", label: "Batch Master", desc: "Apply 5 listings in one combo", xp: 30, tokens: 10 },
-  { key: "BIG_SPENDER", icon: "🪙", label: "Big Spender", desc: "Spend 100 lifetime tokens", xp: 50, tokens: 15 },
-  { key: "PLAYER_ONE", icon: "⭐", label: "Player One", desc: "Reach level 5", xp: 0, tokens: 10 },
-  { key: "ARCADE_REGULAR", icon: "👾", label: "Arcade Regular", desc: "Reach level 10", xp: 0, tokens: 25 },
-  { key: "HIGH_SCORE", icon: "🏆", label: "High Score", desc: "Reach level 25", xp: 0, tokens: 60 },
-  { key: "QUEST_COMPLETE", icon: "⚔️", label: "Questmaster", desc: "Complete your first campaign questline", xp: 0, tokens: 20 },
-  // 🏝️ island era — the jumping shelf
-  { key: "FIRST_TAKE", icon: "🎬", label: "Action!", desc: "Roll your first video take", xp: 0, tokens: 10 },
-  { key: "SHOW_RUNNER", icon: "🎞️", label: "Show Runner", desc: "Deliver 10 video takes", xp: 60, tokens: 25 },
+  // getting started
+  { key: "SCANNER", icon: "🎙️", label: "Tuned In", desc: "Analyze your store's brand voice", xp: 20, tokens: 0 },
+  { key: "INSERT_COIN", icon: "🎟️", label: "All In", desc: "Start your plan", xp: 30, tokens: 0 },
+  // making & shipping
+  { key: "FIRST_FORGE", icon: "✨", label: "First Spark", desc: "Make your first listing", xp: 15, tokens: 5 },
+  { key: "HAMMER_TIME", icon: "🔥", label: "On a Roll", desc: "Make 10 listings", xp: 40, tokens: 10 },
+  { key: "SHIPPED_IT", icon: "🚀", label: "Shipped It", desc: "Publish a finished listing to your store", xp: 20, tokens: 5 },
+  { key: "BATCH_MASTER", icon: "📦", label: "Batch Master", desc: "Publish 5 listings at once", xp: 30, tokens: 10 },
+  { key: "BIG_SPENDER", icon: "🪙", label: "Big Spender", desc: "Spend 100 tokens all-time", xp: 50, tokens: 15 },
+  // media
   { key: "STILL_LIFE", icon: "🖼️", label: "Still Life", desc: "Create your first image ad", xp: 15, tokens: 5 },
   { key: "GALLERY_WALL", icon: "🗂️", label: "Gallery Wall", desc: "Create 15 image ads", xp: 50, tokens: 20 },
-  { key: "FIRST_VOYAGE", icon: "🗺️", label: "First Voyage", desc: "Launch your first campaign", xp: 25, tokens: 10 },
-  { key: "FLEET_ADMIRAL", icon: "⚓", label: "Fleet Admiral", desc: "Run 2 campaigns at the same time", xp: 40, tokens: 25 },
-  { key: "GOLD_RUSH", icon: "💰", label: "Gold Rush", desc: "A shopper clicks through one of your posts", xp: 30, tokens: 15 },
-  { key: "TREASURE_HUNTER", icon: "🏴‍☠️", label: "Treasure Hunter", desc: "Collect 25 shopper click-throughs", xp: 80, tokens: 40 },
-  { key: "PERFECT_WEEK", icon: "📅", label: "Perfect Week", desc: "Bank a perfect campaign week", xp: 0, tokens: 15 },
-  { key: "ISLAND_LEGEND", icon: "🌋", label: "Island Legend", desc: "Reach level 40", xp: 0, tokens: 100 },
-  { key: "CROWNED", icon: "👑", label: "Crowned", desc: "Reach level 50 — the island bows", xp: 0, tokens: 150 },
+  { key: "FIRST_TAKE", icon: "🎬", label: "Action!", desc: "Create your first video", xp: 0, tokens: 10 },
+  { key: "SHOW_RUNNER", icon: "🎞️", label: "Show Runner", desc: "Create 10 videos", xp: 60, tokens: 25 },
+  // campaigns & results
+  { key: "FIRST_VOYAGE", icon: "📣", label: "First Launch", desc: "Launch your first campaign", xp: 25, tokens: 10 },
+  { key: "FLEET_ADMIRAL", icon: "🔀", label: "Double Up", desc: "Run two campaigns at once", xp: 40, tokens: 25 },
+  { key: "QUEST_COMPLETE", icon: "🏁", label: "Finish Line", desc: "Complete your first campaign", xp: 0, tokens: 20 },
+  { key: "PERFECT_WEEK", icon: "📅", label: "Perfect Week", desc: "Run a full campaign week with no misses", xp: 0, tokens: 15 },
+  { key: "GOLD_RUSH", icon: "🖱️", label: "First Click", desc: "A shopper taps through one of your posts", xp: 30, tokens: 15 },
+  { key: "TREASURE_HUNTER", icon: "📈", label: "Momentum", desc: "Collect 25 shopper click-throughs", xp: 80, tokens: 40 },
+  // level milestones
+  { key: "PLAYER_ONE", icon: "⭐", label: "Warmed Up", desc: "Reach level 5", xp: 0, tokens: 10 },
+  { key: "ARCADE_REGULAR", icon: "🌟", label: "In the Groove", desc: "Reach level 10", xp: 0, tokens: 25 },
+  { key: "HIGH_SCORE", icon: "🏅", label: "Top Form", desc: "Reach level 25", xp: 0, tokens: 60 },
+  { key: "ISLAND_LEGEND", icon: "💎", label: "Powerhouse", desc: "Reach level 40", xp: 0, tokens: 100 },
+  { key: "CROWNED", icon: "👑", label: "Crowned", desc: "Reach level 50 — the top tier", xp: 0, tokens: 150 },
 ];
 
 export const ACHIEVEMENT_BY_KEY: Record<string, AchievementDef> = Object.fromEntries(
