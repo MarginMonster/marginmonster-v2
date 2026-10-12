@@ -1,13 +1,19 @@
 /* Owner-only beta-tester provisioning — /admin/seed-beta (ADMIN_EMAILS session
- * or ?key=PURGE_KEY). Creates (or updates) ONE shared login the owner can hand
- * to beta testers: an active Legend plan, a huge non-expiring token balance
- * (effectively unlimited for testing), and a chosen content language. The owner
- * types the password into the form — it is sent in the POST body, never a URL,
- * and never echoed back. 404s for everyone who isn't the owner. */
+ * or ?key=PURGE_KEY). Creates (or resets) one or MANY private beta logins at
+ * once: each gets its own account + shop (fully private — separate gallery,
+ * tokens, everything), an active Legend plan, a huge non-expiring token balance
+ * (effectively unlimited for testing), and a chosen content language.
+ *
+ * Beta testers log in with their OWN email + password, so they can never see
+ * another tester's work — and because their email isn't in ADMIN_EMAILS, every
+ * /admin/* page 404s for them. Passwords are auto-generated per account (or a
+ * shared one, your choice) and shown ONCE here for you to distribute. 404s for
+ * everyone who isn't the owner. */
 
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Form, useActionData, useLoaderData } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import crypto from "node:crypto";
 import { db } from "../db.server";
 import { isOwner } from "../lib/admin.server";
 import { createWebAccount, hashPassword } from "../lib/web-auth.server";
@@ -18,120 +24,183 @@ import type { PlanType } from "@prisma/client";
 export const meta = () => [{ title: "Seed beta · EasyMode" }];
 
 // Effectively unlimited for a beta run — thousands of generations at 5–150
-// tokens each. Re-run the form to top back up if a tester ever drains it.
+// tokens each. Re-run for a tester to top back up if they ever drain it.
 const BETA_TOKENS = 10_000_000;
+const MAX_BATCH = 50;
+
+// Readable random password, no ambiguous characters (0/O, 1/l/I).
+const PW_ALPHA = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function genPassword(len = 12): string {
+  const b = crypto.randomBytes(len);
+  let s = "";
+  for (let i = 0; i < len; i++) s += PW_ALPHA[b[i] % PW_ALPHA.length];
+  return s;
+}
+
+async function provisionBeta(email: string, password: string, lang: string): Promise<boolean> {
+  let account = await db.account.findUnique({ where: { email } });
+  let created = false;
+  if (!account) {
+    account = await createWebAccount(email, password, "Beta Tester", lang, undefined);
+    created = true;
+  } else {
+    await db.account.update({ where: { id: account.id }, data: { passwordHash: await hashPassword(password) } });
+  }
+  const conn = await db.connection.findFirst({ where: { accountId: account.id, kind: "web" } });
+  if (!conn) throw new Error("account has no web shop");
+  const shopId = conn.externalId;
+  await db.shop.update({ where: { id: shopId }, data: { contentLang: lang } });
+
+  const tier = PLAN_BY_KEY["ANTHEM"];
+  const planFields = {
+    type: "ANTHEM" as PlanType,
+    active: true,
+    creatorAddon: true,
+    cancelAtPeriodEnd: false,
+    blogQuota: tier.blogQuota,
+    videoQuota: tier.videoQuota,
+    imageQuota: tier.imageQuota,
+    adCreativePack: true,
+    campaignAutopilot: tier.campaignAutopilot,
+    tokensIncluded: tier.monthlyTokens,
+    tokensUsed: 0,
+    tokensExtra: BETA_TOKENS,
+    trialEndsAt: null,
+  };
+  await db.plan.upsert({
+    where: { shopId },
+    create: { shopId, reviewMode: "REVIEW_FIRST", periodStart: new Date(), ...planFields },
+    update: planFields,
+  });
+  return created;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!(await isOwner(request))) throw new Response("Not Found", { status: 404 });
-  const origin = new URL(request.url).origin;
-  return json({ origin });
+  return json({ origin: new URL(request.url).origin });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (!(await isOwner(request))) throw new Response("Not Found", { status: 404 });
   const origin = new URL(request.url).origin;
   const form = await request.formData();
-  const email = ((form.get("email") as string) || "").trim().toLowerCase();
-  const password = (form.get("password") as string) || "";
-  const name = ((form.get("name") as string) || "").trim();
+  const raw = ((form.get("emails") as string) || "");
+  const sharedPw = ((form.get("password") as string) || "").trim();
   const lang = normalizeContentLang((form.get("lang") as string) || "zh");
 
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ ok: false as const, error: "Enter a valid email." });
-  if (password.length < 8) return json({ ok: false as const, error: "Password needs at least 8 characters." });
-
-  try {
-    // Create the account if new; otherwise reset its password to the one typed.
-    let account = await db.account.findUnique({ where: { email } });
-    let created = false;
-    if (!account) {
-      account = await createWebAccount(email, password, name || "Beta Tester", lang, undefined);
-      created = true;
-    } else {
-      await db.account.update({ where: { id: account.id }, data: { passwordHash: await hashPassword(password), ...(name ? { name } : {}) } });
-    }
-
-    const conn = await db.connection.findFirst({ where: { accountId: account.id, kind: "web" } });
-    if (!conn) return json({ ok: false as const, error: "Account has no web shop — unexpected." });
-    const shopId = conn.externalId;
-    await db.shop.update({ where: { id: shopId }, data: { contentLang: lang } });
-
-    const tier = PLAN_BY_KEY["ANTHEM"];
-    const planFields = {
-      type: "ANTHEM" as PlanType,
-      active: true,
-      creatorAddon: true,
-      cancelAtPeriodEnd: false,
-      blogQuota: tier.blogQuota,
-      videoQuota: tier.videoQuota,
-      imageQuota: tier.imageQuota,
-      adCreativePack: true,
-      campaignAutopilot: tier.campaignAutopilot,
-      tokensIncluded: tier.monthlyTokens,
-      tokensUsed: 0,
-      tokensExtra: BETA_TOKENS,
-      trialEndsAt: null, // no trial ceiling — full access for testing
-    };
-    await db.plan.upsert({
-      where: { shopId },
-      create: { shopId, reviewMode: "REVIEW_FIRST", periodStart: new Date(), ...planFields },
-      update: planFields,
-    });
-
-    const entryLink = `${origin}/set-ui-lang?lang=${lang}&to=/web/login`;
-    return json({
-      ok: true as const,
-      created,
-      email,
-      lang,
-      langName: CONTENT_LANG_NATIVE[lang] || lang,
-      tokens: BETA_TOKENS,
-      entryLink,
-    });
-  } catch (e) {
-    return json({ ok: false as const, error: e instanceof Error ? e.message : "Couldn't provision that account." });
+  if (sharedPw && sharedPw.length < 8) {
+    return json({ ok: false as const, error: "A shared password needs at least 8 characters (or leave it blank to auto-generate)." });
   }
+
+  // Parse + validate + dedupe the email list.
+  const seen = new Set<string>();
+  const emails: string[] = [];
+  for (const line of raw.split(/[\r\n,]+/)) {
+    const e = line.trim().toLowerCase();
+    if (!e) continue;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return json({ ok: false as const, error: `Not a valid email: "${e}"` });
+    if (!seen.has(e)) { seen.add(e); emails.push(e); }
+  }
+  if (emails.length === 0) return json({ ok: false as const, error: "Add at least one email (one per line)." });
+  if (emails.length > MAX_BATCH) return json({ ok: false as const, error: `That's ${emails.length} emails — cap is ${MAX_BATCH} at a time.` });
+
+  const results: Array<{ email: string; password: string; created: boolean; error?: string }> = [];
+  for (const email of emails) {
+    const password = sharedPw || genPassword();
+    try {
+      const created = await provisionBeta(email, password, lang);
+      results.push({ email, password, created });
+    } catch (e) {
+      results.push({ email, password: "", created: false, error: e instanceof Error ? e.message : "failed" });
+    }
+  }
+
+  // Audit trail / abuse tripwire: this page is owner-gated, so the only person
+  // who can ever reach it is you — but alert on every provisioning anyway. If
+  // one of these ever lands in your inbox that you did NOT trigger, your admin
+  // access has been compromised and you should rotate ADMIN_EMAILS + password.
+  const okEmails = results.filter((r) => !r.error).map((r) => r.email);
+  if (okEmails.length) {
+    try {
+      const { alertOps } = await import("../lib/ops-alert.server");
+      const who = (await isOwner(request)) ? "an admin" : "someone"; // always "an admin" — gate above guarantees it
+      await alertOps(
+        "beta-provision",
+        `Beta logins provisioned (${okEmails.length})`,
+        [
+          `${okEmails.length} unlimited beta account(s) were provisioned via /admin/seed-beta by ${who}.`,
+          `Emails: ${okEmails.join(", ")}`,
+          `Language: ${lang}`,
+          "If you did NOT just do this, your admin access may be compromised — rotate ADMIN_EMAILS and your login immediately.",
+          `When: ${new Date().toISOString()}`,
+        ],
+      );
+    } catch { /* an alert must never fail the provisioning */ }
+  }
+
+  return json({
+    ok: true as const,
+    results,
+    lang,
+    langName: CONTENT_LANG_NATIVE[lang] || lang,
+    loginUrl: `${origin}/web/login`,
+    entryLink: `${origin}/set-ui-lang?lang=${lang}&to=/web/login`,
+    sharedPw: !!sharedPw,
+  });
 };
 
 export default function SeedBeta() {
   const { origin } = useLoaderData<typeof loader>();
   const res = useActionData<typeof action>();
+  const nav = useNavigation();
+  const busy = nav.state !== "idle";
+
   return (
     <div className="sb-wrap">
       <style>{CSS}</style>
-      <h1 className="sb-h1">Beta tester login</h1>
+      <h1 className="sb-h1">Beta tester logins</h1>
       <p className="sb-sub">
-        Creates (or resets) one shared account with an active <b>Legend</b> plan and{" "}
-        {BETA_TOKENS.toLocaleString()} tokens — effectively unlimited for testing. Share the login + the
-        entry link below with your testers. Re-run anytime to reset the password or top the tokens back up.
+        Each email below becomes its own <b>private</b> account — separate gallery, tokens and work — with an active
+        <b> Legend</b> plan and {BETA_TOKENS.toLocaleString()} tokens (unlimited for testing). Testers log in with their own
+        email + password, so they never see each other's work. And because their email isn't on the admin list, every
+        <code> /admin</code> page simply 404s for them — they can't reach this dashboard. Re-run any email to reset its
+        password or refill its tokens.
       </p>
 
       {res && res.ok && (
         <div className="sb-ok">
-          <div className="sb-ok-h">✓ {res.created ? "Account created" : "Account updated"} — ready to share</div>
+          <div className="sb-ok-h">✓ {res.results.filter((r) => !r.error).length} account(s) ready — copy the logins below</div>
+          <div className="sb-links">
+            <div><span>Login page</span><code>{res.loginUrl}</code></div>
+            <div><span>Entry link (opens in {res.langName})</span><code>{res.entryLink}</code></div>
+          </div>
           <table className="sb-tbl">
+            <thead><tr><th>Email</th><th>Password</th><th>Status</th></tr></thead>
             <tbody>
-              <tr><td>Login page</td><td><code>{origin}/web/login</code></td></tr>
-              <tr><td>Email</td><td><code>{res.email}</code></td></tr>
-              <tr><td>Password</td><td>the one you just typed (not shown here)</td></tr>
-              <tr><td>Language</td><td>{res.langName}</td></tr>
-              <tr><td>Tokens</td><td>{res.tokens.toLocaleString()} (unlimited for testing)</td></tr>
-              <tr><td>Entry link (opens in {res.langName})</td><td><code>{res.entryLink}</code></td></tr>
+              {res.results.map((r) => (
+                <tr key={r.email} className={r.error ? "sb-row-err" : ""}>
+                  <td><code>{r.email}</code></td>
+                  <td>{r.error ? "—" : <code>{r.password}</code>}</td>
+                  <td>{r.error ? `failed: ${r.error}` : r.created ? "created" : "reset"}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          <p className="sb-tip">Send testers the <b>Entry link</b> — it sets the interface to {res.langName} and drops them on the login page. They can still switch languages anytime with the globe.</p>
+          <p className="sb-copylbl">Copy-and-send block (one tester per line):</p>
+          <pre className="sb-pre">{res.results.filter((r) => !r.error).map((r) => `${r.email}  —  ${r.password}`).join("\n")}
+{"\n"}Sign in: {res.loginUrl}
+Or open straight into {res.langName}: {res.entryLink}</pre>
+          <p className="sb-tip">Send each tester their own email + password. The entry link sets the interface to {res.langName}; they can switch anytime with the globe.</p>
         </div>
       )}
       {res && !res.ok && <div className="sb-err">{res.error}</div>}
 
       <Form method="post" className="sb-form">
-        <label className="sb-lbl">Email
-          <input className="sb-in" name="email" type="email" required placeholder="beta-zh@easymode.app" defaultValue="beta-zh@easymode.app" />
+        <label className="sb-lbl">Tester emails — one per line
+          <textarea className="sb-in sb-ta" name="emails" rows={6} required placeholder={"tester1@example.com\ntester2@example.com\ntester3@example.com"} />
         </label>
-        <label className="sb-lbl">Password (share this with testers)
-          <input className="sb-in" name="password" type="text" required minLength={8} placeholder="8+ characters" autoComplete="off" />
-        </label>
-        <label className="sb-lbl">Display name (optional)
-          <input className="sb-in" name="name" placeholder="Beta Tester" />
+        <label className="sb-lbl">Shared password (optional)
+          <input className="sb-in" name="password" type="text" autoComplete="off" placeholder="leave blank to auto-generate a unique password per tester" />
         </label>
         <label className="sb-lbl">Language
           <select className="sb-in" name="lang" defaultValue="zh">
@@ -142,28 +211,35 @@ export default function SeedBeta() {
             <option value="de">Deutsch</option>
           </select>
         </label>
-        <button className="sb-btn" type="submit">Create / update beta login</button>
+        <button className="sb-btn" type="submit" disabled={busy}>{busy ? "Creating…" : "Create / reset beta logins"}</button>
       </Form>
     </div>
   );
 }
 
 const CSS = `
-.sb-wrap{max-width:620px;margin:0 auto;padding:32px 20px 64px;color:#14201A;font-family:Poppins,system-ui,sans-serif}
+.sb-wrap{max-width:680px;margin:0 auto;padding:32px 20px 64px;color:#14201A;font-family:Poppins,system-ui,sans-serif}
 .sb-h1{font-size:26px;font-weight:700;margin:0 0 6px}
-.sb-sub{color:#5a6b61;font-size:14px;line-height:1.6;margin:0 0 22px}
+.sb-sub{color:#5a6b61;font-size:13.5px;line-height:1.6;margin:0 0 22px}
+.sb-sub code{background:#eef2ee;border-radius:5px;padding:1px 5px;font-size:12.5px}
 .sb-form{display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid #e3e9e4;border-radius:16px;padding:20px}
 .sb-lbl{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:#14201A}
 .sb-in{font:inherit;font-weight:400;font-size:15px;padding:10px 12px;border:1px solid #d7ded8;border-radius:10px;background:#fff;color:#14201A}
+.sb-ta{resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px}
 .sb-in:focus{outline:none;border-color:#0C7A46;box-shadow:0 0 0 3px rgba(12,122,70,.12)}
 .sb-btn{margin-top:4px;background:#0C7A46;color:#fff;border:0;border-radius:11px;padding:12px 18px;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
-.sb-btn:hover{background:#0a6a3c}
+.sb-btn:hover{background:#0a6a3c}.sb-btn:disabled{opacity:.6;cursor:default}
 .sb-ok{background:#f0faf4;border:1px solid #bfe6cf;border-radius:14px;padding:16px 18px;margin-bottom:20px}
-.sb-ok-h{font-weight:700;color:#0C7A46;margin-bottom:10px}
-.sb-tbl{width:100%;border-collapse:collapse;font-size:13.5px}
-.sb-tbl td{padding:5px 8px;vertical-align:top;border-bottom:1px solid #e0efe6}
-.sb-tbl td:first-child{color:#5a6b61;white-space:nowrap;width:40%}
-.sb-tbl code{background:#fff;border:1px solid #d7ded8;border-radius:6px;padding:1px 6px;font-size:12.5px;word-break:break-all}
+.sb-ok-h{font-weight:700;color:#0C7A46;margin-bottom:12px}
+.sb-links{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;font-size:13px}
+.sb-links span{color:#5a6b61;margin-right:8px}
+.sb-links code,.sb-tbl code{background:#fff;border:1px solid #d7ded8;border-radius:6px;padding:1px 6px;font-size:12.5px;word-break:break-all}
+.sb-tbl{width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:12px}
+.sb-tbl th{text-align:left;padding:6px 8px;background:#e8f4ec;color:#5a6b61;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.sb-tbl td{padding:6px 8px;border-bottom:1px solid #e0efe6;vertical-align:top}
+.sb-row-err{color:#a33}
+.sb-copylbl{font-size:12px;font-weight:600;color:#5a6b61;margin:4px 0 6px}
+.sb-pre{background:#14201A;color:#e8f0ea;border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;word-break:break-all;overflow-x:auto;margin:0}
 .sb-tip{font-size:12.5px;color:#5a6b61;line-height:1.55;margin:10px 0 0}
 .sb-err{background:#fdeceb;border:1px solid #f3c6c0;color:#a33;border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:14px}
 `;
