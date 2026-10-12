@@ -398,7 +398,7 @@ function Familiar({ think }: { think?: boolean }) {
 function Crest({ size }: { size: number }) {
   return (
     <span className="wb-crest" style={{ width: size, height: size }} aria-hidden="true">
-      <img src="/helpurr-head.png?v=2" alt="" />
+      <img src="/helpurr-head.png?v=3" alt="" />
     </span>
   );
 }
@@ -456,7 +456,11 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
   };
   const resetAvatar = () => { setAvatar(null); try { localStorage.removeItem("emAvatar"); } catch { /* ignore */ } };
 
-  const avatarSrc = avatar || "/helpurr-head.png?v=2";
+  // Account avatar = the member's OWN face, not the brand. Default is an
+  // initials monogram (first letter of the account name), so it reads as "you"
+  // and doesn't add a third/fourth Helpurr to a page that already carries the
+  // brand mark and the Helpurr helper. An uploaded photo overrides it.
+  const initial = ((hud.name || hud.email || "?").trim().charAt(0) || "?").toUpperCase();
   const toNext = Math.max(0, hud.xpNeed - hud.xpInto);
 
   return (
@@ -468,7 +472,7 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
         aria-haspopup="menu" aria-expanded={open}
         aria-label={t("Account menu — level {lvl}, {tokens} tokens", { lvl: hud.level, tokens: hud.tokens.toLocaleString() })}
       >
-        <span className={`wb-chip-ava${avatar ? " photo" : ""}`}><img src={avatarSrc} alt="" /></span>
+        <span className={`wb-chip-ava${avatar ? " photo" : " mono"}`}>{avatar ? <img src={avatar} alt="" /> : <span className="wb-ava-mono">{initial}</span>}</span>
         <span className="wb-chip-lvl">LVL {hud.level}</span>
         <span className="wb-chip-tok"><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
         <span className="wb-chip-caret" aria-hidden="true">▾</span>
@@ -478,8 +482,8 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
         <div className="wb-menu" role="menu">
           {/* Identity + changeable avatar */}
           <div className="wb-menu-id">
-            <button type="button" className={`wb-menu-ava${avatar ? " photo" : ""}`} onClick={pickAvatar} title={t("Change your avatar")} aria-label={t("Change your avatar")}>
-              <img src={avatarSrc} alt="" />
+            <button type="button" className={`wb-menu-ava${avatar ? " photo" : " mono"}`} onClick={pickAvatar} title={t("Change your avatar")} aria-label={t("Change your avatar")}>
+              {avatar ? <img src={avatar} alt="" /> : <span className="wb-ava-mono">{initial}</span>}
               <span className="wb-menu-cam" aria-hidden="true"><Ico n="camera" /></span>
             </button>
             <div className="wb-menu-idtxt">
@@ -526,7 +530,7 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
           {/* Actions */}
           <div className="wb-menu-links">
             <button type="button" className="wb-menu-link" onClick={pickAvatar}><Ico n="camera" /> {t("Change avatar")}</button>
-            {avatar && <button type="button" className="wb-menu-link" onClick={resetAvatar}><Ico n="paw" /> {t("Use Helpurr")}</button>}
+            {avatar && <button type="button" className="wb-menu-link" onClick={resetAvatar}><Ico n="refresh" /> {t("Remove photo")}</button>}
             <Link to="/web/logout" className="wb-menu-link danger">{t("Log out")}</Link>
           </div>
 
@@ -664,6 +668,12 @@ const CSS = `
 .wb-chip-ava img{width:120%;height:120%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(20,32,26,.22));}
 .wb-chip-ava.photo{border-radius:50%;box-shadow:0 0 0 2px var(--card),0 0 0 3px rgba(12,122,70,.38);}
 .wb-chip-ava.photo img{width:100%;height:100%;object-fit:cover;border-radius:50%;image-rendering:auto;filter:none;}
+/* Initials monogram — the default account avatar (an uploaded photo overrides it). */
+.wb-ava-mono{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;line-height:1;
+  background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-family:Poppins,sans-serif;font-weight:800;
+  box-shadow:0 0 0 2px var(--card),0 0 0 3px rgba(12,122,70,.38);}
+.wb-chip-ava.mono .wb-ava-mono{font-size:13.5px;}
+.wb-menu-ava.mono .wb-ava-mono{font-size:21px;}
 .wb-chip-lvl{font-family:Poppins,sans-serif;font-weight:800;font-size:10.5px;letter-spacing:.04em;color:#3A2A05;
   background:linear-gradient(168deg,#F6E6B4,#E7C879);padding:2px 7px;border-radius:999px;box-shadow:inset 0 0 0 1px rgba(176,133,38,.3);}
 .wb-chip-tok{display:inline-flex;align-items:center;gap:4px;font-weight:800;font-size:12.5px;color:var(--gold-deep);font-variant-numeric:tabular-nums;}
