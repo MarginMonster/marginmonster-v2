@@ -10,6 +10,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useLoaderData } from "@remix-run/react";
+import { useState } from "react";
 import { db } from "../db.server";
 import { isOwner } from "../lib/admin.server";
 
@@ -108,6 +109,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function AdminMemberGenerations() {
   const { member, tiles, total, breakdown } = useLoaderData<typeof loader>();
+  // Lightbox — the clicked creation, shown full-size in an overlay.
+  const [active, setActive] = useState<null | (typeof tiles)[number]>(null);
   return (
     <div className="mg-wrap">
       <style>{CSS}</style>
@@ -129,11 +132,16 @@ export default function AdminMemberGenerations() {
             <div key={tInfo.id} className="mg-tile">
               <div className="mg-media">
                 {tInfo.isVideo && tInfo.media ? (
-                  <video src={tInfo.media} controls preload="metadata" playsInline />
+                  <button type="button" className="mg-open" onClick={() => setActive(tInfo)} aria-label={`View ${tInfo.title}`}>
+                    <video src={tInfo.media} muted preload="metadata" playsInline />
+                    <span className="mg-play" aria-hidden="true">▶</span>
+                  </button>
                 ) : tInfo.isAudio && tInfo.media ? (
                   <div className="mg-aud"><span>♪</span><audio src={tInfo.media} controls /></div>
                 ) : tInfo.media ? (
-                  <a href={tInfo.media} target="_blank" rel="noreferrer"><img src={tInfo.media} alt={tInfo.title} loading="lazy" /></a>
+                  <button type="button" className="mg-open" onClick={() => setActive(tInfo)} aria-label={`View ${tInfo.title}`}>
+                    <img src={tInfo.media} alt={tInfo.title} loading="lazy" />
+                  </button>
                 ) : tInfo.text ? (
                   <div className="mg-text">{tInfo.text}{tInfo.text.length >= 240 ? "…" : ""}</div>
                 ) : (
@@ -150,6 +158,25 @@ export default function AdminMemberGenerations() {
               {tInfo.prompt && <div className="mg-prompt" title={tInfo.prompt}>“{tInfo.prompt}”</div>}
             </div>
           ))}
+        </div>
+      )}
+
+      {active && (
+        <div className="mg-lb" role="dialog" aria-modal="true" onClick={() => setActive(null)}>
+          <button type="button" className="mg-lb-x" onClick={() => setActive(null)} aria-label="Close">×</button>
+          <div className="mg-lb-inner" onClick={(e) => e.stopPropagation()}>
+            {active.isVideo && active.media ? (
+              <video src={active.media} controls autoPlay playsInline className="mg-lb-media" />
+            ) : active.media ? (
+              <img src={active.media} alt={active.title} className="mg-lb-media" />
+            ) : null}
+            <div className="mg-lb-meta">
+              <b>{active.title}</b>
+              <span className="mg-lb-line">{active.label}{active.section === "creator" ? " · Creator" : ""} · {active.when} · {active.status.toLowerCase()}</span>
+              {active.prompt && <p className="mg-lb-prompt">“{active.prompt}”</p>}
+              {active.media && <a href={active.media} target="_blank" rel="noreferrer" className="mg-lb-raw">open original ↗</a>}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -190,4 +217,17 @@ const CSS = `
 .mg-breakdown{margin:8px 0 0;color:#2a3b33;font-size:13px;font-weight:600}
 .mg-prompt{padding:0 11px 11px;font-size:11.5px;line-height:1.4;color:#6a7c72;font-style:italic;cursor:help;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .mg-empty{color:#5a6b61;font-size:15px;padding:50px 0;text-align:center}
+.mg-open{display:block;width:100%;height:100%;border:0;padding:0;margin:0;background:none;cursor:zoom-in;position:relative}
+.mg-open img,.mg-open video{width:100%;height:100%;object-fit:cover;display:block}
+.mg-play{position:absolute;inset:0;margin:auto;width:46px;height:46px;display:grid;place-items:center;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:17px;pointer-events:none}
+.mg-lb{position:fixed;inset:0;z-index:9999;background:rgba(8,12,10,.88);display:flex;align-items:center;justify-content:center;padding:28px}
+.mg-lb-x{position:absolute;top:14px;right:20px;background:none;border:0;color:#fff;font-size:34px;line-height:1;cursor:pointer}
+.mg-lb-inner{max-width:min(1000px,92vw);max-height:90vh;display:flex;flex-direction:column;gap:12px;align-items:center}
+.mg-lb-media{max-width:100%;max-height:74vh;width:auto;height:auto;object-fit:contain;border-radius:10px;background:#000;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.mg-lb-meta{max-width:720px;text-align:center;color:#eaf3ee}
+.mg-lb-meta b{display:block;font-size:15px}
+.mg-lb-line{display:block;font-size:12px;color:#9fb3a8;margin-top:3px}
+.mg-lb-prompt{margin:8px 0 0;font-size:13px;font-style:italic;color:#cfe0d6;line-height:1.5}
+.mg-lb-raw{display:inline-block;margin-top:8px;color:#5fd39a;font-size:12px;font-weight:600;text-decoration:none}
+.mg-lb-raw:hover{text-decoration:underline}
 `;
