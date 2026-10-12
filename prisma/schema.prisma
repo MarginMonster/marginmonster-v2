@@ -166,6 +166,23 @@ model Shop {
   abandonedCheckouts AbandonedCheckout[]
   customerLifecycles CustomerLifecycle[]
   creatorSeries      CreatorSeries[]
+  buddyMessages      BuddyMessage[]
+}
+
+/// Helpurr conversation memory — one row per message so the chat survives
+/// reloads and Helpurr has real continuity ("a little Claude inside Helpurr").
+/// Kept per shop + mode (marketing vs casual keep separate threads). Trimmed to
+/// a rolling window at write time; this is a convenience store, not an archive.
+model BuddyMessage {
+  id        String   @id @default(cuid())
+  shopId    String
+  role      String // "user" | "assistant"
+  content   String
+  mode      String   @default("marketing") // "marketing" | "casual"
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, mode, createdAt])
 }
 
 // One row per PAID token top-up — chargeId is unique so a purchase can never

@@ -7,11 +7,16 @@
  * persona + light context and let Haiku (fast + cheap) reply. No actions are
  * taken on the user's behalf yet — it guides, it doesn't click. */
 
-import { json, type ActionFunctionArgs } from "@remix-run/node";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY } from "../lib/plan-config";
 import { anthropicText } from "../lib/anthropic.server";
+import { db } from "../db.server";
+
+// Rolling window kept per shop+mode — enough for real continuity across
+// sessions without the table growing unbounded (messages are tiny text rows).
+const BUDDY_KEEP = 300;
 
 const PERSONA =
   "You are Helpurr — EASYMODE's AI helper (a friendly pixel-cat) and a sharp, clever marketing mind. You think like a seasoned creative director: you read a situation fast and give a confident, well-reasoned take in plain, modern language. EASYMODE turns any store's products into image ads and short product videos, 'on easy mode'. " +
@@ -94,6 +99,43 @@ function contextLine(id: Awaited<ReturnType<typeof getWebIdentity>>, path: strin
   return `You're talking to ${name}, level ${id.shop.level}, plan: ${plan}, about ${tokens.toLocaleString()} tokens left, ${where}.${modeLine}`;
 }
 
+// GET — the widget loads the saved conversation on open, so Helpurr picks up
+// exactly where it left off instead of greeting from scratch every reload.
+export async function loader({ request }: LoaderFunctionArgs) {
+  const id = await getWebIdentity(request);
+  if (!id) return json({ history: [] as Array<{ role: string; content: string }> });
+  const url = new URL(request.url);
+  const mode: "marketing" | "casual" = url.searchParams.get("mode") === "casual" ? "casual" : "marketing";
+  try {
+    const rows = await db.buddyMessage.findMany({
+      where: { shopId: id.shop.id, mode },
+      orderBy: { createdAt: "desc" },
+      take: 60,
+      select: { role: true, content: true },
+    });
+    return json({ history: rows.reverse() });
+  } catch {
+    return json({ history: [] as Array<{ role: string; content: string }> });
+  }
+}
+
+// Persist the latest exchange (the user's new message + Helpurr's reply) and
+// trim the shop+mode thread back to the rolling window. Best-effort: a storage
+// hiccup must never break the live chat.
+async function remember(shopId: string, mode: "marketing" | "casual", userMsg: string, reply: string) {
+  try {
+    const data: Array<{ shopId: string; mode: string; role: string; content: string }> = [];
+    if (userMsg.trim()) data.push({ shopId, mode, role: "user", content: userMsg.trim().slice(0, 4000) });
+    if (reply.trim()) data.push({ shopId, mode, role: "assistant", content: reply.trim().slice(0, 4000) });
+    if (!data.length) return;
+    await db.buddyMessage.createMany({ data });
+    const stale = await db.buddyMessage.findMany({
+      where: { shopId, mode }, orderBy: { createdAt: "desc" }, skip: BUDDY_KEEP, take: 200, select: { id: true },
+    });
+    if (stale.length) await db.buddyMessage.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
+  } catch { /* best-effort memory */ }
+}
+
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
   let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string };
@@ -120,6 +162,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // bubble renders plain text and "**Studio**" would show the asterisks.
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
+    if (id) await remember(id.shop.id, mode, lastUser, clean);
     return json({ reply: clean || "I'm here — tell me what you're working on!", actions: suggestActions(lastUser, mode) });
   } catch {
     // Never leave the chat hanging on an outage.

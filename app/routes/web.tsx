@@ -241,13 +241,39 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Persistent memory: once the saved thread has loaded (or confirmed empty) the
+  // greeting may fire. Starts false so we don't greet over a conversation that's
+  // about to load back in from the server.
+  const [histReady, setHistReady] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const t = useT();
+
+  // Load Helpurr's saved conversation for this mode when the chat opens, so it
+  // continues where it left off instead of starting fresh each reload. Marketing
+  // and casual keep separate threads; flipping mode loads the other one.
+  useEffect(() => {
+    if (!open || !authed) { if (!authed) setHistReady(true); return; }
+    let cancelled = false;
+    setHistReady(false);
+    (async () => {
+      try {
+        const res = await fetch(`/api/buddy?mode=${mode}`);
+        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }> };
+        if (cancelled) return;
+        const hist = (Array.isArray(data.history) ? data.history : [])
+          .filter((m) => m && typeof m.content === "string" && m.content.trim())
+          .map((m): MMMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content as string }));
+        setMsgs(hist); // empty → the greeting effect fills it below
+      } catch { if (!cancelled) setMsgs([]); }
+      finally { if (!cancelled) setHistReady(true); }
+    })();
+    return () => { cancelled = true; };
+  }, [open, authed, mode]);
 
   useEffect(() => {
     // Refresh a lone, not-yet-replied greeting when the mode flips, but never
     // wipe a started conversation — length stays 1, so this doesn't re-fire.
-    if (open && (msgs.length === 0 || (msgs.length === 1 && msgs[0].role === "assistant"))) {
+    if (open && histReady && (msgs.length === 0 || (msgs.length === 1 && msgs[0].role === "assistant"))) {
       const name = authed && hud.name ? hud.name.split(" ")[0] : null;
       const greet = mode === "casual"
         ? (name
@@ -258,7 +284,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             : t("Hey — I'm Helpurr your AI helper for ads & videos. Tell me what you're selling and let's make something scroll-stopping."));
       setMsgs([{ role: "assistant", content: greet }]);
     }
-  }, [open, msgs.length, authed, hud.name, hud.ads, mode, t]);
+  }, [open, histReady, msgs.length, authed, hud.name, hud.ads, mode, t]);
   useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
   // Let any page open the chat — the Creator home's "Ask Helpurr" card fires this.
   useEffect(() => {
@@ -279,7 +305,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     const next: MMMsg[] = [...msgs, { role: "user", content: trimmed }];
     setMsgs(next); setInput(""); setBusy(true);
     try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), path: loc.pathname, mode }) });
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode }) });
       const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[] };
       setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [] }]);
     } catch {
