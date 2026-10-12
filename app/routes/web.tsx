@@ -261,7 +261,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     setHistReady(false);
     (async () => {
       try {
-        const res = await fetch(`/api/buddy?mode=${mode}`);
+        // Cache-buster: the proactive suggestion is freshly randomised server-side,
+        // so bypass the browser's GET cache to get a new one each open.
+        const res = await fetch(`/api/buddy?mode=${mode}&_=${Date.now()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null } | null };
         if (cancelled) return;
         const hist = (Array.isArray(data.history) ? data.history : [])
