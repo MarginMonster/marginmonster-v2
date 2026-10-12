@@ -37,11 +37,14 @@ function genPassword(len = 12): string {
   return s;
 }
 
-async function provisionBeta(email: string, password: string, lang: string): Promise<boolean> {
+// forceLang: a language code to pre-set the tester's content language to, or
+// null to leave it unset — the tester then picks their own UI language (globe
+// pill, on the login page and the app) and output language ("Writing in" chip).
+async function provisionBeta(email: string, password: string, forceLang: string | null): Promise<boolean> {
   let account = await db.account.findUnique({ where: { email } });
   let created = false;
   if (!account) {
-    account = await createWebAccount(email, password, "Beta Tester", lang, undefined);
+    account = await createWebAccount(email, password, "Beta Tester", forceLang || undefined, undefined);
     created = true;
   } else {
     await db.account.update({ where: { id: account.id }, data: { passwordHash: await hashPassword(password) } });
@@ -49,7 +52,7 @@ async function provisionBeta(email: string, password: string, lang: string): Pro
   const conn = await db.connection.findFirst({ where: { accountId: account.id, kind: "web" } });
   if (!conn) throw new Error("account has no web shop");
   const shopId = conn.externalId;
-  await db.shop.update({ where: { id: shopId }, data: { contentLang: lang } });
+  if (forceLang) await db.shop.update({ where: { id: shopId }, data: { contentLang: forceLang } });
 
   const tier = PLAN_BY_KEY["ANTHEM"];
   const planFields = {
@@ -86,7 +89,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const form = await request.formData();
   const raw = ((form.get("emails") as string) || "");
   const sharedPw = ((form.get("password") as string) || "").trim();
-  const lang = normalizeContentLang((form.get("lang") as string) || "zh");
+  // Empty = "let the tester choose" (don't force a language). Otherwise a code.
+  const rawLang = ((form.get("lang") as string) || "").trim();
+  const forceLang = rawLang === "" ? null : normalizeContentLang(rawLang);
 
   if (sharedPw && sharedPw.length < 8) {
     return json({ ok: false as const, error: "A shared password needs at least 8 characters (or leave it blank to auto-generate)." });
@@ -108,7 +113,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   for (const email of emails) {
     const password = sharedPw || genPassword();
     try {
-      const created = await provisionBeta(email, password, lang);
+      const created = await provisionBeta(email, password, forceLang);
       results.push({ email, password, created });
     } catch (e) {
       results.push({ email, password: "", created: false, error: e instanceof Error ? e.message : "failed" });
@@ -130,7 +135,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         [
           `${okEmails.length} unlimited beta account(s) were provisioned via /admin/seed-beta by ${who}.`,
           `Emails: ${okEmails.join(", ")}`,
-          `Language: ${lang}`,
+          `Language: ${forceLang || "tester's choice"}`,
           "If you did NOT just do this, your admin access may be compromised — rotate ADMIN_EMAILS and your login immediately.",
           `When: ${new Date().toISOString()}`,
         ],
@@ -141,10 +146,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({
     ok: true as const,
     results,
-    lang,
-    langName: CONTENT_LANG_NATIVE[lang] || lang,
+    forced: !!forceLang,
+    langName: forceLang ? (CONTENT_LANG_NATIVE[forceLang] || forceLang) : null,
     loginUrl: `${origin}/web/login`,
-    entryLink: `${origin}/set-ui-lang?lang=${lang}&to=/web/login`,
+    entryLink: forceLang ? `${origin}/set-ui-lang?lang=${forceLang}&to=/web/login` : `${origin}/web/login`,
     sharedPw: !!sharedPw,
   });
 };
@@ -166,13 +171,18 @@ export default function SeedBeta() {
         <code> /admin</code> page simply 404s for them — they can't reach this dashboard. Re-run any email to reset its
         password or refill its tokens.
       </p>
+      <p className="sb-sub" style={{ marginTop: -12 }}>
+        Each tester uses <b>whatever language they want</b> — the globe at the top of the login page and the app
+        switches the whole interface, and the “Writing in” chip in the Studio sets what the AI writes. Pick a
+        starting language below, or leave it on “let each tester choose”.
+      </p>
 
       {res && res.ok && (
         <div className="sb-ok">
           <div className="sb-ok-h">✓ {res.results.filter((r) => !r.error).length} account(s) ready — copy the logins below</div>
           <div className="sb-links">
             <div><span>Login page</span><code>{res.loginUrl}</code></div>
-            <div><span>Entry link (opens in {res.langName})</span><code>{res.entryLink}</code></div>
+            <div><span>Entry link{res.forced ? ` (opens in ${res.langName})` : ""}</span><code>{res.entryLink}</code></div>
           </div>
           <table className="sb-tbl">
             <thead><tr><th>Email</th><th>Password</th><th>Status</th></tr></thead>
@@ -188,9 +198,8 @@ export default function SeedBeta() {
           </table>
           <p className="sb-copylbl">Copy-and-send block (one tester per line):</p>
           <pre className="sb-pre">{res.results.filter((r) => !r.error).map((r) => `${r.email}  —  ${r.password}`).join("\n")}
-{"\n"}Sign in: {res.loginUrl}
-Or open straight into {res.langName}: {res.entryLink}</pre>
-          <p className="sb-tip">Send each tester their own email + password. The entry link sets the interface to {res.langName}; they can switch anytime with the globe.</p>
+{"\n"}Sign in: {res.loginUrl}{res.forced ? `\nOr open straight into ${res.langName}: ${res.entryLink}` : ""}</pre>
+          <p className="sb-tip">Send each tester their own email + password. {res.forced ? `The entry link opens in ${res.langName}, but ` : "On the login page "}they can pick any language with the globe at the top, and the “Writing in” chip in the Studio sets what the AI writes.</p>
         </div>
       )}
       {res && !res.ok && <div className="sb-err">{res.error}</div>}
@@ -202,8 +211,9 @@ Or open straight into {res.langName}: {res.entryLink}</pre>
         <label className="sb-lbl">Shared password (optional)
           <input className="sb-in" name="password" type="text" autoComplete="off" placeholder="leave blank to auto-generate a unique password per tester" />
         </label>
-        <label className="sb-lbl">Language
-          <select className="sb-in" name="lang" defaultValue="zh">
+        <label className="sb-lbl">Starting language
+          <select className="sb-in" name="lang" defaultValue="">
+            <option value="">Let each tester choose (recommended)</option>
             <option value="zh">中文 (Chinese)</option>
             <option value="en">English</option>
             <option value="es">Español</option>
