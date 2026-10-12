@@ -233,7 +233,11 @@ export default function WebLayout() {
  * its replies that take you straight there. Talks to /api/buddy (Haiku behind a
  * hype persona). It can't click for you yet — the buttons are its hands. */
 type MMAction = { label: string; to: string };
-type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[] };
+// A Phase-2 "set up a creation" proposal — rendered as a prominent confirm
+// button that opens the task in the Studio pre-filled, where the user approves
+// the actual spend. Helpurr never spends tokens itself.
+type MMPending = { label: string; to: string; cost: number; kind: string };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending };
 function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
   const loc = useLocation();
   const nav = useNavigate();
@@ -306,8 +310,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     setMsgs(next); setInput(""); setBusy(true);
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode }) });
-      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[] };
-      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [] }]);
+      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null };
+      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); }
@@ -335,6 +339,12 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
                 <div className={`mm-msg ${m.role}`}>{m.content}</div>
+                {m.pending && (
+                  <button type="button" className="mm-make" onClick={() => go(m.pending!.to)}>
+                    <span>✨ {m.pending.label}</span>
+                    <b>{m.pending.cost > 0 ? t("~{n} tokens →", { n: m.pending.cost }) : "→"}</b>
+                  </button>
+                )}
                 {m.actions && m.actions.length > 0 && (
                   <div className="mm-acts">{m.actions.map((a) => <button key={a.to + a.label} type="button" className="mm-act" onClick={() => go(a.to)}>{a.label}</button>)}</div>
                 )}
@@ -1223,6 +1233,14 @@ const CSS = `
 .mm-act{font:inherit;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;border:0;border-radius:999px;padding:8px 15px;
   background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 2px 8px rgba(12,122,70,.26),inset 0 0 0 1px rgba(231,200,121,.3);}
 .mm-act:hover{filter:brightness(1.07);transform:translateY(-1px);}
+/* Phase-2 "make it" confirm button — bigger + gold-trimmed so a creation stands
+   apart from the small nav chips. Opens the task in the Studio to approve the spend. */
+.mm-make{display:flex;align-items:center;justify-content:space-between;gap:10px;width:92%;cursor:pointer;border:0;text-align:left;
+  font:inherit;font-weight:800;font-size:13px;color:#fff;border-radius:13px;padding:11px 14px;transition:filter .12s,transform .12s;
+  background:linear-gradient(135deg,#12A85E 42%,#0B6B3E);box-shadow:0 3px 12px rgba(12,122,70,.3),inset 0 0 0 1px rgba(231,200,121,.42);}
+.mm-make span{overflow-wrap:anywhere;}
+.mm-make b{flex:0 0 auto;font-size:11.5px;font-weight:800;color:#F6E6B4;white-space:nowrap;}
+.mm-make:hover{filter:brightness(1.06);transform:translateY(-1px);}
 .mm-typing{display:flex;gap:4px;align-items:center;}
 .mm-typing i{width:7px;height:7px;border-radius:50%;background:#9CCBB1;animation:mmBlink 1.2s infinite both;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}

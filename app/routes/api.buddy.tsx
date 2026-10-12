@@ -20,6 +20,13 @@ type WebId = NonNullable<Awaited<ReturnType<typeof getWebIdentity>>>;
 // sessions without the table growing unbounded (messages are tiny text rows).
 const BUDDY_KEEP = 300;
 
+// Phase 2 runs on Sonnet, which isn't free like Haiku — so chat gets a per-plan
+// daily allowance that resets rolling over 24h. Generous on purpose; this gates
+// CHAT only, never the rest of the app.
+const BUDDY_MODEL = "claude-sonnet-5";
+const BUDDY_DAILY_CAP: Record<string, number> = { STARTER: 100, STUDIO: 250, ANTHEM: 600 };
+const BUDDY_CAP_NO_PLAN = 30;
+
 const PERSONA =
   "You are Helpurr — EASYMODE's AI helper (a friendly pixel-cat) and a sharp, clever marketing mind. You think like a seasoned creative director: you read a situation fast and give a confident, well-reasoned take in plain, modern language. EASYMODE turns any store's products into image ads and short product videos, 'on easy mode'. " +
   "VOICE: warm, sharp and genuinely conversational — a smart creative partner, not a help widget. Have a real back-and-forth: tight by default (a sentence or three), but when they want ideas, a plan, feedback or a proper answer, give a fuller, well-organized reply in plain language — still no fluff, still no walls of text. Precise, lightly dry humor, genuinely smart; never slangy, stiff or corporate. Say the insightful thing, not the hype thing, ask a sharp follow-up question when it helps, and react to what they actually said. An occasional well-placed emoji is fine, not every line. " +
@@ -126,7 +133,56 @@ const BUDDY_TOOLS: ToolDef[] = [
     description: "The user's content campaigns (questlines) that run content on a schedule: name, status, progress and the product. Use for 'what are my campaigns doing', 'is my campaign running'.",
     input_schema: { type: "object", properties: {} },
   },
+  {
+    // PHASE 2 — action agency, the SAFE way. This does NOT make anything or spend
+    // tokens; it lines the task up and the user taps a button to open it in the
+    // Studio pre-filled, where they approve the actual spend on the tested path.
+    name: "set_up_task",
+    description: "Set up a creation and show the user a confirm button to make it. Use when they want to CREATE something — an image ad, product video, blog post, faceless video, music, photo edit, or campaign. This does NOT make it or spend tokens: it lines it up and the user taps the button to open it in the Studio and approve the spend. When the task is about a specific product, call get_catalog first and pass a REAL product title.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["image_ad", "video", "blog", "faceless", "music", "photo_edit", "campaign"], description: "What to create" },
+        product: { type: "string", description: "The product title to feature (only for image_ad / video / blog)" },
+      },
+      required: ["kind"],
+    },
+  },
 ];
+
+// What each task kind opens in the Studio (the Studio reads ?tab / ?product /
+// ?do on load) and roughly what it costs — shown on the confirm button so the
+// spend is never a surprise.
+type PendingAction = { label: string; to: string; cost: number; kind: string };
+const TASK_SPECS: Record<string, { tab?: string; to: string; cost: number; verb: string; product: boolean }> = {
+  image_ad:   { tab: "image",    to: "/web/studio", cost: TOKEN_COST.image,    verb: "Make an image ad",     product: true },
+  video:      { tab: "video",    to: "/web/studio", cost: TOKEN_COST.video,    verb: "Make a product video", product: true },
+  blog:       { tab: "blog",     to: "/web/studio", cost: TOKEN_COST.blog,     verb: "Write a blog post",    product: true },
+  faceless:   { tab: "faceless", to: "/web/studio", cost: TOKEN_COST.faceless, verb: "Make a faceless video", product: false },
+  music:      { tab: "music",    to: "/web/studio", cost: TOKEN_COST.music,    verb: "Make a track",         product: false },
+  photo_edit: { to: "/web/studio?do=edit&tab=image", cost: TOKEN_COST.quickEdit, verb: "Edit a photo",        product: false },
+  campaign:   { to: "/web/campaigns", cost: 0, verb: "Set up a campaign",     product: false },
+};
+
+function buildTask(input: Record<string, unknown>): { toolResult: string; action: PendingAction | null } {
+  const spec = TASK_SPECS[String(input.kind || "")];
+  if (!spec) return { toolResult: "Unknown task kind — nothing set up.", action: null };
+  const product = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
+  const params = new URLSearchParams();
+  if (spec.tab) params.set("tab", spec.tab);
+  if (spec.product && product) params.set("product", product);
+  const qs = params.toString();
+  const to = spec.to.includes("?") ? (qs ? `${spec.to}&${qs}` : spec.to) : (qs ? `${spec.to}?${qs}` : spec.to);
+  const label = spec.product && product ? `${spec.verb} for ${product}` : spec.verb;
+  const action: PendingAction = { label, to, cost: spec.cost, kind: String(input.kind) };
+  return {
+    action,
+    toolResult: JSON.stringify({
+      setUp: true, label, approxCost: spec.cost, opensInStudio: to.startsWith("/web/studio"),
+      note: "A confirm button is now shown to the user. Tell them briefly what you lined up and that tapping it opens it in the Studio to make (where they approve the spend). Do NOT claim it is already made or that tokens were spent.",
+    }),
+  };
+}
 
 function relTime(d: Date): string {
   const ms = Date.now() - d.getTime();
@@ -256,18 +312,37 @@ export async function action({ request }: ActionFunctionArgs) {
   while (chat.length && chat[0].role === "assistant") chat = chat.slice(1);
   if (!chat.length) return json({ reply: "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?" });
 
+  // Daily chat cap (Sonnet isn't free). Gates only the LLM call — the rest of the
+  // app is untouched — and counts the user's messages over the last 24h.
+  if (id) {
+    const t = id.shop.activePlan?.active ? resolveTierKey(id.shop.activePlan.type) : null;
+    const cap = t ? (BUDDY_DAILY_CAP[t] ?? 100) : BUDDY_CAP_NO_PLAN;
+    try {
+      const since = new Date(Date.now() - 24 * 3_600_000);
+      const used = await db.buddyMessage.count({ where: { shopId: id.shop.id, role: "user", createdAt: { gte: since } } });
+      if (used >= cap) {
+        return json({ reply: "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)", actions: [] });
+      }
+    } catch { /* a failed count must never block the chat */ }
+  }
+
   const persona = mode === "casual" ? PERSONA_CASUAL : PERSONA;
   const toolNote = id
-    ? "\n\nYOU CAN LOOK THINGS UP: the tools provided return this user's REAL store data — plan, tokens, what they've made, their catalog, their campaigns. When a question touches their actual data, CALL the right tool and answer from what it returns; never guess or invent a number. One or two quick lookups is plenty. Keep replies warm and plain text."
+    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN ALSO SET UP A CREATION: when they want to MAKE something, call set_up_task — it lines up the exact thing (an image ad for their product, a video, a blog, a photo edit, a campaign…) and shows them a confirm button to make it in the Studio, where they approve the spend. For a specific product, call get_catalog first and pass a real title. You never spend their tokens or post yourself — the button and the Studio do. One or two quick lookups is plenty; keep replies warm and plain text."
     : "";
   const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}`;
+  const pending: { action: PendingAction | null } = { action: null };
   try {
     const reply = await anthropicToolLoop({
       system,
       messages: chat,
       tools: id ? BUDDY_TOOLS : [],
-      runTool: async (n, i) => (id ? runBuddyTool(id, n, i) : "(not signed in)"),
-      model: "claude-haiku-4-5-20251001",
+      runTool: async (n, i) => {
+        if (!id) return "(not signed in)";
+        if (n === "set_up_task") { const r = buildTask(i); pending.action = r.action; return r.toolResult; }
+        return runBuddyTool(id, n, i);
+      },
+      model: BUDDY_MODEL,
       maxTokens: 700,
     });
     // Belt-and-braces: strip any markdown emphasis the model slips in, since the
@@ -275,7 +350,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
     if (id) await remember(id.shop.id, mode, lastUser, clean);
-    return json({ reply: clean || "I'm here — tell me what you're working on!", actions: suggestActions(lastUser, mode) });
+    return json({ reply: clean || "I'm here — tell me what you're working on!", actions: suggestActions(lastUser, mode), pendingAction: pending.action });
   } catch {
     // Never leave the chat hanging on an outage.
     return json({ reply: "My brain hiccuped for a sec — mind trying that again?" });
