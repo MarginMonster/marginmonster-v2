@@ -1331,6 +1331,29 @@ export default function WebStudio() {
   // post can deep-link shoppers straight to the buy page.
   const [pickedUrl, setPickedUrl] = useState("");
   const [catQuery, setCatQuery] = useState("");
+  // Deep-link product pre-select — Helpurr's "set up an image ad" lands here with
+  // ?product=<title>. A bare title isn't enough: a product ad needs the product's
+  // IMAGE too, and the kind-picker hasn't opened the product step yet. So match
+  // the title against the real catalogue and SELECT the whole product (title +
+  // image + url), then open the Product-ad step — the ad is ready to make, not
+  // just half-addressed. Runs once; no match → leaves the normal flow untouched.
+  const didPreselectRef = useRef(false);
+  useEffect(() => {
+    if (didPreselectRef.current) return;
+    const want = (searchParams.get("product") || "").trim();
+    if (!want) return;
+    const norm = (s: string) => s.trim().toLowerCase();
+    const hit = d.catalog.find((c) => norm(c.title) === norm(want))
+      || d.catalog.find((c) => norm(c.title).includes(norm(want)) || norm(want).includes(norm(c.title)));
+    if (!hit) return;
+    didPreselectRef.current = true;
+    setProductTitle(hit.title);
+    setImageUrl(hit.imageUrl || "");
+    setPickedUrl(hit.url);
+    setTab("image");
+    setImageMode("product");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // WHAT IS ON SCREEN, NOT WHAT IS IN THE DATABASE.
   //
   // The label quoted catalogCount — every row the shop has — over a grid that
