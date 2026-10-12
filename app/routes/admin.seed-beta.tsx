@@ -1,8 +1,8 @@
 /* Owner-only beta-tester provisioning — /admin/seed-beta (ADMIN_EMAILS session
  * or ?key=PURGE_KEY). Creates (or resets) one or MANY private beta logins at
  * once: each gets its own account + shop (fully private — separate gallery,
- * tokens, everything), an active Legend plan, a huge non-expiring token balance
- * (effectively unlimited for testing), and a chosen content language.
+ * tokens, everything), an active Legend plan, a generous non-expiring token
+ * balance for testing, and a chosen content language.
  *
  * Beta testers log in with their OWN email + password, so they can never see
  * another tester's work — and because their email isn't in ADMIN_EMAILS, every
@@ -23,9 +23,9 @@ import type { PlanType } from "@prisma/client";
 
 export const meta = () => [{ title: "Seed beta · EasyMode" }];
 
-// Effectively unlimited for a beta run — thousands of generations at 5–150
-// tokens each. Re-run for a tester to top back up if they ever drain it.
-const BETA_TOKENS = 10_000_000;
+// A generous beta allowance — ~1,000 images (5 tok) or ~33 videos (150 tok).
+// Re-run a tester any time to refill them back up to this.
+const BETA_TOKENS = 5_000;
 const MAX_BATCH = 50;
 
 // Readable random password, no ambiguous characters (0/O, 1/l/I).
@@ -133,7 +133,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         "beta-provision",
         `Beta logins provisioned (${okEmails.length})`,
         [
-          `${okEmails.length} unlimited beta account(s) were provisioned via /admin/seed-beta by ${who}.`,
+          `${okEmails.length} beta account(s) (${BETA_TOKENS.toLocaleString()} tokens each) were provisioned via /admin/seed-beta by ${who}.`,
           `Emails: ${okEmails.join(", ")}`,
           `Language: ${forceLang || "tester's choice"}`,
           "If you did NOT just do this, your admin access may be compromised — rotate ADMIN_EMAILS and your login immediately.",
@@ -166,7 +166,7 @@ export default function SeedBeta() {
       <h1 className="sb-h1">Beta tester logins</h1>
       <p className="sb-sub">
         Each email below becomes its own <b>private</b> account — separate gallery, tokens and work — with an active
-        <b> Legend</b> plan and {BETA_TOKENS.toLocaleString()} tokens (unlimited for testing). Testers log in with their own
+        <b> Legend</b> plan and {BETA_TOKENS.toLocaleString()} tokens (plenty for a beta). Testers log in with their own
         email + password, so they never see each other's work. And because their email isn't on the admin list, every
         <code> /admin</code> page simply 404s for them — they can't reach this dashboard. Re-run any email to reset its
         password or refill its tokens.
