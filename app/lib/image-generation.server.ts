@@ -4231,22 +4231,35 @@ export async function brollStill(prompt: string, quality: "pro" | "ultra" = "pro
  *  a flux-kontext-pro fallback. The fallback also catches a safety refusal, so
  *  a "make it terrifying" edit that nano-banana balks at still ships via the
  *  more-permissive kontext. */
-async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana"): Promise<string> {
+const KONTEXT_FALLBACK = "black-forest-labs/flux-kontext-pro";
+async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana"): Promise<{ url: string; engine: string }> {
   // No aspect_ratio: a photo edit must give the user THEIR photo back, just
   // changed — nano-banana defaults to "match_input_image" and kontext preserves
   // the input aspect, so a portrait/landscape stays its own shape instead of
   // being square-cropped like an ad.
+  // Returns the engine that ACTUALLY ran so the caller can stamp it on the asset
+  // — otherwise a paid "Ultra" edit that silently fell back to kontext is
+  // invisible (same price, weaker render).
   const input: Record<string, unknown> = { prompt, image_input: [imageUrl], output_format: "jpg" };
   if (modelId === "google/nano-banana-pro") input.resolution = "2K";
   try {
-    return await repRun(modelId, input);
+    return { url: await repRun(modelId, input), engine: modelId };
   } catch (e) {
-    console.log("[photo-edit] primary editor unavailable/refused, using kontext:", e instanceof Error ? e.message.slice(0, 120) : e);
+    // If the 2K resolution param is what the img2img variant rejects, retry the
+    // SAME (paid) model without it before dropping to the cheaper engine — a
+    // schema quirk shouldn't silently downgrade a paid Ultra edit to kontext.
+    if ("resolution" in input) {
+      try {
+        return { url: await repRun(modelId, { prompt, image_input: [imageUrl], output_format: "jpg" }), engine: modelId };
+      } catch { /* fall through to the kontext fallback */ }
+    }
+    console.log(`[photo-edit] ${modelId} unavailable/refused, using kontext:`, e instanceof Error ? e.message.slice(0, 120) : e);
     // Give the fallback a real quality floor (flux accepts output_quality; the
     // primary nano-banana may 422 on it, which would force EVERY edit down here
     // — so it stays only on the fallback). This is the path that was shipping
     // the crude, low-quality renders when the primary refused.
-    return await repRun("black-forest-labs/flux-kontext-pro", { prompt, input_image: imageUrl, output_format: "jpg", output_quality: 92 });
+    const url = await repRun(KONTEXT_FALLBACK, { prompt, input_image: imageUrl, output_format: "jpg", output_quality: 92 });
+    return { url, engine: KONTEXT_FALLBACK };
   }
 }
 
@@ -4305,6 +4318,9 @@ export async function editImage(opts: {
 
   let localUrl: string;
   let label: string;
+  // Which engine actually produced the render (stamped on the asset meta below),
+  // so a paid Ultra edit that fell back to kontext is auditable after the fact.
+  let usedEngine: string | undefined;
 
   if (editOp === "bgremove") {
     const cut = await removeBackground(sourceImageUrl);
@@ -4324,7 +4340,7 @@ export async function editImage(opts: {
     label = "new background";
   } else if (editOp === "colorize") {
     // Colorize a black-and-white / faded photo — the composition is preserved.
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, "Add natural, realistic color to this image. Keep every detail, texture, subject and the exact composition unchanged — only add colour. No text, no watermark.", editModelId), "jpg");
+    { const r = await editImg2Img(sourceImageUrl, "Add natural, realistic color to this image. Keep every detail, texture, subject and the exact composition unchanged — only add colour. No text, no watermark.", editModelId); localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine; }
     label = "colorized";
   } else if (editOp === "upscale") {
     // Super-resolution via real-esrgan (its own model, cheap). Falls back to an
@@ -4332,9 +4348,11 @@ export async function editImage(opts: {
     let out: string;
     try {
       out = await repRun("nightmareai/real-esrgan", { image: sourceImageUrl, scale: 4, face_enhance: false }, 90_000);
+      usedEngine = "nightmareai/real-esrgan";
     } catch (e) {
       console.log("[photo-edit] real-esrgan unavailable, enhancing via img2img:", e instanceof Error ? e.message.slice(0, 120) : e);
-      out = await editImg2Img(sourceImageUrl, "Enhance this photo: sharper detail, cleaner texture, higher clarity. Keep the subject and composition identical. No text, no watermark.", editModelId);
+      const r = await editImg2Img(sourceImageUrl, "Enhance this photo: sharper detail, cleaner texture, higher clarity. Keep the subject and composition identical. No text, no watermark.", editModelId);
+      out = r.url; usedEngine = r.engine;
     }
     localUrl = await persistRemote(out, "jpg");
     label = "upscaled";
@@ -4348,13 +4366,13 @@ export async function editImage(opts: {
     // model emit half-formed figures and dark smudges in empty regions. Preserve
     // the scene without forbidding the requested change, and (since Gemini takes
     // no negative prompt) bake the anti-artifact cues into positive text.
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, `${prompt}. Keep the original scene, background, framing and lighting intact; blend any new elements in photorealistically with matching perspective, scale, lighting and shadows. Produce a seamless, high-detail, hyper-realistic result — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`, editModelId), "jpg");
+    { const r = await editImg2Img(sourceImageUrl, `${prompt}. Keep the original scene, background, framing and lighting intact; blend any new elements in photorealistically with matching perspective, scale, lighting and shadows. Produce a seamless, high-detail, hyper-realistic result — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`, editModelId); localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine; }
     label = "edited";
   } else {
     const stylePrompt = editOp === "cartoonize"
       ? `Redraw this exact image as a vibrant, clean cartoon illustration${prompt ? `, ${prompt}` : ""}. Keep the same subject, pose and composition — just stylize it. No added text or watermark.`
       : `${prompt || "Give this photo a clean, premium, eye-catching restyle"}. Keep the same subject and composition; do not add any text or a watermark.`;
-    localUrl = await persistRemote(await editImg2Img(sourceImageUrl, stylePrompt, editModelId), "jpg");
+    { const r = await editImg2Img(sourceImageUrl, stylePrompt, editModelId); localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine; }
     label = editOp === "cartoonize" ? "cartoon" : "restyle";
   }
 
@@ -4363,7 +4381,7 @@ export async function editImage(opts: {
       shopId, type: "IMAGE_AD", status: "PENDING",
       title: `Photo edit — ${label}`,
       bodyJson: JSON.stringify({ imageUrl: localUrl, prompt: prompt || null, method: "edit", editOp }),
-      metaJson: JSON.stringify({ kind: "edit", section: "creator", editOp, sourceImageUrl }),
+      metaJson: JSON.stringify({ kind: "edit", section: "creator", editOp, sourceImageUrl, requestedEngine: editModelId, usedEngine, downgraded: !!usedEngine && usedEngine === KONTEXT_FALLBACK && editModelId !== KONTEXT_FALLBACK }),
     },
   });
   return asset.id;
