@@ -706,7 +706,7 @@ export default function WebCampaigns() {
                 </span>
                 <span className="wc-plan-pitch">{t(p.pitch)}</span>
                 <span className="wc-plan-foot">
-                  <span>{t("{drops} drops · {cadence}", { drops: p.drops, cadence: p.cadence })}</span>
+                  <span>{t("{drops} drops · {cadence}", { drops: p.drops, cadence: t(p.cadence) })}</span>
                   <span className={p.videoLocked ? "bad" : p.affordable ? "ok" : "warn"}>
                     {p.videoLocked
                       ? t("Video unlocks on the Studio plan")
