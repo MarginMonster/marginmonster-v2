@@ -167,6 +167,7 @@ model Shop {
   customerLifecycles CustomerLifecycle[]
   creatorSeries      CreatorSeries[]
   buddyMessages      BuddyMessage[]
+  buddyFacts         BuddyFact[]
 }
 
 /// Helpurr conversation memory — one row per message so the chat survives
@@ -183,6 +184,20 @@ model BuddyMessage {
   shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
   @@index([shopId, mode, createdAt])
+}
+
+/// Helpurr long-term MEMORY — durable facts it has learned about the merchant,
+/// their store, goals and preferences, separate from the chat transcript. Read
+/// into context on every chat so Helpurr genuinely "knows you", and written when
+/// the user shares something worth remembering. Per shop (applies across modes).
+model BuddyFact {
+  id        String   @id @default(cuid())
+  shopId    String
+  fact      String
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, createdAt])
 }
 
 // One row per PAID token top-up — chargeId is unique so a purchase can never
