@@ -204,8 +204,8 @@ export default function WebLayout() {
             />
             {authed && (
               <div className="wb-mode" role="group" aria-label={t("Creation mode")}>
-                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Sell your products — ads, campaigns, the works")}>{t("Marketing")}</button>
                 <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title={t("Create for yourself — images, videos & music, no store needed")}>{t("Creator")}</button>
+                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Sell your products — ads, campaigns, the works")}>{t("Marketing")}</button>
               </div>
             )}
             {isAdmin && (
