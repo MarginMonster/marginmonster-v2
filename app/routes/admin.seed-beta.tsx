@@ -23,9 +23,10 @@ import type { PlanType } from "@prisma/client";
 
 export const meta = () => [{ title: "Seed beta · EasyMode" }];
 
-// A generous beta allowance — ~1,000 images (5 tok) or ~33 videos (150 tok).
-// Re-run a tester any time to refill them back up to this.
-const BETA_TOKENS = 5_000;
+// A beta allowance — ~500 images (5 tok) or ~16 videos (150 tok). Kept modest
+// so testers can't run up a big API bill. Re-run a tester any time to refill
+// them back up to this.
+const BETA_TOKENS = 2_500;
 const MAX_BATCH = 50;
 
 // Readable random password, no ambiguous characters (0/O, 1/l/I).
