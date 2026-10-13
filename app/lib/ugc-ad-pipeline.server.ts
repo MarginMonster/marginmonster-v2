@@ -418,12 +418,20 @@ type VoiceCast = { voice: string; pitch: number; speed: number };
 const AVATAR_CAST = AVATAR_CAST_RAW as Record<string, VoiceCast>;
 
 export function castFor(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" }): VoiceCast & { emotion: string } {
-  const emotion = avatar.energy === "calm" ? "neutral" : "happy";
+  // Never send "neutral" — MiniMax reads it with ZERO affect, which is exactly
+  // the "robotic / tame / no emotion" failure merchants flag. Every presenter
+  // now gets the lively "happy" read; the calm↔hype RANGE lives in speed + pitch
+  // + the designed voice's own timbre (a calm presenter stays composed by
+  // speaking slower, not by going emotionally dead). "happy" is MiniMax's only
+  // genuinely alive positive emotion, so it is the floor for ALL personas.
+  const emotion = "happy";
   const pinned = VOICE_OVERRIDES[avatar.id];
   const entry = AVATAR_CAST[avatar.id];
   if (pinned) return { voice: pinned, pitch: entry?.pitch ?? 0, speed: entry?.speed ?? 1.0, emotion };
   if (entry) return { ...entry, emotion };
-  const fallbackSpeed = avatar.energy === "hype" ? 1.08 : avatar.energy === "calm" ? 0.95 : 1.0;
+  // Pace carries energy. These used to sit low (0.95–1.08) and read sluggish for
+  // TikTok; nudged up so even the calm floor (1.0) has life and hype stays punchy.
+  const fallbackSpeed = avatar.energy === "hype" ? 1.12 : avatar.energy === "calm" ? 1.0 : 1.06;
   return { voice: pickVoice(avatar), pitch: 0, speed: fallbackSpeed, emotion };
 }
 
@@ -951,7 +959,8 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     `Rules: The FIRST sentence must be a scroll-stopping hook. Use PAS or AIDA.`,
     `26 to 32 words TOTAL (about 12 seconds spoken) — a punchy hook plus ONE clear point. Do NOT exceed 32 words. Conversational, first person,`,
     `like recommending to a friend. End with a short call to action.`,
-    `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
+    `ENERGY (the voice performs the words you write — flat words = flat read): write it with genuine, infectious enthusiasm, like you can't WAIT to share this. Use vivid, punchy wording and natural emphasis. An exclamation point or two is good where excitement lands. Never corporate, monotone, or robotic.`,
+    `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period OR exclamation point at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
     // Grounding anchor is UNCONDITIONAL (parity with the commercial pipeline):
     // with a description, claims must come from it; WITHOUT one, a title-only
