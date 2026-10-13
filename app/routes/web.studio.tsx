@@ -41,6 +41,7 @@ export const meta = () => [{ title: "Studio · EasyMode" }];
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
+  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator talks straight to camera — no product, authentic selfie-TikTok energy", cap: "video", tier: "Studio", price: 39 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
   { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
@@ -111,6 +112,7 @@ function burstCount(form: FormData, max: number): number {
 }
 
 const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: string }> = {
+  talkinghead: { base: "avatar", direction: "Shot like an authentic selfie-style TikTok: the creator films themselves at arm's length (or with the phone propped up), at home in natural daylight, talking directly to camera — casual, warm and real, like organic UGC, not a polished studio ad. Natural handheld energy, an everyday room in the background, genuine to-camera delivery. NO product is shown, held, or worn — this is a pure talking-head about the topic." },
   review: { base: "avatar", direction: "Film it like a creator's phone-shot product demo for social: casual selfie framing, natural light, upbeat first-person walkthrough of what the product does and why it's cool — organic UGC energy, not a polished ad. Do NOT claim to be a customer or to have bought or owned it." },
   unboxing: { base: "avatar", direction: "An excited first-impressions unboxing: they open the package on camera, lift the product out, react genuinely, and show it close to the lens." },
   asmr: { base: "highlight", direction: "An oddly-satisfying ASMR-style macro edit: extreme close-ups, slow luxurious motion, rich textures, droplets and light play — a mesmerizing loop that stops the scroll." },
@@ -1664,7 +1666,12 @@ export default function WebStudio() {
   //
   // Everything the client reasons about now uses the effective value, so a
   // control nobody can see cannot change the order.
-  const serviceOn = showService && service;
+  // Talking Head is a product-free presenter format: it rides the same no-product
+  // "service" path (no photo, no hold, serviceMode) without exposing the toggle,
+  // so serviceOn is forced on for it. Scoped to the video tab so a leftover
+  // contentType can't flip the image flow's photo requirement.
+  const serviceForced = tab === "video" && contentType === "talkinghead";
+  const serviceOn = showService && (service || serviceForced);
   // baseOf, not the literal. Review and Unboxing are avatar-based presets
   // (CT_PRESETS above maps both to base "avatar"), and every other test in this
   // file goes through baseOf — needsPresenter, the presenter picker, the
@@ -2316,7 +2323,10 @@ export default function WebStudio() {
               </>
             )}
 
-            {showService && (
+            {serviceForced && (
+              <p className="ws-svchint">{t("Talking Head is ")}<b>{t("product-free")}</b>{t(" — your presenter talks straight to camera like an authentic TikTok. Just give them a topic below; no product photo needed.")}</p>
+            )}
+            {showService && !serviceForced && (
               <>
                 <div className="ws-lbl">{t("What are you promoting?")}</div>
                 <div className="ws-seg">
