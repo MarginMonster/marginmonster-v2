@@ -1759,9 +1759,11 @@ export default function WebStudio() {
   // orphaned uploaded file can't ride the submit — but only when actually
   // CHANGING source, so re-tapping the already-active card never wipes a pick.
   const chooseStore = () => { if (prodSource !== "store") { setImageUrl(""); setPickedUrl(""); } setProdSource("store"); clearUpload(); if (d.catalog.length === 0) setShowConnect(true); };
-  // Clear any store pick so "upload my own" starts clean, then open the file
-  // dialog straight away (after the input mounts on the next render).
-  const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); setTimeout(() => uploadRef.current?.click(), 30); };
+  // Clear any store pick so "upload my own" starts clean, then REVEAL the upload
+  // branch (its own "Choose File" button). We deliberately do NOT auto-open the
+  // OS file dialog — jumping straight to the folder picker on a card tap feels
+  // abrupt; let them see the branch and click Choose File themselves.
+  const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); };
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (variantRef.current) variantRef.current.value = nextVariant();
     // A photo picked via the Stage "+" lives in state (editFile) but may not be
@@ -3106,8 +3108,10 @@ const WS_STYLE = `
 .ws-srccard:hover{border-color:#9CCBB1;background:#F3F9F4}
 .ws-srccard.sel{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
 .ws-uploadbox{margin:4px 0 2px}
-.ws-uppreview{position:relative;margin-top:9px;border-radius:12px;overflow:hidden;background:#0f1713;border:1px solid var(--line,#E4DFCF);display:flex;justify-content:center}
-.ws-uppreview img{display:block;max-width:100%;max-height:230px;object-fit:contain}
+/* Hug the image (width:fit-content) so a portrait photo gets NO black pillar
+   bars — the box is the photo's size, centered, on a light card ground. */
+.ws-uppreview{position:relative;margin:9px auto 0;width:fit-content;max-width:100%;border-radius:12px;overflow:hidden;background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF)}
+.ws-uppreview img{display:block;width:auto;max-width:100%;max-height:260px;object-fit:contain}
 .ws-upclear{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
 .ws-upclear:hover{background:rgba(11,18,14,.9)}
 @media (max-width:420px){.ws-srccard span{font-size:11px}}
