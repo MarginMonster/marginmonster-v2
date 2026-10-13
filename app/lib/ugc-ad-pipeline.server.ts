@@ -158,21 +158,28 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
  * One adapter, per-model input mapping, and a HARD RULE: a premium engine
  * that rejects for any reason (schema drift, capacity, region) falls back to
  * the default engine instead of failing a paid generation. */
-/* The default sat on kling-v1.6-standard for months while kling shipped 2.0,
- * 2.1, 2.5 and 2.6 — every merchant video rendered on a two-generation-old
- * standard tier. A same-keyframe bake-off across eight engines on both
- * providers put kling 2.6 pro clearly ahead, and it is published on fal but
- * NOT on Replicate. So the default is fal-backed with the best Replicate
- * engine as the fallback: no key, no fal, or a fal reject still renders. */
-export const DEFAULT_FAL_ANIMATE_MODEL = "fal-ai/kling-video/v2.6/pro/image-to-video";
+/* RUN THE NEWEST (2026-10-12): we are a premium act and must not sit on stale
+ * tiers (we once sat on kling-v1.6 for months while 2.0→2.6 shipped). The
+ * default is now Kling 3 Pro — the newest Kling i2v on fal, same input schema
+ * as v2.5/v2.6 pro (image_url, prompt, duration, negative_prompt), so the fal
+ * adapter needs no change. Still fal-backed with the best Replicate engine as
+ * the fallback: no key, no fal, or a fal reject still renders (and the engine
+ * surcharge reconciles). v2.6 Pro stays available as a named "previous-gen"
+ * option. Validate quality/COGS with a live test gen; revert the default to
+ * v2.6 if v3's cost breaks the margin floor. */
+export const DEFAULT_FAL_ANIMATE_MODEL = "fal-ai/kling-video/v3/pro/image-to-video";
 export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v2.5-turbo-pro";
 
 /** fal-hosted engines, keyed the same way as the Replicate ones. */
 function falAnimateModelFor(engineKey: string | undefined): string | null {
   switch (engineKey) {
-    case undefined: case "": case "kling": case "kling26": return DEFAULT_FAL_ANIMATE_MODEL;
+    case undefined: case "": case "kling": case "kling3": return DEFAULT_FAL_ANIMATE_MODEL; // Kling 3 Pro (newest)
+    case "kling26": return "fal-ai/kling-video/v2.6/pro/image-to-video"; // previous gen
     case "kling25fal": return "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
     case "veo31": return "fal-ai/veo3.1/fast/image-to-video";
+    // Seedance 2.5 (newest) runs on fal; a fal reject falls through to the
+    // Replicate seedance-1-pro in animateModelFor below, so it always renders.
+    case "seedance": return "bytedance/seedance-2.5/image-to-video";
     default: return null; // an explicitly-named Replicate engine
   }
 }

@@ -267,6 +267,11 @@ export async function falVideoSubmit(
   if (!falEnabled()) throw new Error("FAL_KEY not set");
   const body: Record<string, unknown> = /veo/.test(model)
     ? { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16" }
+    : /seedance/.test(model)
+    // Seedance 2.5's schema is prompt + image_url + resolution + duration — it
+    // takes NEITHER a negative_prompt NOR an aspect flag (sending them 422s).
+    // 720p keeps COGS sane; a reject here falls back to Replicate seedance-1-pro.
+    ? { prompt: opts.prompt, image_url: opts.startImage, resolution: "720p", duration: String(opts.durationSec ?? 5) }
     : {
         prompt: opts.prompt,
         image_url: opts.startImage,

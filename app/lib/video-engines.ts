@@ -15,11 +15,15 @@ export interface VideoEngine {
 }
 
 export const VIDEO_ENGINES: VideoEngine[] = [
-  { key: "auto", name: "Auto", blurb: "EasyMode picks — Kling 2.6 Pro, included", surcharge: 0 },
-  { key: "kling", name: "Kling 2.6 Pro", blurb: "Best all-round motion & product fidelity", surcharge: 0 },
+  { key: "auto", name: "Auto", blurb: "EasyMode picks — Kling 3 Pro, included", surcharge: 0 },
+  { key: "kling", name: "Kling 3 Pro", blurb: "Newest Kling — top motion & product fidelity", surcharge: 0 },
+  { key: "kling26", name: "Kling 2.6 Pro", blurb: "Previous generation — dependable", surcharge: 0 },
   { key: "kling25fal", name: "Kling 2.5 Turbo", blurb: "Fast and dependable — the safe pick", surcharge: 0 },
   { key: "hailuo", name: "Hailuo 2", blurb: "Cinematic lighting, lush color", surcharge: 25 },
-  { key: "seedance", name: "Seedance 1 Pro", blurb: "Punchy, dynamic, TikTok-native energy", surcharge: 25 },
+  // Seedance 2.5 is the newest Seedance (fal, ~$0.47/s at 720p) — pricier than
+  // v1 Pro, so it carries the premium surcharge. A fal reject falls back to the
+  // Replicate seedance-1-pro. Validate COGS on a live gen before dropping it.
+  { key: "seedance", name: "Seedance 2.5", blurb: "Newest Seedance — punchy TikTok-native energy", surcharge: 75 },
   // KEEP VEO ON THE *FAST* VARIANTS. +75 tokens (~$7.50) covers a Veo-FAST clip
   // with margin, but a true full-quality Veo-3 clip costs $8-10 and would be
   // break-even-to-loss at this surcharge. The server adapter (animateModelFor in
