@@ -1957,6 +1957,28 @@ export default function WebStudio() {
   const hasMarketingProduct = (prodSource === "store" && !!imageUrl.trim()) || (prodSource === "upload" && (hasFile || !!imageUrl.trim()));
   const showCombine = tab === "video" && baseOf(contentType) === "avatar" && !!avatarId && !serviceOn && hasMarketingProduct;
   const combineCost = d.costs.image;
+  // The avatar-VIDEO "Combine hub": presenter + product + size/wear + combine
+  // merged into ONE panel — the START of the flow. Only this flow restructures;
+  // serviceOn (incl. Talking Head's serviceForced) and every image/cartoon/
+  // jingle/casual flow keep their current layout untouched. Does NOT require a
+  // presenter/product yet (empty tiles); showCombine still gates the Combine
+  // button + result inside it.
+  const avatarVideoHub = tab === "video" && baseOf(contentType) === "avatar" && !serviceOn;
+  // Which hub ingredient tile has its inline picker open. Collapsing happens in
+  // the pick handlers (store-catalogue tap, presenter tap) — NOT an effect keyed
+  // on hasMarketingProduct/avatarId, which would slam the drawer shut the instant
+  // you reopened it to CHANGE an already-set pick.
+  const [hubPick, setHubPick] = useState<"presenter" | "product" | null>(null);
+  // Leaving the hub entirely (tab→Image, contentType→cartoon/commercial, Service
+  // on) must reset hubPick, or a drawer left open would re-open EXPANDED on
+  // return — defeating collapse-by-default. Keyed on avatarVideoHub so it only
+  // fires on the true→false leave, never mid-pick (the old slam-shut bug).
+  useEffect(() => {
+    if (!avatarVideoHub) setHubPick(null);
+  }, [avatarVideoHub]);
+  // (The product source chooser stays inline in step 2 — for the avatar-video
+  // hub it is simply wrapped in a collapsible .ws-hub-reveal there, so there is
+  // one mount and one set of form inputs, never a duplicate.)
   // A new presenter, product, outfit or hold/wear flip makes the combined frame
   // stale AND must cancel any in-flight combine, so a late landing can't set the
   // wrong frame — drop it all. (Swapping an uploaded FILE keeps hasFile=true, so
@@ -2201,7 +2223,7 @@ export default function WebStudio() {
         {tab === "video" && contentType && (
           <>
             <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>
-            <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />
+            <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : avatarVideoHub ? t("how it's shot") : t("who stars in it, and how it's shot")} />
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
@@ -2214,7 +2236,9 @@ export default function WebStudio() {
               * marketing concept (a person selling your product). A casual
               * "Cartoon" still shows the style grid below, but it animates the
               * described idea, not a presenter. */}
-            {!casual && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
+            {/* Avatar-video folds the presenter picker into the hub (step 2); it
+                stays here for cartoon/jingle style grids. */}
+            {!casual && !avatarVideoHub && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
             {contentType === "cartoon" && !avatarId && <p className="ws-note">{t("No presenter — the ad goes product-hero in the picked style instead.")}</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
             {showCartoonGrid && (
@@ -2401,8 +2425,11 @@ export default function WebStudio() {
           </>
         )}
 
-        {/* Outfit rotation + Brand Face crowning, wherever a presenter stars. */}
-        {((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && avatarId && (
+        {/* Outfit rotation + Brand Face crowning, wherever a presenter stars.
+            For the avatar-video hub this moves UNDER the presenter tile (it
+            referenced a presenter chosen elsewhere on the page), so it's gated
+            out here and re-rendered inside the hub. */}
+        {!avatarVideoHub && ((tab === "video" && baseOf(contentType) === "avatar") || (tab === "image" && imageMode === "presenter")) && avatarId && (
           <>
             <p className="ws-note">{casual ? t("Their outfit changes each time, so every shot looks a little different.") : t("Their outfit rotates each time, so your content never looks stale.")}</p>
             {!casual && avatarId !== d.brandFaceId && (
@@ -2419,13 +2446,63 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
-            <StepHead n={2} title={casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
+            <StepHead n={2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? t("your presenter, holding your product") : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
+
+            {/* ---- Avatar-video hub: presenter + product as two Creator-style
+                tap-tiles that expand their picker inline, so the big presenter
+                grid and the product chooser collapse until tapped (~4in of
+                scroll saved). Only the avatar-VIDEO combine flow uses this; the
+                classic chooser below still serves every other mode. */}
+            {avatarVideoHub && (
+              <div className="ws-hubtiles" role="group" aria-label={t("Your presenter and product")}>
+                <button type="button" className={`ws-hubtile${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set" : ""}`}
+                  aria-expanded={hubPick === "presenter"} onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}>
+                  <span className="ws-hubtile-img" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
+                    <span className="ws-hubtile-badge" aria-hidden="true">{avatarThumb ? "✎" : "＋"}</span>
+                  </span>
+                  <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
+                  <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
+                </button>
+                <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set" : ""}`}
+                  aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
+                  <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
+                    <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
+                  </span>
+                  <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
+                  <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
+                </button>
+              </div>
+            )}
+            {/* Presenter picker — revealed under the hub tiles for avatar video
+                (its classic step-1 spot is suppressed then); picking collapses
+                the drawer so the hub snaps back to the tiles. */}
+            {avatarVideoHub && hubPick === "presenter" && (
+              <div className="ws-hub-reveal open">
+                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} />
+              </div>
+            )}
+            {/* Outfit note + Brand-Face CTA — reads WITH the presenter tile here
+                (its step-1 copy is gated out for the hub). */}
+            {avatarVideoHub && avatarId && (
+              <>
+                <p className="ws-note">{t("Their outfit rotates each time, so your content never looks stale.")}</p>
+                {avatarId !== d.brandFaceId && (
+                  <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
+                    <Ico n="star" size={13} /> {t("Make {name} your Brand Face", { name: d.cast.find((c) => c.id === avatarId)?.name || t("this presenter") })}
+                  </button>
+                )}
+              </>
+            )}
 
             {/* ---- Where's the product? Two side-by-side cards. Dumping a grid
                 of 200 products on every visit was a doom-scroll AND buried the
                 "upload my own" path; now it's one clean choice and only the
                 chosen path expands. Service / Talking-Head sell an outcome with
-                no product photo, so the chooser is skipped there. */}
+                no product photo, so the chooser is skipped there. For the avatar-
+                video hub the whole chooser is wrapped in a .ws-hub-reveal that
+                collapses behind the product tile — always mounted, so a chosen
+                store product keeps submitting its hidden productImageUrl. */}
+            <div className="ws-hub-reveal" hidden={avatarVideoHub && hubPick !== "product"}>
             {!serviceForced && (
               <div className="ws-srcpick" role="group" aria-label={t("Where's your product?")}>
                 <button type="button" className={`ws-srccard${prodSource === "store" ? " sel" : ""}`} aria-pressed={prodSource === "store"} onClick={chooseStore}>
@@ -2473,6 +2550,7 @@ export default function WebStudio() {
                           setProductTitle(c.title);
                           setImageUrl(c.imageUrl || "");
                           setPickedUrl(c.url);
+                          setHubPick(null); // snap the hub drawer shut on a store pick
                         }}>
                         <span className="ws-cat-img" style={c.imageUrl ? { backgroundImage: `url(${c.imageUrl})` } : undefined}>
                           {!c.imageUrl && <Ico n="image" size={22} />}
@@ -2538,7 +2616,11 @@ export default function WebStudio() {
                 <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
               </div>
             )}
-            {showWear && (
+            </div>{/* /.ws-hub-reveal — product chooser */}
+            {/* Size + Holding/Wearing are the COMBINE inputs — in the hub they
+                stay hidden until a product is set (they only shape the compose);
+                every other flow shows them whenever a presenter is chosen. */}
+            {showWear && (!avatarVideoHub || hasMarketingProduct) && (
               <>
                 <div className="ws-lbl"><span>{t("How big is it?")}</span> <span className="ws-opt">{t("so the presenter holds it at the right size")}</span></div>
                 <div className="ws-seg ws-sizeseg">
@@ -2621,7 +2703,7 @@ export default function WebStudio() {
               </>
             )}
 
-            {showWear && (
+            {showWear && (!avatarVideoHub || hasMarketingProduct) && (
               <>
                 <div className="ws-lbl"><span>{t("How they show it")}</span>{apparel && <span className="ws-opt">{t("apparel detected")}</span>}</div>
                 <div className="ws-seg">
@@ -3407,6 +3489,26 @@ const WS_STYLE = `
 .ws-upclear{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
 .ws-upclear:hover{background:rgba(11,18,14,.9)}
 @media (max-width:420px){.ws-srccard span{font-size:11px}}
+/* Avatar-video hub — presenter + product as two tap-tiles; each picker reveals
+   inline. .ws-hub-reveal is display:contents so wrapping the chooser changes no
+   layout; the [hidden] rule MUST re-assert display:none, because author
+   display:contents otherwise beats the UA [hidden]{display:none}. */
+.ws-hub-reveal{display:contents}
+.ws-hub-reveal[hidden]{display:none}
+.ws-hub-reveal.open{display:block;animation:ws-hub-slide .22s ease}
+@keyframes ws-hub-slide{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.ws-hubtiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 14px}
+.ws-hubtile{display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;padding:14px 12px 13px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;min-height:44px}
+.ws-hubtile:hover{border-color:#9CCBB1;background:#F3F9F4}
+.ws-hubtile.set{border-color:#9CCBB1}
+.ws-hubtile.open{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
+.ws-hubtile-img{position:relative;width:76px;height:76px;border-radius:50%;background:#EAF6EF center/cover no-repeat;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
+.ws-hubtile-img.prod{border-radius:16px}
+.ws-hubtile.set .ws-hubtile-img{border-style:solid;border-color:var(--green)}
+.ws-hubtile-badge{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;font-size:13px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.ws-hubtile b{width:100%;font-size:14px;color:var(--ink,#14201A);font-weight:800;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-hubtile>span:last-child{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.25}
+@media (max-width:420px){.ws-hubtile-img{width:66px;height:66px}.ws-hubtile b{font-size:13px}.ws-hubtiles{gap:9px}}
 /* Combine step — presenter + product -> holding frame, in-flow, with theatrics. */
 .ws-combine{margin:14px 0 4px;padding:15px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7));transition:box-shadow .3s,border-color .3s}
 .ws-combine.combining{border-color:var(--green2,#12A85E);animation:ws-comb-breathe 1.8s ease-in-out infinite}
