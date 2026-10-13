@@ -10,7 +10,7 @@ import { db } from "../db.server";
 import { tokensRemainingLive, planTrialing, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { normalizeContentLang } from "../lib/content-lang";
-import { totalXpForLevel } from "../lib/achievements";
+import { totalXpForLevel, ACHIEVEMENTS } from "../lib/achievements";
 import { Ico } from "../lib/icons";
 import { LangToggle } from "../components/LangToggle";
 import { UI_LANG_NATIVE } from "../lib/ui-i18n";
@@ -24,6 +24,9 @@ const EMPTY_HUD = {
   // it refills. Zeroed/empty for an inactive plan.
   planActive: false, trialing: false, monthly: 0, used: 0, extra: 0,
   resetShort: null as string | null,
+  // Achievement keys this shop has unlocked — the panel renders the full roster
+  // (ACHIEVEMENTS) and marks these as earned.
+  unlockedKeys: [] as string[],
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -49,6 +52,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const resetShort = usage.resetAt
     ? new Date(usage.resetAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
+  // The unlocked-achievement set, so the account panel can show the full roster
+  // with earned ones lit. One small indexed read per shell load.
+  const unlockedRows = await db.shopAchievement.findMany({ where: { shopId: shop.id }, select: { key: true } });
   return json({
     authed: true,
     isAdmin: isAdminEmail(account.email),
@@ -71,6 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       used: usage.used,
       extra: usage.extra,
       resetShort,
+      unlockedKeys: unlockedRows.map((r) => r.key),
     },
   });
 };
@@ -484,10 +491,11 @@ function Crest({ size }: { size: number }) {
 }
 
 /* Account menu — the member's hub. Replaces BOTH the old "Log out" link and
- * the big arcade HUD: a compact chip (avatar · level · tokens) in the header
- * that drops a panel carrying everything the HUD used to show — XP/level
- * progress (the rewards track), the token wallet + value meter, what the
- * balance affords — plus plan management, a changeable avatar, and log out.
+ * the old full status bar: a compact chip (avatar · level · tokens) in the
+ * header that drops a panel carrying everything that bar used to show — XP/level
+ * progress (the rewards track), the achievement roster, the token wallet + value
+ * meter, what the balance affords — plus plan management, a changeable avatar,
+ * and log out.
  * The avatar personalises PER BROWSER (a downscaled data-URL in localStorage);
  * Helpurr stays the default and the brand mark is always Helpurr. A
  * server-backed avatar can replace the localStorage one later. */
@@ -542,6 +550,8 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
   // brand mark and the Helpurr helper. An uploaded photo overrides it.
   const initial = ((hud.name || hud.email || "?").trim().charAt(0) || "?").toUpperCase();
   const toNext = Math.max(0, hud.xpNeed - hud.xpInto);
+  const unlocked = new Set(hud.unlockedKeys);
+  const unlockedCount = ACHIEVEMENTS.reduce((n, a) => n + (unlocked.has(a.key) ? 1 : 0), 0);
 
   return (
     <div className="wb-acct" ref={wrapRef}>
@@ -583,6 +593,34 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
             </div>
             <div className="wb-menu-xp" title={t("{pct}% of the way to level {next}", { pct: hud.xpPct, next: hud.level + 1 })}><i style={{ width: `${hud.xpPct}%` }} /></div>
             <div className="wb-menu-hint"><Ico n="gift" /> {t("Every level pays out free tokens.")}</div>
+          </div>
+
+          {/* Achievements — the full roster, earned ones lit. Each pays a one-off
+              XP/token bonus (see achievements.ts); a scrollable box keeps the
+              panel compact and Log out reachable. */}
+          <div className="wb-menu-sec">
+            <div className="wb-menu-barlabel">
+              <span>{t("Achievements")}</span>
+              <span>{unlockedCount}/{ACHIEVEMENTS.length}</span>
+            </div>
+            <ul className="wb-ach-grid">
+              {ACHIEVEMENTS.map((a) => {
+                const got = unlocked.has(a.key);
+                return (
+                  <li key={a.key} className={`wb-ach${got ? " got" : ""}`}>
+                    <span className="wb-ach-ic" aria-hidden="true">{a.icon}</span>
+                    <span className="wb-ach-tx"><b>{t(a.label)}</b><em>{t(a.desc)}</em></span>
+                    <span className="wb-ach-rw">
+                      {got
+                        ? <span className="wb-ach-done" aria-label={t("Unlocked")}>✓</span>
+                        : a.tokens > 0
+                          ? <span className="wb-ach-rew"><Ico n="coin" /> +{a.tokens}</span>
+                          : <span className="wb-ach-rew">+{a.xp} XP</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
           {/* Token wallet + value meter */}
@@ -771,7 +809,7 @@ const CSS = `
 .wb-chip-tok svg{width:14px;height:14px;}
 .wb-chip-caret{font-size:9px;color:var(--ink2);margin-left:-3px;}
 .wb-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:60;width:min(322px,calc(100vw - 24px));
-  background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden auto;max-height:min(78vh,660px);
   box-shadow:0 18px 46px rgba(20,32,26,.19),0 3px 10px rgba(20,32,26,.08);animation:wbMenuIn .14s ease;}
 @keyframes wbMenuIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .wb-menu>*{padding-left:14px;padding-right:14px;}
@@ -801,6 +839,19 @@ const CSS = `
 .wb-menu-xp>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#B08526,#F3D98C);transition:width .5s ease;}
 .wb-menu-hint{margin-top:7px;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--gold-deep);}
 .wb-menu-hint svg{width:13px;height:13px;flex:0 0 auto;}
+/* Achievements roster — full list, earned ones lit; own scroll box keeps the
+   panel compact and the actions below reachable without scrolling past it. */
+.wb-ach-grid{list-style:none;margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:216px;overflow-y:auto;overscroll-behavior:contain;}
+.wb-ach{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:10px;background:var(--paper);border:1px solid var(--line);opacity:.5;filter:grayscale(.65);}
+.wb-ach.got{opacity:1;filter:none;background:#F0FAF4;border-color:#BFE2CD;}
+.wb-ach-ic{flex:0 0 auto;width:22px;text-align:center;font-size:16px;line-height:1;}
+.wb-ach-tx{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.wb-ach-tx b{font-family:Poppins,sans-serif;font-size:11.5px;font-weight:700;color:var(--ink);line-height:1.2;}
+.wb-ach-tx em{font-size:10px;font-style:normal;color:var(--ink2);line-height:1.3;}
+.wb-ach-rw{flex:0 0 auto;display:flex;align-items:center;}
+.wb-ach-rew{display:inline-flex;align-items:center;gap:2px;font-size:10.5px;font-weight:800;color:var(--gold-deep);white-space:nowrap;font-variant-numeric:tabular-nums;}
+.wb-ach-rew svg{width:11px;height:11px;flex:0 0 auto;}
+.wb-ach-done{display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:var(--green);color:#fff;font-size:11px;font-weight:800;}
 .wb-menu-meter{margin-top:8px;font-size:11.5px;color:var(--ink2);line-height:1.45;}
 .wb-menu-meter-r{color:var(--gold-deep);font-weight:600;white-space:nowrap;}
 .wb-menu-extra{margin-top:5px;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gold-deep);}
@@ -822,7 +873,7 @@ const CSS = `
 .wb-menu-link.danger:hover{background:rgba(162,58,42,.08);}
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
 
-/* ---- Player HUD — the app's arcade status bar, GStyle for the web shell ---- */
+/* ---- Status HUD — the app's level/wallet status bar, GStyle for the web shell ---- */
 .wb-hud{width:min(1080px,100% - 48px);margin:0 auto 6px;padding:13px 16px;border-radius:16px;position:relative;overflow:hidden;isolation:isolate;
   background:linear-gradient(168deg,#FDFCF7,#F2EEE0);border:1px solid var(--line);
   /* Gold hairline inside the border, the way the app rules its status card. */
@@ -870,7 +921,7 @@ const CSS = `
 .wb-hud-extra{margin-top:4px;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gold-deep);}
 
 /* ---- Creator-mode HUD: a cleaner, calmer take (Marketing keeps the full
-   arcade HUD unchanged). Every element stays — this only slims the look:
+   HUD unchanged). Every element stays — this only slims the look:
    flat-white card, no gold-rosette glow, thinner bars, muted LVL badge,
    tighter spacing. LOGGED FOR REVERT: to restore the original, remove the
    wb-hud-lite class from the HUD div in WebLayout and delete this block;

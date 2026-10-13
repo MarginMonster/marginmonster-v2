@@ -7,7 +7,7 @@ import {
   type AchievementDef,
 } from "./achievements";
 
-/* The arcade progression engine. Every award path is wrapped so gamification
+/* The progression engine. Every award path is wrapped so gamification
  * can NEVER break a core action — worst case the merchant just doesn't get
  * XP for one event. */
 

@@ -248,7 +248,7 @@ export async function chargeTokens(shopId: string, action: TokenAction): Promise
     cost,
     (needed, have) => new InsufficientTokensError(needed, have, action)
   );
-  // Arcade progression: spending tokens earns XP (farm-proof — they paid).
+  // Progression: spending tokens earns XP (farm-proof — they paid).
   await onTokensSpent(shopId, cost);
   return { remaining, charged: cost, fromExtra };
 }
