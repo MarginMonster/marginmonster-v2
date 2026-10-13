@@ -9,7 +9,7 @@ import { generateVideoAd } from "./video-generation.server";
 import { generateMusic } from "./music-generation.server";
 import { generateFacelessVideo } from "./faceless-video.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
-import { awardXp, checkLevelAchievements, unlockAchievement } from "./xp.server";
+import { awardXp, checkLevelAchievements, unlockAchievement, checkCreationAchievements } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
 import { refundTokens } from "./tokens.server";
 import { TOKEN_COST } from "./plan-config";
@@ -443,6 +443,12 @@ async function runJob(
         payload.productDescription as string
       );
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof blogAssetId === "string" ? blogAssetId : undefined);
+      try {
+        const posts = await db.asset.count({ where: { shopId, type: "BLOG_POST" } });
+        if (posts >= 1) await unlockAchievement(shopId, "BLOG_FIRST");
+        if (posts >= 10) await unlockAchievement(shopId, "BLOG_TEN");
+        await checkCreationAchievements(shopId);
+      } catch { /* non-fatal */ }
       break;
     }
 
@@ -508,6 +514,7 @@ async function runJob(
         const stills = await db.asset.count({ where: { shopId, type: "IMAGE_AD" } });
         if (stills >= 1) await unlockAchievement(shopId, "STILL_LIFE");
         if (stills >= 15) await unlockAchievement(shopId, "GALLERY_WALL");
+        await checkCreationAchievements(shopId);
       } catch { /* non-fatal */ }
       break;
     }
@@ -544,6 +551,15 @@ async function runJob(
         });
         await stampProductUrl(facelessAssetId, payload);
         await tagAssetSection(facelessAssetId, payload.section as string | undefined);
+        // Achievements — a faceless reel is a VIDEO_AD (counts as a take) + its
+        // own Faceless badge + the shared creation-count checks. Non-fatal.
+        try {
+          await unlockAchievement(shopId, "FACELESS_FIRST");
+          const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
+          if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
+          if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
+          await checkCreationAchievements(shopId);
+        } catch { /* non-fatal */ }
         // Creator "Channel" drop: publish it to the shop's linked socials right
         // after it renders (if the channel is on auto-post). Non-fatal — the
         // video is already in the Gallery whether or not the post lands.
@@ -802,6 +818,7 @@ async function runJob(
         const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
         if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
         if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
+        await checkCreationAchievements(shopId);
       } catch { /* non-fatal */ }
       break;
     }
@@ -825,6 +842,12 @@ async function runJob(
       });
       await stampProductUrl(musicAssetId, payload);
       await tagAssetSection(musicAssetId, payload.section as string | undefined);
+      try {
+        const tracks = await db.asset.count({ where: { shopId, type: "AUDIO" } });
+        if (tracks >= 1) await unlockAchievement(shopId, "MUSIC_FIRST");
+        if (tracks >= 10) await unlockAchievement(shopId, "MUSIC_TEN");
+        await checkCreationAchievements(shopId);
+      } catch { /* non-fatal */ }
       if (payload.prePaid) {
         try { await maybeTickQuestline(payload, shopId, true, musicAssetId); }
         catch (e) { console.error("[job] song accounting failed (non-fatal):", e); }

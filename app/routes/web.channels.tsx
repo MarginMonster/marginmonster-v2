@@ -142,6 +142,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         nextRunAt: new Date(Date.now() + 60_000),
       },
     });
+    try { const { unlockAchievement } = await import("../lib/xp.server"); await unlockAchievement(shop.id, "CHANNEL_FIRST"); } catch { /* non-fatal */ }
     return redirect("/web/channels");
   }
 

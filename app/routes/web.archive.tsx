@@ -631,6 +631,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {
       console.error("[archive] manual post slot update failed (non-fatal):", e);
     }
+    // Shipped It — first piece that actually reached a social account.
+    if (landed.length) { try { const { unlockAchievement } = await import("../lib/xp.server"); await unlockAchievement(shop.id, "SHIPPED_IT"); } catch { /* non-fatal */ } }
     return json({
       // WHICH piece this is about. Without it the badge below is a claim
       // about whatever the merchant happens to be looking at.

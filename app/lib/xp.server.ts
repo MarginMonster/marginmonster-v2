@@ -124,6 +124,19 @@ export async function checkLevelAchievements(shopId: string, level: number): Pro
   return out;
 }
 
+/** Creation-count achievements — any generated asset counts, so these fire on
+ *  web (image/video/music/blog) as well as the Shopify forge path. Total assets
+ *  -> FIRST_FORGE/HAMMER_TIME; 3+ distinct asset types -> RANGE. Non-fatal. */
+export async function checkCreationAchievements(shopId: string): Promise<void> {
+  try {
+    const total = await db.asset.count({ where: { shopId } });
+    if (total >= 1) await unlockAchievement(shopId, "FIRST_FORGE");
+    if (total >= 10) await unlockAchievement(shopId, "HAMMER_TIME");
+    const kinds = await db.asset.findMany({ where: { shopId }, select: { type: true }, distinct: ["type"] });
+    if (kinds.length >= 3) await unlockAchievement(shopId, "RANGE");
+  } catch { /* non-fatal */ }
+}
+
 /** Called from chargeTokens — 1 XP per token spent + lifetime-spend tracking. */
 /** Undo the progression a spend earned, when that spend is given back.
  *

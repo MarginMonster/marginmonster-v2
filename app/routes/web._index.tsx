@@ -188,6 +188,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { normalizeContentLang } = await import("../lib/content-lang");
     const contentLang = (form.get("contentLang") as string) || "";
     if (contentLang) await db.shop.update({ where: { id: shop.id }, data: { contentLang: normalizeContentLang(contentLang) } });
+    try { const { unlockAchievement } = await import("../lib/xp.server"); await unlockAchievement(shop.id, "SCANNER"); } catch { /* non-fatal */ }
     return json({ ok: tr(lang, "Voice updated ✓ — new content will speak it. The studio is open."), voiceSaved: true });
   }
 

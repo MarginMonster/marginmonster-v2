@@ -924,6 +924,8 @@ export async function scheduleExistingAssets(
       progress: 0,
     },
   });
+  // Batch Master — scheduled a batch of 5+ posts in one go.
+  if (slots.length >= 5) { try { await unlockAchievement(shopId, "BATCH_MASTER"); } catch { /* non-fatal */ } }
   return { ok: true, id: q.id, scheduled: slots.length, skipped, tooMany };
 }
 
