@@ -167,11 +167,11 @@ export default function WebLayout() {
                 <button type="button" className="wb-ch-card mk" onClick={() => pickMode("marketing")}>
                   <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
                   <span className="wb-ch-body">
-                    <span className="wb-ch-eyebrow">{t("Marketing")}</span>
-                    <span className="wb-ch-title">{t("Market my store")}</span>
-                    <span className="wb-ch-desc">{t("AI ads, campaigns and auto-posting that sell your products.")}</span>
+                    <span className="wb-ch-eyebrow">{t("Social")}</span>
+                    <span className="wb-ch-title">{t("Grow on social")}</span>
+                    <span className="wb-ch-desc">{t("AI reels, videos and ads — auto-posted to TikTok, Instagram & Facebook.")}</span>
                     <span className="wb-ch-nav">{t("Dashboard · Campaigns · Channels")}</span>
-                    <span className="wb-ch-go">{t("Enter marketing")} <span aria-hidden="true">→</span></span>
+                    <span className="wb-ch-go">{t("Enter social")} <span aria-hidden="true">→</span></span>
                   </span>
                 </button>
               </div>
@@ -212,7 +212,7 @@ export default function WebLayout() {
             {authed && (
               <div className="wb-mode" role="group" aria-label={t("Creation mode")}>
                 <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title={t("Create for yourself — images, videos & music, no store needed")}>{t("Creator")}</button>
-                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Sell your products — ads, campaigns, the works")}>{t("Marketing")}</button>
+                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Grow on social — AI reels, videos & auto-posting")}>{t("Social")}</button>
               </div>
             )}
             {isAdmin && (

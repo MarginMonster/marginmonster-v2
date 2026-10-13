@@ -1219,7 +1219,7 @@ export default function WebArchive() {
                         layered on, so no fabrication risk). Flips to marketing. */}
                     {isCreator && !viewer.isAudio && viewer.media && (
                       <button type="button" className="wa-vbtn ghost" disabled={busy}
-                        title={t("Schedule this into a marketing campaign")}
+                        title={t("Schedule this into a social campaign")}
                         onClick={() => { try { localStorage.setItem("emMode", "marketing"); } catch { /* */ } window.location.href = `/web/campaigns?pick=${encodeURIComponent(viewer.id)}`; }}>
                         ➜ {t("Use in a campaign")}
                       </button>

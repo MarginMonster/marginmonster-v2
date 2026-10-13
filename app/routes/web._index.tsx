@@ -437,7 +437,7 @@ export default function WebDashboard() {
                     and was then told on landing that their free trial had just
                     started. */}
                 <p className="ws-mp">
-                  {t("Your marketing just leveled up —")}{" "}
+                  {t("Your social just leveled up —")}{" "}
                   {d.trialing
                     ? <>{t("your 7-day free trial starts now, with ")}</>
                     : <>{t("you're on")} {PLAN_BY_KEY[success.key]?.name}{t(", with ")}</>}
@@ -682,7 +682,7 @@ export default function WebDashboard() {
           <span className="wd-solo-emoji" aria-hidden="true"><Ico n="palette" size={28} /></span>
           <div className="wd-solo-txt">
             <b>{t("Just want the creative tools?")}</b>
-            <p>{t("Skip the marketing plans — get Creator on its own: AI images, photo editing & music with Helpurr.")} <b>${CREATOR_PRICE}/mo</b>{t(", no marketing plan needed.")}</p>
+            <p>{t("Skip the social plans — get Creator on its own: AI images, photo editing & music with Helpurr.")} <b>${CREATOR_PRICE}/mo</b>{t(", no social plan needed.")}</p>
           </div>
           <Form method="post" className="wd-solo-cta">
             <input type="hidden" name="intent" value="subscribe" />
