@@ -4564,7 +4564,13 @@ export async function generateImageAd(
    *
    *  A burst is a request for OPTIONS, so it composes fresh every time — and
    *  it leaves the library alone rather than churning the same key ten times. */
-  freshShot?: boolean
+  freshShot?: boolean,
+  /** The Combine step wants a presenter HOLDING the product and nothing else.
+   *  When the compose can't reproduce the product faithfully, a product-only
+   *  still is the WRONG deliverable, so FAIL (the prePaid charge refunds) rather
+   *  than charge for and silently ship it. Normal image ads leave this off and
+   *  still fall through to the real product photo. */
+  presenterOnly?: boolean
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -4652,6 +4658,9 @@ export async function generateImageAd(
           // product still, which is the real photograph.
           composed = held.wrongProduct ? undefined : (held.url || undefined);
           if (held.wrongProduct) {
+            // Record WHY so the Combine (presenterOnly) failure path below — which
+            // lives OUTSIDE this try/catch — can fail with an honest reason.
+            presenterMiss = `couldn't reproduce the product faithfully (${held.failed.join(", ")})`;
             artLog("image-ad", `presenter hold: not the merchant's product (${held.failed.join(", ")}) — shipping a product still instead`);
           }
           if (composed) {
@@ -4783,6 +4792,18 @@ export async function generateImageAd(
       console.error("[image-ad] presenter compose failed, falling back to product still:", presenterMiss);
     }
     // fall through to a normal product still if compose is unavailable/failed
+  }
+
+  // COMBINE (presenterOnly) wants a presenter HOLDING the product or nothing.
+  // If the presenter path above did not return a frame (reached here = any miss:
+  // wrong product, fal unavailable, non-http photo, or a compose error the catch
+  // swallowed), FAIL — HERE, outside that try/catch, so it is not turned back
+  // into a product still — so the prePaid charge refunds. [NO-RETRY] makes it
+  // terminal on the first attempt (the compose already tried twice), so it fails
+  // fast under the client's poll cap rather than stranding the merchant on a
+  // timeout. Normal image ads (presenterOnly unset) skip this and ship the still.
+  if (presenterOnly && !serviceMode && avatarId && productImageUrl) {
+    throw new Error(`[NO-RETRY] presenter-hold unavailable for Combine: ${presenterMiss || "could not reproduce the product"}`);
   }
 
   const visual = JSON.parse(brandProfile.visualJson);

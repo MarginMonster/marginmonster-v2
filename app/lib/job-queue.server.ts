@@ -357,7 +357,12 @@ export async function processNextJob(): Promise<boolean> {
     }
   } catch (e: unknown) {
     const lastError = e instanceof Error ? e.message : String(e);
-    const nextStatus = job.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
+    // A [NO-RETRY] error is terminal on the first attempt — retrying it just
+    // burns the same COGS and (for a prePaid job) strands the refund behind the
+    // attempt ceiling while the client's poll times out. Used by the Combine
+    // presenter-hold: a product it can't reproduce won't reproduce on attempt 3.
+    const noRetry = /\[NO-RETRY\]/.test(lastError || "");
+    const nextStatus = noRetry || job.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
     // STILL OURS? The success path ten lines above uses updateMany with a
     // status guard for exactly this hazard, and this branch was a bare
     // update. Once reclaimOrphanJobs has bounced a long render back to
@@ -500,7 +505,8 @@ async function runJob(
         typeof payload.formatKey === "string" ? payload.formatKey : undefined,
         typeof payload.merchantOffer === "string" ? payload.merchantOffer : undefined,
         typeof payload.productSize === "string" ? payload.productSize : undefined,
-        payload.freshShot === true
+        payload.freshShot === true,
+        payload.presenterOnly === true
       );
       // The Studio deliberately puts productUrl on the image payload so the
       // caption can deep-link the buy page, and stampProductUrl was called

@@ -827,6 +827,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         styleMode: "backdrop",
         avatarId, avatarVariant,
         wear: !!avatarId && wear && !service,
+        // Presenter-holding frame or nothing — a product-only still is not what
+        // Combine asked for, so a miss FAILS (and refunds) instead of charging.
+        presenterOnly: true,
         prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: cFromExtra,
       });
       backed(TOKEN_COST.image, cFromExtra);
@@ -1890,7 +1893,7 @@ export default function WebStudio() {
   useEffect(() => {
     if (!combining || !combineJobId) return;
     const tick = () => {
-      if (Date.now() - combineStartRef.current > 3 * 60_000) {
+      if (Date.now() - combineStartRef.current > 4 * 60_000) {
         setCombining(false);
         setCombineErr(t("That took too long — try Combine again."));
         return;
@@ -1914,7 +1917,11 @@ export default function WebStudio() {
     // submits) — only act on the result for the job we're currently polling.
     if (!r || r.jobId !== combineJobId) return;
     if (r.media) { setCombineUrl(r.media); setCombining(false); return; }
-    if (r.failed || r.done) {
+    if (r.failed) {
+      // A combine miss FAILS the job, which refunds the charge (presenterOnly).
+      setCombining(false);
+      setCombineErr(t("Couldn’t get the presenter holding that product cleanly — you weren’t charged. Try a simpler or clearer product photo, then re-combine."));
+    } else if (r.done) {
       setCombining(false);
       setCombineErr(t("Couldn’t combine that one — try again, or swap the product photo."));
     }
@@ -1931,7 +1938,7 @@ export default function WebStudio() {
   useEffect(() => {
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avatarId, imageUrl, wear, contentType]);
+  }, [avatarId, imageUrl, wear, contentType, productSize]);
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (variantRef.current) variantRef.current.value = nextVariant();
     // A photo picked via the Stage "+" lives in state (editFile) but may not be
@@ -2566,6 +2573,46 @@ export default function WebStudio() {
                 </div>
               </>
             )}
+
+            {/* ---- Combine step — lives HERE in the product step, with the chosen
+                product and the waiting presenter, so it reads as one smooth act
+                (not a separate block farther down). Composes the presenter-
+                holding-product frame, approved in-flow; the video then animates
+                from exactly that frame. */}
+            {showCombine && (
+              <div className={`ws-combine${combining ? " combining" : ""}${combineUrl ? " done" : ""}`}>
+                <div className="ws-combine-h">
+                  <b>{combineUrl ? t("Your presenter has your product") : t("Combine presenter + product")}</b>
+                  <span>{t("For the most accurate video, we put your presenter holding your real product first — then animate from it.")}</span>
+                </div>
+                <div className="ws-combine-row">
+                  <span className="ws-combine-src" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined} aria-label={t("Presenter")} />
+                  <em aria-hidden="true">+</em>
+                  <span className="ws-combine-src prod" style={productThumb ? { backgroundImage: `url(${productThumb})` } : undefined} aria-label={t("Product")} />
+                  <em aria-hidden="true">→</em>
+                  <span className={`ws-combine-out${combineUrl ? " has" : ""}`}>
+                    {combineUrl
+                      ? <img src={combineUrl} alt={t("Your presenter holding your product")} />
+                      : combining
+                        ? <span className="ws-combine-work" aria-label={t("Combining…")}><i /><i /><i /></span>
+                        : <Ico n="sparkle" size={26} />}
+                    {combining && <span className="ws-combine-scan" aria-hidden="true" />}
+                  </span>
+                </div>
+                {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
+                {combineUrl ? (
+                  <div className="ws-combine-foot">
+                    <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
+                    <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
+                  </div>
+                ) : (
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !productTitle.trim()}>
+                    {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
+                  </button>
+                )}
+                {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
+              </div>
+            )}
             </>)}
 
             {/* Casual create skips this header — the "Describe your image"
@@ -2932,45 +2979,6 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            {/* ---- Combine step (avatar + product video). Compose the
-                presenter-holding-product frame FIRST, approve it in-flow, then
-                the video animates from exactly that frame. Optional: skip it and
-                the pipeline composes internally, but combining gives a sharper,
-                merchant-approved result AND a reusable image in the gallery. */}
-            {showCombine && (
-              <div className="ws-combine">
-                <div className="ws-combine-h">
-                  <b>{t("Combine presenter + product")}</b>
-                  <span>{t("For the most accurate video, we put your presenter holding your real product first — then animate from it.")}</span>
-                </div>
-                <div className="ws-combine-row">
-                  <span className="ws-combine-src" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined} aria-label={t("Presenter")} />
-                  <em aria-hidden="true">+</em>
-                  <span className="ws-combine-src prod" style={productThumb ? { backgroundImage: `url(${productThumb})` } : undefined} aria-label={t("Product")} />
-                  <em aria-hidden="true">→</em>
-                  <span className={`ws-combine-out${combineUrl ? " has" : ""}`}>
-                    {combineUrl
-                      ? <img src={combineUrl} alt={t("Your presenter holding your product")} />
-                      : combining
-                        ? <span className="ws-combine-spin" aria-label={t("Combining…")} />
-                        : <Ico n="sparkle" size={20} />}
-                  </span>
-                </div>
-                {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
-                {combineUrl ? (
-                  <div className="ws-combine-foot">
-                    <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
-                    <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
-                  </div>
-                ) : (
-                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !productTitle.trim()}>
-                    {combining ? t("Combining…") : t("Combine — {n} tokens", { n: combineCost })}
-                  </button>
-                )}
-                {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
-              </div>
-            )}
-
             <div className="ws-tok"><span className="tt">{t("This {noun}", { noun: t(noun) })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
@@ -3322,22 +3330,40 @@ const WS_STYLE = `
 .ws-upclear{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
 .ws-upclear:hover{background:rgba(11,18,14,.9)}
 @media (max-width:420px){.ws-srccard span{font-size:11px}}
-/* Combine step — presenter + product -> holding frame, in-flow. */
-.ws-combine{margin:16px 0 4px;padding:14px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7))}
-.ws-combine-h b{display:block;font-size:14px;color:var(--ink,#14201A);font-weight:700}
+/* Combine step — presenter + product -> holding frame, in-flow, with theatrics. */
+.ws-combine{margin:14px 0 4px;padding:15px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7));transition:box-shadow .3s,border-color .3s}
+.ws-combine.combining{border-color:var(--green2,#12A85E);animation:ws-comb-breathe 1.8s ease-in-out infinite}
+@keyframes ws-comb-breathe{0%,100%{box-shadow:0 0 0 2px rgba(18,168,94,.14),0 8px 24px rgba(12,122,70,.12)}50%{box-shadow:0 0 0 3px rgba(18,168,94,.28),0 10px 30px rgba(12,122,70,.22)}}
+.ws-combine-h b{display:block;font-size:14.5px;color:var(--ink,#14201A);font-weight:700}
 .ws-combine-h span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:2px;line-height:1.35}
-.ws-combine-row{display:flex;align-items:center;justify-content:center;gap:9px;margin:13px 0}
-.ws-combine-row em{font-style:normal;font-weight:800;color:var(--green);font-size:17px}
-.ws-combine-src{width:62px;height:62px;flex:0 0 auto;border-radius:12px;background:#EDEAD9 center/cover no-repeat;border:1px solid var(--line,#E4DFCF)}
+.ws-combine-row{display:flex;align-items:center;justify-content:center;gap:9px;margin:15px 0}
+.ws-combine-row em{font-style:normal;font-weight:800;color:var(--green);font-size:20px;transition:transform .2s}
+.ws-combine.combining .ws-combine-row em{animation:ws-comb-arrow 1.2s ease-in-out infinite}
+.ws-combine.combining .ws-combine-row em:last-of-type{animation-delay:.2s}
+@keyframes ws-comb-arrow{0%,100%{transform:translateX(0);opacity:.5}50%{transform:translateX(3px);opacity:1}}
+.ws-combine-src{width:88px;height:88px;flex:0 0 auto;border-radius:14px;background:#EDEAD9 center/cover no-repeat;border:1.5px solid var(--line,#E4DFCF);box-shadow:0 2px 6px rgba(20,32,26,.08)}
 .ws-combine-src.prod{background-color:#fff}
-.ws-combine-out{width:62px;height:62px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;background:#EAF6EF;border:1.5px dashed #9CCBB1;color:var(--green);overflow:hidden}
-.ws-combine-out.has{border-style:solid;border-color:var(--green);background:#0f1713}
+.ws-combine.combining .ws-combine-src{animation:ws-comb-pulse 1.6s ease-in-out infinite}
+.ws-combine.combining .ws-combine-src.prod{animation-delay:.3s}
+@keyframes ws-comb-pulse{0%,100%{box-shadow:0 2px 6px rgba(20,32,26,.08)}50%{box-shadow:0 0 0 3px rgba(18,168,94,.3),0 2px 12px rgba(12,122,70,.28)}}
+.ws-combine-out{position:relative;width:88px;height:88px;flex:0 0 auto;border-radius:14px;display:grid;place-items:center;background:#EAF6EF;border:1.5px dashed #9CCBB1;color:var(--green);overflow:hidden}
+.ws-combine.combining .ws-combine-out{border-style:solid;border-color:var(--green2,#12A85E);background:linear-gradient(135deg,#EAF6EF,#D7F0E2)}
+.ws-combine-out.has{border-style:solid;border-color:var(--green);background:#0f1713;box-shadow:0 0 0 3px rgba(18,168,94,.18)}
 .ws-combine-out img{width:100%;height:100%;object-fit:cover}
-.ws-combine-spin{width:22px;height:22px;border-radius:999px;border:2.5px solid #BFE2CD;border-top-color:var(--green);animation:ws-combspin .8s linear infinite}
-@keyframes ws-combspin{to{transform:rotate(360deg)}}
-.ws-combine-btn{width:100%;margin-top:4px}
-.ws-combine-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:6px}
+.ws-combine-work{display:inline-flex;gap:5px}
+.ws-combine-work i{width:9px;height:9px;border-radius:999px;background:var(--green);display:block;animation:ws-comb-bounce 1s ease-in-out infinite}
+.ws-combine-work i:nth-child(2){animation-delay:.15s}
+.ws-combine-work i:nth-child(3){animation-delay:.3s}
+@keyframes ws-comb-bounce{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-7px);opacity:1}}
+.ws-combine-scan{position:absolute;left:0;right:0;height:38%;top:-38%;background:linear-gradient(180deg,transparent,rgba(18,168,94,.4),transparent);animation:ws-comb-scan 1.5s linear infinite;pointer-events:none}
+@keyframes ws-comb-scan{0%{top:-38%}100%{top:100%}}
+.ws-combine-btn{width:100%;margin-top:4px;position:relative;overflow:hidden}
+.ws-combine-btntxt{position:relative;z-index:1}
+.ws-combine.combining .ws-combine-btn::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.4) 50%,transparent 75%);transform:translateX(-100%);animation:ws-comb-shim 1.3s linear infinite}
+@keyframes ws-comb-shim{100%{transform:translateX(100%)}}
+.ws-combine-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:8px}
 .ws-combine-ok{font-size:12px;font-weight:700;color:var(--green-deep,#0A3D26);flex:1;min-width:140px}
+@media (max-width:420px){.ws-combine-src,.ws-combine-out{width:76px;height:76px}}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
