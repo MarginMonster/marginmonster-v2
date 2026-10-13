@@ -1260,6 +1260,13 @@ export default function WebStudio() {
   // offer a visible "upload your own instead" shortcut — with a big store the
   // picker dominates and the upload field below it is easy to miss.
   const uploadRef = useRef<HTMLInputElement>(null);
+  // Marketing product-source chooser: "From your store" (catalogue grid) vs
+  // "Upload a photo" (own image). Default null so the merchant meets a clean
+  // two-card choice instead of a 200-row grid dumped on them every time.
+  const [prodSource, setProdSource] = useState<"store" | "upload" | null>(null);
+  // A preview thumbnail of the uploaded product photo — they SEE it before
+  // confirming (object URL; revoked on change so blob URLs don't leak).
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const takePhoto = (f: File | null | undefined) => {
     if (!f || !/^image\//.test(f.type)) return;
     try {
@@ -1356,6 +1363,7 @@ export default function WebStudio() {
     setProductTitle(hit.title);
     setImageUrl(hit.imageUrl || "");
     setPickedUrl(hit.url);
+    setProdSource("store");
     setTab("image");
     setImageMode("product");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1416,7 +1424,9 @@ export default function WebStudio() {
     // pick's URL rode along: the ad went out with a caption linking to a
     // different product than the one in the picture. Here the scraped page IS
     // the right destination, so carry it.
-    if (imp) { setProductTitle(imp.title); setImageUrl(imp.image || ""); setPickedUrl(imp.url || ""); setUrlInput(""); setShowImport(false); }
+    // Jump to the "store" source so the imported image actually renders + rides
+    // the submit (productImageUrl only exists on the store/upload branches).
+    if (imp) { setProductTitle(imp.title); setImageUrl(imp.image || ""); setPickedUrl(imp.url || ""); setUrlInput(""); setShowImport(false); setProdSource("store"); }
   }, [actionData]);
   const importErr = actionData && "importError" in actionData ? (actionData as { importError: string }).importError : null;
 
@@ -1729,6 +1739,29 @@ export default function WebStudio() {
     try { n = ((parseInt(localStorage.getItem(pair) || "0", 10) || 0) + 1); localStorage.setItem(pair, String(n)); } catch { /* private mode */ }
     return String(n % 4);
   };
+  // Product-source chooser handlers. Upload stashes a preview + marks hasFile so
+  // the Generate gate clears; switching source clears the OTHER path so a stale
+  // store link or an orphaned file can't ride the submit.
+  const takeUpload = (f: File | null | undefined) => {
+    // MIME guard (mirrors takePhoto): the accept list filters the dialog, but an
+    // OS "All files" override can still hand us a non-image — don't preview or
+    // arm the submit with one. clearUpload resets the stray selection.
+    if (f && !/^image\//.test(f.type)) { clearUpload(); return; }
+    setHasFile(!!f);
+    setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return f ? URL.createObjectURL(f) : null; });
+  };
+  const clearUpload = () => {
+    setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
+    setHasFile(false);
+    if (uploadRef.current) uploadRef.current.value = "";
+  };
+  // Switching source clears the OTHER path so a stale store link / buy-URL or an
+  // orphaned uploaded file can't ride the submit — but only when actually
+  // CHANGING source, so re-tapping the already-active card never wipes a pick.
+  const chooseStore = () => { if (prodSource !== "store") { setImageUrl(""); setPickedUrl(""); } setProdSource("store"); clearUpload(); if (d.catalog.length === 0) setShowConnect(true); };
+  // Clear any store pick so "upload my own" starts clean, then open the file
+  // dialog straight away (after the input mounts on the next render).
+  const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); setTimeout(() => uploadRef.current?.click(), 30); };
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (variantRef.current) variantRef.current.value = nextVariant();
     // A photo picked via the Stage "+" lives in state (editFile) but may not be
@@ -2154,12 +2187,32 @@ export default function WebStudio() {
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
             <StepHead n={2} title={casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
+            {/* ---- Where's the product? Two side-by-side cards. Dumping a grid
+                of 200 products on every visit was a doom-scroll AND buried the
+                "upload my own" path; now it's one clean choice and only the
+                chosen path expands. Service / Talking-Head sell an outcome with
+                no product photo, so the chooser is skipped there. */}
+            {!serviceForced && (
+              <div className="ws-srcpick" role="group" aria-label={t("Where's your product?")}>
+                <button type="button" className={`ws-srccard${prodSource === "store" ? " sel" : ""}`} aria-pressed={prodSource === "store"} onClick={chooseStore}>
+                  <Ico n="box" size={19} />
+                  <b>{t("From your store")}</b>
+                  <span>{d.catalog.length > 0 ? t("Pick a product you already sell") : t("Link your store to pick products")}</span>
+                </button>
+                <button type="button" className={`ws-srccard${prodSource === "upload" ? " sel" : ""}`} aria-pressed={prodSource === "upload"} onClick={chooseUpload}>
+                  <Ico n="camera" size={19} />
+                  <b>{t("Upload a photo")}</b>
+                  <span>{t("Use your own product image")}</span>
+                </button>
+              </div>
+            )}
+
             {/* ---- Catalogue picker ----
                 Pasting a link and retyping the title on every generation is a
                 tax the merchant pays forever. Their storefront gets mirrored
                 once, and from then on this is two taps. Hidden in casual — a
                 store catalogue is a selling concept; casual uploads its own photo. */}
-            {d.catalog.length > 0 && !casual ? (
+            {prodSource === "store" && !serviceForced && d.catalog.length > 0 ? (
               <>
                 <div className="ws-lbl">
                   <span>{t("Pick from your store")}</span>
@@ -2169,7 +2222,7 @@ export default function WebStudio() {
                       : (d.catalogCount === 1 ? t("{n} product", { n: d.catalogCount }) : t("{n} products", { n: d.catalogCount }))}
                   </span>
                 </div>
-                <button type="button" className="ws-addurl ws-uploadown" onClick={() => uploadRef.current?.click()}>
+                <button type="button" className="ws-addurl ws-uploadown" onClick={chooseUpload}>
                   <Ico n="camera" size={13} /> {t("Not in your store? Upload your own photo instead")}
                 </button>
                 {d.catalog.length > 8 && (
@@ -2205,7 +2258,7 @@ export default function WebStudio() {
                 </div>
                 {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
               </>
-            ) : !casual ? (
+            ) : prodSource === "store" && !serviceForced ? (
               <div className="ws-connect">
                 <b><Ico n="box" /> {t("Bring your whole store in")}</b>
                 <p>{t("Paste your store address once and we’ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.")}</p>
@@ -2220,8 +2273,8 @@ export default function WebStudio() {
                 )}
               </div>
             ) : null}
-            {d.catalogSyncing && d.catalog.length === 0 && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
-            {showConnect && !d.catalogSyncing && (
+            {prodSource === "store" && !serviceForced && d.catalogSyncing && d.catalog.length === 0 && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
+            {prodSource === "store" && !serviceForced && showConnect && !d.catalogSyncing && (
               <div className="ws-import">
                 <input className="wb-in" type="url" value={storeInput} placeholder="yourstore.com"
                   onChange={(e) => setStoreInput(e.target.value)} />
@@ -2229,6 +2282,26 @@ export default function WebStudio() {
                   onClick={() => { submit({ intent: "importCatalog", storeUrl: storeInput.trim() }, { method: "post" }); setShowConnect(false); }}>
                   {t("Pull my products in")}
                 </button>
+              </div>
+            )}
+            {/* The chosen store image rides to the server as productImageUrl. */}
+            {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
+
+            {/* ---- Upload branch ---- own photo, with a live preview so they SEE
+                it before confirming, plus the "or paste a URL" fallback. The file
+                input is name="productPhoto" (server prefers it over the URL). */}
+            {prodSource === "upload" && !serviceForced && (
+              <div className="ws-uploadbox">
+                <div className="ws-lbl"><span>{t("Product photo")}</span> <span className="ws-opt">{t("powers videos & image ads")}</span></div>
+                <input ref={uploadRef} className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
+                  onChange={(e) => takeUpload(e.currentTarget.files?.[0])} />
+                {uploadPreview && (
+                  <div className="ws-uppreview">
+                    <img src={uploadPreview} alt={t("Your product photo")} />
+                    <button type="button" className="ws-upclear" onClick={clearUpload}>✕ {t("Remove")}</button>
+                  </div>
+                )}
+                <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
               </div>
             )}
             {showWear && (
@@ -2275,7 +2348,7 @@ export default function WebStudio() {
             {/* setPickedUrl("") because no URL is remembered with the last
                 product — the previous pick's link must not survive the swap. */}
             {!casual && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
-              <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); }}>
+              <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
                 ↺ {t("Use last: {title}", { title: lastProd.title })}
               </button>
             )}
@@ -2286,48 +2359,18 @@ export default function WebStudio() {
             ) : (
               <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
             )}
-            {tab !== "blog" && !serviceForced && (
-              <>
-                <div className="ws-lbl">{isEdit ? <>{t("Your photo")} <span className="ws-opt">{t("drag & drop, or click to upload")}</span></> : casual ? <>{t("Photo")} <span className="ws-opt">{t("optional — add one to feature a real product")}</span></> : <>{t("Product photo")} <span className="ws-opt">{t("powers videos & image ads — upload or paste a URL")}</span></>}</div>
-                {isEdit ? (
-                  <div className={`ws-drop${editPreview ? " has" : ""}`}
-                    onClick={() => photoInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("drag"); }}
-                    onDragLeave={(e) => e.currentTarget.classList.remove("drag")}
-                    onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("drag"); takePhoto(e.dataTransfer.files?.[0]); }}>
-                    {editPreview ? (
-                      <>
-                        <img src={editPreview} alt={t("Your photo")} className="ws-drop-img" />
-                        <span className="ws-drop-change">{t("Drop a new one, or click to change")}</span>
-                      </>
-                    ) : (
-                      <div className="ws-drop-empty">
-                        <span className="ws-drop-ba" aria-hidden="true"><i className="before" /><em>→</em><i className="after" /></span>
-                        <b>{t("Drop your photo here")}</b>
-                        <span className="ws-drop-sub">{t("or click to upload — then describe your edits below")}</span>
-                      </div>
-                    )}
-                    <input ref={photoInputRef} type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" className="ws-drop-input"
-                      onChange={(e) => takePhoto(e.currentTarget.files?.[0])} />
-                  </div>
-                ) : (
-                  <input ref={uploadRef} className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
-                    onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
-                )}
-                <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? t("…or https://example.com/my-photo.jpg") : t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
-                {casual && tab === "video" && !hasFile && !imageUrl.trim() && (
-                  <p className="ws-note">
-                    <Ico n="sparkle" /> {t("No photo? We’ll create your whole video from your words. Add one above to feature a ")}<b>{t("real")}</b>{t(" product.")}
-                  </p>
-                )}
-                {needsPhoto && (
-                  <p className="ws-note" style={{ color: "#8A5A12" }}>
-                    {casual
-                      ? <>{t("Add a photo so it’s really ")}<b>{t("yours")}</b>{t(" — without one we’d just be inventing something from the name.")}</>
-                      : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product — without one we’d be inventing a product from the name. Promoting a service? Switch to ")}<b>{t("Service / offer")}</b>{t(" below.")}</>}
-                  </p>
-                )}
-              </>
+            {/* The product photo now lives in the source branches above — the
+                store pick carries its image, the upload card shows a file input
+                + live preview. All that's left here is the nudge for when
+                neither path has produced a photo yet. */}
+            {needsPhoto && (
+              <p className="ws-note" style={{ color: "#8A5A12" }}>
+                {prodSource === null
+                  ? t("Pick where your product comes from above — choose from your store, or upload a photo.")
+                  : prodSource === "store"
+                    ? t("Pick a product from your store above so the ad features it.")
+                    : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product — without one we’d be inventing a product from the name. Promoting a service? Switch to ")}<b>{t("Service / offer")}</b>{t(" below.")}</>}
+              </p>
             )}
 
             {serviceForced && (
@@ -3054,6 +3097,20 @@ const WS_STYLE = `
 .ws-addurl{border:0;background:none;color:var(--green);font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:auto}
 .ws-uploadown{margin:7px 0 2px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:6px 11px;border:1px dashed #BFE2CD;border-radius:9px;background:#F0FAF4;}
 .ws-uploadown svg{flex:0 0 auto}
+/* Product-source chooser — two side-by-side cards (store vs upload). */
+.ws-srcpick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 12px}
+.ws-srccard{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:13px 14px;border-radius:14px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;min-height:44px}
+.ws-srccard svg{color:var(--green);margin-bottom:3px}
+.ws-srccard b{font-size:14px;color:var(--ink,#14201A);font-weight:700}
+.ws-srccard span{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
+.ws-srccard:hover{border-color:#9CCBB1;background:#F3F9F4}
+.ws-srccard.sel{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
+.ws-uploadbox{margin:4px 0 2px}
+.ws-uppreview{position:relative;margin-top:9px;border-radius:12px;overflow:hidden;background:#0f1713;border:1px solid var(--line,#E4DFCF);display:flex;justify-content:center}
+.ws-uppreview img{display:block;max-width:100%;max-height:230px;object-fit:contain}
+.ws-upclear{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
+.ws-upclear:hover{background:rgba(11,18,14,.9)}
+@media (max-width:420px){.ws-srccard span{font-size:11px}}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
@@ -3317,5 +3374,7 @@ const WS_STYLE = `
   .ws-chip{min-height:44px;padding-top:12px;padding-bottom:12px}
   .ws-seg button{min-height:44px;display:inline-flex;align-items:center}
   .ws-model{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .ws-upclear{min-height:44px;padding-top:11px;padding-bottom:11px}
+  .ws-srccard{min-height:76px}
 }
 `;
