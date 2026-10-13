@@ -1345,6 +1345,14 @@ export default function WebStudio() {
   // A preview thumbnail of the uploaded product photo — they SEE it before
   // confirming (object URL; revoked on change so blob URLs don't leak).
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  // The picked File held in STATE. The <input type=file> is UNCONTROLLED and
+  // loses its file when a remount kills it (Talking Head round-trip, source
+  // switch) while hasFile/uploadPreview survive — a phantom photo. We inject
+  // THIS into the submit so a photo the UI shows is always actually sent
+  // (mirrors editFile for the casual editor).
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // Tap-to-enlarge lightbox for the combine thumbnails + result.
+  const [expandImg, setExpandImg] = useState<string | null>(null);
   // Compose-first "Combine" step (avatar+product video): make the presenter-
   // holding-product frame FIRST, approve it in-flow, then animate the video
   // from exactly that frame (Zeely-style). A copy lands in the gallery.
@@ -1837,6 +1845,7 @@ export default function WebStudio() {
     // arm the submit with one. clearUpload resets the stray selection.
     if (f && !/^image\//.test(f.type)) { clearUpload(); return; }
     setHasFile(!!f);
+    setUploadFile(f || null);
     setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return f ? URL.createObjectURL(f) : null; });
     // A new product photo (incl. swapping file A->B, where hasFile stays true so
     // the stale-frame effect's deps don't fire) invalidates any approved combine.
@@ -1845,13 +1854,17 @@ export default function WebStudio() {
   const clearUpload = () => {
     setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
     setHasFile(false);
+    setUploadFile(null);
     if (uploadRef.current) uploadRef.current.value = "";
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
   };
   // Switching source clears the OTHER path so a stale store link / buy-URL or an
   // orphaned uploaded file can't ride the submit — but only when actually
   // CHANGING source, so re-tapping the already-active card never wipes a pick.
-  const chooseStore = () => { if (prodSource !== "store") { setImageUrl(""); setPickedUrl(""); } setProdSource("store"); clearUpload(); if (d.catalog.length === 0) setShowConnect(true); };
+  // No explicit clearUpload here — the [prodSource] effect clears the upload
+  // state only on an ACTUAL switch, so re-tapping the active store card never
+  // wipes an approved combine frame.
+  const chooseStore = () => { if (prodSource !== "store") { setImageUrl(""); setPickedUrl(""); } setProdSource("store"); if (d.catalog.length === 0) setShowConnect(true); };
   // Clear any store pick so "upload my own" starts clean, then REVEAL the upload
   // branch (its own "Choose File" button). We deliberately do NOT auto-open the
   // OS file dialog — jumping straight to the folder picker on a card tap feels
@@ -1873,6 +1886,8 @@ export default function WebStudio() {
     fd.delete("formatKey");
     fd.delete("composedFrameUrl");
     if (avatarId) fd.set("avatarId", avatarId);
+    // Inject the state-held file in case the input was remounted empty.
+    if (prodSource === "upload" && uploadFile) fd.set("productPhoto", uploadFile);
     combineStartRef.current = Date.now();
     setCombineErr(null);
     setCombineUrl(null);
@@ -1919,17 +1934,23 @@ export default function WebStudio() {
     if (r.media) { setCombineUrl(r.media); setCombining(false); return; }
     if (r.failed) {
       // A combine miss FAILS the job, which refunds the charge (presenterOnly).
+      // Framed as OUR quality bar (premium), not as the product being too hard.
       setCombining(false);
-      setCombineErr(t("Couldn’t get the presenter holding that product cleanly — you weren’t charged. Try a simpler or clearer product photo, then re-combine."));
+      setCombineErr(t("We only ship a take where your presenter is really holding your product — this one didn’t make our bar, so you weren’t charged. Tap Combine to run it again."));
     } else if (r.done) {
       setCombining(false);
-      setCombineErr(t("Couldn’t combine that one — try again, or swap the product photo."));
+      setCombineErr(t("That take didn’t come through — tap Combine to run it again."));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFetcher.data, combining, combineJobId]);
   const avatarThumb = d.cast.find((c) => c.id === avatarId)?.img || "";
   const productThumb = uploadPreview || imageUrl || "";
-  const showCombine = tab === "video" && baseOf(contentType) === "avatar" && !!avatarId && !serviceOn && (hasFile || !!imageUrl.trim());
+  // A marketing product is really present only when the source whose input is
+  // mounted matches: store needs imageUrl, upload needs a file. Trusting a bare
+  // hasFile/imageUrl let the panel/Generate show a product whose input wasn't
+  // rendered (prodSource desync) → "add a photo" on submit.
+  const hasMarketingProduct = (prodSource === "store" && !!imageUrl.trim()) || (prodSource === "upload" && (hasFile || !!imageUrl.trim()));
+  const showCombine = tab === "video" && baseOf(contentType) === "avatar" && !!avatarId && !serviceOn && hasMarketingProduct;
   const combineCost = d.costs.image;
   // A new presenter, product, outfit or hold/wear flip makes the combined frame
   // stale AND must cancel any in-flight combine, so a late landing can't set the
@@ -1939,6 +1960,23 @@ export default function WebStudio() {
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarId, imageUrl, wear, contentType, productSize]);
+  // Leaving the UPLOAD source unmounts the file input and loses the native file,
+  // but hasFile/uploadPreview are React state that survive — leaving a PHANTOM
+  // photo (the panel shows a product; the submit carries none → "add a photo",
+  // even though one looks selected). The "Use last" chip / Add-by-URL import /
+  // ?product= preselect all flip prodSource to "store" WITHOUT going through
+  // chooseStore, so clear the upload state here whenever we are not on upload.
+  useEffect(() => {
+    if (prodSource !== "upload") clearUpload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prodSource]);
+  // Marketing upload and casual edit SHARE hasFile, and switching modes toggles
+  // in place (no remount), so a file left over from one flow would mis-gate the
+  // other. Reset the upload/combine state on any mode change.
+  useEffect(() => {
+    clearUpload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (variantRef.current) variantRef.current.value = nextVariant();
     // A photo picked via the Stage "+" lives in state (editFile) but may not be
@@ -1955,6 +1993,17 @@ export default function WebStudio() {
       // relative /renders/… path, so absolutize it (same as quickEdit does).
       if (editFile) fd.set("productPhoto", editFile);
       else { const u = imageUrl.trim(); fd.set("productImageUrl", u.startsWith("http") ? u : `${window.location.origin}${u}`); }
+      fd.set("intent", submitIntent);
+      submit(fd, { method: "post", encType: "multipart/form-data" });
+      return;
+    }
+    // Marketing upload: the native file input can be dropped by a remount (the
+    // Talking Head round-trip) while uploadFile state survives, so a Generate
+    // would submit no photo even though one is shown. Inject the state file.
+    if (!isEdit && prodSource === "upload" && uploadFile) {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      fd.set("productPhoto", uploadFile);
       fd.set("intent", submitIntent);
       submit(fd, { method: "post", encType: "multipart/form-data" });
     }
@@ -1974,7 +2023,10 @@ export default function WebStudio() {
   // VIDEO is the same deal: a "describe anything, no photo" text-to-video
   // generator, so a photo is optional there too (add one to feature a real
   // product; without one we create the whole thing from the words).
-  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !isCreate && !hasFile && !imageUrl.trim() && !(casual && tab === "video");
+  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !isCreate && !(casual && tab === "video")
+    // Casual uses its own photo flow (no source chooser); marketing must have a
+    // product that actually matches its mounted source input.
+    && (casual ? (!hasFile && !imageUrl.trim()) : !hasMarketingProduct);
   // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
   // (title, photo, presenter, cartoon style) disabled the button; the one that
   // bites a brand-new trialist first did not. A Studio trial spends from a
@@ -2524,7 +2576,7 @@ export default function WebStudio() {
             )}
             {/* setPickedUrl("") because no URL is remembered with the last
                 product — the previous pick's link must not survive the swap. */}
-            {!casual && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
+            {!casual && prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
               <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
                 ↺ {t("Use last: {title}", { title: lastProd.title })}
               </button>
@@ -2585,19 +2637,32 @@ export default function WebStudio() {
                   <b>{combineUrl ? t("Your presenter has your product") : t("Combine presenter + product")}</b>
                   <span>{t("For the most accurate video, we put your presenter holding your real product first — then animate from it.")}</span>
                 </div>
-                <div className="ws-combine-row">
-                  <span className="ws-combine-src" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined} aria-label={t("Presenter")} />
+                {/* Ingredients — tap either to enlarge. */}
+                <div className="ws-combine-ing">
+                  <button type="button" className="ws-combine-src" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined} onClick={() => avatarThumb && setExpandImg(avatarThumb)} aria-label={t("Presenter — tap to enlarge")} />
                   <em aria-hidden="true">+</em>
-                  <span className="ws-combine-src prod" style={productThumb ? { backgroundImage: `url(${productThumb})` } : undefined} aria-label={t("Product")} />
-                  <em aria-hidden="true">→</em>
-                  <span className={`ws-combine-out${combineUrl ? " has" : ""}`}>
-                    {combineUrl
-                      ? <img src={combineUrl} alt={t("Your presenter holding your product")} />
-                      : combining
-                        ? <span className="ws-combine-work" aria-label={t("Combining…")}><i /><i /><i /></span>
-                        : <Ico n="sparkle" size={26} />}
-                    {combining && <span className="ws-combine-scan" aria-hidden="true" />}
-                  </span>
+                  <button type="button" className="ws-combine-src prod" style={productThumb ? { backgroundImage: `url(${productThumb})` } : undefined} onClick={() => productThumb && setExpandImg(productThumb)} aria-label={t("Product — tap to enlarge")} />
+                  <em className="ws-combine-to" aria-hidden="true">→</em>
+                </div>
+                {/* The big result — the hero of the step. Tap to enlarge. */}
+                <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
+                  {combineUrl ? (
+                    <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
+                      <img src={combineUrl} alt={t("Your presenter holding your product")} />
+                      <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
+                    </button>
+                  ) : combining ? (
+                    <div className="ws-combine-loading">
+                      <span className="ws-combine-work" aria-hidden="true"><i /><i /><i /></span>
+                      <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
+                      <span className="ws-combine-scan" aria-hidden="true" />
+                    </div>
+                  ) : (
+                    <div className="ws-combine-empty">
+                      <Ico n="sparkle" size={30} />
+                      <span>{t("Your presenter holding your product shows up here")}</span>
+                    </div>
+                  )}
                 </div>
                 {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
                 {combineUrl ? (
@@ -2611,6 +2676,13 @@ export default function WebStudio() {
                   </button>
                 )}
                 {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
+              </div>
+            )}
+            {/* Tap-to-enlarge overlay (ingredients + combined result). */}
+            {expandImg && (
+              <div className="ws-lightbox" onClick={() => setExpandImg(null)} role="dialog" aria-modal="true">
+                <img src={expandImg} alt={t("Enlarged")} onClick={(e) => e.stopPropagation()} />
+                <button type="button" className="ws-lightbox-x" onClick={() => setExpandImg(null)} aria-label={t("Close")}>✕</button>
               </div>
             )}
             </>)}
@@ -3336,34 +3408,50 @@ const WS_STYLE = `
 @keyframes ws-comb-breathe{0%,100%{box-shadow:0 0 0 2px rgba(18,168,94,.14),0 8px 24px rgba(12,122,70,.12)}50%{box-shadow:0 0 0 3px rgba(18,168,94,.28),0 10px 30px rgba(12,122,70,.22)}}
 .ws-combine-h b{display:block;font-size:14.5px;color:var(--ink,#14201A);font-weight:700}
 .ws-combine-h span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:2px;line-height:1.35}
-.ws-combine-row{display:flex;align-items:center;justify-content:center;gap:9px;margin:15px 0}
-.ws-combine-row em{font-style:normal;font-weight:800;color:var(--green);font-size:20px;transition:transform .2s}
-.ws-combine.combining .ws-combine-row em{animation:ws-comb-arrow 1.2s ease-in-out infinite}
-.ws-combine.combining .ws-combine-row em:last-of-type{animation-delay:.2s}
-@keyframes ws-comb-arrow{0%,100%{transform:translateX(0);opacity:.5}50%{transform:translateX(3px);opacity:1}}
-.ws-combine-src{width:88px;height:88px;flex:0 0 auto;border-radius:14px;background:#EDEAD9 center/cover no-repeat;border:1.5px solid var(--line,#E4DFCF);box-shadow:0 2px 6px rgba(20,32,26,.08)}
+/* Ingredients row — tap either to enlarge. */
+.ws-combine-ing{display:flex;align-items:center;justify-content:center;gap:11px;margin:14px 0 11px}
+.ws-combine-ing em{font-style:normal;font-weight:800;color:var(--green);font-size:20px}
+.ws-combine-to{opacity:.5}
+.ws-combine.combining .ws-combine-to{animation:ws-comb-arrow 1.2s ease-in-out infinite}
+@keyframes ws-comb-arrow{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(3px);opacity:1}}
+.ws-combine-src{width:84px;height:84px;flex:0 0 auto;border-radius:14px;background:#EDEAD9 center/cover no-repeat;border:1.5px solid var(--line,#E4DFCF);box-shadow:0 2px 6px rgba(20,32,26,.08);cursor:zoom-in;padding:0}
 .ws-combine-src.prod{background-color:#fff}
 .ws-combine.combining .ws-combine-src{animation:ws-comb-pulse 1.6s ease-in-out infinite}
 .ws-combine.combining .ws-combine-src.prod{animation-delay:.3s}
 @keyframes ws-comb-pulse{0%,100%{box-shadow:0 2px 6px rgba(20,32,26,.08)}50%{box-shadow:0 0 0 3px rgba(18,168,94,.3),0 2px 12px rgba(12,122,70,.28)}}
-.ws-combine-out{position:relative;width:88px;height:88px;flex:0 0 auto;border-radius:14px;display:grid;place-items:center;background:#EAF6EF;border:1.5px dashed #9CCBB1;color:var(--green);overflow:hidden}
-.ws-combine.combining .ws-combine-out{border-style:solid;border-color:var(--green2,#12A85E);background:linear-gradient(135deg,#EAF6EF,#D7F0E2)}
-.ws-combine-out.has{border-style:solid;border-color:var(--green);background:#0f1713;box-shadow:0 0 0 3px rgba(18,168,94,.18)}
-.ws-combine-out img{width:100%;height:100%;object-fit:cover}
-.ws-combine-work{display:inline-flex;gap:5px}
-.ws-combine-work i{width:9px;height:9px;border-radius:999px;background:var(--green);display:block;animation:ws-comb-bounce 1s ease-in-out infinite}
+/* The big result stage — the hero of the step. */
+.ws-combine-stage{position:relative;width:100%;min-height:210px;border-radius:16px;overflow:hidden;background:#EAF6EF;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
+.ws-combine.combining .ws-combine-stage{border-style:solid;border-color:var(--green2,#12A85E);background:linear-gradient(135deg,#EAF6EF,#D7F0E2)}
+.ws-combine-stage.has{border-style:solid;border-color:var(--green);background:#0b0f0d;box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:ws-comb-pop .3s ease}
+@keyframes ws-comb-pop{from{transform:scale(.97);opacity:.4}to{transform:scale(1);opacity:1}}
+.ws-combine-big{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in;position:relative}
+.ws-combine-big img{display:block;width:auto;max-width:100%;max-height:320px;margin:0 auto;object-fit:contain}
+.ws-combine-zoom{position:absolute;bottom:8px;right:8px;background:rgba(11,15,13,.72);color:#eafff4;border-radius:8px;padding:3px 8px;font-size:14px;font-weight:700;line-height:1.1}
+.ws-combine-loading{display:flex;flex-direction:column;align-items:center;gap:13px;padding:34px 16px;text-align:center}
+.ws-combine-loadtxt{font-size:12.5px;font-weight:700;color:var(--green-deep,#0A3D26)}
+.ws-combine-empty{display:flex;flex-direction:column;align-items:center;gap:9px;padding:34px 20px;text-align:center;color:var(--ink2,#4A554E)}
+.ws-combine-empty span{font-size:12px;max-width:26ch}
+.ws-combine-empty svg{color:var(--green);opacity:.85}
+.ws-combine-work{display:inline-flex;gap:8px}
+.ws-combine-work i{width:13px;height:13px;border-radius:999px;background:var(--green);display:block;animation:ws-comb-bounce 1s ease-in-out infinite}
 .ws-combine-work i:nth-child(2){animation-delay:.15s}
 .ws-combine-work i:nth-child(3){animation-delay:.3s}
-@keyframes ws-comb-bounce{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-7px);opacity:1}}
-.ws-combine-scan{position:absolute;left:0;right:0;height:38%;top:-38%;background:linear-gradient(180deg,transparent,rgba(18,168,94,.4),transparent);animation:ws-comb-scan 1.5s linear infinite;pointer-events:none}
-@keyframes ws-comb-scan{0%{top:-38%}100%{top:100%}}
-.ws-combine-btn{width:100%;margin-top:4px;position:relative;overflow:hidden}
+@keyframes ws-comb-bounce{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-8px);opacity:1}}
+.ws-combine-scan{position:absolute;left:0;right:0;height:30%;top:-30%;background:linear-gradient(180deg,transparent,rgba(18,168,94,.45),transparent);animation:ws-comb-scan 1.6s linear infinite;pointer-events:none}
+@keyframes ws-comb-scan{0%{top:-30%}100%{top:105%}}
+.ws-combine-btn{width:100%;margin-top:10px;position:relative;overflow:hidden}
 .ws-combine-btntxt{position:relative;z-index:1}
 .ws-combine.combining .ws-combine-btn::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.4) 50%,transparent 75%);transform:translateX(-100%);animation:ws-comb-shim 1.3s linear infinite}
 @keyframes ws-comb-shim{100%{transform:translateX(100%)}}
-.ws-combine-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:8px}
+.ws-combine-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:10px}
 .ws-combine-ok{font-size:12px;font-weight:700;color:var(--green-deep,#0A3D26);flex:1;min-width:140px}
-@media (max-width:420px){.ws-combine-src,.ws-combine-out{width:76px;height:76px}}
+/* Tap-to-enlarge lightbox. */
+.ws-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(8,12,10,.86);display:grid;place-items:center;padding:24px;cursor:zoom-out;animation:ws-lb-in .15s ease}
+@keyframes ws-lb-in{from{opacity:0}to{opacity:1}}
+.ws-lightbox img{max-width:min(96vw,760px);max-height:88vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default}
+.ws-lightbox-x{position:fixed;top:16px;right:16px;width:44px;height:44px;border-radius:999px;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:20px;cursor:pointer}
+.ws-lightbox-x:hover{background:rgba(255,255,255,.28)}
+@media (max-width:420px){.ws-combine-src{width:74px;height:74px}.ws-combine-stage{min-height:180px}}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
