@@ -1933,10 +1933,10 @@ export default function WebStudio() {
     if (!r || r.jobId !== combineJobId) return;
     if (r.media) { setCombineUrl(r.media); setCombining(false); return; }
     if (r.failed) {
-      // A combine miss FAILS the job, which refunds the charge (presenterOnly).
-      // Framed as OUR quality bar (premium), not as the product being too hard.
+      // Only a genuine technical miss (no frame produced) fails now — the job
+      // refunds the charge (presenterOnly), so keep it plain and reassuring.
       setCombining(false);
-      setCombineErr(t("We only ship a take where your presenter is really holding your product — this one didn’t make our bar, so you weren’t charged. Tap Combine to run it again."));
+      setCombineErr(t("That didn’t come through — you weren’t charged. Tap Combine to try again."));
     } else if (r.done) {
       setCombining(false);
       setCombineErr(t("That take didn’t come through — tap Combine to run it again."));

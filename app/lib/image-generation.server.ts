@@ -4656,12 +4656,19 @@ export async function generateImageAd(
           // composes and a paste have already had their turn; if the thing in
           // his hands still isn't the merchant's item, fall through to the
           // product still, which is the real photograph.
-          composed = held.wrongProduct ? undefined : (held.url || undefined);
-          if (held.wrongProduct) {
-            // Record WHY so the Combine (presenterOnly) failure path below — which
-            // lives OUTSIDE this try/catch — can fail with an honest reason.
+          // For COMBINE (presenterOnly) the MERCHANT approves the frame in-flow,
+          // so a machine "wrong product" verdict is INFORMATIONAL — ship the best
+          // compose attempt for them to judge (a Pokémon card / detailed label
+          // never reproduces character-for-character, and auto-rejecting it
+          // before they ever see it makes the feature unusable). Normal ads keep
+          // the strict gate and fall through to the real product still on a miss.
+          composed = (held.wrongProduct && !presenterOnly) ? undefined : (held.url || undefined);
+          if (held.wrongProduct && !presenterOnly) {
+            // Record WHY so the product-still fall-through path stays honest.
             presenterMiss = `couldn't reproduce the product faithfully (${held.failed.join(", ")})`;
             artLog("image-ad", `presenter hold: not the merchant's product (${held.failed.join(", ")}) — shipping a product still instead`);
+          } else if (held.wrongProduct && presenterOnly) {
+            artLog("image-ad", `presenter hold: QA flagged (${held.failed.join(", ")}) — shipping for merchant review (Combine)`);
           }
           if (composed) {
             // fal delivery URLs expire in ~an hour and the healer can't re-forge
