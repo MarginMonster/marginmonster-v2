@@ -217,7 +217,48 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     select: { status: true, createdAt: true, lastError: true },
   });
   const lastGen = lastGenRow ? { status: lastGenRow.status as string, at: lastGenRow.createdAt.toISOString(), error: lastGenRow.lastError || null } : null;
+  // ---- Combine-step status (polled by ?combineJob=<id>) ----
+  // The Combine step runs in MARKETING mode, so its presenter image is tagged
+  // section:"marketing" and never appears in the creator-only `recent`/`lastGen`
+  // above. Correlate on the JOB ID instead: look it up, then find the presenter
+  // IMAGE_AD it produced (metaJson records avatarId; the Combine button is
+  // disabled while combining, so only one runs at a time). Section-agnostic.
+  const combineJobId = new URL(request.url).searchParams.get("combineJob");
+  let combineResult: { jobId: string; done: boolean; failed: boolean; media: string | null } | null = null;
+  if (combineJobId) {
+    const cjob = await db.job.findFirst({
+      where: { id: combineJobId, shopId: shop.id, type: "GENERATE_IMAGE_AD" },
+      select: { status: true, createdAt: true, payload: true },
+    });
+    if (cjob) {
+      let avId = "", pImg = "";
+      try { const pl = JSON.parse(cjob.payload || "{}") as { avatarId?: string; productImageUrl?: string }; avId = pl.avatarId || ""; pImg = pl.productImageUrl || ""; } catch { /* */ }
+      let media: string | null = null;
+      if (avId) {
+        // Match avatarId AND this combine's exact product image (both recorded
+        // in the presenter asset's metaJson) so a concurrent presenter-image
+        // burst of the same avatar can't win the newest-first race.
+        const and: Array<Record<string, unknown>> = [{ metaJson: { contains: `"avatarId":"${avId}"` } }];
+        if (pImg) and.push({ metaJson: { contains: `"productImageUrl":"${pImg}"` } });
+        const casset = await db.asset.findFirst({
+          where: { shopId: shop.id, type: "IMAGE_AD", createdAt: { gte: cjob.createdAt }, AND: and },
+          orderBy: { createdAt: "desc" },
+          select: { bodyJson: true },
+        });
+        if (casset) {
+          try { const b = JSON.parse(casset.bodyJson || "{}") as { imageUrl?: string; url?: string }; media = b.imageUrl || b.url || null; } catch { /* */ }
+          // The asset stores a RELATIVE "/renders/..." path. The video pipeline
+          // fetches composedFrameUrl SERVER-SIDE (Node fetch needs an absolute
+          // URL or it throws), so absolutize here — the same value also feeds the
+          // in-flow <img> preview, where an absolute same-origin URL is fine too.
+          if (media && media.startsWith("/")) { const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, ""); if (base) media = base + media; }
+        }
+      }
+      combineResult = { jobId: combineJobId, done: cjob.status === "COMPLETED" || cjob.status === "FAILED", failed: cjob.status === "FAILED", media };
+    }
+  }
   return json({
+    combineResult,
     lastGen,
     recent,
     catalog,
@@ -637,6 +678,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (presenterVideo && !productImageUrl && !service) {
         return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to Service / offer.)") });
       }
+      // A Studio-approved "presenter holding the product" frame (the Combine
+      // step) seeds the video directly — the pipeline animates from exactly what
+      // the merchant approved and skips its own internal compose. Guarded to
+      // presenter product videos so a stray value can never ride a service clip.
+      const composedFrameUrl = presenterVideo && !service
+        ? (((form.get("composedFrameUrl") as string) || "").trim() || undefined)
+        : undefined;
       // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
       // not use one: it goes through the lipsync chain (HeyGen/omni-human), so
       // generateUgcAd never even receives videoEngine — and a cartoon with a
@@ -673,6 +721,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           contentType, cartoonStyle,
           avatarId, avatarVariant,
           holdProduct: !!avatarId && !service,
+          composedFrameUrl,
           productSize: ((form.get("productSize") as string) || "").trim() || undefined,
           wearProduct: !!avatarId && wear && !service,
           serviceMode: service, scene,
@@ -756,6 +805,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         backed(TOKEN_COST.image, imgPerPieceFromExtra);
       }
       return json({ ok: true, queued: "image", count: n });
+    }
+    if (intent === "combine") {
+      // Compose-first "Combine" step: render the presenter-holding-product frame
+      // as ONE normal image gen (1 image charge, lands in the gallery), and hand
+      // back the JOB ID so the client can correlate the exact result (the
+      // section-filtered recent list can't see a marketing image). The video
+      // then reuses this approved frame as its animation seed.
+      assertCapability(shop.activePlan, "image");
+      const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
+      const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+      if (!avatarId) return json({ error: tr(lang, "Pick a presenter first.") });
+      if (!productImageUrl) return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
+      if (!productTitle) return json({ error: tr(lang, "Give the product a name.") });
+      const cFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
+      charged(TOKEN_COST.image, cFromExtra);
+      const combineJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        section: genSection,
+        freshShot: true,
+        productTitle, productImageUrl, productUrl,
+        styleMode: "backdrop",
+        avatarId, avatarVariant,
+        wear: !!avatarId && wear && !service,
+        prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: cFromExtra,
+      });
+      backed(TOKEN_COST.image, cFromExtra);
+      return json({ ok: true, combineJobId });
     }
     if (intent === "edit") {
       // Casual "edit a photo" — transform the user's own uploaded/linked photo.
@@ -1267,6 +1342,17 @@ export default function WebStudio() {
   // A preview thumbnail of the uploaded product photo — they SEE it before
   // confirming (object URL; revoked on change so blob URLs don't leak).
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  // Compose-first "Combine" step (avatar+product video): make the presenter-
+  // holding-product frame FIRST, approve it in-flow, then animate the video
+  // from exactly that frame (Zeely-style). A copy lands in the gallery.
+  const [combineUrl, setCombineUrl] = useState<string | null>(null);
+  const [combining, setCombining] = useState(false);
+  const [combineErr, setCombineErr] = useState<string | null>(null);
+  const [combineJobId, setCombineJobId] = useState<string | null>(null);
+  const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
+  const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
+  const combineStartRef = useRef(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const takePhoto = (f: File | null | undefined) => {
     if (!f || !/^image\//.test(f.type)) return;
     try {
@@ -1749,11 +1835,15 @@ export default function WebStudio() {
     if (f && !/^image\//.test(f.type)) { clearUpload(); return; }
     setHasFile(!!f);
     setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return f ? URL.createObjectURL(f) : null; });
+    // A new product photo (incl. swapping file A->B, where hasFile stays true so
+    // the stale-frame effect's deps don't fire) invalidates any approved combine.
+    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
   };
   const clearUpload = () => {
     setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
     setHasFile(false);
     if (uploadRef.current) uploadRef.current.value = "";
+    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
   };
   // Switching source clears the OTHER path so a stale store link / buy-URL or an
   // orphaned uploaded file can't ride the submit — but only when actually
@@ -1764,6 +1854,84 @@ export default function WebStudio() {
   // OS file dialog — jumping straight to the folder picker on a card tap feels
   // abrupt; let them see the branch and click Choose File themselves.
   const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); };
+  // Combine: submit the presenter-holding-product frame as a normal image gen
+  // (1 image charge, lands in the gallery — the user chose this cost model),
+  // then poll for the fresh asset and hold its URL to seed the video. We reuse
+  // the tested presenter-image path rather than duplicate the compose/money
+  // path in a new job handler.
+  const doCombine = () => {
+    const formEl = formRef.current;
+    if (!formEl) return;
+    const fd = new FormData(formEl);
+    fd.set("intent", "combine");
+    fd.set("burst", "1");        // exactly one frame, never a burst
+    fd.delete("merchantOffer");  // a seed frame carries no promo text
+    fd.delete("templateKey");
+    fd.delete("formatKey");
+    fd.delete("composedFrameUrl");
+    if (avatarId) fd.set("avatarId", avatarId);
+    combineStartRef.current = Date.now();
+    setCombineErr(null);
+    setCombineUrl(null);
+    setCombineJobId(null);
+    setCombining(true);
+    combineFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+  };
+  // The combine submit came back — grab the job id to poll, or surface an error
+  // (tokens are charged BEFORE enqueue, so an error here means no charge).
+  useEffect(() => {
+    const data = combineFetcher.data;
+    if (!data) return;
+    if (data.error) { setCombining(false); setCombineErr(data.error); return; }
+    if (data.combineJobId) setCombineJobId(data.combineJobId);
+  }, [combineFetcher.data]);
+  // Poll the combine job BY ID (section-agnostic) until its presenter frame
+  // lands; a cap stops a stuck render from spinning forever.
+  useEffect(() => {
+    if (!combining || !combineJobId) return;
+    const tick = () => {
+      if (Date.now() - combineStartRef.current > 3 * 60_000) {
+        setCombining(false);
+        setCombineErr(t("That took too long — try Combine again."));
+        return;
+      }
+      // No state guard: the effect closure would capture a STALE statusFetcher,
+      // so reading .state here is unreliable. A fetcher serializes its own loads
+      // (a new load supersedes an in-flight one), so polling every tick is safe.
+      statusFetcher.load(`/web/studio?combineJob=${encodeURIComponent(combineJobId)}`);
+    };
+    tick();
+    const iv = setInterval(tick, 4000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combining, combineJobId]);
+  // Read the polled status: the frame URL wins the moment it exists; a terminal
+  // job with no presenter frame (compose failed) or an outright FAILED is an error.
+  useEffect(() => {
+    if (!combining) return;
+    const r = statusFetcher.data?.combineResult;
+    // Ignore a stale result from a PREVIOUS combine (fetcher data persists across
+    // submits) — only act on the result for the job we're currently polling.
+    if (!r || r.jobId !== combineJobId) return;
+    if (r.media) { setCombineUrl(r.media); setCombining(false); return; }
+    if (r.failed || r.done) {
+      setCombining(false);
+      setCombineErr(t("Couldn’t combine that one — try again, or swap the product photo."));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFetcher.data, combining, combineJobId]);
+  const avatarThumb = d.cast.find((c) => c.id === avatarId)?.img || "";
+  const productThumb = uploadPreview || imageUrl || "";
+  const showCombine = tab === "video" && baseOf(contentType) === "avatar" && !!avatarId && !serviceOn && (hasFile || !!imageUrl.trim());
+  const combineCost = d.costs.image;
+  // A new presenter, product, outfit or hold/wear flip makes the combined frame
+  // stale AND must cancel any in-flight combine, so a late landing can't set the
+  // wrong frame — drop it all. (Swapping an uploaded FILE keeps hasFile=true, so
+  // that case is cleared directly in takeUpload/clearUpload, not here.)
+  useEffect(() => {
+    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarId, imageUrl, wear, contentType]);
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (variantRef.current) variantRef.current.value = nextVariant();
     // A photo picked via the Stage "+" lives in state (editFile) but may not be
@@ -1812,7 +1980,7 @@ export default function WebStudio() {
   // Casual video is describe-first (no name field): it needs a description, not
   // a productTitle — same as create/music/faceless.
   const casualVideo = casual && tab === "video";
-  const ctaDisabled = busy || !d.hasPlan || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideo && !direction.trim()) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideo && !direction.trim()) || shortBy > 0;
 
   return (
     <div className={casual ? "ws-casual" : undefined}>
@@ -1844,7 +2012,7 @@ export default function WebStudio() {
         ))}
       </div>
 
-      <Form method="post" encType="multipart/form-data" className="wb-card ws-card" onSubmit={onFormSubmit}>
+      <Form ref={formRef} method="post" encType="multipart/form-data" className="wb-card ws-card" onSubmit={onFormSubmit}>
         {/* ---- IMPORT: the setup tab. Bring the whole store in, and forge
              a presenter from your own logo or mascot. Both are queued jobs,
              so this tab is about kicking them off and watching them land. ---- */}
@@ -2764,6 +2932,45 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
+            {/* ---- Combine step (avatar + product video). Compose the
+                presenter-holding-product frame FIRST, approve it in-flow, then
+                the video animates from exactly that frame. Optional: skip it and
+                the pipeline composes internally, but combining gives a sharper,
+                merchant-approved result AND a reusable image in the gallery. */}
+            {showCombine && (
+              <div className="ws-combine">
+                <div className="ws-combine-h">
+                  <b>{t("Combine presenter + product")}</b>
+                  <span>{t("For the most accurate video, we put your presenter holding your real product first — then animate from it.")}</span>
+                </div>
+                <div className="ws-combine-row">
+                  <span className="ws-combine-src" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined} aria-label={t("Presenter")} />
+                  <em aria-hidden="true">+</em>
+                  <span className="ws-combine-src prod" style={productThumb ? { backgroundImage: `url(${productThumb})` } : undefined} aria-label={t("Product")} />
+                  <em aria-hidden="true">→</em>
+                  <span className={`ws-combine-out${combineUrl ? " has" : ""}`}>
+                    {combineUrl
+                      ? <img src={combineUrl} alt={t("Your presenter holding your product")} />
+                      : combining
+                        ? <span className="ws-combine-spin" aria-label={t("Combining…")} />
+                        : <Ico n="sparkle" size={20} />}
+                  </span>
+                </div>
+                {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
+                {combineUrl ? (
+                  <div className="ws-combine-foot">
+                    <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
+                    <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
+                  </div>
+                ) : (
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !productTitle.trim()}>
+                    {combining ? t("Combining…") : t("Combine — {n} tokens", { n: combineCost })}
+                  </button>
+                )}
+                {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
+              </div>
+            )}
+
             <div className="ws-tok"><span className="tt">{t("This {noun}", { noun: t(noun) })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
@@ -3115,6 +3322,22 @@ const WS_STYLE = `
 .ws-upclear{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
 .ws-upclear:hover{background:rgba(11,18,14,.9)}
 @media (max-width:420px){.ws-srccard span{font-size:11px}}
+/* Combine step — presenter + product -> holding frame, in-flow. */
+.ws-combine{margin:16px 0 4px;padding:14px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7))}
+.ws-combine-h b{display:block;font-size:14px;color:var(--ink,#14201A);font-weight:700}
+.ws-combine-h span{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:2px;line-height:1.35}
+.ws-combine-row{display:flex;align-items:center;justify-content:center;gap:9px;margin:13px 0}
+.ws-combine-row em{font-style:normal;font-weight:800;color:var(--green);font-size:17px}
+.ws-combine-src{width:62px;height:62px;flex:0 0 auto;border-radius:12px;background:#EDEAD9 center/cover no-repeat;border:1px solid var(--line,#E4DFCF)}
+.ws-combine-src.prod{background-color:#fff}
+.ws-combine-out{width:62px;height:62px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;background:#EAF6EF;border:1.5px dashed #9CCBB1;color:var(--green);overflow:hidden}
+.ws-combine-out.has{border-style:solid;border-color:var(--green);background:#0f1713}
+.ws-combine-out img{width:100%;height:100%;object-fit:cover}
+.ws-combine-spin{width:22px;height:22px;border-radius:999px;border:2.5px solid #BFE2CD;border-top-color:var(--green);animation:ws-combspin .8s linear infinite}
+@keyframes ws-combspin{to{transform:rotate(360deg)}}
+.ws-combine-btn{width:100%;margin-top:4px}
+.ws-combine-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:6px}
+.ws-combine-ok{font-size:12px;font-weight:700;color:var(--green-deep,#0A3D26);flex:1;min-width:140px}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}

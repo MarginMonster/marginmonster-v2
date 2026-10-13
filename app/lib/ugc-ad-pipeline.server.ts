@@ -1225,10 +1225,17 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
             //   apparel ad with no product in it at all. That is worse than an
             //   imperfect one, so the frame ships and the failure is recorded
             //   rather than hidden.
-            ok = qa.pass || !!params.wearProduct;
+            // A CALLER-SUPPLIED frame (params.composedFrameUrl — the Studio
+            // "Combine" step) is HUMAN-APPROVED, so it is always respected (the
+            // L1145 invariant): dropping it would animate a product-LESS portrait
+            // with cutawayMode already off, i.e. an ad with no product at all,
+            // after the merchant paid to compose and approve exactly this frame.
+            ok = qa.pass || !!params.wearProduct || !!params.composedFrameUrl;
             if (!qa.pass) {
               console.error(
-                params.wearProduct
+                params.composedFrameUrl
+                  ? `[ugc] merchant-APPROVED composed frame failed the presenter gate (${qa.reason}) — shipping it anyway, because it was human-approved and the fallback is a product-less portrait`
+                  : params.wearProduct
                   ? `[ugc] composed apparel frame failed the presenter gate (${qa.reason}) — shipping it UNVERIFIED, because the only fallback for wear is a portrait with no product in it`
                   : `[ugc] composed frame failed the presenter gate (${qa.reason}) — animating the plain portrait instead`
               );
