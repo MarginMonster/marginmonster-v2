@@ -180,6 +180,11 @@ export default function Channels() {
     <div className="ch">
       <style dangerouslySetInnerHTML={{ __html: CH_CSS }} />
 
+      <div className="ch-srcswitch" role="tablist" aria-label={t("Channel source")}>
+        <Link to="/web/product-channels" className="ch-src" role="tab">{t("My products")}</Link>
+        <span className="ch-src sel" role="tab" aria-selected="true">{t("Trending topics")}</span>
+      </div>
+
       <header className="ch-head">
         <div>
           <h1 className="ch-title">{t("Channels")}</h1>
@@ -386,6 +391,10 @@ const CH_CSS = `
 .ch{--l:#E7E2D2;--ink:#14201A;--ink2:#5B6B61;--ink3:#8A968E;--g:#0C7A46;--g2:#12A85E;
   --sh-sm:0 1px 2px rgba(20,32,26,.05);--sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);
   max-width:960px;margin:0 auto;padding:14px 16px 64px;font-family:Poppins,sans-serif;color:var(--ink);}
+.ch-srcswitch{display:inline-flex;gap:4px;background:#fff;border:1px solid #E2DCC8;border-radius:999px;padding:4px;margin:0 0 16px;}
+.ch-src{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;font:inherit;font-weight:700;font-size:13px;color:#5B6B61;text-decoration:none;cursor:pointer;border:0;background:none;}
+.ch-src.sel{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;}
+.ch-src:not(.sel):hover{color:#0C7A46;}
 .ch-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;}
 .ch-title{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0;}
 .ch-sub{margin:4px 0 0;color:var(--ink2);font-size:14px;font-weight:500;max-width:52ch;}

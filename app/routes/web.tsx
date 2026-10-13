@@ -160,7 +160,7 @@ export default function WebLayout() {
                     <span className="wb-ch-eyebrow">{t("Creator · Free roam")}</span>
                     <span className="wb-ch-title">{t("Create anything")}</span>
                     <span className="wb-ch-desc">{t("Turn any idea into an image, video or song — just describe it, and it’s yours.")}</span>
-                    <span className="wb-ch-nav">{t("Studio · Channels · Gallery")}</span>
+                    <span className="wb-ch-nav">{t("Studio · Gallery · Share")}</span>
                     <span className="wb-ch-go">{t("Enter creator")} <span aria-hidden="true">→</span></span>
                   </span>
                 </button>
@@ -189,14 +189,15 @@ export default function WebLayout() {
                   only Marketing keeps a separate Dashboard. */}
               {mode === "marketing" && <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>}
               <Link className={tab("/web/studio")} to="/web/studio">{t("Studio")}</Link>
-              {/* Channels = the Creator autopilot (faceless video on a cadence).
-                  Casual only — it's a creator surface, not a selling one. */}
-              {mode === "casual" && <Link className={tab("/web/channels")} to="/web/channels">{t("Channels")}</Link>}
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
               {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>}
-              {/* Product Channels = faceless product-video autopilot (marketing). */}
-              {mode === "marketing" && <Link className={tab("/web/product-channels")} to="/web/product-channels">{t("Channels")}</Link>}
+              {/* Channels = the autopilot, now a Social surface. One nav entry; the
+                  page carries a source switch (My products ↔ Trending topics) that
+                  cross-links /web/product-channels and /web/channels. Keep Creator
+                  simple (Studio · Gallery · Share) — faceless lives there only as a
+                  Studio taste, the recurring autopilot moved to Social. */}
+              {mode === "marketing" && <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" ? " on" : ""}`} to="/web/product-channels">{t("Channels")}</Link>}
               <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{mode === "casual" ? t("Gallery") : t("Archive")}</Link>
               <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? t("Share") : t("Auto-posting")}</Link>
             </nav>

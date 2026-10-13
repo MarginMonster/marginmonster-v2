@@ -152,6 +152,10 @@ export default function ProductChannels() {
   return (
     <div className="pc">
       <style dangerouslySetInnerHTML={{ __html: PC_CSS }} />
+      <div className="pc-srcswitch" role="tablist" aria-label={t("Channel source")}>
+        <span className="pc-src sel" role="tab" aria-selected="true">{t("My products")}</span>
+        <Link to="/web/channels" className="pc-src" role="tab">{t("Trending topics")}</Link>
+      </div>
       <header className="pc-head">
         <div>
           <h1 className="pc-title">{t("Product Channels")}</h1>
@@ -308,6 +312,10 @@ const PC_CSS = `
 .pc{--l:#E7E2D2;--ink:#14201A;--ink2:#5B6B61;--ink3:#8A968E;--g:#0C7A46;--g2:#12A85E;
   --sh-sm:0 1px 2px rgba(20,32,26,.05);--sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);
   max-width:960px;margin:0 auto;padding:14px 16px 64px;font-family:Poppins,sans-serif;color:var(--ink);}
+.pc-srcswitch{display:inline-flex;gap:4px;background:#fff;border:1px solid #E2DCC8;border-radius:999px;padding:4px;margin:0 0 16px;}
+.pc-src{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;font:inherit;font-weight:700;font-size:13px;color:#5B6B61;text-decoration:none;cursor:pointer;border:0;background:none;}
+.pc-src.sel{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;}
+.pc-src:not(.sel):hover{color:#0C7A46;}
 .pc-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;}
 .pc-title{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0;}
 .pc-sub{margin:4px 0 0;color:var(--ink2);font-size:14px;font-weight:500;max-width:56ch;}
