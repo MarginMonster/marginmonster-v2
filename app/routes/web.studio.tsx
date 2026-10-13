@@ -1256,6 +1256,10 @@ export default function WebStudio() {
   // FormData instead (see onFormSubmit), and show it on the Stage.
   const [editFile, setEditFile] = useState<File | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // The plain (non-edit) product-photo file input, so the catalogue picker can
+  // offer a visible "upload your own instead" shortcut — with a big store the
+  // picker dominates and the upload field below it is easy to miss.
+  const uploadRef = useRef<HTMLInputElement>(null);
   const takePhoto = (f: File | null | undefined) => {
     if (!f || !/^image\//.test(f.type)) return;
     try {
@@ -2165,6 +2169,9 @@ export default function WebStudio() {
                       : (d.catalogCount === 1 ? t("{n} product", { n: d.catalogCount }) : t("{n} products", { n: d.catalogCount }))}
                   </span>
                 </div>
+                <button type="button" className="ws-addurl ws-uploadown" onClick={() => uploadRef.current?.click()}>
+                  <Ico n="camera" size={13} /> {t("Not in your store? Upload your own photo instead")}
+                </button>
                 {d.catalog.length > 8 && (
                   <input className="wb-in ws-catsearch" value={catQuery} placeholder={t("Search your catalogue…")}
                     onChange={(e) => setCatQuery(e.target.value)} />
@@ -2304,7 +2311,7 @@ export default function WebStudio() {
                       onChange={(e) => takePhoto(e.currentTarget.files?.[0])} />
                   </div>
                 ) : (
-                  <input className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
+                  <input ref={uploadRef} className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
                     onChange={(e) => setHasFile(!!e.currentTarget.files?.length)} />
                 )}
                 <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={casual ? t("…or https://example.com/my-photo.jpg") : t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
@@ -3045,6 +3052,8 @@ const WS_STYLE = `
 .ws-import input{flex:1;min-width:0}
 .ws-impbtn{padding:9px 18px;font-size:13px;flex:0 0 auto}
 .ws-addurl{border:0;background:none;color:var(--green);font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:auto}
+.ws-uploadown{margin:7px 0 2px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:6px 11px;border:1px dashed #BFE2CD;border-radius:9px;background:#F0FAF4;}
+.ws-uploadown svg{flex:0 0 auto}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}
 .ws-tok .tt{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E)}
 .ws-tok .tb{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A)}
