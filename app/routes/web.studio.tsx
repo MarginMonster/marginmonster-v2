@@ -827,6 +827,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         styleMode: "backdrop",
         avatarId, avatarVariant,
         wear: !!avatarId && wear && !service,
+        // Size + hold/wear are COMBINE inputs — they decide how the presenter
+        // holds/shows the product and at what scale (a card "fits in palm", a
+        // case needs both hands). Was missing, so the compose only inferred size
+        // from the title; the video later just animates this approved frame.
+        productSize: ((form.get("productSize") as string) || "").trim() || undefined,
         // Presenter-holding frame or nothing — a product-only still is not what
         // Combine asked for, so a miss FAILS (and refunds) instead of charging.
         presenterOnly: true,
