@@ -720,13 +720,16 @@ const WA_CSS = `
  * scrim's own padding, so the panel overhung the right edge and took the close
  * button and the next arrow off-screen with it. */
 .wa-viewer{position:relative;background:var(--card,#FDFCF7);border-radius:18px;width:min(920px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(10,14,12,.45);}
+/* Vertical media (9:16 videos) gets a PORTRAIT viewer so the clip fills the
+   frame instead of floating in a wide landscape box with huge black pillarbars. */
+.wa-viewer.vmedia{width:min(430px,96vw);}
 .wa-vx{position:absolute;top:10px;right:10px;z-index:4;width:34px;height:34px;border-radius:50%;border:0;background:rgba(20,32,26,.75);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;}
 .wa-vnav{position:absolute;top:42%;z-index:4;width:40px;height:40px;border-radius:50%;border:0;background:rgba(20,32,26,.72);color:#E7C879;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding-bottom:3px;}
 .wa-vnav:hover{background:rgba(20,32,26,.9)}
 .wa-vnav.prev{left:10px}
 .wa-vnav.next{right:10px}
 .wa-vcount{position:absolute;top:14px;left:14px;z-index:4;background:rgba(20,32,26,.75);color:#fff;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;}
-.wa-vfull{width:100%;max-height:56vh;object-fit:contain;background:#0b0f0d;display:block;}
+.wa-vfull{display:block;margin:0 auto;width:auto;height:auto;max-width:100%;max-height:68vh;object-fit:contain;background:#0b0f0d;}
 .wa-read{padding:24px 28px;overflow:auto;max-height:52vh;font-size:14.5px;line-height:1.65;color:var(--ink,#14201A);}
 .wa-read h1,.wa-read h2,.wa-read h3{font-family:Poppins,sans-serif;line-height:1.25;margin:1em 0 .4em;}
 .wa-read h1:first-child,.wa-read h2:first-child{margin-top:0}
@@ -1129,7 +1132,7 @@ export default function WebArchive() {
       {/* Fullscreen viewer: media plays big / blogs read in a scroll pane. */}
       {viewer && (
         <div className="wa-scrim" onClick={() => setViewer(null)}>
-          <div className="wa-viewer" onClick={(e) => e.stopPropagation()}>
+          <div className={`wa-viewer${viewer.isVideo ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
             {shelf.length > 1 && vIdx >= 0 && (
               <>
