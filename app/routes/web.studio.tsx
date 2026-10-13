@@ -3498,7 +3498,10 @@ const WS_STYLE = `
 .ws-hub-reveal.open{display:block;animation:ws-hub-slide .22s ease}
 @keyframes ws-hub-slide{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
 .ws-hubtiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 14px}
-.ws-hubtile{display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;padding:14px 12px 13px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;min-height:44px}
+/* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
+   nowrap <b> product name sets a large min-content width and 1fr can't shrink →
+   horizontal overflow + the ellipsis never engages. min-width:0 lets it clip. */
+.ws-hubtile{min-width:0;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;padding:14px 12px 13px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;min-height:44px}
 .ws-hubtile:hover{border-color:#9CCBB1;background:#F3F9F4}
 .ws-hubtile.set{border-color:#9CCBB1}
 .ws-hubtile.open{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
