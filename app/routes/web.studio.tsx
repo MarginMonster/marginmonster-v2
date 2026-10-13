@@ -2279,7 +2279,7 @@ export default function WebStudio() {
             ) : (
               <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
             )}
-            {tab !== "blog" && (
+            {tab !== "blog" && !serviceForced && (
               <>
                 <div className="ws-lbl">{isEdit ? <>{t("Your photo")} <span className="ws-opt">{t("drag & drop, or click to upload")}</span></> : casual ? <>{t("Photo")} <span className="ws-opt">{t("optional — add one to feature a real product")}</span></> : <>{t("Product photo")} <span className="ws-opt">{t("powers videos & image ads — upload or paste a URL")}</span></>}</div>
                 {isEdit ? (
