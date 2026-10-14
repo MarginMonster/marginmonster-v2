@@ -1858,6 +1858,9 @@ export default function WebStudio() {
     // A new product photo (incl. swapping file A->B, where hasFile stays true so
     // the stale-frame effect's deps don't fire) invalidates any approved combine.
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
+    // Snap the hub drawer shut on a successful pick so the photo shows in the
+    // product HERO tile (mirrors a store-catalogue pick). No-op outside the hub.
+    if (f) setHubPick(null);
   };
   const clearUpload = () => {
     setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
@@ -2080,20 +2083,9 @@ export default function WebStudio() {
       )}
       {/* The chosen store image rides to the server as productImageUrl. */}
       {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
-      {prodSource === "upload" && !serviceForced && (
-        <div className="ws-uploadbox">
-          {uploadPreview ? (
-            <div className="ws-uppreview">
-              <img src={uploadPreview} alt={t("Your product photo")} />
-              <button type="button" className="ws-upclear" onClick={clearUpload}>✕ {t("Remove")}</button>
-            </div>
-          ) : (
-            <button type="button" className="wb-btn ghost ws-uploadpick" onClick={() => uploadRef.current?.click()}>
-              <Ico n="camera" size={15} /> {t("Choose a photo")}
-            </button>
-          )}
-        </div>
-      )}
+      {/* No upload box / "Choose a photo" button / big preview: tapping the
+          "Upload a photo" card IS the upload (it opens the picker), and the
+          chosen photo shows in the larger product HERO tile above. */}
     </>
   );
   // (The product source chooser stays inline in step 2 — for the avatar-video
@@ -2605,15 +2597,10 @@ export default function WebStudio() {
                     <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} />
                   </div>
                 )}
-                {avatarId && (
-                  <>
-                    <p className="ws-note">{t("Their outfit rotates each time, so your content never looks stale.")}</p>
-                    {avatarId !== d.brandFaceId && (
-                      <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
-                        <Ico n="star" size={13} /> {t("Make {name} your Brand Face", { name: d.cast.find((c) => c.id === avatarId)?.name || t("this presenter") })}
-                      </button>
-                    )}
-                  </>
+                {avatarId && avatarId !== d.brandFaceId && (
+                  <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
+                    <Ico n="star" size={13} /> {t("Make {name} your Brand Face", { name: d.cast.find((c) => c.id === avatarId)?.name || t("this presenter") })}
+                  </button>
                 )}
                 {/* Product chooser + UPLOAD — lives INSIDE the combine. Always
                     mounted (just hidden) so a store pick keeps submitting. */}
@@ -3790,20 +3777,31 @@ const WS_STYLE = `
 .ws-hubtile:hover{border-color:#9CCBB1;background:#F3F9F4}
 .ws-hubtile.set{border-color:#9CCBB1}
 .ws-hubtile.open{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
-.ws-hubtile-img{position:relative;width:76px;height:76px;border-radius:50%;background:#EAF6EF center/cover no-repeat;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
-.ws-hubtile-img.prod{border-radius:16px}
+/* HERO tiles — big enough to carry the presenter + product photos themselves,
+   so no separate large preview is needed (owner request). */
+.ws-hubtile-img{position:relative;width:118px;height:118px;border-radius:50%;background:#EAF6EF center/cover no-repeat;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
+.ws-hubtile-img.prod{border-radius:18px}
 .ws-hubtile.set .ws-hubtile-img{border-style:solid;border-color:var(--green)}
-.ws-hubtile-badge{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;font-size:13px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
-.ws-hubtile b{width:100%;font-size:14px;color:var(--ink,#14201A);font-weight:800;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-hubtile-badge{position:absolute;right:-1px;bottom:-1px;width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;font-size:15px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.28)}
+.ws-hubtile b{width:100%;font-size:15px;color:var(--ink,#14201A);font-weight:800;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-hubtile>span:last-child{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.25}
-@media (max-width:420px){.ws-hubtile-img{width:66px;height:66px}.ws-hubtile b{font-size:13px}.ws-hubtiles{gap:9px}}
+@media (max-width:420px){.ws-hubtile-img{width:96px;height:96px}.ws-hubtile b{font-size:14px}.ws-hubtiles{gap:10px}.ws-hubtile{padding:13px 10px 12px}}
 /* The Combine panel IS the avatar-video scene step: tiles up top, pickers reveal
    inside, output + button below. .ws-scene scopes the in-panel spacing. */
-.ws-combine.ws-scene{margin-top:8px;padding:16px 15px}
+.ws-combine.ws-scene{position:relative;overflow:hidden;margin-top:8px;padding:16px 15px}
+.ws-combine.ws-scene>*{position:relative;z-index:1}
 .ws-combine.ws-scene>.ws-hubtiles{margin:0 0 12px}
 .ws-combine.ws-scene>.ws-lbl{margin-top:12px}
 .ws-combine.ws-scene .ws-combine-stage{margin-top:12px}
 .ws-scene-svc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF)}
+/* Spinning rosettes — the brand watermark, strategically placed: one drifting in
+   the panel's top-right corner, one spinning behind the empty output stage so the
+   "your presenter holding your product" placeholder has life. Reuses wsrosespin. */
+.ws-combine.ws-scene::after{content:"";position:absolute;top:-58px;right:-66px;width:196px;height:196px;z-index:0;pointer-events:none;background:var(--green,#0C7A46);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.05;animation:wsrosespin 150s linear infinite}
+.ws-combine.ws-scene .ws-combine-stage>*{position:relative;z-index:1}
+.ws-combine.ws-scene .ws-combine-stage::before{content:"";position:absolute;top:50%;left:50%;width:168px;height:168px;margin:-84px 0 0 -84px;z-index:0;pointer-events:none;background:var(--green2,#12A85E);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.10;animation:wsrosespin 70s linear infinite}
+.ws-combine.ws-scene .ws-combine-stage.has::before{display:none}
+@media (prefers-reduced-motion:reduce){.ws-combine.ws-scene::after,.ws-combine.ws-scene .ws-combine-stage::before{animation:none}}
 /* Combine step — presenter + product -> holding frame, in-flow, with theatrics. */
 .ws-combine{margin:14px 0 4px;padding:15px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7));transition:box-shadow .3s,border-color .3s}
 .ws-combine.combining{border-color:var(--green2,#12A85E);animation:ws-comb-breathe 1.8s ease-in-out infinite}
