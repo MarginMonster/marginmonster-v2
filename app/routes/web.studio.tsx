@@ -2408,21 +2408,22 @@ export default function WebStudio() {
                 <span><b><Ico n="burst" /> {t("Breakout")}</b>{" — "}{casual ? t("your subject bursts out of the frame in 3D — the scroll-stopper") : t("your product bursts out of a social post frame in 3D, the scroll-stopper")}</span>
               </label>
             )}
-            <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
-            {!engineApplies && (
-              <p className="ws-enginenote">
-                {engineForcedDefault
-                  ? t("Commercials are built from several scenes, so they always render on our standard engine — no engine surcharge.")
-                  : t("Presenter ads are rendered by our lip-sync engine, so the engine choice and its surcharge don't apply here.")}
-              </p>
+            {/* The engine picker only MATTERS when it applies — presenter/lip-sync
+                ads and commercials ignore it, so showing 8 greyed-out engines + a
+                "doesn't apply" note was pure chore. Hidden there; the videoEngine
+                value still rides along for the pipeline. */}
+            {engineApplies && (
+              <>
+                <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
+                <div className="ws-engines">
+                  {VIDEO_ENGINES.map((e) => (
+                    <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={t(e.blurb)} onClick={() => setVideoEngine(e.key)}>
+                      <b>{t(e.name)}</b><span>{e.surcharge > 0 ? `+${e.surcharge}` : t("included")}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
-            <div className={`ws-engines${engineApplies ? "" : " off"}`}>
-              {VIDEO_ENGINES.map((e) => (
-                <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={t(e.blurb)} onClick={() => setVideoEngine(e.key)}>
-                  <b>{t(e.name)}</b><span>{e.surcharge > 0 ? `+${e.surcharge}` : t("included")}</span>
-                </button>
-              ))}
-            </div>
             <input type="hidden" name="videoEngine" value={videoEngine} />
           </>
         )}
