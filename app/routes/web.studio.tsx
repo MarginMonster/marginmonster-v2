@@ -817,13 +817,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
       if (!avatarId) return json({ error: tr(lang, "Pick a presenter first.") });
       if (!productImageUrl) return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
-      if (!productTitle) return json({ error: tr(lang, "Give the product a name.") });
+      // The product NAME is for the video script, not the combine — the combine
+      // identifies the product from its PHOTO (and reads scale from the photo),
+      // so a name is NOT required here. Default it only so the compose prompt
+      // isn't an empty string; the real name is collected at the video step.
       const cFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
       charged(TOKEN_COST.image, cFromExtra);
       const combineJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         section: genSection,
         freshShot: true,
-        productTitle, productImageUrl, productUrl,
+        productTitle: productTitle || "product", productImageUrl, productUrl,
         styleMode: "backdrop",
         avatarId, avatarVariant,
         wear: !!avatarId && wear && !service,
@@ -1871,9 +1874,11 @@ export default function WebStudio() {
   // wipes an approved combine frame.
   const chooseStore = () => { if (prodSource !== "store") { setImageUrl(""); setPickedUrl(""); } setProdSource("store"); if (d.catalog.length === 0) setShowConnect(true); };
   // Clear any store pick so "upload my own" starts clean, then REVEAL the upload
-  // branch (its own "Choose File" button). We deliberately do NOT auto-open the
-  // OS file dialog — jumping straight to the folder picker on a card tap feels
-  // abrupt; let them see the branch and click Choose File themselves.
+  // branch. chooseUpload itself does NOT open the OS picker — the "Upload a photo"
+  // CARD opens it (it calls uploadRef.current?.click() right after this, which
+  // works because the file input is always-mounted), per owner request that
+  // tapping the card BE the Choose-File action. The in-branch "Choose a photo"
+  // button and the "Not in your store" link reuse chooseUpload without the auto-open.
   const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); };
   // Combine: submit the presenter-holding-product frame as a normal image gen
   // (1 image charge, lands in the gallery — the user chose this cost model),
@@ -1982,6 +1987,11 @@ export default function WebStudio() {
   // per render (avatarVideoHub is exclusive), so form input names never collide.
   const productChooserUI = (
     <>
+      {/* Always-mounted hidden file input: the "Upload a photo" card calls its
+          .click() SYNCHRONOUSLY, which only opens the OS picker if the input is
+          already in the DOM at tap time (matters on iOS). So it lives here, not
+          inside the prodSource==="upload" branch that mounts a render too late. */}
+      <input ref={uploadRef} type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => takeUpload(e.currentTarget.files?.[0])} />
       {!serviceForced && (
         <div className="ws-srcpick" role="group" aria-label={t("Where's your product?")}>
           <button type="button" className={`ws-srccard${prodSource === "store" ? " sel" : ""}`} aria-pressed={prodSource === "store"} onClick={chooseStore}>
@@ -1989,7 +1999,9 @@ export default function WebStudio() {
             <b>{t("From your store")}</b>
             <span>{d.catalog.length > 0 ? t("Pick a product you already sell") : t("Link your store to pick products")}</span>
           </button>
-          <button type="button" className={`ws-srccard${prodSource === "upload" ? " sel" : ""}`} aria-pressed={prodSource === "upload"} onClick={chooseUpload}>
+          {/* Tapping this IS "Choose File" — it selects the upload source AND opens
+              the picker in one tap (owner-requested). */}
+          <button type="button" className={`ws-srccard${prodSource === "upload" ? " sel" : ""}`} aria-pressed={prodSource === "upload"} onClick={() => { chooseUpload(); uploadRef.current?.click(); }}>
             <Ico n="camera" size={19} />
             <b>{t("Upload a photo")}</b>
             <span>{t("Use your own product image")}</span>
@@ -2070,16 +2082,16 @@ export default function WebStudio() {
       {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
       {prodSource === "upload" && !serviceForced && (
         <div className="ws-uploadbox">
-          <div className="ws-lbl"><span>{t("Product photo")}</span> <span className="ws-opt">{t("powers videos & image ads")}</span></div>
-          <input ref={uploadRef} className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
-            onChange={(e) => takeUpload(e.currentTarget.files?.[0])} />
-          {uploadPreview && (
+          {uploadPreview ? (
             <div className="ws-uppreview">
               <img src={uploadPreview} alt={t("Your product photo")} />
               <button type="button" className="ws-upclear" onClick={clearUpload}>✕ {t("Remove")}</button>
             </div>
+          ) : (
+            <button type="button" className="wb-btn ghost ws-uploadpick" onClick={() => uploadRef.current?.click()}>
+              <Ico n="camera" size={15} /> {t("Choose a photo")}
+            </button>
           )}
-          <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
         </div>
       )}
     </>
@@ -2605,24 +2617,9 @@ export default function WebStudio() {
                 {/* Product chooser + UPLOAD — lives INSIDE the combine. Always
                     mounted (just hidden) so a store pick keeps submitting. */}
                 <div className="ws-hub-reveal" hidden={hubPick !== "product"}>{productChooserUI}</div>
-                {/* Product name — required to combine. */}
-                <div className="ws-lbl"><span>{t("Product name")}</span>
-                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
-                </div>
-                {showImport && (
-                  <div className="ws-import">
-                    <input className="wb-in" type="url" value={urlInput} placeholder={t("Paste a product link…")} onChange={(e) => setUrlInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
-                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
-                  </div>
-                )}
-                {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
-                {prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
-                  <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
-                    ↺ {t("Use last: {title}", { title: lastProd.title })}
-                  </button>
-                )}
-                <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={t("Midnight Roast — whole bean coffee")} />
+                {/* Product NAME moved to step 3 — it's for the VIDEO script, not
+                    the combine (the combine identifies the product from the PHOTO).
+                    Only the buy-link hidden input rides along here. */}
                 {pickedUrl ? <input type="hidden" name="productUrl" value={pickedUrl} /> : null}
                 {/* Combine inputs — size + how they show it, once a product's set. */}
                 {hasMarketingProduct && showWear && (
@@ -2669,7 +2666,7 @@ export default function WebStudio() {
                     <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
                   </div>
                 ) : (
-                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !productTitle.trim() || !hasMarketingProduct}>
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !hasMarketingProduct}>
                     {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
                   </button>
                 )}
@@ -3037,6 +3034,31 @@ export default function WebStudio() {
                 box to sit right under the Stage. */}
             {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
               <StepHead n={3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
+            )}
+            {/* Product NAME — for an avatar video it lives HERE (with the video),
+                because it drives the SCRIPT, not the combine (owner-noted). The
+                combine already identifies the product from its photo, so a name
+                isn't needed to combine — only to generate the video. */}
+            {avatarVideoHub && (
+              <>
+                <div className="ws-lbl"><span>{t("Product name")}</span>
+                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
+                </div>
+                {showImport && (
+                  <div className="ws-import">
+                    <input className="wb-in" type="url" value={urlInput} placeholder={t("Paste a product link…")} onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
+                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
+                  </div>
+                )}
+                {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+                {prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
+                  <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
+                    ↺ {t("Use last: {title}", { title: lastProd.title })}
+                  </button>
+                )}
+                <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={t("Midnight Roast — whole bean coffee")} />
+              </>
             )}
             {tab === "image" && !casual && (
               <>
@@ -3740,6 +3762,10 @@ const WS_STYLE = `
 .ws-srccard:hover{border-color:#9CCBB1;background:#F3F9F4}
 .ws-srccard.sel{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
 .ws-uploadbox{margin:4px 0 2px}
+/* Clean picker button replaces the raw <input type=file> chrome — tapping the
+   "Upload a photo" card opens the OS picker, this is the in-branch fallback. */
+.ws-uploadpick{display:inline-flex;align-items:center;gap:7px;width:100%;justify-content:center;padding:12px 16px}
+.ws-uploadpick svg{color:#fff}
 /* Hug the image (width:fit-content) so a portrait photo gets NO black pillar
    bars — the box is the photo's size, centered, on a light card ground. */
 .ws-uppreview{position:relative;margin:9px auto 0;width:fit-content;max-width:100%;border-radius:12px;overflow:hidden;background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF)}
