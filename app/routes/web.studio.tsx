@@ -583,7 +583,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // flows do. (Masked until Creator became free on every plan — now reachable.)
   // Casual video is now describe-first too (no separate "name" field) — derive
   // its title from the description, same as create/music/faceless.
-  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
+  // "combine" is excluded: the combine identifies the product from its PHOTO, so
+  // a name isn't needed to combine — it's collected at the video step. (The old
+  // per-branch check at the combine handler was removed; THIS global one also had
+  // to let combine through, which was the real "name required before combine" bug.)
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && intent !== "combine" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: tr(lang, "The product image must be a full https:// URL.") });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
@@ -2638,6 +2642,7 @@ export default function WebStudio() {
                     <div className="ws-combine-loading">
                       <span className="ws-combine-work" aria-hidden="true"><i /><i /><i /></span>
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
+                      <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
                       <span className="ws-combine-scan" aria-hidden="true" />
                     </div>
                   ) : (
@@ -2984,6 +2989,7 @@ export default function WebStudio() {
                     <div className="ws-combine-loading">
                       <span className="ws-combine-work" aria-hidden="true"><i /><i /><i /></span>
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
+                      <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
                       <span className="ws-combine-scan" aria-hidden="true" />
                     </div>
                   ) : (
@@ -3828,6 +3834,7 @@ const WS_STYLE = `
 .ws-combine-zoom{position:absolute;bottom:8px;right:8px;background:rgba(11,15,13,.72);color:#eafff4;border-radius:8px;padding:3px 8px;font-size:14px;font-weight:700;line-height:1.1}
 .ws-combine-loading{display:flex;flex-direction:column;align-items:center;gap:13px;padding:34px 16px;text-align:center}
 .ws-combine-loadtxt{font-size:12.5px;font-weight:700;color:var(--green-deep,#0A3D26)}
+.ws-combine-loadsub{font-size:11px;font-weight:600;color:var(--ink2,#4A554E);margin-top:3px}
 .ws-combine-empty{display:flex;flex-direction:column;align-items:center;gap:9px;padding:34px 20px;text-align:center;color:var(--ink2,#4A554E)}
 .ws-combine-empty span{font-size:12px;max-width:26ch}
 .ws-combine-empty svg{color:var(--green);opacity:.85}
