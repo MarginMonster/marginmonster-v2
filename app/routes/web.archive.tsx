@@ -6,6 +6,7 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -745,7 +746,12 @@ const WA_CSS = `
 .wa-vcdnote.urgent{color:#8C2E1B;}
 .wa-aitag{display:inline-block;margin-top:6px;font-size:11.5px;color:var(--ink2,#5b6b61);}
 .wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;}
-.wa-vbtn{border:0;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;padding:10px 18px;border-radius:12px;background:linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 12px rgba(12,122,70,.25);text-decoration:none;display:inline-block;}
+/* Two-layer premium gradient baked into the base rule: the viewer is portaled to
+   document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
+   longer reaches these CTAs. This block renders after web.tsx, so at equal 0,1,0
+   it wins for the portaled buttons; in-shell .wa-vbtn still gets the identical
+   two-layer via .wb-main (0,2,0) — no divergence either way. */
+.wa-vbtn{border:0;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;padding:10px 18px;border-radius:12px;background:linear-gradient(100deg,#12A85E 58%,#0B7443 86%,#095F36),linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 12px rgba(12,122,70,.25);text-decoration:none;display:inline-block;}
 .wa-vbtn:hover{filter:brightness(1.06)}
 .wa-vbtn.gold{background:linear-gradient(165deg,#C98F12,#8a6207);box-shadow:0 4px 12px rgba(176,133,38,.3);}
 .wa-vbtn.ghost{background:#fff;color:var(--ink,#14201A);border:1px solid var(--line,#E5E0CF);box-shadow:none;}
@@ -850,6 +856,12 @@ export default function WebArchive() {
   const [tab, setTab] = useState<ATab>(startTab || "video");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   const [copied, setCopied] = useState(false);
+  // The fullscreen viewer portals to document.body (to escape the .wb-main
+  // stacking context that otherwise traps its z-index below the shell nav).
+  // Portal only after mount so SSR never touches `document`; the viewer only
+  // opens on a client click, so `mounted` is always true by the time it shows.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Live tiles: while anything is cooking, refresh the data every 8s so the
   // ETAs count down and finished pieces swap in without a manual reload.
@@ -1129,8 +1141,11 @@ export default function WebArchive() {
         </div>
       )}
 
-      {/* Fullscreen viewer: media plays big / blogs read in a scroll pane. */}
-      {viewer && (
+      {/* Fullscreen viewer: media plays big / blogs read in a scroll pane.
+          Portaled to document.body so it escapes .wb-main's stacking context
+          and its z-index:10500 scrim paints above the shell nav (z-index:30);
+          the Helpurr FAB (z-index:10600) still sits above the scrim. */}
+      {viewer && mounted ? createPortal(
         <div className="wa-scrim" onClick={() => setViewer(null)}>
           <div className={`wa-viewer${viewer.isVideo ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
@@ -1258,7 +1273,7 @@ export default function WebArchive() {
             </div>
           </div>
         </div>
-      )}
+      , document.body) : null}
     </div>
   );
 }

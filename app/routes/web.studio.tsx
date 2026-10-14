@@ -1976,6 +1976,114 @@ export default function WebStudio() {
   useEffect(() => {
     if (!avatarVideoHub) setHubPick(null);
   }, [avatarVideoHub]);
+  // The product source chooser (cards + store grid/connect/import + upload box +
+  // the hidden productImageUrl). Defined once and rendered in EITHER the classic
+  // step-2 layout OR inside the avatar-video Combine panel — exactly one mounts
+  // per render (avatarVideoHub is exclusive), so form input names never collide.
+  const productChooserUI = (
+    <>
+      {!serviceForced && (
+        <div className="ws-srcpick" role="group" aria-label={t("Where's your product?")}>
+          <button type="button" className={`ws-srccard${prodSource === "store" ? " sel" : ""}`} aria-pressed={prodSource === "store"} onClick={chooseStore}>
+            <Ico n="box" size={19} />
+            <b>{t("From your store")}</b>
+            <span>{d.catalog.length > 0 ? t("Pick a product you already sell") : t("Link your store to pick products")}</span>
+          </button>
+          <button type="button" className={`ws-srccard${prodSource === "upload" ? " sel" : ""}`} aria-pressed={prodSource === "upload"} onClick={chooseUpload}>
+            <Ico n="camera" size={19} />
+            <b>{t("Upload a photo")}</b>
+            <span>{t("Use your own product image")}</span>
+          </button>
+        </div>
+      )}
+      {prodSource === "store" && !serviceForced && d.catalog.length > 0 ? (
+        <>
+          <div className="ws-lbl">
+            <span>{t("Pick from your store")}</span>
+            <span className="ws-opt">
+              {catShown.length < d.catalogCount
+                ? t("showing {shown} of {total} — search for the rest", { shown: catShown.length, total: d.catalogCount })
+                : (d.catalogCount === 1 ? t("{n} product", { n: d.catalogCount }) : t("{n} products", { n: d.catalogCount }))}
+            </span>
+          </div>
+          <button type="button" className="ws-addurl ws-uploadown" onClick={chooseUpload}>
+            <Ico n="camera" size={13} /> {t("Not in your store? Upload your own photo instead")}
+          </button>
+          {d.catalog.length > 8 && (
+            <input className="wb-in ws-catsearch" value={catQuery} placeholder={t("Search your catalogue…")}
+              onChange={(e) => setCatQuery(e.target.value)} />
+          )}
+          <div className="ws-catgrid">
+            {catShown
+              .map((c) => (
+                <button type="button" key={c.id}
+                  className={`ws-cat${productTitle === c.title ? " sel" : ""}`}
+                  title={c.title}
+                  onClick={() => {
+                    setProductTitle(c.title);
+                    setImageUrl(c.imageUrl || "");
+                    setPickedUrl(c.url);
+                    setHubPick(null); // snap the hub drawer shut on a store pick
+                  }}>
+                  <span className="ws-cat-img" style={c.imageUrl ? { backgroundImage: `url(${c.imageUrl})` } : undefined}>
+                    {!c.imageUrl && <Ico n="image" size={22} />}
+                    {productTitle === c.title && <span className="ws-chk">✓</span>}
+                  </span>
+                  <b>{c.title}</b>
+                  {c.priceText && <span className="ws-cat-p">{c.priceText}</span>}
+                </button>
+              ))}
+          </div>
+          <div className="ws-catfoot">
+            {!d.catalogSyncing && (
+              <button type="button" className="ws-addurl" onClick={() => setShowConnect((v) => !v)}>
+                {showConnect ? t("Cancel") : <>↻ {t("Refresh catalogue")}</>}
+              </button>
+            )}
+          </div>
+          {d.catalogSyncing && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
+        </>
+      ) : prodSource === "store" && !serviceForced ? (
+        <div className="ws-connect">
+          <b><Ico n="box" /> {t("Bring your whole store in")}</b>
+          <p>{t("Paste your store address once and we’ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.")}</p>
+          {!d.catalogSyncing && d.catalogFailed && (
+            <div className="wb-err" style={{ marginBottom: 8 }}><b>{t("That import didn’t work.")}</b> {d.catalogFailed} {t("You can paste a single product link below instead.")}</div>
+          )}
+          {!d.catalogSyncing && (
+            <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>{t("Connect my store")}</button>
+          )}
+        </div>
+      ) : null}
+      {prodSource === "store" && !serviceForced && d.catalogSyncing && d.catalog.length === 0 && <CatalogSync startedAt={d.catalogSyncStartedAt} />}
+      {prodSource === "store" && !serviceForced && showConnect && !d.catalogSyncing && (
+        <div className="ws-import">
+          <input className="wb-in" type="url" value={storeInput} placeholder="yourstore.com"
+            onChange={(e) => setStoreInput(e.target.value)} />
+          <button type="button" className="wb-btn" disabled={busy || !storeInput.trim()}
+            onClick={() => { submit({ intent: "importCatalog", storeUrl: storeInput.trim() }, { method: "post" }); setShowConnect(false); }}>
+            {t("Pull my products in")}
+          </button>
+        </div>
+      )}
+      {/* The chosen store image rides to the server as productImageUrl. */}
+      {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
+      {prodSource === "upload" && !serviceForced && (
+        <div className="ws-uploadbox">
+          <div className="ws-lbl"><span>{t("Product photo")}</span> <span className="ws-opt">{t("powers videos & image ads")}</span></div>
+          <input ref={uploadRef} className="wb-in" type="file" name="productPhoto" accept="image/jpeg,image/png,image/webp" style={{ padding: 9 }}
+            onChange={(e) => takeUpload(e.currentTarget.files?.[0])} />
+          {uploadPreview && (
+            <div className="ws-uppreview">
+              <img src={uploadPreview} alt={t("Your product photo")} />
+              <button type="button" className="ws-upclear" onClick={clearUpload}>✕ {t("Remove")}</button>
+            </div>
+          )}
+          <input className="wb-in" name="productImageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={t("…or https://yourstore.com/cdn/product.jpg")} style={{ marginTop: 8 }} />
+        </div>
+      )}
+    </>
+  );
   // (The product source chooser stays inline in step 2 — for the avatar-video
   // hub it is simply wrapped in a collapsible .ws-hub-reveal there, so there is
   // one mount and one set of form inputs, never a duplicate.)
@@ -2448,6 +2556,155 @@ export default function WebStudio() {
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
             <StepHead n={2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? t("your presenter, holding your product") : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
+            {/* ======================================================================
+                AVATAR-VIDEO COMBINE PANEL — ONE immersive flow (owner-requested).
+                The presenter + product tiles ARE the combine's slots; you upload
+                or pick the product RIGHT HERE (in the panel), size it, and the
+                combined output + Combine button sit directly below — no separate
+                chooser you then scroll past to reach the combine. Only the
+                avatar-VIDEO flow uses this; every other mode keeps the classic
+                layout (gated !avatarVideoHub) below, byte-for-byte unchanged.
+                ====================================================================== */}
+            {avatarVideoHub && (
+              <div className={`ws-combine ws-scene${combining ? " combining" : ""}${combineUrl ? " done" : ""}`}>
+                {/* Ingredients = two tap-tiles; tap to pick/upload inline. */}
+                <div className="ws-hubtiles" role="group" aria-label={t("Your presenter and product")}>
+                  <button type="button" className={`ws-hubtile${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set" : ""}`}
+                    aria-expanded={hubPick === "presenter"} onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}>
+                    <span className="ws-hubtile-img" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
+                      <span className="ws-hubtile-badge" aria-hidden="true">{avatarThumb ? "✎" : "＋"}</span>
+                    </span>
+                    <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
+                    <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
+                  </button>
+                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set" : ""}`}
+                    aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
+                    <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
+                      <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
+                    </span>
+                    <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
+                    <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
+                  </button>
+                </div>
+                {/* Presenter picker reveal — picking collapses it. */}
+                {hubPick === "presenter" && (
+                  <div className="ws-hub-reveal open">
+                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} />
+                  </div>
+                )}
+                {avatarId && (
+                  <>
+                    <p className="ws-note">{t("Their outfit rotates each time, so your content never looks stale.")}</p>
+                    {avatarId !== d.brandFaceId && (
+                      <button type="button" className="ws-setbf" onClick={() => submit({ intent: "setBrandFace", avatarId }, { method: "post" })}>
+                        <Ico n="star" size={13} /> {t("Make {name} your Brand Face", { name: d.cast.find((c) => c.id === avatarId)?.name || t("this presenter") })}
+                      </button>
+                    )}
+                  </>
+                )}
+                {/* Product chooser + UPLOAD — lives INSIDE the combine. Always
+                    mounted (just hidden) so a store pick keeps submitting. */}
+                <div className="ws-hub-reveal" hidden={hubPick !== "product"}>{productChooserUI}</div>
+                {/* Product name — required to combine. */}
+                <div className="ws-lbl"><span>{t("Product name")}</span>
+                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
+                </div>
+                {showImport && (
+                  <div className="ws-import">
+                    <input className="wb-in" type="url" value={urlInput} placeholder={t("Paste a product link…")} onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
+                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
+                  </div>
+                )}
+                {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+                {prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
+                  <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
+                    ↺ {t("Use last: {title}", { title: lastProd.title })}
+                  </button>
+                )}
+                <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={t("Midnight Roast — whole bean coffee")} />
+                {pickedUrl ? <input type="hidden" name="productUrl" value={pickedUrl} /> : null}
+                {/* Combine inputs — size + how they show it, once a product's set. */}
+                {hasMarketingProduct && showWear && (
+                  <>
+                    <div className="ws-lbl"><span>{t("How big is it?")}</span> <span className="ws-opt">{t("so the presenter holds it at the right size")}</span></div>
+                    <div className="ws-seg ws-sizeseg">
+                      <button type="button" className={!productSize ? "sel" : ""} onClick={() => setProductSize("")}>{t("Auto")}</button>
+                      {SIZE_CHOICES.map((sz) => (
+                        <button type="button" key={sz.key} className={productSize === sz.key ? "sel" : ""} onClick={() => setProductSize(sz.key)}>{t(sz.label)}</button>
+                      ))}
+                    </div>
+                    {productSize ? <input type="hidden" name="productSize" value={productSize} /> : null}
+                    <div className="ws-lbl"><span>{t("How they show it")}</span>{apparel && <span className="ws-opt">{t("apparel detected")}</span>}</div>
+                    <div className="ws-seg">
+                      <button type="button" className={!wear ? "sel" : ""} onClick={() => setWearOverride(false)}><Ico n="figure" /> {t("Holding it")}</button>
+                      <button type="button" className={wear ? "sel" : ""} onClick={() => setWearOverride(true)}><Ico n="shirt" /> {t("Wearing it")} <span className="ws-wq">{t("(generally for apparel)")}</span></button>
+                    </div>
+                  </>
+                )}
+                {/* The big output — the payoff, right under the inputs. Tap to enlarge. */}
+                <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
+                  {combineUrl ? (
+                    <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
+                      <img src={combineUrl} alt={t("Your presenter holding your product")} />
+                      <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
+                    </button>
+                  ) : combining ? (
+                    <div className="ws-combine-loading">
+                      <span className="ws-combine-work" aria-hidden="true"><i /><i /><i /></span>
+                      <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
+                      <span className="ws-combine-scan" aria-hidden="true" />
+                    </div>
+                  ) : (
+                    <div className="ws-combine-empty">
+                      <Ico n="sparkle" size={30} />
+                      <span>{hasMarketingProduct ? t("Tap Combine — your presenter holding your product shows up here") : t("Add your presenter and product above")}</span>
+                    </div>
+                  )}
+                </div>
+                {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
+                {combineUrl ? (
+                  <div className="ws-combine-foot">
+                    <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
+                    <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
+                  </div>
+                ) : (
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !productTitle.trim() || !hasMarketingProduct}>
+                    {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
+                  </button>
+                )}
+                {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
+                {needsPhoto && (
+                  <p className="ws-note" style={{ color: "#8A5A12", marginTop: 8 }}>
+                    {prodSource === null
+                      ? t("Tap “Add your product” above — from your store, or upload a photo.")
+                      : prodSource === "store"
+                        ? t("Pick a product from your store so the ad features it.")
+                        : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product.")}</>}
+                  </p>
+                )}
+                {/* Promoting a service instead? Switching turns the hub off. */}
+                {showService && (
+                  <div className="ws-scene-svc">
+                    <div className="ws-lbl">{t("What are you promoting?")}</div>
+                    <div className="ws-seg">
+                      <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}><Ico n="box" /> {t("Physical product")}</button>
+                      <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}><Ico n="burst" /> {t("Service / offer")}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Tap-to-enlarge overlay for the combine ingredients/result. */}
+            {avatarVideoHub && expandImg && (
+              <div className="ws-lightbox" onClick={() => setExpandImg(null)} role="dialog" aria-modal="true">
+                <img src={expandImg} alt={t("Enlarged")} onClick={(e) => e.stopPropagation()} />
+                <button type="button" className="ws-lightbox-x" onClick={() => setExpandImg(null)} aria-label={t("Close")}>✕</button>
+              </div>
+            )}
+
+            {/* ======= CLASSIC layout — every non-avatar-video mode, unchanged ======= */}
+            {!avatarVideoHub && (<>
             {/* ---- Avatar-video hub: presenter + product as two Creator-style
                 tap-tiles that expand their picker inline, so the big presenter
                 grid and the product chooser collapse until tapped (~4in of
@@ -2772,6 +3029,7 @@ export default function WebStudio() {
                 <button type="button" className="ws-lightbox-x" onClick={() => setExpandImg(null)} aria-label={t("Close")}>✕</button>
               </div>
             )}
+            </>)}{/* /!avatarVideoHub classic layout */}
             </>)}
 
             {/* Casual create skips this header — the "Describe your image"
@@ -3512,6 +3770,13 @@ const WS_STYLE = `
 .ws-hubtile b{width:100%;font-size:14px;color:var(--ink,#14201A);font-weight:800;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-hubtile>span:last-child{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.25}
 @media (max-width:420px){.ws-hubtile-img{width:66px;height:66px}.ws-hubtile b{font-size:13px}.ws-hubtiles{gap:9px}}
+/* The Combine panel IS the avatar-video scene step: tiles up top, pickers reveal
+   inside, output + button below. .ws-scene scopes the in-panel spacing. */
+.ws-combine.ws-scene{margin-top:8px;padding:16px 15px}
+.ws-combine.ws-scene>.ws-hubtiles{margin:0 0 12px}
+.ws-combine.ws-scene>.ws-lbl{margin-top:12px}
+.ws-combine.ws-scene .ws-combine-stage{margin-top:12px}
+.ws-scene-svc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF)}
 /* Combine step — presenter + product -> holding frame, in-flow, with theatrics. */
 .ws-combine{margin:14px 0 4px;padding:15px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7));transition:box-shadow .3s,border-color .3s}
 .ws-combine.combining{border-color:var(--green2,#12A85E);animation:ws-comb-breathe 1.8s ease-in-out infinite}

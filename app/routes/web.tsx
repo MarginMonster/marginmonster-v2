@@ -664,6 +664,11 @@ const CSS = `
 /* Font is linked from the document head (app/root.tsx). An @import here
    cost three sequential round trips before any text rendered in Poppins. */
 *{box-sizing:border-box} html,body{margin:0;padding:0}
+/* Theme tokens also live on :root so content portaled OUT of .wb (e.g. the
+   archive fullscreen viewer, which renders to document.body to escape the
+   .wb-main stacking context) still inherits the palette. Additive only — the
+   .wb rule below keeps its own copy and its cream background/positioning. */
+:root{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;}
 .wb{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;
   position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,sans-serif;
   /* A green field instead of flat cream: three soft washes give the page a
