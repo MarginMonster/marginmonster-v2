@@ -3773,19 +3773,18 @@ const WS_STYLE = `
 /* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
    nowrap <b> product name sets a large min-content width and 1fr can't shrink →
    horizontal overflow + the ellipsis never engages. min-width:0 lets it clip. */
-.ws-hubtile{min-width:0;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;padding:14px 12px 13px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;min-height:44px}
+.ws-hubtile{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:9px;text-align:center;padding:9px 9px 12px;border-radius:18px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s}
 .ws-hubtile:hover{border-color:#9CCBB1;background:#F3F9F4}
 .ws-hubtile.set{border-color:#9CCBB1}
 .ws-hubtile.open{border-color:var(--green);background:#EAF6EF;box-shadow:0 0 0 2px rgba(12,122,70,.14)}
-/* HERO tiles — big enough to carry the presenter + product photos themselves,
-   so no separate large preview is needed (owner request). */
-.ws-hubtile-img{position:relative;width:118px;height:118px;border-radius:50%;background:#EAF6EF center/cover no-repeat;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
-.ws-hubtile-img.prod{border-radius:18px}
+/* Image-forward hero tiles — the photo fills the card (the "create square" look)
+   so the presenter + product carry themselves, no separate preview needed. */
+.ws-hubtile-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:14px;background:#EAF6EF center/cover no-repeat;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
 .ws-hubtile.set .ws-hubtile-img{border-style:solid;border-color:var(--green)}
-.ws-hubtile-badge{position:absolute;right:-1px;bottom:-1px;width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;font-size:15px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.28)}
-.ws-hubtile b{width:100%;font-size:15px;color:var(--ink,#14201A);font-weight:800;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-hubtile-badge{position:absolute;right:7px;bottom:7px;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:16px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.ws-hubtile b{width:100%;font-size:14.5px;color:var(--ink,#14201A);font-weight:800;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ws-hubtile>span:last-child{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.25}
-@media (max-width:420px){.ws-hubtile-img{width:96px;height:96px}.ws-hubtile b{font-size:14px}.ws-hubtiles{gap:10px}.ws-hubtile{padding:13px 10px 12px}}
+@media (max-width:420px){.ws-hubtile b{font-size:13.5px}.ws-hubtiles{gap:10px}}
 /* The Combine panel IS the avatar-video scene step: tiles up top, pickers reveal
    inside, output + button below. .ws-scene scopes the in-panel spacing. */
 .ws-combine.ws-scene{position:relative;overflow:hidden;margin-top:8px;padding:16px 15px}
