@@ -3869,6 +3869,9 @@ const WS_STYLE = `
 .ws-combine.ws-scene .ws-combine-btn,
 .ws-combine.ws-scene .ws-combine-foot,
 .ws-combine.ws-scene .ws-combine-editrow{max-width:440px;margin-left:auto;margin-right:auto}
+/* The Combine button is inline-block, so margin:auto can't center it — make it a
+   block so it centers in the contained column (the flex foot/editrow already do). */
+.ws-combine.ws-scene .ws-combine-btn{display:block;width:100%}
 .ws-scene-svc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF)}
 .ws-scene-look{margin-top:12px}
 /* Spinning rosettes — the brand watermark, strategically placed: one drifting in
