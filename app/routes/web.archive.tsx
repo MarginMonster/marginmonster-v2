@@ -19,6 +19,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { facelessQualitySurcharge } from "../lib/create-models";
 import { engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { xpForSpend } from "../lib/achievements";
+import { AVATAR_BY_ID } from "../lib/avatars";
 
 /** The CURRENT price to retry a failed job, derived from its payload — not the
  *  amount originally charged. A job that failed before a reprice (e.g. faceless
@@ -89,6 +90,66 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
   if (method === "presenter") return "With presenter";
   if (method) return pretty(method);
   return null;
+}
+
+/** THE RECEIPT. What the merchant picked and what the AI wrote, pulled out of
+ *  the two JSON blobs every asset carries, so the viewer's right rail can show
+ *  "here's exactly how this was made" instead of a bare title. Every field is
+ *  optional — older assets stored less, and the UI renders only what exists.
+ *  `kind` / `scriptLabel` are English source strings the client runs through
+ *  t(); every value field is user content and is shown verbatim. */
+export type PieceDetails = {
+  kind: string | null;         // "Avatar video", "Commercial", …
+  product: string | null;      // the product it's about
+  presenter: string | null;    // "Mara · hype energy" for avatar pieces
+  held: boolean;               // the presenter is holding the product
+  service: boolean;            // service / no-physical-product mode
+  topic: string | null;        // faceless topic
+  tagline: string | null;      // commercial tagline
+  direction: string | null;    // the merchant's OWN words / brief
+  script: string | null;       // what the AI actually wrote (spoken/narration)
+  scriptLabel: string | null;  // how to title the script block
+};
+function buildDetails(type: string, metaJson: string | null, bodyJson: string | null): PieceDetails {
+  let meta: Record<string, unknown> = {};
+  let body: Record<string, unknown> = {};
+  try { meta = JSON.parse(metaJson || "{}"); } catch { /* ignore */ }
+  try { body = JSON.parse(bodyJson || "{}"); } catch { /* ignore */ }
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const style = str(meta.style) || str(body.style);
+  const isFaceless = meta.kind === "faceless" || style === "FACELESS";
+  const hasPresenter = style === "AI_AVATAR" || style === "COMMERCIAL" || style === "CARTOON" || style === "JINGLE";
+  const kind =
+    type === "AUDIO" ? "Music track"
+    : type === "BLOG_POST" ? "Article"
+    : type === "IMAGE_AD" ? "Image ad"
+    : isFaceless ? "Faceless video"
+    : style === "AI_AVATAR" ? "Avatar video"
+    : style === "COMMERCIAL" ? "Commercial"
+    : style === "CARTOON" ? "Cartoon ad"
+    : style === "JINGLE" ? "Jingle video"
+    : type === "VIDEO_AD" ? "Video"
+    : null;
+  const av = str(meta.avatarId) ? AVATAR_BY_ID[str(meta.avatarId)!] : undefined;
+  const presenter = av ? (av.vibe ? `${av.name} · ${av.vibe}` : av.name) : null;
+  const topic = str(meta.topic);
+  // body.script is the spoken/narrated line; body.prompt doubles as the script
+  // on older cartoon/avatar rows and as the topic on faceless — don't echo the
+  // topic back as if it were the script.
+  let script = str(body.script) || str(body.prompt);
+  if (script && script === topic) script = null;
+  return {
+    kind,
+    product: str(meta.productTitle),
+    presenter,
+    held: body.heldProduct === true,
+    service: meta.serviceMode === true,
+    topic,
+    tagline: str(body.tagline),
+    direction: str(meta.direction),
+    script,
+    scriptLabel: script ? (isFaceless ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
+  };
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -234,6 +295,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // that worked" is unfindable if the ad won't say what it was.
         recipe: recipeLabel(a.metaJson, a.bodyJson),
         missed: pickedButMissed(a.metaJson, a.bodyJson),
+        // The "receipt" for the viewer's right rail — selections + the script.
+        details: buildDetails(a.type, a.metaJson, a.bodyJson),
         when: a.createdAt.toISOString(),
         status: a.status,
         daysLeft,
@@ -757,6 +820,22 @@ const WA_CSS = `
   background:#FDF4E3;border:1px solid #E8D3A6;color:#7A5A12;font-weight:600;}
 .wa-vcdnote.urgent{color:#8C2E1B;}
 .wa-aitag{display:inline-block;margin-top:6px;font-size:11.5px;color:var(--ink2,#5b6b61);}
+/* "The receipt" — what was picked + what the AI wrote, filling the viewer's
+   right rail. Key/value grid uses display:contents rows so dt/dd align in one
+   two-column grid; the prompt/script blocks read like a transcript (green
+   accent, scrollable when long). */
+.wa-spec{margin-top:12px;background:#FBF9F0;border:1px solid var(--line,#E5E0CF);border-radius:14px;padding:12px 14px;}
+.wa-spec-kind{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0A3D26;background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:3px 10px;margin-bottom:10px;}
+.wa-spec-list{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;}
+.wa-spec-row{display:contents;}
+.wa-spec-list dt{font-size:11.5px;font-weight:700;color:var(--ink2,#5b6b61);white-space:nowrap;}
+.wa-spec-list dd{margin:0;font-size:12.5px;font-weight:600;color:var(--ink,#14201A);word-break:break-word;}
+.wa-spec-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.wa-spec-tag{font-size:11px;font-weight:700;color:#5b3c00;background:#FFF3D6;border:1px solid #EAD79E;border-radius:999px;padding:3px 9px;}
+.wa-prompt{margin-top:12px;}
+.wa-prompt-h{display:block;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2,#5b6b61);margin-bottom:5px;}
+.wa-prompt p{margin:0;font-size:13px;line-height:1.55;color:var(--ink,#14201A);padding:9px 11px;background:#fff;border:1px solid var(--line,#E5E0CF);border-left:3px solid var(--green,#12A85E);border-radius:0 10px 10px 0;white-space:pre-wrap;}
+.wa-prompt-script{max-height:180px;overflow:auto;}
 .wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;}
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
@@ -1197,6 +1276,46 @@ export default function WebArchive() {
                   <Ico n="warning" /> {t("The")} <b>{viewer.missed}</b> {t("layout didn't render cleanly, so this went out as a plain product ad instead.")} <b>{t("Remix")}</b> {t("re-rolls it.")}
                 </span>
               )}
+              {/* THE RECEIPT — what the merchant picked and what the AI wrote.
+                  Only renders the fields a given piece actually stored. */}
+              {(() => {
+                const d = viewer.details;
+                if (!d) return null;
+                const showProduct = d.product && d.product !== viewer.title;
+                const hasRow = showProduct || d.presenter || d.topic || d.tagline;
+                if (!d.kind && !hasRow && !d.held && !d.service && !d.direction && !d.script) return null;
+                return (
+                  <div className="wa-spec">
+                    {d.kind && <span className="wa-spec-kind">{t(d.kind)}</span>}
+                    {hasRow && (
+                      <dl className="wa-spec-list">
+                        {showProduct && <div className="wa-spec-row"><dt>{t("Product")}</dt><dd>{d.product}</dd></div>}
+                        {d.presenter && <div className="wa-spec-row"><dt>{t("Presenter")}</dt><dd>{d.presenter}</dd></div>}
+                        {d.topic && <div className="wa-spec-row"><dt>{t("Topic")}</dt><dd>{d.topic}</dd></div>}
+                        {d.tagline && <div className="wa-spec-row"><dt>{t("Tagline")}</dt><dd>{d.tagline}</dd></div>}
+                      </dl>
+                    )}
+                    {(d.held || d.service) && (
+                      <div className="wa-spec-tags">
+                        {d.held && <span className="wa-spec-tag">✋ {t("Holding the product")}</span>}
+                        {d.service && <span className="wa-spec-tag">{t("Service — no physical product")}</span>}
+                      </div>
+                    )}
+                    {d.direction && (
+                      <div className="wa-prompt">
+                        <span className="wa-prompt-h">{t("Your direction")}</span>
+                        <p>{d.direction}</p>
+                      </div>
+                    )}
+                    {d.script && d.scriptLabel && (
+                      <div className="wa-prompt">
+                        <span className="wa-prompt-h">{t(d.scriptLabel)}</span>
+                        <p className="wa-prompt-script">{d.script}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {/* Post tracking + the Boost Bridge. Clicks come from the /go/a
                   turnstile in every posted caption; the live post links open
                   the exact post so boosting is two taps in Meta's own UI —
