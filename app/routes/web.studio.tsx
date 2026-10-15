@@ -2676,16 +2676,9 @@ export default function WebStudio() {
                         : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product.")}</>}
                   </p>
                 )}
-                {/* Commercial look — folded in from the old step 1 (big-budget
-                    studio-spot treatment), so the hub is the whole "how it's shot"
-                    decision and step 1 can disappear. */}
-                {contentType === "avatar" && (
-                  <label className="ws-commercial ws-scene-look">
-                    <input type="checkbox" name="commercial" value="1" checked={commercial}
-                      onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
-                    <span><b><Ico n="video" /> {t("Commercial look")}</b>{t(" — big-budget studio spot: color-block set matched to your product, hero-lit")}</span>
-                  </label>
-                )}
+                {/* Commercial-look removed here (owner): the flag was leaking into
+                    the spoken SCRIPT ("Studio Commercial"), which it must never do —
+                    it's a visual treatment only. Pulled from the avatar-video hub. */}
                 {/* Promoting a service instead? Switching turns the hub off. */}
                 {showService && (
                   <div className="ws-scene-svc">

@@ -638,12 +638,20 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
   // voice-over kept talking. It is pure — see tests/caption-chunks.test.ts.
   const capped = captionChunks(captionSafe(script), hasCJK(script) ? CJK_OPTS : LATIN_OPTS);
   if (!capped.length) return [];
-  const per = duration / capped.length;
+  // Time each caption by its LENGTH, not an even split: a 2-word phrase and a
+  // 7-word one take very different times to SAY, so splitting the duration evenly
+  // makes the captions drift — they lag behind or race ahead of the voice. Char
+  // count (spaces removed) is a decent speech-length proxy and works for CJK too;
+  // a soft floor keeps a short chunk from flashing by too fast to read.
+  const weights = capped.map((c) => Math.max(5, c.replace(/\s+/g, "").length));
+  const totalW = weights.reduce((a, b) => a + b, 0) || 1;
   // fontfile path needs forward slashes + escaped colon for the filter parser
   const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+  let acc = 0;
   return capped.map((text, i) => {
-    const t0 = (i * per).toFixed(2);
-    const t1 = ((i + 1) * per).toFixed(2);
+    const t0 = ((duration * acc) / totalW).toFixed(2);
+    acc += weights[i];
+    const t1 = ((duration * acc) / totalW).toFixed(2);
     // Latin caps run ~0.62×fontsize wide, CJK ~1.05×; keep every line inside
     // ~94% of the 720px frame so no caption ever bleeds off the edge.
     const glyph = hasCJK(text) ? 1.05 : 0.62;
@@ -954,9 +962,9 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     debranded ? `Talk about what the item IS and what owning it feels like. Do not name any brand, franchise or character.` : "",
     params.productDescription ? `${params.serviceMode ? "What it does / the outcome" : "Product details"}: ${params.productDescription.slice(0, 300)}` : "",
     voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
-    params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
+    params.direction ? `The merchant asked for this — you MUST honor it and work what they want into what the presenter actually SAYS out loud (if they gave specific words or points, use them): "${params.direction}"` : "",
     ``,
-    `Rules: The FIRST sentence must be a scroll-stopping hook. Use PAS or AIDA.`,
+    `Rules: Open with a strong, ORIGINAL hook that stops the scroll in the first second — a surprising fact, a bold claim, a vivid problem, or a question. Do NOT literally say "stop scrolling" (or "wait", "don't scroll", or any variation) — it's an overused cliché; grab attention with the actual content instead. Use PAS or AIDA.`,
     `26 to 32 words TOTAL (about 12 seconds spoken) — a punchy hook plus ONE clear point. Do NOT exceed 32 words. Conversational, first person,`,
     `like recommending to a friend. End with a short call to action.`,
     `ENERGY (the voice performs the words you write — flat words = flat read): write it with genuine, infectious enthusiasm, like you can't WAIT to share this. Use vivid, punchy wording and natural emphasis. An exclamation point or two is good where excitement lands. Never corporate, monotone, or robotic.`,
