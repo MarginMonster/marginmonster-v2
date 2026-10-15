@@ -47,7 +47,10 @@ const CONTENT_TYPES = [
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
   { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
   { key: "review", name: "Creator Demo", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's phone-shot product demo — social-feed real", cap: "video", tier: "Studio", price: 39 },
-  { key: "unboxing", name: "Unboxing", cover: "/ad-templates/ctcover-unboxing.jpg?v=1", sub: "The box opens on camera — first impressions, real reactions", cap: "video", tier: "Studio", price: 39 },
+  // Unboxing retired from the picker 2026-10-15 — the "box opens, product lifted
+  // out" beat is hard to render accurately (the real product rarely survives the
+  // reveal), leaving an even 8 video paths. CT_PRESETS.unboxing + its note stay so
+  // any already-made unboxing asset still resolves on remix.
   { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
 ] as const;
 
@@ -218,7 +221,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const frameRows = await db.asset.findMany({
     where: { shopId: shop.id, type: "IMAGE_AD" },
     orderBy: { createdAt: "desc" },
-    take: 30,
+    take: 160,
     select: { id: true, bodyJson: true, metaJson: true, title: true, createdAt: true },
   });
   const frameChoices = frameRows.flatMap((a) => {
@@ -236,7 +239,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       presenter: !!m.avatarId,
       when: a.createdAt.toISOString(),
     }];
-  }).slice(0, 8);
+  }).slice(0, 120);
   // The newest CREATOR generation job (any status) — so the Studio Stage can
   // surface a FAILED generation (e.g. a blocked/risky prompt) instead of
   // spinning forever. Self-clearing: a later success is a newer row.
@@ -1452,6 +1455,10 @@ export default function WebStudio() {
   // Seed the combine frame from an UPLOAD instead of generating it (free).
   const frameUploadRef = useRef<HTMLInputElement>(null);
   const frameFetcher = useFetcher<{ frameUrl?: string; error?: string }>();
+  // Reuse strip pages left/right with arrows (like the presenter picker) so the
+  // whole archive is reachable without the strip ever growing taller.
+  const reuseStripRef = useRef<HTMLDivElement>(null);
+  const scrollReuse = (dir: number) => { const el = reuseStripRef.current; if (el) el.scrollBy({ left: dir * Math.max(170, el.clientWidth * 0.82), behavior: "smooth" }); };
   const frameUploading = frameFetcher.state !== "idle";
   const combineStartRef = useRef(0);
   const formRef = useRef<HTMLFormElement>(null);
@@ -2232,6 +2239,10 @@ export default function WebStudio() {
     resetCombine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarId, imageUrl, wear, contentType, productSize]);
+  // Avatar AI is the PRODUCT path; SERVICE lives on its own type (Talking Head).
+  // A stale service=true (set on another type) must not flip the product hub into
+  // the classic service layout — force it off whenever Avatar AI is selected.
+  useEffect(() => { if (contentType === "avatar") setService(false); }, [contentType]);
   // Leaving the UPLOAD source unmounts the file input and loses the native file,
   // but hasFile/uploadPreview are React state that survive — leaving a PHANTOM
   // photo (the panel shows a product; the submit carries none → "add a photo",
@@ -2518,7 +2529,6 @@ export default function WebStudio() {
             {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>{casual ? t("Showcase") : t("Product Highlight")}</b>{" — "}{casual ? t("cinematic motion from your idea or a photo.") : t("cinematic motion built around your product. No presenter needed.")}</p>}
             {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>{t("Commercial")}</b>{t(" — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.")}</p>}
             {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>{t("Creator Demo")}</b>{t(" — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.")}</p>}
-            {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>{t("Unboxing")}</b>{t(" — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.")}</p>}
             {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>{t("Satisfying Close-Up")}</b>{t(" — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.")}</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
             {!casual && !avatarVideoHub && (contentType === "avatar" || contentType === "highlight") && (
@@ -2834,12 +2844,16 @@ export default function WebStudio() {
                           <Ico n="upload" size={19} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
                         </button>
                         {d.frameChoices.length > 0 && (
-                          <div className="ws-reuse-strip" aria-label={t("Reuse a past shot")}>
-                            {d.frameChoices.map((f) => (
-                              <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
-                                <img src={f.media} alt="" loading="lazy" />
-                              </button>
-                            ))}
+                          <div className="ws-reuse-nav">
+                            {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(-1)} aria-label={t("Scroll left")}>‹</button>}
+                            <div className="ws-reuse-strip" ref={reuseStripRef} aria-label={t("Reuse a past shot")}>
+                              {d.frameChoices.map((f) => (
+                                <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
+                                  <img src={f.media} alt="" loading="lazy" />
+                                </button>
+                              ))}
+                            </div>
+                            {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(1)} aria-label={t("Scroll right")}>›</button>}
                           </div>
                         )}
                       </div>
@@ -2859,16 +2873,11 @@ export default function WebStudio() {
                 {/* Commercial-look removed here (owner): the flag was leaking into
                     the spoken SCRIPT ("Studio Commercial"), which it must never do —
                     it's a visual treatment only. Pulled from the avatar-video hub. */}
-                {/* Promoting a service instead? Switching turns the hub off. */}
-                {showService && (
-                  <div className="ws-scene-svc">
-                    <div className="ws-lbl">{t("What are you promoting?")}</div>
-                    <div className="ws-seg">
-                      <button type="button" className={!service ? "sel" : ""} onClick={() => setService(false)}><Ico n="box" /> {t("Physical product")}</button>
-                      <button type="button" className={service ? "sel" : ""} onClick={() => setService(true)}><Ico n="burst" /> {t("Service / offer")}</button>
-                    </div>
-                  </div>
-                )}
+                {/* No "physical vs service" toggle here anymore: Avatar AI IS the
+                    product path (presenter holds the product), and SERVICE has its
+                    own dedicated content type — Talking Head (a presenter, no
+                    product). So services pick Talking Head at the content-type
+                    step instead of flipping a switch inside the product hub. */}
               </div>
             )}
             {/* Tap-to-enlarge overlay for the combine ingredients/result. */}
@@ -3833,7 +3842,7 @@ export default function WebStudio() {
 }
 
 function needsPresenterField(ct: CType | null): boolean {
-  return ct === "avatar" || ct === "cartoon" || ct === "jingle" || ct === "review" || ct === "unboxing";
+  return ct === "avatar" || ct === "cartoon" || ct === "jingle" || ct === "review";
 }
 
 /* Route-local styles — GStyle palette (paper #F4F1E6, card #FDFCF7, ink
@@ -4004,8 +4013,12 @@ const WS_STYLE = `
 .ws-reuse-upload{display:flex;width:100%;align-items:center;justify-content:center;gap:8px;border:1.5px dashed var(--green,#0C7A46);background:#F3F9F4;color:var(--green-deep,#0A3D26);font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;padding:13px 16px;border-radius:13px;cursor:pointer;box-sizing:border-box;transition:background .14s,border-color .14s}
 .ws-reuse-upload:hover:not([disabled]){background:#E9F5EE;border-color:var(--green2,#12A85E)}
 .ws-reuse-upload[disabled]{opacity:.55;cursor:not-allowed}
-/* Past shots scroll SIDEWAYS — a one-row strip that never grows the panel. */
-.ws-reuse-strip{display:flex;gap:7px;margin-top:8px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;padding:2px 2px 6px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+/* Past shots page SIDEWAYS with ‹ › arrows — a one-row strip that never grows
+   the panel, with the whole archive reachable by paging. */
+.ws-reuse-nav{display:flex;align-items:stretch;gap:5px;margin-top:8px}
+.ws-reuse-arrow{flex:0 0 auto;width:26px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);border-radius:9px;cursor:pointer;font-size:18px;font-weight:700;line-height:1;display:grid;place-items:center;padding:0}
+.ws-reuse-arrow:hover{background:#F3F9F4;border-color:var(--green,#12A85E)}
+.ws-reuse-strip{flex:1 1 auto;min-width:0;display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;padding:2px 2px 6px;scrollbar-width:thin;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
 .ws-reuse-strip::-webkit-scrollbar{height:6px}
 .ws-reuse-strip::-webkit-scrollbar-thumb{background:rgba(20,32,26,.2);border-radius:999px}
 .ws-reuse-thumb{width:46px;height:46px;border-radius:10px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
