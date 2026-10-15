@@ -819,6 +819,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       assertCapability(shop.activePlan, "image");
       const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+      // Post-combine tweaks ("New setting" / the free-text Edit box) ride in as a
+      // scene/direction: runPresenterHold feeds it to the compose as `scene`, so
+      // "put them in an office" relights into that setting and "green shirt" is a
+      // best-effort style note. Empty = the presenter's own backdrop (the default).
+      const combineScene = ((form.get("combineScene") as string) || "").trim().slice(0, 200) || undefined;
       if (!avatarId) return json({ error: tr(lang, "Pick a presenter first.") });
       if (!productImageUrl) return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
       // The product NAME is for the video script, not the combine — the combine
@@ -832,6 +837,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         freshShot: true,
         productTitle: productTitle || "product", productImageUrl, productUrl,
         styleMode: "backdrop",
+        scene: combineScene,
         avatarId, avatarVariant,
         wear: !!avatarId && wear && !service,
         // Size + hold/wear are COMBINE inputs — they decide how the presenter
@@ -1372,6 +1378,18 @@ export default function WebStudio() {
   const [combining, setCombining] = useState(false);
   const [combineErr, setCombineErr] = useState<string | null>(null);
   const [combineJobId, setCombineJobId] = useState<string | null>(null);
+  // Post-combine tweaks: the outfit variant + setting/direction currently in
+  // effect. Re-roll keeps both (just a fresh sample); New outfit advances the
+  // variant; the Edit box sets the scene — each re-runs the compose (a fresh
+  // image charge), which is why variance is affordable (the merchant chose it).
+  const [combineVariant, setCombineVariant] = useState(0);
+  const [combineScene, setCombineScene] = useState("");
+  const [combineEdit, setCombineEdit] = useState("");
+  // One place to wipe the combine AND its tweak context (new presenter/product/tab).
+  const resetCombine = () => {
+    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
+    setCombineVariant(0); setCombineScene(""); setCombineEdit("");
+  };
   const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
   const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
   const combineStartRef = useRef(0);
@@ -1861,7 +1879,7 @@ export default function WebStudio() {
     setUploadPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return f ? URL.createObjectURL(f) : null; });
     // A new product photo (incl. swapping file A->B, where hasFile stays true so
     // the stale-frame effect's deps don't fire) invalidates any approved combine.
-    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
+    resetCombine();
     // Snap the hub drawer shut on a successful pick so the photo shows in the
     // product HERO tile (mirrors a store-catalogue pick). No-op outside the hub.
     if (f) setHubPick(null);
@@ -1871,7 +1889,7 @@ export default function WebStudio() {
     setHasFile(false);
     setUploadFile(null);
     if (uploadRef.current) uploadRef.current.value = "";
-    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
+    resetCombine();
   };
   // Switching source clears the OTHER path so a stale store link / buy-URL or an
   // orphaned uploaded file can't ride the submit — but only when actually
@@ -1892,7 +1910,10 @@ export default function WebStudio() {
   // then poll for the fresh asset and hold its URL to seed the video. We reuse
   // the tested presenter-image path rather than duplicate the compose/money
   // path in a new job handler.
-  const doCombine = () => {
+  // `over` lets the post-combine tweaks re-run the SAME compose with one thing
+  // changed: a different outfit variant, and/or a scene/direction. Omitted =
+  // the first Combine (form defaults: variant 0, no scene).
+  const doCombine = (over?: { variant?: number; scene?: string }) => {
     const formEl = formRef.current;
     if (!formEl) return;
     const fd = new FormData(formEl);
@@ -1903,6 +1924,8 @@ export default function WebStudio() {
     fd.delete("formatKey");
     fd.delete("composedFrameUrl");
     if (avatarId) fd.set("avatarId", avatarId);
+    if (over?.variant != null) fd.set("avatarVariant", String(over.variant));
+    if (over?.scene != null) fd.set("combineScene", over.scene);
     // Inject the state-held file in case the input was remounted empty.
     if (prodSource === "upload" && uploadFile) fd.set("productPhoto", uploadFile);
     combineStartRef.current = Date.now();
@@ -1912,6 +1935,14 @@ export default function WebStudio() {
     setCombining(true);
     combineFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
   };
+  // Another take of the CURRENT shot — same outfit + setting, fresh sample.
+  const rerollCombine = () => doCombine({ variant: combineVariant, scene: combineScene || undefined });
+  // Advance the wardrobe (Casual → Smart → Active → Street → …), keep the setting.
+  const newOutfit = () => { const v = (combineVariant + 1) % 4; setCombineVariant(v); doCombine({ variant: v, scene: combineScene || undefined }); };
+  // Apply the free-text change ("put them in an office", "green shirt") as the
+  // scene/direction; remember it so a later Re-roll / New outfit keeps it.
+  const applyCombineEdit = () => { const s = combineEdit.trim(); if (!s) return; setCombineScene(s); doCombine({ variant: combineVariant, scene: s }); };
+  const OUTFIT_LABELS = ["Casual", "Smart", "Active", "Street"] as const;
   // The combine submit came back — grab the job id to poll, or surface an error
   // (tokens are charged BEFORE enqueue, so an error here means no charge).
   useEffect(() => {
@@ -2100,7 +2131,7 @@ export default function WebStudio() {
   // wrong frame — drop it all. (Swapping an uploaded FILE keeps hasFile=true, so
   // that case is cleared directly in takeUpload/clearUpload, not here.)
   useEffect(() => {
-    setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
+    resetCombine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarId, imageUrl, wear, contentType, productSize]);
   // Leaving the UPLOAD source unmounts the file input and loses the native file,
@@ -2657,12 +2688,44 @@ export default function WebStudio() {
                   <>
                     <div className="ws-combine-foot">
                       <span className="ws-combine-ok">✓ {t("Locked in — generate your video below.")}</span>
-                      <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
+                    </div>
+                    {/* TWEAK IT — each button re-runs the compose for another image
+                        charge (the merchant chose the spend, so the re-roll cost is
+                        self-funding — no margin problem). Re-roll keeps the shot;
+                        New outfit cycles the wardrobe; the Edit box changes the
+                        setting or details in plain words. */}
+                    <div className="ws-combine-tweaks">
+                      <button type="button" className="ws-tweak" onClick={rerollCombine} disabled={combining || busy} title={t("Another take of this exact shot")}>
+                        <span className="ws-tweak-ico" aria-hidden="true">🎲</span> {t("Re-roll")} <span className="ws-tweak-c">{combineCost}</span>
+                      </button>
+                      <button type="button" className="ws-tweak" onClick={newOutfit} disabled={combining || busy} title={t("Put them in a different outfit")}>
+                        <span className="ws-tweak-ico" aria-hidden="true">👕</span> {t("New outfit")} <span className="ws-tweak-sub">{t(OUTFIT_LABELS[(combineVariant + 1) % 4])}</span> <span className="ws-tweak-c">{combineCost}</span>
+                      </button>
+                    </div>
+                    <div className="ws-combine-editrow">
+                      <input
+                        type="text"
+                        className="ws-combine-editbox"
+                        value={combineEdit}
+                        onChange={(e) => setCombineEdit(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && combineEdit.trim() && !combining && !busy) { e.preventDefault(); applyCombineEdit(); } }}
+                        placeholder={t("Change something — e.g. “put them in an office”, “green shirt”")}
+                        maxLength={160}
+                        disabled={combining || busy}
+                      />
+                      <button type="button" className="ws-tweak primary" onClick={applyCombineEdit} disabled={combining || busy || !combineEdit.trim()}>
+                        <span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span>
+                      </button>
+                    </div>
+                    <div className="ws-combine-chips">
+                      {["put them in an office", "at the beach", "in a cozy kitchen", "a bright studio"].map((s) => (
+                        <button type="button" key={s} className="ws-combine-chip" onClick={() => setCombineEdit(s)} disabled={combining || busy}>{t(s)}</button>
+                      ))}
                     </div>
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
                 ) : (
-                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !hasMarketingProduct}>
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={() => doCombine()} disabled={combining || busy || !hasMarketingProduct}>
                     {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
                   </button>
                 )}
@@ -3006,10 +3069,10 @@ export default function WebStudio() {
                 {combineUrl ? (
                   <div className="ws-combine-foot">
                     <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
-                    <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
+                    <button type="button" className="ws-verb" onClick={() => doCombine()} disabled={combining}>↻ {t("Re-combine")}</button>
                   </div>
                 ) : (
-                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !productTitle.trim()}>
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={() => doCombine()} disabled={combining || busy || !productTitle.trim()}>
                     {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
                   </button>
                 )}
@@ -3860,6 +3923,26 @@ const WS_STYLE = `
 @keyframes ws-comb-shim{100%{transform:translateX(100%)}}
 .ws-combine-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:10px}
 .ws-combine-ok{font-size:12px;font-weight:700;color:var(--green-deep,#0A3D26);flex:1;min-width:140px}
+/* ── Post-combine tweak controls (Re-roll / New outfit / Edit box). Each re-runs
+   the compose for another image charge, so each carries its token cost as a pill. */
+.ws-combine-tweaks{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.ws-tweak{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font-family:Poppins,sans-serif;font-weight:700;font-size:12.5px;padding:8px 12px;border-radius:999px;cursor:pointer;min-height:40px;box-sizing:border-box;transition:transform .12s,box-shadow .12s}
+.ws-tweak:hover:not([disabled]){transform:translateY(-1px);box-shadow:0 8px 18px -12px rgba(20,32,26,.35)}
+.ws-tweak[disabled]{opacity:.5;cursor:not-allowed}
+.ws-tweak.primary{background:linear-gradient(135deg,#12A85E,#0C7A46);color:#fff;border-color:transparent}
+.ws-tweak-ico{font-size:14px;line-height:1}
+.ws-tweak-sub{font-weight:600;color:var(--ink2,#5b6b61);font-size:11px}
+.ws-tweak.primary .ws-tweak-sub{color:rgba(255,255,255,.85)}
+.ws-tweak-c{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:rgba(20,32,26,.08);color:var(--ink2,#5b6b61);font-size:10.5px;font-weight:800}
+.ws-tweak.primary .ws-tweak-c{background:rgba(255,255,255,.22);color:#fff}
+.ws-combine-editrow{display:flex;gap:8px;margin-top:8px;align-items:stretch}
+.ws-combine-editbox{flex:1;min-width:0;border:1px solid var(--line,#E1DECD);border-radius:12px;padding:9px 12px;font:inherit;font-size:13px;background:#fff;color:var(--ink,#14201A)}
+.ws-combine-editbox:focus{outline:none;border-color:var(--green,#12A85E);box-shadow:0 0 0 3px rgba(18,168,94,.14)}
+.ws-combine-editrow .ws-tweak{white-space:nowrap}
+.ws-combine-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.ws-combine-chip{border:1px dashed var(--line,#CFC9B6);background:transparent;color:var(--ink2,#5b6b61);font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer}
+.ws-combine-chip:hover:not([disabled]){background:#fff;color:var(--ink,#14201A);border-style:solid}
+.ws-combine-chip[disabled]{opacity:.5;cursor:not-allowed}
 /* Tap-to-enlarge lightbox. */
 .ws-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(8,12,10,.86);display:grid;place-items:center;padding:24px;cursor:zoom-out;animation:ws-lb-in .15s ease}
 @keyframes ws-lb-in{from{opacity:0}to{opacity:1}}
