@@ -415,6 +415,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id }, data: { status: "APPROVED" } });
     return json({ kept: true });
   }
+  if (intent === "unkeep") {
+    // Toggle Keep back off — the heart is a switch, so a second tap un-saves the
+    // piece (it rejoins the 30-day auto-clear). Scoped to APPROVED so a tap can
+    // never un-publish a piece that was actually posted to socials.
+    await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id, status: "APPROVED" }, data: { status: "PENDING" } });
+    return json({ unkept: true });
+  }
   if (intent === "delete") {
     await db.asset.deleteMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id } });
     return json({ deleted: true });
@@ -809,7 +816,8 @@ const WA_CSS = `
 /* Keep = a heart over the clip's top-right. Fills gold once the piece is kept. */
 .wa-vheart{position:absolute;top:10px;right:52px;z-index:6;width:38px;height:38px;border-radius:50%;border:0;background:rgba(20,32,26,.6);color:#fff;cursor:pointer;display:grid;place-items:center;transition:transform .14s ease,background .14s ease,color .14s ease;}
 .wa-vheart:hover{background:rgba(20,32,26,.9);transform:scale(1.08)}
-.wa-vheart.on{color:#FFC24A;background:rgba(20,32,26,.72);cursor:default;}
+.wa-vheart.on{color:#FFC24A;background:rgba(20,32,26,.72);}
+.wa-vheart[disabled]{cursor:default}
 .wa-vheart[disabled]:not(.on){opacity:.55;cursor:not-allowed}
 .wa-vnav{position:absolute;top:50%;transform:translateY(-50%);z-index:5;width:40px;height:40px;border-radius:50%;border:0;background:rgba(20,32,26,.6);color:#fff;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding-bottom:3px;}
 .wa-vnav:hover{background:rgba(20,32,26,.9)}
@@ -1004,6 +1012,7 @@ export default function WebArchive() {
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
   const dismissJob = (jobId: string) => submit({ intent: "dismissJob", jobId }, { method: "post" });
   const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
+  const unkeepAsset = (assetId: string) => submit({ intent: "unkeep", assetId }, { method: "post" });
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
   const remix = (assetId: string) => submit({ intent: "remix", assetId }, { method: "post" });
   // Delete is permanent and the trash icons are small and easy to mis-tap, so
@@ -1039,6 +1048,7 @@ export default function WebArchive() {
   useEffect(() => {
     if (actionData && ("deleted" in actionData || "remixed" in actionData)) setViewer(null);
     else if (actionData && "kept" in actionData) setViewer((v) => (v ? { ...v, status: "APPROVED" } : v));
+    else if (actionData && "unkept" in actionData) setViewer((v) => (v ? { ...v, status: "PENDING" } : v));
   }, [actionData]);
 
   const shelf = assets.filter((a) => A_KIND[a.type] === tab);
@@ -1279,14 +1289,19 @@ export default function WebArchive() {
                   <span className="wa-vcount">{vIdx + 1} / {shelf.length}</span>
                 </>
               )}
-              {/* Keep = a heart over the clip's top-right (fills gold once kept). */}
+              {/* Keep = a heart TOGGLE over the clip's top-right. Outline → tap to
+                  keep (fills gold); gold → tap to un-keep (back to an ordinary
+                  piece on the 30-day clock). A PUBLISHED piece stays gold and
+                  locked — a tap must never un-publish something already posted. */}
               {viewer.type !== "BLOG_POST" && viewer.media && (() => {
-                const kept = viewer.status === "APPROVED" || viewer.status === "PUBLISHED";
+                const published = viewer.status === "PUBLISHED";
+                const kept = viewer.status === "APPROVED" || published;
                 return (
-                  <button type="button" className={`wa-vheart${kept ? " on" : ""}`} disabled={busy || kept}
-                    title={kept ? t("Kept — saved for good") : t("Keep — save it for good")}
+                  <button type="button" className={`wa-vheart${kept ? " on" : ""}`} disabled={busy || published}
+                    aria-pressed={kept}
+                    title={published ? t("Posted — saved for good") : kept ? t("Kept — tap to un-keep") : t("Keep — save it for good")}
                     aria-label={kept ? t("Kept") : t("Keep")}
-                    onClick={() => { if (!kept) keepAsset(viewer.id); }}>
+                    onClick={() => { if (published) return; if (viewer.status === "APPROVED") unkeepAsset(viewer.id); else keepAsset(viewer.id); }}>
                     <Ico n="heart" size={20} style={kept ? { fill: "currentColor" } : undefined} />
                   </button>
                 );
