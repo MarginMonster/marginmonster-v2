@@ -13,7 +13,17 @@ import { tokensRemainingLive, monthlyUsageSummary } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { anthropicToolLoop, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
+import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
+
+// Helpurr speaks whatever language the app's interface is set to (uiLang). The
+// chat REPLIES are handled by a language directive in the system prompt (the
+// model is fluently multilingual); the deterministic strings below (opener,
+// status + error lines, button labels) go through tr(lang, …) so the whole
+// helper matches the interface, not just its chrome.
+const BUDDY_LANG: Record<UiLang, string> = {
+  en: "English", es: "Spanish", fr: "French", de: "German", zh: "Simplified Chinese",
+};
 
 type WebId = NonNullable<Awaited<ReturnType<typeof getWebIdentity>>>;
 
@@ -69,7 +79,7 @@ const GUARDRAILS =
 // ("make me an ad") is handled deliberately by the LLM via set_up_task, so we no
 // longer tack a Studio redirect onto every message that merely contains "make"
 // or "idea" — that was the robotic every-message-ends-in-a-CTA feel.
-function suggestActions(lastUserMsg: string, mode: "marketing" | "casual"): Array<{ label: string; to: string }> {
+function suggestActions(lastUserMsg: string, mode: "marketing" | "casual", lang: UiLang): Array<{ label: string; to: string }> {
   const s = lastUserMsg.toLowerCase();
   const acts: Array<{ label: string; to: string }> = [];
   const wantsStudio = /\b(open|go to|take me to|show me|bring up)\s+(the\s+)?studio\b/.test(s);
@@ -77,17 +87,17 @@ function suggestActions(lastUserMsg: string, mode: "marketing" | "casual"): Arra
   const wantsPlans = /\b(plans?|pricing|tokens?|top ?up|upgrade|subscription)\b/.test(s);
   if (mode === "casual") {
     const wantsEdit = /\brestyle\b|\bcartoon(ize|ise)?\b|\bupscale\b|\bedit (a|my|this|the|that)?\s*(photo|image|pic|it)\b|\b(remove|swap|change)\b[^.]*\bbackground\b/.test(s);
-    if (wantsEdit) acts.push({ label: "🎨 Edit a photo", to: "/web/studio" });
-    if (wantsStudio && !acts.length) acts.push({ label: "✨ Open the Studio", to: "/web/studio" });
-    if (wantsArchive) acts.push({ label: "My gallery", to: "/web/archive" });
-    if (wantsPlans) acts.push({ label: "Plans & tokens", to: "/web#plans" });
+    if (wantsEdit) acts.push({ label: `🎨 ${tr(lang, "Edit a photo")}`, to: "/web/studio" });
+    if (wantsStudio && !acts.length) acts.push({ label: `✨ ${tr(lang, "Open the Studio")}`, to: "/web/studio" });
+    if (wantsArchive) acts.push({ label: tr(lang, "My gallery"), to: "/web/archive" });
+    if (wantsPlans) acts.push({ label: tr(lang, "Plans & tokens"), to: "/web#plans" });
     const seen = new Set<string>();
     return acts.filter((a) => (seen.has(a.to) ? false : (seen.add(a.to), true))).slice(0, 2);
   }
-  if (wantsStudio) acts.push({ label: "✨ Open the Studio", to: "/web/studio" });
-  if (/\bcampaigns?\b/.test(s)) acts.push({ label: "Set up a Campaign", to: "/web/campaigns" });
-  if (wantsArchive) acts.push({ label: "See my Archive", to: "/web/archive" });
-  if (wantsPlans) acts.push({ label: "Plans & tokens", to: "/web#plans" });
+  if (wantsStudio) acts.push({ label: `✨ ${tr(lang, "Open the Studio")}`, to: "/web/studio" });
+  if (/\bcampaigns?\b/.test(s)) acts.push({ label: tr(lang, "Set up a Campaign"), to: "/web/campaigns" });
+  if (wantsArchive) acts.push({ label: tr(lang, "See my Archive"), to: "/web/archive" });
+  if (wantsPlans) acts.push({ label: tr(lang, "Plans & tokens"), to: "/web#plans" });
   return acts.slice(0, 2);
 }
 
@@ -175,7 +185,7 @@ const TASK_SPECS: Record<string, { tab?: string; to: string; cost: number; verb:
   campaign:   { to: "/web/campaigns", cost: 0, verb: "Set up a campaign",     product: false },
 };
 
-function buildTask(input: Record<string, unknown>): { toolResult: string; action: PendingAction | null } {
+function buildTask(input: Record<string, unknown>, lang: UiLang): { toolResult: string; action: PendingAction | null } {
   const spec = TASK_SPECS[String(input.kind || "")];
   if (!spec) return { toolResult: "Unknown task kind — nothing set up.", action: null };
   const product = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
@@ -184,7 +194,8 @@ function buildTask(input: Record<string, unknown>): { toolResult: string; action
   if (spec.product && product) params.set("product", product);
   const qs = params.toString();
   const to = spec.to.includes("?") ? (qs ? `${spec.to}&${qs}` : spec.to) : (qs ? `${spec.to}?${qs}` : spec.to);
-  const label = spec.product && product ? `${spec.verb} for ${product}` : spec.verb;
+  const verb = tr(lang, spec.verb);
+  const label = spec.product && product ? tr(lang, "{verb} for {product}", { verb, product }) : verb;
   const action: PendingAction = { label, to, cost: spec.cost, kind: String(input.kind) };
   return {
     action,
@@ -293,12 +304,12 @@ async function recallFacts(shopId: string): Promise<string> {
 // activity, picks the most useful next move, and attaches a ready confirm
 // button. Deterministic (no LLM cost on open) and grounded; rotates the featured
 // product by day so it doesn't feel canned.
-async function buildProactive(id: WebId, mode: "marketing" | "casual"): Promise<{ reply: string; pendingAction?: PendingAction } | null> {
+async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiLang): Promise<{ reply: string; pendingAction?: PendingAction } | null> {
   const shopId = id.shop.id;
   const first = (id.account.name?.trim() || id.account.email.split("@")[0]).split(" ")[0];
   try {
     if (mode === "casual") {
-      return { reply: `Hey ${first}! 🐾 Up for making something? Drop a photo to restyle, or let's create something new from scratch — your call.`, pendingAction: { label: "Open the Studio", to: "/web/studio", cost: 0, kind: "studio" } };
+      return { reply: tr(lang, "Hey {first}! 🐾 Up for making something? Drop a photo to restyle, or let's create something new from scratch — your call.", { first }), pendingAction: { label: tr(lang, "Open the Studio"), to: "/web/studio", cost: 0, kind: "studio" } };
     }
     const [catCount, madeWeek, activeQ] = await Promise.all([
       db.catalogProduct.count({ where: { shopId } }),
@@ -307,10 +318,10 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual"): Promise<
     ]);
     const tokens = tokensRemainingLive(id.shop.activePlan);
     if (catCount === 0) {
-      return { reply: `Hey ${first}! 🐾 I don't see your products yet — pull your store in and I'll start turning your real catalogue into ads.`, pendingAction: { label: "Import my products", to: "/web/studio?tab=import", cost: 0, kind: "import" } };
+      return { reply: tr(lang, "Hey {first}! 🐾 I don't see your products yet — pull your store in and I'll start turning your real catalogue into ads.", { first }), pendingAction: { label: tr(lang, "Import my products"), to: "/web/studio?tab=import", cost: 0, kind: "import" } };
     }
     if (tokens < TOKEN_COST.image) {
-      return { reply: `Hey ${first}! 🐾 You're low on tokens (${tokens} left) — top up and I'll help you turn your products into a whole week of content.`, pendingAction: { label: "Add tokens", to: "/web#plans", cost: 0, kind: "plans" } };
+      return { reply: tr(lang, "Hey {first}! 🐾 You're low on tokens ({tokens} left) — top up and I'll help you turn your products into a whole week of content.", { first, tokens }), pendingAction: { label: tr(lang, "Add tokens"), to: "/web#plans", cost: 0, kind: "plans" } };
     }
     // Feature a RANDOM product so it stays fresh across opens.
     const skip = Math.floor(Math.random() * Math.max(1, catCount));
@@ -323,25 +334,25 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual"): Promise<
     // Weighted toward image ads (the staple), with video/blog genuinely in the mix.
     const caps = capabilitiesFor(id.shop.activePlan);
     const ideas: Array<{ kind: "image_ad" | "video" | "blog"; weight: number; line: string }> = [
-      { kind: "image_ad", weight: 3, line: `a scroll-stopping image ad for ${product.title}` },
+      { kind: "image_ad", weight: 3, line: tr(lang, "a scroll-stopping image ad for {product}", { product: product.title }) },
     ];
-    if (caps.has("blog") && tokens >= TOKEN_COST.blog) ideas.push({ kind: "blog", weight: 2, line: `an SEO blog post around ${product.title}` });
-    if (caps.has("video") && tokens >= TOKEN_COST.video) ideas.push({ kind: "video", weight: 2, line: `a product video for ${product.title}` });
+    if (caps.has("blog") && tokens >= TOKEN_COST.blog) ideas.push({ kind: "blog", weight: 2, line: tr(lang, "an SEO blog post around {product}", { product: product.title }) });
+    if (caps.has("video") && tokens >= TOKEN_COST.video) ideas.push({ kind: "video", weight: 2, line: tr(lang, "a product video for {product}", { product: product.title }) });
     const totalW = ideas.reduce((s, i) => s + i.weight, 0);
     let r = Math.random() * totalW;
     const idea = ideas.find((i) => (r -= i.weight) < 0) || ideas[0];
-    const { action } = buildTask({ kind: idea.kind, product: product.title });
+    const { action } = buildTask({ kind: idea.kind, product: product.title }, lang);
 
     // Varied openers so it never reads like a broken record.
     const openers = [
-      `Hey ${first}! 🐾 Want to get ahead today? I could set up ${idea.line} — about a minute.`,
-      `Hey ${first}! 🐾 Fresh idea: ${idea.line}. Want me to line it up?`,
+      tr(lang, "Hey {first}! 🐾 Want to get ahead today? I could set up {line} — about a minute.", { first, line: idea.line }),
+      tr(lang, "Hey {first}! 🐾 Fresh idea: {line}. Want me to line it up?", { first, line: idea.line }),
       madeWeek > 0
-        ? `Hey ${first}! 🐾 ${madeWeek} pieces this week — nice pace. Want ${idea.line} next?`
-        : `Hey ${first}! 🐾 Nothing in motion yet — want ${idea.line} to kick things off?`,
+        ? tr(lang, "Hey {first}! 🐾 {week} pieces this week — nice pace. Want {line} next?", { first, week: madeWeek, line: idea.line })
+        : tr(lang, "Hey {first}! 🐾 Nothing in motion yet — want {line} to kick things off?", { first, line: idea.line }),
       activeQ > 0
-        ? `Hey ${first}! 🐾 Your campaign's humming along. Want ${idea.line} as a one-off too?`
-        : `Hey ${first}! 🐾 Got a minute? I could whip up ${idea.line}.`,
+        ? tr(lang, "Hey {first}! 🐾 Your campaign's humming along. Want {line} as a one-off too?", { first, line: idea.line })
+        : tr(lang, "Hey {first}! 🐾 Got a minute? I could whip up {line}.", { first, line: idea.line }),
     ];
     const opener = openers[Math.floor(Math.random() * openers.length)];
     return { reply: opener, pendingAction: action || undefined };
@@ -357,6 +368,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const empty = { threads: [{ id: "main", title: "Main" }], activeThreadId: "main", history: [] as Array<{ role: string; content: string }>, proactive: null as null | { reply: string; pendingAction?: PendingAction } };
   if (!id) return json(empty);
   const url = new URL(request.url);
+  const lang = readUiLang(request);
   const mode: "marketing" | "casual" = url.searchParams.get("mode") === "casual" ? "casual" : "marketing";
   const reqThread = url.searchParams.get("thread") || "";
   const shopId = id.shop.id;
@@ -377,7 +389,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         return rows.reverse();
       } catch { return [] as Array<{ role: string; content: string }>; }
     })(),
-    buildProactive(id, mode),
+    buildProactive(id, mode, lang),
   ]);
   return json({ threads, activeThreadId, history, proactive });
 }
@@ -409,8 +421,9 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
+  const lang = readUiLang(request);
   let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string };
-  try { body = await request.json(); } catch { return json({ reply: "Hmm, I didn't catch that — try again?" }); }
+  try { body = await request.json(); } catch { return json({ reply: tr(lang, "Hmm, I didn't catch that — try again?") }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
   // Default to marketing when absent (a stale client, or a direct call) so the
@@ -438,7 +451,7 @@ export async function action({ request }: ActionFunctionArgs) {
     .map((m): ChatMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: (m.content || "").trim().slice(0, 1200) }));
   chat = chat.slice(-14);
   while (chat.length && chat[0].role === "assistant") chat = chat.slice(1);
-  if (!chat.length) return json({ reply: "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?" });
+  if (!chat.length) return json({ reply: tr(lang, "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?") });
 
   // Daily chat cap (Sonnet isn't free). Gates only the LLM call — the rest of the
   // app is untouched — and counts the user's messages over the last 24h.
@@ -449,7 +462,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const since = new Date(Date.now() - 24 * 3_600_000);
       const used = await db.buddyMessage.count({ where: { shopId: id.shop.id, role: "user", createdAt: { gte: since } } });
       if (used >= cap) {
-        return json({ reply: "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)", actions: [] });
+        return json({ reply: tr(lang, "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)"), actions: [] });
       }
     } catch { /* a failed count must never block the chat */ }
   }
@@ -459,7 +472,12 @@ export async function action({ request }: ActionFunctionArgs) {
     ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN SET UP A CREATION: only when they actually want to MAKE something, call set_up_task — it lines up the exact thing and shows a confirm button to make it in the Studio, where they approve the spend. For a specific product, call get_catalog first and pass a real title. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You never spend their tokens or post yourself — the button and the Studio do. Keep replies warm and plain text."
     : "";
   const facts = id ? await recallFacts(id.shop.id) : "";
-  const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}${facts}`;
+  // The one line that makes Helpurr SPEAK the interface language. The model is
+  // fluently multilingual, so this reliably switches the whole reply.
+  const langLine = lang !== "en"
+    ? `\n\nLANGUAGE: The app's interface is set to ${BUDDY_LANG[lang]}, so reply ENTIRELY in ${BUDDY_LANG[lang]} — every word, naturally and fluently, lists and questions included — to match the interface, UNLESS the user clearly writes to you in a different language, in which case reply in theirs. Keep your Helpurr voice and every rule above; only the language changes.`
+    : "";
+  const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}${facts}${langLine}`;
   const pending: { action: PendingAction | null } = { action: null };
   try {
     const reply = await anthropicToolLoop({
@@ -468,7 +486,7 @@ export async function action({ request }: ActionFunctionArgs) {
       tools: id ? BUDDY_TOOLS : [],
       runTool: async (n, i) => {
         if (!id) return "(not signed in)";
-        if (n === "set_up_task") { const r = buildTask(i); pending.action = r.action; return r.toolResult; }
+        if (n === "set_up_task") { const r = buildTask(i, lang); pending.action = r.action; return r.toolResult; }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
@@ -479,9 +497,9 @@ export async function action({ request }: ActionFunctionArgs) {
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
     if (id) await remember(id.shop.id, mode, threadId, lastUser, clean);
-    return json({ reply: clean || "I'm here — tell me what you're working on!", actions: suggestActions(lastUser, mode), pendingAction: pending.action });
+    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action });
   } catch {
     // Never leave the chat hanging on an outage.
-    return json({ reply: "My brain hiccuped for a sec — mind trying that again?" });
+    return json({ reply: tr(lang, "My brain hiccuped for a sec — mind trying that again?") });
   }
 }
