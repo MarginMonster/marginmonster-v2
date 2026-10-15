@@ -208,6 +208,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((p) => !!p.media)
     .slice(0, 6);
+  // REUSABLE FRAMES. Past presenter/product IMAGE renders the merchant can seed
+  // a NEW video from WITHOUT re-combining (free) — "I already combined this, give
+  // me another video from the same shot". Only durable /renders or /uploads paths
+  // (the video fetches the seed server-side, so it must be a real hosted file, not
+  // an expired provider URL), absolutized, newest first. avatarId/productTitle
+  // ride along so picking one re-matches the presenter + product to the frame.
+  const frameBase = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const frameRows = await db.asset.findMany({
+    where: { shopId: shop.id, type: "IMAGE_AD" },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: { id: true, bodyJson: true, metaJson: true, title: true, createdAt: true },
+  });
+  const frameChoices = frameRows.flatMap((a) => {
+    let b: { imageUrl?: string; url?: string } = {};
+    let m: { avatarId?: string; productTitle?: string } = {};
+    try { b = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
+    try { m = JSON.parse(a.metaJson || "{}"); } catch { /* ignore */ }
+    const raw = b.imageUrl || b.url || "";
+    if (!raw.startsWith("/renders") && !raw.startsWith("/uploads")) return [];
+    return [{
+      id: a.id,
+      media: frameBase ? frameBase + raw : raw,
+      avatarId: m.avatarId || null,
+      productTitle: m.productTitle || a.title || null,
+      presenter: !!m.avatarId,
+      when: a.createdAt.toISOString(),
+    }];
+  }).slice(0, 8);
   // The newest CREATOR generation job (any status) — so the Studio Stage can
   // surface a FAILED generation (e.g. a blocked/risky prompt) instead of
   // spinning forever. Self-clearing: a later success is a newer row.
@@ -261,6 +290,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     combineResult,
     lastGen,
     recent,
+    frameChoices,
     catalog,
     catalogCount,
     // Said next to the count, because the count on its own reads as "your
@@ -855,6 +885,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       backed(TOKEN_COST.combine, cFromExtra);
       return json({ ok: true, combineJobId });
     }
+    if (intent === "frameUpload") {
+      // SKIP THE COMBINE — the merchant brings their OWN presenter-holding-product
+      // frame (upload), to seed a video without paying for a compose. Store it on
+      // the durable disk and hand back the public /uploads URL to use as the seed
+      // (same pipeline as a product-photo upload above). FREE — no generation.
+      assertCapability(shop.activePlan, "image");
+      const frame = form.get("productPhoto");
+      if (!frame || typeof frame === "string" || frame.size === 0) return json({ error: tr(lang, "Pick an image to use as your frame.") });
+      if (!/^image\//.test(frame.type)) return json({ error: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
+      if (frame.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Image too large — keep it under 8 MB.") });
+      const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+      const ext = frame.type === "image/png" ? "png" : frame.type === "image/webp" ? "webp" : "jpg";
+      const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
+      fsMod.mkdirSync(dir, { recursive: true });
+      const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
+      fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await frame.arrayBuffer()));
+      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      if (!base) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet.") });
+      return json({ frameUrl: `${base}/uploads/${name}` });
+    }
     if (intent === "edit") {
       // Casual "edit a photo" — transform the user's own uploaded/linked photo.
       // Same 5-token image cost + spend/refund discipline; the worker routes it
@@ -1386,13 +1436,22 @@ export default function WebStudio() {
   // the merchant chose the spend.
   const [combineScene, setCombineScene] = useState("");
   const [combineEdit, setCombineEdit] = useState("");
+  // Did THIS frame come from a generate (Combine/Edit/Retry) or from an upload /
+  // reused archive shot? Edit/Retry re-compose, so they only make sense for a
+  // generated frame — an uploaded/reused one the merchant chose on purpose stays
+  // put (they just generate the video from it).
+  const [combineGenerated, setCombineGenerated] = useState(false);
   // One place to wipe the combine AND its edit context (new presenter/product/tab).
   const resetCombine = () => {
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
-    setCombineScene(""); setCombineEdit("");
+    setCombineScene(""); setCombineEdit(""); setCombineGenerated(false);
   };
   const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
   const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
+  // Seed the combine frame from an UPLOAD instead of generating it (free).
+  const frameUploadRef = useRef<HTMLInputElement>(null);
+  const frameFetcher = useFetcher<{ frameUrl?: string; error?: string }>();
+  const frameUploading = frameFetcher.state !== "idle";
   const combineStartRef = useRef(0);
   const formRef = useRef<HTMLFormElement>(null);
   const takePhoto = (f: File | null | undefined) => {
@@ -1951,6 +2010,31 @@ export default function WebStudio() {
       doCombine({ scene: combineScene || undefined });
     }
   };
+  // Upload your OWN frame → it becomes the combine result (the video seed), free.
+  const doFrameUpload = (file: File | null | undefined) => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.set("intent", "frameUpload");
+    fd.set("productPhoto", file);
+    setCombineErr(null);
+    frameFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+    if (frameUploadRef.current) frameUploadRef.current.value = "";
+  };
+  // Reuse a PAST creation as the frame — re-match the presenter + product to it
+  // (so the video's voice/script fit the shot) and drop straight into Locked-in.
+  const useFrame = (f: { media: string; avatarId: string | null; productTitle: string | null }) => {
+    if (f.avatarId && d.cast.some((c) => c.id === f.avatarId)) setAvatarId(f.avatarId);
+    if (f.productTitle) setProductTitle(f.productTitle);
+    setCombineScene(""); setCombineEdit(""); setCombineErr(null); setCombineJobId(null); setCombining(false);
+    setCombineGenerated(false); setCombineUrl(f.media);
+  };
+  // The uploaded frame came back — use it as the seed, or surface an error.
+  useEffect(() => {
+    const data = frameFetcher.data;
+    if (!data) return;
+    if (data.error) { setCombineErr(data.error); return; }
+    if (data.frameUrl) { setCombineScene(""); setCombineEdit(""); setCombineJobId(null); setCombining(false); setCombineGenerated(false); setCombineUrl(data.frameUrl); }
+  }, [frameFetcher.data]);
   // The combine submit came back — grab the job id to poll, or surface an error
   // (tokens are charged BEFORE enqueue, so an error here means no charge).
   useEffect(() => {
@@ -1987,7 +2071,7 @@ export default function WebStudio() {
     // Ignore a stale result from a PREVIOUS combine (fetcher data persists across
     // submits) — only act on the result for the job we're currently polling.
     if (!r || r.jobId !== combineJobId) return;
-    if (r.media) { setCombineUrl(r.media); setCombining(false); return; }
+    if (r.media) { setCombineUrl(r.media); setCombineGenerated(true); setCombining(false); return; }
     if (r.failed) {
       // Only a genuine technical miss (no frame produced) fails now — the job
       // refunds the charge (presenterOnly), so keep it plain and reassuring.
@@ -2695,36 +2779,60 @@ export default function WebStudio() {
                 {combineUrl ? (
                   <>
                     <div className="ws-combine-foot">
-                      <span className="ws-combine-ok">✓ {t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.")}</span>
+                      <span className="ws-combine-ok">✓ {combineGenerated ? t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.") : t("Using your own shot — generate your video below.")}</span>
+                      {!combineGenerated && <button type="button" className="ws-reuse-change" onClick={() => { setCombineUrl(null); setCombineGenerated(false); }}>{t("Pick a different frame")}</button>}
                     </div>
-                    {/* ONE hero. Describe a change (outfit, setting, anything) and
-                        hit Edit to apply it; leave the box empty and the same button
-                        becomes Retry — another take of the current shot for a bad one.
-                        Either way it re-composes for a 16-tok charge, so Edit is the
-                        single button that spends. */}
-                    <div className="ws-combine-editrow">
-                      <input
-                        type="text"
-                        className="ws-combine-editbox"
-                        value={combineEdit}
-                        onChange={(e) => setCombineEdit(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !combining && !busy) { e.preventDefault(); applyCombineEdit(); } }}
-                        placeholder={t("Describe a change — e.g. “green shirt”, “put them in an office”")}
-                        maxLength={160}
-                        disabled={combining || busy}
-                      />
-                      <button type="button" className="ws-tweak primary" onClick={applyCombineEdit} disabled={combining || busy} title={combineEdit.trim() ? t("Apply your change") : t("Another take of this shot")}>
-                        {combineEdit.trim()
-                          ? <><span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span></>
-                          : <><span className="ws-tweak-ico" aria-hidden="true">↻</span> {t("Retry")} <span className="ws-tweak-c">{combineCost}</span></>}
-                      </button>
-                    </div>
+                    {/* Edit/Retry RE-COMPOSE, so they only show for a GENERATED frame.
+                        An uploaded / reused shot stays exactly as chosen — describe a
+                        change or hit Retry and it would discard it, so those are hidden.
+                        ONE hero: typed change → Edit; empty → Retry; each is 16 tok. */}
+                    {combineGenerated && (
+                      <div className="ws-combine-editrow">
+                        <input
+                          type="text"
+                          className="ws-combine-editbox"
+                          value={combineEdit}
+                          onChange={(e) => setCombineEdit(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !combining && !busy) { e.preventDefault(); applyCombineEdit(); } }}
+                          placeholder={t("Describe a change — e.g. “green shirt”, “put them in an office”")}
+                          maxLength={160}
+                          disabled={combining || busy}
+                        />
+                        <button type="button" className="ws-tweak primary" onClick={applyCombineEdit} disabled={combining || busy} title={combineEdit.trim() ? t("Apply your change") : t("Another take of this shot")}>
+                          {combineEdit.trim()
+                            ? <><span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span></>
+                            : <><span className="ws-tweak-ico" aria-hidden="true">↻</span> {t("Retry")} <span className="ws-tweak-c">{combineCost}</span></>}
+                        </button>
+                      </div>
+                    )}
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
                 ) : (
-                  <button type="button" className="wb-btn ws-combine-btn" onClick={() => doCombine()} disabled={combining || busy || !hasMarketingProduct}>
-                    {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
-                  </button>
+                  <>
+                    <button type="button" className="wb-btn ws-combine-btn" onClick={() => doCombine()} disabled={combining || busy || !hasMarketingProduct}>
+                      {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
+                    </button>
+                    {/* ALREADY HAVE A FRAME? Skip the generate. Upload your own
+                        presenter-holding-product shot, or reuse a past creation —
+                        both become the video seed, FREE (great for "another video
+                        from the same shot"). */}
+                    {!combining && (
+                      <div className="ws-combine-reuse">
+                        <span className="ws-combine-reuse-lbl">{t("Already have a shot? Use it free — no combine:")}</span>
+                        <div className="ws-combine-reuse-row">
+                          <button type="button" className="ws-reuse-btn" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
+                            <Ico n="image" size={15} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
+                          </button>
+                          {d.frameChoices.map((f) => (
+                            <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
+                              <img src={f.media} alt="" loading="lazy" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <input ref={frameUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => doFrameUpload(e.currentTarget.files?.[0])} />
+                  </>
                 )}
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12", marginTop: 8 }}>
@@ -3868,10 +3976,24 @@ const WS_STYLE = `
 .ws-combine.ws-scene .ws-combine-stage,
 .ws-combine.ws-scene .ws-combine-btn,
 .ws-combine.ws-scene .ws-combine-foot,
+.ws-combine.ws-scene .ws-combine-reuse,
 .ws-combine.ws-scene .ws-combine-editrow{max-width:440px;margin-left:auto;margin-right:auto}
 /* The Combine button is inline-block, so margin:auto can't center it — make it a
    block so it centers in the contained column (the flex foot/editrow already do). */
 .ws-combine.ws-scene .ws-combine-btn{display:block;width:100%}
+/* "Already have a shot?" — upload your own frame or reuse a past one as the seed. */
+.ws-combine-reuse{margin-top:10px;text-align:center}
+.ws-combine-reuse-lbl{display:block;font-size:11.5px;color:var(--ink2,#5b6b61);margin-bottom:7px}
+.ws-combine-reuse-row{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
+.ws-reuse-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font-family:Poppins,sans-serif;font-weight:700;font-size:12px;padding:7px 12px;border-radius:999px;cursor:pointer;min-height:40px;box-sizing:border-box}
+.ws-reuse-btn:hover:not([disabled]){background:#F3F9F4;border-color:var(--green,#12A85E)}
+.ws-reuse-btn[disabled]{opacity:.5;cursor:not-allowed}
+.ws-reuse-thumb{width:40px;height:40px;border-radius:9px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
+.ws-reuse-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.ws-reuse-thumb:hover:not([disabled]){border-color:var(--green,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.2)}
+.ws-reuse-thumb[disabled]{opacity:.5;cursor:not-allowed}
+.ws-reuse-change{border:0;background:none;color:var(--green,#0C7A46);font-weight:700;font-size:11.5px;text-decoration:underline;cursor:pointer;padding:0;margin-left:6px}
+.ws-reuse-change:hover{color:var(--green2,#12A85E)}
 .ws-scene-svc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF)}
 .ws-scene-look{margin-top:12px}
 /* Spinning rosettes — the brand watermark, strategically placed: one drifting in
