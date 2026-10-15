@@ -123,6 +123,18 @@ const CT_PRESETS: Record<string, { base: "avatar" | "highlight"; direction: stri
 // What a preset key renders AS — everything downstream keys off the base.
 const baseOf = (ct: string | null | undefined) => (ct && CT_PRESETS[ct] ? CT_PRESETS[ct].base : ct);
 
+// Talking Head is all about the WHERE — a selfie-to-camera clip lives or dies on
+// its setting + whether they're seated or standing. These feed the talkinghead
+// direction (built in the action) instead of the old fixed "at home" preset.
+const TALKINGHEAD_SETTINGS = [
+  { key: "home", label: "At home", prompt: "at home in a cozy, lived-in room with soft natural daylight from a window" },
+  { key: "office", label: "Office / desk", prompt: "at a clean, modern desk or home-office with a tidy background and soft indoor light" },
+  { key: "outdoors", label: "Outdoors", prompt: "outdoors in natural daylight — a street, park or balcony with gentle background bokeh" },
+  { key: "cafe", label: "Cafe", prompt: "in a warm, inviting cafe with soft blurred background activity" },
+  { key: "car", label: "In the car", prompt: "in the front seat of a parked car — the classic car-vlog selfie look" },
+  { key: "studio", label: "Clean backdrop", prompt: "against a clean, softly-lit solid-color backdrop" },
+] as const;
+
 const CARTOON_STYLES = [
   { key: "dreamanime", name: "Dream Anime", tint: "#6FAF7C", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
   { key: "toyfigure", name: "Boxed Figure", tint: "#F4B400", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
@@ -721,7 +733,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Preset translation: the picker key becomes its base pipeline type and
       // its baked-in direction rides ahead of whatever the merchant typed.
       const preset = contentType ? CT_PRESETS[contentType] : undefined;
-      const videoDirection = preset ? [preset.direction, direction].filter(Boolean).join(" ") : direction;
+      // Talking Head builds its direction from the merchant's WHERE + pose picks
+      // instead of the fixed "at home" preset, so the setting actually steers it.
+      let presetDir = preset?.direction || "";
+      if (contentType === "talkinghead") {
+        const setKey = ((form.get("thSetting") as string) || "home").trim();
+        const pose = (form.get("thPose") as string) === "seated" ? "seated" : "standing";
+        const thSet = TALKINGHEAD_SETTINGS.find((s) => s.key === setKey) || TALKINGHEAD_SETTINGS[0];
+        presetDir = `Shot like an authentic selfie-style TikTok: the creator films themselves at arm's length (or with the phone propped up), ${thSet.prompt}, ${pose === "seated" ? "SEATED" : "STANDING"}, talking directly to camera — casual, warm and real, like organic UGC, not a polished studio ad. Natural handheld energy, genuine to-camera delivery. NO product is shown, held, or worn — this is a pure talking-head about the topic.`;
+      }
+      const videoDirection = [presetDir, direction].filter(Boolean).join(" ") || direction;
       if (preset) contentType = preset.base;
       const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
       const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
@@ -1410,6 +1431,9 @@ export default function WebStudio() {
   const [hasFile, setHasFile] = useState(false);
   const [contentType, setContentType] = useState<CType | null>(null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
+  // Talking Head: the WHERE (setting) + seated/standing, which build its direction.
+  const [thSetting, setThSetting] = useState<string>("home");
+  const [thPose, setThPose] = useState<"standing" | "seated">("standing");
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
   const [imageMode, setImageMode] = useState<"product" | "presenter" | "create" | null>(
     doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : doParam === "create" ? "create" : (casual ? "create" : null),
@@ -3207,7 +3231,22 @@ export default function WebStudio() {
             )}
 
             {serviceForced && (
-              <p className="ws-svchint">{t("Talking Head is ")}<b>{t("product-free")}</b>{t(" — your presenter talks straight to camera like an authentic TikTok. Just give them a topic below; no product photo needed.")}</p>
+              <>
+                <p className="ws-svchint">{t("Talking Head is ")}<b>{t("product-free")}</b>{t(" — your presenter talks straight to camera like an authentic TikTok. Set the scene below, then give them a topic.")}</p>
+                <div className="ws-lbl"><span>{t("Where are they?")}</span> <span className="ws-opt">{t("sets the scene")}</span></div>
+                <div className="ws-seg ws-thwrap">
+                  {TALKINGHEAD_SETTINGS.map((s) => (
+                    <button type="button" key={s.key} className={thSetting === s.key ? "sel" : ""} onClick={() => setThSetting(s.key)}>{t(s.label)}</button>
+                  ))}
+                </div>
+                <div className="ws-lbl"><span>{t("Seated or standing?")}</span></div>
+                <div className="ws-seg">
+                  <button type="button" className={thPose === "standing" ? "sel" : ""} onClick={() => setThPose("standing")}><Ico n="figure" /> {t("Standing")}</button>
+                  <button type="button" className={thPose === "seated" ? "sel" : ""} onClick={() => setThPose("seated")}>{t("Seated")}</button>
+                </div>
+                <input type="hidden" name="thSetting" value={thSetting} />
+                <input type="hidden" name="thPose" value={thPose} />
+              </>
             )}
             {showService && !serviceForced && (
               <>
