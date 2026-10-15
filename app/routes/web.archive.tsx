@@ -868,23 +868,28 @@ const WA_CSS = `
 .wa-prompt p.wa-prompt-dir,.wa-prompt p.wa-prompt-script{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;}
 .wa-prompt-dir{-webkit-line-clamp:3;}
 .wa-prompt-script{-webkit-line-clamp:6;}
-.wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;}
-/* Delete is a quiet trash icon pushed to the far end of the action row — not a
-   full-width pill competing with Post/Remix. Arms red on first tap (askDelete). */
-.wa-vdel{margin-left:auto;width:38px;height:38px;border-radius:11px;}
+/* The action row: two-up, every button the SAME height. The primary (Post) and
+   the destructive Delete span the full width; the rest share equal half-width
+   cells, and the last button in an odd row grows to fill — so there's never a
+   lone half-button or a stray floating icon. */
+.wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.wa-vacts > .wa-vbtn{flex:1 1 calc(50% - 4px);min-width:0;}
+.wa-vacts > .wa-vbtn.full{flex-basis:100%;}
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
    longer reaches these CTAs. This block renders after web.tsx, so at equal 0,1,0
    it wins for the portaled buttons; in-shell .wa-vbtn still gets the identical
    two-layer via .wb-main (0,2,0) — no divergence either way. */
-.wa-vbtn{border:0;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;padding:10px 18px;border-radius:12px;background:linear-gradient(100deg,#12A85E 58%,#0B7443 86%,#095F36),linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 12px rgba(12,122,70,.25);text-decoration:none;display:inline-block;}
+.wa-vbtn{border:0;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;padding:8px 14px;min-height:46px;border-radius:12px;background:linear-gradient(100deg,#12A85E 58%,#0B7443 86%,#095F36),linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 12px rgba(12,122,70,.25);text-decoration:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 6px;box-sizing:border-box;text-align:center;line-height:1.2;}
 .wa-vbtn:hover{filter:brightness(1.06)}
 .wa-vbtn.gold{background:linear-gradient(165deg,#C98F12,#8a6207);box-shadow:0 4px 12px rgba(176,133,38,.3);}
 .wa-vbtn.ghost{background:#fff;color:var(--ink,#14201A);border:1px solid var(--line,#E5E0CF);box-shadow:none;}
 .wa-vbtn.danger{background:#fff;color:#8C2E1B;border:1px solid #E8C4BC;box-shadow:none;}
 .wa-vbtn.danger.armed{background:#8C2E1B;color:#fff;border-color:#8C2E1B;}
 .wa-vbtn[disabled]{opacity:.5;cursor:not-allowed}
-.wa-vbtn .c{display:block;font-size:10px;font-weight:700;opacity:.85;margin-top:1px;}
+/* The token/XP sub-line drops onto its own centered line under the label
+   (flex-basis:100% forces the wrap), so Remix stays the same height as the rest. */
+.wa-vbtn .c{flex-basis:100%;display:block;font-size:10px;font-weight:700;opacity:.85;}
 .wa-cap{margin-top:12px;background:#FBF9F0;border:1px solid var(--line,#E5E0CF);border-radius:14px;padding:12px;}
 .wa-capbox{width:100%;box-sizing:border-box;border:1px solid var(--line,#E5E0CF);border-radius:12px;padding:10px 12px;font:inherit;font-size:13.5px;line-height:1.5;background:#fff;color:var(--ink,#14201A);resize:vertical;}
 .wa-capbox:disabled{opacity:.6}
@@ -1403,13 +1408,13 @@ export default function WebArchive() {
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? t("Copied ✓") : t("Copy HTML")}</button>}
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> {t("Download")}</button>}
                   <button type="button" className="wa-vbtn gold" disabled={busy} title={t("Write a fresh article on the same product")} onClick={() => remix(viewer.id)}><Ico n="sparkle" /> {t("Remix")}<span className="c">{t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
-                  <button type="button" className={`wa-icon wa-vdel${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} aria-label={t("Delete")} onClick={() => askDelete(viewer.id)}><Ico n="trash" /></button>
+                  <button type="button" className={`wa-vbtn danger full${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
                 </div>
               ) : (
                 <>
                   <div className="wa-vacts">
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
-                      <button type="button" className="wa-vbtn" disabled={busy} onClick={() => startPost(viewer.id)}>{t("Post to socials")}</button>
+                      <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{t("Post to socials")}</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
@@ -1440,7 +1445,7 @@ export default function WebArchive() {
                     {!viewer.isAudio && (
                       <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? t("We lost this render — make it again, on us") : t("Make a fresh variation of this piece")} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? t("Make it again") : t("Remix")}<span className="c">{viewer.freeRemake ? t("free — on us") : t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
                     )}
-                    <button type="button" className={`wa-icon wa-vdel${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} aria-label={t("Delete")} onClick={() => askDelete(viewer.id)}><Ico n="trash" /></button>
+                    <button type="button" className={`wa-vbtn danger full${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
                   </div>
                   {capOpen && (
                     <div className="wa-cap">
