@@ -149,6 +149,16 @@ export default function WebLayout() {
     try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
     setShowChooser(false);
   };
+  // A warm, time-aware greeting for the front door instead of a static line. Safe
+  // to read the local hour at render: the chooser only ever renders client-side
+  // (showChooser starts false and is flipped on in a mount effect), so there's no
+  // SSR/UTC mismatch. The ternary evaluates just the one t() that's shown.
+  const greetHour = new Date().getHours();
+  const chooserGreeting =
+    greetHour >= 22 || greetHour < 5 ? t("Burning the midnight oil? Let's make something.")
+    : greetHour < 11 ? t("Morning — what are we making?")
+    : greetHour < 17 ? t("What are we working on today?")
+    : t("What are we making tonight?");
 
   return (
     <>
@@ -174,7 +184,7 @@ export default function WebLayout() {
             </div>
             <div className="wb-ch-panel">
               <div className="wb-ch-brand"><Crest size={30} /><span>Easy<b>Mode</b></span></div>
-              <h1 className="wb-ch-h">{t("Where do you want to start?")}</h1>
+              <h1 className="wb-ch-h">{chooserGreeting}</h1>
               <p className="wb-ch-sub">{t("Jump into either — switch between them anytime from the toggle up top.")}</p>
               <div className="wb-ch-grid">
                 <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
