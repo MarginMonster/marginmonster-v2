@@ -2642,7 +2642,6 @@ export default function WebStudio() {
                     </button>
                   ) : combining ? (
                     <div className="ws-combine-loading">
-                      <span className="ws-combine-ring" aria-hidden="true" />
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
                       <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
                     </div>
@@ -2993,7 +2992,6 @@ export default function WebStudio() {
                     </button>
                   ) : combining ? (
                     <div className="ws-combine-loading">
-                      <span className="ws-combine-ring" aria-hidden="true" />
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
                       <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
                     </div>
@@ -3812,7 +3810,12 @@ const WS_STYLE = `
 .ws-combine.ws-scene .ws-combine-stage>*{position:relative;z-index:1}
 .ws-combine.ws-scene .ws-combine-stage::before{content:"";position:absolute;top:50%;left:50%;width:168px;height:168px;margin:-84px 0 0 -84px;z-index:0;pointer-events:none;background:var(--green2,#12A85E);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.10;animation:wsrosespin 70s linear infinite}
 .ws-combine.ws-scene .ws-combine-stage.has::before{display:none}
-@media (prefers-reduced-motion:reduce){.ws-combine.ws-scene::after,.ws-combine.ws-scene .ws-combine-stage::before{animation:none}}
+/* While combining, the rosette IS the buffer — it grows, brightens and pulses
+   (and keeps spinning) so it reads as a loader, instead of a separate ring sitting
+   on top of it. */
+.ws-combine.ws-scene.combining .ws-combine-stage::before{width:210px;height:210px;margin:-105px 0 0 -105px;animation:wsrosespin 5s linear infinite,ws-rose-glow 1.5s ease-in-out infinite}
+@keyframes ws-rose-glow{0%,100%{opacity:.16}50%{opacity:.46}}
+@media (prefers-reduced-motion:reduce){.ws-combine.ws-scene::after,.ws-combine.ws-scene .ws-combine-stage::before,.ws-combine.ws-scene.combining .ws-combine-stage::before{animation:none;opacity:.3}}
 /* Combine step — presenter + product -> holding frame, in-flow, with theatrics. */
 .ws-combine{margin:14px 0 4px;padding:15px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7));transition:box-shadow .3s,border-color .3s}
 .ws-combine.combining{border-color:var(--green2,#12A85E);animation:ws-comb-breathe 1.8s ease-in-out infinite}
@@ -3851,7 +3854,6 @@ const WS_STYLE = `
 .ws-combine-work i:nth-child(2){animation-delay:.15s}
 .ws-combine-work i:nth-child(3){animation-delay:.3s}
 @keyframes ws-comb-bounce{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-8px);opacity:1}}
-.ws-combine-ring{width:40px;height:40px;border-radius:50%;border:3.5px solid rgba(18,168,94,.2);border-top-color:var(--green,#0C7A46);animation:wsrosespin .85s linear infinite}
 .ws-combine-btn{width:100%;margin-top:10px;position:relative;overflow:hidden}
 .ws-combine-btntxt{position:relative;z-index:1}
 .ws-combine.combining .ws-combine-btn::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.4) 50%,transparent 75%);transform:translateX(-100%);animation:ws-comb-shim 1.3s linear infinite}
