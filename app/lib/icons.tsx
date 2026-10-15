@@ -21,6 +21,10 @@ const I: Record<string, Paths> = {
 
   /* ── actions + status ───────────────────────────────────────────── */
   trash: <><path d="M4.5 6.5h15M9.5 6.5V4.6h5v1.9" /><path d="M6.6 6.5 7.5 20h9l.9-13.5" /><path d="M10.3 10v6.4M13.7 10v6.4" /></>,
+  // Clean cross for close / clear controls (reads better than the ✕ glyph).
+  x: <path d="M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6" />,
+  // Maximize corners — the universal "enlarge / view bigger" glyph.
+  expand: <><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></>,
   // Keep-as-favourite. Single closed path so it also fills cleanly when the
   // piece is kept (pass style={{fill:"currentColor"}} for the solid state).
   heart: <path d="M12 20.4 4.9 13.3a4.7 4.7 0 0 1 6.65-6.65l.45.45.45-.45a4.7 4.7 0 0 1 6.65 6.65z" />,

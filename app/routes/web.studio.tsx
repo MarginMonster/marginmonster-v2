@@ -2775,13 +2775,13 @@ export default function WebStudio() {
                 {/* The big output — the payoff, right under the inputs. Tap to enlarge. */}
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
-                    <>
+                    <div className="ws-combine-frame">
                       <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
                         <img src={combineUrl} alt={t("Your presenter holding your product")} />
-                        <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
+                        <span className="ws-combine-zoom" aria-hidden="true"><Ico n="expand" size={15} /></span>
                       </button>
-                      <button type="button" className="ws-combine-clear" onClick={clearCombineFrame} aria-label={t("Clear this frame")} title={t("Clear this frame")}>✕</button>
-                    </>
+                      <button type="button" className="ws-combine-clear" onClick={clearCombineFrame} aria-label={t("Clear this frame")} title={t("Clear this frame")}><Ico n="x" size={16} /></button>
+                    </div>
                   ) : combining ? (
                     <div className="ws-combine-loading">
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
@@ -3176,13 +3176,13 @@ export default function WebStudio() {
                 {/* The big result — the hero of the step. Tap to enlarge. */}
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
-                    <>
+                    <div className="ws-combine-frame">
                       <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
                         <img src={combineUrl} alt={t("Your presenter holding your product")} />
-                        <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
+                        <span className="ws-combine-zoom" aria-hidden="true"><Ico n="expand" size={15} /></span>
                       </button>
-                      <button type="button" className="ws-combine-clear" onClick={clearCombineFrame} aria-label={t("Clear this frame")} title={t("Clear this frame")}>✕</button>
-                    </>
+                      <button type="button" className="ws-combine-clear" onClick={clearCombineFrame} aria-label={t("Clear this frame")} title={t("Clear this frame")}><Ico n="x" size={16} /></button>
+                    </div>
                   ) : combining ? (
                     <div className="ws-combine-loading">
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
@@ -4066,12 +4066,18 @@ const WS_STYLE = `
    pillar bars — width shrinks to the image, centered, instead of a fixed-width box. */
 .ws-combine-stage.has{position:relative;width:fit-content;max-width:100%;min-height:0;margin:0 auto;border-style:solid;border-color:var(--green);background:#0b0f0d;box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:ws-comb-pop .3s ease}
 @keyframes ws-comb-pop{from{transform:scale(.97);opacity:.4}to{transform:scale(1);opacity:1}}
+/* A position:relative wrapper the size of the photo, so the overlay controls
+   pin to the image's own corners (not a grid row under it). */
+.ws-combine-frame{position:relative;display:block;width:fit-content;max-width:100%;margin:0 auto;line-height:0}
 .ws-combine-big{display:block;width:fit-content;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in;position:relative}
 .ws-combine-big img{display:block;width:auto;max-width:100%;max-height:440px;margin:0 auto;object-fit:contain}
-.ws-combine-zoom{position:absolute;bottom:8px;right:8px;background:rgba(11,15,13,.72);color:#eafff4;border-radius:8px;padding:3px 8px;font-size:14px;font-weight:700;line-height:1.1}
-/* ✕ to clear the frame — top-right of the photo, like a close button. */
-.ws-combine-clear{position:absolute;top:8px;right:8px;z-index:3;width:30px;height:30px;border-radius:50%;border:0;background:rgba(11,15,13,.74);color:#fff;font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s,transform .14s}
-.ws-combine-clear:hover{background:rgba(11,15,13,.92);transform:scale(1.08)}
+/* Enlarge affordance — a glassy chip with the maximize glyph, bottom-right.
+   pointer-events:none so a tap falls through to the image (which enlarges). */
+.ws-combine-zoom{position:absolute;bottom:10px;right:10px;z-index:2;display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:rgba(11,15,13,.56);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);color:#fff;box-shadow:0 2px 9px rgba(0,0,0,.32);pointer-events:none}
+/* Clear the frame — a glassy close button in the top-right of the photo;
+   turns danger-red on hover so it reads as "remove". */
+.ws-combine-clear{position:absolute;top:10px;right:10px;z-index:4;width:32px;height:32px;border-radius:50%;border:1.5px solid rgba(255,255,255,.9);background:rgba(11,15,13,.56);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);color:#fff;padding:0;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 9px rgba(0,0,0,.32);transition:background .14s,border-color .14s,transform .14s}
+.ws-combine-clear:hover{background:rgba(176,42,26,.94);border-color:#fff;transform:scale(1.08)}
 .ws-combine-loading{display:flex;flex-direction:column;align-items:center;gap:13px;padding:34px 16px;text-align:center}
 .ws-combine-loadtxt{font-size:12.5px;font-weight:700;color:var(--green-deep,#0A3D26)}
 .ws-combine-loadsub{font-size:11px;font-weight:600;color:var(--ink2,#4A554E);margin-top:3px}
