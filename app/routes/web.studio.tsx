@@ -559,6 +559,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: tr(lang, "Creator is included on every plan — pick one on the Plans page to make images, edit photos and generate music (or get the standalone Creator plan for $6.99/mo).") });
   }
 
+  // FRAME UPLOAD — the merchant brings their OWN presenter-holding-product shot to
+  // seed a video without paying for a compose. Handled HERE, before the product-
+  // name requirement and the product-photo resolution below (an uploaded frame
+  // needs neither). Store it on the durable disk and hand back the public /uploads
+  // URL to use as the seed (same storage as a product-photo upload). FREE.
+  if (intent === "frameUpload") {
+    const frame = form.get("productPhoto");
+    if (!frame || typeof frame === "string" || frame.size === 0) return json({ error: tr(lang, "Pick an image to use as your frame.") });
+    if (!/^image\//.test(frame.type)) return json({ error: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
+    if (frame.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Image too large — keep it under 8 MB.") });
+    const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+    const ext = frame.type === "image/png" ? "png" : frame.type === "image/webp" ? "webp" : "jpg";
+    const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
+    fsMod.mkdirSync(dir, { recursive: true });
+    const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
+    fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await frame.arrayBuffer()));
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    if (!base) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet.") });
+    return json({ frameUrl: `${base}/uploads/${name}` });
+  }
+
   const productTitle = ((form.get("productTitle") as string) || "").trim();
   const urlField = ((form.get("productImageUrl") as string) || "").trim() || undefined;
   // THE LINK THE STUDIO PROMISES TWICE.
@@ -884,26 +905,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       backed(TOKEN_COST.combine, cFromExtra);
       return json({ ok: true, combineJobId });
-    }
-    if (intent === "frameUpload") {
-      // SKIP THE COMBINE — the merchant brings their OWN presenter-holding-product
-      // frame (upload), to seed a video without paying for a compose. Store it on
-      // the durable disk and hand back the public /uploads URL to use as the seed
-      // (same pipeline as a product-photo upload above). FREE — no generation.
-      assertCapability(shop.activePlan, "image");
-      const frame = form.get("productPhoto");
-      if (!frame || typeof frame === "string" || frame.size === 0) return json({ error: tr(lang, "Pick an image to use as your frame.") });
-      if (!/^image\//.test(frame.type)) return json({ error: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
-      if (frame.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Image too large — keep it under 8 MB.") });
-      const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
-      const ext = frame.type === "image/png" ? "png" : frame.type === "image/webp" ? "webp" : "jpg";
-      const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
-      fsMod.mkdirSync(dir, { recursive: true });
-      const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
-      fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await frame.arrayBuffer()));
-      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-      if (!base) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet.") });
-      return json({ frameUrl: `${base}/uploads/${name}` });
     }
     if (intent === "edit") {
       // Casual "edit a photo" — transform the user's own uploaded/linked photo.
