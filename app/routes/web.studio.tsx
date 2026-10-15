@@ -285,7 +285,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
+    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, combine: TOKEN_COST.combine, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
     // OUTPUT language — the language the generated copy/script/captions are
     // written in (shop.contentLang). Surfaced as a subtle chip by the Make
     // button so a merchant can, e.g., run an English store but make Spanish ads.
@@ -830,8 +830,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // identifies the product from its PHOTO (and reads scale from the photo),
       // so a name is NOT required here. Default it only so the compose prompt
       // isn't an empty string; the real name is collected at the video step.
-      const cFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra;
-      charged(TOKEN_COST.image, cFromExtra);
+      // Combine is priced on its OWN cost (nano-banana-pro compose ~$0.15), not
+      // the shared cheap-model image price — see TOKEN_COST.combine.
+      const cFromExtra = (await spendTokens(shop.id, TOKEN_COST.combine)).fromExtra;
+      charged(TOKEN_COST.combine, cFromExtra);
       const combineJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         section: genSection,
         freshShot: true,
@@ -848,9 +850,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Presenter-holding frame or nothing — a product-only still is not what
         // Combine asked for, so a miss FAILS (and refunds) instead of charging.
         presenterOnly: true,
-        prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: cFromExtra,
+        prePaid: true, chargedTokens: TOKEN_COST.combine, chargedFromExtra: cFromExtra,
       });
-      backed(TOKEN_COST.image, cFromExtra);
+      backed(TOKEN_COST.combine, cFromExtra);
       return json({ ok: true, combineJobId });
     }
     if (intent === "edit") {
@@ -1999,7 +2001,7 @@ export default function WebStudio() {
   // rendered (prodSource desync) → "add a photo" on submit.
   const hasMarketingProduct = (prodSource === "store" && !!imageUrl.trim()) || (prodSource === "upload" && (hasFile || !!imageUrl.trim()));
   const showCombine = tab === "video" && baseOf(contentType) === "avatar" && !!avatarId && !serviceOn && hasMarketingProduct;
-  const combineCost = d.costs.image;
+  const combineCost = d.costs.combine;
   // The avatar-VIDEO "Combine hub": presenter + product + size/wear + combine
   // merged into ONE panel — the START of the flow. Only this flow restructures;
   // serviceOn (incl. Talking Head's serviceForced) and every image/cartoon/

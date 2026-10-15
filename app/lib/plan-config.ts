@@ -228,7 +228,16 @@ export const TRIAL_TOKEN_CAP = 400;
 export const TOKEN_COST = {
   description: 3, // AI product listing (The Listing Forge)
   adCopy: 3, // Meta/TikTok ad copy
-  image: 5, // AI image ad (marketing)
+  image: 5, // AI image ad (marketing) — cheap models (flux ~$0.025), 5 tok is fine
+  // Avatar-video COMBINE (presenter holding the product). UNLIKE a normal image
+  // ad this runs ONE nano-banana-pro compose (~$0.15), so the shared image price
+  // sank it underwater at the CREATOR floor ($0.0140/tok → 5 tok = $0.07 < $0.15).
+  // Priced for ≥30% on the floor: 16 tok = $0.224 vs $0.15 ≈ 33% (and far higher
+  // on Studio+). Deterministic because the combine skips the auto-retry (merchant
+  // reviews + Re-rolls). Every Re-roll / New outfit / Edit tweak is another
+  // combine, so each carries this same self-funding price. Repriced 5 → 16 on
+  // 2026-10-15 (combine postdated the 10-10 ≥30% sweep and was never re-checked).
+  combine: 16,
   // Creator "Make an image" — text-to-image in an art style. Default engine
   // (Pro) COGS ~$0.039 (nano-banana), flagship (Ultra) ~$0.15 (nano-banana-pro
   // @2K, +surcharge). MUST profit on the standalone CREATOR plan, whose token
@@ -300,6 +309,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   description: "Product description",
   adCopy: "Ad copy",
   image: "Image ad",
+  combine: "Combined frame",
   createImage: "Image",
   quickEdit: "Quick edit",
   music: "Music track",

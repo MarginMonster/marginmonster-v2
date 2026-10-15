@@ -2431,6 +2431,12 @@ export async function runPresenterHold(opts: {
    *  Human presenters need nothing; a character does, or the composer gives
    *  them ordinary human hands on the product. */
   continuity?: string;
+  /** This is a merchant-reviewed COMBINE frame (the human approves it in-flow
+   *  and can Re-roll). The machine retry is redundant here — the merchant is the
+   *  gate — so skip it and keep the compose deterministically ONE call, which is
+   *  what the combine's fixed token price is sized against. Auto-shipped ads
+   *  (presenterOnly false) still get the retry. */
+  presenterOnly?: boolean;
 }): Promise<PresenterHoldResult> {
   // LAYOUT. A hand-sized item gets held; anything bigger gets set down in
   // front of the presenter, which is how creators actually shoot it and the
@@ -2583,7 +2589,12 @@ export async function runPresenterHold(opts: {
   // now, minus the scale questions that a worn garment cannot answer.
   let qa = preQa || (await qaPresenterHold(opts.productImageUrl, composed, opts.scalePhrase, opts.sizeClass, opts.cm, opts.wear));
   let retried = false;
-  if (!qa.pass) {
+  // Skip the retry for a merchant-reviewed COMBINE: the human approves the frame
+  // and can Re-roll, so a second auto-compose is redundant spend. This keeps a
+  // combine deterministically ONE nano-banana-pro call ($0.15), which is what its
+  // fixed token price (TOKEN_COST.combine) is sized against. Auto-shipped ads
+  // (presenterOnly false) still retry — there's no human gate on those.
+  if (!qa.pass && !opts.presenterOnly) {
     // The retry SHOUTS the requirement rather than repeating it — a second
     // identical attempt tends to reproduce the same mistake.
     retried = true;
@@ -4648,6 +4659,9 @@ export async function generateImageAd(
             portraitUrl, productImageUrl, productTitle, wear, scene: scene || stylePrompt,
             scalePhrase: scaleHint?.phrase, sizeClass: scaleHint?.sizeClass, cm: scaleHint?.cm,
             continuity: presenter.avatar.continuity,
+            // Combine frames are merchant-reviewed → skip the redundant retry so
+            // the compose stays one call, matching TOKEN_COST.combine's sizing.
+            presenterOnly,
           });
           if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
           // A presenter holding something that merely RESEMBLES the product is

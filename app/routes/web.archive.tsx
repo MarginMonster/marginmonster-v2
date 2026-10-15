@@ -32,7 +32,10 @@ function currentRetryCost(type: string, pl: Record<string, unknown>): number {
     const eng = engineSurcharge(normalizeEngineKey(pl.videoEngine as string));
     return (pl.section === "creator" ? TOKEN_COST.casualVideo : TOKEN_COST.video) + eng;
   }
-  if (type === "GENERATE_IMAGE_AD") return TOKEN_COST.image;
+  // A COMBINE frame is a GENERATE_IMAGE_AD but runs the pricey nano-banana-pro
+  // compose (presenterOnly), so it reprices at the combine rate, not the cheap
+  // shared image rate — a retry must not undercharge for it.
+  if (type === "GENERATE_IMAGE_AD") return pl.presenterOnly === true ? TOKEN_COST.combine : TOKEN_COST.image;
   if (type === "GENERATE_SONG") return TOKEN_COST.music;
   if (type === "GENERATE_BLOG_POST") return TOKEN_COST.blog;
   return TOKEN_COST.image;
