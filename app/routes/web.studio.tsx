@@ -737,10 +737,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to Service / offer.)") });
       }
       // A Studio-approved "presenter holding the product" frame (the Combine
-      // step) seeds the video directly — the pipeline animates from exactly what
-      // the merchant approved and skips its own internal compose. Guarded to
-      // presenter product videos so a stray value can never ride a service clip.
-      const composedFrameUrl = presenterVideo && !service
+      // step) seeds the video directly — the pipeline uses exactly what the
+      // merchant approved and skips its own internal compose. Forwarded for ANY
+      // presenter+product video: avatar/review ANIMATE from it; cartoon/jingle
+      // STYLIZE it into their keyframe (so they inherit the same compose-hub
+      // flow). Gated to a real presenter + not-service so a stray value can
+      // never ride a service clip; with no product the form sends none anyway.
+      const composedFrameUrl = !!avatarId && !service
         ? (((form.get("composedFrameUrl") as string) || "").trim() || undefined)
         : undefined;
       // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
@@ -2161,7 +2164,11 @@ export default function WebStudio() {
   // hasFile/imageUrl let the panel/Generate show a product whose input wasn't
   // rendered (prodSource desync) → "add a photo" on submit.
   const hasMarketingProduct = (prodSource === "store" && !!imageUrl.trim()) || (prodSource === "upload" && (hasFile || !!imageUrl.trim()));
-  const showCombine = tab === "video" && baseOf(contentType) === "avatar" && !!avatarId && !serviceOn && hasMarketingProduct;
+  // Content types that use the compact Combine Hub: avatar/review (base avatar)
+  // plus cartoon + jingle (presenter+product → combine → stylize). Commercial
+  // has no presenter; talkinghead is product-free (serviceForced). Neither hubs.
+  const hubType = baseOf(contentType) === "avatar" || contentType === "cartoon" || contentType === "jingle";
+  const showCombine = tab === "video" && hubType && !!avatarId && !serviceOn && hasMarketingProduct;
   const combineCost = d.costs.combine;
   // The avatar-VIDEO "Combine hub": presenter + product + size/wear + combine
   // merged into ONE panel — the START of the flow. Only this flow restructures;
@@ -2169,7 +2176,7 @@ export default function WebStudio() {
   // jingle/casual flow keep their current layout untouched. Does NOT require a
   // presenter/product yet (empty tiles); showCombine still gates the Combine
   // button + result inside it.
-  const avatarVideoHub = tab === "video" && baseOf(contentType) === "avatar" && !serviceOn;
+  const avatarVideoHub = tab === "video" && hubType && !serviceOn;
   // Which hub ingredient tile has its inline picker open. Collapsing happens in
   // the pick handlers (store-catalogue tap, presenter tap) — NOT an effect keyed
   // on hasMarketingProduct/avatarId, which would slam the drawer shut the instant
@@ -3997,7 +4004,12 @@ export default function WebStudio() {
 }
 
 function needsPresenterField(ct: CType | null): boolean {
-  return ct === "avatar" || ct === "cartoon" || ct === "jingle" || ct === "review";
+  // talkinghead is a presenter-to-camera format (base avatar, serviceForced, no
+  // product) — it was MISSING here, so the chosen presenter's avatarId was never
+  // submitted and the job fell through to the presenter-less product pipeline
+  // instead of generateUgcAd. Including it makes the talking head actually use
+  // the merchant's presenter.
+  return ct === "avatar" || ct === "talkinghead" || ct === "cartoon" || ct === "jingle" || ct === "review";
 }
 
 /* Route-local styles — GStyle palette (paper #F4F1E6, card #FDFCF7, ink

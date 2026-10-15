@@ -82,6 +82,12 @@ interface JingleAdParams {
   productTitle: string;
   productDescription?: string;
   productImageUrl?: string;
+  /** A Studio-approved "singer holding the product" frame from the Combine hub.
+   *  When set it is STYLIZED directly (person + product together) and used as
+   *  the held frame — skipping the separate stylize-then-add-product chain, so
+   *  jingle inherits the compose-hub flow. Classic jingle (no hub) is unchanged.
+   *  Absolute URL. */
+  composedFrameUrl?: string;
   avatarId?: string; // the SINGER — lipsyncs the anthem on camera
   avatarVariant?: number;
   cartoonStyle?: string; // singer redrawn in a cartoon style first (optional)
@@ -389,7 +395,12 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         await ckpt({ ckStyledUrl: "", ckStyleId: "" });
       }
       const recipe = params.cartoonStyle ? CARTOON_RECIPES[params.cartoonStyle as CartoonStyleKey] : undefined;
-      if (!frameUrl && recipe && portraitPublicUrl) {
+      // Combine hub: when the merchant approved a presenter+product frame, STYLE
+      // that (person AND product together) instead of the bare portrait — the
+      // styled result already holds the product, so the separate product-add
+      // compose below is skipped. No hub frame → the classic bare-portrait style.
+      const styleSource = params.composedFrameUrl || portraitPublicUrl;
+      if (!frameUrl && recipe && styleSource) {
         // The raw frame is checkpointed BEFORE the gate: an interrupted gate
         // must never throw away a paid kontext render.
         let raw = ck.ckRawStyledUrl || "";
@@ -398,8 +409,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
           raw = await resumablePrediction({
             priorId: ck.ckStyleId,
             create: () => repCreate("black-forest-labs/flux-kontext-pro", {
-              prompt: `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. If any packaging or box art appears it displays ONLY the text "${params.productTitle}" spelled exactly — never invented words or gibberish. Head-and-shoulders framing, vertical 9:16 composition, no caption text, no watermark.`,
-              input_image: portraitPublicUrl,
+              prompt: params.composedFrameUrl
+                ? `Redraw this exact scene as a ${recipe.look}: keep the SAME person (same face, same hairstyle, friendly stylized likeness) AND the product they are holding up at chest height, clearly visible. The product stays identical to the photo — same shape, colors, materials, logos and text ("${params.productTitle}" spelled exactly), never restyled or relettered. They are joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. Waist-up, vertical 9:16 composition, no caption text, no watermark.`
+                : `Redraw this exact person as a ${recipe.look}. Same person — same hairstyle, friendly stylized likeness — joyfully SINGING straight to camera like a pop star mid-note, expressive and delighted. If any packaging or box art appears it displays ONLY the text "${params.productTitle}" spelled exactly — never invented words or gibberish. Head-and-shoulders framing, vertical 9:16 composition, no caption text, no watermark.`,
+              input_image: styleSource,
               aspect_ratio: "9:16",
               output_format: "jpg",
             }),
@@ -438,8 +451,13 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
         await ckpt({ ckHeldUrl: "", ckHoldId: "" });
       }
       const singerRefUrl = frameUrl || portraitPublicUrl;
+      // Combine hub: the styled frame already holds the product (we stylized the
+      // approved presenter+product frame), so it IS the held frame — no separate
+      // product-add compose. Falls back to the raw combine frame if styling was
+      // skipped (no recipe).
+      if (!heldUrl && params.composedFrameUrl) heldUrl = frameUrl || params.composedFrameUrl;
       const canHold = !params.serviceMode && !!params.productImageUrl && /^https?:\/\//.test(params.productImageUrl || "");
-      if (!heldUrl && canHold && singerRefUrl) {
+      if (!heldUrl && canHold && singerRefUrl && !params.composedFrameUrl) {
         try {
           heldUrl = await resumablePrediction({
             priorId: ck.ckHoldId,

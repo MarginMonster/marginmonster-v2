@@ -321,6 +321,11 @@ interface CartoonAdParams {
   productTitle: string;
   productDescription?: string;
   productImageUrl?: string;
+  /** A Studio-approved "presenter holding the product" frame from the Combine
+   *  hub. When set it is STYLIZED directly (the internal compose is skipped),
+   *  so cartoon inherits the same approve-the-frame flow as avatar/review.
+   *  Absolute URL (the loader absolutizes the combine result). */
+  composedFrameUrl?: string;
   styleKey: string; // one of CARTOON_RECIPES; unknown keys fall back to dreamanime
   avatarId?: string; // presenter — the CHARACTER the style redraws ("turn yourself into X")
   avatarVariant?: number;
@@ -611,7 +616,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       if (portraitUrl) {
         sourcePhotoUrl = portraitUrl;
         withCharacter = true;
-        let composedUrl = resume.composedUrl || "";
+        // Prefer the merchant-approved Combine frame (params.composedFrameUrl);
+        // only compose internally when none was supplied (classic flow / no hub).
+        let composedUrl = resume.composedUrl || params.composedFrameUrl || "";
         if (!composedUrl && !params.serviceMode && params.productImageUrl) {
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
