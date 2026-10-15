@@ -932,7 +932,7 @@ const WA_CSS = `
      bare ".wa-vfull", so the phone never got the shorter cap and the 74vh clip
      overflowed its flex-shrunk stage). Match that specificity so this wins, and
      let the details scroll BELOW the clip instead of squeezing it. */
-  .wa-viewer.vmedia .wa-vstage{flex:0 1 auto;min-height:0;max-height:62vh;}
+  .wa-viewer.vmedia .wa-vstage{flex:0 0 auto;min-height:0;max-height:62vh;}
   .wa-viewer.vmedia .wa-vfull{max-height:62vh;}
   .wa-viewer.vmedia .wa-vmeta{flex:1 1 auto;min-height:0;}
   .wa-vx{top:8px;right:8px;width:32px;height:32px;font-size:14px;}
