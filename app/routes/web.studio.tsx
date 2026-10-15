@@ -4021,7 +4021,7 @@ const WS_STYLE = `
 .ws-reuse-strip{flex:1 1 auto;min-width:0;display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;padding:2px 2px 6px;scrollbar-width:thin;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
 .ws-reuse-strip::-webkit-scrollbar{height:6px}
 .ws-reuse-strip::-webkit-scrollbar-thumb{background:rgba(20,32,26,.2);border-radius:999px}
-.ws-reuse-thumb{width:46px;height:46px;border-radius:10px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
+.ws-reuse-thumb{width:64px;height:64px;border-radius:11px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
 .ws-reuse-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .ws-reuse-thumb:hover:not([disabled]){border-color:var(--green,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.2)}
 .ws-reuse-thumb[disabled]{opacity:.5;cursor:not-allowed}
