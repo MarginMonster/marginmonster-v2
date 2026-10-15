@@ -2029,6 +2029,11 @@ export default function WebStudio() {
     setCombineScene(""); setCombineEdit(""); setCombineErr(null); setCombineJobId(null); setCombining(false);
     setCombineGenerated(false); setCombineUrl(f.media);
   };
+  // Clear the current frame (the ✕ on the photo) — back to the empty state to
+  // combine, upload or reuse a different one. The edit context goes with it.
+  const clearCombineFrame = () => {
+    setCombineUrl(null); setCombineGenerated(false); setCombineScene(""); setCombineEdit(""); setCombineErr(null);
+  };
   // The uploaded frame came back — use it as the seed, or surface an error.
   useEffect(() => {
     const data = frameFetcher.data;
@@ -2760,10 +2765,13 @@ export default function WebStudio() {
                 {/* The big output — the payoff, right under the inputs. Tap to enlarge. */}
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
-                    <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
-                      <img src={combineUrl} alt={t("Your presenter holding your product")} />
-                      <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
-                    </button>
+                    <>
+                      <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
+                        <img src={combineUrl} alt={t("Your presenter holding your product")} />
+                        <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
+                      </button>
+                      <button type="button" className="ws-combine-clear" onClick={clearCombineFrame} aria-label={t("Clear this frame")} title={t("Clear this frame")}>✕</button>
+                    </>
                   ) : combining ? (
                     <div className="ws-combine-loading">
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
@@ -2780,8 +2788,7 @@ export default function WebStudio() {
                 {combineUrl ? (
                   <>
                     <div className="ws-combine-foot">
-                      <span className="ws-combine-ok">✓ {combineGenerated ? t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.") : t("Using your own shot — generate your video below.")}</span>
-                      {!combineGenerated && <button type="button" className="ws-reuse-change" onClick={() => { setCombineUrl(null); setCombineGenerated(false); }}>{t("Pick a different frame")}</button>}
+                      <span className="ws-combine-ok">✓ {combineGenerated ? t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.") : t("Using your own shot — generate your video below. (✕ the photo to pick a different one.)")}</span>
                     </div>
                     {/* Edit/Retry RE-COMPOSE, so they only show for a GENERATED frame.
                         An uploaded / reused shot stays exactly as chosen — describe a
@@ -3160,10 +3167,13 @@ export default function WebStudio() {
                 {/* The big result — the hero of the step. Tap to enlarge. */}
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
-                    <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
-                      <img src={combineUrl} alt={t("Your presenter holding your product")} />
-                      <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
-                    </button>
+                    <>
+                      <button type="button" className="ws-combine-big" onClick={() => setExpandImg(combineUrl)} aria-label={t("Tap to enlarge")}>
+                        <img src={combineUrl} alt={t("Your presenter holding your product")} />
+                        <span className="ws-combine-zoom" aria-hidden="true">⤢</span>
+                      </button>
+                      <button type="button" className="ws-combine-clear" onClick={clearCombineFrame} aria-label={t("Clear this frame")} title={t("Clear this frame")}>✕</button>
+                    </>
                   ) : combining ? (
                     <div className="ws-combine-loading">
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
@@ -4041,11 +4051,14 @@ const WS_STYLE = `
 .ws-combine.combining .ws-combine-stage{border-style:solid;border-color:var(--green2,#12A85E);background:linear-gradient(135deg,#EAF6EF,#D7F0E2)}
 /* With a result, HUG the frame (usually a 9:16/portrait) so there are no black
    pillar bars — width shrinks to the image, centered, instead of a fixed-width box. */
-.ws-combine-stage.has{width:fit-content;max-width:100%;min-height:0;margin:0 auto;border-style:solid;border-color:var(--green);background:#0b0f0d;box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:ws-comb-pop .3s ease}
+.ws-combine-stage.has{position:relative;width:fit-content;max-width:100%;min-height:0;margin:0 auto;border-style:solid;border-color:var(--green);background:#0b0f0d;box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:ws-comb-pop .3s ease}
 @keyframes ws-comb-pop{from{transform:scale(.97);opacity:.4}to{transform:scale(1);opacity:1}}
 .ws-combine-big{display:block;width:fit-content;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in;position:relative}
 .ws-combine-big img{display:block;width:auto;max-width:100%;max-height:440px;margin:0 auto;object-fit:contain}
 .ws-combine-zoom{position:absolute;bottom:8px;right:8px;background:rgba(11,15,13,.72);color:#eafff4;border-radius:8px;padding:3px 8px;font-size:14px;font-weight:700;line-height:1.1}
+/* ✕ to clear the frame — top-right of the photo, like a close button. */
+.ws-combine-clear{position:absolute;top:8px;right:8px;z-index:3;width:30px;height:30px;border-radius:50%;border:0;background:rgba(11,15,13,.74);color:#fff;font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s,transform .14s}
+.ws-combine-clear:hover{background:rgba(11,15,13,.92);transform:scale(1.08)}
 .ws-combine-loading{display:flex;flex-direction:column;align-items:center;gap:13px;padding:34px 16px;text-align:center}
 .ws-combine-loadtxt{font-size:12.5px;font-weight:700;color:var(--green-deep,#0A3D26)}
 .ws-combine-loadsub{font-size:11px;font-weight:600;color:var(--ink2,#4A554E);margin-top:3px}
