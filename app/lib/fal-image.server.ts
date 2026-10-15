@@ -153,6 +153,15 @@ export async function submitCompose(
   const s = looksLikeScene(raw) ? raw : "";
   const styleNote = !s && raw ? ` Overall look the merchant asked for: ${raw}.` : "";
   const bg = s ? `Setting: ${s}, with natural matching lighting.` : `Keep the same background and lighting as the first image.${styleNote}`;
+  // OUTFIT: locked to the portrait by default, but a described change ("green
+  // shirt", "put them in a blazer") can't land if the outfit is nailed shut —
+  // so when the merchant gives ANY direction, relax it to a SOFT lock that keeps
+  // the outfit unless the direction calls for a different one. That way a pure
+  // setting edit ("in an office") still leaves their clothes alone. No direction
+  // = the original hard lock, so a plain combine reproduces the portrait exactly.
+  const samePerson = raw
+    ? "Same person — same face and hairstyle, and keep their outfit the same UNLESS the look described calls for a different one."
+    : "The exact same person — same face, hairstyle and outfit.";
   // WHO DIRECTS THE SHOT. When the merchant typed direction (scene), they are
   // the director: our staging clauses step aside so "mid-workout at the gym"
   // is not fought by "held at chest height below the chin". Only the FACTS
@@ -227,7 +236,7 @@ export async function submitCompose(
     `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
     `Frame the shot from the top of the head down to the hips, with the head in the TOP THIRD of the picture. The box is held low, at the bottom of the ribcage, so the whole middle of the chest is visible empty between the chin and the top of the box. The presenter's face is entirely unobstructed — eyes, nose, mouth and chin all clearly visible with space to spare. ` +
     `Exactly ONE box in the whole image.${sizing} ` +
-    `Exact same person — same face, same hairstyle, same outfit.${persona} ${bg} ` +
+    `${samePerson}${persona} ${bg} ` +
     `${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
@@ -258,7 +267,7 @@ export async function submitCompose(
     // NOT added — this composition already spells out the product rules in
     // full, and the two contradict each other on framing.)
     `One hand rests flat on top of it or curls around its near top corner, in clear contact with it, relaxed and not lifting it. Exactly ONE of the product in the whole image.${sizing}${plan?.sizeAnchor ? ` It is ${plan.sizeAnchor}.` : ""}${relight}${noSourceText}${textRule} ` +
-    `Exact same person — same face, same hairstyle, same outfit.${persona} ${bg} ` +
+    `${samePerson}${persona} ${bg} ` +
     `Filmed from a step further back so the whole scene fits — a WIDE half-body shot, not a close-up${s ? "" : " — the way a creator films an unboxing at home: soft window light from the side, shallow depth of field with the room falling off behind, warm and lived-in"}.${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
@@ -292,7 +301,7 @@ export async function submitCompose(
       // not a check on whether it worked.
       : `The person from the first image holding the ${productTitle || "product"} from the second image — the COMPLETE item exactly as pictured, with every unit, box and panel it has, not one piece of it. ` +
         holdClause +
-        `${integrity}${relight}${noSourceText}${textRule} Exact same person — same face, same hairstyle, same outfit. ${bg} ` +
+        `${integrity}${relight}${noSourceText}${textRule} ${samePerson} ${bg}` +
         `${camera.trim()} ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
   const composeRes = composeResolution();

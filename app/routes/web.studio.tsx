@@ -1380,17 +1380,16 @@ export default function WebStudio() {
   const [combining, setCombining] = useState(false);
   const [combineErr, setCombineErr] = useState<string | null>(null);
   const [combineJobId, setCombineJobId] = useState<string | null>(null);
-  // Post-combine tweaks: the outfit variant + setting/direction currently in
-  // effect. Re-roll keeps both (just a fresh sample); New outfit advances the
-  // variant; the Edit box sets the scene — each re-runs the compose (a fresh
-  // image charge), which is why variance is affordable (the merchant chose it).
-  const [combineVariant, setCombineVariant] = useState(0);
+  // Post-combine edit context: the change ("green shirt", "in an office")
+  // currently applied, plus the in-progress Edit-box text. Each Edit/Retry
+  // re-runs the compose (a fresh image charge), which is why it's affordable —
+  // the merchant chose the spend.
   const [combineScene, setCombineScene] = useState("");
   const [combineEdit, setCombineEdit] = useState("");
-  // One place to wipe the combine AND its tweak context (new presenter/product/tab).
+  // One place to wipe the combine AND its edit context (new presenter/product/tab).
   const resetCombine = () => {
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
-    setCombineVariant(0); setCombineScene(""); setCombineEdit("");
+    setCombineScene(""); setCombineEdit("");
   };
   const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
   const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
@@ -1937,14 +1936,21 @@ export default function WebStudio() {
     setCombining(true);
     combineFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
   };
-  // Another take of the CURRENT shot — same outfit + setting, fresh sample.
-  const rerollCombine = () => doCombine({ variant: combineVariant, scene: combineScene || undefined });
-  // Advance the wardrobe (Casual → Smart → Active → Street → …), keep the setting.
-  const newOutfit = () => { const v = (combineVariant + 1) % 4; setCombineVariant(v); doCombine({ variant: v, scene: combineScene || undefined }); };
-  // Apply the free-text change ("put them in an office", "green shirt") as the
-  // scene/direction; remember it so a later Re-roll / New outfit keeps it.
-  const applyCombineEdit = () => { const s = combineEdit.trim(); if (!s) return; setCombineScene(s); doCombine({ variant: combineVariant, scene: s }); };
-  const OUTFIT_LABELS = ["Casual", "Smart", "Active", "Street"] as const;
+  // ONE action, the green hero. Typed a change ("green shirt", "put them in an
+  // office") → apply it as an Edit and remember it. Box empty → Retry: re-run the
+  // SAME shot (keeping any change already applied) for another take of a bad one.
+  // Either way it re-composes for one 16-tok charge — the only button that spends.
+  const applyCombineEdit = () => {
+    const s = combineEdit.trim();
+    if (s) {
+      // Apply the change: it becomes the current look, and the box clears so the
+      // button turns into Retry (another take of the look you just applied).
+      setCombineScene(s); setCombineEdit(""); doCombine({ scene: s });
+    } else {
+      // Retry: re-run the SAME look (whatever edit is applied, or the base shot).
+      doCombine({ scene: combineScene || undefined });
+    }
+  };
   // The combine submit came back — grab the job id to poll, or surface an error
   // (tokens are charged BEFORE enqueue, so an error here means no charge).
   useEffect(() => {
@@ -2691,39 +2697,34 @@ export default function WebStudio() {
                     <div className="ws-combine-foot">
                       <span className="ws-combine-ok">✓ {t("Locked in — generate your video below.")}</span>
                     </div>
-                    {/* TWEAK IT — each button re-runs the compose for another image
-                        charge (the merchant chose the spend, so the re-roll cost is
-                        self-funding — no margin problem). Re-roll keeps the shot;
-                        New outfit cycles the wardrobe; the Edit box changes the
-                        setting or details in plain words. */}
-                    <div className="ws-combine-tweaks">
-                      <button type="button" className="ws-tweak" onClick={rerollCombine} disabled={combining || busy} title={t("Another take of this exact shot")}>
-                        <span className="ws-tweak-ico" aria-hidden="true">🎲</span> {t("Re-roll")} <span className="ws-tweak-c">{combineCost}</span>
-                      </button>
-                      <button type="button" className="ws-tweak" onClick={newOutfit} disabled={combining || busy} title={t("Put them in a different outfit")}>
-                        <span className="ws-tweak-ico" aria-hidden="true">👕</span> {t("New outfit")} <span className="ws-tweak-sub">{t(OUTFIT_LABELS[(combineVariant + 1) % 4])}</span> <span className="ws-tweak-c">{combineCost}</span>
-                      </button>
-                    </div>
+                    {/* ONE hero. Describe a change (outfit, setting, anything) and
+                        hit Edit to apply it; leave the box empty and the same button
+                        becomes Retry — another take of the current shot for a bad one.
+                        Either way it re-composes for a 16-tok charge, so Edit is the
+                        single button that spends. */}
                     <div className="ws-combine-editrow">
                       <input
                         type="text"
                         className="ws-combine-editbox"
                         value={combineEdit}
                         onChange={(e) => setCombineEdit(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && combineEdit.trim() && !combining && !busy) { e.preventDefault(); applyCombineEdit(); } }}
-                        placeholder={t("Change something — e.g. “put them in an office”, “green shirt”")}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !combining && !busy) { e.preventDefault(); applyCombineEdit(); } }}
+                        placeholder={t("Describe a change — e.g. “green shirt”, “put them in an office”")}
                         maxLength={160}
                         disabled={combining || busy}
                       />
-                      <button type="button" className="ws-tweak primary" onClick={applyCombineEdit} disabled={combining || busy || !combineEdit.trim()}>
-                        <span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span>
+                      <button type="button" className="ws-tweak primary" onClick={applyCombineEdit} disabled={combining || busy} title={combineEdit.trim() ? t("Apply your change") : t("Another take of this shot")}>
+                        {combineEdit.trim()
+                          ? <><span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span></>
+                          : <><span className="ws-tweak-ico" aria-hidden="true">↻</span> {t("Retry")} <span className="ws-tweak-c">{combineCost}</span></>}
                       </button>
                     </div>
                     <div className="ws-combine-chips">
-                      {["put them in an office", "at the beach", "in a cozy kitchen", "a bright studio"].map((s) => (
+                      {["green shirt", "a smart blazer", "put them in an office", "at the beach", "in a cozy kitchen"].map((s) => (
                         <button type="button" key={s} className="ws-combine-chip" onClick={() => setCombineEdit(s)} disabled={combining || busy}>{t(s)}</button>
                       ))}
                     </div>
+                    <p className="ws-combine-hint">{t("Describe a change to edit the shot — or leave it blank and hit Retry for another take.")}</p>
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
                 ) : (
@@ -3945,6 +3946,7 @@ const WS_STYLE = `
 .ws-combine-chip{border:1px dashed var(--line,#CFC9B6);background:transparent;color:var(--ink2,#5b6b61);font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer}
 .ws-combine-chip:hover:not([disabled]){background:#fff;color:var(--ink,#14201A);border-style:solid}
 .ws-combine-chip[disabled]{opacity:.5;cursor:not-allowed}
+.ws-combine-hint{margin:7px 0 0;font-size:11.5px;color:var(--ink2,#5b6b61);line-height:1.45}
 /* Tap-to-enlarge lightbox. */
 .ws-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(8,12,10,.86);display:grid;place-items:center;padding:24px;cursor:zoom-out;animation:ws-lb-in .15s ease}
 @keyframes ws-lb-in{from{opacity:0}to{opacity:1}}
