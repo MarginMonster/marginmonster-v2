@@ -721,9 +721,12 @@ const WA_CSS = `
  * scrim's own padding, so the panel overhung the right edge and took the close
  * button and the next arrow off-screen with it. */
 .wa-viewer{position:relative;background:var(--card,#FDFCF7);border-radius:18px;width:min(920px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(10,14,12,.45);}
-/* Vertical media (9:16 videos) gets a PORTRAIT viewer so the clip fills the
-   frame instead of floating in a wide landscape box with huge black pillarbars. */
-.wa-viewer.vmedia{width:min(430px,96vw);}
+/* Vertical media (9:16 videos): the viewer HUGS the clip. Its width is derived
+   from a 9:16 clip sized to the viewport height, so the video fills the panel
+   edge-to-edge with no white side gutters (the old fixed 430px was wider than a
+   height-capped portrait clip, leaving the arrows marooned in blank bands). */
+.wa-viewer.vmedia{width:min(calc(64vh * 9 / 16), 94vw);}
+.wa-viewer.vmedia .wa-vfull{width:100%;height:auto;max-height:66vh;object-fit:contain;}
 .wa-vx{position:absolute;top:10px;right:10px;z-index:4;width:34px;height:34px;border-radius:50%;border:0;background:rgba(20,32,26,.75);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;}
 .wa-vnav{position:absolute;top:42%;z-index:4;width:40px;height:40px;border-radius:50%;border:0;background:rgba(20,32,26,.72);color:#E7C879;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding-bottom:3px;}
 .wa-vnav:hover{background:rgba(20,32,26,.9)}

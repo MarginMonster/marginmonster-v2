@@ -136,13 +136,15 @@ export function ErrorBoundary() {
     ? "That page isn’t here"
     : routeError?.status === 403
       ? "You don’t have access to that"
-      : "Something went wrong on our end";
-  // A deploy swaps the server out from under an in-flight request, which is
-  // by far the most common way a merchant lands here. Reloading genuinely
-  // fixes it, so say so rather than making them guess.
+      : "EasyMode just updated";
+  // A deploy swaps the server out from under an in-flight request, which is by
+  // far the most common way a merchant lands here — so frame it as the update it
+  // almost always is, not a crash. Reloading genuinely fixes it.
   const body = notFound
     ? "The link may be old, or the page may have moved."
-    : "This one’s on us. Reloading usually clears it — if we were mid-update, the page you wanted is already back.";
+    : routeError?.status === 403
+      ? "You don’t have permission to view this page."
+      : "We pushed a quick update while you were here — give it a reload and you’ll pick right back up where you left off. Nothing’s lost on your end.";
   return (
     <html lang="en">
       <head>
@@ -155,6 +157,14 @@ export function ErrorBoundary() {
             literal text — the tab read “That page isn’t here<!-- --> ·
             EasyMode”. */}
         <title>{`${title} · EasyMode`}</title>
+        {/* This page renders outside the shell, so it has none of the shell CSS —
+            give the reload button the EasyMode treatment (gold GStyle rosette
+            peeking from the right) here. */}
+        <style dangerouslySetInnerHTML={{ __html:
+          ".em-reload{position:relative;overflow:hidden;isolation:isolate;padding:11px 22px;border-radius:12px;border:none;background:#0C7A46;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit}" +
+          ".em-reload::after{content:'';position:absolute;z-index:-1;top:50%;right:-10px;width:48px;height:48px;transform:translateY(-50%);background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.32;pointer-events:none}" +
+          ".em-reload:hover{filter:brightness(1.07)}"
+        }} />
         <Links />
       </head>
       <body style={{ margin: 0, background: "#F4F1E6", color: "#14201A", fontFamily: "Inter, -apple-system, sans-serif" }}>
@@ -165,11 +175,7 @@ export function ErrorBoundary() {
             <p style={{ fontSize: 14, lineHeight: 1.55, color: "#4A554E", margin: "0 0 22px" }}>{body}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               {!notFound && (
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  style={{ padding: "11px 20px", borderRadius: 12, border: "none", background: "#0C7A46", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
-                >
+                <button type="button" className="em-reload" onClick={() => window.location.reload()}>
                   Reload the page
                 </button>
               )}
