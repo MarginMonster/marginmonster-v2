@@ -1287,7 +1287,7 @@ export default function WebArchive() {
           the Helpurr FAB (z-index:10600) still sits above the scrim. */}
       {viewer && mounted ? createPortal(
         <div className="wa-scrim" onClick={() => setViewer(null)}>
-          <div className={`wa-viewer${viewer.isVideo ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
+          <div className={`wa-viewer${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
             <div className={`wa-vstage${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " media" : ""}`}>
               {shelf.length > 1 && vIdx >= 0 && (
