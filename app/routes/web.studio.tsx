@@ -2695,7 +2695,7 @@ export default function WebStudio() {
                 {combineUrl ? (
                   <>
                     <div className="ws-combine-foot">
-                      <span className="ws-combine-ok">✓ {t("Locked in — generate your video below.")}</span>
+                      <span className="ws-combine-ok">✓ {t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.")}</span>
                     </div>
                     {/* ONE hero. Describe a change (outfit, setting, anything) and
                         hit Edit to apply it; leave the box empty and the same button
@@ -2719,12 +2719,6 @@ export default function WebStudio() {
                           : <><span className="ws-tweak-ico" aria-hidden="true">↻</span> {t("Retry")} <span className="ws-tweak-c">{combineCost}</span></>}
                       </button>
                     </div>
-                    <div className="ws-combine-chips">
-                      {["green shirt", "a smart blazer", "put them in an office", "at the beach", "in a cozy kitchen"].map((s) => (
-                        <button type="button" key={s} className="ws-combine-chip" onClick={() => setCombineEdit(s)} disabled={combining || busy}>{t(s)}</button>
-                      ))}
-                    </div>
-                    <p className="ws-combine-hint">{t("Describe a change to edit the shot — or leave it blank and hit Retry for another take.")}</p>
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
                 ) : (
