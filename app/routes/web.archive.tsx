@@ -1030,9 +1030,16 @@ export default function WebArchive() {
   useEffect(() => { if (draftText != null) { setCaption(draftText); setDraftPending(false); } }, [draftText]);
   useEffect(() => { setCapOpen(false); setCaption(""); setDraftPending(false); setCopied(false); }, [viewer?.id]);
   useEffect(() => { if (posted) setCapOpen(false); }, [posted]);
-  // Close the viewer once a piece is deleted or kept, and when a remix starts
-  // (so the fresh "cooking…" tile is visible under the auto-revalidator).
-  useEffect(() => { if (actionData && ("deleted" in actionData || "kept" in actionData || "remixed" in actionData)) setViewer(null); }, [actionData]);
+  // Close the viewer once a piece is deleted, or when a remix starts (so the
+  // fresh "cooking…" tile is visible under the auto-revalidator). KEEP does NOT
+  // close it — the merchant tapped the heart to save the piece they're looking
+  // at, so backing them out is jarring. Instead flip the open viewer to kept in
+  // place (heart fills gold, chip reads Kept, the clears-in countdown drops);
+  // the grid tile behind updates on the revalidation the submit already fires.
+  useEffect(() => {
+    if (actionData && ("deleted" in actionData || "remixed" in actionData)) setViewer(null);
+    else if (actionData && "kept" in actionData) setViewer((v) => (v ? { ...v, status: "APPROVED" } : v));
+  }, [actionData]);
 
   const shelf = assets.filter((a) => A_KIND[a.type] === tab);
   // The true library count for the open tab, so the note under the shelf
