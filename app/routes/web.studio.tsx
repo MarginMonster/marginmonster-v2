@@ -318,7 +318,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId,
     forgingAvatars,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, combine: TOKEN_COST.combine, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless },
+    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, combine: TOKEN_COST.combine, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless, avatarForge: TOKEN_COST.avatarForge },
     // OUTPUT language — the language the generated copy/script/captions are
     // written in (shop.contentLang). Surfaced as a subtle chip by the Make
     // button so a merchant can, e.g., run an English store but make Spanish ads.
@@ -1145,12 +1145,13 @@ function ForgingPresenter({ name, status, startedAt }: { name: string; status: s
   );
 }
 
-function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
+function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCreateOwn }: {
   cast: CastItem[];
   avatarId: string | null;
   setAvatarId: (id: string | null) => void;
   optional?: boolean;
   brandFaceId: string | null;
+  onCreateOwn?: () => void;
 }) {
   const t = useT();
   // Voice preview: one sample at a time. Designed ("true voice") faces get a
@@ -1190,6 +1191,12 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId }: {
       </div>
       {needle && shown.length === 0 && <p className="ws-offernote">{t("No presenter called “{q}”.", { q: q.trim() })}</p>}
       <div className="ws-cast">
+        {onCreateOwn && !needle && (
+          <button type="button" className="ws-face ws-face-create" onClick={onCreateOwn} aria-label={t("Create your own presenter")}>
+            <span className="ws-face-img create"><Ico n="upload" size={23} /></span>
+            <span>{t("Create your own")}</span>
+          </button>
+        )}
         {optional && !needle && (
           <button type="button" className={`ws-face${avatarId === null ? " sel" : ""}`} onClick={() => setAvatarId(null)}>
             <span className="ws-face-img none">✕</span><span>{t("None")}</span>
@@ -1590,6 +1597,9 @@ export default function WebStudio() {
   const [avatarName, setAvatarName] = useState("");
   const [avatarGender, setAvatarGender] = useState("m");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  // "Create your own presenter" — the forge, promoted from a buried Import card
+  // to a first-class modal opened straight from the presenter picker.
+  const [forgeOpen, setForgeOpen] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   // Last-used product memory — offer a one-tap refill next visit.
   const [lastProd, setLastProd] = useState<{ title: string; image: string } | null>(null);
@@ -2496,7 +2506,7 @@ export default function WebStudio() {
               * described idea, not a presenter. */}
             {/* Avatar-video folds the presenter picker into the hub (step 2); it
                 stays here for cartoon/jingle style grids. */}
-            {!casual && !avatarVideoHub && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} />}
+            {!casual && !avatarVideoHub && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />}
             {contentType === "cartoon" && !avatarId && <p className="ws-note">{t("No presenter — the ad goes product-hero in the picked style instead.")}</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
             {showCartoonGrid && (
@@ -2675,7 +2685,7 @@ export default function WebStudio() {
             )}
             {imageMode === "presenter" && (
               <>
-                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} brandFaceId={d.brandFaceId} />
+                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
                 {avatarId && <p className="ws-note">{casual ? t("The character will hold your subject in the shot — add a photo below.") : t("The presenter will hold your product in the shot — add a product photo below.")}</p>}
                 {avatarId && <input type="hidden" name="avatarId" value={avatarId} />}
               </>
@@ -2739,7 +2749,7 @@ export default function WebStudio() {
                 {/* Presenter picker reveal — picking collapses it. */}
                 {hubPick === "presenter" && (
                   <div className="ws-hub-reveal open">
-                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} />
+                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
                   </div>
                 )}
                 {avatarId && avatarId !== d.brandFaceId && (
@@ -2920,7 +2930,7 @@ export default function WebStudio() {
                 the drawer so the hub snaps back to the tiles. */}
             {avatarVideoHub && hubPick === "presenter" && (
               <div className="ws-hub-reveal open">
-                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} />
+                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
               </div>
             )}
             {/* Outfit note + Brand-Face CTA — reads WITH the presenter tile here
@@ -3818,6 +3828,50 @@ export default function WebStudio() {
         </section>
       )}
 
+      {forgeOpen && (
+        <div className="ws-scrim" onClick={() => setForgeOpen(false)}>
+          <div className="ws-forgem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <button type="button" className="ws-forgem-x" onClick={() => setForgeOpen(false)} aria-label={t("Close")}><Ico n="x" size={16} /></button>
+            <div className="ws-forgem-h">
+              <span className="ws-forgem-crest"><Ico n="wand" size={20} /></span>
+              <div>
+                <b>{t("Create your own presenter")}</b>
+                <span>{t("Upload your logo, mascot or spokesperson — we forge them into a presenter with four outfits, ready to star in your videos. Yours alone.")}</span>
+              </div>
+            </div>
+            <input className="wb-in ws-forgem-nm" placeholder={t("Presenter name (e.g. your mascot)")}
+              value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
+            <label className="ws-forgem-up">
+              <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} hidden />
+              <Ico n="upload" size={18} />
+              <span>{avatarFile ? avatarFile.name : t("Upload a photo")}</span>
+            </label>
+            <div className="ws-seg ws-forgem-seg">
+              {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
+                <button type="button" key={g} className={avatarGender === g ? "sel" : ""} onClick={() => setAvatarGender(g)}>{t(label)}</button>
+              ))}
+            </div>
+            {!d.caps.includes("video") && (
+              <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
+            )}
+            {actionData && "avatarError" in actionData && actionData.avatarError
+              ? <p className="ws-forgem-err">{String(actionData.avatarError)}</p> : null}
+            <button type="button" className="wb-btn ws-forgem-go" disabled={busy || !avatarName.trim() || !avatarFile}
+              onClick={() => {
+                const fd = new FormData();
+                fd.set("intent", "forgeAvatar");
+                fd.set("avatarName", avatarName.trim());
+                fd.set("avatarGender", avatarGender);
+                if (avatarFile) fd.set("avatarPhoto", avatarFile);
+                submit(fd, { method: "post", encType: "multipart/form-data" });
+                setForgeOpen(false);
+              }}>
+              <Ico n="wand" size={16} /> {t("Forge my presenter")} · {d.costs.avatarForge} {t("tokens")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showDone && queued && (
         <div className="ws-scrim" onClick={() => setShowDone(false)}>
           <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
@@ -3882,6 +3936,26 @@ const WS_STYLE = `
 .ws-samp.prem{border-color:#E7C879;background:#FFFBEF}
 .ws-face.bf .ws-face-img{border-color:var(--gold);box-shadow:0 0 0 2px rgba(176,133,38,.35)}
 .ws-face.bf>span:last-child{color:var(--gold-deep);font-weight:700}
+/* "Create your own" — the forge promoted to a hero tile at the head of the
+   presenter strip (dashed-green, reads as "add"), opening the forge modal. */
+.ws-face-create{color:var(--green,#0C7A46)}
+.ws-face-create .ws-face-img.create{display:grid;place-items:center;border:2px dashed var(--green,#0C7A46);background:#F3F9F4;color:var(--green,#0C7A46);transition:background .14s}
+.ws-face-create:hover .ws-face-img.create{background:#E6F3EC}
+.ws-face-create>span:last-child{color:var(--green,#0C7A46);font-weight:700}
+/* The forge modal (opened from the picker). Sits in the shared .ws-scrim. */
+.ws-forgem{position:relative;width:min(400px,92vw);background:var(--card,#FDFCF7);border-radius:18px;padding:22px 20px 20px;box-shadow:0 24px 70px rgba(8,12,10,.4);animation:ws-lb-in .16s ease}
+.ws-forgem-x{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:var(--paper,#F4F1E6);color:var(--ink2,#4A554E);cursor:pointer;display:grid;place-items:center;padding:0}
+.ws-forgem-h{display:flex;gap:12px;align-items:flex-start;margin:2px 26px 16px 0}
+.ws-forgem-crest{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:#F3F9F4;color:var(--green,#0C7A46)}
+.ws-forgem-h b{display:block;font-size:15px;color:var(--ink,#14201A)}
+.ws-forgem-h span{display:block;font-size:12.5px;line-height:1.45;color:var(--ink2,#4A554E);margin-top:3px}
+.ws-forgem-nm{width:100%;margin-bottom:10px}
+.ws-forgem-up{display:flex;align-items:center;gap:9px;width:100%;padding:12px 14px;border-radius:12px;border:1.5px dashed var(--green,#0C7A46);background:#F3F9F4;color:var(--green,#0C7A46);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:10px}
+.ws-forgem-up span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-forgem-seg{margin-bottom:12px}
+.ws-forgem-gate{font-size:12px;color:#8a5a12;background:#FDF4E3;border:1px solid #E8D3A6;border-radius:9px;padding:8px 11px;margin:0 0 10px}
+.ws-forgem-err{font-size:12.5px;color:#8C2F2F;background:#FDF4F4;border:1px solid #D9A2A2;border-radius:9px;padding:8px 11px;margin:0 0 10px}
+.ws-forgem-go{display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
 .ws-vscrim{position:fixed;inset:0;z-index:10600;background:rgba(12,18,14,.6);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px}
 .ws-vbox{position:relative;width:min(420px,92vw)}
 .ws-video{width:100%;border-radius:16px;display:block;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.4)}
