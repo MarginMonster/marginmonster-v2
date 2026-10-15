@@ -10,8 +10,10 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { trimToWord } from "./text-trim";
 import { stripPromoTag } from "./ad-claims";
-import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, probeVideoDims, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, download, probeVideoDims, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { parseGateVerdict, outageReason } from "./gate-verdict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { mirrorRender, storageEnabled } from "./object-storage.server";
 import { checkpointUrlAlive } from "./cartoon-ad-pipeline.server";
@@ -270,6 +272,51 @@ import { TOKEN_COST } from "./plan-config";
 // they keep the (honestly-labelled) asset. (Owner decision, 2026-10-04.)
 const ASPECT_REFUND = TOKEN_COST.video;
 
+/** Product-fidelity gate for image-to-video. The seed IS the merchant's real
+ *  product photo, so we can sample a couple of rendered frames and ask a vision
+ *  judge whether the product still matches it — an i2v model can melt a label
+ *  or morph the product as the clip animates, and the still/keyframe gates never
+ *  see that drift. This is the video twin of the image pipeline's product QA
+ *  (image ads solve it by construction; video had no post-render product check
+ *  at all). Fail-OPEN on judge/tooling outage — a paid clip must never die
+ *  because the judge did — with `degraded` meaning "could not judge" so the
+ *  caller skips the (expensive) re-roll. Modelled on commercial's motionGate. */
+async function productMotionGate(clipUrl: string, productPhoto: string): Promise<{ ok: boolean; why: string; degraded?: boolean }> {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pgate-"));
+  try {
+    const clip = path.join(tmp, "c.mp4");
+    await download(clipUrl, clip);
+    const frames: string[] = [];
+    for (const t of ["1.5", "3.5"]) {
+      const f = path.join(tmp, `f${t.replace(".", "_")}.jpg`);
+      try {
+        const r = await runFfmpeg(["-y", "-ss", t, "-i", clip, "-frames:v", "1", "-vf", "scale=512:-2", "-q:v", "6", f]);
+        if (r.status === 0) frames.push(`data:image/jpeg;base64,${fs.readFileSync(f).toString("base64")}`);
+      } catch { /* clip shorter than the sample point — judge what exists */ }
+    }
+    if (!frames.length) return { ok: true, why: "no frames extracted" };
+    const { anthropicVision } = await import("./anthropic.server");
+    const raw = await anthropicVision(
+      [
+        "The LAST image is the merchant's REAL product photo. The earlier image(s) are frames sampled from an AI-generated video of that same product.",
+        "Fail it ONLY if the product in the video frames clearly stopped matching the real one:",
+        "- its shape or proportions morphed into a different object",
+        "- its printed label/text turned to gibberish or got re-lettered",
+        "- its colours or packaging artwork changed materially",
+        "Normal camera motion, angle changes, lighting, reflections and cinematic blur are all FINE — judge the product's IDENTITY, not polish.",
+        'Reply ONLY JSON: {"ok":true|false,"why":"<8 words>"}',
+      ].join("\n"),
+      [...frames, productPhoto]
+    );
+    const v = parseGateVerdict(raw, "ok", "why", 120);
+    return { ok: v.ok, why: v.reason || (v.degraded ? "judge reply unusable" : ""), degraded: v.degraded };
+  } catch (e) {
+    return { ok: false, degraded: true, why: outageReason(e, 80) };
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}
+
 export async function generateVideoAd(params: GenerateVideoParams): Promise<string> {
   const {
     shopId,
@@ -477,6 +524,41 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     }
   }
   if (!videoUrl) throw new Error("Replicate video timed out");
+
+  // PRODUCT-FIDELITY GATE (i2v product videos only). seedImage is the real
+  // product photo we animated FROM, so compare a couple of rendered frames back
+  // to it and re-roll ONCE on a clear product drift (a melted label, a morphed
+  // shape) that the still/keyframe gates can't see. Runs BEFORE the surcharge
+  // reconcile so a re-roll's engine is the one reconciled, and BEFORE persist so
+  // we store the kept take. Entirely fail-open: any gate or render error ships
+  // the clip we already have. The merchant was charged upfront, so a re-roll is
+  // COGS-only (never a double charge); the new prediction id is checkpointed so
+  // a restart re-attaches instead of re-buying. A restart mid-gate could cost
+  // one extra re-roll's COGS — bounded to one per execution, fail-open, rare.
+  // Skipped with no seed (text-to-video / service mode have nothing to match).
+  if (seedImage) {
+    try {
+      const fid = await productMotionGate(videoUrl, seedImage);
+      if (!fid.ok && !fid.degraded) {
+        console.log(`[video] product-fidelity gate failed (${fid.why}) — re-rolling once on ${ranModel || "the engine"}`);
+        try {
+          const rr = await animateCreate(params.videoEngine, { startImage: seedImage, prompt });
+          await ckpt({ ckVideoPredId: rr.id });
+          ranModel = rr.model;
+          videoUrl = await animatePoll(rr.id, VIDEO_POLL_MS, "video(fidelity-reroll)");
+        } catch (e) {
+          // Keep the first take: it is paid for and playable, and the gate is a
+          // subjective vision call. Letting the re-roll's error escape would
+          // throw away a good-enough clip the merchant already owns.
+          console.error(`[video] fidelity re-roll failed — shipping the first take: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+        }
+      } else if (fid.degraded) {
+        console.error(`[video] product-fidelity gate could not judge (${fid.why}) — shipping UNVERIFIED`);
+      }
+    } catch (e) {
+      console.error(`[video] product-fidelity gate errored — shipping as-is: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+    }
+  }
 
   // PERSIST THE BYTES. The provider hands back a CDN URL that expires — fal and
   // Replicate both reap render output. Storing that URL means a merchant's
