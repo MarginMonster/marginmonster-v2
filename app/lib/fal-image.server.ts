@@ -165,7 +165,12 @@ export async function submitCompose(
     : plan?.gripDetail || plan?.sizeAnchor
       ? `Held ${plan?.gripDetail || "naturally"}${plan?.sizeAnchor ? ` — ${plan.sizeAnchor}` : ""}. Product facing the camera and clearly visible, below the chin so their face stays visible. `
       : `Product facing the camera and clearly visible, held in front of them at chest height and below the chin so their face stays visible. `;
-  const integrity = `Keep the ${productTitle || "product"} exactly as it is in the second image — same shape, colours, materials, logos and printed text, at its true real-world size against the person, never enlarged for emphasis${mode === "wear" ? ", fitting them the way the real garment would" : ": a hand-sized item stays small in the hand"}.${sizing}`;
+  // DESIGN is locked to the reference; LIGHTING is not. "Exactly as it is in the
+  // second image" made the composer carry over the pack-shot's own flat, white-
+  // background studio lighting, so the product read as a sticker pasted onto the
+  // scene. Keep the identity (shape, colours, logos, text) but RELIGHT it into
+  // this room — the relight clause below spells out how.
+  const integrity = `Keep the ${productTitle || "product"}'s DESIGN identical to the second image — the same shape, proportions, colours, materials, logos and printed text, kept readable and uncounterfeited — but do NOT copy the reference photo's own lighting or background: relight it to sit in THIS scene (see below) so it never looks like a cut-out pasted on top. Keep it at its true real-world size against the person, never enlarged for emphasis${mode === "wear" ? ", fitting them the way the real garment would" : ": a hand-sized item stays small in the hand"}.${sizing}`;
   // RELIGHT, don't paste. The reference is a white-background pack shot lit
   // flat and evenly by a studio. "Keep it exactly as it is" faithfully
   // preserves THAT lighting — so a flat, tack-sharp, shadowless object lands
