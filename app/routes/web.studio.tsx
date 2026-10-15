@@ -1372,6 +1372,10 @@ export default function WebStudio() {
   const [combining, setCombining] = useState(false);
   const [combineErr, setCombineErr] = useState<string | null>(null);
   const [combineJobId, setCombineJobId] = useState<string | null>(null);
+  // One-tap "EasyMode, make it": when set, the combine's completion auto-fires the
+  // video generate (reusing the tested Generate button), so the whole thing is a
+  // single tap. Cleared when the generate fires or the combine fails.
+  const [expressPending, setExpressPending] = useState(false);
   const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
   const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
   const combineStartRef = useRef(0);
@@ -1960,6 +1964,37 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFetcher.data, combining, combineJobId]);
+  // ---- One-tap "EasyMode, make it" ----
+  // Fire the whole thing from one tap: if there's already an approved frame, go
+  // straight to the video; otherwise run the combine and let the effect below
+  // fire the video the instant the frame lands. The video itself reuses the
+  // tested Generate button (makeBtnRef.click()), which reads the composedFrameUrl
+  // we just produced — no new money/submit path.
+  const doExpress = () => {
+    if (combining || busy) return;
+    if (combineUrl) { makeBtnRef.current?.click(); return; }
+    setExpressPending(true);
+    doCombine();
+  };
+  useEffect(() => {
+    if (expressPending && combineUrl) {
+      setExpressPending(false);
+      // The frame committed its composedFrameUrl this render, so fire the video —
+      // but ONLY if the Generate button is actually enabled. Clicking a disabled
+      // button is a silent DOM no-op, which would strand the user charged for the
+      // combine with no video and no reason why. (The express CTA is now gated on
+      // the full-chain cost, so this is a belt-and-braces net for a balance that
+      // changed mid-combine, a cleared name, etc.)
+      const btn = makeBtnRef.current;
+      if (btn && !btn.disabled) btn.click();
+      else setCombineErr(t("Your frame's ready and saved to your gallery — but we couldn't start the video automatically. Check the details below, then tap Generate."));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expressPending, combineUrl]);
+  useEffect(() => {
+    // Combine failed (and refunded) — abort the chain; its own message stands.
+    if (expressPending && combineErr) setExpressPending(false);
+  }, [expressPending, combineErr]);
   const avatarThumb = d.cast.find((c) => c.id === avatarId)?.img || "";
   const productThumb = uploadPreview || imageUrl || "";
   // A marketing product is really present only when the source whose input is
@@ -2179,6 +2214,13 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
+  // One-tap express must afford the WHOLE chain (combine + video) at tap time —
+  // not just the cheap combine. Otherwise it charges the combine, then the
+  // Generate button (disabled by its own wallet gate once the balance drops)
+  // no-ops and the video never runs, leaving the user charged with nothing to
+  // show. This full-chain shortfall gates the express CTA and drives its label.
+  const expressChainCost = (combineUrl ? 0 : combineCost) + cost * burst;
+  const expressShort = d.hasPlan ? Math.max(0, expressChainCost - d.tokens) : 0;
   // Casual video is describe-first (no name field): it needs a description, not
   // a productTitle — same as create/music/faceless.
   const casualVideo = casual && tab === "video";
@@ -2339,7 +2381,9 @@ export default function WebStudio() {
         {tab === "video" && contentType && (
           <>
             <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>
-            <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : avatarVideoHub ? t("how it's shot") : t("who stars in it, and how it's shot")} />
+            {/* Avatar video folds step 1 away — its only control (Commercial look)
+                moves into the scene hub, which then becomes step 1. */}
+            {!avatarVideoHub && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
@@ -2390,7 +2434,7 @@ export default function WebStudio() {
             {contentType === "unboxing" && <p className="ws-note"><Ico n="box" /> <b>{t("Unboxing")}</b>{t(" — the box opens on camera: your presenter lifts the product out, reacts, and shows it off up close.")}</p>}
             {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>{t("Satisfying Close-Up")}</b>{t(" — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.")}</p>}
             {avatarId && needsPresenterField(contentType) && <input type="hidden" name="avatarId" value={avatarId} />}
-            {!casual && (contentType === "avatar" || contentType === "highlight") && (
+            {!casual && !avatarVideoHub && (contentType === "avatar" || contentType === "highlight") && (
               <label className="ws-commercial">
                 <input type="checkbox" name="commercial" value="1" checked={commercial}
                   onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
@@ -2563,7 +2607,7 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
-            <StepHead n={2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? t("your presenter, holding your product") : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
+            <StepHead n={avatarVideoHub ? 1 : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? t("your presenter, holding your product") : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
             {/* ======================================================================
                 AVATAR-VIDEO COMBINE PANEL — ONE immersive flow (owner-requested).
@@ -2653,14 +2697,30 @@ export default function WebStudio() {
                   )}
                 </div>
                 {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
-                {combineUrl ? (
+                {combineUrl && (
                   <div className="ws-combine-foot">
                     <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
                     <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
                   </div>
-                ) : (
-                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !hasMarketingProduct}>
-                    {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
+                )}
+                {/* PRIMARY one-tap: runs the combine (if not done) AND the video,
+                    with EasyMode filling in the direction. Reuses the tested
+                    combine + Generate paths (makeBtnRef.click()) — no new money
+                    path. Needs a product name (auto-filled for store picks) since
+                    the video script uses it. */}
+                <button type="button" className="wb-btn ws-express-btn" onClick={doExpress}
+                  disabled={combining || busy || expressPending || !hasMarketingProduct || !productTitle.trim() || !d.hasPlan || expressShort > 0}
+                  title={!productTitle.trim() ? t("Name your product first") : undefined}>
+                  {(expressPending || combining)
+                    ? <span className="ws-combine-btntxt">{t("EasyMode is on it…")}</span>
+                    : expressShort > 0
+                      ? <span className="ws-combine-btntxt">{t("Needs {n} more tokens for the full video", { n: expressShort.toLocaleString("en-US") })}</span>
+                      : <span className="ws-combine-btntxt"><Ico n="sparkle" size={15} /> {combineUrl ? t("Make my video — {n} tokens", { n: cost * burst }) : t("Make it for me — {n} tokens", { n: combineCost + cost * burst })}</span>}
+                </button>
+                {/* SECONDARY: combine first to eyeball the frame before the video. */}
+                {!combineUrl && (
+                  <button type="button" className="ws-combine-preview" onClick={doCombine} disabled={combining || busy || !hasMarketingProduct}>
+                    {combining ? t("Combining…") : t("…or Combine first to preview the frame ({n} tokens)", { n: combineCost })}
                   </button>
                 )}
                 {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
@@ -2672,6 +2732,16 @@ export default function WebStudio() {
                         ? t("Pick a product from your store so the ad features it.")
                         : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product.")}</>}
                   </p>
+                )}
+                {/* Commercial look — folded in from the old step 1 (big-budget
+                    studio-spot treatment), so the hub is the whole "how it's shot"
+                    decision and step 1 can disappear. */}
+                {contentType === "avatar" && (
+                  <label className="ws-commercial ws-scene-look">
+                    <input type="checkbox" name="commercial" value="1" checked={commercial}
+                      onChange={(e) => { setCommercial(e.target.checked); if (e.target.checked) setBreakout(false); }} />
+                    <span><b><Ico n="video" /> {t("Commercial look")}</b>{t(" — big-budget studio spot: color-block set matched to your product, hero-lit")}</span>
+                  </label>
                 )}
                 {/* Promoting a service instead? Switching turns the hub off. */}
                 {showService && (
@@ -3027,7 +3097,7 @@ export default function WebStudio() {
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
             {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
-              <StepHead n={3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
+              <StepHead n={avatarVideoHub ? 2 : 3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
             )}
             {/* Product NAME — for an avatar video it lives HERE (with the video),
                 because it drives the SCRIPT, not the combine (owner-noted). The
@@ -3799,6 +3869,7 @@ const WS_STYLE = `
 .ws-combine.ws-scene>.ws-lbl{margin-top:12px}
 .ws-combine.ws-scene .ws-combine-stage{margin-top:12px}
 .ws-scene-svc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF)}
+.ws-scene-look{margin-top:12px}
 /* Spinning rosettes — the brand watermark, strategically placed: one drifting in
    the panel's top-right corner, one spinning behind the empty output stage so the
    "your presenter holding your product" placeholder has life. Reuses wsrosespin. */
@@ -3846,6 +3917,15 @@ const WS_STYLE = `
 .ws-combine-scan{position:absolute;left:0;right:0;height:30%;top:-30%;background:linear-gradient(180deg,transparent,rgba(18,168,94,.45),transparent);animation:ws-comb-scan 1.6s linear infinite;pointer-events:none}
 @keyframes ws-comb-scan{0%{top:-30%}100%{top:105%}}
 .ws-combine-btn{width:100%;margin-top:10px;position:relative;overflow:hidden}
+/* One-tap express CTA — the gold "EasyMode magic" treatment to set it apart from
+   the green Combine. More specific than .wb-btn so the gold wins. */
+.ws-combine .ws-express-btn{width:100%;margin-top:10px;font-size:15px;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--gold,#B08526),var(--gold-deep,#7E5E13));box-shadow:0 6px 16px -6px rgba(126,94,19,.5)}
+.ws-express-btn .ws-combine-btntxt{display:inline-flex;align-items:center;gap:7px;justify-content:center}
+.ws-express-btn svg{color:#fff}
+.ws-express-btn:disabled{opacity:.55}
+.ws-combine-preview{display:block;width:100%;margin-top:9px;background:none;border:0;color:var(--ink2,#4A554E);font-size:12px;font-weight:600;cursor:pointer;padding:5px;text-decoration:underline;text-underline-offset:2px}
+.ws-combine-preview:hover:not(:disabled){color:var(--ink,#14201A)}
+.ws-combine-preview:disabled{opacity:.55;cursor:default;text-decoration:none}
 .ws-combine-btntxt{position:relative;z-index:1}
 .ws-combine.combining .ws-combine-btn::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.4) 50%,transparent 75%);transform:translateX(-100%);animation:ws-comb-shim 1.3s linear infinite}
 @keyframes ws-comb-shim{100%{transform:translateX(100%)}}
