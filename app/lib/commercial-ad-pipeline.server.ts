@@ -16,14 +16,15 @@
  *   voice      — minimax TTS (cartoon's path, commercial-cast voice)
  *   assembly   — ffmpeg: normalize, concat, letterbox, grade, VO, packshot
  *
- * COGS (verified 2026-10-10): 5 keyframes (nano-banana-pro @2K, ~$0.15 ea =
- * ~$0.75) + 5 clips (Kling 2.6 Pro, 5s silent, ~$0.35 ea = ~$1.75) + ~6 TTS
- * + 5 vision gates ≈ ~$2.75 per spot. The motion gate re-rolls a FAILING beat
- * once (up to 10 clips total) — worst case ~$4.55. Pinned to the free default
- * engine (no premium surcharge can multiply it), so vs the flat 150-token
- * charge (~$6.50 Studio) it stays profit-positive even worst-case (~30%). The
- * clips are REQUESTED at 5s (animateInputFor duration:5), not 10s — the ":349"
- * trim comment describes an older model and does NOT mean we over-buy footage.
+ * COGS (re-verified 2026-10-15): 5 keyframes (nano-banana-pro @2K, ~$0.15 ea =
+ * ~$0.75) + 5 clips (Kling 2.6 Pro, 5s silent, $0.07/s = ~$0.35 ea = ~$1.75) +
+ * ~6 TTS + 5 vision gates ≈ ~$2.75 per spot. The motion gate re-rolls a FAILING
+ * beat once (up to 10 clips total) — worst case ~$4.55. EXPLICITLY pinned to
+ * Kling 2.6 Pro (motionEngine below), NOT the Kling-3-Pro i2v default: at 3 Pro
+ * ($0.112/s) the 10-clip worst case runs ~$6.65 vs the flat 150-token (~$6.45)
+ * charge = underwater. On 2.6 it stays profit-positive even worst-case (~30%).
+ * The clips are REQUESTED at 5s (animateInputFor duration:5), not 10s — the
+ * ":349" trim comment describes an older model and does NOT mean we over-buy.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -756,14 +757,22 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     // the wrong beat.
     // Commercial is capped to the DEFAULT animator: one clip per beat (up to 5)
     // for a single flat charge, so a premium per-clip engine loses $7-24 a spot
-    // (plan-config.ts econ note). Render every beat on the default engine
-    // regardless of the picker — defense-in-depth behind the route guards that
-    // already force engine "auto" for Commercial. reconcileEngineSurcharge below
-    // still runs against params.videoEngine, so any surcharge a caller DID
-    // charge is refunded by the existing machinery. undefined also disables
-    // renderMotionClip's safety-filter fallback, which only existed to escape a
-    // premium engine's content filter.
-    const motionEngine: string | undefined = undefined;
+    // (plan-config.ts econ note). Render every beat on Kling 2.6 Pro regardless
+    // of the picker — defense-in-depth behind the route guards that already
+    // force engine "auto" for Commercial. reconcileEngineSurcharge below still
+    // runs against params.videoEngine, so any surcharge a caller DID charge is
+    // refunded by the existing machinery.
+    //
+    // PIN 2.6 (not the Kling-3-Pro i2v default) on purpose: a spot is up to 5
+    // clips (10 with re-rolls), and at 3 Pro's $0.112/s that worst case runs
+    // ~$6.65 COGS vs the flat 150-token (~$6.45) charge = underwater, breaking
+    // the >=20% floor. 2.6 Pro ($0.07/s, ~$0.35/5s clip) stays ~30% positive
+    // even all-beats-re-rolled, and is the proven commercial engine. Single-clip
+    // paths (Product Highlight) still ride the 3 Pro default (one clip is
+    // margin-trivial). kling26 is surcharge 0 so reconcileEngineSurcharge sees
+    // no delta; the E005 safety-filter escape in renderMotionClip re-enables
+    // under a named engine, retrying a content-flagged beat once on the default.
+    const motionEngine: string | undefined = "kling26";
     const prior = clipUrls.slice();
     const slots: (string | null)[] = new Array(plan.beats.length - prior.length).fill(null);
     await Promise.all(

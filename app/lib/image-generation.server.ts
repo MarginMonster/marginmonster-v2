@@ -3223,9 +3223,12 @@ async function formatCopy(
 
     // These formats' required fields ARE the factual claim — a hero number
     // (stat / statgrid), the ingredient list (ingredients), the kit contents
-    // (bundle). With no merchant description to ground them the model can only
-    // fabricate, so bail to the scene ladder, exactly like price/math above.
-    if (!productDetails && ["stat", "statgrid", "ingredients", "bundle"].includes(formatKey)) return null;
+    // (bundle) or the in-box items (unbox). With no merchant description to
+    // ground them the model can only fabricate, so bail to the scene ladder,
+    // exactly like price/math above. (unbox is the same included-item claim
+    // class as bundle/ingredients — it was missing this gate, so "what's in the
+    // box" could be invented on an undescribed product; now consistent.)
+    if (!productDetails && ["stat", "statgrid", "ingredients", "bundle", "unbox"].includes(formatKey)) return null;
     // Number Flex / Spec Sheet are pointless without a real number — if the model
     // could not surface one it wrote a word, so don't ship a fabricated hero.
     if (typeof out.stat === "string" && !/\d/.test(out.stat)) return null;
