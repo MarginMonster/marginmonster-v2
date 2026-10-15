@@ -1598,8 +1598,15 @@ export default function WebStudio() {
   const [avatarGender, setAvatarGender] = useState("m");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   // "Create your own presenter" — the forge, promoted from a buried Import card
-  // to a first-class modal opened straight from the presenter picker.
+  // to a first-class modal opened straight from the presenter picker. A
+  // dedicated fetcher (not the global submit) keeps the forge's own
+  // submitting/queued/error state scoped, so the modal can show a spinner then
+  // a confirmation instead of silently closing (the merchant hit Forge and saw
+  // nothing). `forging` flips the modal from the form to the progress view;
+  // reset on close so reopening is a fresh form.
   const [forgeOpen, setForgeOpen] = useState(false);
+  const [forging, setForging] = useState(false);
+  const forgeFetcher = useFetcher<{ avatarQueued?: string; avatarError?: string }>();
   const [urlInput, setUrlInput] = useState("");
   // Last-used product memory — offer a one-tap refill next visit.
   const [lastProd, setLastProd] = useState<{ title: string; image: string } | null>(null);
@@ -2364,7 +2371,14 @@ export default function WebStudio() {
         ))}
       </div>
 
-      <Form ref={formRef} method="post" encType="multipart/form-data" className="wb-card ws-card" onSubmit={onFormSubmit}>
+      <Form ref={formRef} method="post" encType="multipart/form-data" className="wb-card ws-card" onSubmit={onFormSubmit}
+        onKeyDown={(e) => {
+          // Enter in a single-line field must NOT submit the form — that fired a
+          // paid generation from the product-name box on mobile. Only the
+          // Generate button generates. Textareas (direction/describe) keep Enter
+          // for newlines; this guard only catches <input> elements.
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
+        }}>
         {/* ---- IMPORT: the setup tab. Bring the whole store in, and forge
              a presenter from your own logo or mascot. Both are queued jobs,
              so this tab is about kicking them off and watching them land. ---- */}
@@ -3829,45 +3843,69 @@ export default function WebStudio() {
       )}
 
       {forgeOpen && (
-        <div className="ws-scrim" onClick={() => setForgeOpen(false)}>
+        <div className="ws-scrim" onClick={() => { setForgeOpen(false); setForging(false); }}>
           <div className="ws-forgem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <button type="button" className="ws-forgem-x" onClick={() => setForgeOpen(false)} aria-label={t("Close")}><Ico n="x" size={16} /></button>
-            <div className="ws-forgem-h">
-              <span className="ws-forgem-crest"><Ico n="wand" size={20} /></span>
-              <div>
-                <b>{t("Create your own presenter")}</b>
-                <span>{t("Upload your logo, mascot or spokesperson — we forge them into a presenter with four outfits, ready to star in your videos. Yours alone.")}</span>
-              </div>
-            </div>
-            <input className="wb-in ws-forgem-nm" placeholder={t("Presenter name (e.g. your mascot)")}
-              value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
-            <label className="ws-forgem-up">
-              <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} hidden />
-              <Ico n="upload" size={18} />
-              <span>{avatarFile ? avatarFile.name : t("Upload a photo")}</span>
-            </label>
-            <div className="ws-seg ws-forgem-seg">
-              {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
-                <button type="button" key={g} className={avatarGender === g ? "sel" : ""} onClick={() => setAvatarGender(g)}>{t(label)}</button>
-              ))}
-            </div>
-            {!d.caps.includes("video") && (
-              <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
+            <button type="button" className="ws-forgem-x" onClick={() => { setForgeOpen(false); setForging(false); }} aria-label={t("Close")}><Ico n="x" size={16} /></button>
+            {forging ? (
+              forgeFetcher.data?.avatarError ? (
+                <div className="ws-forgem-done">
+                  <span className="ws-forgem-bad"><Ico n="warning" size={26} /></span>
+                  <b>{t("Couldn't start the forge")}</b>
+                  <p>{String(forgeFetcher.data.avatarError)}</p>
+                  <button type="button" className="wb-btn ws-forgem-go" onClick={() => setForging(false)}>{t("Try again")}</button>
+                </div>
+              ) : forgeFetcher.data?.avatarQueued && forgeFetcher.state === "idle" ? (
+                <div className="ws-forgem-done">
+                  <span className="ws-forgem-check"><Ico n="check" size={30} /></span>
+                  <b>{t("{name} is on the way!", { name: String(forgeFetcher.data.avatarQueued) })}</b>
+                  <p>{t("We're forging four outfits — about a minute. Your new presenter appears in your presenter list when it's ready; keep creating in the meantime.")}</p>
+                  <button type="button" className="wb-btn ws-forgem-go" onClick={() => { setForgeOpen(false); setForging(false); setAvatarName(""); setAvatarFile(null); }}>{t("Got it")}</button>
+                </div>
+              ) : (
+                <div className="ws-forgem-done">
+                  <span className="ws-forge-spin ws-forgem-spin" aria-hidden="true" />
+                  <b>{t("Forging {name}…", { name: avatarName.trim() || t("your presenter") })}</b>
+                  <p>{t("Hang tight — setting up your presenter.")}</p>
+                </div>
+              )
+            ) : (
+              <>
+                <div className="ws-forgem-h">
+                  <span className="ws-forgem-crest"><Ico n="wand" size={20} /></span>
+                  <div>
+                    <b>{t("Create your own presenter")}</b>
+                    <span>{t("Upload your logo, mascot or spokesperson — we forge them into a presenter with four outfits, ready to star in your videos. Yours alone.")}</span>
+                  </div>
+                </div>
+                <input className="wb-in ws-forgem-nm" placeholder={t("Presenter name (e.g. your mascot)")}
+                  value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
+                <label className="ws-forgem-up">
+                  <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} hidden />
+                  <Ico n="upload" size={18} />
+                  <span>{avatarFile ? avatarFile.name : t("Upload a photo")}</span>
+                </label>
+                <div className="ws-seg ws-forgem-seg">
+                  {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
+                    <button type="button" key={g} className={avatarGender === g ? "sel" : ""} onClick={() => setAvatarGender(g)}>{t(label)}</button>
+                  ))}
+                </div>
+                {!d.caps.includes("video") && (
+                  <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
+                )}
+                <button type="button" className="wb-btn ws-forgem-go" disabled={forgeFetcher.state !== "idle" || !avatarName.trim() || !avatarFile}
+                  onClick={() => {
+                    const fd = new FormData();
+                    fd.set("intent", "forgeAvatar");
+                    fd.set("avatarName", avatarName.trim());
+                    fd.set("avatarGender", avatarGender);
+                    if (avatarFile) fd.set("avatarPhoto", avatarFile);
+                    forgeFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+                    setForging(true);
+                  }}>
+                  <Ico n="wand" size={16} /> {t("Forge my presenter")} · {d.costs.avatarForge} {t("tokens")}
+                </button>
+              </>
             )}
-            {actionData && "avatarError" in actionData && actionData.avatarError
-              ? <p className="ws-forgem-err">{String(actionData.avatarError)}</p> : null}
-            <button type="button" className="wb-btn ws-forgem-go" disabled={busy || !avatarName.trim() || !avatarFile}
-              onClick={() => {
-                const fd = new FormData();
-                fd.set("intent", "forgeAvatar");
-                fd.set("avatarName", avatarName.trim());
-                fd.set("avatarGender", avatarGender);
-                if (avatarFile) fd.set("avatarPhoto", avatarFile);
-                submit(fd, { method: "post", encType: "multipart/form-data" });
-                setForgeOpen(false);
-              }}>
-              <Ico n="wand" size={16} /> {t("Forge my presenter")} · {d.costs.avatarForge} {t("tokens")}
-            </button>
           </div>
         </div>
       )}
@@ -3956,6 +3994,15 @@ const WS_STYLE = `
 .ws-forgem-gate{font-size:12px;color:#8a5a12;background:#FDF4E3;border:1px solid #E8D3A6;border-radius:9px;padding:8px 11px;margin:0 0 10px}
 .ws-forgem-err{font-size:12.5px;color:#8C2F2F;background:#FDF4F4;border:1px solid #D9A2A2;border-radius:9px;padding:8px 11px;margin:0 0 10px}
 .ws-forgem-go{display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
+/* Forge progress view: spinner → confirmation (or error), so Forge never
+   silently closes with no feedback. */
+.ws-forgem-done{display:flex;flex-direction:column;align-items:center;text-align:center;gap:11px;padding:16px 6px 6px}
+.ws-forgem-done b{font-size:16px;color:var(--ink,#14201A)}
+.ws-forgem-done p{font-size:12.5px;line-height:1.5;color:var(--ink2,#4A554E);margin:0 2px}
+.ws-forgem-done .ws-forgem-go{margin-top:5px}
+.ws-forgem-spin{width:30px;height:30px;border-width:3px;margin:6px auto 2px}
+.ws-forgem-check{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#E9F5EE;color:var(--green,#0C7A46)}
+.ws-forgem-bad{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#FDF4F4;color:#8C2F2F}
 .ws-vscrim{position:fixed;inset:0;z-index:10600;background:rgba(12,18,14,.6);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px}
 .ws-vbox{position:relative;width:min(420px,92vw)}
 .ws-video{width:100%;border-radius:16px;display:block;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.4)}

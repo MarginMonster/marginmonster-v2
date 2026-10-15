@@ -927,7 +927,14 @@ const WA_CSS = `
   .wa-scrim{padding:10px;}
   .wa-viewer{max-height:95vh;border-radius:14px;}
   .wa-read{padding:18px;max-height:56vh;}
-  .wa-vfull{max-height:52vh;}
+  /* The clip is HEIGHT-capped so a tall portrait video can never spill past the
+     viewport top (it was: the base ".vmedia .wa-vfull{74vh}" out-specifies a
+     bare ".wa-vfull", so the phone never got the shorter cap and the 74vh clip
+     overflowed its flex-shrunk stage). Match that specificity so this wins, and
+     let the details scroll BELOW the clip instead of squeezing it. */
+  .wa-viewer.vmedia .wa-vstage{flex:0 1 auto;min-height:0;max-height:62vh;}
+  .wa-viewer.vmedia .wa-vfull{max-height:62vh;}
+  .wa-viewer.vmedia .wa-vmeta{flex:1 1 auto;min-height:0;}
   .wa-vx{top:8px;right:8px;width:32px;height:32px;font-size:14px;}
   .wa-vcount{top:10px;left:10px;font-size:11px;padding:3px 9px;}
   .wa-vnav{width:36px;height:36px;font-size:21px;}
