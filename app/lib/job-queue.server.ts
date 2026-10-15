@@ -467,6 +467,7 @@ async function runJob(
         await editImage({
           shopId,
           sourceImageUrl: payload.sourceImageUrl as string,
+          sourceImageUrl2: typeof payload.sourceImageUrl2 === "string" ? payload.sourceImageUrl2 : undefined,
           editOp: payload.editOp,
           prompt: typeof payload.editPrompt === "string" ? payload.editPrompt : undefined,
           model: typeof payload.editModel === "string" ? payload.editModel : undefined,

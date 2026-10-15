@@ -929,18 +929,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!productImageUrl) {
         return json({ error: tr(lang, "Add a photo to edit — upload one or paste an image URL.") });
       }
+      // Optional SECOND photo → a two-photo combine / cross-edit. Same upload
+      // discipline as the primary (8 MB cap, public /uploads URL).
+      let sourceImageUrl2: string | undefined;
+      const photo2 = form.get("productPhoto2");
+      if (photo2 && typeof photo2 !== "string" && photo2.size > 0) {
+        if (!/^image\//.test(photo2.type)) return json({ error: tr(lang, "That second file isn't an image — use a JPG, PNG or WebP.") });
+        if (photo2.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Second image too large — keep it under 8 MB.") });
+        const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+        const ext2 = photo2.type === "image/png" ? "png" : photo2.type === "image/webp" ? "webp" : "jpg";
+        const dir2 = pathMod.join(process.cwd(), "data", "renders", "uploads");
+        fsMod.mkdirSync(dir2, { recursive: true });
+        const name2 = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext2 as UploadExt);
+        fsMod.writeFileSync(pathMod.join(dir2, name2), Buffer.from(await photo2.arrayBuffer()));
+        const base2 = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+        if (!base2) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet.") });
+        sourceImageUrl2 = `${base2}/uploads/${name2}`;
+      }
+      if (sourceImageUrl2 && !(direction || "").trim()) {
+        return json({ error: tr(lang, "Describe how to combine the two photos — e.g. 'put the person from the second photo into the first'.") });
+      }
+      // A combine is always a described op, even if a quick-action chip was set.
+      const effectiveEditOp = sourceImageUrl2 && editOp !== "replace" ? "describe" : editOp;
       // The user picks the edit engine (Pro = nano-banana, Ultra = nano-banana-
-      // pro). Charge base image + the model surcharge, validated server-side.
-      const editModel = normalizeCreateModelKey((form.get("createModel") as string) || "");
+      // pro). A two-photo combine FORCES Ultra (the multi-image engine) — which
+      // also lands the charge at the 16-token price that clears the Creator
+      // margin floor. Charge base image + the model surcharge, validated here.
+      const editModel = sourceImageUrl2 ? normalizeCreateModelKey("ultra") : normalizeCreateModelKey((form.get("createModel") as string) || "");
       const editEach = TOKEN_COST.image + createModelSurcharge(editModel);
       const editFromExtra = (await spendTokens(shop.id, editEach)).fromExtra;
       charged(editEach, editFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         section: "creator",
-        editOp, sourceImageUrl: productImageUrl, editPrompt: direction, editModel,
+        editOp: effectiveEditOp, sourceImageUrl: productImageUrl, sourceImageUrl2, editPrompt: direction, editModel,
         // Carried only so the Archive "cooking" tile has a thumbnail + label
         // while the edit runs (the worker's edit path ignores them).
-        productImageUrl, productTitle: productTitle || "Photo edit",
+        productImageUrl, productTitle: productTitle || (sourceImageUrl2 ? "Photo combine" : "Photo edit"),
         prePaid: true, chargedTokens: editEach, chargedFromExtra: editFromExtra,
       });
       backed(editEach, editFromExtra);
@@ -1414,6 +1438,12 @@ export default function WebStudio() {
   // reaches the native productPhoto input — we inject THIS into the submit
   // FormData instead (see onFormSubmit), and show it on the Stage.
   const [editFile, setEditFile] = useState<File | null>(null);
+  // A SECOND photo for a two-photo combine / cross-edit ("add the person from
+  // photo 2 into photo 1"). Optional — when unset, edits behave exactly as
+  // before. A combine forces the Ultra engine + a 16-token charge server-side.
+  const [editFile2, setEditFile2] = useState<File | null>(null);
+  const [editPreview2, setEditPreview2] = useState<string | null>(null);
+  const stageUpload2Ref = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   // The plain (non-edit) product-photo file input, so the catalogue picker can
   // offer a visible "upload your own instead" shortcut — with a big store the
@@ -1479,6 +1509,17 @@ export default function WebStudio() {
     setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return URL.createObjectURL(f); });
     setEditFile(f);
     setHasFile(true);
+  };
+  // The SECOND photo for a combine. Held in state (iOS blocks programmatic file
+  // set) and injected at submit; shown as a small slot beside the primary.
+  const takePhoto2 = (f: File | null | undefined) => {
+    if (!f || !/^image\//.test(f.type)) return;
+    setEditPreview2((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return URL.createObjectURL(f); });
+    setEditFile2(f);
+  };
+  const clearPhoto2 = () => {
+    setEditPreview2((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; });
+    setEditFile2(null);
   };
   // Creator "Make an image" art style. The picker is collapsed by default
   // (reveal on click) so the describe box stays the whole act of creation.
@@ -2293,6 +2334,9 @@ export default function WebStudio() {
       // relative /renders/… path, so absolutize it (same as quickEdit does).
       if (editFile) fd.set("productPhoto", editFile);
       else { const u = imageUrl.trim(); fd.set("productImageUrl", u.startsWith("http") ? u : `${window.location.origin}${u}`); }
+      // A second photo turns this into a combine: inject it + force Ultra (the
+      // multi-image engine); the server reprices it to 16 tokens.
+      if (editFile2) { fd.set("productPhoto2", editFile2); fd.set("createModel", "ultra"); }
       fd.set("intent", submitIntent);
       submit(fd, { method: "post", encType: "multipart/form-data" });
       return;
@@ -3754,11 +3798,29 @@ export default function WebStudio() {
                      onLoad={(e) => { const el = e.currentTarget; if (el.naturalWidth && el.naturalHeight) setStageAspect(el.naturalWidth / el.naturalHeight); }} />
                  </div>
                  <div className="ws-verbs">
-                   <span className="ws-editcap">{making || busy ? t("Editing your photo…") : t("Describe your edits, then Make")}</span>
+                   <span className="ws-editcap">{making || busy ? t("Editing your photo…") : editPreview2 ? t("Describe how to combine them, then Make") : t("Describe your edits, then Make")}</span>
                    {!(making || busy) && (
-                     <button type="button" className="ws-verb" onClick={() => { setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; }); setEditFile(null); setHasFile(false); }}>✕ {t("Remove")}</button>
+                     <button type="button" className="ws-verb" onClick={() => { setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; }); setEditFile(null); setHasFile(false); clearPhoto2(); }}>✕ {t("Remove")}</button>
                    )}
                  </div>
+                 {/* Two-photo combine: add a second photo and describe how to merge
+                     them (e.g. "add the person from photo 2 into photo 1"). A
+                     combine runs on the Ultra engine (16 tokens). */}
+                 {!(making || busy) && (
+                   <div className="ws-combine2">
+                     {editPreview2 ? (
+                       <div className="ws-combine2-has">
+                         <img src={editPreview2} alt={t("Second photo")} />
+                         <button type="button" className="ws-combine2-x" onClick={clearPhoto2} aria-label={t("Remove second photo")}><Ico n="x" size={12} /></button>
+                         <span className="ws-combine2-lbl">{t("Photo 2 — say how to combine them below")}</span>
+                       </div>
+                     ) : (
+                       <button type="button" className="ws-combine2-add" onClick={() => stageUpload2Ref.current?.click()}>
+                         <Ico n="upload" size={15} /> {t("Add a 2nd photo to combine or cross-edit")}
+                       </button>
+                     )}
+                   </div>
+                 )}
                </div>
              ) : (
                <div className={`ws-easelph ws-easelph-drop${(making || busy) ? " making" : ""}`}
@@ -3820,6 +3882,7 @@ export default function WebStudio() {
              </div>
            )}
            <input ref={stageUploadRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => onStagePhoto(e.currentTarget.files?.[0])} />
+           <input ref={stageUpload2Ref} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => takePhoto2(e.currentTarget.files?.[0])} />
          </aside>
        )}
       </div>
@@ -4342,6 +4405,14 @@ const WS_STYLE = `
 .ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
 .ws-stagemedia-edit{cursor:pointer}
 .ws-editcap{margin-right:auto;align-self:center;padding-left:4px;font-size:12px;font-weight:700;color:#d9f3e5}
+/* Two-photo combine slot — sits under the primary edit photo on the Stage. */
+.ws-combine2{margin-top:9px;padding-left:4px}
+.ws-combine2-add{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border-radius:11px;border:1.5px dashed rgba(217,243,229,.6);background:rgba(18,168,94,.14);color:#eafff4;font-weight:700;font-size:12.5px;cursor:pointer}
+.ws-combine2-add:hover{background:rgba(18,168,94,.24)}
+.ws-combine2-has{display:inline-flex;align-items:center;gap:11px;position:relative}
+.ws-combine2-has img{width:46px;height:46px;object-fit:cover;border-radius:9px;border:2px solid var(--green2,#12A85E)}
+.ws-combine2-x{position:absolute;top:-6px;left:34px;width:20px;height:20px;border-radius:50%;border:0;background:rgba(11,15,13,.85);color:#fff;cursor:pointer;display:grid;place-items:center;padding:0}
+.ws-combine2-lbl{font-size:12px;font-weight:700;color:#d9f3e5}
 /* Post-generation quick edits (Enhance / Zoom out / Zoom in / Remove bg). */
 /* QUICK EDIT — a clean light panel UNDER the photo card (not a dark overlay on
    the image). Select a chip, then the green button confirms + spends. */

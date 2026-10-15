@@ -4254,7 +4254,7 @@ export async function brollStill(prompt: string, quality: "pro" | "ultra" = "pro
  *  a "make it terrifying" edit that nano-banana balks at still ships via the
  *  more-permissive kontext. */
 const KONTEXT_FALLBACK = "black-forest-labs/flux-kontext-pro";
-async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana"): Promise<{ url: string; engine: string }> {
+async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana", imageUrl2?: string): Promise<{ url: string; engine: string }> {
   // No aspect_ratio: a photo edit must give the user THEIR photo back, just
   // changed — nano-banana defaults to "match_input_image" and kontext preserves
   // the input aspect, so a portrait/landscape stays its own shape instead of
@@ -4262,7 +4262,13 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
   // Returns the engine that ACTUALLY ran so the caller can stamp it on the asset
   // — otherwise a paid "Ultra" edit that silently fell back to kontext is
   // invisible (same price, weaker render).
-  const input: Record<string, unknown> = { prompt, image_input: [imageUrl], output_format: "jpg" };
+  // imageUrl2: the OPTIONAL second source for a two-photo combine / cross-edit.
+  // nano-banana(-pro) is natively multi-image (image_input accepts an array), so
+  // we just pass both. The kontext fallback is single-image only, so a two-photo
+  // combine THROWS there rather than silently dropping the second photo (the
+  // caller refunds on the throw).
+  const images = imageUrl2 ? [imageUrl, imageUrl2] : [imageUrl];
+  const input: Record<string, unknown> = { prompt, image_input: images, output_format: "jpg" };
   if (modelId === "google/nano-banana-pro") input.resolution = "2K";
   try {
     return { url: await repRun(modelId, input), engine: modelId };
@@ -4272,8 +4278,13 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
     // schema quirk shouldn't silently downgrade a paid Ultra edit to kontext.
     if ("resolution" in input) {
       try {
-        return { url: await repRun(modelId, { prompt, image_input: [imageUrl], output_format: "jpg" }), engine: modelId };
+        return { url: await repRun(modelId, { prompt, image_input: images, output_format: "jpg" }), engine: modelId };
       } catch { /* fall through to the kontext fallback */ }
+    }
+    if (imageUrl2) {
+      // No single-image fallback can honour a two-photo combine — fail loudly so
+      // the job refunds, rather than quietly editing just the first photo.
+      throw e instanceof Error ? e : new Error("Two-photo combine failed");
     }
     console.log(`[photo-edit] ${modelId} unavailable/refused, using kontext:`, e instanceof Error ? e.message.slice(0, 120) : e);
     // Give the fallback a real quality floor (flux accepts output_quality; the
@@ -4326,6 +4337,9 @@ export function isEditOp(x: unknown): x is EditOp { return typeof x === "string"
 export async function editImage(opts: {
   shopId: string;
   sourceImageUrl: string;
+  /** Optional SECOND source for a two-photo combine / cross-edit (describe/
+   *  replace only). When present, both photos go to the multi-image model. */
+  sourceImageUrl2?: string;
   editOp: EditOp;
   prompt?: string;
   model?: string;
@@ -4388,8 +4402,19 @@ export async function editImage(opts: {
     // model emit half-formed figures and dark smudges in empty regions. Preserve
     // the scene without forbidding the requested change, and (since Gemini takes
     // no negative prompt) bake the anti-artifact cues into positive text.
-    { const r = await editImg2Img(sourceImageUrl, `${prompt}. Keep the original scene, background, framing and lighting intact; blend any new elements in photorealistically with matching perspective, scale, lighting and shadows. Produce a seamless, high-detail, hyper-realistic result — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`, editModelId); localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine; }
-    label = "edited";
+    //
+    // Two-photo combine: when a second source is present the model gets BOTH
+    // images and the prompt frames the first as the base/target and the second
+    // as the source to pull from ("add the person from the second photo into
+    // the first"), so a cross-edit lands coherently.
+    {
+      const combinePrompt = opts.sourceImageUrl2
+        ? `You are given TWO source photos. Treat the FIRST photo as the base scene and the SECOND photo as the element to bring in. ${prompt}. Blend the combined result photorealistically with matching perspective, scale, lighting and shadows so it reads as one real photo. Seamless, high-detail, hyper-realistic — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`
+        : `${prompt}. Keep the original scene, background, framing and lighting intact; blend any new elements in photorealistically with matching perspective, scale, lighting and shadows. Produce a seamless, high-detail, hyper-realistic result — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`;
+      const r = await editImg2Img(sourceImageUrl, combinePrompt, editModelId, opts.sourceImageUrl2);
+      localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine;
+    }
+    label = opts.sourceImageUrl2 ? "combined" : "edited";
   } else {
     const stylePrompt = editOp === "cartoonize"
       ? `Redraw this exact image as a vibrant, clean cartoon illustration${prompt ? `, ${prompt}` : ""}. Keep the same subject, pose and composition — just stylize it. No added text or watermark.`
