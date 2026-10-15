@@ -3861,6 +3861,14 @@ const WS_STYLE = `
 .ws-combine.ws-scene>.ws-hubtiles{margin:0 0 12px}
 .ws-combine.ws-scene>.ws-lbl{margin-top:12px}
 .ws-combine.ws-scene .ws-combine-stage{margin-top:12px}
+/* Contain the combine OUTPUT — the loading/result stage, the Combine button and
+   the Edit/Retry controls — to a tidy centered column (~photo width) instead of
+   letting it span the full studio width. The presenter/product tiles above stay
+   wide; this only reins in the "combination screen" below them. */
+.ws-combine.ws-scene .ws-combine-stage,
+.ws-combine.ws-scene .ws-combine-btn,
+.ws-combine.ws-scene .ws-combine-foot,
+.ws-combine.ws-scene .ws-combine-editrow{max-width:440px;margin-left:auto;margin-right:auto}
 .ws-scene-svc{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF)}
 .ws-scene-look{margin-top:12px}
 /* Spinning rosettes — the brand watermark, strategically placed: one drifting in
