@@ -142,6 +142,13 @@ export default function WebLayout() {
     // or /web, so a shared /web/archive or /web/channels link was discarded.
     if (loc.pathname === "/web" && m === "casual") navigate("/web/studio");
   };
+  // Skip the front door without choosing — closes the overlay and leaves them on
+  // the page they landed on, in whatever mode they already had (default
+  // marketing). Same session flag so it doesn't pop back up this visit.
+  const dismissChooser = () => {
+    try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
+    setShowChooser(false);
+  };
 
   return (
     <>
@@ -149,6 +156,22 @@ export default function WebLayout() {
       <div className="wb">
         {authed && showChooser && (
           <div className="wb-chooser" role="dialog" aria-modal="true" aria-label={t("Choose where to start")}>
+            {/* The chooser is a full-screen overlay, so the real header (language,
+                account, log out) is hidden behind it — carry the essentials here,
+                plus an X to skip straight into the app. */}
+            <div className="wb-ch-top">
+              <LangToggle
+                value={uiLang}
+                labels={UI_LANG_NATIVE}
+                align="right"
+                title={t("Display language — translates the app")}
+                onPick={(c) => submitLang({ lang: c }, { method: "post", action: "/set-ui-lang" })}
+              />
+              {authed
+                ? <AccountMenu hud={hud} />
+                : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
+              <button type="button" className="wb-ch-skip" onClick={dismissChooser} aria-label={t("Skip into the app")} title={t("Skip into the app")}>✕</button>
+            </div>
             <div className="wb-ch-panel">
               <div className="wb-ch-brand"><Crest size={30} /><span>Easy<b>Mode</b></span></div>
               <h1 className="wb-ch-h">{t("Where do you want to start?")}</h1>
@@ -735,7 +758,7 @@ const CSS = `
 .wb-mode-opt:not(.on):hover{color:var(--ink);}
 /* THE FRONT DOOR — full-screen path chooser shown on arrival (see WebLayout).
    Inside .wb so it inherits the theme tokens; fixed over everything. */
-.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 18px 20px;overflow-x:hidden;overflow-y:auto;
+.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:calc(62px + env(safe-area-inset-top,0px)) 18px 20px;overflow-x:hidden;overflow-y:auto;
   background:radial-gradient(74% 54% at 50% -4%,rgba(15,145,82,.16),transparent 60%),radial-gradient(50% 36% at 98% 96%,rgba(176,133,38,.1),transparent 66%),var(--paper);}
 /* EasyMode spinning rosette "flowers" behind the panel — the brand page-field
    motif (green) + the spinning-gold accent, the same wbDrift the HUD field uses.
@@ -744,6 +767,23 @@ const CSS = `
 .wb-chooser::before{top:-170px;right:-200px;width:560px;height:560px;opacity:.1;background-image:url(/gstyle-rosette-green.svg);animation:wbDrift 210s linear infinite;}
 .wb-chooser::after{bottom:-200px;left:-200px;width:520px;height:520px;opacity:.08;background-image:url(/gstyle-rosette.svg);animation:wbDriftBack 240s linear infinite;}
 .wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
+/* Chooser top bar — the essentials the full-screen overlay otherwise hides. */
+.wb-ch-top{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:16px;right:16px;z-index:3;display:flex;align-items:center;justify-content:flex-end;gap:10px;}
+.wb-ch-skip{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--ink2);font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center;flex-shrink:0;transition:border-color .14s,color .14s;}
+.wb-ch-skip:hover{border-color:var(--ink2);color:var(--ink);}
+/* Desktop: the two cards were tiny marooned in the middle — give them room. */
+@media(min-width:720px){
+  .wb-ch-panel{max-width:900px;}
+  .wb-ch-h{font-size:31px;}
+  .wb-ch-sub{font-size:15px;margin-bottom:26px;}
+  .wb-ch-grid{gap:22px;}
+  .wb-ch-hero{height:212px;}
+  .wb-ch-body{padding:20px 24px 22px;}
+  .wb-ch-title{font-size:23px;}
+  .wb-ch-desc{font-size:14.5px;}
+  .wb-ch-nav{font-size:12px;margin-bottom:16px;}
+  .wb-ch-go{font-size:14px;padding:12px 24px;}
+}
 @keyframes wbChIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin-bottom:14px;}
 .wb-ch-brand b{color:var(--gold);}
@@ -774,7 +814,7 @@ const CSS = `
 .wb-ch-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,214,102,.5);border-radius:8px;pointer-events:none;z-index:1;}
 .wb-ch-card.cr .wb-ch-go::before{border-color:rgba(255,248,224,.55);}
 @media(max-width:560px){
-  .wb-chooser{padding:calc(3px + env(safe-area-inset-top,0px)) 14px 16px}
+  .wb-chooser{padding:calc(56px + env(safe-area-inset-top,0px)) 14px 16px}
   .wb-ch-brand{margin-bottom:10px;font-size:18px}
   .wb-ch-h{font-size:21px}
   .wb-ch-sub{margin-bottom:13px}
