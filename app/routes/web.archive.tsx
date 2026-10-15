@@ -784,33 +784,49 @@ const WA_CSS = `
  * scrim's own padding, so the panel overhung the right edge and took the close
  * button and the next arrow off-screen with it. */
 .wa-viewer{position:relative;background:var(--card,#FDFCF7);border-radius:18px;width:min(920px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(10,14,12,.45);}
-/* Portrait (9:16) video viewer. MOBILE: hug the clip, stacked — the video fills
-   the panel width (no white side gutters), its info below. DESKTOP (>=760px): the
-   clip sits LEFT with its info to the RIGHT, so the panel is a comfortable
-   landscape card instead of a tall skinny tower. */
-.wa-viewer.vmedia{width:min(calc(56vh * 9 / 16), 94vw);}
-.wa-viewer.vmedia .wa-vfull{width:100%;height:auto;max-height:58vh;object-fit:contain;}
+/* The clip sits in a dark STAGE that hugs it — a portrait video gets no cream
+   letterbox bands — and the cycle arrows + count + Keep heart all live inside
+   the stage, so they flank the actual clip, never the screen edges. The stage
+   is only the dark cinematic frame for real media (video/image); blog + audio
+   render in a plain transparent stage so their own layout is untouched. */
+.wa-vstage{position:relative;min-width:0;min-height:0;}
+.wa-vstage.media{display:flex;align-items:center;justify-content:center;background:#0b0f0d;}
+/* MOBILE / default: stacked. The clip fills a phone-width card, info below. */
+.wa-viewer.vmedia{width:min(440px,94vw);}
+.wa-viewer.vmedia .wa-vfull{width:auto;height:auto;max-width:100%;max-height:74vh;object-fit:contain;}
 @media (min-width:760px){
-  .wa-viewer.vmedia{flex-direction:row;width:auto;max-width:min(880px,94vw);max-height:84vh;align-items:stretch;}
-  .wa-viewer.vmedia .wa-vfull{width:auto;height:auto;max-width:46vh;max-height:82vh;align-self:center;background:#0b0f0d;}
-  .wa-viewer.vmedia .wa-vmeta{flex:0 0 340px;width:340px;max-width:42vw;border-top:none;border-left:1px solid var(--line,#E5E0CF);align-self:stretch;}
-  /* Arrows flank the whole panel (lightbox style) instead of hugging the clip. */
-  .wa-viewer.vmedia .wa-vnav{position:fixed;top:50%;transform:translateY(-50%);}
-  .wa-viewer.vmedia .wa-vnav.prev{left:24px;right:auto;}
-  .wa-viewer.vmedia .wa-vnav.next{right:24px;left:auto;}
+  /* DESKTOP: clip LEFT, info RIGHT — a landscape card. The clip (max 80vh)
+     drives the card height; the rail stretches to match and its text is
+     clamped to fit, so nothing scrolls and the clip has no bands. */
+  .wa-viewer.vmedia{flex-direction:row;width:auto;max-width:min(900px,95vw);max-height:84vh;align-items:stretch;}
+  .wa-viewer.vmedia .wa-vstage{flex:0 0 auto;align-self:stretch;max-width:58vh;}
+  .wa-viewer.vmedia .wa-vfull{width:auto;height:auto;max-width:58vh;max-height:80vh;}
+  .wa-viewer.vmedia .wa-vmeta{flex:1 1 340px;min-width:306px;max-width:360px;border-top:none;border-left:1px solid var(--line,#E5E0CF);align-self:stretch;}
+  .wa-viewer.vmedia .wa-vheart{right:12px;}
 }
-.wa-vx{position:absolute;top:10px;right:10px;z-index:4;width:34px;height:34px;border-radius:50%;border:0;background:rgba(20,32,26,.75);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;}
-.wa-vnav{position:absolute;top:42%;z-index:4;width:40px;height:40px;border-radius:50%;border:0;background:rgba(20,32,26,.72);color:#E7C879;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding-bottom:3px;}
+.wa-vx{position:absolute;top:10px;right:10px;z-index:6;width:34px;height:34px;border-radius:50%;border:0;background:rgba(20,32,26,.78);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;}
+.wa-vx:hover{background:rgba(20,32,26,.94)}
+/* Keep = a heart over the clip's top-right. Fills gold once the piece is kept. */
+.wa-vheart{position:absolute;top:10px;right:52px;z-index:6;width:38px;height:38px;border-radius:50%;border:0;background:rgba(20,32,26,.6);color:#fff;cursor:pointer;display:grid;place-items:center;transition:transform .14s ease,background .14s ease,color .14s ease;}
+.wa-vheart:hover{background:rgba(20,32,26,.9);transform:scale(1.08)}
+.wa-vheart.on{color:#FFC24A;background:rgba(20,32,26,.72);cursor:default;}
+.wa-vheart[disabled]:not(.on){opacity:.55;cursor:not-allowed}
+.wa-vnav{position:absolute;top:50%;transform:translateY(-50%);z-index:5;width:40px;height:40px;border-radius:50%;border:0;background:rgba(20,32,26,.6);color:#fff;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding-bottom:3px;}
 .wa-vnav:hover{background:rgba(20,32,26,.9)}
 .wa-vnav.prev{left:10px}
 .wa-vnav.next{right:10px}
-.wa-vcount{position:absolute;top:14px;left:14px;z-index:4;background:rgba(20,32,26,.75);color:#fff;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;}
-.wa-vfull{display:block;margin:0 auto;width:auto;height:auto;max-width:100%;max-height:68vh;object-fit:contain;background:#0b0f0d;}
+.wa-vcount{position:absolute;top:12px;left:12px;z-index:5;background:rgba(20,32,26,.72);color:#fff;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;}
+.wa-vfull{display:block;margin:0 auto;width:auto;height:auto;max-width:100%;max-height:74vh;object-fit:contain;background:#0b0f0d;}
 .wa-read{padding:24px 28px;overflow:auto;max-height:52vh;font-size:14.5px;line-height:1.65;color:var(--ink,#14201A);}
 .wa-read h1,.wa-read h2,.wa-read h3{font-family:Poppins,sans-serif;line-height:1.25;margin:1em 0 .4em;}
 .wa-read h1:first-child,.wa-read h2:first-child{margin-top:0}
 .wa-read img{max-width:100%;border-radius:12px;}
-.wa-vmeta{padding:14px 18px 18px;border-top:1px solid var(--line,#E5E0CF);overflow:auto;}
+/* Rail content is clamped to fit the clip's height, so it shouldn't need to
+   scroll — but keep it scrollable as a safety (never clip the action buttons)
+   while HIDING the scrollbar, so the panel always reads as a clean, scroll-free
+   card the way the merchant expects. */
+.wa-vmeta{padding:14px 16px 16px;border-top:1px solid var(--line,#E5E0CF);overflow:auto;scrollbar-width:none;-ms-overflow-style:none;}
+.wa-vmeta::-webkit-scrollbar{display:none;}
 .wa-vtitle{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .wa-vtitle b{font-family:Poppins,sans-serif;font-size:14.5px;}
 .wa-vok{font-size:12.5px;font-weight:800;color:var(--green);}
@@ -824,7 +840,7 @@ const WA_CSS = `
    right rail. Key/value grid uses display:contents rows so dt/dd align in one
    two-column grid; the prompt/script blocks read like a transcript (green
    accent, scrollable when long). */
-.wa-spec{margin-top:12px;background:#FBF9F0;border:1px solid var(--line,#E5E0CF);border-radius:14px;padding:12px 14px;}
+.wa-spec{margin-top:10px;background:#FBF9F0;border:1px solid var(--line,#E5E0CF);border-radius:14px;padding:11px 13px;}
 .wa-spec-kind{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0A3D26;background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:3px 10px;margin-bottom:10px;}
 .wa-spec-list{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;}
 .wa-spec-row{display:contents;}
@@ -832,11 +848,19 @@ const WA_CSS = `
 .wa-spec-list dd{margin:0;font-size:12.5px;font-weight:600;color:var(--ink,#14201A);word-break:break-word;}
 .wa-spec-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
 .wa-spec-tag{font-size:11px;font-weight:700;color:#5b3c00;background:#FFF3D6;border:1px solid #EAD79E;border-radius:999px;padding:3px 9px;}
-.wa-prompt{margin-top:12px;}
+.wa-prompt{margin-top:10px;}
 .wa-prompt-h{display:block;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2,#5b6b61);margin-bottom:5px;}
-.wa-prompt p{margin:0;font-size:13px;line-height:1.55;color:var(--ink,#14201A);padding:9px 11px;background:#fff;border:1px solid var(--line,#E5E0CF);border-left:3px solid var(--green,#12A85E);border-radius:0 10px 10px 0;white-space:pre-wrap;}
-.wa-prompt-script{max-height:180px;overflow:auto;}
+.wa-prompt p{margin:0;font-size:13px;line-height:1.5;color:var(--ink,#14201A);padding:9px 11px;background:#fff;border:1px solid var(--line,#E5E0CF);border-left:3px solid var(--green,#12A85E);border-radius:0 10px 10px 0;white-space:pre-wrap;}
+/* Clamp so the rail fits the clip height with no scroll; fade the last line so
+   a cut script reads as intentional, not broken. The full text is still in the
+   piece — this is a preview panel, not the editor. */
+.wa-prompt p.wa-prompt-dir,.wa-prompt p.wa-prompt-script{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;}
+.wa-prompt-dir{-webkit-line-clamp:3;}
+.wa-prompt-script{-webkit-line-clamp:6;}
 .wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;}
+/* Delete is a quiet trash icon pushed to the far end of the action row — not a
+   full-width pill competing with Post/Remix. Arms red on first tap (askDelete). */
+.wa-vdel{margin-left:auto;width:38px;height:38px;border-radius:11px;}
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
    longer reaches these CTAs. This block renders after web.tsx, so at equal 0,1,0
@@ -1240,29 +1264,43 @@ export default function WebArchive() {
         <div className="wa-scrim" onClick={() => setViewer(null)}>
           <div className={`wa-viewer${viewer.isVideo ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
-            {shelf.length > 1 && vIdx >= 0 && (
-              <>
-                <button type="button" className="wa-vnav prev" aria-label={t("Previous")} onClick={() => openAt(vIdx - 1)}>‹</button>
-                <button type="button" className="wa-vnav next" aria-label={t("Next")} onClick={() => openAt(vIdx + 1)}>›</button>
-                <span className="wa-vcount">{vIdx + 1} / {shelf.length}</span>
-              </>
-            )}
-            {viewer.type === "BLOG_POST" ? (
-              viewer.html
-                ? <div className="wa-read" dangerouslySetInnerHTML={{ __html: viewer.html }} />
-                : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || t("Still being written…")}</p></div>
-            ) : viewer.isVideo && viewer.media ? (
-              <video className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
-            ) : viewer.isAudio && viewer.media ? (
-              <div className="wa-audiofull">
-                <span className="wa-audio-ico"><Ico n="music" size={46} /></span>
-                <audio src={viewer.media} controls autoPlay />
-              </div>
-            ) : viewer.media ? (
-              <img className="wa-vfull" src={viewer.media} alt={viewer.title} />
-            ) : (
-              <div className="wa-read"><p>{t("Still being made…")}</p></div>
-            )}
+            <div className={`wa-vstage${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " media" : ""}`}>
+              {shelf.length > 1 && vIdx >= 0 && (
+                <>
+                  <button type="button" className="wa-vnav prev" aria-label={t("Previous")} onClick={() => openAt(vIdx - 1)}>‹</button>
+                  <button type="button" className="wa-vnav next" aria-label={t("Next")} onClick={() => openAt(vIdx + 1)}>›</button>
+                  <span className="wa-vcount">{vIdx + 1} / {shelf.length}</span>
+                </>
+              )}
+              {/* Keep = a heart over the clip's top-right (fills gold once kept). */}
+              {viewer.type !== "BLOG_POST" && viewer.media && (() => {
+                const kept = viewer.status === "APPROVED" || viewer.status === "PUBLISHED";
+                return (
+                  <button type="button" className={`wa-vheart${kept ? " on" : ""}`} disabled={busy || kept}
+                    title={kept ? t("Kept — saved for good") : t("Keep — save it for good")}
+                    aria-label={kept ? t("Kept") : t("Keep")}
+                    onClick={() => { if (!kept) keepAsset(viewer.id); }}>
+                    <Ico n="heart" size={20} style={kept ? { fill: "currentColor" } : undefined} />
+                  </button>
+                );
+              })()}
+              {viewer.type === "BLOG_POST" ? (
+                viewer.html
+                  ? <div className="wa-read" dangerouslySetInnerHTML={{ __html: viewer.html }} />
+                  : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || t("Still being written…")}</p></div>
+              ) : viewer.isVideo && viewer.media ? (
+                <video className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
+              ) : viewer.isAudio && viewer.media ? (
+                <div className="wa-audiofull">
+                  <span className="wa-audio-ico"><Ico n="music" size={46} /></span>
+                  <audio src={viewer.media} controls autoPlay />
+                </div>
+              ) : viewer.media ? (
+                <img className="wa-vfull" src={viewer.media} alt={viewer.title} />
+              ) : (
+                <div className="wa-read"><p>{t("Still being made…")}</p></div>
+              )}
+            </div>
             <div className="wa-vmeta">
               <div className="wa-vtitle">
                 <b>{viewer.title}</b>
@@ -1332,7 +1370,7 @@ export default function WebArchive() {
                 </div>
               )}
               {viewer.daysLeft != null && !posted && !viewer.expired && (
-                <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> {viewer.daysLeft === 1 ? t("Clears in {n} day", { n: viewer.daysLeft }) : t("Clears in {n} days", { n: viewer.daysLeft })} — <b>{t("Keep")}</b> {t("saves it for good.")}</span>
+                <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> {viewer.daysLeft === 1 ? t("Clears in {n} day", { n: viewer.daysLeft }) : t("Clears in {n} days", { n: viewer.daysLeft })} — {t("tap the heart to save it for good.")}</span>
               )}
               {viewer.type !== "BLOG_POST" && <span className="wa-aitag">✦ {t("AI-generated · review before posting")}</span>}
               {viewer.type === "BLOG_POST" ? (
@@ -1340,16 +1378,13 @@ export default function WebArchive() {
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? t("Copied ✓") : t("Copy HTML")}</button>}
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> {t("Download")}</button>}
                   <button type="button" className="wa-vbtn gold" disabled={busy} title={t("Write a fresh article on the same product")} onClick={() => remix(viewer.id)}><Ico n="sparkle" /> {t("Remix")}<span className="c">{t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
-                  <button type="button" className={`wa-vbtn danger${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
+                  <button type="button" className={`wa-icon wa-vdel${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} aria-label={t("Delete")} onClick={() => askDelete(viewer.id)}><Ico n="trash" /></button>
                 </div>
               ) : (
                 <>
                   <div className="wa-vacts">
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
                       <button type="button" className="wa-vbtn" disabled={busy} onClick={() => startPost(viewer.id)}>{t("Post to socials")}</button>
-                    )}
-                    {viewer.status !== "APPROVED" && viewer.status !== "PUBLISHED" && (
-                      <button type="button" className="wa-vbtn ghost" disabled={busy} onClick={() => keepAsset(viewer.id)}>{t("Keep")}</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
@@ -1380,7 +1415,7 @@ export default function WebArchive() {
                     {!viewer.isAudio && (
                       <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? t("We lost this render — make it again, on us") : t("Make a fresh variation of this piece")} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? t("Make it again") : t("Remix")}<span className="c">{viewer.freeRemake ? t("free — on us") : t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
                     )}
-                    <button type="button" className={`wa-vbtn danger${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
+                    <button type="button" className={`wa-icon wa-vdel${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} aria-label={t("Delete")} onClick={() => askDelete(viewer.id)}><Ico n="trash" /></button>
                   </div>
                   {capOpen && (
                     <div className="wa-cap">

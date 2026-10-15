@@ -21,6 +21,9 @@ const I: Record<string, Paths> = {
 
   /* ── actions + status ───────────────────────────────────────────── */
   trash: <><path d="M4.5 6.5h15M9.5 6.5V4.6h5v1.9" /><path d="M6.6 6.5 7.5 20h9l.9-13.5" /><path d="M10.3 10v6.4M13.7 10v6.4" /></>,
+  // Keep-as-favourite. Single closed path so it also fills cleanly when the
+  // piece is kept (pass style={{fill:"currentColor"}} for the solid state).
+  heart: <path d="M12 20.4 4.9 13.3a4.7 4.7 0 0 1 6.65-6.65l.45.45.45-.45a4.7 4.7 0 0 1 6.65 6.65z" />,
   link: <><path d="M10.2 13.8a3.6 3.6 0 0 0 5.1 0l2.9-2.9a3.6 3.6 0 0 0-5.1-5.1l-1.3 1.3" /><path d="M13.8 10.2a3.6 3.6 0 0 0-5.1 0l-2.9 2.9a3.6 3.6 0 0 0 5.1 5.1l1.3-1.3" /></>,
   bolt: <><path d="M13.2 2.6 4.8 13.4h6L10.6 21.4 19 10.6h-6z" /></>,
   sliders: <><path d="M4 7.5h10M18 7.5h2M4 16.5h4M12 16.5h8" /><circle cx="16" cy="7.5" r="2.1" /><circle cx="10" cy="16.5" r="2.1" /></>,
