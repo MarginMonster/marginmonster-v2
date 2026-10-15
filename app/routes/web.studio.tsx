@@ -1372,10 +1372,6 @@ export default function WebStudio() {
   const [combining, setCombining] = useState(false);
   const [combineErr, setCombineErr] = useState<string | null>(null);
   const [combineJobId, setCombineJobId] = useState<string | null>(null);
-  // One-tap "EasyMode, make it": when set, the combine's completion auto-fires the
-  // video generate (reusing the tested Generate button), so the whole thing is a
-  // single tap. Cleared when the generate fires or the combine fails.
-  const [expressPending, setExpressPending] = useState(false);
   const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
   const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
   const combineStartRef = useRef(0);
@@ -1964,37 +1960,6 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFetcher.data, combining, combineJobId]);
-  // ---- One-tap "EasyMode, make it" ----
-  // Fire the whole thing from one tap: if there's already an approved frame, go
-  // straight to the video; otherwise run the combine and let the effect below
-  // fire the video the instant the frame lands. The video itself reuses the
-  // tested Generate button (makeBtnRef.click()), which reads the composedFrameUrl
-  // we just produced — no new money/submit path.
-  const doExpress = () => {
-    if (combining || busy) return;
-    if (combineUrl) { makeBtnRef.current?.click(); return; }
-    setExpressPending(true);
-    doCombine();
-  };
-  useEffect(() => {
-    if (expressPending && combineUrl) {
-      setExpressPending(false);
-      // The frame committed its composedFrameUrl this render, so fire the video —
-      // but ONLY if the Generate button is actually enabled. Clicking a disabled
-      // button is a silent DOM no-op, which would strand the user charged for the
-      // combine with no video and no reason why. (The express CTA is now gated on
-      // the full-chain cost, so this is a belt-and-braces net for a balance that
-      // changed mid-combine, a cleared name, etc.)
-      const btn = makeBtnRef.current;
-      if (btn && !btn.disabled) btn.click();
-      else setCombineErr(t("Your frame's ready and saved to your gallery — but we couldn't start the video automatically. Check the details below, then tap Generate."));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expressPending, combineUrl]);
-  useEffect(() => {
-    // Combine failed (and refunded) — abort the chain; its own message stands.
-    if (expressPending && combineErr) setExpressPending(false);
-  }, [expressPending, combineErr]);
   const avatarThumb = d.cast.find((c) => c.id === avatarId)?.img || "";
   const productThumb = uploadPreview || imageUrl || "";
   // A marketing product is really present only when the source whose input is
@@ -2214,13 +2179,6 @@ export default function WebStudio() {
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
   const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
-  // One-tap express must afford the WHOLE chain (combine + video) at tap time —
-  // not just the cheap combine. Otherwise it charges the combine, then the
-  // Generate button (disabled by its own wallet gate once the balance drops)
-  // no-ops and the video never runs, leaving the user charged with nothing to
-  // show. This full-chain shortfall gates the express CTA and drives its label.
-  const expressChainCost = (combineUrl ? 0 : combineCost) + cost * burst;
-  const expressShort = d.hasPlan ? Math.max(0, expressChainCost - d.tokens) : 0;
   // Casual video is describe-first (no name field): it needs a description, not
   // a productTitle — same as create/music/faceless.
   const casualVideo = casual && tab === "video";
@@ -2684,10 +2642,9 @@ export default function WebStudio() {
                     </button>
                   ) : combining ? (
                     <div className="ws-combine-loading">
-                      <span className="ws-combine-work" aria-hidden="true"><i /><i /><i /></span>
+                      <span className="ws-combine-ring" aria-hidden="true" />
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
                       <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
-                      <span className="ws-combine-scan" aria-hidden="true" />
                     </div>
                   ) : (
                     <div className="ws-combine-empty">
@@ -2697,33 +2654,19 @@ export default function WebStudio() {
                   )}
                 </div>
                 {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
-                {combineUrl && (
-                  <div className="ws-combine-foot">
-                    <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
-                    <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
-                  </div>
-                )}
-                {/* PRIMARY one-tap: runs the combine (if not done) AND the video,
-                    with EasyMode filling in the direction. Reuses the tested
-                    combine + Generate paths (makeBtnRef.click()) — no new money
-                    path. Needs a product name (auto-filled for store picks) since
-                    the video script uses it. */}
-                <button type="button" className="wb-btn ws-express-btn" onClick={doExpress}
-                  disabled={combining || busy || expressPending || !hasMarketingProduct || !productTitle.trim() || !d.hasPlan || expressShort > 0}
-                  title={!productTitle.trim() ? t("Name your product first") : undefined}>
-                  {(expressPending || combining)
-                    ? <span className="ws-combine-btntxt">{t("EasyMode is on it…")}</span>
-                    : expressShort > 0
-                      ? <span className="ws-combine-btntxt">{t("Needs {n} more tokens for the full video", { n: expressShort.toLocaleString("en-US") })}</span>
-                      : <span className="ws-combine-btntxt"><Ico n="sparkle" size={15} /> {combineUrl ? t("Make my video — {n} tokens", { n: cost * burst }) : t("Make it for me — {n} tokens", { n: combineCost + cost * burst })}</span>}
-                </button>
-                {/* SECONDARY: combine first to eyeball the frame before the video. */}
-                {!combineUrl && (
-                  <button type="button" className="ws-combine-preview" onClick={doCombine} disabled={combining || busy || !hasMarketingProduct}>
-                    {combining ? t("Combining…") : t("…or Combine first to preview the frame ({n} tokens)", { n: combineCost })}
+                {combineUrl ? (
+                  <>
+                    <div className="ws-combine-foot">
+                      <span className="ws-combine-ok">✓ {t("Locked in — generate your video below.")}</span>
+                      <button type="button" className="ws-verb" onClick={doCombine} disabled={combining}>↻ {t("Re-combine")}</button>
+                    </div>
+                    <input type="hidden" name="composedFrameUrl" value={combineUrl} />
+                  </>
+                ) : (
+                  <button type="button" className="wb-btn ws-combine-btn" onClick={doCombine} disabled={combining || busy || !hasMarketingProduct}>
+                    {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
                   </button>
                 )}
-                {combineUrl && <input type="hidden" name="composedFrameUrl" value={combineUrl} />}
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12", marginTop: 8 }}>
                     {prodSource === null
@@ -3057,10 +3000,9 @@ export default function WebStudio() {
                     </button>
                   ) : combining ? (
                     <div className="ws-combine-loading">
-                      <span className="ws-combine-work" aria-hidden="true"><i /><i /><i /></span>
+                      <span className="ws-combine-ring" aria-hidden="true" />
                       <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
                       <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
-                      <span className="ws-combine-scan" aria-hidden="true" />
                     </div>
                   ) : (
                     <div className="ws-combine-empty">
@@ -3898,10 +3840,12 @@ const WS_STYLE = `
 /* The big result stage — the hero of the step. */
 .ws-combine-stage{position:relative;width:100%;min-height:210px;border-radius:16px;overflow:hidden;background:#EAF6EF;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
 .ws-combine.combining .ws-combine-stage{border-style:solid;border-color:var(--green2,#12A85E);background:linear-gradient(135deg,#EAF6EF,#D7F0E2)}
-.ws-combine-stage.has{border-style:solid;border-color:var(--green);background:#0b0f0d;box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:ws-comb-pop .3s ease}
+/* With a result, HUG the frame (usually a 9:16/portrait) so there are no black
+   pillar bars — width shrinks to the image, centered, instead of a fixed-width box. */
+.ws-combine-stage.has{width:fit-content;max-width:100%;min-height:0;margin:0 auto;border-style:solid;border-color:var(--green);background:#0b0f0d;box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:ws-comb-pop .3s ease}
 @keyframes ws-comb-pop{from{transform:scale(.97);opacity:.4}to{transform:scale(1);opacity:1}}
-.ws-combine-big{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in;position:relative}
-.ws-combine-big img{display:block;width:auto;max-width:100%;max-height:320px;margin:0 auto;object-fit:contain}
+.ws-combine-big{display:block;width:fit-content;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in;position:relative}
+.ws-combine-big img{display:block;width:auto;max-width:100%;max-height:440px;margin:0 auto;object-fit:contain}
 .ws-combine-zoom{position:absolute;bottom:8px;right:8px;background:rgba(11,15,13,.72);color:#eafff4;border-radius:8px;padding:3px 8px;font-size:14px;font-weight:700;line-height:1.1}
 .ws-combine-loading{display:flex;flex-direction:column;align-items:center;gap:13px;padding:34px 16px;text-align:center}
 .ws-combine-loadtxt{font-size:12.5px;font-weight:700;color:var(--green-deep,#0A3D26)}
@@ -3914,18 +3858,8 @@ const WS_STYLE = `
 .ws-combine-work i:nth-child(2){animation-delay:.15s}
 .ws-combine-work i:nth-child(3){animation-delay:.3s}
 @keyframes ws-comb-bounce{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-8px);opacity:1}}
-.ws-combine-scan{position:absolute;left:0;right:0;height:30%;top:-30%;background:linear-gradient(180deg,transparent,rgba(18,168,94,.45),transparent);animation:ws-comb-scan 1.6s linear infinite;pointer-events:none}
-@keyframes ws-comb-scan{0%{top:-30%}100%{top:105%}}
+.ws-combine-ring{width:40px;height:40px;border-radius:50%;border:3.5px solid rgba(18,168,94,.2);border-top-color:var(--green,#0C7A46);animation:wsrosespin .85s linear infinite}
 .ws-combine-btn{width:100%;margin-top:10px;position:relative;overflow:hidden}
-/* One-tap express CTA — the gold "EasyMode magic" treatment to set it apart from
-   the green Combine. More specific than .wb-btn so the gold wins. */
-.ws-combine .ws-express-btn{width:100%;margin-top:10px;font-size:15px;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--gold,#B08526),var(--gold-deep,#7E5E13));box-shadow:0 6px 16px -6px rgba(126,94,19,.5)}
-.ws-express-btn .ws-combine-btntxt{display:inline-flex;align-items:center;gap:7px;justify-content:center}
-.ws-express-btn svg{color:#fff}
-.ws-express-btn:disabled{opacity:.55}
-.ws-combine-preview{display:block;width:100%;margin-top:9px;background:none;border:0;color:var(--ink2,#4A554E);font-size:12px;font-weight:600;cursor:pointer;padding:5px;text-decoration:underline;text-underline-offset:2px}
-.ws-combine-preview:hover:not(:disabled){color:var(--ink,#14201A)}
-.ws-combine-preview:disabled{opacity:.55;cursor:default;text-decoration:none}
 .ws-combine-btntxt{position:relative;z-index:1}
 .ws-combine.combining .ws-combine-btn::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.4) 50%,transparent 75%);transform:translateX(-100%);animation:ws-comb-shim 1.3s linear infinite}
 @keyframes ws-comb-shim{100%{transform:translateX(100%)}}
