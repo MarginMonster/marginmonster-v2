@@ -2820,16 +2820,21 @@ export default function WebStudio() {
                     {!combining && (
                       <div className="ws-combine-reuse">
                         <span className="ws-combine-reuse-lbl">{t("Already have a shot? Use it free — no combine:")}</span>
-                        <div className="ws-combine-reuse-row">
-                          <button type="button" className="ws-reuse-btn" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
-                            <Ico n="image" size={15} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
-                          </button>
-                          {d.frameChoices.map((f) => (
-                            <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
-                              <img src={f.media} alt="" loading="lazy" />
-                            </button>
-                          ))}
-                        </div>
+                        {/* Upload is the HERO alternative — a big, obvious upload
+                            button, not a pill. Reused past shots scroll sideways
+                            below so they never add height. */}
+                        <button type="button" className="ws-reuse-upload" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
+                          <Ico n="upload" size={19} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
+                        </button>
+                        {d.frameChoices.length > 0 && (
+                          <div className="ws-reuse-strip" aria-label={t("Reuse a past shot")}>
+                            {d.frameChoices.map((f) => (
+                              <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
+                                <img src={f.media} alt="" loading="lazy" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     <input ref={frameUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => doFrameUpload(e.currentTarget.files?.[0])} />
@@ -3982,14 +3987,18 @@ const WS_STYLE = `
 /* The Combine button is inline-block, so margin:auto can't center it — make it a
    block so it centers in the contained column (the flex foot/editrow already do). */
 .ws-combine.ws-scene .ws-combine-btn{display:block;width:100%}
-/* "Already have a shot?" — upload your own frame or reuse a past one as the seed. */
+/* "Already have a shot?" — upload your own frame (the HERO) or reuse a past one. */
 .ws-combine-reuse{margin-top:10px;text-align:center}
 .ws-combine-reuse-lbl{display:block;font-size:11.5px;color:var(--ink2,#5b6b61);margin-bottom:7px}
-.ws-combine-reuse-row{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
-.ws-reuse-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font-family:Poppins,sans-serif;font-weight:700;font-size:12px;padding:7px 12px;border-radius:999px;cursor:pointer;min-height:40px;box-sizing:border-box}
-.ws-reuse-btn:hover:not([disabled]){background:#F3F9F4;border-color:var(--green,#12A85E)}
-.ws-reuse-btn[disabled]{opacity:.5;cursor:not-allowed}
-.ws-reuse-thumb{width:40px;height:40px;border-radius:9px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
+/* HERO upload button — big, dashed, unmistakably an upload drop. */
+.ws-reuse-upload{display:flex;width:100%;align-items:center;justify-content:center;gap:8px;border:1.5px dashed var(--green,#0C7A46);background:#F3F9F4;color:var(--green-deep,#0A3D26);font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;padding:13px 16px;border-radius:13px;cursor:pointer;box-sizing:border-box;transition:background .14s,border-color .14s}
+.ws-reuse-upload:hover:not([disabled]){background:#E9F5EE;border-color:var(--green2,#12A85E)}
+.ws-reuse-upload[disabled]{opacity:.55;cursor:not-allowed}
+/* Past shots scroll SIDEWAYS — a one-row strip that never grows the panel. */
+.ws-reuse-strip{display:flex;gap:7px;margin-top:8px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;padding:2px 2px 6px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.ws-reuse-strip::-webkit-scrollbar{height:6px}
+.ws-reuse-strip::-webkit-scrollbar-thumb{background:rgba(20,32,26,.2);border-radius:999px}
+.ws-reuse-thumb{width:46px;height:46px;border-radius:10px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
 .ws-reuse-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .ws-reuse-thumb:hover:not([disabled]){border-color:var(--green,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.2)}
 .ws-reuse-thumb[disabled]{opacity:.5;cursor:not-allowed}
