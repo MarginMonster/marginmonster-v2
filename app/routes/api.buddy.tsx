@@ -671,7 +671,15 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiL
   const first = (id.account.name?.trim() || id.account.email.split("@")[0]).split(" ")[0];
   try {
     if (mode === "casual") {
-      return { reply: tr(lang, "Hey {first}! 🐾 Up for making something? Drop a photo to restyle, or let's create something new from scratch — your call.", { first }), pendingAction: { label: tr(lang, "Open the Studio"), to: "/web/studio", cost: 0, kind: "studio" } };
+      // Rotate the casual opener so it never reads like a broken record (marketing
+      // already rotates below). All invite the same free "drop a photo" move.
+      const casualOpeners = [
+        tr(lang, "Hey {first}! 🐾 Up for making something? Drop a photo and I'll restyle it, cartoonize it, or swap the background — your call.", { first }),
+        tr(lang, "Hey {first}! 🐾 Got a photo that needs a glow-up? Send it over and I'll transform it right here.", { first }),
+        tr(lang, "Hey {first}! 🐾 Fancy a quick bit of magic? Attach a photo and I'll cartoonize it or drop the background for you.", { first }),
+        tr(lang, "Hey {first}! 🐾 Ready to make something cool? Upload a photo to edit, or just ask me for an idea.", { first }),
+      ];
+      return { reply: casualOpeners[Math.floor(Math.random() * casualOpeners.length)], pendingAction: { label: tr(lang, "Open the Studio"), to: "/web/studio", cost: 0, kind: "studio" } };
     }
     // FREE account (no plan): welcome them as a free helper + offer their free makes,
     // instead of the old "you're low on tokens (0 left)" mislabel.
