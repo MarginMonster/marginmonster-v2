@@ -159,8 +159,8 @@ const BUDDY_TOOLS: ToolDef[] = [
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["image_ad", "video", "blog", "faceless", "music", "photo_edit", "campaign"], description: "What to create" },
-        product: { type: "string", description: "The product title to feature (only for image_ad / video / blog)" },
+        kind: { type: "string", enum: ["blog", "faceless", "music", "photo_edit", "campaign"], description: "What to create. NOTE: image ads and product videos are NOT here — make those with make_content, which makes them right in the chat." },
+        product: { type: "string", description: "The product title to feature (only for blog)" },
       },
       required: ["kind"],
     },
@@ -672,7 +672,16 @@ export async function action({ request }: ActionFunctionArgs) {
       tools: id ? (mode === "casual" ? BUDDY_TOOLS.filter((x) => x.name !== "make_content") : BUDDY_TOOLS) : [],
       runTool: async (n, i) => {
         if (!id) return "(not signed in)";
-        if (n === "set_up_task") { const r = buildTask(i, lang); pending.action = r.action; return r.toolResult; }
+        if (n === "set_up_task") {
+          // Hard redirect: images/videos are MADE in the chat via make_content,
+          // never handed off to the Studio. The proactive opener calls buildTask
+          // directly (not through here), so its suggestion buttons are unaffected.
+          const k = String((i as { kind?: unknown }).kind || "");
+          if (k === "image_ad" || k === "image" || k === "video") {
+            return JSON.stringify({ wrongTool: true, note: `Don't use set_up_task for that. Use make_content with kind "${k === "video" ? "video" : "image"}" (call get_catalog first for a real product with a photo) — it makes the ${k === "video" ? "video" : "image ad"} right here in the chat.` });
+          }
+          const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
+        }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
         if (n === "make_content") { const r = await buildMake(id, i, lang); if (r.make) pending.make = r.make; return r.toolResult; }
         return runBuddyTool(id, n, i);
