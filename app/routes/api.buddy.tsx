@@ -7,6 +7,8 @@
  * persona + light context and let Haiku (fast + cheap) reply. No actions are
  * taken on the user's behalf yet — it guides, it doesn't click. */
 
+import fs from "node:fs";
+import path from "node:path";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } from "../lib/tokens.server";
@@ -283,6 +285,38 @@ type MakeSpec = { kind: "image" | "video"; product: string; presenter: boolean; 
 // confirm spec the widget turns into a one-tap "Make it" button. The actual
 // spend + enqueue happens only when the user taps it (intent:"make"), on the
 // tested pipeline. Honors the spend gate: generations always confirm first.
+/* Get a finished render as a base64 data URL for the vision review. A freshly
+ * made piece is on the local disk the instant its asset row exists, but its
+ * public /renders/ URL can 404 for a beat for an outside fetcher (server or
+ * Anthropic) — which was starving the in-flow review. So: read the file straight
+ * off disk first; only if that misses (e.g. the worker wrote it on another
+ * instance) fall back to HTTP, with a couple of retries to outlast the lag. */
+async function renderAsDataUrl(url: string): Promise<string | null> {
+  const ctFor = (name: string) => {
+    const ext = (name.split(".").pop() || "jpg").toLowerCase();
+    return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "mp4" ? "video/mp4" : "image/jpeg";
+  };
+  const m = url.match(/\/renders\/([A-Za-z0-9._-]+)$/);
+  if (m) {
+    try {
+      const buf = await fs.promises.readFile(path.join(process.cwd(), "data", "renders", m[1]));
+      if (buf.length) return `data:${ctFor(m[1])};base64,${buf.toString("base64")}`;
+    } catch { /* not on this instance's disk — fall through to HTTP */ }
+  }
+  for (const wait of [0, 2_000, 4_000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+      if (resp.ok) {
+        const ct = (resp.headers.get("content-type") || "image/jpeg").split(";")[0];
+        const b64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
+        if (b64) return `data:${ct};base64,${b64}`;
+      }
+    } catch { /* retry */ }
+  }
+  return null;
+}
+
 async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang): Promise<{ make: MakeSpec | null; toolResult: string }> {
   const kind: "image" | "video" = input.kind === "video" ? "video" : "image";
   const title = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
@@ -636,18 +670,9 @@ export async function action({ request }: ActionFunctionArgs) {
     const product = typeof body.product === "string" ? body.product.trim().slice(0, 120) : "";
     if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ caption: "", ok: true });
     try {
-      // Inline the render as base64 so Anthropic never has to fetch the URL —
-      // the piece was JUST written, and a fresh /renders/ URL can momentarily
-      // 404 for an outside fetcher. The server reads it reliably (same box).
-      let imgInput = imageUrl;
-      try {
-        const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) });
-        if (resp.ok) {
-          const ct = (resp.headers.get("content-type") || "image/jpeg").split(";")[0];
-          const b64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
-          if (b64) imgInput = `data:${ct};base64,${b64}`;
-        }
-      } catch { /* fall back to the URL — anthropicVision can still try it */ }
+      // Inline the render as base64 (disk-first, HTTP-with-retries) so the
+      // just-written piece is always readable — the public URL can lag.
+      const imgInput = (await renderAsDataUrl(imageUrl)) || imageUrl;
       const raw = await anthropicVision(
         [
           `You are Helpurr, looking at an image ad you just generated${product ? ` for "${product}"` : ""}, about to show it to the merchant in chat.`,
