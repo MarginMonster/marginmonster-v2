@@ -13,7 +13,7 @@ import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } f
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
-import { anthropicToolLoop, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
+import { anthropicToolLoop, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
 
@@ -535,7 +535,7 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
   const lang = readUiLang(request);
-  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string };
+  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; product?: string };
   try { body = await request.json(); } catch { return json({ reply: tr(lang, "Hmm, I didn't catch that — try again?") }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
@@ -623,6 +623,37 @@ export async function action({ request }: ActionFunctionArgs) {
     const job = jobId ? await db.job.findUnique({ where: { id: jobId }, select: { status: true, lastError: true } }) : null;
     if (job?.status === "FAILED") return json({ failed: true, error: job.lastError || "It didn't finish — your tokens were refunded." });
     return json({ done: false });
+  }
+
+  // REVIEW — Helpurr actually LOOKS at the finished piece (like Claude would) and
+  // says, in one grounded sentence, what it sees + whether it's good to post. The
+  // image already passed the pipeline's own ship/no-ship vision gate, so this is a
+  // warm second look for the chat, never a blocker — any failure falls back to
+  // silence (no caption, ok). Images only; a video URL isn't a still to inspect.
+  if (body.intent === "review") {
+    if (!id) return json({ error: "auth" }, { status: 401 });
+    const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl : "";
+    const product = typeof body.product === "string" ? body.product.trim().slice(0, 120) : "";
+    if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ caption: "", ok: true });
+    try {
+      const raw = await anthropicVision(
+        [
+          `You are Helpurr, looking at an image ad you just generated${product ? ` for "${product}"` : ""}, about to show it to the merchant in chat.`,
+          `In ONE short, warm, plain sentence (no markdown), tell them what you actually see and whether it's good to post. Be honest and specific: call out garbled or misspelled headline text, a warped/wrong product, bad anatomy, or an off composition if you see it — otherwise point to one concrete thing that works.`,
+          `Then, on a NEW line, output ONLY {"ok":true} if you'd happily post it, or {"ok":false} if you'd redo it.`,
+        ].join("\n"),
+        [imageUrl],
+        { model: "claude-sonnet-5", maxTokens: 180 }
+      );
+      const jm = raw.match(/\{[^{}]*"ok"[^{}]*\}/);
+      let ok = true;
+      if (jm) { try { ok = (JSON.parse(jm[0]) as { ok?: boolean }).ok !== false; } catch { /* keep ok */ } }
+      const caption = raw.replace(/\{[^{}]*"ok"[^{}]*\}/, "").replace(/\*\*/g, "").trim().slice(0, 300);
+      return json({ caption, ok });
+    } catch (e) {
+      console.error("[buddy] review vision failed:", e instanceof Error ? e.message.slice(0, 140) : e);
+      return json({ caption: "", ok: true });
+    }
   }
 
   // The conversation as proper role-messages for the tool loop. Drop leading

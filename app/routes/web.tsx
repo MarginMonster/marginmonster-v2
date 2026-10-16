@@ -427,8 +427,19 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             return;
           }
           if (s.done && Array.isArray(s.media) && s.media.length) {
-            setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Tap to open it full-size. Want a tweak, or should I make another?"), media: s.media }]);
+            const media = s.media;
+            setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Tap to open it full-size."), media }]);
             setMaking(false);
+            // Helpurr takes an actual LOOK (images only) and gives one honest,
+            // grounded line — the "views it like you do" quality pass. Purely
+            // additive: any failure just means no extra line.
+            if (spec.kind === "image" && media[0]?.url) {
+              try {
+                const rv = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "review", imageUrl: media[0].url, product: spec.product, mode }) });
+                const rd = await rv.json().catch(() => ({})) as { caption?: string };
+                if (rd.caption) setMsgs((m) => [...m, { role: "assistant", content: rd.caption as string }]);
+              } catch { /* the review is a nicety, never a blocker */ }
+            }
             return;
           }
         } catch { /* transient — keep polling */ }
