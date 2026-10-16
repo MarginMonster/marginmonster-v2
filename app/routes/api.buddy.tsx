@@ -681,7 +681,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const raw = await anthropicVision(
         [
           `You are Helpurr, looking at an image ad you just generated${product ? ` for "${product}"` : ""}, about to show it to the merchant in chat.`,
-          `In ONE short, warm, plain sentence (no markdown), tell them what you actually see and whether it's good to post. Be honest and specific: call out garbled or misspelled headline text, a warped/wrong product, bad anatomy, or an off composition if you see it — otherwise point to one concrete thing that works.`,
+          `In ONE short, warm, plain sentence of about 25-35 words (no markdown, no mid-thought cutoff), tell them what you actually see and whether it's good to post. Be honest and specific: call out garbled or misspelled headline text, a warped/wrong product, bad anatomy, or an off composition if you see it — otherwise point to one concrete thing that works.`,
           `Then, on a NEW line, output ONLY {"ok":true} if you'd happily post it, or {"ok":false} if you'd redo it.`,
         ].join("\n"),
         [imgInput],
@@ -690,7 +690,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const jm = raw.match(/\{[^{}]*"ok"[^{}]*\}/);
       let ok = true;
       if (jm) { try { ok = (JSON.parse(jm[0]) as { ok?: boolean }).ok !== false; } catch { /* keep ok */ } }
-      const caption = raw.replace(/\{[^{}]*"ok"[^{}]*\}/, "").replace(/\*\*/g, "").trim().slice(0, 300);
+      const caption = raw.replace(/\{[^{}]*"ok"[^{}]*\}/, "").replace(/\*\*/g, "").trim().slice(0, 400);
       return json({ caption, ok });
     } catch (e) {
       console.error("[buddy] review vision failed:", e instanceof Error ? e.message.slice(0, 140) : e);
