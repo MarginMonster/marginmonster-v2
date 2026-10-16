@@ -17,6 +17,7 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { anthropicToolLoop, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { UPLOAD_NAME_RE, shopSlug } from "../lib/upload-names";
+import { externalOrigin } from "../lib/origin.server";
 import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
 
@@ -728,7 +729,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // (can't be re-resolved — it's a photo the user attached), spend, and enqueue the
     // SAME GENERATE_IMAGE_AD+editOp job the Studio uses. prePaid+chargedTokens.
     if (kind === "edit") {
-      const origin = new URL(request.url).origin;
+      const origin = externalOrigin(request);
       const src = safeEditSource(spec.sourceImageUrl, id.shop.id, origin);
       if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
       if (!caps.has("creator") && !caps.has("image")) return json({ error: "Your plan doesn't include editing." }, { status: 400 });
@@ -871,7 +872,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // sends it as-is. Absolutize it against this request's origin so the guard
     // passes and the HTTP fallback in renderAsDataUrl can fetch it. (The combine
     // flow hit the same "absolutize /renders for a server fetch" gotcha.)
-    if (imageUrl.startsWith("/")) { try { imageUrl = new URL(request.url).origin + imageUrl; } catch { /* keep as-is */ } }
+    if (imageUrl.startsWith("/")) { try { imageUrl = externalOrigin(request) + imageUrl; } catch { /* keep as-is */ } }
     const product = typeof body.product === "string" ? body.product.trim().slice(0, 120) : "";
     if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ caption: "", ok: true });
     try {
@@ -913,7 +914,7 @@ export async function action({ request }: ActionFunctionArgs) {
   // becomes the subject of an "edit" make. Read the bytes off disk and sniff the
   // real type → a base64 block, so Anthropic never fetches our /uploads URL and a
   // bad/unreadable image can't break the reply (we just skip showing it).
-  const origin = new URL(request.url).origin;
+  const origin = externalOrigin(request);
   // The photo to edit: the fresh attach (body.imageUrl) OR the last one attached in
   // this thread (body.lastPhotoUrl) so a follow-up ("now cartoonize it") still has a
   // subject. Both are validated to be THIS shop's own upload.

@@ -14,6 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
+import { externalOrigin } from "../lib/origin.server";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -33,10 +34,10 @@ export async function action({ request }: ActionFunctionArgs) {
     fs.mkdirSync(dir, { recursive: true });
     const name = uploadFileName(id.shop.id, crypto.randomBytes(8).toString("hex"), ext);
     fs.writeFileSync(path.join(dir, name), Buffer.from(await photo.arrayBuffer()));
-    // Absolute on THIS request's origin — the same host safeEditSource rebuilds to,
-    // and a host the image services can fetch. editImage requires an http(s) URL.
-    const origin = new URL(request.url).origin;
-    return json({ frameUrl: `${origin}/uploads/${name}` });
+    // externalOrigin (not request.url, which is http:// behind Render's TLS edge)
+    // → an https URL that renders without mixed-content and that safeEditSource
+    // rebuilds to the same way. editImage requires an http(s) URL.
+    return json({ frameUrl: `${externalOrigin(request)}/uploads/${name}` });
   } catch (e) {
     console.error("[buddy-upload] write failed:", e instanceof Error ? e.message.slice(0, 160) : e);
     return json({ error: "Couldn't save that photo — mind trying again?" }, { status: 500 });
