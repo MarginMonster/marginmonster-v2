@@ -27,8 +27,10 @@ export function isServableUploadName(name: string): boolean {
   return UPLOAD_NAME_RE.test(name);
 }
 
-/** The shop id, reduced to the character class the allowlist accepts. */
-const shopSlug = (shopId: string): string => shopId.toLowerCase().replace(/[^a-z0-9]/g, "");
+/** The shop id, reduced to the character class the allowlist accepts. Exported so
+ *  a reader (e.g. Helpurr's in-chat photo edit) can verify an uploaded file
+ *  belongs to the shop by checking its name is prefixed with this slug. */
+export const shopSlug = (shopId: string): string => shopId.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** `kind` is omitted for a plain product photo and present for anything else,
  *  which is what keeps the two shapes distinguishable on disk. */

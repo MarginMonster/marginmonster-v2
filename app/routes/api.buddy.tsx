@@ -16,6 +16,7 @@ import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { anthropicToolLoop, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
+import { UPLOAD_NAME_RE, shopSlug } from "../lib/upload-names";
 import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
 
@@ -192,17 +193,18 @@ const BUDDY_TOOLS: ToolDef[] = [
     // model's say-so: it shows a one-tap confirm with the cost, the user taps,
     // it generates on the tested pipeline, and the result renders inline here.
     name: "make_content",
-    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), or a MUSIC track. Use this whenever they ask you to make any of those ('make me an ad', 'make a faceless video about X', 'storytime about…', 'make me a track'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (these are marketing-only). For a faceless video or music track: set a clear 'topic' (what it's about) — no catalog product required, and these work in any mode. This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it generates on the tested path, and the finished piece appears right here. Only call when they clearly want to CREATE.",
+    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), a MUSIC track, or an EDIT of a photo the user just attached to the chat. Use this whenever they ask you to make or edit any of those ('make me an ad', 'make a faceless video about X', 'make me a track', 'restyle this', 'remove the background'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (marketing-only). For a faceless video or music track: set a clear 'topic'. For an EDIT: ONLY when the user has ATTACHED a photo to this chat (you'll see it) — set kind 'edit' and the right editOp (no product/topic; the attached photo is the subject, picked up automatically). This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it runs on the tested path, and the finished piece appears right here. Only call when they clearly want to CREATE or EDIT.",
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["image", "video", "faceless", "music"], description: "image ad / product video (need a catalog product) · faceless video / music (need a topic)" },
+        kind: { type: "string", enum: ["image", "video", "faceless", "music", "edit"], description: "image ad / product video (need a catalog product) · faceless video / music (need a topic) · edit (needs a photo the user ATTACHED to the chat)" },
         product: { type: "string", description: "image/video ONLY: the REAL product title to feature — must exist in the catalog and have a photo (call get_catalog first)" },
         topic: { type: "string", description: "faceless/music ONLY: what the video or track is about, e.g. '5 facts about the deep ocean', 'a hype pump-up anthem', or a product-themed angle like 'why collectors love the Pokemon 30th anniversary set'" },
         format: { type: "string", enum: ["facts", "storytime", "listicle", "motivational"], description: "faceless ONLY: the video style (default facts). Pick from the user's phrasing — 'storytime …' → storytime, '5 reasons …' → listicle." },
         voice: { type: "string", enum: ["f-warm", "f-hype", "m-warm", "m-hype"], description: "faceless ONLY: narrator voice (default f-warm). f=female m=male, warm=calm hype=energetic." },
+        editOp: { type: "string", enum: ["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "describe"], description: "edit ONLY: how to edit the attached photo — restyle (general glow-up, default), cartoonize, bgremove (cut out the background), bgswap (new backdrop — put it in 'direction'), colorize, upscale (sharpen), or describe (any freeform change you put in 'direction'). Pick from what they asked." },
         presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
-        direction: { type: "string", description: "image/video: optional creative direction / setting / style (e.g. 'bright kitchen, upbeat')" },
+        direction: { type: "string", description: "image/video: optional creative direction. edit: the freeform instruction for editOp 'describe', or the new backdrop for 'bgswap'." },
       },
       required: ["kind"],
     },
@@ -286,9 +288,11 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 // photo is re-resolved server-side at spend time (never trust the client for a
 // paid generation), so this only carries what the user approves. image/video are
 // catalog-product based (marketing); faceless/music are TOPIC based (both modes).
-type MakeKind = "image" | "video" | "faceless" | "music";
-type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; cost: number; label: string };
-const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music"];
+// "edit" is the one kind whose subject comes from the CLIENT (a photo the user
+// uploaded into the chat), so MakeSpec carries sourceImageUrl + editOp for it.
+type MakeKind = "image" | "video" | "faceless" | "music" | "edit";
+type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; label: string };
+const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music", "edit"];
 const asMakeKind = (v: unknown): MakeKind => (typeof v === "string" && (MAKE_KINDS as string[]).includes(v) ? (v as MakeKind) : "image");
 // Faceless format/voice allow-lists (the Studio doesn't validate these server-side
 // — we do, since Helpurr is now a second entry point into the same job).
@@ -296,6 +300,23 @@ const FACELESS_FORMATS_OK = new Set(["motivational", "facts", "storytime", "list
 const FACELESS_VOICES_OK = new Set(["f-warm", "f-hype", "m-warm", "m-hype"]);
 const normFacelessFormat = (v: unknown): string => { const s = typeof v === "string" ? v.trim().toLowerCase() : ""; return FACELESS_FORMATS_OK.has(s) ? s : "facts"; };
 const normFacelessVoice = (v: unknown): string => { const s = typeof v === "string" ? v.trim().toLowerCase() : ""; return FACELESS_VOICES_OK.has(s) ? s : "f-warm"; };
+// Photo-edit ops Helpurr can run on an attached photo (subset of EditOp). "describe"
+// takes free-text instructions; the rest are one-tap transforms.
+const EDIT_OPS_OK = new Set(["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "describe"]);
+const normEditOp = (v: unknown): string => { const s = typeof v === "string" ? v.trim().toLowerCase() : ""; return EDIT_OPS_OK.has(s) ? s : "restyle"; };
+// An edit's source is a photo the user uploaded into the chat, which can't be
+// re-resolved server-side — so validate the client URL is THIS shop's own
+// /uploads/<name> file (name prefixed with the shop slug) and rebuild it on our
+// origin, so one shop can never point an edit at another's upload or an arbitrary URL.
+function safeEditSource(raw: unknown, shopId: string, origin: string): string | null {
+  if (typeof raw !== "string") return null;
+  const m = raw.match(/\/uploads\/([a-z0-9][a-z0-9-]*\.(?:jpg|png|webp))(?:[?#]|$)/i);
+  if (!m) return null;
+  const name = m[1].toLowerCase();
+  if (!UPLOAD_NAME_RE.test(name)) return null;
+  if (!name.startsWith(shopSlug(shopId) + "-")) return null;
+  return `${origin}/uploads/${name}`;
+}
 
 // Set up a make WITHOUT spending: validate the product/plan/wallet and return a
 // confirm spec the widget turns into a one-tap "Make it" button. The actual
@@ -312,11 +333,17 @@ async function renderAsDataUrl(url: string): Promise<string | null> {
     const ext = (name.split(".").pop() || "jpg").toLowerCase();
     return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "mp4" ? "video/mp4" : "image/jpeg";
   };
-  const m = url.match(/\/renders\/([A-Za-z0-9._-]+)$/);
-  if (m) {
+  // /renders/<name> lives in data/renders; /uploads/<name> (a user-attached photo)
+  // lives in data/renders/uploads. Read either straight off disk when we can.
+  const mr = url.match(/\/renders\/([A-Za-z0-9._-]+)(?:[?#]|$)/);
+  const mu = url.match(/\/uploads\/([A-Za-z0-9._-]+)(?:[?#]|$)/);
+  const diskPath = mr ? path.join(process.cwd(), "data", "renders", mr[1])
+    : mu ? path.join(process.cwd(), "data", "renders", "uploads", mu[1]) : "";
+  const diskName = mr ? mr[1] : mu ? mu[1] : "";
+  if (diskPath) {
     try {
-      const buf = await fs.promises.readFile(path.join(process.cwd(), "data", "renders", m[1]));
-      if (buf.length) return `data:${ctFor(m[1])};base64,${buf.toString("base64")}`;
+      const buf = await fs.promises.readFile(diskPath);
+      if (buf.length) return `data:${ctFor(diskName)};base64,${buf.toString("base64")}`;
     } catch { /* not on this instance's disk — fall through to HTTP */ }
   }
   for (const wait of [0, 2_000, 4_000]) {
@@ -333,11 +360,58 @@ async function renderAsDataUrl(url: string): Promise<string | null> {
   return null;
 }
 
-async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual"): Promise<{ make: MakeSpec | null; toolResult: string }> {
+// Media type from the first bytes, NOT the filename — so a base64 image block for
+// the vision model always declares the right type (a mislabelled one is rejected by
+// the API and would break the whole reply). Returns null for anything the API can't
+// take (e.g. AVIF/HEIC), which the caller treats as "skip showing the model the photo".
+function sniffImageMedia(buf: Buffer): "image/jpeg" | "image/png" | "image/webp" | null {
+  if (buf.length < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+  if (buf.slice(0, 4).toString("ascii") === "RIFF" && buf.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
+// Read an attached-photo's bytes off disk (module scope, where `path` is the node
+// module — the action shadows it with a local `path` string). Returns null if the
+// url isn't an /uploads file or the bytes aren't on this instance.
+async function readUploadBytes(url: string): Promise<Buffer | null> {
+  const mu = url.match(/\/uploads\/([A-Za-z0-9._-]+)(?:[?#]|$)/);
+  if (!mu) return null;
+  try {
+    const buf = await fs.promises.readFile(path.join(process.cwd(), "data", "renders", "uploads", mu[1]));
+    return buf.length ? buf : null;
+  } catch { return null; }
+}
+
+async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string }> {
   const kind = asMakeKind(input.kind);
   if (!id.shop.activePlan?.active) return { make: null, toolResult: JSON.stringify({ error: "They have no active plan — they need one to generate. Don't make it; point them to plans." }) };
   const caps = capabilitiesFor(id.shop.activePlan);
   const tokens = tokensRemainingLive(id.shop.activePlan);
+
+  // PHOTO EDIT: the subject is the photo the user ATTACHED to the chat (editSource,
+  // already validated as this shop's own /uploads file). Runs on the same tested
+  // GENERATE_IMAGE_AD+editOp path the Studio uses. Works in BOTH modes.
+  if (kind === "edit") {
+    if (!editSource) return { make: null, toolResult: JSON.stringify({ error: "No photo attached — they haven't sent a photo to edit yet. Ask them to tap the attach (📎) button and send one, then you can edit it." }) };
+    if (!caps.has("creator") && !caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include editing. Don't make it; point them to plans." }) };
+    const editOp = normEditOp(input.editOp);
+    const direction = typeof input.direction === "string" ? input.direction.trim().slice(0, 300) : "";
+    if ((editOp === "describe") && !direction) return { make: null, toolResult: JSON.stringify({ error: "For a freeform edit, ask WHAT to change (put it in direction), or pick a specific editOp like restyle/cartoonize/bgremove." }) };
+    const cost = TOKEN_COST.quickEdit;
+    if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
+    const EDIT_VERB: Record<string, string> = { restyle: "Restyle this photo", cartoonize: "Cartoonize this photo", bgremove: "Remove the background", bgswap: "Swap the background", colorize: "Colorize this photo", upscale: "Sharpen this photo", describe: "Edit this photo" };
+    const label = tr(lang, EDIT_VERB[editOp] || "Edit this photo");
+    const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: editSource, editOp, cost, label };
+    return {
+      make,
+      toolResult: JSON.stringify({
+        readyToMake: true, kind: "edit", editOp, cost,
+        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown to ${EDIT_VERB[editOp] || "edit the photo"}${direction ? ` — ${direction}` : ""}. Say in ONE line what you'll do to their photo and that tapping it runs it right here. Do NOT claim it is already done or that tokens were spent.`,
+      }),
+    };
+  }
 
   // TOPIC-DRIVEN: faceless video + music track. No catalog product; works in BOTH
   // modes. Faceless rides the video pipeline (gated at the "video" capability).
@@ -617,7 +691,7 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
   const lang = readUiLang(request);
-  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; product?: string };
+  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; lastPhotoUrl?: string; product?: string };
   try { body = await request.json(); } catch { return json({ reply: tr(lang, "Hmm, I didn't catch that — try again?") }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
@@ -649,6 +723,35 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!id.shop.activePlan?.active) return json({ error: "Pick a plan first — generating runs on tokens." }, { status: 400 });
     const caps = capabilitiesFor(id.shop.activePlan);
     const tokensLeft = tokensRemainingLive(id.shop.activePlan);
+
+    // PHOTO EDIT: re-validate the client-supplied source is THIS shop's own upload
+    // (can't be re-resolved — it's a photo the user attached), spend, and enqueue the
+    // SAME GENERATE_IMAGE_AD+editOp job the Studio uses. prePaid+chargedTokens.
+    if (kind === "edit") {
+      const origin = new URL(request.url).origin;
+      const src = safeEditSource(spec.sourceImageUrl, id.shop.id, origin);
+      if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
+      if (!caps.has("creator") && !caps.has("image")) return json({ error: "Your plan doesn't include editing." }, { status: 400 });
+      const editOp = normEditOp(spec.editOp);
+      const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
+      if (editOp === "describe" && !direction) return json({ error: "Tell me what to change about the photo." }, { status: 400 });
+      const cost = TOKEN_COST.quickEdit;
+      if (tokensLeft < cost) return json({ error: `Not enough tokens — ${tokensLeft} left, needs ${cost}.` }, { status: 400 });
+      const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
+      const cursor = Date.now();
+      try {
+        const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", {
+          section: "creator", editOp, sourceImageUrl: src, editPrompt: direction,
+          productImageUrl: src, productTitle: "Photo edit",
+          prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
+        });
+        return json({ jobId, cursor, kind, cost });
+      } catch (e) {
+        try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
+        console.error("[buddy] make (edit) enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
+        return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+      }
+    }
 
     // TOPIC-DRIVEN: faceless video + music track. Re-validate, spend, and enqueue
     // the SAME tested jobs the Studio uses (GENERATE_VIDEO_AD + contentType:faceless
@@ -736,12 +839,14 @@ export async function action({ request }: ActionFunctionArgs) {
     const cursor = Number(body.cursor) || 0;
     const kind = asMakeKind(body.kind);
     // faceless rides the video pipeline → persists as VIDEO_AD; music → AUDIO.
+    // faceless rides the video pipeline → persists as VIDEO_AD; music → AUDIO;
+    // edit → IMAGE_AD (same as an image ad).
     const type: "IMAGE_AD" | "VIDEO_AD" | "AUDIO" = (kind === "video" || kind === "faceless") ? "VIDEO_AD" : kind === "music" ? "AUDIO" : "IMAGE_AD";
     // Faceless shares the VIDEO_AD type with product videos (and background
-    // campaign/series drops), so over its long poll window a concurrent VIDEO_AD
-    // could be mis-correlated. The pipeline stamps metaJson.kind — narrow on it so
-    // a faceless poll only ever matches a faceless asset (same for music→song).
-    const metaKind = kind === "faceless" ? '"kind":"faceless"' : kind === "music" ? '"kind":"song"' : "";
+    // campaign/series drops); an edit shares IMAGE_AD with image ads. Over the poll
+    // window a concurrent same-type asset could be mis-correlated, so narrow on the
+    // pipeline's metaJson.kind stamp (faceless/song/edit) when there is one.
+    const metaKind = kind === "faceless" ? '"kind":"faceless"' : kind === "music" ? '"kind":"song"' : kind === "edit" ? '"kind":"edit"' : "";
     const asset = await db.asset.findFirst({
       where: { shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) }, ...(metaKind ? { metaJson: { contains: metaKind } } : {}) },
       orderBy: { createdAt: "desc" }, select: { title: true, bodyJson: true },
@@ -803,6 +908,35 @@ export async function action({ request }: ActionFunctionArgs) {
   while (chat.length && chat[0].role === "assistant") chat = chat.slice(1);
   if (!chat.length) return json({ reply: tr(lang, "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?") });
 
+  // Did the user ATTACH a photo to this chat? Validate it's their own upload once;
+  // the same URL both lets Helpurr SEE it (image block on the last user turn) and
+  // becomes the subject of an "edit" make. Read the bytes off disk and sniff the
+  // real type → a base64 block, so Anthropic never fetches our /uploads URL and a
+  // bad/unreadable image can't break the reply (we just skip showing it).
+  const origin = new URL(request.url).origin;
+  // The photo to edit: the fresh attach (body.imageUrl) OR the last one attached in
+  // this thread (body.lastPhotoUrl) so a follow-up ("now cartoonize it") still has a
+  // subject. Both are validated to be THIS shop's own upload.
+  const freshPhoto = id ? safeEditSource(body.imageUrl, id.shop.id, origin) : null;
+  const editSource = freshPhoto || (id ? safeEditSource(body.lastPhotoUrl, id.shop.id, origin) : null);
+  // Let Helpurr SEE a FRESHLY attached photo (not re-shown every turn). Skip the
+  // injection — never break the reply — if the image is too big for the vision API
+  // (its edit still works), unreadable, or an unsupported format.
+  if (freshPhoto) {
+    const buf = await readUploadBytes(freshPhoto);
+    const media_type = buf ? sniffImageMedia(buf) : null;
+    if (buf && media_type && buf.length <= 4_500_000) {
+      const block = { type: "image" as const, source: { type: "base64" as const, media_type, data: buf.toString("base64") } };
+      for (let i = chat.length - 1; i >= 0; i--) {
+        if (chat[i].role === "user") {
+          const text = typeof chat[i].content === "string" ? (chat[i].content as string) : "";
+          chat[i] = { role: "user", content: [{ type: "text", text: text || "Here's a photo — what can you do with it?" }, block] };
+          break;
+        }
+      }
+    }
+  }
+
   // Daily chat cap (Sonnet isn't free). Gates only the LLM call — the rest of the
   // app is untouched — and counts the user's messages over the last 24h.
   if (id) {
@@ -821,8 +955,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const toolNote = !id
     ? ""
     : mode === "casual"
-    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You never spend their tokens or post yourself — the button confirms first. Keep replies warm and plain text."
-    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
+    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You never spend their tokens or post yourself — the button confirms first. Keep replies warm and plain text."
+    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
   const facts = id ? await recallFacts(id.shop.id) : "";
   // The one line that makes Helpurr SPEAK the interface language. The model is
   // fluently multilingual, so this reliably switches the whole reply.
@@ -858,7 +992,7 @@ export async function action({ request }: ActionFunctionArgs) {
           const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
         }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
-        if (n === "make_content") { const r = await buildMake(id, i, lang, mode); if (r.make) pending.make = r.make; return r.toolResult; }
+        if (n === "make_content") { const r = await buildMake(id, i, lang, mode, editSource); if (r.make) pending.make = r.make; return r.toolResult; }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
