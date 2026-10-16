@@ -9,9 +9,10 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
-import { tokensRemainingLive, monthlyUsageSummary } from "../lib/tokens.server";
+import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
+import { enqueueJob } from "../lib/job-queue.server";
 import { anthropicToolLoop, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
@@ -184,6 +185,23 @@ const BUDDY_TOOLS: ToolDef[] = [
       },
     },
   },
+  {
+    // MAKE a real piece from the chat. Spends tokens, so it never runs on the
+    // model's say-so: it shows a one-tap confirm with the cost, the user taps,
+    // it generates on the tested pipeline, and the result renders inline here.
+    name: "make_content",
+    description: "MAKE a new piece for the user right now, from the chat — an image ad or a product video — when they ask you to CREATE something ('make me a video with the matcha tin', 'turn my mug into an ad'). You appropriate the whole brief: call get_catalog FIRST and pick a REAL product title that hasPhoto, decide presenter-or-not for video, and set any direction/setting. This SPENDS tokens, so it does NOT run immediately — it shows the user a one-tap 'Make it' confirm with the exact cost; they approve, it generates on the tested path, and the finished piece appears right here in the chat. Only call this when they clearly want to CREATE.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["image", "video"], description: "image ad or product video" },
+        product: { type: "string", description: "The REAL product title to feature — must exist in the catalog and have a photo (call get_catalog first)" },
+        presenter: { type: "boolean", description: "For video only: true = a presenter holds/presents the product; false = product-only cinematic. Ignored for image." },
+        direction: { type: "string", description: "Optional creative direction / setting / style (e.g. 'bright kitchen, upbeat', 'festive gift angle')" },
+      },
+      required: ["kind", "product"],
+    },
+  },
 ];
 
 // What each task kind opens in the Studio (the Studio reads ?tab / ?product /
@@ -256,6 +274,48 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
   return { media, toolResult: JSON.stringify({ shown: media.length, titles: media.map((m) => m.title), note: "These are now VISIBLE to the user inline in the chat. Caption them in ONE short friendly line — do NOT paste URLs or describe each one; they can see them." }) };
 }
 
+// The confirm-spec for a make-from-chat. No image URL here — the real product
+// photo is re-resolved server-side at spend time (never trust the client for a
+// paid generation), so this only carries what the user approves.
+type MakeSpec = { kind: "image" | "video"; product: string; presenter: boolean; direction: string; cost: number; label: string };
+
+// Set up a make WITHOUT spending: validate the product/plan/wallet and return a
+// confirm spec the widget turns into a one-tap "Make it" button. The actual
+// spend + enqueue happens only when the user taps it (intent:"make"), on the
+// tested pipeline. Honors the spend gate: generations always confirm first.
+async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang): Promise<{ make: MakeSpec | null; toolResult: string }> {
+  const kind: "image" | "video" = input.kind === "video" ? "video" : "image";
+  const title = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
+  if (!title) return { make: null, toolResult: JSON.stringify({ error: "No product named — ask which product to feature." }) };
+  const prod = await db.catalogProduct.findFirst({
+    where: { shopId: id.shop.id, title: { contains: title } },
+    orderBy: { position: "asc" }, select: { title: true, imageUrl: true },
+  });
+  if (!prod || !prod.imageUrl) {
+    return { make: null, toolResult: JSON.stringify({ error: `No product with a photo matches "${title}". Call get_catalog and pick one that hasPhoto, or tell them to upload a photo in the Studio.` }) };
+  }
+  if (!id.shop.activePlan?.active) return { make: null, toolResult: JSON.stringify({ error: "They have no active plan — they need one to generate. Don't make it; point them to plans." }) };
+  const caps = capabilitiesFor(id.shop.activePlan);
+  if (kind === "video" && !caps.has("video")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include video — suggest the plan that unlocks it; don't make it." }) };
+  if (!caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include image generation. Don't make it." }) };
+  const cost = kind === "video" ? TOKEN_COST.video : TOKEN_COST.image;
+  const tokens = tokensRemainingLive(id.shop.activePlan);
+  if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
+  // v1: video is a product-cinematic HIGHLIGHT (no presenter) — presenter video
+  // is the fast-follow. Keep the flag so Helpurr can talk about it accurately.
+  const presenter = false;
+  const direction = typeof input.direction === "string" ? input.direction.trim().slice(0, 300) : "";
+  const label = tr(lang, "{verb} for {product}", { verb: kind === "video" ? tr(lang, "Make a product video") : tr(lang, "Make an image ad"), product: prod.title });
+  const make: MakeSpec = { kind, product: prod.title, presenter, direction, cost, label };
+  return {
+    make,
+    toolResult: JSON.stringify({
+      readyToMake: true, kind, product: prod.title, presenter, cost,
+      note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown. Say in ONE line exactly what you'll make — the product${kind === "video" ? " as a product-cinematic video (no presenter in this version)" : " as an image ad"}${direction ? `, ${direction}` : ""} — and that tapping it makes it right here where they approve the spend. Do NOT claim it is already made or that tokens were spent.`,
+    }),
+  };
+}
+
 function relTime(d: Date): string {
   const ms = Date.now() - d.getTime();
   const min = Math.round(ms / 60000);
@@ -310,10 +370,13 @@ async function runBuddyTool(id: WebId, name: string, input: Record<string, unkno
   if (name === "get_catalog") {
     const productCount = await db.catalogProduct.count({ where: { shopId } });
     const sample = await db.catalogProduct.findMany({
-      where: { shopId }, orderBy: { position: "asc" }, take: 12,
-      select: { title: true, priceText: true },
+      where: { shopId }, orderBy: { position: "asc" }, take: 16,
+      select: { title: true, priceText: true, imageUrl: true, description: true },
     });
-    return JSON.stringify({ productCount, sample: sample.map((p) => ({ title: p.title, price: p.priceText || null })) });
+    // hasPhoto matters for make_content — a product with a real photo can be
+    // turned into an ad/video; one without can't (don't offer to). The raw image
+    // URL stays server-side; Helpurr only needs the title + whether a photo exists.
+    return JSON.stringify({ productCount, sample: sample.map((p) => ({ title: p.title, price: p.priceText || null, hasPhoto: !!p.imageUrl, blurb: p.description ? p.description.slice(0, 140) : null })) });
   }
   if (name === "get_campaigns") {
     const qs = await db.questline.findMany({
@@ -472,7 +535,7 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
   const lang = readUiLang(request);
-  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string };
+  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string };
   try { body = await request.json(); } catch { return json({ reply: tr(lang, "Hmm, I didn't catch that — try again?") }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
@@ -491,6 +554,75 @@ export async function action({ request }: ActionFunctionArgs) {
       const th = await db.buddyThread.create({ data: { shopId: id.shop.id, mode, title: "New chat" } });
       return json({ threadId: th.id, title: th.title });
     } catch { return json({ error: "create" }, { status: 500 }); }
+  }
+
+  // MAKE — the user tapped the in-chat "Make it" confirm. Re-validate server-side
+  // (never trust the client for a paid gen), re-resolve the REAL product photo,
+  // spend via the tested primitive, and enqueue the SAME job type the Studio
+  // uses (no new billable handler). Returns the jobId + a cursor to poll.
+  if (body.intent === "make") {
+    if (!id) return json({ error: "auth" }, { status: 401 });
+    const spec = body.make || {};
+    const kind: "image" | "video" = spec.kind === "video" ? "video" : "image";
+    const title = typeof spec.product === "string" ? spec.product.trim().slice(0, 120) : "";
+    if (!id.shop.activePlan?.active) return json({ error: "Pick a plan first — generating runs on tokens." }, { status: 400 });
+    const caps = capabilitiesFor(id.shop.activePlan);
+    if (kind === "video" && !caps.has("video")) return json({ error: "Your plan doesn't include video." }, { status: 400 });
+    if (!caps.has("image")) return json({ error: "Your plan doesn't include generation." }, { status: 400 });
+    const prod = title ? await db.catalogProduct.findFirst({ where: { shopId: id.shop.id, title: { contains: title } }, orderBy: { position: "asc" }, select: { title: true, imageUrl: true, url: true } }) : null;
+    if (!prod || !prod.imageUrl) return json({ error: "Couldn't find that product's photo anymore." }, { status: 400 });
+    const cost = kind === "video" ? TOKEN_COST.video : TOKEN_COST.image;
+    const tokens = tokensRemainingLive(id.shop.activePlan);
+    if (tokens < cost) return json({ error: `Not enough tokens — ${tokens} left, needs ${cost}.` }, { status: 400 });
+    const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
+    const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
+    const cursor = Date.now();
+    try {
+      let jobId: string;
+      if (kind === "image") {
+        jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", {
+          section: "marketing", freshShot: true,
+          productTitle: prod.title, productImageUrl: prod.imageUrl, productUrl: prod.url || "",
+          stylePrompt: direction, styleMode: direction ? "scene" : "backdrop",
+          serviceMode: false, prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
+        });
+      } else {
+        jobId = await enqueueJob(id.shop.id, "GENERATE_VIDEO_AD", {
+          section: "marketing",
+          productTitle: prod.title, productImageUrl: prod.imageUrl, productUrl: prod.url || "",
+          customPrompt: direction, productDescription: direction,
+          style: "PRODUCT_HIGHLIGHT", contentType: "highlight", avatarVariant: 0,
+          holdProduct: false, serviceMode: false, videoEngine: "auto",
+          prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
+        });
+      }
+      return json({ jobId, cursor, kind, cost });
+    } catch (e) {
+      try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
+      console.error("[buddy] make enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
+      return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+    }
+  }
+
+  // MAKE STATUS — poll for the finished piece. The user made ONE thing since the
+  // cursor, so the newest asset of that type WITH media since then is theirs.
+  // (Mirrors the combine correlation: Asset has no jobId, so we go by type+time.)
+  if (body.intent === "makeStatus") {
+    if (!id) return json({ error: "auth" }, { status: 401 });
+    const jobId = typeof body.jobId === "string" ? body.jobId : "";
+    const cursor = Number(body.cursor) || 0;
+    const kind = body.kind === "video" ? "video" : "image";
+    const type: "IMAGE_AD" | "VIDEO_AD" = kind === "video" ? "VIDEO_AD" : "IMAGE_AD";
+    const asset = await db.asset.findFirst({
+      where: { shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) } },
+      orderBy: { createdAt: "desc" }, select: { title: true, bodyJson: true },
+    });
+    let url = "";
+    if (asset) { try { const b = JSON.parse(asset.bodyJson || "{}") as { videoUrl?: string; imageUrl?: string; url?: string }; url = b.videoUrl || b.imageUrl || b.url || ""; } catch { /* */ } }
+    if (url) return json({ done: true, media: [{ url, type, title: asset?.title || "" }] });
+    const job = jobId ? await db.job.findUnique({ where: { id: jobId }, select: { status: true, lastError: true } }) : null;
+    if (job?.status === "FAILED") return json({ failed: true, error: job.lastError || "It didn't finish — your tokens were refunded." });
+    return json({ done: false });
   }
 
   // The conversation as proper role-messages for the tool loop. Drop leading
@@ -528,7 +660,7 @@ export async function action({ request }: ActionFunctionArgs) {
     ? `\n\nLANGUAGE: The app's interface is set to ${BUDDY_LANG[lang]}, so reply ENTIRELY in ${BUDDY_LANG[lang]} — every word, naturally and fluently, lists and questions included — to match the interface, UNLESS the user clearly writes to you in a different language, in which case reply in theirs. Keep your Helpurr voice and every rule above; only the language changes.`
     : "";
   const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}${facts}${langLine}`;
-  const pending: { action: PendingAction | null; media: BuddyMedia[] } = { action: null, media: [] };
+  const pending: { action: PendingAction | null; media: BuddyMedia[]; make: MakeSpec | null } = { action: null, media: [], make: null };
   try {
     const reply = await anthropicToolLoop({
       system,
@@ -538,6 +670,7 @@ export async function action({ request }: ActionFunctionArgs) {
         if (!id) return "(not signed in)";
         if (n === "set_up_task") { const r = buildTask(i, lang); pending.action = r.action; return r.toolResult; }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
+        if (n === "make_content") { const r = await buildMake(id, i, lang); if (r.make) pending.make = r.make; return r.toolResult; }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
@@ -548,7 +681,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
     if (id) await remember(id.shop.id, mode, threadId, lastUser, clean);
-    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action, media: pending.media });
+    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action, media: pending.media, pendingMake: pending.make });
   } catch {
     // Never leave the chat hanging on an outage.
     return json({ reply: tr(lang, "My brain hiccuped for a sec — mind trying that again?") });

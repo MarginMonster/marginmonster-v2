@@ -279,7 +279,8 @@ type MMAction = { label: string; to: string };
 // the actual spend. Helpurr never spends tokens itself.
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
-type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[] };
+type MMPendingMake = { kind: "image" | "video"; product: string; presenter: boolean; direction: string; cost: number; label: string };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; make?: MMPendingMake };
 function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
   const loc = useLocation();
   const nav = useNavigate();
@@ -287,6 +288,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // A make-from-chat generation in flight — disables other "Make it" buttons so
+  // one tap can't become two paid jobs. Chat stays usable (makes take minutes).
+  const [making, setMaking] = useState(false);
   // Persistent memory: once the saved thread has loaded (or confirmed empty) the
   // greeting may fire. Starts false so we don't greet over a conversation that's
   // about to load back in from the server.
@@ -371,11 +375,65 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     if (activeThreadId !== "main") setThreads((ts) => ts.map((th) => (th.id === activeThreadId && th.title === "New chat" ? { ...th, title: trimmed.slice(0, 42) } : th)));
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId }) });
-      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[] };
-      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined }]);
+      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMake?: MMPendingMake | null };
+      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, make: data.pendingMake || undefined }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); }
+  };
+
+  // One-tap confirm on a Helpurr "Make it" button: spend the tokens, kick off the
+  // SAME tested job the Studio enqueues, then poll until the media lands and drop
+  // it inline in the chat. Chat stays usable throughout (makes take minutes).
+  const runMake = async (spec: MMPendingMake) => {
+    if (making) return;
+    setMaking(true);
+    // Remove the pending make from every message so the button can't be tapped twice.
+    setMsgs((m) => m.map((x) => (x.make ? { ...x, make: undefined } : x)));
+    const noun = spec.kind === "video" ? t("video") : t("image");
+    setMsgs((m) => [...m, { role: "assistant", content: t("On it — making your {noun} now. This takes a minute; keep chatting if you like and I'll drop it here when it's ready. 🎬", { noun }) }]);
+    try {
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "make", make: spec, mode }) });
+      const data = await res.json().catch(() => ({})) as { jobId?: string; cursor?: number; kind?: string; error?: string };
+      if (!data.jobId || typeof data.cursor !== "number") {
+        setMsgs((m) => [...m, { role: "assistant", content: data.error || t("Couldn't start that one — mind trying again?") }]);
+        setMaking(false);
+        return;
+      }
+      const { jobId, cursor } = data;
+      const kind = data.kind || spec.kind;
+      // Poll by job id + a time cursor (assets carry no jobId column; the server
+      // correlates the newest asset of this type since the cursor). Video is slow.
+      const limit = kind === "video" ? 60 : 24; // ~5min / ~2min at 5s
+      let tries = 0;
+      const tick = async () => {
+        tries++;
+        try {
+          const r = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "makeStatus", jobId, cursor, kind, mode }) });
+          const s = await r.json().catch(() => ({})) as { done?: boolean; media?: MMMedia[]; failed?: boolean; error?: string };
+          if (s.failed) {
+            setMsgs((m) => [...m, { role: "assistant", content: s.error || t("That one didn't come out right, so I refunded the tokens. Want to try again?") }]);
+            setMaking(false);
+            return;
+          }
+          if (s.done && Array.isArray(s.media) && s.media.length) {
+            setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Tap to open it full-size. Want a tweak, or should I make another?"), media: s.media }]);
+            setMaking(false);
+            return;
+          }
+        } catch { /* transient — keep polling */ }
+        if (tries >= limit) {
+          setMsgs((m) => [...m, { role: "assistant", content: t("Still cooking — it's taking longer than usual. Check your Gallery in a moment; it'll land there when it's done.") }]);
+          setMaking(false);
+          return;
+        }
+        window.setTimeout(tick, 5000);
+      };
+      window.setTimeout(tick, 5000);
+    } catch {
+      setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped before I could start — mind trying again?") }]);
+      setMaking(false);
+    }
   };
 
   // Create a fresh project/thread and switch to it (loads empty → proactive opener).
@@ -440,6 +498,12 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                   <button type="button" className="mm-make" onClick={() => go(m.pending!.to)}>
                     <span>✨ {m.pending.label}</span>
                     <b>{m.pending.cost > 0 ? t("~{n} tokens →", { n: m.pending.cost }) : "→"}</b>
+                  </button>
+                )}
+                {m.make && (
+                  <button type="button" className="mm-make mm-make-go" disabled={making} onClick={() => runMake(m.make!)}>
+                    <span>{making ? t("Working…") : t("✨ {label}", { label: m.make.label })}</span>
+                    <b>{m.make.cost > 0 ? t("{n} tokens →", { n: m.make.cost }) : "→"}</b>
                   </button>
                 )}
                 {m.actions && m.actions.length > 0 && (
@@ -1425,6 +1489,9 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-make span{overflow-wrap:anywhere;}
 .mm-make b{flex:0 0 auto;font-size:11.5px;font-weight:800;color:#F6E6B4;white-space:nowrap;}
 .mm-make:hover{filter:brightness(1.06);transform:translateY(-1px);}
+.mm-make-go{background:linear-gradient(135deg,#E7C879 38%,#C9A23F);box-shadow:0 3px 14px rgba(201,162,63,.34),inset 0 0 0 1px rgba(255,255,255,.3);color:#1A130A;}
+.mm-make-go b{color:#4A3410;}
+.mm-make-go:disabled{opacity:.6;cursor:default;filter:none;transform:none;}
 .mm-typing{display:flex;gap:4px;align-items:center;}
 .mm-typing i{width:7px;height:7px;border-radius:50%;background:#9CCBB1;animation:mmBlink 1.2s infinite both;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}
