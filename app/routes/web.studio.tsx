@@ -563,10 +563,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // The Creator section (casual mode) is its own entitlement — gate it here.
   const casualMode = form.get("mode") === "casual";
   // Creators don't need a brand voice (that's a marketing concept); only
-  // marketing generation requires it. Editing never did, and neither does a plain
-  // photo upload (frameUpload is free and brand-agnostic — Helpurr's in-chat attach
-  // posts here and must work for Creators who have no brand profile).
-  if (!shop.brandProfile && intent !== "edit" && intent !== "frameUpload" && !casualMode) return json({ error: tr(lang, "Set your brand voice on the Dashboard first.") });
+  // marketing generation requires it. Editing never did.
+  if (!shop.brandProfile && intent !== "edit" && !casualMode) return json({ error: tr(lang, "Set your brand voice on the Dashboard first.") });
   if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — content runs on tokens.") });
   // Creator section = the $6.99 Creator entitlement (standalone plan, the +add-on,
   // Legend, or a trial). Without it, send them to unlock it rather than generate.

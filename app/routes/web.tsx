@@ -393,11 +393,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     setUploading(true);
     try {
       const fd = new FormData();
-      fd.set("intent", "frameUpload");
       fd.set("productPhoto", file);
-      // frameUpload is free + brand/mode-agnostic (the Studio action exempts it from
-      // the brand-voice gate), so no mode field is needed — it just stores the photo.
-      const r = await fetch("/web/studio", { method: "POST", body: fd });
+      // Dedicated resource route — a plain fetch gets JSON back (a POST to a page
+      // route like /web/studio returns HTML). Free, token-less; just stores the photo.
+      const r = await fetch("/api/buddy-upload", { method: "POST", body: fd });
       const d = await r.json().catch(() => ({})) as { frameUrl?: string; error?: string };
       if (d.frameUrl) setAttach({ url: d.frameUrl, name: file.name });
       else setMsgs((m) => [...m, { role: "assistant", content: d.error || t("Couldn't upload that photo — mind trying again?") }]);
