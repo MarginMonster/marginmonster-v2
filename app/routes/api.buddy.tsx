@@ -430,6 +430,29 @@ async function readUploadBytes(url: string): Promise<Buffer | null> {
   } catch { return null; }
 }
 
+// Find a catalog product by a LOOSE name: exact substring first, then a normalized
+// token-overlap fallback so a typo or partial name ("pokemon set", "matcha") still
+// resolves to the right product instead of dead-ending the make with "no product".
+async function resolveProduct(shopId: string, query: string): Promise<{ title: string; imageUrl: string | null; url: string | null } | null> {
+  const q = (query || "").trim();
+  if (!q) return null;
+  const exact = await db.catalogProduct.findFirst({ where: { shopId, title: { contains: q } }, orderBy: { position: "asc" }, select: { title: true, imageUrl: true, url: true } });
+  if (exact) return exact;
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1);
+  const qw = new Set(words(q));
+  if (qw.size === 0) return null;
+  const all = await db.catalogProduct.findMany({ where: { shopId }, orderBy: { position: "asc" }, take: 400, select: { title: true, imageUrl: true, url: true } });
+  let best: { title: string; imageUrl: string | null; url: string | null } | null = null;
+  let bestScore = 0;
+  for (const p of all) {
+    const pw = words(p.title);
+    const overlap = pw.filter((w) => qw.has(w)).length;
+    const score = overlap / qw.size; // fraction of the asked-for words that appear in this title
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return bestScore >= 0.5 ? best : null; // need at least half the words to match before guessing
+}
+
 // FREE account (no active plan): a few free image ads / photo edits, then upgrade.
 // Everything else (video/faceless/music, or out of free makes) returns an `upsell`
 // so the widget shows a tappable "See plans" button instead of a flat refusal.
@@ -519,10 +542,7 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
   if (mode === "casual") return { make: null, toolResult: JSON.stringify({ error: "In Creator mode, make_content only makes faceless videos and music tracks. For a plain image, call set_up_task with kind 'image' (it opens the Studio); or offer them a faceless video instead. Do NOT call make_content again for an image here." }) };
   const title = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
   if (!title) return { make: null, toolResult: JSON.stringify({ error: "No product named — ask which product to feature." }) };
-  const prod = await db.catalogProduct.findFirst({
-    where: { shopId: id.shop.id, title: { contains: title } },
-    orderBy: { position: "asc" }, select: { title: true, imageUrl: true },
-  });
+  const prod = await resolveProduct(id.shop.id, title);
   if (!prod || !prod.imageUrl) {
     return { make: null, toolResult: JSON.stringify({ error: `No product with a photo matches "${title}". Call get_catalog and pick one that hasPhoto, or tell them to upload a photo in the Studio.` }) };
   }
@@ -878,7 +898,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const title = typeof spec.product === "string" ? spec.product.trim().slice(0, 120) : "";
     if (kind === "video" && !caps.has("video")) return json({ error: "Your plan doesn't include video." }, { status: 400 });
     if (!caps.has("image")) return json({ error: "Your plan doesn't include generation." }, { status: 400 });
-    const prod = title ? await db.catalogProduct.findFirst({ where: { shopId: id.shop.id, title: { contains: title } }, orderBy: { position: "asc" }, select: { title: true, imageUrl: true, url: true } }) : null;
+    const prod = title ? await resolveProduct(id.shop.id, title) : null;
     if (!prod || !prod.imageUrl) return json({ error: "Couldn't find that product's photo anymore." }, { status: 400 });
     const cost = kind === "video" ? TOKEN_COST.video : TOKEN_COST.image;
     const tokens = tokensRemainingLive(id.shop.activePlan);
