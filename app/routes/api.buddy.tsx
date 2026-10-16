@@ -169,6 +169,21 @@ const BUDDY_TOOLS: ToolDef[] = [
     description: "Save a durable fact about this merchant — their store, goals, audience, style or preferences — so you recall it in future chats (e.g. 'focuses on Pokemon blind boxes', 'targets collectors', 'likes short punchy ads', 'brand voice is playful'). Call this whenever they tell you something worth remembering, or say 'remember that…'. One short specific sentence. Never save passwords, card numbers, or throwaway details from the current task.",
     input_schema: { type: "object", properties: { fact: { type: "string", description: "One short, specific fact to remember" } }, required: ["fact"] },
   },
+  {
+    // DISPLAY real creations inline in the chat (read-only, zero spend). The
+    // media is rendered by the widget; the tool result tells Helpurr they're
+    // already visible so it just captions them, never pastes URLs.
+    name: "show_work",
+    description: "SHOW the user their actual past creations right here in the chat — image ads, product videos, photo edits, music. Use whenever they ask to SEE something ('show me my last ad', 'show my Pokemon videos', 'what did I make for the mug', 'let me see that one'). This DISPLAYS the real media inline in the conversation; it makes nothing new and spends no tokens. Optionally filter by kind or product.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["image", "video", "music", "any"], description: "What kind of creation to show (default any)" },
+        product: { type: "string", description: "Only show pieces made for this product (matches the title)" },
+        limit: { type: "integer", description: "How many to show (default 4, max 8)" },
+      },
+    },
+  },
 ];
 
 // What each task kind opens in the Studio (the Studio reads ?tab / ?product /
@@ -204,6 +219,41 @@ function buildTask(input: Record<string, unknown>, lang: UiLang): { toolResult: 
       note: "A confirm button is now shown to the user. Tell them briefly what you lined up and that tapping it opens it in the Studio to make (where they approve the spend). Do NOT claim it is already made or that tokens were spent.",
     }),
   };
+}
+
+// A piece of real media Helpurr can display inline (the widget renders it).
+type BuddyMedia = { url: string; type: string; title: string };
+
+// Pull the user's FINISHED creations to show inline in the chat — read-only, no
+// spend. Filters on media PRESENCE (a still-cooking or failed asset has none),
+// so it never shows a blank/loading tile. Optionally narrowed by kind/product.
+async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise<{ media: BuddyMedia[]; toolResult: string }> {
+  const shopId = id.shop.id;
+  const limit = Math.min(8, Math.max(1, Number(input.limit) || 4));
+  const kind = String(input.kind || "any");
+  const product = typeof input.product === "string" ? input.product.trim().toLowerCase() : "";
+  const types: Array<"IMAGE_AD" | "VIDEO_AD" | "AUDIO"> = kind === "image" ? ["IMAGE_AD"] : kind === "video" ? ["VIDEO_AD"] : kind === "music" ? ["AUDIO"] : ["IMAGE_AD", "VIDEO_AD", "AUDIO"];
+  const rows = await db.asset.findMany({
+    where: { shopId, type: { in: types }, status: { not: "FAILED" } },
+    orderBy: { createdAt: "desc" }, take: product ? 60 : 24,
+    select: { type: true, title: true, bodyJson: true },
+  });
+  const media: BuddyMedia[] = [];
+  for (const r of rows) {
+    let url = "";
+    try {
+      const b = JSON.parse(r.bodyJson || "{}") as { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string };
+      url = b.videoUrl || b.imageUrl || b.audioUrl || b.url || "";
+    } catch { /* unparseable — skip */ }
+    if (!url) continue; // still cooking / incomplete — nothing to show yet
+    if (product && !(r.title || "").toLowerCase().includes(product)) continue;
+    media.push({ url, type: r.type, title: r.title || "" });
+    if (media.length >= limit) break;
+  }
+  if (!media.length) {
+    return { media: [], toolResult: JSON.stringify({ shown: 0, note: product ? `No finished pieces found matching "${String(input.product)}". Say so briefly and offer to make one.` : "No finished creations to show yet. Offer to make their first one." }) };
+  }
+  return { media, toolResult: JSON.stringify({ shown: media.length, titles: media.map((m) => m.title), note: "These are now VISIBLE to the user inline in the chat. Caption them in ONE short friendly line — do NOT paste URLs or describe each one; they can see them." }) };
 }
 
 function relTime(d: Date): string {
@@ -478,7 +528,7 @@ export async function action({ request }: ActionFunctionArgs) {
     ? `\n\nLANGUAGE: The app's interface is set to ${BUDDY_LANG[lang]}, so reply ENTIRELY in ${BUDDY_LANG[lang]} — every word, naturally and fluently, lists and questions included — to match the interface, UNLESS the user clearly writes to you in a different language, in which case reply in theirs. Keep your Helpurr voice and every rule above; only the language changes.`
     : "";
   const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}${facts}${langLine}`;
-  const pending: { action: PendingAction | null } = { action: null };
+  const pending: { action: PendingAction | null; media: BuddyMedia[] } = { action: null, media: [] };
   try {
     const reply = await anthropicToolLoop({
       system,
@@ -487,6 +537,7 @@ export async function action({ request }: ActionFunctionArgs) {
       runTool: async (n, i) => {
         if (!id) return "(not signed in)";
         if (n === "set_up_task") { const r = buildTask(i, lang); pending.action = r.action; return r.toolResult; }
+        if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
@@ -497,7 +548,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
     if (id) await remember(id.shop.id, mode, threadId, lastUser, clean);
-    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action });
+    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action, media: pending.media });
   } catch {
     // Never leave the chat hanging on an outage.
     return json({ reply: tr(lang, "My brain hiccuped for a sec — mind trying that again?") });

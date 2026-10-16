@@ -278,7 +278,8 @@ type MMAction = { label: string; to: string };
 // button that opens the task in the Studio pre-filled, where the user approves
 // the actual spend. Helpurr never spends tokens itself.
 type MMPending = { label: string; to: string; cost: number; kind: string };
-type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending };
+type MMMedia = { url: string; type: string; title?: string };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[] };
 function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
   const loc = useLocation();
   const nav = useNavigate();
@@ -370,8 +371,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     if (activeThreadId !== "main") setThreads((ts) => ts.map((th) => (th.id === activeThreadId && th.title === "New chat" ? { ...th, title: trimmed.slice(0, 42) } : th)));
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId }) });
-      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null };
-      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined }]);
+      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[] };
+      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); }
@@ -424,6 +425,17 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
                 <div className={`mm-msg ${m.role}`}>{m.content}</div>
+                {m.media && m.media.length > 0 && (
+                  <div className="mm-media">
+                    {m.media.map((md, j) => (
+                      md.type === "VIDEO_AD"
+                        ? <video key={j} src={md.url} className="mm-media-item" controls muted playsInline preload="metadata" />
+                        : md.type === "AUDIO"
+                          ? <audio key={j} src={md.url} className="mm-media-aud" controls />
+                          : <a key={j} href={md.url} target="_blank" rel="noreferrer" className="mm-media-link" title={md.title || ""}><img src={md.url} alt={md.title || ""} className="mm-media-item" loading="lazy" /></a>
+                    ))}
+                  </div>
+                )}
                 {m.pending && (
                   <button type="button" className="mm-make" onClick={() => go(m.pending!.to)}>
                     <span>✨ {m.pending.label}</span>
@@ -1394,6 +1406,13 @@ const CSS = `
 .mm-row{display:flex;flex-direction:column;gap:7px;}
 .mm-row.user{align-items:flex-end;}
 .mm-row.assistant{align-items:flex-start;}
+/* Inline media Helpurr shows (real creations from the Archive). */
+.mm-media{display:flex;flex-wrap:wrap;gap:8px;max-width:92%;margin-top:2px;}
+.mm-media-link{display:block;flex:0 0 auto;line-height:0;}
+.mm-media-item{width:116px;height:116px;object-fit:cover;border-radius:12px;border:1px solid var(--line,#E4DFCF);background:#0b0f0d;display:block;}
+video.mm-media-item{width:132px;height:176px;object-fit:cover;}
+.mm-media-link:hover .mm-media-item{filter:brightness(1.05);}
+.mm-media-aud{width:100%;max-width:260px;}
 .mm-acts{display:flex;flex-wrap:wrap;gap:6px;max-width:92%;}
 .mm-act{font:inherit;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;border:0;border-radius:999px;padding:8px 15px;
   background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 2px 8px rgba(12,122,70,.26),inset 0 0 0 1px rgba(231,200,121,.3);}
