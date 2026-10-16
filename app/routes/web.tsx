@@ -282,7 +282,7 @@ type MMAction = { label: string; to: string };
 // the actual spend. Helpurr never spends tokens itself.
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
-type MMPendingMake = { kind: "image" | "video"; product: string; presenter: boolean; direction: string; cost: number; label: string };
+type MMPendingMake = { kind: "image" | "video" | "faceless" | "music"; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; cost: number; label: string };
 type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; make?: MMPendingMake };
 function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
   const loc = useLocation();
@@ -400,7 +400,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     setMaking(true);
     // Remove the pending make from every message so the button can't be tapped twice.
     setMsgs((m) => m.map((x) => (x.make ? { ...x, make: undefined } : x)));
-    const noun = spec.kind === "video" ? t("video") : t("image");
+    const noun = spec.kind === "image" ? t("image") : spec.kind === "music" ? t("track") : t("video");
     setMsgs((m) => [...m, { role: "assistant", content: t("On it — making your {noun} now. This takes a minute; keep chatting if you like and I'll drop it here when it's ready. 🎬", { noun }) }]);
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "make", make: spec, mode }) });
@@ -413,8 +413,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       const { jobId, cursor } = data;
       const kind = data.kind || spec.kind;
       // Poll by job id + a time cursor (assets carry no jobId column; the server
-      // correlates the newest asset of this type since the cursor). Video is slow.
-      const limit = kind === "video" ? 60 : 24; // ~5min / ~2min at 5s
+      // correlates the newest asset of this type since the cursor). Faceless is
+      // the slowest (script→voice→captions→b-roll→music), then product video.
+      const limit = (kind === "video" || kind === "faceless") ? 72 : kind === "music" ? 36 : 24; // ~6min / ~3min / ~2min at 5s
       let tries = 0;
       const tick = async () => {
         tries++;
@@ -510,7 +511,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                   <div className="mm-media">
                     {m.media.map((md, j) => (
                       md.type === "VIDEO_AD"
-                        ? <video key={j} src={md.url} className="mm-media-item" controls muted playsInline preload="metadata" />
+                        ? <video key={j} src={md.url} className="mm-media-item" controls playsInline preload="metadata" />
                         : md.type === "AUDIO"
                           ? <audio key={j} src={md.url} className="mm-media-aud" controls />
                           : <a key={j} href={md.url} target="_blank" rel="noreferrer" className="mm-media-link" title={md.title || ""}><img src={md.url} alt={md.title || ""} className="mm-media-item" loading="lazy" /></a>

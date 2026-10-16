@@ -157,11 +157,11 @@ const BUDDY_TOOLS: ToolDef[] = [
     // tokens; it lines the task up and the user taps a button to open it in the
     // Studio pre-filled, where they approve the actual spend on the tested path.
     name: "set_up_task",
-    description: "Open a creation in the Studio, pre-filled, via a confirm button. Use ONLY for a blog post, faceless video, music track, photo edit, or campaign. For an IMAGE AD or PRODUCT VIDEO do NOT use this — use make_content, which makes the piece right here in the chat instead of sending them away. (The only time to use this for an image/video is as a fallback when make_content can't proceed — e.g. the product has no photo and they must upload one in the Studio.) This does NOT make it or spend tokens: it lines it up and the user taps to open it in the Studio and approve the spend. When the task is about a specific product, call get_catalog first and pass a REAL product title.",
+    description: "Open a creation in the Studio, pre-filled, via a confirm button. Use for a blog post, a photo edit, a campaign, or — in Creator mode only — a plain image (text-to-image, which lives in the Studio). For a FACELESS VIDEO or MUSIC TRACK (any mode), or an IMAGE AD or PRODUCT VIDEO (marketing mode), do NOT use this — use make_content, which makes the piece right here in the chat. This does NOT make it or spend tokens: it lines it up and the user taps to open it in the Studio and approve the spend. When a blog is about a specific product, call get_catalog first and pass a REAL product title.",
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["blog", "faceless", "music", "photo_edit", "campaign"], description: "What to create. NOTE: image ads and product videos are NOT here — make those with make_content, which makes them right in the chat." },
+        kind: { type: "string", enum: ["image", "blog", "photo_edit", "campaign"], description: "What to create. 'image' = a plain Creator-mode image (opens the Studio). NOTE: faceless videos and music are made in-chat with make_content, as are image ads / product videos in marketing mode." },
         product: { type: "string", description: "The product title to feature (only for blog)" },
       },
       required: ["kind"],
@@ -192,16 +192,19 @@ const BUDDY_TOOLS: ToolDef[] = [
     // model's say-so: it shows a one-tap confirm with the cost, the user taps,
     // it generates on the tested pipeline, and the result renders inline here.
     name: "make_content",
-    description: "THE default way to create an image ad or a product video — make it right here in the chat. Use this whenever they ask you to CREATE one ('make me an ad', 'make me a video with the matcha tin', 'turn my mug into an ad', 'you pick a product'). PREFER this over set_up_task for images and videos — it makes the piece here instead of sending them to the Studio. You appropriate the whole brief: call get_catalog FIRST and pick a REAL product title that hasPhoto, decide presenter-or-not for video, and set any direction/setting. This SPENDS tokens, so it does NOT run immediately — it shows the user a one-tap 'Make it' confirm with the exact cost; they approve, it generates on the tested path, and the finished piece appears right here in the chat. Only call this when they clearly want to CREATE.",
+    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), or a MUSIC track. Use this whenever they ask you to make any of those ('make me an ad', 'make a faceless video about X', 'storytime about…', 'make me a track'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (these are marketing-only). For a faceless video or music track: set a clear 'topic' (what it's about) — no catalog product required, and these work in any mode. This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it generates on the tested path, and the finished piece appears right here. Only call when they clearly want to CREATE.",
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["image", "video"], description: "image ad or product video" },
-        product: { type: "string", description: "The REAL product title to feature — must exist in the catalog and have a photo (call get_catalog first)" },
-        presenter: { type: "boolean", description: "For video only: true = a presenter holds/presents the product; false = product-only cinematic. Ignored for image." },
-        direction: { type: "string", description: "Optional creative direction / setting / style (e.g. 'bright kitchen, upbeat', 'festive gift angle')" },
+        kind: { type: "string", enum: ["image", "video", "faceless", "music"], description: "image ad / product video (need a catalog product) · faceless video / music (need a topic)" },
+        product: { type: "string", description: "image/video ONLY: the REAL product title to feature — must exist in the catalog and have a photo (call get_catalog first)" },
+        topic: { type: "string", description: "faceless/music ONLY: what the video or track is about, e.g. '5 facts about the deep ocean', 'a hype pump-up anthem', or a product-themed angle like 'why collectors love the Pokemon 30th anniversary set'" },
+        format: { type: "string", enum: ["facts", "storytime", "listicle", "motivational"], description: "faceless ONLY: the video style (default facts). Pick from the user's phrasing — 'storytime …' → storytime, '5 reasons …' → listicle." },
+        voice: { type: "string", enum: ["f-warm", "f-hype", "m-warm", "m-hype"], description: "faceless ONLY: narrator voice (default f-warm). f=female m=male, warm=calm hype=energetic." },
+        presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
+        direction: { type: "string", description: "image/video: optional creative direction / setting / style (e.g. 'bright kitchen, upbeat')" },
       },
-      required: ["kind", "product"],
+      required: ["kind"],
     },
   },
 ];
@@ -212,6 +215,9 @@ const BUDDY_TOOLS: ToolDef[] = [
 type PendingAction = { label: string; to: string; cost: number; kind: string };
 const TASK_SPECS: Record<string, { tab?: string; to: string; cost: number; verb: string; product: boolean }> = {
   image_ad:   { tab: "image",    to: "/web/studio", cost: TOKEN_COST.image,    verb: "Make an image ad",     product: true },
+  // Plain "image" is the Creator-mode text-to-image path (the Studio reads emMode);
+  // make_content handles images in-chat in marketing, so this is the casual door.
+  image:      { tab: "image",    to: "/web/studio", cost: TOKEN_COST.image,    verb: "Make an image",        product: false },
   video:      { tab: "video",    to: "/web/studio", cost: TOKEN_COST.video,    verb: "Make a product video", product: true },
   blog:       { tab: "blog",     to: "/web/studio", cost: TOKEN_COST.blog,     verb: "Write a blog post",    product: true },
   faceless:   { tab: "faceless", to: "/web/studio", cost: TOKEN_COST.faceless, verb: "Make a faceless video", product: false },
@@ -278,8 +284,18 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 
 // The confirm-spec for a make-from-chat. No image URL here — the real product
 // photo is re-resolved server-side at spend time (never trust the client for a
-// paid generation), so this only carries what the user approves.
-type MakeSpec = { kind: "image" | "video"; product: string; presenter: boolean; direction: string; cost: number; label: string };
+// paid generation), so this only carries what the user approves. image/video are
+// catalog-product based (marketing); faceless/music are TOPIC based (both modes).
+type MakeKind = "image" | "video" | "faceless" | "music";
+type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; cost: number; label: string };
+const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music"];
+const asMakeKind = (v: unknown): MakeKind => (typeof v === "string" && (MAKE_KINDS as string[]).includes(v) ? (v as MakeKind) : "image");
+// Faceless format/voice allow-lists (the Studio doesn't validate these server-side
+// — we do, since Helpurr is now a second entry point into the same job).
+const FACELESS_FORMATS_OK = new Set(["motivational", "facts", "storytime", "listicle"]);
+const FACELESS_VOICES_OK = new Set(["f-warm", "f-hype", "m-warm", "m-hype"]);
+const normFacelessFormat = (v: unknown): string => { const s = typeof v === "string" ? v.trim().toLowerCase() : ""; return FACELESS_FORMATS_OK.has(s) ? s : "facts"; };
+const normFacelessVoice = (v: unknown): string => { const s = typeof v === "string" ? v.trim().toLowerCase() : ""; return FACELESS_VOICES_OK.has(s) ? s : "f-warm"; };
 
 // Set up a make WITHOUT spending: validate the product/plan/wallet and return a
 // confirm spec the widget turns into a one-tap "Make it" button. The actual
@@ -317,8 +333,43 @@ async function renderAsDataUrl(url: string): Promise<string | null> {
   return null;
 }
 
-async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang): Promise<{ make: MakeSpec | null; toolResult: string }> {
-  const kind: "image" | "video" = input.kind === "video" ? "video" : "image";
+async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual"): Promise<{ make: MakeSpec | null; toolResult: string }> {
+  const kind = asMakeKind(input.kind);
+  if (!id.shop.activePlan?.active) return { make: null, toolResult: JSON.stringify({ error: "They have no active plan — they need one to generate. Don't make it; point them to plans." }) };
+  const caps = capabilitiesFor(id.shop.activePlan);
+  const tokens = tokensRemainingLive(id.shop.activePlan);
+
+  // TOPIC-DRIVEN: faceless video + music track. No catalog product; works in BOTH
+  // modes. Faceless rides the video pipeline (gated at the "video" capability).
+  if (kind === "faceless" || kind === "music") {
+    const topicRaw = (typeof input.topic === "string" && input.topic.trim())
+      || (typeof input.direction === "string" && input.direction.trim())
+      || (typeof input.product === "string" && input.product.trim()) || "";
+    const topic = topicRaw.trim().slice(0, 200);
+    if (!topic) return { make: null, toolResult: JSON.stringify({ error: `No topic — ask what the ${kind === "music" ? "track" : "video"} should be about.` }) };
+    const capNeeded = kind === "faceless" ? "video" : "music";
+    if (!caps.has(capNeeded)) return { make: null, toolResult: JSON.stringify({ error: `Their plan doesn't include ${kind === "faceless" ? "video (a faceless video runs on the video pipeline)" : "music"} — suggest the plan that unlocks it; don't make it.` }) };
+    const cost = kind === "faceless" ? TOKEN_COST.faceless : TOKEN_COST.music;
+    if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
+    const format = kind === "faceless" ? normFacelessFormat(input.format) : "";
+    const voice = kind === "faceless" ? normFacelessVoice(input.voice) : "";
+    const short = topic.slice(0, 48);
+    const label = kind === "faceless"
+      ? tr(lang, "Make a faceless video about {topic}", { topic: short })
+      : tr(lang, "Make a track about {topic}", { topic: short });
+    const make: MakeSpec = { kind, product: "", topic, format, voice, presenter: false, direction: "", cost, label };
+    return {
+      make,
+      toolResult: JSON.stringify({
+        readyToMake: true, kind, topic, cost,
+        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown for a ${kind === "faceless" ? `faceless 9:16 ${format} video` : "music track"} about "${topic}". Say in ONE line what you'll make and that tapping it makes it right here where they approve the spend. Do NOT claim it is already made or that tokens were spent.`,
+      }),
+    };
+  }
+
+  // CATALOG-DRIVEN: image ad + product video. Marketing only — in Creator mode
+  // images/videos are the Studio's job, so steer those elsewhere.
+  if (mode === "casual") return { make: null, toolResult: JSON.stringify({ error: "In Creator mode, make_content only makes faceless videos and music tracks. For a plain image, call set_up_task with kind 'image' (it opens the Studio); or offer them a faceless video instead. Do NOT call make_content again for an image here." }) };
   const title = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
   if (!title) return { make: null, toolResult: JSON.stringify({ error: "No product named — ask which product to feature." }) };
   const prod = await db.catalogProduct.findFirst({
@@ -328,12 +379,9 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
   if (!prod || !prod.imageUrl) {
     return { make: null, toolResult: JSON.stringify({ error: `No product with a photo matches "${title}". Call get_catalog and pick one that hasPhoto, or tell them to upload a photo in the Studio.` }) };
   }
-  if (!id.shop.activePlan?.active) return { make: null, toolResult: JSON.stringify({ error: "They have no active plan — they need one to generate. Don't make it; point them to plans." }) };
-  const caps = capabilitiesFor(id.shop.activePlan);
   if (kind === "video" && !caps.has("video")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include video — suggest the plan that unlocks it; don't make it." }) };
   if (!caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include image generation. Don't make it." }) };
   const cost = kind === "video" ? TOKEN_COST.video : TOKEN_COST.image;
-  const tokens = tokensRemainingLive(id.shop.activePlan);
   if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
   // v1: video is a product-cinematic HIGHLIGHT (no presenter) — presenter video
   // is the fast-follow. Keep the flag so Helpurr can talk about it accurately.
@@ -597,10 +645,51 @@ export async function action({ request }: ActionFunctionArgs) {
   if (body.intent === "make") {
     if (!id) return json({ error: "auth" }, { status: 401 });
     const spec = body.make || {};
-    const kind: "image" | "video" = spec.kind === "video" ? "video" : "image";
-    const title = typeof spec.product === "string" ? spec.product.trim().slice(0, 120) : "";
+    const kind = asMakeKind(spec.kind);
     if (!id.shop.activePlan?.active) return json({ error: "Pick a plan first — generating runs on tokens." }, { status: 400 });
     const caps = capabilitiesFor(id.shop.activePlan);
+    const tokensLeft = tokensRemainingLive(id.shop.activePlan);
+
+    // TOPIC-DRIVEN: faceless video + music track. Re-validate, spend, and enqueue
+    // the SAME tested jobs the Studio uses (GENERATE_VIDEO_AD + contentType:faceless
+    // / GENERATE_SONG). No catalog product. prePaid+chargedTokens so the queue's
+    // terminal-failure refund uses the REAL cost (not the GENERATE_VIDEO_AD default).
+    if (kind === "faceless" || kind === "music") {
+      const topic = (typeof spec.topic === "string" ? spec.topic.trim().slice(0, 200) : "");
+      if (!topic) return json({ error: "No topic for that one — tell me what it should be about." }, { status: 400 });
+      const capNeeded = kind === "faceless" ? "video" : "music";
+      if (!caps.has(capNeeded)) return json({ error: `Your plan doesn't include ${kind === "faceless" ? "video" : "music"}.` }, { status: 400 });
+      const cost = kind === "faceless" ? TOKEN_COST.faceless : TOKEN_COST.music;
+      if (tokensLeft < cost) return json({ error: `Not enough tokens — ${tokensLeft} left, needs ${cost}.` }, { status: 400 });
+      const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
+      const cursor = Date.now();
+      try {
+        let jobId: string;
+        if (kind === "faceless") {
+          jobId = await enqueueJob(id.shop.id, "GENERATE_VIDEO_AD", {
+            section: "creator", contentType: "faceless", topic,
+            facelessFormat: normFacelessFormat(spec.format), voiceKey: normFacelessVoice(spec.voice), facelessQuality: "pro",
+            productTitle: topic.slice(0, 60),
+            prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
+          });
+        } else {
+          jobId = await enqueueJob(id.shop.id, "GENERATE_SONG", {
+            section: "creator", musicPrompt: topic,
+            productTitle: topic.slice(0, 60),
+            prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
+          });
+        }
+        return json({ jobId, cursor, kind, cost });
+      } catch (e) {
+        try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
+        console.error("[buddy] make (topic) enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
+        return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+      }
+    }
+
+    // CATALOG-DRIVEN: image ad + product video (marketing only).
+    if (mode === "casual") return json({ error: "In Creator mode, images and videos are made in the Studio." }, { status: 400 });
+    const title = typeof spec.product === "string" ? spec.product.trim().slice(0, 120) : "";
     if (kind === "video" && !caps.has("video")) return json({ error: "Your plan doesn't include video." }, { status: 400 });
     if (!caps.has("image")) return json({ error: "Your plan doesn't include generation." }, { status: 400 });
     const prod = title ? await db.catalogProduct.findFirst({ where: { shopId: id.shop.id, title: { contains: title } }, orderBy: { position: "asc" }, select: { title: true, imageUrl: true, url: true } }) : null;
@@ -645,14 +734,20 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!id) return json({ error: "auth" }, { status: 401 });
     const jobId = typeof body.jobId === "string" ? body.jobId : "";
     const cursor = Number(body.cursor) || 0;
-    const kind = body.kind === "video" ? "video" : "image";
-    const type: "IMAGE_AD" | "VIDEO_AD" = kind === "video" ? "VIDEO_AD" : "IMAGE_AD";
+    const kind = asMakeKind(body.kind);
+    // faceless rides the video pipeline → persists as VIDEO_AD; music → AUDIO.
+    const type: "IMAGE_AD" | "VIDEO_AD" | "AUDIO" = (kind === "video" || kind === "faceless") ? "VIDEO_AD" : kind === "music" ? "AUDIO" : "IMAGE_AD";
+    // Faceless shares the VIDEO_AD type with product videos (and background
+    // campaign/series drops), so over its long poll window a concurrent VIDEO_AD
+    // could be mis-correlated. The pipeline stamps metaJson.kind — narrow on it so
+    // a faceless poll only ever matches a faceless asset (same for music→song).
+    const metaKind = kind === "faceless" ? '"kind":"faceless"' : kind === "music" ? '"kind":"song"' : "";
     const asset = await db.asset.findFirst({
-      where: { shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) } },
+      where: { shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) }, ...(metaKind ? { metaJson: { contains: metaKind } } : {}) },
       orderBy: { createdAt: "desc" }, select: { title: true, bodyJson: true },
     });
     let url = "";
-    if (asset) { try { const b = JSON.parse(asset.bodyJson || "{}") as { videoUrl?: string; imageUrl?: string; url?: string }; url = b.videoUrl || b.imageUrl || b.url || ""; } catch { /* */ } }
+    if (asset) { try { const b = JSON.parse(asset.bodyJson || "{}") as { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string }; url = b.videoUrl || b.imageUrl || b.audioUrl || b.url || ""; } catch { /* */ } }
     if (url) return json({ done: true, media: [{ url, type, title: asset?.title || "" }] });
     const job = jobId ? await db.job.findUnique({ where: { id: jobId }, select: { status: true, lastError: true } }) : null;
     if (job?.status === "FAILED") return json({ failed: true, error: job.lastError || "It didn't finish — your tokens were refunded." });
@@ -726,8 +821,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const toolNote = !id
     ? ""
     : mode === "casual"
-    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP A CREATION: when they want to make or edit something, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You never spend their tokens or post yourself — the button and the Studio do. Keep replies warm and plain text."
-    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE AN IMAGE AD OR PRODUCT VIDEO RIGHT HERE: when they want one, call make_content — call get_catalog first, pick a REAL product that hasPhoto, set the brief, and it shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for images and videos — do NOT send them to the Studio for those. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, music, faceless video, photo edit or campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish (use it for an image/video only as a fallback when make_content can't, e.g. no product photo). YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
+    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You never spend their tokens or post yourself — the button confirms first. Keep replies warm and plain text."
+    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
   const facts = id ? await recallFacts(id.shop.id) : "";
   // The one line that makes Helpurr SPEAK the interface language. The model is
   // fluently multilingual, so this reliably switches the whole reply.
@@ -740,23 +835,30 @@ export async function action({ request }: ActionFunctionArgs) {
     const reply = await anthropicToolLoop({
       system,
       messages: chat,
-      // make_content is catalog-only (marketing). Casual/Creator users have no
-      // store catalog, so it'd only ever fail validation — hide it there.
-      tools: id ? (mode === "casual" ? BUDDY_TOOLS.filter((x) => x.name !== "make_content") : BUDDY_TOOLS) : [],
+      // make_content is available in BOTH modes now: image/video need a catalog
+      // product (marketing only — buildMake rejects them in casual), but faceless
+      // videos and music tracks are topic-driven and work in Creator mode too.
+      tools: id ? BUDDY_TOOLS : [],
       runTool: async (n, i) => {
         if (!id) return "(not signed in)";
         if (n === "set_up_task") {
-          // Hard redirect: images/videos are MADE in the chat via make_content,
-          // never handed off to the Studio. The proactive opener calls buildTask
-          // directly (not through here), so its suggestion buttons are unaffected.
+          // Redirect anything make_content can make in-chat to make_content. Faceless
+          // and music are in-chat in BOTH modes. Image/video are in-chat only in
+          // MARKETING (catalog-based); in Creator mode the Studio owns images, so
+          // those fall through to a Studio hand-off here — otherwise a casual image
+          // request ping-pongs between make_content and this redirect. The proactive
+          // opener calls buildTask directly (not here), so its buttons are safe.
           const k = String((i as { kind?: unknown }).kind || "");
-          if (k === "image_ad" || k === "image" || k === "video") {
-            return JSON.stringify({ wrongTool: true, note: `Don't use set_up_task for that. Use make_content with kind "${k === "video" ? "video" : "image"}" (call get_catalog first for a real product with a photo) — it makes the ${k === "video" ? "video" : "image ad"} right here in the chat.` });
+          const isCatalogMakeable = (k === "image_ad" || k === "image" || k === "video") && mode === "marketing";
+          if (k === "faceless" || k === "music" || isCatalogMakeable) {
+            const mc = k === "faceless" ? "faceless" : k === "music" ? "music" : k === "video" ? "video" : "image";
+            const how = (mc === "faceless" || mc === "music") ? "pass a 'topic'" : "call get_catalog first for a real product with a photo";
+            return JSON.stringify({ wrongTool: true, note: `Don't use set_up_task for that. Use make_content with kind "${mc}" (${how}) — it makes it right here in the chat.` });
           }
           const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
         }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
-        if (n === "make_content") { const r = await buildMake(id, i, lang); if (r.make) pending.make = r.make; return r.toolResult; }
+        if (n === "make_content") { const r = await buildMake(id, i, lang, mode); if (r.make) pending.make = r.make; return r.toolResult; }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
