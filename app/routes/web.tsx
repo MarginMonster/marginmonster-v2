@@ -440,9 +440,12 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     setMsgs((m) => [...m, { role: "assistant", content: t("On it — making your {noun} now. This takes a minute; keep chatting if you like and I'll drop it here when it's ready. 🎬", { noun }) }]);
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "make", make: spec, mode }) });
-      const data = await res.json().catch(() => ({})) as { jobId?: string; cursor?: number; kind?: string; error?: string };
+      const data = await res.json().catch(() => ({})) as { jobId?: string; cursor?: number; kind?: string; error?: string; upsell?: string };
       if (!data.jobId || typeof data.cursor !== "number") {
-        setMsgs((m) => [...m, { role: "assistant", content: data.error || t("Couldn't start that one — mind trying again?") }]);
+        // A free-tier wall (out of free makes / a paid-only kind) returns an upsell —
+        // surface it as a tappable "See plans" button, not just text.
+        const pending = data.upsell ? { label: t("See plans"), to: "/web#plans", cost: 0, kind: "plans" } : undefined;
+        setMsgs((m) => [...m, { role: "assistant", content: data.error || t("Couldn't start that one — mind trying again?"), pending }]);
         setMaking(false);
         return;
       }
@@ -564,7 +567,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 {m.make && (
                   <button type="button" className="mm-make mm-make-go" disabled={making} onClick={() => runMake(m.make!)}>
                     <span>{making ? t("Working…") : t("✨ {label}", { label: m.make.label })}</span>
-                    <b>{m.make.cost > 0 ? t("{n} tokens →", { n: m.make.cost }) : "→"}</b>
+                    <b>{m.make.cost > 0 ? t("{n} tokens →", { n: m.make.cost }) : t("Free →")}</b>
                   </button>
                 )}
                 {m.actions && m.actions.length > 0 && (

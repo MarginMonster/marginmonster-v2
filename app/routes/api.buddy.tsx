@@ -292,7 +292,50 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 // "edit" is the one kind whose subject comes from the CLIENT (a photo the user
 // uploaded into the chat), so MakeSpec carries sourceImageUrl + editOp for it.
 type MakeKind = "image" | "video" | "faceless" | "music" | "edit";
-type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; label: string };
+type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; label: string };
+
+// FREE TIER: a signed-in account with NO active plan can make a few of the cheapest,
+// most-impressive pieces (image ads + photo edits — both IMAGE_AD assets) on the
+// house, then upgrade. One-time, non-renewing (counted off lifetime IMAGE_AD assets
+// — a brand-new/free account has made at most this many), so it can't be farmed and
+// a lapsed-paid account (which already made many) gets none. Owner knob.
+const FREE_MAKE_LIMIT = 3;
+async function freeMakesLeft(shopId: string): Promise<number> {
+  const made = await db.asset.count({ where: { shopId, type: "IMAGE_AD" } }).catch(() => FREE_MAKE_LIMIT);
+  return Math.max(0, FREE_MAKE_LIMIT - made);
+}
+// A tappable "See plans" gold button hoisted onto a make rejection so every wall is
+// a one-tap upgrade moment, not a dead end. target is just for the copy.
+function upsellAction(target: "STARTER" | "CREATOR" | "STUDIO" | "plans" | "topup", lang: UiLang): PendingAction {
+  const label = target === "topup" ? tr(lang, "Add tokens")
+    : target === "STUDIO" ? tr(lang, "Unlock video — see plans")
+    : target === "CREATOR" ? tr(lang, "Unlock making — see plans")
+    : tr(lang, "See plans");
+  return { label, to: "/web#plans", cost: 0, kind: "plans" };
+}
+
+// The spend/enqueue side of a FREE make (the user tapped a free "Make it"). Re-checks
+// free eligibility server-side (never trusts the client), then enqueues the SAME
+// tested image/edit job with NO spend: prePaid skips the worker charge and freeGen
+// tells the queue's terminal-failure refund to skip (there's nothing to refund).
+async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: MakeKind, _mode: "marketing" | "casual", request: Request): Promise<Response> {
+  // FREE tier is EDIT-ONLY: editImage needs no plan/brand, so a planless account can
+  // finish it; the branded image-ad / video pipelines require an active plan and would
+  // fail at the worker. Everything else → upgrade.
+  if (kind !== "edit") return json({ error: "That one needs a plan — upgrade to unlock it. (Editing a photo you upload is free!)", upsell: (kind === "video" || kind === "faceless") ? "STUDIO" : kind === "music" ? "CREATOR" : "STARTER" }, { status: 402 });
+  const left = await freeMakesLeft(id.shop.id);
+  if (left <= 0) return json({ error: "You've used your free edits — upgrade to keep editing (and to make images, videos & music).", upsell: "CREATOR" }, { status: 402 });
+  const origin = externalOrigin(request);
+  const src = safeEditSource(spec.sourceImageUrl, id.shop.id, origin);
+  if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
+  const editOp = normEditOp(spec.editOp);
+  const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
+  if (editOp === "describe" && !direction) return json({ error: "Tell me what to change about the photo." }, { status: 400 });
+  try {
+    const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", { section: "creator", editOp, sourceImageUrl: src, editPrompt: direction, productImageUrl: src, productTitle: "Photo edit", prePaid: true, chargedTokens: 0, freeGen: true, initiator: "web" });
+    return json({ jobId, cursor: Date.now(), kind: "edit", cost: 0 });
+  } catch (e) { console.error("[buddy] free edit enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: "Couldn't start it — mind trying again?" }, { status: 500 }); }
+}
 const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music", "edit"];
 const asMakeKind = (v: unknown): MakeKind => (typeof v === "string" && (MAKE_KINDS as string[]).includes(v) ? (v as MakeKind) : "image");
 // Faceless format/voice allow-lists (the Studio doesn't validate these server-side
@@ -385,9 +428,36 @@ async function readUploadBytes(url: string): Promise<Buffer | null> {
   } catch { return null; }
 }
 
-async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string }> {
+// FREE account (no active plan): a few free image ads / photo edits, then upgrade.
+// Everything else (video/faceless/music, or out of free makes) returns an `upsell`
+// so the widget shows a tappable "See plans" button instead of a flat refusal.
+async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null, kind: MakeKind): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
+  // Only PHOTO EDITS are free: they run on editImage, which (unlike the branded
+  // image-ad / video pipelines) needs no plan or brand profile — so a free, planless
+  // account can actually complete them. Image ads, videos, faceless, music → upgrade.
+  if (kind !== "edit") {
+    const upsell = (kind === "video" || kind === "faceless") ? "STUDIO" as const : kind === "music" ? "CREATOR" as const : "STARTER" as const;
+    const unlocks = (kind === "video" || kind === "faceless") ? "videos" : kind === "music" ? "music" : "AI image ads for your products";
+    return { make: null, upsell, toolResult: JSON.stringify({ upgrade: true, note: `This is a FREE account — ${unlocks} come with a plan. A "See plans" button is now shown. Warmly say it's a paid feature and offer to EDIT a photo they upload right now instead — photo edits are free. Do NOT make it.` }) };
+  }
+  if (!editSource) return { make: null, toolResult: JSON.stringify({ error: "No photo attached — tell them to tap the attach (📎) button and send a photo, and you'll edit it free." }) };
+  const left = await freeMakesLeft(id.shop.id);
+  if (left <= 0) {
+    return { make: null, upsell: "CREATOR", toolResult: JSON.stringify({ upgrade: true, note: `This FREE account has used all ${FREE_MAKE_LIMIT} free edits. A "See plans" button is now shown. Warmly tell them they've used their free edits and that a plan unlocks unlimited editing (plus images, videos and music). Do NOT make it.` }) };
+  }
+  const editOp = normEditOp(input.editOp);
+  const direction = typeof input.direction === "string" ? input.direction.trim().slice(0, 300) : "";
+  if (editOp === "describe" && !direction) return { make: null, toolResult: JSON.stringify({ error: "For a freeform edit, ask WHAT to change (direction), or pick a specific editOp." }) };
+  const EDIT_VERB: Record<string, string> = { restyle: "Restyle this photo", cartoonize: "Cartoonize this photo", bgremove: "Remove the background", bgswap: "Swap the background", colorize: "Colorize this photo", upscale: "Sharpen this photo", describe: "Edit this photo" };
+  const label = tr(lang, "{verb} — free", { verb: tr(lang, EDIT_VERB[editOp] || "Edit this photo") });
+  const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: editSource, editOp, cost: 0, free: true, label };
+  return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "edit", editOp, free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free edit${left === 1 ? "" : "s"} left). Say it's on the house, name the edit in one line, and mention a plan unlocks unlimited editing plus images, videos and music. Do NOT claim it is done.` }) };
+}
+
+async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
   const kind = asMakeKind(input.kind);
-  if (!id.shop.activePlan?.active) return { make: null, toolResult: JSON.stringify({ error: "They have no active plan — they need one to generate. Don't make it; point them to plans." }) };
+  // FREE account → the free-tier taste + upgrade nudges (never the flat refusal).
+  if (!id.shop.activePlan?.active) return buildFreeMake(id, input, lang, mode, editSource, kind);
   const caps = capabilitiesFor(id.shop.activePlan);
   const tokens = tokensRemainingLive(id.shop.activePlan);
 
@@ -581,6 +651,15 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiL
     if (mode === "casual") {
       return { reply: tr(lang, "Hey {first}! 🐾 Up for making something? Drop a photo to restyle, or let's create something new from scratch — your call.", { first }), pendingAction: { label: tr(lang, "Open the Studio"), to: "/web/studio", cost: 0, kind: "studio" } };
     }
+    // FREE account (no plan): welcome them as a free helper + offer their free makes,
+    // instead of the old "you're low on tokens (0 left)" mislabel.
+    if (!id.shop.activePlan?.active) {
+      const freeLeft = await freeMakesLeft(shopId);
+      if (freeLeft > 0) {
+        return { reply: tr(lang, "Hey {first}! 🐾 I'm your free AI helper — ask me anything, and you've got {left} free photo edits on the house. Upload a photo and I'll restyle it, cartoonize it, or drop the background. (Image ads, videos & music come with a plan.)", { first, left: freeLeft }) };
+      }
+      return { reply: tr(lang, "Hey {first}! 🐾 Still here free to chat, brainstorm and plan with you. You've used your free edits — whenever you're ready, a plan unlocks unlimited editing plus image ads, videos and music.", { first }), pendingAction: upsellAction("plans", lang) };
+    }
     const [catCount, madeWeek, activeQ] = await Promise.all([
       db.catalogProduct.count({ where: { shopId } }),
       db.asset.count({ where: { shopId, createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } } }),
@@ -721,7 +800,8 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!id) return json({ error: "auth" }, { status: 401 });
     const spec = body.make || {};
     const kind = asMakeKind(spec.kind);
-    if (!id.shop.activePlan?.active) return json({ error: "Pick a plan first — generating runs on tokens." }, { status: 400 });
+    // FREE account → the free make path (no spend; re-validated server-side).
+    if (!id.shop.activePlan?.active) return handleFreeMakeIntent(id, spec, kind, mode, request);
     const caps = capabilitiesFor(id.shop.activePlan);
     const tokensLeft = tokensRemainingLive(id.shop.activePlan);
 
@@ -947,7 +1027,8 @@ export async function action({ request }: ActionFunctionArgs) {
       const since = new Date(Date.now() - 24 * 3_600_000);
       const used = await db.buddyMessage.count({ where: { shopId: id.shop.id, role: "user", createdAt: { gte: since } } });
       if (used >= cap) {
-        return json({ reply: tr(lang, "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)"), actions: [] });
+        // The cap is the upgrade moment: a tappable "See plans" button, not a wall.
+        return json({ reply: tr(lang, "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. A plan gets you a lot more chat (and unlocks making things)."), actions: [], pendingAction: upsellAction("plans", lang) });
       }
     } catch { /* a failed count must never block the chat */ }
   }
@@ -956,8 +1037,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const toolNote = !id
     ? ""
     : mode === "casual"
-    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You never spend their tokens or post yourself — the button confirms first. Keep replies warm and plain text."
-    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
+    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content still gives them a FEW FREE photo edits on the house — offer them genuinely; when they want video/music or use up their free creations, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You never spend their tokens or post yourself — the button confirms first. Keep replies warm and plain text."
+    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content gives them a FEW FREE PHOTO EDITS on the house (upload a photo → restyle / cartoonize / remove-background) — offer that genuinely and enthusiastically; image ads, videos and music need a plan, so when they want those or use up their free edits, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
   const facts = id ? await recallFacts(id.shop.id) : "";
   // The one line that makes Helpurr SPEAK the interface language. The model is
   // fluently multilingual, so this reliably switches the whole reply.
@@ -993,7 +1074,7 @@ export async function action({ request }: ActionFunctionArgs) {
           const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
         }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
-        if (n === "make_content") { const r = await buildMake(id, i, lang, mode, editSource); if (r.make) pending.make = r.make; return r.toolResult; }
+        if (n === "make_content") { const r = await buildMake(id, i, lang, mode, editSource); if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult; }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,

@@ -103,6 +103,10 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     const fresh = await db.job.findUnique({ where: { id: job.id }, select: { payload: true } });
     const before = (fresh ?? job).payload;
     const p = JSON.parse(before) as Record<string, unknown>;
+    // A FREE gen (Helpurr's free-tier taste) is prePaid with chargedTokens:0 — nothing
+    // was spent, so there is nothing to refund. Without this, chargedTokens 0 would
+    // fall through to REFUND_BY_TYPE and MINT tokens into a free, planless account.
+    if (p.freeGen) return;
     if (!p.prePaid || !REFUND_BY_TYPE[job.type]) return;
     p.prePaid = false;
     p.refunded = true;
