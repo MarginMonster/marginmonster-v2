@@ -3,7 +3,7 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useSubmit } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { isAdminEmail } from "../lib/admin.server";
 import { db } from "../db.server";
@@ -283,7 +283,22 @@ type MMAction = { label: string; to: string };
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
 type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; label: string };
-type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; make?: MMPendingMake };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; make?: MMPendingMake; followups?: string[] };
+
+// Render a SAFE light-markdown subset — **bold** and nicer •-bullets — as React
+// nodes (NEVER dangerouslySetInnerHTML, so model text can't inject HTML). The
+// bubble's white-space:pre-wrap preserves newlines, so we render inline and let
+// "\n" text nodes do the line breaks; anything else shows as plain text.
+function renderRich(text: string): ReactNode {
+  return text.split("\n").map((line, li) => {
+    const withBullet = line.replace(/^(\s*)[-*•]\s+/, "$1• ");
+    const segs = withBullet.split(/(\*\*[^*\n]+\*\*)/g).map((p, pi) => {
+      const b = /^\*\*([^*\n]+)\*\*$/.exec(p);
+      return b ? <strong key={pi}>{b[1]}</strong> : <Fragment key={pi}>{p}</Fragment>;
+    });
+    return <Fragment key={li}>{li > 0 ? "\n" : ""}{segs}</Fragment>;
+  });
+}
 function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
   const loc = useLocation();
   const nav = useNavigate();
@@ -428,8 +443,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     if (activeThreadId !== "main") setThreads((ts) => ts.map((th) => (th.id === activeThreadId && th.title === "New chat" ? { ...th, title: title.slice(0, 42) } : th)));
     try {
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-24).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photo?.url, lastPhotoUrl: carryPhoto || undefined }) });
-      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMake?: MMPendingMake | null };
-      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, make: data.pendingMake || undefined }]);
+      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMake?: MMPendingMake | null; followups?: string[] };
+      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, make: data.pendingMake || undefined, followups: Array.isArray(data.followups) && data.followups.length ? data.followups : undefined }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); }
@@ -483,8 +498,12 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             if (spec.kind === "image" && media[0]?.url) {
               try {
                 const rv = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "review", imageUrl: media[0].url, product: spec.product, mode }) });
-                const rd = await rv.json().catch(() => ({})) as { caption?: string };
-                if (rd.caption) setMsgs((m) => [...m, { role: "assistant", content: rd.caption as string }]);
+                const rd = await rv.json().catch(() => ({})) as { caption?: string; ok?: boolean };
+                // Helpurr already computes whether the result is good (ok). If it
+                // isn't, offer a one-tap Redo of the SAME spec — closed-loop
+                // self-correction, routed through the normal confirm→make path
+                // (so it still spends on tap; no new money path).
+                if (rd.caption) setMsgs((m) => [...m, { role: "assistant", content: rd.caption as string, make: rd.ok === false ? { ...spec, label: t("Redo it") } : undefined }]);
               } catch { /* the review is a nicety, never a blocker */ }
             }
             return;
@@ -553,7 +572,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           <div className="mm-list" ref={listRef} role="log" aria-live="polite" aria-relevant="additions">
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
-                <div className={`mm-msg ${m.role}`}>{m.content}</div>
+                <div className={`mm-msg ${m.role}`}>{m.role === "assistant" ? renderRich(m.content) : m.content}</div>
                 {m.media && m.media.length > 0 && (
                   <div className="mm-media">
                     {m.media.map((md, j) => (
@@ -579,6 +598,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 )}
                 {m.actions && m.actions.length > 0 && (
                   <div className="mm-acts">{m.actions.map((a) => <button key={a.to + a.label} type="button" className="mm-act" onClick={() => go(a.to)}>{a.label}</button>)}</div>
+                )}
+                {/* Contextual next-step chips — only under the LATEST reply, and
+                    only while idle, so old turns don't keep stale suggestions. */}
+                {m.followups && m.followups.length > 0 && i === msgs.length - 1 && !busy && !making && (
+                  <div className="mm-chips mm-followups">{m.followups.map((f) => <button key={f} type="button" onClick={() => send(f)}>{f}</button>)}</div>
                 )}
               </div>
             ))}

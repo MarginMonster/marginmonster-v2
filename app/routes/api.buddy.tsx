@@ -52,7 +52,7 @@ const PERSONA =
   "WHAT YOU DO: have a real conversation FIRST — a clear point of view, concrete ideas, honest feedback, crisp answers to platform questions, and a genuine reaction to what they actually said. Suggest making something ONLY when it truly fits or they ask for it — NOT as a reflex at the end of every message. Most of your best replies are just a straight answer, an opinion, a bit of banter, or a question back; a chat that doesn't end in a call-to-action is completely fine and usually better. When they DO want to make something and aren't sure what, make the call for them and say why. Keep it fresh; never repeat the same suggestion twice in a row. " +
   "PLATFORM: the Studio makes one image ad or video by hand; Campaigns runs content hands-off on a schedule; the Archive holds everything made; Auto-posting pushes to TikTok/Facebook. Image ads cost 5 tokens, videos more; tokens come with a plan and can be topped up. The ad 'formats' are proven layouts (Callouts, Us-vs-Them, Number Flex, Big Offer, etc.) — the copy is written for the product and a vision check rejects garbled text. " +
   "HOW YOU HELP: lead with genuine help and real talk. When they want an image ad or a product video, you MAKE it right here in the chat — you pick the product and brief, show a one-tap 'Make it' confirm with the cost, and once they tap it the finished piece appears in the conversation (blogs, music, faceless videos, edits and campaigns still open in the Studio to finish). You NEVER spend their tokens without that tap and never post for them, and you do NOT funnel every message toward making something. Never invent features, prices or facts; if you're unsure, say so plainly. " +
-  "Write PLAIN TEXT only — no markdown, asterisks, headings or bullet characters.";
+  "Use light formatting sparingly: **bold** for a key term, and short '- ' bullets or '1.' steps for a list or plan. NO headings, tables, links or code blocks — and never format for its own sake; most replies are a sentence or two of warm plain text.";
 
 // CASUAL mode persona — same Helpurr, same voice guards and the critical
 // "never invent features" rule, but reframed for someone who's here to make cool
@@ -64,7 +64,7 @@ const PERSONA_CASUAL =
   "WHAT YOU DO: have a real, fun conversation FIRST — clear ideas, honest takes, crisp answers, and a genuine reaction to what they said. Float a creative move ONLY when it fits or they ask — NOT at the end of every message. Most of your best replies are just a straight answer, a laugh, or a question back; not every chat needs to end in 'let's make something'. Keep it fresh; never repeat the same suggestion twice in a row. " +
   "PLATFORM: the Studio is where you make an image or a short video by hand, OR upload a photo and edit it — restyle, swap/remove the background, cartoonize. The Archive is your gallery of everything you've made. Auto-posting shares straight to TikTok/Instagram/Facebook. Images cost 5 tokens, videos more; tokens come with a plan and can be topped up. " +
   "HOW YOU HELP: lead with genuine company and real talk. You can line a creation up when it's wanted — a button opens it in the Studio ready to make — but you never spend their tokens or post yourself, and you do NOT steer every message toward making something. Never invent features or facts, and never promise an edit the engines don't do; if unsure, say so plainly. " +
-  "Write PLAIN TEXT only — no markdown, asterisks, headings or bullet characters.";
+  "Use light formatting sparingly: **bold** for a key term, and short '- ' bullets or '1.' steps for a list or plan. NO headings, tables, links or code blocks — and never format for its own sake; most replies are a sentence or two of warm plain text.";
 
 // SAFETY NETS — the guardrails that keep Helpurr a genuinely helpful, open
 // conversationalist without going off the rails. Appended to WHICHEVER persona
@@ -105,6 +105,27 @@ function suggestActions(lastUserMsg: string, mode: "marketing" | "casual", lang:
   if (wantsArchive) acts.push({ label: tr(lang, "See my Archive"), to: "/web/archive" });
   if (wantsPlans) acts.push({ label: tr(lang, "Plans & tokens"), to: "/web#plans" });
   return acts.slice(0, 2);
+}
+
+// Contextual follow-up prompts shown as tappable chips UNDER the latest reply —
+// like ChatGPT/Doubao's "next step" suggestions — so the conversation always has
+// a forward move. Deterministic (no extra LLM call), keyed off what just
+// happened. Returned text is sent as the user's next message when tapped. Stays
+// quiet when a confirm/See-plans button is already competing for the tap.
+function buildFollowups(
+  pending: { action: PendingAction | null; media: BuddyMedia[]; make: MakeSpec | null },
+  mode: "marketing" | "casual",
+  lang: UiLang
+): string[] {
+  if (pending.make || pending.action) return [];
+  if (pending.media.length) {
+    return mode === "casual"
+      ? [tr(lang, "Make a new one"), tr(lang, "Show me more of my work")]
+      : [tr(lang, "Make a new one"), tr(lang, "Try a different product")];
+  }
+  return mode === "casual"
+    ? [tr(lang, "Make me something"), tr(lang, "Show my recent work")]
+    : [tr(lang, "Make an ad"), tr(lang, "What's working best?")];
 }
 
 function contextLine(id: Awaited<ReturnType<typeof getWebIdentity>>, path: string, mode: "marketing" | "casual"): string {
@@ -494,6 +515,23 @@ async function resolveProduct(shopId: string, query: string): Promise<{ title: s
   return bestScore >= 0.5 ? best : null; // need at least half the words to match before guessing
 }
 
+// On a product MISS, the closest few catalog titles (preferring ones with a
+// photo, since a make needs one) so the model can ask "did you mean X or Y?"
+// instead of dead-ending. Read-only; only runs on the miss path.
+async function nearestProductTitles(shopId: string, query: string, n = 3): Promise<string[]> {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1);
+  const qw = new Set(words(query || ""));
+  const all = await db.catalogProduct.findMany({ where: { shopId }, orderBy: { position: "asc" }, take: 400, select: { title: true, imageUrl: true } });
+  const withPhoto = all.filter((p) => !!p.imageUrl);
+  const pool = withPhoto.length ? withPhoto : all;
+  if (!qw.size) return pool.slice(0, n).map((p) => p.title);
+  return pool
+    .map((p) => ({ title: p.title, score: words(p.title).filter((w) => qw.has(w)).length }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+    .map((p) => p.title);
+}
+
 // FREE account (no active plan): a few free image ads / photo edits, then upgrade.
 // Everything else (video/faceless/music, or out of free makes) returns an `upsell`
 // so the widget shows a tappable "See plans" button instead of a flat refusal.
@@ -595,7 +633,14 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
   if (!title) return { make: null, toolResult: JSON.stringify({ error: "No product named — ask which product to feature." }) };
   const prod = await resolveProduct(id.shop.id, title);
   if (!prod || !prod.imageUrl) {
-    return { make: null, toolResult: JSON.stringify({ error: `No product with a photo matches "${title}". Call get_catalog and pick one that hasPhoto, or tell them to upload a photo in the Studio.` }) };
+    const nearest = await nearestProductTitles(id.shop.id, title, 3);
+    return { make: null, toolResult: JSON.stringify({
+      error: `No product with a photo exactly matches "${title}".`,
+      nearest,
+      note: nearest.length
+        ? `Don't dead-end — ask if they meant one of these (closest matches with a photo in their catalog): ${nearest.join(", ")}. If none fit, offer get_catalog or uploading a photo in the Studio. Do NOT make it yet.`
+        : `Their catalog has no product with a photo — suggest adding one or uploading a photo in the Studio. Do NOT make it.`,
+    }) };
   }
   if (kind === "video" && !caps.has("video")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include video — suggest the plan that unlocks it; don't make it." }) };
   if (!caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include image generation. Don't make it." }) };
@@ -1109,7 +1154,7 @@ export async function action({ request }: ActionFunctionArgs) {
       for (let i = chat.length - 1; i >= 0; i--) {
         if (chat[i].role === "user") {
           const text = typeof chat[i].content === "string" ? (chat[i].content as string) : "";
-          chat[i] = { role: "user", content: [{ type: "text", text: text || "Here's a photo — what can you do with it?" }, block] };
+          chat[i] = { role: "user", content: [{ type: "text", text: text || "(the user attached this photo)" }, block] };
           break;
         }
       }
@@ -1135,15 +1180,26 @@ export async function action({ request }: ActionFunctionArgs) {
   const toolNote = !id
     ? ""
     : mode === "casual"
-    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content still gives them a FEW FREE photo edits on the house — offer them genuinely; when they want video/music or use up their free creations, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You never spend their tokens or post yourself — the button confirms first. Keep replies warm and plain text."
-    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it; to edit it call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content gives them a FEW FREE PHOTO EDITS on the house (upload a photo → restyle / cartoonize / remove-background) — offer that genuinely and enthusiastically; image ads, videos and music need a plan, so when they want those or use up their free edits, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You NEVER spend their tokens or post without their tap. Keep replies warm and plain text."
+    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message, so you can describe it, read text in it, critique it, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content still gives them a FEW FREE photo edits on the house — offer them genuinely; when they want video/music or use up their free creations, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You never spend their tokens or post yourself — the button confirms first. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
+    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it, so you can describe it, read text in it, critique it for ad use, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content gives them a FEW FREE PHOTO EDITS on the house (upload a photo → restyle / cartoonize / remove-background) — offer that genuinely and enthusiastically; image ads, videos and music need a plan, so when they want those or use up their free edits, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You NEVER spend their tokens or post without their tap. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
   const facts = id ? await recallFacts(id.shop.id) : "";
   // The one line that makes Helpurr SPEAK the interface language. The model is
   // fluently multilingual, so this reliably switches the whole reply.
   const langLine = lang !== "en"
     ? `\n\nLANGUAGE: The app's interface is set to ${BUDDY_LANG[lang]}, so reply ENTIRELY in ${BUDDY_LANG[lang]} — every word, naturally and fluently, lists and questions included — to match the interface, UNLESS the user clearly writes to you in a different language, in which case reply in theirs. Keep your Helpurr voice and every rule above; only the language changes.`
     : "";
-  const system = `${persona}\n\n${GUARDRAILS}\n\n${contextLine(id, path, mode)}${toolNote}${facts}${langLine}`;
+  // Prompt-cache the STABLE prefix (persona + guardrails + the big capability
+  // toolNote — identical every turn within a mode) so it isn't re-billed and
+  // re-processed on each message; that ~80% input saving is what funds the
+  // higher token ceiling. The VOLATILE tail (current-page context, remembered
+  // facts, language) goes in a second, uncached block so it never thrashes the
+  // cached prefix.
+  const cachedSystem = `${persona}\n\n${GUARDRAILS}${toolNote}`;
+  const dynamicSystem = `\n\n${contextLine(id, path, mode)}${facts}${langLine}`;
+  const system = [
+    { type: "text" as const, text: cachedSystem, cache_control: { type: "ephemeral" as const } },
+    { type: "text" as const, text: dynamicSystem },
+  ];
   const pending: { action: PendingAction | null; media: BuddyMedia[]; make: MakeSpec | null } = { action: null, media: [], make: null };
   try {
     const reply = await anthropicToolLoop({
@@ -1185,14 +1241,19 @@ export async function action({ request }: ActionFunctionArgs) {
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
-      maxTokens: 700,
+      // Thinking is OFF for sonnet-5 (see anthropic.server.ts), so this budget is
+      // ALL visible text — 700 was clipping fuller answers mid-sentence. Prompt
+      // caching (below) offsets most of the extra input cost.
+      maxTokens: 1400,
     });
-    // Belt-and-braces: strip any markdown emphasis the model slips in, since the
-    // bubble renders plain text and "**Studio**" would show the asterisks.
-    const clean = (reply || "").trim().replace(/\*\*/g, "").replace(/(^|\s)[*_](\S)/g, "$1$2").replace(/(\S)[*_](\s|$)/g, "$1$2");
+    // The bubble now renders a safe light-markdown subset (bold + bullets +
+    // numbered lists — see the renderer in web.tsx), so KEEP matched **bold**
+    // and list markers. Only tidy STRAY single * / _ emphasis the renderer
+    // doesn't handle, so a lone asterisk never shows as a literal character.
+    const clean = (reply || "").trim().replace(/(^|[^*])\*(?!\*)(\S[^*\n]*?\S|\S)\*(?!\*)/g, "$1$2").replace(/(^|\s)_(\S[^_\n]*?\S|\S)_(\s|$)/g, "$1$2$3");
     const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
     if (id) await remember(id.shop.id, mode, threadId, lastUser, clean);
-    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action, media: pending.media, pendingMake: pending.make });
+    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action, media: pending.media, pendingMake: pending.make, followups: id ? buildFollowups(pending, mode, lang) : [] });
   } catch {
     // Never leave the chat hanging on an outage.
     return json({ reply: tr(lang, "My brain hiccuped for a sec — mind trying that again?") });

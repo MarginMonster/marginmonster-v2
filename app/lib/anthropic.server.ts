@@ -127,6 +127,11 @@ export interface ToolDef {
   input_schema: Record<string, unknown>;
 }
 export type ChatMsg = { role: "user" | "assistant"; content: unknown };
+/** A system prompt is either a plain string or an array of text blocks — the
+ *  latter lets a caller mark a stable prefix with cache_control for prompt
+ *  caching (the volatile tail goes in a later, uncached block). */
+export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
+export type SystemParam = string | SystemBlock[];
 
 /** Multi-turn TOOL-USE loop. Sends the conversation with the given tools; when
  *  the model calls a tool, runs it via `runTool`, feeds the result back, and
@@ -135,7 +140,7 @@ export type ChatMsg = { role: "user" | "assistant"; content: unknown };
  *  do — keep them READ-ONLY and this loop is safe. Returns the final text (or
  *  the best text seen if it runs out of rounds). */
 export async function anthropicToolLoop(opts: {
-  system: string;
+  system: SystemParam;
   messages: ChatMsg[];
   tools: ToolDef[];
   runTool: (name: string, input: Record<string, unknown>) => Promise<string>;
