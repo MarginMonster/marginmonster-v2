@@ -666,7 +666,12 @@ export async function action({ request }: ActionFunctionArgs) {
   // silence (no caption, ok). Images only; a video URL isn't a still to inspect.
   if (body.intent === "review") {
     if (!id) return json({ error: "auth" }, { status: 401 });
-    const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl : "";
+    let imageUrl = typeof body.imageUrl === "string" ? body.imageUrl : "";
+    // The asset's media URL is stored RELATIVE ("/renders/…"), and the widget
+    // sends it as-is. Absolutize it against this request's origin so the guard
+    // passes and the HTTP fallback in renderAsDataUrl can fetch it. (The combine
+    // flow hit the same "absolutize /renders for a server fetch" gotcha.)
+    if (imageUrl.startsWith("/")) { try { imageUrl = new URL(request.url).origin + imageUrl; } catch { /* keep as-is */ } }
     const product = typeof body.product === "string" ? body.product.trim().slice(0, 120) : "";
     if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ caption: "", ok: true });
     try {
