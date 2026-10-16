@@ -392,12 +392,17 @@ async function resolveEditSource(raw: unknown, shopId: string, origin: string): 
 // The shop's most-recent finished image creation, as an absolute /renders URL — the
 // subject when the user says "edit my last ad / remove the bg on the one you made".
 async function resolveRecentCreation(shopId: string, origin: string): Promise<string | null> {
-  const asset = await db.asset.findFirst({ where: { shopId, type: "IMAGE_AD" }, orderBy: { createdAt: "desc" }, select: { bodyJson: true } });
-  if (!asset) return null;
-  let url = "";
-  try { const b = JSON.parse(asset.bodyJson || "{}") as { imageUrl?: string; url?: string }; url = b.imageUrl || b.url || ""; } catch { /* */ }
-  const m = url.match(/\/renders\/([A-Za-z0-9._-]+?\.(?:jpg|jpeg|png|webp))(?:[?#]|$)/i);
-  return m ? `${origin}/renders/${m[1]}` : null;
+  // Scan the few newest finished image creations (skip FAILED, and PENDING ones that
+  // have no render URL yet) and take the first with a usable /renders file — so a
+  // still-cooking or failed latest asset doesn't dead-end "edit my last ad".
+  const assets = await db.asset.findMany({ where: { shopId, type: "IMAGE_AD", status: { not: "FAILED" } }, orderBy: { createdAt: "desc" }, take: 8, select: { bodyJson: true } });
+  for (const asset of assets) {
+    let url = "";
+    try { const b = JSON.parse(asset.bodyJson || "{}") as { imageUrl?: string; url?: string }; url = b.imageUrl || b.url || ""; } catch { /* */ }
+    const m = url.match(/\/renders\/([A-Za-z0-9._-]+?\.(?:jpg|jpeg|png|webp))(?:[?#]|$)/i);
+    if (m) return `${origin}/renders/${m[1]}`;
+  }
+  return null;
 }
 
 // Set up a make WITHOUT spending: validate the product/plan/wallet and return a
@@ -505,6 +510,8 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   // most-recent creation.
   const src = (input.source === "recent" ? recentSource : editSource) || recentSource || editSource;
   if (!src) return { make: null, toolResult: JSON.stringify({ error: "No photo to edit — tell them to tap the attach (📎) button and send a photo (editing is free), or make something first and you can edit that." }) };
+  // Honesty: name the real subject so Helpurr doesn't call a recent creation "your photo".
+  const subject = (src === recentSource && src !== editSource) ? "your most recent creation" : "your photo";
   const left = await freeMakesLeft(id.shop.id);
   if (left <= 0) {
     return { make: null, upsell: "CREATOR", toolResult: JSON.stringify({ upgrade: true, note: `This FREE account has used all ${FREE_MAKE_LIMIT} free edits. A "See plans" button is now shown. Warmly tell them they've used their free edits and that a plan unlocks unlimited editing (plus images, videos and music). Do NOT make it.` }) };
@@ -515,7 +522,7 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   const EDIT_VERB: Record<string, string> = { restyle: "Restyle this photo", cartoonize: "Cartoonize this photo", bgremove: "Remove the background", bgswap: "Swap the background", colorize: "Colorize this photo", upscale: "Sharpen this photo", describe: "Edit this photo" };
   const label = tr(lang, "{verb} — free", { verb: tr(lang, EDIT_VERB[editOp] || "Edit this photo") });
   const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: src, editOp, cost: 0, free: true, label };
-  return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "edit", editOp, free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free edit${left === 1 ? "" : "s"} left). Say it's on the house, name the edit in one line, and mention a plan unlocks unlimited editing plus images, videos and music. Do NOT claim it is done.` }) };
+  return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "edit", editOp, free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free edit${left === 1 ? "" : "s"} left) to edit ${subject}. Say it's on the house, name the edit in one line, and mention a plan unlocks unlimited editing plus images, videos and music. Do NOT claim it is done.` }) };
 }
 
 async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null, recentSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
@@ -532,6 +539,9 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
   if (kind === "edit") {
     const src = (input.source === "recent" ? recentSource : editSource) || recentSource || editSource;
     if (!src) return { make: null, toolResult: JSON.stringify({ error: "No photo to edit — ask them to tap the attach (📎) button and send one (or make something first and you can edit that)." }) };
+    // Honesty: if the subject is the shop's most-recent creation (explicit source:'recent',
+    // OR default with nothing attached), the model must not call it "your photo".
+    const subject = (src === recentSource && src !== editSource) ? "your most recent creation" : "your photo";
     if (!caps.has("creator") && !caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include editing. Don't make it; point them to plans." }) };
     const editOp = normEditOp(input.editOp);
     const direction = typeof input.direction === "string" ? input.direction.trim().slice(0, 300) : "";
@@ -545,7 +555,7 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
       make,
       toolResult: JSON.stringify({
         readyToMake: true, kind: "edit", editOp, cost,
-        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown to ${EDIT_VERB[editOp] || "edit the photo"}${direction ? ` — ${direction}` : ""}. Say in ONE line what you'll do to their photo and that tapping it runs it right here. Do NOT claim it is already done or that tokens were spent.`,
+        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown to ${EDIT_VERB[editOp] || "edit the photo"}${direction ? ` — ${direction}` : ""}. The subject is ${subject}. Say in ONE line what you'll do to ${subject} and that tapping it runs it right here. Do NOT claim it is already done or that tokens were spent.`,
       }),
     };
   }
@@ -1163,8 +1173,12 @@ export async function action({ request }: ActionFunctionArgs) {
         }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
         if (n === "make_content") {
-          // Resolve the shop's most-recent creation only when an edit might need it.
-          const recentSource = (i as { kind?: unknown }).kind === "edit" ? await resolveRecentCreation(id.shop.id, origin) : null;
+          // Resolve the shop's most-recent creation only when an edit might actually
+          // use it: explicit source:'recent', or the default with nothing attached.
+          // (The common attached-photo edit discards it, so don't pay for the query.)
+          const needRecent = (i as { kind?: unknown }).kind === "edit"
+            && ((i as { source?: unknown }).source === "recent" || !editSource);
+          const recentSource = needRecent ? await resolveRecentCreation(id.shop.id, origin) : null;
           const r = await buildMake(id, i, lang, mode, editSource, recentSource);
           if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult;
         }
