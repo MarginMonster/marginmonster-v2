@@ -105,7 +105,9 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     const p = JSON.parse(before) as Record<string, unknown>;
     // A FREE gen (Helpurr's free-tier taste) is prePaid with chargedTokens:0 — nothing
     // was spent, so there is nothing to refund. Without this, chargedTokens 0 would
-    // fall through to REFUND_BY_TYPE and MINT tokens into a free, planless account.
+    // fall through to REFUND_BY_TYPE and try to credit the real cost — harmless for a
+    // truly planless shop (refundTokens no-ops with no Plan row) but wrong for a
+    // lapsed (active:false) plan, where it would mint tokens onto the dead row.
     if (p.freeGen) return;
     if (!p.prePaid || !REFUND_BY_TYPE[job.type]) return;
     p.prePaid = false;

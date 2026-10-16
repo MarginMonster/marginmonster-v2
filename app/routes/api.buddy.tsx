@@ -294,15 +294,17 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 type MakeKind = "image" | "video" | "faceless" | "music" | "edit";
 type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; label: string };
 
-// FREE TIER: a signed-in account with NO active plan can make a few of the cheapest,
-// most-impressive pieces (image ads + photo edits — both IMAGE_AD assets) on the
-// house, then upgrade. One-time, non-renewing (counted off lifetime IMAGE_AD assets
-// — a brand-new/free account has made at most this many), so it can't be farmed and
-// a lapsed-paid account (which already made many) gets none. Owner knob.
+// FREE TIER: a signed-in account with NO active plan gets a few FREE photo edits on
+// the house, then upgrade. The allowance is counted off the shop's own free-edit
+// JOBS — NOT its assets: a user can hard-delete asset rows from the Archive to reset
+// an asset-based count and farm free gens forever, but a non-failed job row is not
+// user-deletable. Counting at the job (which exists the instant it's enqueued, vs an
+// asset that only appears when the worker finishes) also shrinks the check→enqueue
+// race from the whole job latency down to ~ms. One-time, non-renewing. Owner knob.
 const FREE_MAKE_LIMIT = 3;
 async function freeMakesLeft(shopId: string): Promise<number> {
-  const made = await db.asset.count({ where: { shopId, type: "IMAGE_AD" } }).catch(() => FREE_MAKE_LIMIT);
-  return Math.max(0, FREE_MAKE_LIMIT - made);
+  const used = await db.job.count({ where: { shopId, type: "GENERATE_IMAGE_AD", status: { not: "FAILED" }, payload: { contains: "\"freeGen\":true" } } }).catch(() => FREE_MAKE_LIMIT);
+  return Math.max(0, FREE_MAKE_LIMIT - used);
 }
 // A tappable "See plans" gold button hoisted onto a make rejection so every wall is
 // a one-tap upgrade moment, not a dead end. target is just for the copy.
