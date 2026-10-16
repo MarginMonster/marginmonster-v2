@@ -222,6 +222,9 @@ export default function WebLayout() {
                   only Marketing keeps a separate Dashboard. */}
               {mode === "marketing" && <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>}
               <Link className={tab("/web/studio")} to="/web/studio">{t("Studio")}</Link>
+              {/* Helpurr as a dedicated section: opens the chat maximized (full
+                  surface), not just the floating bubble. Works in both modes. */}
+              {authed && <button type="button" className="wb-tab wb-tab-btn wb-tab-helpurr" onClick={() => window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true } }))}>{t("Helpurr")}</button>}
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
               {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>}
@@ -285,6 +288,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const loc = useLocation();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  // Maximized = the dedicated full-screen Helpurr surface (a "chat section"),
+  // opened from the nav. Same chat, same logic — just a roomier layout with a
+  // backdrop. The floating panel is the compact default.
+  const [max, setMax] = useState(false);
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -356,9 +363,12 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   useEffect(() => {
     const h = (e: Event) => {
       setOpen(true);
+      const detail = (e as CustomEvent<{ text?: string; max?: boolean }>).detail;
+      // The nav "Helpurr" entry opens the dedicated full-screen surface.
+      if (detail?.max) setMax(true);
       // The Creator home's Chat mode passes the typed prompt — prefill the box
       // so the user just hits send (we don't auto-send; let them confirm).
-      const prefill = (e as CustomEvent<{ text?: string }>).detail?.text;
+      const prefill = detail?.text;
       if (typeof prefill === "string" && prefill.trim()) setInput(prefill);
     };
     window.addEventListener("helpurr:open", h);
@@ -460,12 +470,14 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         <Familiar />
         {!open && <span className="mm-fab-dot" aria-hidden="true" />}
       </button>
+      {open && max && <div className="mm-backdrop" onClick={() => setMax(false)} aria-hidden="true" />}
       {open && (
-        <div className="mm-panel" role="dialog" aria-label={t("Helpurr chat")}>
+        <div className={`mm-panel${max ? " mm-max" : ""}`} role="dialog" aria-label={t("Helpurr chat")}>
           <div className="mm-head">
             <span className="mm-head-crest"><Familiar think={busy} /></span>
             <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
-            <button type="button" className="mm-x" onClick={() => setOpen(false)} aria-label={t("Close chat")}>×</button>
+            <button type="button" className="mm-expand" onClick={() => setMax((m) => !m)} aria-label={max ? t("Shrink chat") : t("Expand chat")} title={max ? t("Shrink") : t("Expand")}>{max ? "⤡" : "⤢"}</button>
+            <button type="button" className="mm-x" onClick={() => { setOpen(false); setMax(false); }} aria-label={t("Close chat")}>×</button>
           </div>
           {authed && (
             <div className="mm-tabs" role="tablist" aria-label={t("Your chats")}>
@@ -822,6 +834,8 @@ const CSS = `
 .wb-brand b{color:var(--gold)}
 .wb-tabs{order:3;flex-basis:100%;display:flex;gap:6px;margin-top:2px;}
 .wb-tab{padding:8px 16px;border-radius:11px;text-decoration:none;font-weight:700;font-size:13.5px;color:var(--ink2);}
+.wb-tab-btn{background:none;border:0;cursor:pointer;font-family:inherit;}
+.wb-tab-helpurr{color:var(--brand,#0C7A46);} .wb-tab-helpurr:hover{color:#0A5C35;}
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-me{order:2;margin-left:auto;display:flex;align-items:center;gap:12px;}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;padding:8px 12px;border-radius:10px;}
@@ -1449,12 +1463,20 @@ const CSS = `
   animation:mmUp .28s cubic-bezier(.2,1.3,.4,1) both;}
 @keyframes mmUp{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.mm-panel{animation:none}}
+/* Maximized = the dedicated full-screen Helpurr surface (opened from the nav). */
+.mm-backdrop{position:fixed;inset:0;z-index:10599;background:rgba(10,20,14,.46);animation:mmFade .2s both;}
+@keyframes mmFade{from{opacity:0}to{opacity:1}}
+.mm-panel.mm-max{inset:0;margin:auto;bottom:auto;right:auto;width:min(780px,94vw);height:min(86vh,900px);border-radius:22px;}
+.mm-panel.mm-max .mm-list{padding-left:max(14px,calc((100% - 680px)/2));padding-right:max(14px,calc((100% - 680px)/2));}
+.mm-panel.mm-max .mm-input{padding-left:max(10px,calc((100% - 680px)/2));padding-right:max(10px,calc((100% - 680px)/2));}
+.mm-expand{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.82);font-size:15px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;}
+.mm-expand:hover{color:#fff;background:rgba(255,255,255,.12);}
 .mm-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(168deg,#0E5233,#0A3421);color:#F4EAC8;}
 .mm-head-crest{width:42px;height:42px;flex:0 0 auto;overflow:visible;}
 .mm-head-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0;}
 .mm-head-txt b{font-family:Poppins,sans-serif;font-size:14.5px;}
 .mm-head-txt span{font-size:11px;color:rgba(244,234,200,.72);}
-.mm-x{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.85);font-size:23px;line-height:1;cursor:pointer;padding:2px 5px;}
+.mm-x{margin-left:2px;background:none;border:0;color:rgba(244,234,200,.85);font-size:23px;line-height:1;cursor:pointer;padding:2px 5px;}
 .mm-x:hover{color:#fff;}
 /* Chat tabs (projects) — a scrollable chip row under the header. */
 .mm-tabs{display:flex;gap:5px;align-items:center;padding:7px 9px;background:#F3F0E4;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;}
@@ -1505,7 +1527,9 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-input input:focus{border-color:var(--green2);}
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
-@media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}}
+@media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}
+  .mm-panel.mm-max{inset:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
+  .mm-panel.mm-max .mm-list,.mm-panel.mm-max .mm-input{padding-left:14px;padding-right:14px}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins over
    the compact sizing above; icon glyph sizes are untouched, only hit boxes grow.
    Header controls use the 760px header breakpoint; Helpurr uses 620px. ── */
