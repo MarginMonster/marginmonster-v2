@@ -310,7 +310,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
           <b><Ico n="sparkle" /> {t("Post automatically")}</b><span>{t("Each drop goes straight to your socials.")}</span>
         </button>
         <button type="button" className={`ch-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}>
-          <b><Ico n="eye" /> {t("Let me approve each one")}</b><span>{t("Drops wait in your Gallery — you post with one tap.")}</span>
+          <b><Ico n="eye" /> {t("Let me approve each one")}</b><span>{t("Drops wait in your Archive — you post with one tap.")}</span>
         </button>
       </div>
 
@@ -370,7 +370,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       <div className="ch-card-stats">
         <div><b>{s.dropsMade}</b><span>{t("made")}</span></div>
         <div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div>
-        <Link to="/web/archive?section=creator" className="ch-card-gal">{t("Gallery")} →</Link>
+        <Link to="/web/archive?section=creator" className="ch-card-gal">{t("Archive")} →</Link>
       </div>
 
       <div className="ch-card-acts">
@@ -379,7 +379,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
         ) : (
           <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="ch-act">{t("Pause")}</button></Form>
         )}
-        <Form method="post" onSubmit={(e) => { if (!confirm(t("End this channel? It stops making new videos (your Gallery keeps everything)."))) e.preventDefault(); }}>
+        <Form method="post" onSubmit={(e) => { if (!confirm(t("End this channel? It stops making new videos (your Archive keeps everything)."))) e.preventDefault(); }}>
           <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} />
           <button className="ch-act ghost">{t("End")}</button>
         </Form>

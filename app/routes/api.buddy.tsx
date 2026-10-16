@@ -95,7 +95,7 @@ function suggestActions(lastUserMsg: string, mode: "marketing" | "casual", lang:
     const wantsEdit = /\brestyle\b|\bcartoon(ize|ise)?\b|\bupscale\b|\bedit (a|my|this|the|that)?\s*(photo|image|pic|it)\b|\b(remove|swap|change)\b[^.]*\bbackground\b/.test(s);
     if (wantsEdit) acts.push({ label: `🎨 ${tr(lang, "Edit a photo")}`, to: "/web/studio" });
     if (wantsStudio && !acts.length) acts.push({ label: `✨ ${tr(lang, "Open the Studio")}`, to: "/web/studio" });
-    if (wantsArchive) acts.push({ label: tr(lang, "My gallery"), to: "/web/archive" });
+    if (wantsArchive) acts.push({ label: tr(lang, "My Archive"), to: "/web/archive?section=creator" });
     if (wantsPlans) acts.push({ label: tr(lang, "Plans & tokens"), to: "/web#plans" });
     const seen = new Set<string>();
     return acts.filter((a) => (seen.has(a.to) ? false : (seen.add(a.to), true))).slice(0, 2);

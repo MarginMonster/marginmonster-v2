@@ -234,7 +234,11 @@ export default function WebLayout() {
                   simple (Studio · Gallery · Share) — faceless lives there only as a
                   Studio taste, the recurring autopilot moved to Social. */}
               {mode === "marketing" && <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" ? " on" : ""}`} to="/web/product-channels">{t("Channels")}</Link>}
-              <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{mode === "casual" ? t("Gallery") : t("Archive")}</Link>
+              {/* One consistent name — "Archive" — in BOTH sections; the page
+                  labels itself "Creator Archive" / "Social Archive" and carries a
+                  section toggle, so the two separate stores read as parallel
+                  places instead of a Gallery-vs-Archive mismatch. */}
+              <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{t("Archive")}</Link>
               <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? t("Share") : t("Auto-posting")}</Link>
             </nav>
           )}

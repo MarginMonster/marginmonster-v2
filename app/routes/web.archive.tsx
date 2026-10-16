@@ -962,6 +962,13 @@ const WA_CSS = `
 .wa-creator .wb-asset{transition:transform .14s ease,box-shadow .14s ease;}
 .wa-creator .wb-asset:hover{transform:translateY(-3px);}
 @media(max-width:620px){.wa-creator .wb-h1{font-size:27px;}}
+/* Section toggle (Creator | Social) — a small segmented pill under the heading. */
+.wa-sections{display:inline-flex;gap:3px;padding:3px;margin:0 0 14px;background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;}
+.wa-creator .wa-sections{display:flex;width:max-content;margin-left:auto;margin-right:auto;}
+.wa-sectab{font-family:Poppins,sans-serif;font-size:12.5px;font-weight:700;color:var(--green,#0C7A46);text-decoration:none;padding:6px 15px;border-radius:999px;line-height:1;display:inline-flex;align-items:center;min-height:30px;transition:background .12s,color .12s;}
+.wa-sectab:hover{background:#DCF0E5;}
+.wa-sectab.on{background:linear-gradient(135deg,#12A85E,#0C7A46);color:#fff;box-shadow:0 2px 8px rgba(12,122,70,.28);}
+@media(max-width:640px){.wa-sectab{min-height:40px;padding:8px 16px;}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins over
    the shrunk mobile icon rules above; glyph sizes unchanged, only hit boxes. ── */
 @media(max-width:640px){
@@ -1107,7 +1114,14 @@ export default function WebArchive() {
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
-      <h1 className="wb-h1">{isCreator ? t("Gallery") : t("Archive")}</h1>
+      <h1 className="wb-h1">{isCreator ? t("Creator Archive") : t("Social Archive")}</h1>
+      {/* Section toggle — the two stores stay SEPARATE (by design) but read as
+          parallel places you can hop between, instead of a Gallery/Archive name
+          mismatch. Pure ?section= links; no mode coupling. */}
+      <div className="wa-sections" role="tablist" aria-label={t("Which section")}>
+        <Link to="/web/archive?section=creator" role="tab" aria-selected={isCreator} className={`wa-sectab${isCreator ? " on" : ""}`} preventScrollReset>{t("Creator")}</Link>
+        <Link to="/web/archive" role="tab" aria-selected={!isCreator} className={`wa-sectab${!isCreator ? " on" : ""}`} preventScrollReset>{t("Social")}</Link>
+      </div>
       <p className="wb-sub">
         {isCreator ? t("Everything you've made in Creator") : t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (isCreator ? (linkedCount > 1 ? t(", or share it to your {n} linked accounts", { n: linkedCount }) : t(", or share it to your {n} linked account", { n: linkedCount })) : (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount }))) : ""}.
         {cooking > 0 && <> · <b>{cooking > 1 ? t("{n} pieces cooking below", { n: cooking }) : t("{n} piece cooking below", { n: cooking })}</b> — {t("this page updates itself.")}</>}
