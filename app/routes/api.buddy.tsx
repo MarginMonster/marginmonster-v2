@@ -636,13 +636,25 @@ export async function action({ request }: ActionFunctionArgs) {
     const product = typeof body.product === "string" ? body.product.trim().slice(0, 120) : "";
     if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ caption: "", ok: true });
     try {
+      // Inline the render as base64 so Anthropic never has to fetch the URL —
+      // the piece was JUST written, and a fresh /renders/ URL can momentarily
+      // 404 for an outside fetcher. The server reads it reliably (same box).
+      let imgInput = imageUrl;
+      try {
+        const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) });
+        if (resp.ok) {
+          const ct = (resp.headers.get("content-type") || "image/jpeg").split(";")[0];
+          const b64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
+          if (b64) imgInput = `data:${ct};base64,${b64}`;
+        }
+      } catch { /* fall back to the URL — anthropicVision can still try it */ }
       const raw = await anthropicVision(
         [
           `You are Helpurr, looking at an image ad you just generated${product ? ` for "${product}"` : ""}, about to show it to the merchant in chat.`,
           `In ONE short, warm, plain sentence (no markdown), tell them what you actually see and whether it's good to post. Be honest and specific: call out garbled or misspelled headline text, a warped/wrong product, bad anatomy, or an off composition if you see it — otherwise point to one concrete thing that works.`,
           `Then, on a NEW line, output ONLY {"ok":true} if you'd happily post it, or {"ok":false} if you'd redo it.`,
         ].join("\n"),
-        [imageUrl],
+        [imgInput],
         { model: "claude-sonnet-5", maxTokens: 180 }
       );
       const jm = raw.match(/\{[^{}]*"ok"[^{}]*\}/);
