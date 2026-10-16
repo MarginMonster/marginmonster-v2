@@ -17,6 +17,7 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { anthropicToolLoop, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { UPLOAD_NAME_RE, shopSlug } from "../lib/upload-names";
+import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
 import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
@@ -155,6 +156,11 @@ const BUDDY_TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_performance",
+    description: "How the merchant's content is ACTUALLY performing — their real social numbers (followers, reach, views, likes across connected TikTok/Instagram/Facebook) and which of their own pieces earned the most clicks to their store. Use for 'how are my ads doing', 'what's working', 'what should I post more of', 'how many followers do I have', 'is any of this converting'. Read-only, answer from the real numbers; never invent stats.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     // PHASE 2 — action agency, the SAFE way. This does NOT make anything or spend
     // tokens; it lines the task up and the user taps a button to open it in the
     // Studio pre-filled, where they approve the actual spend on the tested path.
@@ -198,12 +204,13 @@ const BUDDY_TOOLS: ToolDef[] = [
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["image", "video", "faceless", "music", "edit"], description: "image ad / product video (need a catalog product) · faceless video / music (need a topic) · edit (needs a photo the user ATTACHED to the chat)" },
+        kind: { type: "string", enum: ["image", "video", "faceless", "music", "edit"], description: "image ad / product video (need a catalog product) · faceless video / music (need a topic) · edit (a photo the user ATTACHED, or — with source:'recent' — their most recent creation)" },
         product: { type: "string", description: "image/video ONLY: the REAL product title to feature — must exist in the catalog and have a photo (call get_catalog first)" },
         topic: { type: "string", description: "faceless/music ONLY: what the video or track is about, e.g. '5 facts about the deep ocean', 'a hype pump-up anthem', or a product-themed angle like 'why collectors love the Pokemon 30th anniversary set'" },
         format: { type: "string", enum: ["facts", "storytime", "listicle", "motivational"], description: "faceless ONLY: the video style (default facts). Pick from the user's phrasing — 'storytime …' → storytime, '5 reasons …' → listicle." },
         voice: { type: "string", enum: ["f-warm", "f-hype", "m-warm", "m-hype"], description: "faceless ONLY: narrator voice (default f-warm). f=female m=male, warm=calm hype=energetic." },
-        editOp: { type: "string", enum: ["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "describe"], description: "edit ONLY: how to edit the attached photo — restyle (general glow-up, default), cartoonize, bgremove (cut out the background), bgswap (new backdrop — put it in 'direction'), colorize, upscale (sharpen), or describe (any freeform change you put in 'direction'). Pick from what they asked." },
+        editOp: { type: "string", enum: ["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "describe"], description: "edit ONLY: how to edit the photo — restyle (general glow-up, default), cartoonize, bgremove (cut out the background), bgswap (new backdrop — put it in 'direction'), colorize, upscale (sharpen), or describe (any freeform change you put in 'direction'). Pick from what they asked." },
+        source: { type: "string", enum: ["attached", "recent"], description: "edit ONLY: 'attached' (default) edits the photo they just sent; 'recent' edits their MOST RECENT creation — use it when they say 'edit my last ad', 'remove the bg on the one you made', 'tweak that last image' and haven't attached a new photo." },
         presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
         direction: { type: "string", description: "image/video: optional creative direction. edit: the freeform instruction for editOp 'describe', or the new backdrop for 'bgswap'." },
       },
@@ -328,7 +335,7 @@ async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: Ma
   const left = await freeMakesLeft(id.shop.id);
   if (left <= 0) return json({ error: "You've used your free edits — upgrade to keep editing (and to make images, videos & music).", upsell: "CREATOR" }, { status: 402 });
   const origin = externalOrigin(request);
-  const src = safeEditSource(spec.sourceImageUrl, id.shop.id, origin);
+  const src = await resolveEditSource(spec.sourceImageUrl, id.shop.id, origin);
   if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
   const editOp = normEditOp(spec.editOp);
   const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
@@ -362,6 +369,35 @@ function safeEditSource(raw: unknown, shopId: string, origin: string): string | 
   if (!UPLOAD_NAME_RE.test(name)) return null;
   if (!name.startsWith(shopSlug(shopId) + "-")) return null;
   return `${origin}/uploads/${name}`;
+}
+
+// A /renders/<name> source (a PAST creation to re-edit) is validated by OWNERSHIP:
+// an Asset belonging to THIS shop must carry that url in its bodyJson. /renders names
+// aren't shop-prefixed, so the DB check is the gate — no cross-shop editing.
+async function safeRendersSource(raw: unknown, shopId: string, origin: string): Promise<string | null> {
+  if (typeof raw !== "string") return null;
+  const m = raw.match(/\/renders\/([A-Za-z0-9._-]+?\.(?:jpg|jpeg|png|webp))(?:[?#]|$)/i);
+  if (!m) return null;
+  const name = m[1];
+  const owned = await db.asset.findFirst({ where: { shopId, bodyJson: { contains: `/renders/${name}` } }, select: { id: true } });
+  return owned ? `${origin}/renders/${name}` : null;
+}
+
+// An edit source is EITHER a photo the user uploaded (/uploads, shop-slug prefixed)
+// OR one of the shop's own finished creations (/renders, ownership-checked).
+async function resolveEditSource(raw: unknown, shopId: string, origin: string): Promise<string | null> {
+  return safeEditSource(raw, shopId, origin) || (await safeRendersSource(raw, shopId, origin));
+}
+
+// The shop's most-recent finished image creation, as an absolute /renders URL — the
+// subject when the user says "edit my last ad / remove the bg on the one you made".
+async function resolveRecentCreation(shopId: string, origin: string): Promise<string | null> {
+  const asset = await db.asset.findFirst({ where: { shopId, type: "IMAGE_AD" }, orderBy: { createdAt: "desc" }, select: { bodyJson: true } });
+  if (!asset) return null;
+  let url = "";
+  try { const b = JSON.parse(asset.bodyJson || "{}") as { imageUrl?: string; url?: string }; url = b.imageUrl || b.url || ""; } catch { /* */ }
+  const m = url.match(/\/renders\/([A-Za-z0-9._-]+?\.(?:jpg|jpeg|png|webp))(?:[?#]|$)/i);
+  return m ? `${origin}/renders/${m[1]}` : null;
 }
 
 // Set up a make WITHOUT spending: validate the product/plan/wallet and return a
@@ -456,7 +492,7 @@ async function resolveProduct(shopId: string, query: string): Promise<{ title: s
 // FREE account (no active plan): a few free image ads / photo edits, then upgrade.
 // Everything else (video/faceless/music, or out of free makes) returns an `upsell`
 // so the widget shows a tappable "See plans" button instead of a flat refusal.
-async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null, kind: MakeKind): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
+async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null, recentSource: string | null, kind: MakeKind): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
   // Only PHOTO EDITS are free: they run on editImage, which (unlike the branded
   // image-ad / video pipelines) needs no plan or brand profile — so a free, planless
   // account can actually complete them. Image ads, videos, faceless, music → upgrade.
@@ -465,7 +501,10 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
     const unlocks = (kind === "video" || kind === "faceless") ? "videos" : kind === "music" ? "music" : "AI image ads for your products";
     return { make: null, upsell, toolResult: JSON.stringify({ upgrade: true, note: `This is a FREE account — ${unlocks} come with a plan. A "See plans" button is now shown. Warmly say it's a paid feature and offer to EDIT a photo they upload right now instead — photo edits are free. Do NOT make it.` }) };
   }
-  if (!editSource) return { make: null, toolResult: JSON.stringify({ error: "No photo attached — tell them to tap the attach (📎) button and send a photo, and you'll edit it free." }) };
+  // Edit the attached photo, OR (source:'recent' / nothing attached) the shop's own
+  // most-recent creation.
+  const src = (input.source === "recent" ? recentSource : editSource) || recentSource || editSource;
+  if (!src) return { make: null, toolResult: JSON.stringify({ error: "No photo to edit — tell them to tap the attach (📎) button and send a photo (editing is free), or make something first and you can edit that." }) };
   const left = await freeMakesLeft(id.shop.id);
   if (left <= 0) {
     return { make: null, upsell: "CREATOR", toolResult: JSON.stringify({ upgrade: true, note: `This FREE account has used all ${FREE_MAKE_LIMIT} free edits. A "See plans" button is now shown. Warmly tell them they've used their free edits and that a plan unlocks unlimited editing (plus images, videos and music). Do NOT make it.` }) };
@@ -475,31 +514,33 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   if (editOp === "describe" && !direction) return { make: null, toolResult: JSON.stringify({ error: "For a freeform edit, ask WHAT to change (direction), or pick a specific editOp." }) };
   const EDIT_VERB: Record<string, string> = { restyle: "Restyle this photo", cartoonize: "Cartoonize this photo", bgremove: "Remove the background", bgswap: "Swap the background", colorize: "Colorize this photo", upscale: "Sharpen this photo", describe: "Edit this photo" };
   const label = tr(lang, "{verb} — free", { verb: tr(lang, EDIT_VERB[editOp] || "Edit this photo") });
-  const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: editSource, editOp, cost: 0, free: true, label };
+  const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: src, editOp, cost: 0, free: true, label };
   return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "edit", editOp, free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free edit${left === 1 ? "" : "s"} left). Say it's on the house, name the edit in one line, and mention a plan unlocks unlimited editing plus images, videos and music. Do NOT claim it is done.` }) };
 }
 
-async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
+async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null, recentSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
   const kind = asMakeKind(input.kind);
   // FREE account → the free-tier taste + upgrade nudges (never the flat refusal).
-  if (!id.shop.activePlan?.active) return buildFreeMake(id, input, lang, mode, editSource, kind);
+  if (!id.shop.activePlan?.active) return buildFreeMake(id, input, lang, mode, editSource, recentSource, kind);
   const caps = capabilitiesFor(id.shop.activePlan);
   const tokens = tokensRemainingLive(id.shop.activePlan);
 
-  // PHOTO EDIT: the subject is the photo the user ATTACHED to the chat (editSource,
-  // already validated as this shop's own /uploads file). Runs on the same tested
-  // GENERATE_IMAGE_AD+editOp path the Studio uses. Works in BOTH modes.
+  // PHOTO EDIT: the subject is the photo the user ATTACHED (editSource, validated as
+  // this shop's own /uploads file) OR — with source:'recent' / nothing attached — the
+  // shop's most-recent creation (recentSource). Same tested GENERATE_IMAGE_AD+editOp
+  // path the Studio uses. Works in BOTH modes.
   if (kind === "edit") {
-    if (!editSource) return { make: null, toolResult: JSON.stringify({ error: "No photo attached — they haven't sent a photo to edit yet. Ask them to tap the attach (📎) button and send one, then you can edit it." }) };
+    const src = (input.source === "recent" ? recentSource : editSource) || recentSource || editSource;
+    if (!src) return { make: null, toolResult: JSON.stringify({ error: "No photo to edit — ask them to tap the attach (📎) button and send one (or make something first and you can edit that)." }) };
     if (!caps.has("creator") && !caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include editing. Don't make it; point them to plans." }) };
     const editOp = normEditOp(input.editOp);
     const direction = typeof input.direction === "string" ? input.direction.trim().slice(0, 300) : "";
     if ((editOp === "describe") && !direction) return { make: null, toolResult: JSON.stringify({ error: "For a freeform edit, ask WHAT to change (put it in direction), or pick a specific editOp like restyle/cartoonize/bgremove." }) };
     const cost = TOKEN_COST.quickEdit;
-    if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
+    if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.`, upsell: "topup" }) };
     const EDIT_VERB: Record<string, string> = { restyle: "Restyle this photo", cartoonize: "Cartoonize this photo", bgremove: "Remove the background", bgswap: "Swap the background", colorize: "Colorize this photo", upscale: "Sharpen this photo", describe: "Edit this photo" };
     const label = tr(lang, EDIT_VERB[editOp] || "Edit this photo");
-    const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: editSource, editOp, cost, label };
+    const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: src, editOp, cost, label };
     return {
       make,
       toolResult: JSON.stringify({
@@ -633,6 +674,23 @@ async function runBuddyTool(id: WebId, name: string, input: Record<string, unkno
       select: { name: true, status: true, progress: true, productTitle: true, durationDays: true },
     });
     return JSON.stringify({ campaigns: qs.map((q) => ({ name: q.name, status: q.status, progressPct: q.progress, product: q.productTitle || null, days: q.durationDays })) });
+  }
+  if (name === "get_performance") {
+    const stats = sumStats(parseSocialStats(id.shop.socialStatsJson));
+    // The shop's OWN pieces ranked by store clicks (tracked in asset metaJson.clicks
+    // via the /go/a link). Real numbers only — the model is told never to invent.
+    const assets = await db.asset.findMany({ where: { shopId, type: { in: ["IMAGE_AD", "VIDEO_AD"] } }, orderBy: { createdAt: "desc" }, take: 80, select: { title: true, type: true, metaJson: true } });
+    const topByClicks = assets
+      .map((a) => { let clicks = 0; try { clicks = Number((JSON.parse(a.metaJson || "{}") as { clicks?: unknown }).clicks) || 0; } catch { /* */ } return { title: a.title || (a.type === "VIDEO_AD" ? "a video" : "an image ad"), kind: a.type === "VIDEO_AD" ? "video" : "image", clicks }; })
+      .filter((a) => a.clicks > 0).sort((x, y) => y.clicks - x.clicks).slice(0, 5);
+    return JSON.stringify({
+      socialConnected: stats.platformCount > 0,
+      followers: stats.followers, reach: stats.reach, views: stats.views, likes: stats.likes, comments: stats.comments, shares: stats.shares,
+      topPiecesByClicks: topByClicks,
+      note: stats.platformCount === 0
+        ? "No social accounts are connected yet, so there are no live follower/reach numbers — suggest connecting TikTok/Instagram/Facebook in Auto-posting. Do NOT invent numbers; you can still point to the top pieces by clicks if any."
+        : "These are the merchant's REAL numbers — answer from them, never invent, and if something is 0 say so plainly.",
+    });
   }
   if (name === "remember_fact") {
     const fact = typeof input.fact === "string" ? input.fact.trim().replace(/\s+/g, " ").slice(0, 300) : "";
@@ -840,7 +898,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // SAME GENERATE_IMAGE_AD+editOp job the Studio uses. prePaid+chargedTokens.
     if (kind === "edit") {
       const origin = externalOrigin(request);
-      const src = safeEditSource(spec.sourceImageUrl, id.shop.id, origin);
+      const src = await resolveEditSource(spec.sourceImageUrl, id.shop.id, origin);
       if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
       if (!caps.has("creator") && !caps.has("image")) return json({ error: "Your plan doesn't include editing." }, { status: 400 });
       const editOp = normEditOp(spec.editOp);
@@ -1104,7 +1162,12 @@ export async function action({ request }: ActionFunctionArgs) {
           const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
         }
         if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
-        if (n === "make_content") { const r = await buildMake(id, i, lang, mode, editSource); if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult; }
+        if (n === "make_content") {
+          // Resolve the shop's most-recent creation only when an edit might need it.
+          const recentSource = (i as { kind?: unknown }).kind === "edit" ? await resolveRecentCreation(id.shop.id, origin) : null;
+          const r = await buildMake(id, i, lang, mode, editSource, recentSource);
+          if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult;
+        }
         return runBuddyTool(id, n, i);
       },
       model: BUDDY_MODEL,
