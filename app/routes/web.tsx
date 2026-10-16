@@ -1466,7 +1466,7 @@ const CSS = `
 /* Maximized = the dedicated full-screen Helpurr surface (opened from the nav). */
 .mm-backdrop{position:fixed;inset:0;z-index:10599;background:rgba(10,20,14,.46);animation:mmFade .2s both;}
 @keyframes mmFade{from{opacity:0}to{opacity:1}}
-.mm-panel.mm-max{inset:0;margin:auto;bottom:auto;right:auto;width:min(780px,94vw);height:min(86vh,900px);border-radius:22px;}
+.mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:auto;width:min(780px,94vw);height:min(86vh,900px);border-radius:22px;}
 .mm-panel.mm-max .mm-list{padding-left:max(14px,calc((100% - 680px)/2));padding-right:max(14px,calc((100% - 680px)/2));}
 .mm-panel.mm-max .mm-input{padding-left:max(10px,calc((100% - 680px)/2));padding-right:max(10px,calc((100% - 680px)/2));}
 .mm-expand{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.82);font-size:15px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;}
@@ -1528,7 +1528,7 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
 @media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}
-  .mm-panel.mm-max{inset:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
+  .mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
   .mm-panel.mm-max .mm-list,.mm-panel.mm-max .mm-input{padding-left:14px;padding-right:14px}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins over
    the compact sizing above; icon glyph sizes are untouched, only hit boxes grow.
