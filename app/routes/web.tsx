@@ -315,6 +315,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // new thread or when a new photo is attached.
   const [lastPhoto, setLastPhoto] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const t = useT();
 
@@ -367,7 +368,13 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       setMsgs([{ role: "assistant", content: greet }]);
     }
   }, [open, histReady, msgs.length, authed, hud.name, hud.ads, mode, t]);
-  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
+  // Follow the conversation DOWN only when the user is already near the bottom —
+  // never yank them away from an earlier message they scrolled up to read.
+  useEffect(() => { const el = listRef.current; if (!el) return; if (el.scrollHeight - el.scrollTop - el.clientHeight < 140) el.scrollTop = el.scrollHeight; }, [msgs, busy, making]);
+  // Move focus into the message box when the chat opens, so you can just type
+  // (and keyboard users aren't stranded on the FAB). A soft focus; not on mobile
+  // where it would pop the keyboard unprompted.
+  useEffect(() => { if (open && !window.matchMedia("(max-width: 620px)").matches) { const id = window.setTimeout(() => inputRef.current?.focus(), 60); return () => window.clearTimeout(id); } }, [open]);
   // Let any page open the chat — the Creator home's "Ask Helpurr" card fires this.
   useEffect(() => {
     const h = (e: Event) => {
@@ -524,7 +531,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       </button>
       {open && max && <div className="mm-backdrop" onClick={() => setMax(false)} aria-hidden="true" />}
       {open && (
-        <div className={`mm-panel${max ? " mm-max" : ""}`} role="dialog" aria-label={t("Helpurr chat")}>
+        <div className={`mm-panel${max ? " mm-max" : ""}`} role="dialog" aria-modal={max ? true : undefined} aria-label={t("Helpurr chat")} onKeyDown={(e) => { if (e.key === "Escape") { if (max) setMax(false); else setOpen(false); } }}>
           <div className="mm-head">
             <span className="mm-head-crest"><Familiar think={busy} /></span>
             <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
@@ -543,7 +550,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               <button type="button" className="mm-tab mm-tab-new" onClick={newThread} title={t("New chat")} aria-label={t("Start a new chat")}>+</button>
             </div>
           )}
-          <div className="mm-list" ref={listRef}>
+          <div className="mm-list" ref={listRef} role="log" aria-live="polite" aria-relevant="additions">
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
                 <div className={`mm-msg ${m.role}`}>{m.content}</div>
@@ -576,6 +583,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               </div>
             ))}
             {busy && <div className="mm-msg assistant mm-typing"><i /><i /><i /></div>}
+            {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("still working on it — hang tight…")}</div>}
             {msgs.length <= 1 && !busy && (
               <div className="mm-chips">{chips.map((c) => <button key={c} type="button" onClick={() => send(c)}>{c}</button>)}</div>
             )}
@@ -594,7 +602,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
             <button type="button" className="mm-clip" onClick={() => fileRef.current?.click()} disabled={busy || uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={attach ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
+            <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={attach ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
             <button type="submit" disabled={busy || uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>
           </form>
         </div>
@@ -1584,6 +1592,13 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}
 @keyframes mmBlink{0%,60%,100%{opacity:.3}30%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.mm-typing i{animation:none;opacity:.6}}
+/* The "still making" line during the long make poll — so a 2-6 min render never
+   looks frozen. A soft shimmer pill with the typing dots. */
+.mm-making{display:flex;align-items:center;gap:8px;align-self:flex-start;max-width:92%;margin-top:2px;font-size:12.5px;color:var(--ink2);background:#F3F0E4;border:1px solid var(--line);border-radius:12px;padding:8px 12px;}
+.mm-making-dots{display:flex;gap:4px;}
+.mm-making-dots i{width:6px;height:6px;border-radius:50%;background:#12A85E;animation:mmBlink 1.2s infinite both;}
+.mm-making-dots i:nth-child(2){animation-delay:.2s}.mm-making-dots i:nth-child(3){animation-delay:.4s}
+@media (prefers-reduced-motion:reduce){.mm-making-dots i{animation:none;opacity:.6}}
 .mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
 .mm-chips button{font:inherit;font-size:12px;font-weight:600;color:var(--green);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:6px 11px;cursor:pointer;}
 .mm-chips button:hover{background:#DCF0E5;}
@@ -1623,6 +1638,8 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 }
 @media(max-width:620px){
   .mm-x{min-width:44px;min-height:44px}
+  .mm-expand{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .mm-attach-x{min-width:44px;min-height:44px}
   .mm-tab{min-height:44px;display:inline-flex;align-items:center}
   .mm-chips button{min-height:44px;display:inline-flex;align-items:center}
   .mm-act{min-height:44px;display:inline-flex;align-items:center}
