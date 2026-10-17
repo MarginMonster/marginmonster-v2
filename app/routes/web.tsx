@@ -340,6 +340,28 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // lands on it. Sending / entering a thread / tapping a home make leaves it for
   // the chat view. Only ever shown maximized.
   const [showHome, setShowHome] = useState(false);
+  // Lock the page behind the maximized chat. On iOS the dashboard body stays
+  // scrollable (tall page), so scrolling the message list rubber-bands the whole
+  // page and iOS drags the fixed panel — header and × close included — off the
+  // top of the screen, trapping the user in the chat. Freezing the body at its
+  // current offset (the reliable iOS lock) keeps the header pinned.
+  useEffect(() => {
+    if (typeof document === "undefined" || !(open && max)) return;
+    const body = document.body;
+    const scrollY = window.scrollY;
+    const prev = { position: body.style.position, top: body.style.top, width: body.style.width, overflow: body.style.overflow };
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+    return () => {
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      body.style.overflow = prev.overflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, [open, max]);
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2126,7 +2148,7 @@ const CSS = `
 .mm-tab:hover{border-color:var(--green2);}
 .mm-tab.on{background:linear-gradient(135deg,#12A85E,#0B6B3E);color:#fff;border-color:transparent;}
 .mm-tab-new{font-size:15px;font-weight:800;color:var(--green);padding:4px 10px;line-height:1;}
-.mm-list{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+.mm-list{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
 .mm-msg{max-width:84%;padding:9px 13px;border-radius:15px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
 .mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px;}
 .mm-msg.user{align-self:flex-end;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
