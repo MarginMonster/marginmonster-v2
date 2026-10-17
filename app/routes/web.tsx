@@ -3,7 +3,7 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useSubmit } from "@remix-run/react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { isAdminEmail } from "../lib/admin.server";
 import { db } from "../db.server";
@@ -343,7 +343,14 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // new thread or when a new photo is attached.
   const [lastPhoto, setLastPhoto] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Message actions: copy (which bubble shows "Copied"), edit-a-user-message, and
+  // a re-send queue (pendingResend) that regenerate + edit both route through so
+  // they re-run a turn on the TRUNCATED message list without duplicating send().
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  const [pendingResend, setPendingResend] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const t = useT();
 
@@ -627,6 +634,49 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     } catch { /* ignore */ }
   };
 
+  // Auto-grow the composer textarea up to ~6 lines, then it scrolls. Runs on every
+  // value change (typing, paste, prefill, reset) and when the composer swaps home↔chat.
+  useEffect(() => {
+    const el = inputRef.current; if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 132) + "px";
+  }, [input, open, showHome]);
+  // regenerate()/saveEdit() truncate msgs then set pendingResend; this re-runs that
+  // turn through the normal send(), which here closes over the truncated msgs.
+  useEffect(() => {
+    if (pendingResend !== null && !busy && !uploading) { const text = pendingResend; setPendingResend(null); void send(text); }
+  }, [pendingResend, busy, uploading]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Enter sends; Shift+Enter is a newline (standard desktop chat composer). On
+  // mobile, Enter inserts a newline and the ➤ button sends (phones have no easy
+  // Shift+Enter, and you want to be able to type multi-line there too).
+  const taKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey && !window.matchMedia("(max-width: 620px)").matches) { e.preventDefault(); void send(input); } };
+  // Copy a message's text (minus the light-markdown markers) to the clipboard.
+  const copyText = async (text: string, idx: number) => {
+    const plain = (text || "").replace(/\*\*(.+?)\*\*/g, "$1");
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(plain);
+      else { const ta = document.createElement("textarea"); ta.value = plain; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }
+      setCopiedIdx(idx); window.setTimeout(() => setCopiedIdx((c) => (c === idx ? null : c)), 1500);
+    } catch { /* clipboard blocked — no-op */ }
+  };
+  // Regenerate: drop the last reply (and its user turn) and re-run that user turn.
+  const regenerate = () => {
+    if (busy || making) return;
+    let u = -1; for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "user") { u = i; break; }
+    if (u < 0) return;
+    const text = msgs[u].content;
+    setMsgs(msgs.slice(0, u)); setPendingResend(text);
+  };
+  // Edit a user message: drop it + everything after, then re-send the edited text.
+  const startEdit = (idx: number) => { if (busy || making) return; setEditingIdx(idx); setEditText(msgs[idx].content); };
+  const saveEdit = () => {
+    if (editingIdx === null) return;
+    const text = editText.trim(); const i = editingIdx;
+    setEditingIdx(null);
+    if (!text) return;
+    setMsgs(msgs.slice(0, i)); setPendingResend(text);
+  };
+
   const go = (to: string) => { setOpen(false); if (to.startsWith("/web#")) { window.location.href = to; } else { nav(to); } };
   const chips = mode === "casual"
     ? [t("Edit one of my photos"), t("Make a fun post"), t("Turn this into a sticker")]
@@ -642,6 +692,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // proactive opener — so tapping 🏠 over an existing conversation can't resurface
   // some old un-run make as a fake "performance" banner.
   const perfMake = atHome && !msgs.some((m) => m.role === "user") ? msgs.find((m) => m.role === "assistant" && m.makes && m.makes.length) : undefined;
+  const lastUserIdx = msgs.reduce((acc, m, idx) => (m.role === "user" ? idx : acc), -1);
   const homeCards = mode === "casual"
     ? [
         { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
@@ -701,7 +752,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 <form className="mm-home-ask" onSubmit={(e) => { e.preventDefault(); void send(input); }}>
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
                   <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
-                  <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
+                  <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
                   <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>
                 </form>
                 {(attach || uploading) && (
@@ -739,7 +790,17 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           <div className="mm-list" ref={listRef} role="log" aria-live="polite" aria-relevant="additions">
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
-                <div className={`mm-msg ${m.role}`}>{m.role === "assistant" ? renderRich(m.content) : m.content}</div>
+                {editingIdx === i && m.role === "user" ? (
+                  <div className="mm-edit">
+                    <textarea value={editText} autoFocus onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } else if (e.key === "Escape") setEditingIdx(null); }} aria-label={t("Edit your message")} />
+                    <div className="mm-edit-btns">
+                      <button type="button" className="mm-edit-cancel" onClick={() => setEditingIdx(null)}>{t("Cancel")}</button>
+                      <button type="button" className="mm-edit-save" onClick={saveEdit} disabled={!editText.trim()}>{t("Send")}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`mm-msg ${m.role}`}>{m.role === "assistant" ? renderRich(m.content) : m.content}</div>
+                )}
                 {m.media && m.media.length > 0 && (
                   <div className="mm-media">
                     {m.media.map((md, j) => (
@@ -780,6 +841,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 {m.followups && m.followups.length > 0 && i === msgs.length - 1 && !busy && !making && (
                   <div className="mm-chips mm-followups">{m.followups.map((f) => <button key={f} type="button" onClick={() => send(f)}>{f}</button>)}</div>
                 )}
+                {/* Message actions — copy any reply, regenerate the last one, edit your last message. */}
+                {m.role === "assistant" && m.content && editingIdx === null && (
+                  <div className="mm-msgacts">
+                    <button type="button" className="mm-msgact" onClick={() => copyText(m.content, i)}>{copiedIdx === i ? t("Copied ✓") : t("Copy")}</button>
+                    {i === msgs.length - 1 && !busy && !making && <button type="button" className="mm-msgact" onClick={regenerate}>{t("↻ Try again")}</button>}
+                  </div>
+                )}
+                {m.role === "user" && i === lastUserIdx && editingIdx === null && !busy && !making && (
+                  <div className="mm-msgacts mm-msgacts-user">
+                    <button type="button" className="mm-msgact" onClick={() => startEdit(i)}>{t("✎ Edit")}</button>
+                  </div>
+                )}
               </div>
             ))}
             {busy && (!msgs.length || msgs[msgs.length - 1].role !== "assistant" || !msgs[msgs.length - 1].content) && (
@@ -806,7 +879,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
             <button type="button" className="mm-clip" onClick={() => fileRef.current?.click()} disabled={busy || uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
-            <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={attach ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
+            <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={attach ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
             {busy
               ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
               : <button type="submit" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>}
@@ -1764,12 +1837,12 @@ const CSS = `
 .mm-home-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,6vw,44px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}
 .mm-home-word b{color:var(--gold);font-weight:800;}
 .mm-home-sub{font-size:14px;color:var(--ink2);margin:0 0 20px;}
-.mm-home-ask{display:flex;align-items:center;gap:8px;width:min(560px,100%);background:var(--card);
-  border:1.5px solid var(--line2);border-radius:999px;padding:7px 8px 7px 15px;
+.mm-home-ask{display:flex;align-items:flex-end;gap:8px;width:min(560px,100%);background:var(--card);
+  border:1.5px solid var(--line2);border-radius:24px;padding:6px 7px 6px 15px;
   box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
 .mm-home-ask:focus-within{border-color:var(--green);box-shadow:0 10px 30px rgba(12,122,70,.18);}
-.mm-home-ask>input:not([type=file]){flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;}
-.mm-home-ask>input::placeholder{color:#97a19a;}
+.mm-home-ask>textarea{flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;resize:none;line-height:1.4;max-height:120px;overflow-y:auto;padding:9px 0;display:block;}
+.mm-home-ask>textarea::placeholder{color:#97a19a;}
 .mm-home-clip{flex:0 0 auto;background:none;border:0;font-size:17px;cursor:pointer;opacity:.7;padding:4px;border-radius:8px;line-height:1;}
 .mm-home-clip:hover:not(:disabled){opacity:1;background:rgba(12,122,70,.08);}
 .mm-home-send{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
@@ -1829,6 +1902,19 @@ const CSS = `
 .mm-row{display:flex;flex-direction:column;gap:7px;}
 .mm-row.user{align-items:flex-end;}
 .mm-row.assistant{align-items:flex-start;}
+/* Per-message actions: copy any reply, regenerate the last, edit your last message. */
+.mm-msgacts{display:flex;gap:3px;align-items:center;margin-top:-2px;opacity:.6;transition:opacity .12s;}
+.mm-row:hover .mm-msgacts{opacity:1;}
+.mm-msgacts-user{justify-content:flex-end;}
+.mm-msgact{border:0;background:none;cursor:pointer;font:inherit;font-size:11px;font-weight:700;color:var(--ink2);padding:3px 8px;border-radius:8px;line-height:1;white-space:nowrap;}
+.mm-msgact:hover{background:rgba(12,122,70,.1);color:var(--ink);}
+.mm-edit{width:84%;align-self:flex-end;display:flex;flex-direction:column;gap:7px;}
+.mm-edit textarea{width:100%;border:1.5px solid var(--green);border-radius:14px;padding:9px 12px;font:inherit;font-size:13.5px;line-height:1.45;color:var(--ink);background:#fff;outline:none;resize:vertical;min-height:62px;box-sizing:border-box;}
+.mm-edit-btns{display:flex;gap:7px;justify-content:flex-end;}
+.mm-edit-cancel,.mm-edit-save{border:0;cursor:pointer;font:inherit;font-size:12px;font-weight:800;padding:7px 14px;border-radius:10px;}
+.mm-edit-cancel{background:rgba(20,32,26,.07);color:var(--ink2);}
+.mm-edit-save{background:linear-gradient(135deg,var(--green2) 40%,var(--green));color:#fff;}
+.mm-edit-save:disabled{opacity:.5;cursor:default;}
 /* Inline media Helpurr shows (real creations from the Archive). */
 .mm-media{display:flex;flex-wrap:wrap;gap:8px;max-width:92%;margin-top:2px;}
 .mm-media-link{display:block;flex:0 0 auto;line-height:0;}
@@ -1872,8 +1958,10 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
 .mm-chips button{font:inherit;font-size:12px;font-weight:600;color:var(--green);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:6px 11px;cursor:pointer;}
 .mm-chips button:hover{background:#DCF0E5;}
-.mm-input{display:flex;gap:8px;padding:11px;border-top:1px solid var(--line);background:var(--card);}
-.mm-input input{flex:1;border:1px solid var(--line2);border-radius:999px;padding:10px 15px;font:inherit;font-size:16px;background:#fff;color:var(--ink);outline:none;}
+.mm-input{display:flex;gap:8px;padding:11px;border-top:1px solid var(--line);background:var(--card);align-items:flex-end;}
+.mm-input textarea{flex:1;border:1px solid var(--line2);border-radius:18px;padding:9px 15px;font:inherit;font-size:16px;background:#fff;color:var(--ink);outline:none;resize:none;line-height:1.4;min-height:40px;max-height:132px;overflow-y:auto;box-sizing:border-box;}
+.mm-input textarea:focus{border-color:var(--green);}
+.mm-input textarea::placeholder{color:#97a19a;}
 .mm-input input:focus{border-color:var(--green2);}
 .mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
