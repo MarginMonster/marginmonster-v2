@@ -113,11 +113,11 @@ function suggestActions(lastUserMsg: string, mode: "marketing" | "casual", lang:
 // happened. Returned text is sent as the user's next message when tapped. Stays
 // quiet when a confirm/See-plans button is already competing for the tap.
 function buildFollowups(
-  pending: { action: PendingAction | null; media: BuddyMedia[]; make: MakeSpec | null },
+  pending: { action: PendingAction | null; media: BuddyMedia[]; makes: MakeSpec[] },
   mode: "marketing" | "casual",
   lang: UiLang
 ): string[] {
-  if (pending.make || pending.action) return [];
+  if (pending.makes.length || pending.action) return [];
   if (pending.media.length) {
     return mode === "casual"
       ? [tr(lang, "Make a new one"), tr(lang, "Show me more of my work")]
@@ -245,7 +245,7 @@ const BUDDY_TOOLS: ToolDef[] = [
     // model's say-so: it shows a one-tap confirm with the cost, the user taps,
     // it generates on the tested pipeline, and the result renders inline here.
     name: "make_content",
-    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), a MUSIC track, or an EDIT of a photo the user just attached to the chat. Use this whenever they ask you to make or edit any of those ('make me an ad', 'make a faceless video about X', 'make me a track', 'restyle this', 'remove the background'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (marketing-only). For a faceless video or music track: set a clear 'topic'. For an EDIT: ONLY when the user has ATTACHED a photo to this chat (you'll see it) — set kind 'edit' and the right editOp (no product/topic; the attached photo is the subject, picked up automatically). This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it runs on the tested path, and the finished piece appears right here. Only call when they clearly want to CREATE or EDIT.",
+    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), a MUSIC track, or an EDIT of a photo the user just attached to the chat. Use this whenever they ask you to make or edit any of those ('make me an ad', 'make a faceless video about X', 'make me a track', 'restyle this', 'remove the background'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (marketing-only). For a faceless video or music track: set a clear 'topic'. For an EDIT: ONLY when the user has ATTACHED a photo to this chat (you'll see it) — set kind 'edit' and the right editOp (no product/topic; the attached photo is the subject, picked up automatically). This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it runs on the tested path, and the finished piece appears right here. To make SEVERAL at once: for several of the SAME thing ('make 3 of these', 'a few options') set 'count'; for DIFFERENT products or kinds, call make_content once per item — either way they QUEUE and run together on one confirm that shows the total. Only call when they clearly want to CREATE or EDIT.",
     input_schema: {
       type: "object",
       properties: {
@@ -258,6 +258,7 @@ const BUDDY_TOOLS: ToolDef[] = [
         source: { type: "string", enum: ["attached", "recent"], description: "edit ONLY: 'attached' (default) edits the photo they just sent; 'recent' edits their MOST RECENT creation — use it when they say 'edit my last ad', 'remove the bg on the one you made', 'tweak that last image' and haven't attached a new photo." },
         presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
         direction: { type: "string", description: "image/video: optional creative direction. edit: the freeform instruction for editOp 'describe', or the new backdrop for 'bgswap'." },
+        count: { type: "integer", minimum: 1, maximum: 4, description: "how MANY to make at once (default 1, max 4). Set it only when the user wants SEVERAL of the SAME thing — 'make 3 of these', 'give me 4 variations', 'a couple options'. They queue and all run on ONE confirm tap that shows the total cost. For DIFFERENT products or kinds, call make_content once per item instead of using count." },
       },
       required: ["kind"],
     },
@@ -1288,7 +1289,7 @@ export async function action({ request }: ActionFunctionArgs) {
     { type: "text" as const, text: cachedSystem, cache_control: { type: "ephemeral" as const } },
     { type: "text" as const, text: dynamicSystem },
   ];
-  const pending: { action: PendingAction | null; media: BuddyMedia[]; make: MakeSpec | null } = { action: null, media: [], make: null };
+  const pending: { action: PendingAction | null; media: BuddyMedia[]; makes: MakeSpec[] } = { action: null, media: [], makes: [] };
   // The tool dispatcher — shared by the streaming and the fallback loop. It only
   // READS data or builds confirm specs (no spend; spend is the separate intent:
   // "make" path), so running it once per loop is safe even on a stream→fallback.
@@ -1316,7 +1317,39 @@ export async function action({ request }: ActionFunctionArgs) {
         && ((i as { source?: unknown }).source === "recent" || !editSource);
       const recentSource = needRecent ? await resolveRecentCreation(id.shop.id, origin) : null;
       const r = await buildMake(id, i, lang, mode, editSource, recentSource);
-      if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult;
+      if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang);
+      if (!r.make) return r.toolResult;
+      // MULTI-MAKE QUEUE: "make 3 of these" (count) — and several make_content calls
+      // in one turn — ADD to a queue instead of last-write-wins. One confirm tap runs
+      // them all and the TOTAL cost is shown. Replication is capped by (a) a hard
+      // queue size of 4 and (b) what the wallet can afford, so the previewed total is
+      // honest; the real spend still happens per item at intent:"make", which
+      // re-validates plan + balance, so no overspend slips through this preview.
+      const want = Math.max(1, Math.min(4, Math.round(Number((i as { count?: unknown }).count) || 1)));
+      const perCost = r.make.cost || 0;
+      let n2 = Math.min(want, Math.max(0, 4 - pending.makes.length));
+      if (!r.make.free && perCost > 0) {
+        const liveTokens = id.shop.activePlan?.active ? tokensRemainingLive(id.shop.activePlan) : 0;
+        const queuedCost = pending.makes.reduce((s, m) => s + (m.cost || 0), 0);
+        n2 = Math.min(n2, Math.max(0, Math.floor((liveTokens - queuedCost) / perCost)));
+      }
+      if (n2 <= 0) {
+        return JSON.stringify({ queued: pending.makes.length, requested: want, note: pending.makes.length
+          ? `Couldn't add that — the ${pending.makes.length} already lined up use up the available tokens. Offer to run those first (tap the button), or swap one out.`
+          : `Not enough tokens to make that right now — tell them to top up; don't make it.` });
+      }
+      for (let k = 0; k < n2; k++) pending.makes.push(r.make);
+      // Single, plain make → keep buildMake's own note. Otherwise speak the queue.
+      if (want <= 1 && pending.makes.length <= 1) return r.toolResult;
+      let base: Record<string, unknown> = {};
+      try { base = JSON.parse(r.toolResult) as Record<string, unknown>; } catch { /* keep base empty */ }
+      const queuedNow = pending.makes.length;
+      const totalCost = pending.makes.reduce((s, m) => s + (m.cost || 0), 0);
+      const costLine = totalCost > 0 ? ` (total ${totalCost} tokens)` : "";
+      const note = n2 < want
+        ? `Could only line up ${n2} of the ${want} they asked for (wallet/limit). ${queuedNow} ${queuedNow === 1 ? "piece is" : "pieces are"} now on ONE "Make all" confirm${costLine}. Tell them honestly how many you queued and why fewer, warmly, in one line. Do NOT claim any are made yet.`
+        : `${queuedNow} ${queuedNow === 1 ? "piece is" : "pieces are"} now lined up on ONE "Make all" confirm${costLine}. Say in one line what you'll make (and how many) and that one tap runs them all right here. Do NOT claim any are made or that tokens were spent.`;
+      return JSON.stringify({ ...base, queued: queuedNow, requested: want, note });
     }
     return runBuddyTool(id, n, i);
   };
@@ -1364,7 +1397,7 @@ export async function action({ request }: ActionFunctionArgs) {
         actions: suggestActions(lastUser, mode, lang),
         pendingAction: pending.action,
         media: pending.media,
-        pendingMake: pending.make,
+        pendingMakes: pending.makes,
         followups: id ? buildFollowups(pending, mode, lang) : [],
       }));
       try { controller.close(); } catch { /* already closed */ }

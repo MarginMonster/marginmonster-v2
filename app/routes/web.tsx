@@ -287,7 +287,7 @@ type MMAction = { label: string; to: string };
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
 type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; label: string };
-type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; make?: MMPendingMake; followups?: string[] };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; makes?: MMPendingMake[]; followups?: string[] };
 
 // Render a SAFE light-markdown subset — **bold** and nicer •-bullets — as React
 // nodes (NEVER dangerouslySetInnerHTML, so model text can't inject HTML). The
@@ -458,8 +458,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     // does the same; this just avoids a flash of "New chat" on the tab).
     const title = trimmed || t("Photo");
     if (activeThreadId !== "main") setThreads((ts) => ts.map((th) => (th.id === activeThreadId && th.title === "New chat" ? { ...th, title: title.slice(0, 42) } : th)));
-    type ReplyData = { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMake?: MMPendingMake | null; followups?: string[] };
-    const finalize = (m: MMMsg[], d: ReplyData, content: string): MMMsg[] => { if (!m.length) return m; const copy = [...m]; const last = copy[copy.length - 1]; if (last.role !== "assistant") return m; copy[copy.length - 1] = { ...last, content, actions: Array.isArray(d.actions) ? d.actions : [], pending: d.pendingAction || undefined, media: Array.isArray(d.media) && d.media.length ? d.media : undefined, make: d.pendingMake || undefined, followups: Array.isArray(d.followups) && d.followups.length ? d.followups : undefined }; return copy; };
+    type ReplyData = { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMakes?: MMPendingMake[] | null; followups?: string[] };
+    const finalize = (m: MMMsg[], d: ReplyData, content: string): MMMsg[] => { if (!m.length) return m; const copy = [...m]; const last = copy[copy.length - 1]; if (last.role !== "assistant") return m; copy[copy.length - 1] = { ...last, content, actions: Array.isArray(d.actions) ? d.actions : [], pending: d.pendingAction || undefined, media: Array.isArray(d.media) && d.media.length ? d.media : undefined, makes: Array.isArray(d.pendingMakes) && d.pendingMakes.length ? d.pendingMakes : undefined, followups: Array.isArray(d.followups) && d.followups.length ? d.followups : undefined }; return copy; };
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -498,84 +498,106 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       } else {
         // NON-STREAM (daily cap, not signed in, cap upsell): plain JSON as before.
         const data = await res.json().catch(() => ({ reply: "" })) as ReplyData;
-        setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, make: data.pendingMake || undefined, followups: Array.isArray(data.followups) && data.followups.length ? data.followups : undefined }]);
+        setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, makes: Array.isArray(data.pendingMakes) && data.pendingMakes.length ? data.pendingMakes : undefined, followups: Array.isArray(data.followups) && data.followups.length ? data.followups : undefined }]);
       }
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
     } finally { setBusy(false); setStreamStatus(""); abortRef.current = null; }
   };
 
-  // One-tap confirm on a Helpurr "Make it" button: spend the tokens, kick off the
-  // SAME tested job the Studio enqueues, then poll until the media lands and drop
-  // it inline in the chat. Chat stays usable throughout (makes take minutes).
-  const runMake = async (spec: MMPendingMake) => {
-    if (making) return;
-    setMaking(true);
-    // Remove the pending make from every message so the button can't be tapped twice.
-    setMsgs((m) => m.map((x) => (x.make ? { ...x, make: undefined } : x)));
-    const noun = spec.kind === "music" ? t("track") : (spec.kind === "video" || spec.kind === "faceless") ? t("video") : t("image");
-    setMsgs((m) => [...m, { role: "assistant", content: t("On it — making your {noun} now. This takes a minute; keep chatting if you like and I'll drop it here when it's ready. 🎬", { noun }) }]);
-    try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "make", make: spec, mode }) });
-      const data = await res.json().catch(() => ({})) as { jobId?: string; cursor?: number; kind?: string; error?: string; upsell?: string };
-      if (!data.jobId || typeof data.cursor !== "number") {
-        // A free-tier wall (out of free makes / a paid-only kind) returns an upsell —
-        // surface it as a tappable "See plans" button, not just text.
-        const pending = data.upsell ? { label: t("See plans"), to: "/web#plans", cost: 0, kind: "plans" } : undefined;
-        setMsgs((m) => [...m, { role: "assistant", content: data.error || t("Couldn't start that one — mind trying again?"), pending }]);
-        setMaking(false);
-        return;
-      }
-      const { jobId, cursor } = data;
-      const kind = data.kind || spec.kind;
-      // Poll by job id + a time cursor (assets carry no jobId column; the server
-      // correlates the newest asset of this type since the cursor). Faceless is
-      // the slowest (script→voice→captions→b-roll→music), then product video.
-      const limit = (kind === "video" || kind === "faceless") ? 72 : kind === "music" ? 36 : 24; // ~6min / ~3min / ~2min at 5s
-      let tries = 0;
-      const tick = async () => {
-        tries++;
-        try {
-          const r = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "makeStatus", jobId, cursor, kind, mode }) });
-          const s = await r.json().catch(() => ({})) as { done?: boolean; media?: MMMedia[]; failed?: boolean; error?: string };
-          if (s.failed) {
-            setMsgs((m) => [...m, { role: "assistant", content: s.error || t("That one didn't come out right, so I refunded the tokens. Want to try again?") }]);
-            setMaking(false);
-            return;
-          }
-          if (s.done && Array.isArray(s.media) && s.media.length) {
-            const media = s.media;
-            setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Tap to open it full-size."), media }]);
-            setMaking(false);
-            // Helpurr takes an actual LOOK (images only) and gives one honest,
-            // grounded line — the "views it like you do" quality pass. Purely
-            // additive: any failure just means no extra line.
-            if (spec.kind === "image" && media[0]?.url) {
-              try {
-                const rv = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "review", imageUrl: media[0].url, product: spec.product, mode }) });
-                const rd = await rv.json().catch(() => ({})) as { caption?: string; ok?: boolean };
-                // Helpurr already computes whether the result is good (ok). If it
-                // isn't, offer a one-tap Redo of the SAME spec — closed-loop
-                // self-correction, routed through the normal confirm→make path
-                // (so it still spends on tap; no new money path).
-                if (rd.caption) setMsgs((m) => [...m, { role: "assistant", content: rd.caption as string, make: rd.ok === false ? { ...spec, label: t("Redo it") } : undefined }]);
-              } catch { /* the review is a nicety, never a blocker */ }
-            }
-            return;
-          }
-        } catch { /* transient — keep polling */ }
-        if (tries >= limit) {
-          setMsgs((m) => [...m, { role: "assistant", content: t("Still cooking — it's taking longer than usual. Check your Gallery in a moment; it'll land there when it's done.") }]);
-          setMaking(false);
-          return;
+  // Poll ONE enqueued make (job id + a time cursor; assets carry no jobId column, so
+  // the server correlates the newest asset of this type since the cursor). Resolves
+  // when the media lands / fails / times out, dropping its result inline. Shared by
+  // single makes and the multi-make queue so every item streams in independently.
+  const pollMake = (jobId: string, cursor: number, kind: string, spec: MMPendingMake, withReview: boolean) => new Promise<void>((resolve) => {
+    // Faceless is the slowest (script→voice→captions→b-roll→music), then product video.
+    const limit = (kind === "video" || kind === "faceless") ? 72 : kind === "music" ? 36 : 24; // ~6min / ~3min / ~2min at 5s
+    let tries = 0;
+    const tick = async () => {
+      tries++;
+      try {
+        const r = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "makeStatus", jobId, cursor, kind, mode }) });
+        const s = await r.json().catch(() => ({})) as { done?: boolean; media?: MMMedia[]; failed?: boolean; error?: string };
+        if (s.failed) {
+          setMsgs((m) => [...m, { role: "assistant", content: s.error || t("That one didn't come out right, so I refunded the tokens. Want to try again?") }]);
+          resolve(); return;
         }
-        window.setTimeout(tick, 5000);
-      };
+        if (s.done && Array.isArray(s.media) && s.media.length) {
+          const media = s.media;
+          setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Tap to open it full-size."), media }]);
+          // Helpurr takes an actual LOOK (images only) and gives one honest, grounded
+          // line — the "views it like you do" pass. Only for a single make (a batch
+          // would spam N reviews + N Redo buttons). Any failure just means no line.
+          if (withReview && spec.kind === "image" && media[0]?.url) {
+            try {
+              const rv = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "review", imageUrl: media[0].url, product: spec.product, mode }) });
+              const rd = await rv.json().catch(() => ({})) as { caption?: string; ok?: boolean };
+              // If the result isn't good, offer a one-tap Redo of the SAME spec —
+              // closed-loop self-correction, routed through the normal confirm→make
+              // path (so it still spends on tap; no new money path).
+              if (rd.caption) setMsgs((m) => [...m, { role: "assistant", content: rd.caption as string, makes: rd.ok === false ? [{ ...spec, label: t("Redo it") }] : undefined }]);
+            } catch { /* the review is a nicety, never a blocker */ }
+          }
+          resolve(); return;
+        }
+      } catch { /* transient — keep polling */ }
+      if (tries >= limit) {
+        setMsgs((m) => [...m, { role: "assistant", content: t("Still cooking — it's taking longer than usual. Check your Gallery in a moment; it'll land there when it's done.") }]);
+        resolve(); return;
+      }
       window.setTimeout(tick, 5000);
-    } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped before I could start — mind trying again?") }]);
-      setMaking(false);
+    };
+    window.setTimeout(tick, 5000);
+  });
+
+  // One-tap confirm on a Helpurr "Make it" / "Make all N" button: spend the tokens
+  // and kick off the SAME tested job(s) the Studio enqueues, then poll each until the
+  // media lands and drop it inline. A BATCH ("make 3 of these") enqueues every spec
+  // on this one tap — each still spends + re-validates server-side, with the total
+  // shown on the button — and each result streams in as it finishes. Chat stays
+  // usable throughout (makes take minutes).
+  const runMakes = async (specs: MMPendingMake[]) => {
+    if (making || !specs.length) return;
+    setMaking(true);
+    // Remove the pending make(s) from every message so the button can't be tapped twice.
+    setMsgs((m) => m.map((x) => (x.makes ? { ...x, makes: undefined } : x)));
+    if (specs.length === 1) {
+      const noun = specs[0].kind === "music" ? t("track") : (specs[0].kind === "video" || specs[0].kind === "faceless") ? t("video") : t("image");
+      setMsgs((m) => [...m, { role: "assistant", content: t("On it — making your {noun} now. This takes a minute; keep chatting if you like and I'll drop it here when it's ready. 🎬", { noun }) }]);
+    } else {
+      setMsgs((m) => [...m, { role: "assistant", content: t("On it — making {n} now. Each takes a minute; keep chatting and I'll drop each one here as it lands. 🎬", { n: specs.length }) }]);
     }
+    // Enqueue sequentially so the spend is ordered and a mid-batch "out of tokens"
+    // stops cleanly; each returns its own job to poll.
+    const jobs: { jobId: string; cursor: number; kind: string; spec: MMPendingMake }[] = [];
+    let firstErr = ""; let upsell = false;
+    for (const spec of specs) {
+      try {
+        const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "make", make: spec, mode }) });
+        const data = await res.json().catch(() => ({})) as { jobId?: string; cursor?: number; kind?: string; error?: string; upsell?: string };
+        if (data.jobId && typeof data.cursor === "number") {
+          jobs.push({ jobId: data.jobId, cursor: data.cursor, kind: data.kind || spec.kind, spec });
+        } else {
+          if (!firstErr) firstErr = data.error || "";
+          if (data.upsell) upsell = true;
+        }
+      } catch { if (!firstErr) firstErr = t("Connection blipped before I could start — mind trying again?"); }
+    }
+    if (!jobs.length) {
+      // A free-tier wall (out of free makes / a paid-only kind) returns an upsell —
+      // surface it as a tappable "See plans" button, not just text.
+      const pending = upsell ? { label: t("See plans"), to: "/web#plans", cost: 0, kind: "plans" } : undefined;
+      setMsgs((m) => [...m, { role: "assistant", content: firstErr || t("Couldn't start that one — mind trying again?"), pending }]);
+      setMaking(false);
+      return;
+    }
+    // Partial batch (ran out of tokens part-way) → say so once, honestly.
+    if (jobs.length < specs.length) {
+      setMsgs((m) => [...m, { role: "assistant", content: firstErr || t("I could only start {done} of the {total} — I'll bring those in as they land.", { done: jobs.length, total: specs.length }) }]);
+    }
+    const withReview = jobs.length === 1;
+    await Promise.all(jobs.map((j) => pollMake(j.jobId, j.cursor, j.kind, j.spec, withReview)));
+    setMaking(false);
   };
 
   // Create a fresh project/thread and switch to it (loads empty → proactive opener).
@@ -645,11 +667,20 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                     <b>{m.pending.cost > 0 ? t("~{n} tokens →", { n: m.pending.cost }) : "→"}</b>
                   </button>
                 )}
-                {m.make && (
-                  <button type="button" className="mm-make mm-make-go" disabled={making} onClick={() => runMake(m.make!)}>
-                    <span>{making ? t("Working…") : t("✨ {label}", { label: m.make.label })}</span>
-                    <b>{m.make.cost > 0 ? t("{n} tokens →", { n: m.make.cost }) : t("Free →")}</b>
+                {m.makes && m.makes.length === 1 && (
+                  <button type="button" className="mm-make mm-make-go" disabled={making} onClick={() => runMakes(m.makes!)}>
+                    <span>{making ? t("Working…") : t("✨ {label}", { label: m.makes[0].label })}</span>
+                    <b>{m.makes[0].cost > 0 ? t("{n} tokens →", { n: m.makes[0].cost }) : t("Free →")}</b>
                   </button>
+                )}
+                {m.makes && m.makes.length > 1 && (
+                  <div className="mm-makeq">
+                    <ul className="mm-makeq-list">{m.makes.map((x, k) => <li key={k}>{x.label}</li>)}</ul>
+                    <button type="button" className="mm-make mm-make-go" disabled={making} onClick={() => runMakes(m.makes!)}>
+                      <span>{making ? t("Working…") : t("✨ Make all {n}", { n: m.makes.length })}</span>
+                      <b>{(() => { const tot = m.makes!.reduce((s, x) => s + (x.cost || 0), 0); return tot > 0 ? t("{n} tokens →", { n: tot }) : t("Free →"); })()}</b>
+                    </button>
+                  </div>
                 )}
                 {m.actions && m.actions.length > 0 && (
                   <div className="mm-acts">{m.actions.map((a) => <button key={a.to + a.label} type="button" className="mm-act" onClick={() => go(a.to)}>{a.label}</button>)}</div>
@@ -1672,6 +1703,12 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-make-go{background:linear-gradient(135deg,#E7C879 38%,#C9A23F);box-shadow:0 3px 14px rgba(201,162,63,.34),inset 0 0 0 1px rgba(255,255,255,.3);color:#1A130A;}
 .mm-make-go b{color:#4A3410;}
 .mm-make-go:disabled{opacity:.6;cursor:default;filter:none;transform:none;}
+.mm-makeq{display:flex;flex-direction:column;gap:7px;width:92%;}
+.mm-makeq .mm-make{width:100%;}
+.mm-makeq-list{list-style:none;margin:0;padding:8px 11px;display:flex;flex-direction:column;gap:3px;
+  background:rgba(12,122,70,.06);border:1px solid rgba(12,122,70,.16);border-radius:11px;font-size:12px;color:#2A3B32;}
+.mm-makeq-list li{display:flex;align-items:center;gap:7px;overflow-wrap:anywhere;}
+.mm-makeq-list li::before{content:"✨";font-size:11px;flex:0 0 auto;opacity:.85;}
 .mm-typing{display:flex;gap:4px;align-items:center;}
 .mm-typing i{width:7px;height:7px;border-radius:50%;background:#9CCBB1;animation:mmBlink 1.2s infinite both;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}
