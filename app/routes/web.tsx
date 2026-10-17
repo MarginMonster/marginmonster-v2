@@ -2102,7 +2102,7 @@ const CSS = `
 .mm-tab:hover{border-color:var(--green2);}
 .mm-tab.on{background:linear-gradient(135deg,#12A85E,#0B6B3E);color:#fff;border-color:transparent;}
 .mm-tab-new{font-size:15px;font-weight:800;color:var(--green);padding:4px 10px;line-height:1;}
-.mm-list{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+.mm-list{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:14px 14px 24px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
 .mm-msg{max-width:84%;padding:9px 13px;border-radius:15px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
 .mm-msg.assistant{align-self:flex-start;background:#fff;border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px;}
 .mm-msg.user{align-self:flex-end;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
