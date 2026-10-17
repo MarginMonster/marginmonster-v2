@@ -311,6 +311,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // opened from the nav. Same chat, same logic — just a roomier layout with a
   // backdrop. The floating panel is the compact default.
   const [max, setMax] = useState(false);
+  // On the landing HOME, tapping a make (e.g. the performance→action loop button)
+  // adds no user message, so atHome wouldn't flip on its own — this forces us out
+  // of the home into the chat view so the "On it…" progress + results are visible.
+  const [leftHome, setLeftHome] = useState(false);
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -344,6 +348,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
 
   // Flipping mode is a different project set — back to that mode's Main thread.
   useEffect(() => { setActiveThreadId("main"); }, [mode]);
+  // A fresh thread / mode — and every (re)open — starts back on its home (if it's
+  // empty). Including `open` means reopening a perf-tapped but persistence-empty
+  // thread lands on the home again instead of a bare chat list.
+  useEffect(() => { setLeftHome(false); }, [activeThreadId, mode, open]);
 
   // Load Helpurr's saved conversation for this mode when the chat opens, so it
   // continues where it left off instead of starting fresh each reload. Marketing
@@ -357,16 +365,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         // Cache-buster: the proactive suggestion is freshly randomised server-side,
         // so bypass the browser's GET cache to get a new one each open.
         const res = await fetch(`/api/buddy?mode=${mode}&thread=${activeThreadId}&_=${Date.now()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null } | null; threads?: Array<{ id: string; title: string }> };
+        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null; makes?: MMPendingMake[] } | null; threads?: Array<{ id: string; title: string }> };
         if (cancelled) return;
         if (Array.isArray(data.threads) && data.threads.length) setThreads(data.threads);
         const hist = (Array.isArray(data.history) ? data.history : [])
           .filter((m) => m && typeof m.content === "string" && m.content.trim())
           .map((m): MMMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content as string }));
         // Proactive, store-grounded suggestion: the opener for a fresh thread, or
-        // a fresh nudge at the end of an existing one. Not saved (transient).
+        // a fresh nudge at the end of an existing one. Not saved (transient). It can
+        // carry a one-tap make queue (the performance→action loop: "your top piece
+        // got the most clicks — want 3 more?").
         const nudge: MMMsg | null = data.proactive && data.proactive.reply
-          ? { role: "assistant", content: data.proactive.reply, pending: data.proactive.pendingAction || undefined }
+          ? { role: "assistant", content: data.proactive.reply, pending: data.proactive.pendingAction || undefined, makes: Array.isArray(data.proactive.makes) && data.proactive.makes.length ? data.proactive.makes : undefined }
           : null;
         setMsgs(hist.length ? (nudge ? [...hist, nudge] : hist) : (nudge ? [nudge] : [])); // empty → the greeting effect fills it below
       } catch { if (!cancelled) setMsgs([]); }
@@ -622,7 +632,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // quick-start cards + your saved chats) shown when the dedicated full-screen Helpurr
   // is open on a fresh thread (no questions asked yet). The moment a message is sent
   // it flips to the normal chat view. Compact/floating mode keeps the simple list.
-  const atHome = max && authed && !msgs.some((m) => m.role === "user");
+  const atHome = max && authed && !leftHome && !msgs.some((m) => m.role === "user");
+  // The performance→action loop, surfaced on the home: the proactive opener may
+  // carry a one-tap make queue ("your top piece got the most clicks — want 3
+  // more?"). Show it as a highlighted banner above the hero.
+  const perfMake = atHome ? msgs.find((m) => m.role === "assistant" && m.makes && m.makes.length) : undefined;
   const homeCards = mode === "casual"
     ? [
         { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
@@ -666,6 +680,14 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           )}
           {atHome && (
             <div className="mm-home">
+              {perfMake && (
+                <div className="mm-home-perf">
+                  <p className="mm-home-perf-tx">{renderRich(perfMake.content)}</p>
+                  <button type="button" className="mm-make mm-make-go mm-home-perf-btn" disabled={making} onClick={() => { setLeftHome(true); void runMakes(perfMake.makes!); }}>
+                    {(() => { const specs = perfMake.makes!; const tot = specs.reduce((s, x) => s + (x.cost || 0), 0); const n = specs.length; return <><span>{making ? t("Working…") : (n > 1 ? t("✨ Make all {n}", { n }) : t("✨ {label}", { label: specs[0].label }))}</span><b>{tot > 0 ? t("{n} tokens →", { n: tot }) : t("Free →")}</b></>; })()}
+                  </button>
+                </div>
+              )}
               <div className="mm-home-hero">
                 <span className="mm-home-crest"><Familiar /></span>
                 <h1 className="mm-home-word">Easy<b>Mode</b></h1>
@@ -737,7 +759,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 )}
                 {m.makes && m.makes.length > 1 && (
                   <div className="mm-makeq">
-                    <ul className="mm-makeq-list">{m.makes.map((x, k) => <li key={k}>{x.label}</li>)}</ul>
+                    <ul className="mm-makeq-list">{(() => { const specs = m.makes!; return specs.every((x) => x.label === specs[0].label) ? <li>{t("{label} ×{n}", { label: specs[0].label, n: specs.length })}</li> : specs.map((x, k) => <li key={k}>{x.label}</li>); })()}</ul>
                     <button type="button" className="mm-make mm-make-go" disabled={making} onClick={() => runMakes(m.makes!)}>
                       <span>{making ? t("Working…") : t("✨ Make all {n}", { n: m.makes.length })}</span>
                       <b>{(() => { const tot = m.makes!.reduce((s, x) => s + (x.cost || 0), 0); return tot > 0 ? t("{n} tokens →", { n: tot }) : t("Free →"); })()}</b>
@@ -1726,6 +1748,11 @@ const CSS = `
    Fills the maximized panel under the header and scrolls if it needs to. */
 .mm-home{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:22px;
   padding:clamp(20px,5vh,46px) clamp(16px,6%,56px) 28px;background:radial-gradient(130% 78% at 50% 0,#FEFDF9,#F2EFE4 80%);}
+.mm-home-perf{width:min(560px,100%);align-self:center;display:flex;flex-direction:column;gap:10px;
+  background:linear-gradient(135deg,rgba(18,168,94,.1),rgba(176,133,38,.1));border:1px solid rgba(12,122,70,.28);
+  border-radius:16px;padding:14px 15px;box-shadow:0 6px 20px rgba(12,122,70,.1);}
+.mm-home-perf-tx{margin:0;font-size:13.5px;line-height:1.4;color:var(--ink);font-weight:600;}
+.mm-home-perf-btn{width:100%;}
 .mm-home-hero{display:flex;flex-direction:column;align-items:center;text-align:center;}
 .mm-home-crest{width:74px;height:74px;display:grid;place-items:center;filter:drop-shadow(0 7px 15px rgba(12,122,70,.22));}
 .mm-home-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,6vw,44px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}

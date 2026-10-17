@@ -761,15 +761,23 @@ async function runBuddyTool(id: WebId, name: string, input: Record<string, unkno
     // via the /go/a link). Real numbers only — the model is told never to invent.
     const assets = await db.asset.findMany({ where: { shopId, type: { in: ["IMAGE_AD", "VIDEO_AD"] } }, orderBy: { createdAt: "desc" }, take: 80, select: { title: true, type: true, metaJson: true } });
     const topByClicks = assets
-      .map((a) => { let clicks = 0; try { clicks = Number((JSON.parse(a.metaJson || "{}") as { clicks?: unknown }).clicks) || 0; } catch { /* */ } return { title: a.title || (a.type === "VIDEO_AD" ? "a video" : "an image ad"), kind: a.type === "VIDEO_AD" ? "video" : "image", clicks }; })
+      .map((a) => { let clicks = 0; let product = ""; try { const m = JSON.parse(a.metaJson || "{}") as { clicks?: unknown; productTitle?: unknown }; clicks = Number(m.clicks) || 0; product = typeof m.productTitle === "string" ? m.productTitle : ""; } catch { /* */ } return { title: a.title || (a.type === "VIDEO_AD" ? "a video" : "an image ad"), product, kind: a.type === "VIDEO_AD" ? "video" : "image", clicks }; })
       .filter((a) => a.clicks > 0).sort((x, y) => y.clicks - x.clicks).slice(0, 5);
+    // The performance→action loop, in conversation: when a piece is clearly
+    // winning, nudge Helpurr to OFFER making more like it (real clicks only).
+    // Only nudge "make more like it" when the top piece has a REAL product to seed a
+    // make — a faceless video (product "") can top the clicks but has nothing to make
+    // "more of", and the model must not attribute its clicks to some other product.
+    const loopNote = (topByClicks.length && topByClicks[0].product)
+      ? ` PERFORMANCE→ACTION: the top piece here is pulling real clicks — if it fits the chat, warmly OFFER to make more like it by calling make_content with that piece's \`product\` and \`kind\` (optionally count 2-3). Only use its real click number; never promise it'll get the same result.`
+      : "";
     return JSON.stringify({
       socialConnected: stats.platformCount > 0,
       followers: stats.followers, reach: stats.reach, views: stats.views, likes: stats.likes, comments: stats.comments, shares: stats.shares,
       topPiecesByClicks: topByClicks,
-      note: stats.platformCount === 0
+      note: (stats.platformCount === 0
         ? "No social accounts are connected yet, so there are no live follower/reach numbers — suggest connecting TikTok/Instagram/Facebook in Auto-posting. Do NOT invent numbers; you can still point to the top pieces by clicks if any."
-        : "These are the merchant's REAL numbers — answer from them, never invent, and if something is 0 say so plainly.",
+        : "These are the merchant's REAL numbers — answer from them, never invent, and if something is 0 say so plainly.") + loopNote,
     });
   }
   if (name === "remember_fact") {
@@ -861,7 +869,44 @@ async function recallFacts(shopId: string, currentMsg?: string): Promise<string>
 // activity, picks the most useful next move, and attaches a ready confirm
 // button. Deterministic (no LLM cost on open) and grounded; rotates the featured
 // product by day so it doesn't feel canned.
-async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiLang): Promise<{ reply: string; pendingAction?: PendingAction } | null> {
+// The shop's single best-performing POSTED piece that can still be re-made — the
+// seed for the performance→action loop. "Best" = most real STORE CLICKS, the only
+// honest per-piece metric (a /go/a link tap, counted into asset metaJson.clicks;
+// views/likes are profile-level only, never per-piece). Returns the top piece whose
+// product still resolves WITH a photo (so "more like it" can actually be made), or
+// null when nothing has clicks yet / the product is gone — so we never fabricate.
+async function topClickedMakeable(shopId: string): Promise<{ productTitle: string; kind: "image" | "video"; clicks: number } | null> {
+  try {
+    const assets = await db.asset.findMany({
+      where: { shopId, type: { in: ["IMAGE_AD", "VIDEO_AD"] }, status: { not: "FAILED" } },
+      orderBy: { createdAt: "desc" }, take: 80, select: { type: true, metaJson: true },
+    });
+    const ranked = assets
+      .map((a) => {
+        let clicks = 0; let productTitle = "";
+        try { const m = JSON.parse(a.metaJson || "{}") as { clicks?: unknown; productTitle?: unknown }; clicks = Number(m.clicks) || 0; productTitle = typeof m.productTitle === "string" ? m.productTitle : ""; } catch { /* */ }
+        return { clicks, productTitle, kind: a.type === "VIDEO_AD" ? "video" as const : "image" as const };
+      })
+      .filter((a) => a.clicks > 0 && a.productTitle)
+      .sort((x, y) => y.clicks - x.clicks);
+    // Walk from the top; return the first winner whose product is still live with a
+    // photo (a deleted/photoless product can't seed a make). STRICT match only — the
+    // stored product title must still EXIST in the catalogue (exact, or a title that
+    // grew), never a fuzzy sibling: resolveProduct's ≥50%-word-overlap guess would
+    // credit a deleted "Red Hoodie"'s clicks to a live "Blue Hoodie", inventing a
+    // performance claim. `contains` the full stored title can't match a sibling.
+    for (const r of ranked.slice(0, 6)) {
+      const prod = await db.catalogProduct.findFirst({
+        where: { shopId, title: { contains: r.productTitle }, imageUrl: { not: null } },
+        orderBy: { position: "asc" }, select: { title: true },
+      });
+      if (prod) return { productTitle: prod.title, kind: r.kind, clicks: r.clicks };
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiLang): Promise<{ reply: string; pendingAction?: PendingAction; makes?: MakeSpec[] } | null> {
   const shopId = id.shop.id;
   const first = (id.account.name?.trim() || id.account.email.split("@")[0]).split(" ")[0];
   try {
@@ -896,6 +941,38 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiL
     }
     if (tokens < TOKEN_COST.image) {
       return { reply: tr(lang, "Hey {first}! 🐾 You're low on tokens ({tokens} left) — top up and I'll help you turn your products into a whole week of content.", { first, tokens }), pendingAction: { label: tr(lang, "Add tokens"), to: "/web#plans", cost: 0, kind: "plans" } };
+    }
+    // PERFORMANCE → ACTION LOOP: when a posted piece is really pulling clicks to
+    // their store, open by naming the REAL winner and offering a one-tap batch of
+    // more like it — the whole "notice what's working, make more" loop. Grounded
+    // ONLY in real store-click counts (never views/likes, which aren't per-piece),
+    // and only ~60% of opens so the opener still rotates with the ideas below.
+    // Skips silently when nothing has clicks, the product is gone, the plan can't
+    // make that kind, or the wallet can't afford one — so it's never a dead end or
+    // a fabricated claim.
+    if (Math.random() < 0.6) {
+      const top = await topClickedMakeable(shopId);
+      const caps0 = capabilitiesFor(id.shop.activePlan);
+      if (top && (top.kind === "video" ? caps0.has("video") : caps0.has("image"))) {
+        const perCost = top.kind === "video" ? TOKEN_COST.video : TOKEN_COST.image;
+        const affordable = Math.floor(tokens / perCost);
+        if (affordable >= 1) {
+          const want = top.kind === "video" ? 2 : 3; // video is 150 ea — don't dangle 450 tokens unsolicited
+          const n = Math.min(want, affordable);
+          const kindWord = top.kind === "video" ? tr(lang, "video") : tr(lang, "image ad");
+          const label = top.kind === "video"
+            ? tr(lang, "Make a product video for {product}", { product: top.productTitle })
+            : tr(lang, "Make an image ad for {product}", { product: top.productTitle });
+          const make: MakeSpec = { kind: top.kind, product: top.productTitle, presenter: false, direction: "", cost: perCost, label };
+          const makes = Array.from({ length: n }, () => make);
+          // "one of your best performers" (not "the MOST") stays true even when a
+          // higher-click piece was skipped because its product is gone.
+          const reply = n > 1
+            ? tr(lang, "Hey {first}! 📈 Your {kind} for {product} has pulled {clicks} clicks to your store — one of your best performers. Want {n} more like it?", { first, kind: kindWord, product: top.productTitle, clicks: top.clicks, n })
+            : tr(lang, "Hey {first}! 📈 Your {kind} for {product} has pulled {clicks} clicks to your store — one of your best performers. Want another like it?", { first, kind: kindWord, product: top.productTitle, clicks: top.clicks });
+          return { reply, makes };
+        }
+      }
     }
     // Feature a RANDOM product so it stays fresh across opens.
     const skip = Math.floor(Math.random() * Math.max(1, catCount));
