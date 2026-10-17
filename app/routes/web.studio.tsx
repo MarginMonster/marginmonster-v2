@@ -297,6 +297,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           // in-flow <img> preview, where an absolute same-origin URL is fine too.
           if (media && media.startsWith("/")) { const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, ""); if (base) media = base + media; }
         }
+      } else {
+        // A FRAME-EDIT job (editing a reused/uploaded shot) carries editOp, not an
+        // avatarId. Only one combine/edit runs at a time (the buttons disable while
+        // combining), so the newest edit-method IMAGE_AD since this job started is
+        // this edit's result. Keyed on method:"edit" so a concurrent plain gen
+        // can't be mistaken for it.
+        const easset = await db.asset.findFirst({
+          where: { shopId: shop.id, type: "IMAGE_AD", createdAt: { gte: cjob.createdAt }, bodyJson: { contains: '"method":"edit"' } },
+          orderBy: { createdAt: "desc" },
+          select: { bodyJson: true },
+        });
+        if (easset) {
+          try { const b = JSON.parse(easset.bodyJson || "{}") as { imageUrl?: string; url?: string }; media = b.imageUrl || b.url || null; } catch { /* */ }
+          if (media && media.startsWith("/")) { const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, ""); if (base) media = base + media; }
+        }
       }
       combineResult = { jobId: combineJobId, done: cjob.status === "COMPLETED" || cjob.status === "FAILED", failed: cjob.status === "FAILED", media };
     }
@@ -933,6 +948,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       backed(TOKEN_COST.combine, cFromExtra);
       return json({ ok: true, combineJobId });
     }
+    if (intent === "frameEdit") {
+      // Edit the CURRENT combine frame ITSELF — a true image edit of a reused
+      // gallery shot or an upload (which have no presenter/product to re-compose,
+      // so the normal Edit/Retry can't apply). Routes to the tested editImage
+      // "describe" path and returns a combineJobId so the combine step's own
+      // polling picks up the edited result. Priced the same as a combine edit.
+      assertCapability(shop.activePlan, "image");
+      const srcFrame = ((form.get("sourceFrameUrl") as string) || "").trim();
+      if (!srcFrame || !/^https?:\/\//i.test(srcFrame)) return json({ error: tr(lang, "No shot to edit — pick or upload one first.") });
+      const change = (direction || "").trim().slice(0, 200);
+      if (!change) return json({ error: tr(lang, "Describe the change you want to this photo.") });
+      const feModel = normalizeCreateModelKey("");
+      const feFromExtra = (await spendTokens(shop.id, TOKEN_COST.combine)).fromExtra;
+      charged(TOKEN_COST.combine, feFromExtra);
+      const frameEditJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        section: genSection,
+        editOp: "describe", sourceImageUrl: srcFrame, editPrompt: change, editModel: feModel,
+        // carried only for the Archive "cooking" tile thumbnail/label while it runs
+        productImageUrl: srcFrame, productTitle: "Shot edit",
+        prePaid: true, chargedTokens: TOKEN_COST.combine, chargedFromExtra: feFromExtra,
+      });
+      backed(TOKEN_COST.combine, feFromExtra);
+      return json({ ok: true, combineJobId: frameEditJobId });
+    }
     if (intent === "edit") {
       // Casual "edit a photo" — transform the user's own uploaded/linked photo.
       // Same 5-token image cost + spend/refund discipline; the worker routes it
@@ -1525,6 +1564,11 @@ export default function WebStudio() {
   const scrollReuse = (dir: number) => { const el = reuseStripRef.current; if (el) el.scrollBy({ left: dir * Math.max(170, el.clientWidth * 0.82), behavior: "smooth" }); };
   const frameUploading = frameFetcher.state !== "idle";
   const combineStartRef = useRef(0);
+  // True while the in-flight combine job is actually a FRAME EDIT (a true image
+  // edit of a reused/uploaded shot) rather than a presenter re-compose — so the
+  // result stays a "your own shot" frame (combineGenerated false) and can be
+  // edited again, instead of flipping to the re-compose path.
+  const frameEditModeRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const takePhoto = (f: File | null | undefined) => {
     if (!f || !/^image\//.test(f.type)) return;
@@ -2110,6 +2154,23 @@ export default function WebStudio() {
       doCombine({ scene: combineScene || undefined });
     }
   };
+  // Edit the CURRENT frame itself — a true image edit of this exact shot (used
+  // for a reused gallery shot or an upload, which have no presenter/product to
+  // re-compose). The edited result replaces the frame and can be edited again.
+  // Reuses the combine job polling (returns a combineJobId); frameEditModeRef
+  // keeps it a "your own shot" frame so it doesn't flip to the re-compose path.
+  const applyFrameEdit = () => {
+    const s = combineEdit.trim();
+    if (!s || !combineUrl || combining || busy) return;
+    const fd = new FormData();
+    fd.set("intent", "frameEdit");
+    fd.set("sourceFrameUrl", combineUrl);
+    fd.set("direction", s);
+    frameEditModeRef.current = true;
+    combineStartRef.current = Date.now();
+    setCombineEdit(""); setCombineErr(null); setCombineUrl(null); setCombineJobId(null); setCombining(true);
+    combineFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+  };
   // Upload your OWN frame → it becomes the combine result (the video seed), free.
   const doFrameUpload = (file: File | null | undefined) => {
     if (!file) return;
@@ -2176,7 +2237,14 @@ export default function WebStudio() {
     // Ignore a stale result from a PREVIOUS combine (fetcher data persists across
     // submits) — only act on the result for the job we're currently polling.
     if (!r || r.jobId !== combineJobId) return;
-    if (r.media) { setCombineUrl(r.media); setCombineGenerated(true); setCombining(false); return; }
+    if (r.media) {
+      setCombineUrl(r.media);
+      // A frame edit stays a "your own shot" (so it keeps the true-edit path);
+      // a real combine/retry becomes a generated frame (the re-compose path).
+      if (frameEditModeRef.current) frameEditModeRef.current = false;
+      else setCombineGenerated(true);
+      setCombining(false); return;
+    }
     if (r.failed) {
       // Only a genuine technical miss (no frame produced) fails now — the job
       // refunds the charge (presenterOnly), so keep it plain and reassuring.
@@ -2904,13 +2972,14 @@ export default function WebStudio() {
                 {combineUrl ? (
                   <>
                     <div className="ws-combine-foot">
-                      <span className="ws-combine-ok">✓ {combineGenerated ? t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.") : t("Using your own shot — generate your video below. (✕ the photo to pick a different one.)")}</span>
+                      <span className="ws-combine-ok">✓ {combineGenerated ? t("Locked in — generate your video below. Or edit this shot first: describe a change, or hit Retry for another take.") : t("Using your own shot — generate your video below, or describe a change to edit it. (✕ the photo to pick a different one.)")}</span>
                     </div>
-                    {/* Edit/Retry RE-COMPOSE, so they only show for a GENERATED frame.
-                        An uploaded / reused shot stays exactly as chosen — describe a
-                        change or hit Retry and it would discard it, so those are hidden.
-                        ONE hero: typed change → Edit; empty → Retry; each is 16 tok. */}
-                    {combineGenerated && (
+                    {/* "Describe a change" edits THIS shot. A GENERATED frame re-composes
+                        presenter+product (typed change = Edit, empty box = Retry for
+                        another take). A reused/uploaded shot has no compose context, so
+                        its change is a TRUE image edit of the photo itself (text
+                        required — no Retry). Either way, 16 tok. */}
+                    {combineGenerated ? (
                       <div className="ws-combine-editrow">
                         <input
                           type="text"
@@ -2926,6 +2995,22 @@ export default function WebStudio() {
                           {combineEdit.trim()
                             ? <><span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span></>
                             : <><span className="ws-tweak-ico" aria-hidden="true">↻</span> {t("Retry")} <span className="ws-tweak-c">{combineCost}</span></>}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="ws-combine-editrow">
+                        <input
+                          type="text"
+                          className="ws-combine-editbox"
+                          value={combineEdit}
+                          onChange={(e) => setCombineEdit(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !combining && !busy && combineEdit.trim()) { e.preventDefault(); applyFrameEdit(); } }}
+                          placeholder={t("Describe a change to this photo — e.g. “add a hat”, “blue background”")}
+                          maxLength={160}
+                          disabled={combining || busy}
+                        />
+                        <button type="button" className="ws-tweak primary" onClick={applyFrameEdit} disabled={combining || busy || !combineEdit.trim()} title={t("Edit this photo")}>
+                          <span className="ws-tweak-ico" aria-hidden="true">✎</span> {t("Edit")} <span className="ws-tweak-c">{combineCost}</span>
                         </button>
                       </div>
                     )}
