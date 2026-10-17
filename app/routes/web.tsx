@@ -372,6 +372,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const deletedIdsRef = useRef<Set<string>>(new Set());
   // A queued "ask + go" from the /web home hero, sent once the panel is ready.
   const pendingAskRef = useRef<string | null>(null);
+  // The full-page (max) chat has a Claude-style left sidebar of chats; on phones
+  // it's a drawer this toggles.
+  const [sideOpen, setSideOpen] = useState(false);
   // Message actions: copy (which bubble shows "Copied"), edit-a-user-message, and
   // a re-send queue (pendingResend) that regenerate + edit both route through so
   // they re-run a turn on the TRUNCATED message list without duplicating send().
@@ -791,15 +794,51 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       </button>
       {open && max && <div className="mm-backdrop" onClick={() => setMax(false)} aria-hidden="true" />}
       {open && (
-        <div className={`mm-panel${max ? " mm-max" : ""}`} role="dialog" aria-modal={max ? true : undefined} aria-label={t("Helpurr chat")} onKeyDown={(e) => { if (e.key === "Escape") { if (max) setMax(false); else setOpen(false); } }}>
+        <div className={`mm-panel${max ? " mm-max" : ""}${sideOpen ? " mm-side-open" : ""}`} role="dialog" aria-modal={max ? true : undefined} aria-label={t("Helpurr chat")} onKeyDown={(e) => { if (e.key === "Escape") { if (sideOpen) setSideOpen(false); else if (max) setMax(false); else setOpen(false); } }}>
+          {max && authed && (
+            <aside className="mm-side">
+              <div className="mm-side-brand"><span className="mm-side-crest"><Familiar /></span><span className="mm-side-word">Easy<b>Mode</b></span></div>
+              <button type="button" className="mm-side-new" onClick={() => { void newThread(); setSideOpen(false); }}>{t("+ New chat")}</button>
+              <div className="mm-side-list">
+                {threads.map((th) => (
+                  <div key={th.id} className={`mm-side-chat${th.id === activeThreadId && !showHome ? " on" : ""}`}>
+                    {renamingThreadId === th.id ? (
+                      <input className="mm-side-chat-rename" value={renameText} autoFocus maxLength={42}
+                        onChange={(e) => setRenameText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") void commitRename(th.id); else if (e.key === "Escape") setRenamingThreadId(null); }}
+                        onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
+                    ) : (
+                      <>
+                        <button type="button" className="mm-side-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach(null); setLastPhoto(null); setSideOpen(false); } }} title={th.title}>
+                          <span className="mm-side-chat-tx">{th.title}</span>
+                        </button>
+                        {th.id !== "main" && (
+                          <span className="mm-side-chat-acts">
+                            <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(th.title); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
+                            {armedDeleteId === th.id
+                              ? <button type="button" className="mm-chat-act mm-chat-del" onClick={() => void deleteThread(th.id)} title={t("Tap to confirm")}>{t("Delete?")}</button>
+                              : <button type="button" className="mm-chat-act" onClick={() => armDelete(th.id)} title={t("Delete")} aria-label={t("Delete chat")}>🗑</button>}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="mm-side-foot-btn" onClick={() => { setShowHome(true); setSideOpen(false); }}>⌂ {t("Home")}</button>
+            </aside>
+          )}
+          {max && sideOpen && <div className="mm-side-scrim" onClick={() => setSideOpen(false)} aria-hidden="true" />}
+          <div className="mm-maincol">
           <div className="mm-head">
+            {max && authed && <button type="button" className="mm-side-toggle" onClick={() => setSideOpen((o) => !o)} aria-label={t("Your chats")} title={t("Your chats")}>☰</button>}
             <span className="mm-head-crest"><Familiar think={busy} /></span>
             <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
             <button type="button" className="mm-expand" onClick={() => setMax((m) => !m)} aria-label={max ? t("Shrink chat") : t("Expand chat")} title={max ? t("Shrink") : t("Expand")}>{max ? "⤡" : "⤢"}</button>
             {max && authed && !atHome && <button type="button" className="mm-homebtn" onClick={() => setShowHome(true)} aria-label={t("Helpurr home")} title={t("Home")}>🏠</button>}
-            <button type="button" className="mm-x" onClick={() => { setOpen(false); setMax(false); }} aria-label={t("Close chat")}>×</button>
+            <button type="button" className="mm-x" onClick={() => { setOpen(false); setMax(false); setSideOpen(false); }} aria-label={t("Close chat")}>×</button>
           </div>
-          {authed && !atHome && (
+          {authed && !atHome && !max && (
             <div className="mm-tabs" role="tablist" aria-label={t("Your chats")}>
               {threads.map((th) => (
                 <button key={th.id} type="button" role="tab" aria-selected={th.id === activeThreadId}
@@ -979,6 +1018,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               : <button type="submit" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>}
           </form>
           </>)}
+          </div>
         </div>
       )}
     </>
@@ -1913,9 +1953,49 @@ const CSS = `
 /* Maximized = the dedicated full-screen Helpurr surface (opened from the nav). */
 .mm-backdrop{position:fixed;inset:0;z-index:10599;background:rgba(10,20,14,.46);animation:mmFade .2s both;}
 @keyframes mmFade{from{opacity:0}to{opacity:1}}
-.mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:auto;width:min(780px,94vw);height:min(86vh,900px);border-radius:22px;}
-.mm-panel.mm-max .mm-list{padding-left:max(14px,calc((100% - 680px)/2));padding-right:max(14px,calc((100% - 680px)/2));}
-.mm-panel.mm-max .mm-input{padding-left:max(10px,calc((100% - 680px)/2));padding-right:max(10px,calc((100% - 680px)/2));}
+/* FULL-PAGE Claude-style chat — a left sidebar of chats + a main column — that
+   EMERGES from the home with a soft bloom. EasyMode cream + gold rosettes. */
+.mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:auto;width:min(1280px,96vw);height:min(94vh,980px);
+  border-radius:20px;flex-direction:row;overflow:hidden;animation:mmEmerge .36s cubic-bezier(.2,.9,.3,1) both;}
+@keyframes mmEmerge{from{opacity:0;transform:scale(.975)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mm-panel.mm-max{animation:none}}
+.mm-side{flex:0 0 266px;display:flex;flex-direction:column;min-height:0;position:relative;
+  background:linear-gradient(180deg,#F6F2E6,#EFEBDC);border-right:1px solid var(--line2);}
+.mm-side::before{content:"";position:absolute;top:-44px;right:-64px;width:264px;height:264px;pointer-events:none;opacity:.10;background:url(/gstyle-rosette.svg) center/contain no-repeat;}
+.mm-side::after{content:"";position:absolute;bottom:-78px;left:-72px;width:224px;height:224px;pointer-events:none;opacity:.07;background:url(/gstyle-rosette.svg) center/contain no-repeat;}
+.mm-side-brand{display:flex;align-items:center;gap:8px;padding:15px 16px 10px;position:relative;z-index:1;}
+.mm-side-crest{width:30px;height:30px;}
+.mm-side-word{font-family:Poppins,sans-serif;font-weight:800;font-size:17px;color:var(--ink);}
+.mm-side-word b{color:var(--gold);}
+.mm-side-new{margin:2px 12px 10px;padding:10px 13px;border:1px solid var(--green);border-radius:12px;background:var(--card);color:var(--green);font:inherit;font-weight:800;font-size:13px;cursor:pointer;text-align:left;position:relative;z-index:1;transition:background .14s,color .14s;}
+.mm-side-new:hover{background:var(--green);color:#fff;}
+.mm-side-list{flex:1;min-height:0;overflow-y:auto;padding:4px 8px;display:flex;flex-direction:column;gap:2px;position:relative;z-index:1;scrollbar-width:thin;}
+.mm-side-chat{display:flex;align-items:center;min-width:0;border-radius:10px;transition:background .12s;}
+.mm-side-chat:hover{background:rgba(12,122,70,.08);}
+.mm-side-chat.on{background:rgba(12,122,70,.15);}
+.mm-side-chat-main{flex:1;min-width:0;text-align:left;background:none;border:0;cursor:pointer;font:inherit;padding:9px 10px;}
+.mm-side-chat-tx{display:block;font-size:12.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-side-chat-acts{display:flex;align-items:center;gap:1px;padding-right:5px;opacity:0;transition:opacity .12s;}
+.mm-side-chat:hover .mm-side-chat-acts,.mm-side-chat:focus-within .mm-side-chat-acts{opacity:1;}
+.mm-side-chat-rename{flex:1;min-width:0;margin:4px;padding:5px 8px;border:1.5px solid var(--green);border-radius:8px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;outline:none;}
+.mm-side-foot-btn{margin:8px 12px 12px;padding:8px 12px;border:1px solid var(--line2);border-radius:11px;background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;position:relative;z-index:1;transition:border-color .14s,color .14s;}
+.mm-side-foot-btn:hover{border-color:var(--green);color:var(--ink);}
+.mm-maincol{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}
+.mm-panel.mm-max .mm-maincol .mm-list{padding-left:max(18px,calc((100% - 720px)/2));padding-right:max(18px,calc((100% - 720px)/2));}
+.mm-panel.mm-max .mm-maincol .mm-input{padding-left:max(14px,calc((100% - 720px)/2));padding-right:max(14px,calc((100% - 720px)/2));}
+.mm-panel.mm-max .mm-home-recent{display:none;} /* the sidebar lists the chats */
+.mm-panel.mm-max .mm-head-crest{display:none;}   /* the sidebar carries the brand */
+.mm-side-toggle{display:none;background:none;border:0;font-size:18px;line-height:1;cursor:pointer;color:rgba(244,234,200,.92);padding:2px 8px;border-radius:7px;margin-right:2px;}
+.mm-side-scrim{display:none;}
+/* Sidebar becomes a slide-in drawer when there isn't room for it beside the chat. */
+@media(max-width:820px){
+  .mm-panel.mm-max{width:100vw;height:100vh;height:100dvh;border-radius:0;}
+  .mm-side{position:absolute;top:0;bottom:0;left:0;z-index:4;width:272px;flex-basis:272px;transform:translateX(-102%);transition:transform .22s cubic-bezier(.2,.8,.3,1);box-shadow:0 0 44px rgba(10,20,14,.34);}
+  .mm-panel.mm-side-open .mm-side{transform:none;}
+  .mm-side-scrim{display:block;position:absolute;inset:0;z-index:3;background:rgba(10,20,14,.42);animation:mmFade .18s both;}
+  .mm-side-toggle{display:inline-grid;place-items:center;}
+  .mm-panel.mm-max .mm-maincol .mm-list,.mm-panel.mm-max .mm-maincol .mm-input{padding-left:14px;padding-right:14px;}
+}
 /* HOME — the dedicated Helpurr landing surface (Google-homepage energy, EasyMode
    skin): centered wordmark + big ask bar + quick-start cards + your saved chats.
    Fills the maximized panel under the header and scrolls if it needs to. */
