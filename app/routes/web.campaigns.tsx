@@ -13,8 +13,8 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
-import { useState } from "react";
-import { useT } from "../lib/ui-lang";
+import { useState, useMemo } from "react";
+import { useT, useUiLang } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -52,9 +52,16 @@ const PLAN_PITCH: Record<string, { badge: string; pitch: string; worth: string }
   SOCIAL_EMPIRE: { badge: "Max", pitch: "The whole machine. Drops every single day across every platform — some brands post, yours is simply always there.", worth: "≈ a $4,000/mo growth agency" },
 };
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+// BCP-47 locales for Intl, keyed by our UiLang codes — so month names, weekday
+// initials and AM/PM in the campaign calendar come out in the viewer's language
+// (and digits/format conventions) instead of hardcoded English.
+const UI_LOCALE: Record<string, string> = { en: "en-US", es: "es", fr: "fr", de: "de", zh: "zh-CN", ur: "ur" };
+const localeOf = (lang: string) => UI_LOCALE[lang] || "en-US";
+/** Sunday-first weekday initials in the given locale (2023-01-01 was a Sunday). */
+function weekdayNarrow(locale: string): string[] {
+  const f = new Intl.DateTimeFormat(locale, { weekday: "narrow", timeZone: "UTC" });
+  return Array.from({ length: 7 }, (_, i) => f.format(new Date(Date.UTC(2023, 0, 1 + i))));
+}
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const pad = (n: number) => String(n).padStart(2, "0");
 /** "2 Video" / "Image" — a count only when it earns one. Labels beat dots:
@@ -82,18 +89,21 @@ function monthGrid(year: number, month0: number): number[][] {
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
 }
-function fmtWhen(dateStr: string, timeStr: string): string {
+function fmtWhen(dateStr: string, timeStr: string, locale: string): string {
   const [, m, d] = dateStr.split("-").map(Number);
   const h = parseInt((timeStr || "12:00").slice(0, 2), 10);
-  const mm = (timeStr || "12:00").slice(3, 5);
-  const ap = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${MON[(m || 1) - 1]} ${d} · ${mm === "00" ? `${h12}${ap}` : `${h12}:${mm}${ap}`}`;
+  const mi = parseInt((timeStr || "12:00").slice(3, 5), 10) || 0;
+  // A throwaway UTC date just to feed Intl; only month/day/time are formatted.
+  const dt = new Date(Date.UTC(2000, (m || 1) - 1, d || 1, h, mi));
+  const datePart = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", timeZone: "UTC" }).format(dt);
+  const timePart = new Intl.DateTimeFormat(locale, { hour: "numeric", ...(mi ? { minute: "2-digit" } : {}), hour12: true, timeZone: "UTC" }).format(dt);
+  return `${datePart} · ${timePart}`;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
   const lang = readUiLang(request);
+  const loc = localeOf(lang);
   const full = await db.shop.findUnique({
     where: { id: shop.id },
     include: { activePlan: true, questlines: { orderBy: { createdAt: "desc" }, take: 20 } },
@@ -148,7 +158,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .filter((s) => (s.type === "video" || s.type === "image" || s.type === "blog") && s.date >= todayStr)
       .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
       .slice(0, 6)
-      .map((s) => ({ when: fmtWhen(s.date, s.time), type: s.type, product: s.productTitle || "", status: s.status }));
+      .map((s) => ({ when: fmtWhen(s.date, s.time, loc), type: s.type, product: s.productTitle || "", status: s.status }));
     campaigns.push({
       id: q.id, name: q.name, status: q.status, image: q.productImageUrl,
       posted, overdue, total: slots.length,
@@ -156,7 +166,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // poster skips those questlines outright. The card must not keep saying
       // "Auto-posts to …" about one.
       holdsForReview: q.reviewMode === "REVIEW_FIRST",
-      next: next ? fmtWhen(next.date, next.time) : null,
+      next: next ? fmtWhen(next.date, next.time, loc) : null,
       upcoming,
     });
   }
@@ -274,7 +284,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasPlan: !!full?.activePlan?.active,
     tokens: allowance,
     weeks: monthGrid(year, month0),
-    monthLabel: `${MONTHS[month0]} ${year}`,
+    monthLabel: new Intl.DateTimeFormat(loc, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month0, 1))),
     todayDay,
     dropMap,
     prevYm: ymStr(month0 === 0 ? year - 1 : year, month0 === 0 ? 11 : month0 - 1),
@@ -349,6 +359,8 @@ export default function WebCampaigns() {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const t = useT();
+  const uiLang = useUiLang();
+  const dow = useMemo(() => weekdayNarrow(localeOf(uiLang)), [uiLang]);
 
   const [planKey, setPlanKey] = useState(d.plans[1]?.key || d.plans[0]?.key || "");
   const plan = d.plans.find((p) => p.key === planKey) || d.plans[0];
@@ -542,7 +554,7 @@ export default function WebCampaigns() {
             </div>
 
             <div className="wc-grid">
-              {DOW.map((x, i) => <div className="wc-dow" key={i}>{x}</div>)}
+              {dow.map((x, i) => <div className="wc-dow" key={i}>{x}</div>)}
               {d.weeks.flat().map((day, i) => {
                 if (day === 0) return <div className="wc-dy empty" key={i} />;
                 const cell = d.dropMap[day];
