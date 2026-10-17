@@ -1127,8 +1127,12 @@ export async function action({ request }: ActionFunctionArgs) {
   // recent tail — the saved thread can be long.
   let chat: ChatMsg[] = messages
     .filter((m) => m && typeof m.content === "string" && m.content.trim())
-    .map((m): ChatMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: (m.content || "").trim().slice(0, 1200) }));
-  chat = chat.slice(-14);
+    .map((m): ChatMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: (m.content || "").trim().slice(0, 2400) }));
+  // Keep ~36 turns of context (was 14): on a longer session the model literally
+  // couldn't see past turn 15, so it lost the thread and repeated itself. Prompt
+  // caching (the stable system prefix) keeps the extra input cheap, and the daily
+  // cap still bounds cost.
+  chat = chat.slice(-36);
   while (chat.length && chat[0].role === "assistant") chat = chat.slice(1);
   if (!chat.length) return json({ reply: tr(lang, "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?") });
 
