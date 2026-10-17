@@ -1344,12 +1344,11 @@ export async function action({ request }: ActionFunctionArgs) {
           // maxTokens is well above the thinking budget so a full visible answer
           // always has room — the old empty-answer bug was small-budget STRUCTURED
           // calls, which stay thinking-off.
-          model: BUDDY_MODEL, maxTokens: 3400, thinkingBudget: 1600,
+          model: BUDDY_MODEL, maxTokens: 3400, thinkingEffort: "medium",
           onText: (d) => safeEnqueue(frameOf("text", { delta: d })),
           onStatus: (toolName) => safeEnqueue(frameOf("status", { label: statusLabel(toolName, lang) })),
         });
-      } catch (streamErr) {
-        safeEnqueue(frameOf("status", { label: "DBG:" + (streamErr instanceof Error ? streamErr.message : String(streamErr)).slice(0, 220) }));
+      } catch {
         try {
           // Fallback is deliberately thinking-OFF (the proven config) — so if
           // extended thinking itself ever fails, this still delivers an answer.

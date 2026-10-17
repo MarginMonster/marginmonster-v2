@@ -30,13 +30,15 @@ export interface AnthropicOptions {
  *  Sonnet 5 accepts an explicit disabled; other models we use keep their
  *  default behaviour, so only sonnet-5 gets the field.
  *
- *  EXCEPTION: pass a `budget` (>=1024) to ENABLE extended thinking for a call
- *  that genuinely benefits (the Helpurr chat, which has a big max_tokens). The
- *  structured/vision/extraction calls pass no budget and stay disabled, so the
- *  empty-answer regression above never recurs — it was only ever those. */
-function thinkingFieldFor(model: string, budget?: number): Record<string, unknown> {
+ *  EXCEPTION: pass an `effort` ("low"/"medium"/"high") to ENABLE thinking for a
+ *  call that genuinely benefits (the Helpurr chat, which has a big max_tokens).
+ *  sonnet-5 uses ADAPTIVE thinking (thinking.type.adaptive + output_config.effort),
+ *  NOT the classic enabled+budget_tokens. The structured/vision/extraction calls
+ *  pass no effort and stay disabled, so the empty-answer regression above never
+ *  recurs — it was only ever those. */
+function thinkingFieldFor(model: string, effort?: string): Record<string, unknown> {
   if (!model.startsWith("claude-sonnet-5")) return {};
-  if (budget && budget >= 1024) return { thinking: { type: "enabled", budget_tokens: Math.floor(budget) } };
+  if (effort) return { thinking: { type: "adaptive" }, output_config: { effort } };
   return { thinking: { type: "disabled" } };
 }
 
@@ -154,10 +156,10 @@ export async function anthropicToolLoop(opts: {
   model?: string;
   maxTokens?: number;
   maxRounds?: number;
-  /** Enable extended thinking with this budget (sonnet-5 only; needs maxTokens
-   *  comfortably above it). The loop already pushes the full content back, so
+  /** Enable adaptive thinking at this effort (sonnet-5 only; needs maxTokens
+   *  comfortably high). The loop already pushes the full content back, so
    *  thinking blocks are preserved across tool rounds automatically. */
-  thinkingBudget?: number;
+  thinkingEffort?: string;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -178,7 +180,7 @@ export async function anthropicToolLoop(opts: {
           body: JSON.stringify({
             model,
             max_tokens: maxTokens,
-            ...thinkingFieldFor(model, opts.thinkingBudget),
+            ...thinkingFieldFor(model, opts.thinkingEffort),
             system: opts.system,
             ...(opts.tools.length ? { tools: opts.tools } : {}),
             messages,
@@ -234,11 +236,11 @@ export async function anthropicToolLoopStream(opts: {
   maxRounds?: number;
   onText: (delta: string) => void;
   onStatus?: (toolName: string) => void;
-  /** Enable extended thinking with this budget (sonnet-5 only; maxTokens must be
-   *  comfortably above it). Thinking deltas are NOT forwarded as visible text;
-   *  thinking blocks are accumulated with their signature and preserved in the
-   *  assistant turn across tool rounds (the API requires this). */
-  thinkingBudget?: number;
+  /** Enable adaptive thinking at this effort (sonnet-5 only; maxTokens kept high).
+   *  Thinking deltas are NOT forwarded as visible text; thinking blocks are
+   *  accumulated with their signature and preserved in the assistant turn across
+   *  tool rounds (the API requires this). */
+  thinkingEffort?: string;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -255,7 +257,7 @@ export async function anthropicToolLoopStream(opts: {
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
-        ...thinkingFieldFor(model, opts.thinkingBudget),
+        ...thinkingFieldFor(model, opts.thinkingEffort),
         system: opts.system,
         ...(opts.tools.length ? { tools: opts.tools } : {}),
         messages,
