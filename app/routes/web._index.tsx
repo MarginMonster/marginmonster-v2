@@ -2,7 +2,7 @@
  * trial rules are IDENTICAL to the Shopify app; only the payer differs. */
 
 import { json, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit, Link } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit, useNavigate, useOutletContext, Link } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
@@ -344,6 +344,17 @@ export default function WebDashboard() {
   const [params] = useSearchParams();
   const busy = nav.state !== "idle";
   const t = useT();
+  const navigate = useNavigate();
+  const { mode, setMode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>();
+  // The Helpurr "Google-style" landing hero at the top of the home: ask Helpurr to
+  // drive, or take the Creator/Social/Studio path to drive it yourself.
+  const [ask, setAsk] = useState("");
+  const firstName = (d.name || "").split(" ")[0];
+  const openHelpurr = (text?: string) => { window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true, text: text || undefined, send: !!(text && text.trim()) } })); };
+  const askHelpurr = () => { const text = ask.trim(); openHelpurr(text || undefined); if (text) setAsk(""); };
+  const heroChips = mode === "casual"
+    ? [t("Make me an image"), t("Edit a photo"), t("Make a faceless video")]
+    : [t("Make me an ad"), t("What's working best?"), t("Plan my week of content")];
 
   // ── Purchase-success celebration modal (replaces the old flat banners).
   // Initialized from ?welcome= / ?topped=; the params are scrubbed on dismiss.
@@ -418,8 +429,39 @@ export default function WebDashboard() {
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: DASH_CSS }} />
-      <h1 className="wb-h1">{t("Welcome, {name}.", { name: d.name })}</h1>
-      <p className="wb-sub">
+      {/* ── Helpurr landing hero — the Google-style front door: ask Helpurr to
+           drive it, or take the Creator / Social / Studio path yourself. ── */}
+      <section className="wd-hero">
+        <img src="/familiar-px.png" alt="" className="wd-hero-crest" />
+        <h1 className="wd-hero-word">Easy<b>Mode</b></h1>
+        <p className="wd-hero-sub">{firstName ? t("Hey {name} — what are we making today?", { name: firstName }) : t("What are we making today?")}</p>
+        <form className="wd-hero-ask" onSubmit={(e) => { e.preventDefault(); askHelpurr(); }}>
+          <span className="wd-hero-spark" aria-hidden="true">✨</span>
+          <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder={t("Ask Helpurr anything — or tell it what to make…")} aria-label={t("Ask Helpurr")} />
+          <button type="submit" className="wd-hero-send" aria-label={t("Ask Helpurr")}>➤</button>
+        </form>
+        <div className="wd-hero-chips">
+          {heroChips.map((c) => <button key={c} type="button" onClick={() => openHelpurr(c)}>{c}</button>)}
+        </div>
+        <div className="wd-hero-paths">
+          <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
+          <div className="wd-hero-paths-row">
+            <button type="button" className="wd-path" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
+              <span className="wd-path-ic" aria-hidden="true">🎨</span>
+              <span className="wd-path-tx"><b>{t("Creator")}</b><i>{t("Make images, videos & music")}</i></span>
+            </button>
+            <button type="button" className="wd-path" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
+              <span className="wd-path-ic" aria-hidden="true">📣</span>
+              <span className="wd-path-tx"><b>{t("Social")}</b><i>{t("Turn products into ads & auto-post")}</i></span>
+            </button>
+            <button type="button" className="wd-path" onClick={() => navigate("/web/studio")}>
+              <span className="wd-path-ic" aria-hidden="true">🎛️</span>
+              <span className="wd-path-tx"><b>{t("Studio")}</b><i>{t("Full manual controls")}</i></span>
+            </button>
+          </div>
+        </div>
+      </section>
+      <p className="wb-sub wd-plan-line">
         {d.tierName
           ? <>{t("You're on")} <b>{d.tierName}</b>{d.trialing ? ` ${t("(free trial)")}` : ""} {t("with")} <b>{d.tokens.toLocaleString("en-US")}</b> {t("tokens ready.")}</>
           : t("Two steps to your first AI content drop: set your brand voice, pick a plan.")}
@@ -782,6 +824,40 @@ export default function WebDashboard() {
 /* Route-local dashboard styles — GStyle palette (paper #F4F1E6, card #FDFCF7,
  * ink #14201A, green #12A85E, gold #B08526/#E7C879). */
 const DASH_CSS = `
+/* Helpurr landing hero — the Google-style front door at the top of the home. */
+.wd-hero{display:flex;flex-direction:column;align-items:center;text-align:center;
+  background:radial-gradient(130% 90% at 50% 0,#FEFDF9,#F1EEE3 80%);border:1px solid var(--line2,#D7DCCB);
+  border-radius:24px;padding:clamp(22px,4vw,40px) clamp(16px,5%,40px) clamp(20px,3vw,30px);margin:0 0 14px;
+  box-shadow:0 6px 22px rgba(12,122,70,.08);}
+.wd-hero-crest{width:66px;height:66px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 6px 13px rgba(12,122,70,.22));}
+.wd-hero-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(28px,5.5vw,42px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}
+.wd-hero-word b{color:var(--gold);font-weight:800;}
+.wd-hero-sub{font-size:14.5px;color:var(--ink2);margin:0 0 18px;}
+.wd-hero-ask{display:flex;align-items:center;gap:8px;width:min(620px,100%);background:var(--card);
+  border:1.5px solid var(--line2,#D7DCCB);border-radius:999px;padding:7px 8px 7px 16px;
+  box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
+.wd-hero-ask:focus-within{border-color:var(--green);box-shadow:0 10px 30px rgba(12,122,70,.18);}
+.wd-hero-spark{flex:0 0 auto;font-size:15px;opacity:.8;}
+.wd-hero-ask input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;}
+.wd-hero-ask input::placeholder{color:#97a19a;}
+.wd-hero-send{flex:0 0 auto;width:42px;height:42px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
+  background:linear-gradient(135deg,var(--green2,#12A85E) 40%,var(--green));box-shadow:0 3px 10px rgba(12,122,70,.3);transition:filter .12s,transform .12s;}
+.wd-hero-send:hover{filter:brightness(1.07);transform:translateY(-1px);}
+.wd-hero-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px;}
+.wd-hero-chips button{border:1px solid var(--line2,#D7DCCB);background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 14px;border-radius:999px;transition:border-color .14s,color .14s;}
+.wd-hero-chips button:hover{border-color:var(--green);color:var(--ink);}
+.wd-hero-paths{width:min(620px,100%);margin-top:22px;}
+.wd-hero-paths-h{display:block;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px;}
+.wd-hero-paths-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;}
+.wd-path{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;cursor:pointer;
+  background:var(--card);border:1px solid var(--line2,#D7DCCB);border-radius:15px;padding:11px 12px;transition:border-color .14s,transform .12s,box-shadow .14s;}
+.wd-path:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 18px rgba(12,122,70,.12);}
+.wd-path-ic{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;font-size:17px;background:linear-gradient(140deg,rgba(18,168,94,.14),rgba(176,133,38,.14));}
+.wd-path-tx{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.wd-path-tx b{font-weight:800;font-size:13px;color:var(--ink);}
+.wd-path-tx i{font-style:normal;font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;}
+.wd-plan-line{text-align:center;margin:0 0 20px;}
+@media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i{white-space:normal;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}

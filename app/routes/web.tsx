@@ -370,6 +370,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // Threads this session has deleted — so the post-delete thread-list refetch (and
   // any later load) can't resurrect a just-deleted chat before the POST commits.
   const deletedIdsRef = useRef<Set<string>>(new Set());
+  // A queued "ask + go" from the /web home hero, sent once the panel is ready.
+  const pendingAskRef = useRef<string | null>(null);
   // Message actions: copy (which bubble shows "Copied"), edit-a-user-message, and
   // a re-send queue (pendingResend) that regenerate + edit both route through so
   // they re-run a turn on the TRUNCATED message list without duplicating send().
@@ -458,18 +460,32 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   useEffect(() => {
     const h = (e: Event) => {
       setOpen(true);
-      const detail = (e as CustomEvent<{ text?: string; max?: boolean }>).detail;
-      // The nav "Helpurr" entry opens the dedicated full-screen surface — ON the
-      // Google-style home (its landing), not whatever chat was last open.
-      if (detail?.max) { setMax(true); setShowHome(true); }
-      // The Creator home's Chat mode passes the typed prompt — prefill the box
-      // so the user just hits send (we don't auto-send; let them confirm).
+      const detail = (e as CustomEvent<{ text?: string; max?: boolean; send?: boolean }>).detail;
+      if (detail?.max) setMax(true);
       const prefill = detail?.text;
-      if (typeof prefill === "string" && prefill.trim()) setInput(prefill);
+      if (typeof prefill === "string" && prefill.trim() && detail?.send) {
+        // "Ask + go" from the home hero / a quick chip: drop into the chat and
+        // auto-send once history has loaded (a chat turn spends nothing).
+        pendingAskRef.current = prefill.trim();
+        if (detail?.max) setShowHome(false);
+      } else if (typeof prefill === "string" && prefill.trim()) {
+        // Prefill the composer so the user just hits send (no auto-send).
+        if (detail?.max) setShowHome(true);
+        setInput(prefill);
+      } else if (detail?.max) {
+        // The nav "Helpurr" entry opens the dedicated full-screen surface ON its
+        // Google-style home, not whatever chat was last open.
+        setShowHome(true);
+      }
     };
     window.addEventListener("helpurr:open", h);
     return () => window.removeEventListener("helpurr:open", h);
   }, []);
+  // Fire a queued "ask + go" once the panel is open and its thread has loaded, so
+  // the auto-sent message lands on the right conversation.
+  useEffect(() => {
+    if (open && histReady && !busy && pendingAskRef.current) { const text = pendingAskRef.current; pendingAskRef.current = null; void send(text); }
+  }, [open, histReady, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Upload a picked photo to the FREE, tested frameUpload endpoint and hold the
   // returned /uploads URL so the next message carries it to Helpurr. No tokens.
