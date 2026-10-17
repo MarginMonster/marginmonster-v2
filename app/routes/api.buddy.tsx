@@ -28,7 +28,7 @@ import { db } from "../db.server";
 // status + error lines, button labels) go through tr(lang, …) so the whole
 // helper matches the interface, not just its chrome.
 const BUDDY_LANG: Record<UiLang, string> = {
-  en: "English", es: "Spanish", fr: "French", de: "German", zh: "Simplified Chinese",
+  en: "English", es: "Spanish", fr: "French", de: "German", zh: "Simplified Chinese", ur: "Urdu",
 };
 
 type WebId = NonNullable<Awaited<ReturnType<typeof getWebIdentity>>>;

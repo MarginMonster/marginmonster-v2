@@ -13,7 +13,7 @@
 
 import { UI_DICT } from "./ui-i18n-dict";
 
-export const UI_LANGS = ["en", "es", "fr", "de", "zh"] as const;
+export const UI_LANGS = ["en", "es", "fr", "de", "zh", "ur"] as const;
 export type UiLang = (typeof UI_LANGS)[number];
 
 /** Native language names for the toggle (what a speaker calls their own
@@ -24,7 +24,14 @@ export const UI_LANG_NATIVE: Record<UiLang, string> = {
   fr: "Français",
   de: "Deutsch",
   zh: "中文",
+  ur: "اردو",
 };
+
+/** Right-to-left languages — the UI sets <html dir="rtl"> for these. */
+export const RTL_UI_LANGS: ReadonlySet<UiLang> = new Set<UiLang>(["ur"]);
+export function uiLangDir(lang: UiLang): "rtl" | "ltr" {
+  return RTL_UI_LANGS.has(lang) ? "rtl" : "ltr";
+}
 
 /** Narrow anything (cookie value, posted field, Accept-Language) to a language
  *  we actually render. Never throws; falls back to English. */

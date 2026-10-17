@@ -16,7 +16,7 @@ import type {
   MetaFunction,
 } from "@remix-run/node";
 import { addDocumentResponseHeaders } from "./shopify.server";
-import { readUiLang } from "./lib/ui-i18n";
+import { readUiLang, uiLangDir } from "./lib/ui-i18n";
 import { UiLangProvider } from "./lib/ui-lang";
 
 /* Default document head. <Meta /> was already wired up below, but not one
@@ -97,7 +97,7 @@ export const headers: HeadersFunction = ({ loaderHeaders }) => loaderHeaders;
 export default function App() {
   const { uiLang } = useLoaderData<typeof loader>();
   return (
-    <html lang={uiLang}>
+    <html lang={uiLang} dir={uiLangDir(uiLang)}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
