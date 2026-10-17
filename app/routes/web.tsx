@@ -2014,7 +2014,16 @@ const CSS = `
 .mm-side-chat-rename{flex:1;min-width:0;margin:4px;padding:5px 8px;border:1.5px solid var(--green);border-radius:8px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;outline:none;}
 .mm-side-foot-btn{margin:8px 12px 12px;padding:8px 12px;border:1px solid var(--line2);border-radius:11px;background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;position:relative;z-index:1;transition:border-color .14s,color .14s;}
 .mm-side-foot-btn:hover{border-color:var(--green);color:var(--ink);}
-.mm-maincol{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}
+.mm-maincol{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#FEFDF9,#F7F3E9);}
+/* Full-page chrome is LIGHT so the header blends into the cream sidebar + chat
+   instead of a dark-green bar that cuts off at the seam. Green stays an accent
+   (New chat, active chat, send, user bubbles). */
+.mm-panel.mm-max .mm-head{background:#FBF8EE;color:var(--ink);border-bottom:1px solid var(--line2);padding:12px 16px;}
+.mm-panel.mm-max .mm-head-txt b{color:var(--ink);}
+.mm-panel.mm-max .mm-head-txt span{color:var(--ink2);}
+.mm-panel.mm-max .mm-expand,.mm-panel.mm-max .mm-homebtn,.mm-panel.mm-max .mm-x,.mm-panel.mm-max .mm-side-toggle{color:var(--ink2);}
+.mm-panel.mm-max .mm-expand:hover,.mm-panel.mm-max .mm-homebtn:hover,.mm-panel.mm-max .mm-x:hover,.mm-panel.mm-max .mm-side-toggle:hover{color:var(--ink);background:rgba(20,32,26,.06);}
+.mm-panel.mm-max .mm-input{background:#FBF8EE;border-top:1px solid var(--line2);}
 .mm-panel.mm-max .mm-maincol .mm-list{padding-left:max(18px,calc((100% - 720px)/2));padding-right:max(18px,calc((100% - 720px)/2));}
 .mm-panel.mm-max .mm-maincol .mm-input{padding-left:max(14px,calc((100% - 720px)/2));padding-right:max(14px,calc((100% - 720px)/2));}
 .mm-panel.mm-max .mm-home-recent{display:none;} /* the sidebar lists the chats */
