@@ -15,7 +15,7 @@ import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } f
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
-import { anthropicToolLoop, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
+import { anthropicToolLoop, anthropicToolLoopStream, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { UPLOAD_NAME_RE, shopSlug } from "../lib/upload-names";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
@@ -126,6 +126,30 @@ function buildFollowups(
   return mode === "casual"
     ? [tr(lang, "Make me something"), tr(lang, "Show my recent work")]
     : [tr(lang, "Make an ad"), tr(lang, "What's working best?")];
+}
+
+// Keep matched **bold** + list markers (the bubble renders them) but tidy STRAY
+// single * / _ emphasis so a lone asterisk never shows literally. Shared by the
+// streaming + fallback reply paths.
+function tidyReply(s: string): string {
+  return (s || "").trim().replace(/(^|[^*])\*(?!\*)(\S[^*\n]*?\S|\S)\*(?!\*)/g, "$1$2").replace(/(^|\s)_(\S[^_\n]*?\S|\S)_(\s|$)/g, "$1$2$3");
+}
+
+// A warm one-liner for the moment a tool runs mid-stream, so a tool-using turn
+// reads as thinking-out-loud instead of a frozen spinner (Doubao/ChatGPT style).
+function statusLabel(tool: string, lang: UiLang): string {
+  const m: Record<string, string> = {
+    get_catalog: "Looking at your products…",
+    get_performance: "Pulling your numbers…",
+    get_campaigns: "Checking your campaigns…",
+    show_work: "Finding your work…",
+    make_content: "Setting that up…",
+    set_up_task: "Lining that up…",
+    get_plan: "Checking your plan…",
+    get_tokens: "Checking your balance…",
+    remember_fact: "Noting that down…",
+  };
+  return tr(lang, m[tool] || "Working on it…");
 }
 
 function contextLine(id: Awaited<ReturnType<typeof getWebIdentity>>, path: string, mode: "marketing" | "casual"): string {
@@ -1205,61 +1229,87 @@ export async function action({ request }: ActionFunctionArgs) {
     { type: "text" as const, text: dynamicSystem },
   ];
   const pending: { action: PendingAction | null; media: BuddyMedia[]; make: MakeSpec | null } = { action: null, media: [], make: null };
-  try {
-    const reply = await anthropicToolLoop({
-      system,
-      messages: chat,
-      // make_content is available in BOTH modes now: image/video need a catalog
-      // product (marketing only — buildMake rejects them in casual), but faceless
-      // videos and music tracks are topic-driven and work in Creator mode too.
-      tools: id ? BUDDY_TOOLS : [],
-      runTool: async (n, i) => {
-        if (!id) return "(not signed in)";
-        if (n === "set_up_task") {
-          // Redirect anything make_content can make in-chat to make_content. Faceless
-          // and music are in-chat in BOTH modes. Image/video are in-chat only in
-          // MARKETING (catalog-based); in Creator mode the Studio owns images, so
-          // those fall through to a Studio hand-off here — otherwise a casual image
-          // request ping-pongs between make_content and this redirect. The proactive
-          // opener calls buildTask directly (not here), so its buttons are safe.
-          const k = String((i as { kind?: unknown }).kind || "");
-          const isCatalogMakeable = (k === "image_ad" || k === "image" || k === "video") && mode === "marketing";
-          if (k === "faceless" || k === "music" || isCatalogMakeable) {
-            const mc = k === "faceless" ? "faceless" : k === "music" ? "music" : k === "video" ? "video" : "image";
-            const how = (mc === "faceless" || mc === "music") ? "pass a 'topic'" : "call get_catalog first for a real product with a photo";
-            return JSON.stringify({ wrongTool: true, note: `Don't use set_up_task for that. Use make_content with kind "${mc}" (${how}) — it makes it right here in the chat.` });
-          }
-          const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
-        }
-        if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
-        if (n === "make_content") {
-          // Resolve the shop's most-recent creation only when an edit might actually
-          // use it: explicit source:'recent', or the default with nothing attached.
-          // (The common attached-photo edit discards it, so don't pay for the query.)
-          const needRecent = (i as { kind?: unknown }).kind === "edit"
-            && ((i as { source?: unknown }).source === "recent" || !editSource);
-          const recentSource = needRecent ? await resolveRecentCreation(id.shop.id, origin) : null;
-          const r = await buildMake(id, i, lang, mode, editSource, recentSource);
-          if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult;
-        }
-        return runBuddyTool(id, n, i);
-      },
-      model: BUDDY_MODEL,
-      // Thinking is OFF for sonnet-5 (see anthropic.server.ts), so this budget is
-      // ALL visible text — 700 was clipping fuller answers mid-sentence. Prompt
-      // caching (below) offsets most of the extra input cost.
-      maxTokens: 1400,
-    });
-    // The bubble now renders a safe light-markdown subset (bold + bullets +
-    // numbered lists — see the renderer in web.tsx), so KEEP matched **bold**
-    // and list markers. Only tidy STRAY single * / _ emphasis the renderer
-    // doesn't handle, so a lone asterisk never shows as a literal character.
-    const clean = (reply || "").trim().replace(/(^|[^*])\*(?!\*)(\S[^*\n]*?\S|\S)\*(?!\*)/g, "$1$2").replace(/(^|\s)_(\S[^_\n]*?\S|\S)_(\s|$)/g, "$1$2$3");
-    const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
-    if (id) await remember(id.shop.id, mode, threadId, lastUser, clean);
-    return json({ reply: clean || tr(lang, "I'm here — tell me what you're working on!"), actions: suggestActions(lastUser, mode, lang), pendingAction: pending.action, media: pending.media, pendingMake: pending.make, followups: id ? buildFollowups(pending, mode, lang) : [] });
-  } catch {
-    // Never leave the chat hanging on an outage.
-    return json({ reply: tr(lang, "My brain hiccuped for a sec — mind trying that again?") });
-  }
+  // The tool dispatcher — shared by the streaming and the fallback loop. It only
+  // READS data or builds confirm specs (no spend; spend is the separate intent:
+  // "make" path), so running it once per loop is safe even on a stream→fallback.
+  const runTool = async (n: string, i: Record<string, unknown>): Promise<string> => {
+    if (!id) return "(not signed in)";
+    if (n === "set_up_task") {
+      // Redirect anything make_content can make in-chat to make_content. Faceless
+      // and music are in-chat in BOTH modes. Image/video are in-chat only in
+      // MARKETING (catalog-based); in Creator mode the Studio owns images, so
+      // those fall through to a Studio hand-off here — otherwise a casual image
+      // request ping-pongs between make_content and this redirect. The proactive
+      // opener calls buildTask directly (not here), so its buttons are safe.
+      const k = String((i as { kind?: unknown }).kind || "");
+      const isCatalogMakeable = (k === "image_ad" || k === "image" || k === "video") && mode === "marketing";
+      if (k === "faceless" || k === "music" || isCatalogMakeable) {
+        const mc = k === "faceless" ? "faceless" : k === "music" ? "music" : k === "video" ? "video" : "image";
+        const how = (mc === "faceless" || mc === "music") ? "pass a 'topic'" : "call get_catalog first for a real product with a photo";
+        return JSON.stringify({ wrongTool: true, note: `Don't use set_up_task for that. Use make_content with kind "${mc}" (${how}) — it makes it right here in the chat.` });
+      }
+      const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;
+    }
+    if (n === "show_work") { const r = await buildShowWork(id, i); if (r.media.length) pending.media = r.media; return r.toolResult; }
+    if (n === "make_content") {
+      const needRecent = (i as { kind?: unknown }).kind === "edit"
+        && ((i as { source?: unknown }).source === "recent" || !editSource);
+      const recentSource = needRecent ? await resolveRecentCreation(id.shop.id, origin) : null;
+      const r = await buildMake(id, i, lang, mode, editSource, recentSource);
+      if (r.make) pending.make = r.make; if (r.upsell && !pending.action) pending.action = upsellAction(r.upsell, lang); return r.toolResult;
+    }
+    return runBuddyTool(id, n, i);
+  };
+  const lastUser = [...messages].reverse().find((m) => m.role !== "assistant")?.content || "";
+  const fallbackReply = tr(lang, "I'm here — tell me what you're working on!");
+
+  // STREAM the reply token-by-token (SSE) — the flagship "feels like ChatGPT"
+  // win. Tools, pending make/action/media and the final actions/followups are
+  // unchanged; they ride in the terminal `done` frame. Any stream failure falls
+  // back to the tested, retried non-streaming loop so a blip never leaves the
+  // bubble empty. (make/makeStatus/review/newThread returned json() above and are
+  // untouched — only the chat turn streams.)
+  const enc = new TextEncoder();
+  const frameOf = (event: string, data: unknown) => enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const sseStream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const safeEnqueue = (chunk: Uint8Array) => { try { controller.enqueue(chunk); } catch { /* client closed */ } };
+      let full = "";
+      let errored = false;
+      try {
+        full = await anthropicToolLoopStream({
+          system, messages: chat, tools: id ? BUDDY_TOOLS : [], runTool,
+          model: BUDDY_MODEL, maxTokens: 1400,
+          onText: (d) => safeEnqueue(frameOf("text", { delta: d })),
+          onStatus: (toolName) => safeEnqueue(frameOf("status", { label: statusLabel(toolName, lang) })),
+        });
+      } catch {
+        try {
+          full = await anthropicToolLoop({ system, messages: chat, tools: id ? BUDDY_TOOLS : [], runTool, model: BUDDY_MODEL, maxTokens: 1400 });
+          safeEnqueue(frameOf("text", { delta: tidyReply(full), replace: true }));
+        } catch { errored = true; full = ""; }
+      }
+      const clean = tidyReply(full);
+      const reply = clean || (errored ? tr(lang, "My brain hiccuped for a sec — mind trying that again?") : fallbackReply);
+      if (id) { try { await remember(id.shop.id, mode, threadId, lastUser, reply); } catch { /* never block the reply */ } }
+      safeEnqueue(frameOf("done", {
+        reply,
+        actions: suggestActions(lastUser, mode, lang),
+        pendingAction: pending.action,
+        media: pending.media,
+        pendingMake: pending.make,
+        followups: id ? buildFollowups(pending, mode, lang) : [],
+      }));
+      try { controller.close(); } catch { /* already closed */ }
+    },
+  });
+  return new Response(sseStream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      // Disable proxy buffering (Render/nginx) so deltas flush as they're written
+      // instead of arriving all at once — otherwise the streaming win evaporates.
+      "x-accel-buffering": "no",
+    },
+  });
 }

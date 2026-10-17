@@ -314,6 +314,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Streaming: a warm "Pulling your numbers…" line while a tool runs mid-reply,
+  // and an AbortController so the Stop button can cut a reply short.
+  const [streamStatus, setStreamStatus] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
   // A make-from-chat generation in flight — disables other "Make it" buttons so
   // one tap can't become two paid jobs. Chat stays usable (makes take minutes).
   const [making, setMaking] = useState(false);
@@ -454,13 +458,51 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     // does the same; this just avoids a flash of "New chat" on the tab).
     const title = trimmed || t("Photo");
     if (activeThreadId !== "main") setThreads((ts) => ts.map((th) => (th.id === activeThreadId && th.title === "New chat" ? { ...th, title: title.slice(0, 42) } : th)));
+    type ReplyData = { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMake?: MMPendingMake | null; followups?: string[] };
+    const finalize = (m: MMMsg[], d: ReplyData, content: string): MMMsg[] => { if (!m.length) return m; const copy = [...m]; const last = copy[copy.length - 1]; if (last.role !== "assistant") return m; copy[copy.length - 1] = { ...last, content, actions: Array.isArray(d.actions) ? d.actions : [], pending: d.pendingAction || undefined, media: Array.isArray(d.media) && d.media.length ? d.media : undefined, make: d.pendingMake || undefined, followups: Array.isArray(d.followups) && d.followups.length ? d.followups : undefined }; return copy; };
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-40).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photo?.url, lastPhotoUrl: carryPhoto || undefined }) });
-      const data = await res.json().catch(() => ({ reply: "", actions: [] })) as { reply?: string; actions?: MMAction[]; pendingAction?: MMPending | null; media?: MMMedia[]; pendingMake?: MMPendingMake | null; followups?: string[] };
-      setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, make: data.pendingMake || undefined, followups: Array.isArray(data.followups) && data.followups.length ? data.followups : undefined }]);
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-40).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photo?.url, lastPhotoUrl: carryPhoto || undefined }), signal: controller.signal });
+      if ((res.headers.get("content-type") || "").includes("text/event-stream") && res.body) {
+        // STREAMING reply: append an empty assistant bubble and grow it as deltas
+        // arrive; the terminal `done` frame carries actions/pending/media/followups.
+        setMsgs((m) => [...m, { role: "assistant", content: "" }]);
+        const patchLast = (content: string) => setMsgs((m) => { if (!m.length) return m; const copy = [...m]; const last = copy[copy.length - 1]; if (last.role !== "assistant") return m; copy[copy.length - 1] = { ...last, content }; return copy; });
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = ""; let acc = ""; let doneData: ReplyData | null = null;
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            let sep: number;
+            while ((sep = buf.indexOf("\n\n")) !== -1) {
+              const frame = buf.slice(0, sep); buf = buf.slice(sep + 2);
+              const lines = frame.split("\n");
+              const ev = (lines.find((l) => l.startsWith("event:")) || "").slice(6).trim();
+              const dataLine = lines.find((l) => l.startsWith("data:"));
+              if (!dataLine) continue;
+              let d: { delta?: string; replace?: boolean; label?: string } & ReplyData;
+              try { d = JSON.parse(dataLine.slice(5).trim()); } catch { continue; }
+              if (ev === "text") { acc = d.replace ? (d.delta || "") : acc + (d.delta || ""); setStreamStatus(""); patchLast(acc); }
+              else if (ev === "status") { setStreamStatus(d.label || ""); }
+              else if (ev === "done") { doneData = d; }
+            }
+          }
+        } catch { /* aborted (Stop) or a mid-stream drop — keep whatever streamed */ }
+        setStreamStatus("");
+        if (doneData) setMsgs((m) => finalize(m, doneData!, doneData!.reply || acc || "…"));
+        else if (!acc) patchLast(t("Connection blipped — mind trying again?"));
+      } else {
+        // NON-STREAM (daily cap, not signed in, cap upsell): plain JSON as before.
+        const data = await res.json().catch(() => ({ reply: "" })) as ReplyData;
+        setMsgs((m) => [...m, { role: "assistant", content: data.reply || "…", actions: Array.isArray(data.actions) ? data.actions : [], pending: data.pendingAction || undefined, media: Array.isArray(data.media) && data.media.length ? data.media : undefined, make: data.pendingMake || undefined, followups: Array.isArray(data.followups) && data.followups.length ? data.followups : undefined }]);
+      }
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: t("Connection blipped — mind trying again?") }]);
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setStreamStatus(""); abortRef.current = null; }
   };
 
   // One-tap confirm on a Helpurr "Make it" button: spend the tokens, kick off the
@@ -619,7 +661,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 )}
               </div>
             ))}
-            {busy && <div className="mm-msg assistant mm-typing"><i /><i /><i /></div>}
+            {busy && (!msgs.length || msgs[msgs.length - 1].role !== "assistant" || !msgs[msgs.length - 1].content) && (
+              streamStatus
+                ? <div className="mm-msg assistant mm-status" aria-live="polite"><span className="mm-status-dot" aria-hidden="true" />{streamStatus}</div>
+                : <div className="mm-msg assistant mm-typing"><i /><i /><i /></div>
+            )}
             {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("still working on it — hang tight…")}</div>}
             {msgs.length <= 1 && !busy && (
               <div className="mm-chips">{chips.map((c) => <button key={c} type="button" onClick={() => send(c)}>{c}</button>)}</div>
@@ -640,7 +686,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
             <button type="button" className="mm-clip" onClick={() => fileRef.current?.click()} disabled={busy || uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
             <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={attach ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
-            <button type="submit" disabled={busy || uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>
+            {busy
+              ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
+              : <button type="submit" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>}
           </form>
         </div>
       )}
@@ -1647,6 +1695,9 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 /* Attach-a-photo: a flat icon button (overrides the green send circle) + a preview chip. */
 .mm-input .mm-clip{width:38px;background:transparent;color:var(--ink2);font-size:18px;line-height:1;box-shadow:none;}
 .mm-input .mm-clip:hover:not(:disabled){background:var(--paper2,#EFEBDD);color:var(--ink);}
+.mm-input .mm-stop{background:var(--ink,#14201A);font-size:12px;}
+.mm-status{font-style:italic;opacity:.92;display:inline-flex;align-items:center;gap:8px;}
+.mm-status-dot{width:8px;height:8px;border-radius:50%;background:#12A85E;animation:mmBlink 1s infinite both;flex:0 0 auto;}
 .mm-attach{display:flex;align-items:center;gap:9px;padding:8px 12px;border-top:1px solid var(--line);background:#F3F0E4;}
 .mm-attach-thumb{width:40px;height:40px;object-fit:cover;border-radius:9px;border:1px solid var(--line2);flex:0 0 auto;}
 .mm-attach-name{font-size:12px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}

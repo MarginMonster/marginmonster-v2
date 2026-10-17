@@ -206,6 +206,138 @@ export async function anthropicToolLoop(opts: {
   return lastText;
 }
 
+/** STREAMING variant of anthropicToolLoop. Same multi-round tool loop, but asks
+ *  the API to stream and forwards each visible text delta to onText as it lands;
+ *  onStatus fires with a tool name when a round decides to call one (so the UI
+ *  can show "Pulling your numbers…" instead of a dead spinner). Runs each tool
+ *  on content_block_stop, then continues — the next round streams its text too.
+ *  Returns the full accumulated visible text. Uses a plain fetch (no retry); the
+ *  caller falls back to the retried non-streaming loop on any throw. */
+export async function anthropicToolLoopStream(opts: {
+  system: SystemParam;
+  messages: ChatMsg[];
+  tools: ToolDef[];
+  runTool: (name: string, input: Record<string, unknown>) => Promise<string>;
+  model?: string;
+  maxTokens?: number;
+  maxRounds?: number;
+  onText: (delta: string) => void;
+  onStatus?: (toolName: string) => void;
+}): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) throw new Error("ANTHROPIC_API_KEY not set");
+  const model = opts.model || "claude-haiku-4-5-20251001";
+  const maxTokens = opts.maxTokens || 700;
+  const maxRounds = Math.max(1, opts.maxRounds ?? 5);
+  const messages: ChatMsg[] = [...opts.messages];
+  let full = "";
+
+  for (let round = 0; round < maxRounds; round++) {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        ...thinkingFieldFor(model),
+        system: opts.system,
+        ...(opts.tools.length ? { tools: opts.tools } : {}),
+        messages,
+        stream: true,
+      }),
+    });
+    if (!res.ok || !res.body) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Anthropic stream ${res.status}: ${t.slice(0, 200)}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let stopReason = "";
+    // content blocks accumulated by index (text blocks + tool_use blocks)
+    const blocks: Record<number, { type: string; text?: string; id?: string; name?: string; jsonBuf?: string }> = {};
+    let finished = false;
+
+    while (!finished) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (!dataLine) continue;
+        const dataStr = dataLine.slice(5).trim();
+        if (!dataStr) continue;
+        let ev: { type?: string; index?: number; delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string }; content_block?: { type?: string; id?: string; name?: string }; error?: unknown };
+        try { ev = JSON.parse(dataStr); } catch { continue; }
+        switch (ev.type) {
+          case "content_block_start": {
+            const b = ev.content_block || {};
+            blocks[ev.index ?? 0] = { type: b.type || "", text: b.type === "text" ? "" : undefined, id: b.id, name: b.name, jsonBuf: b.type === "tool_use" ? "" : undefined };
+            if (b.type === "tool_use" && b.name && opts.onStatus) opts.onStatus(b.name);
+            break;
+          }
+          case "content_block_delta": {
+            const blk = blocks[ev.index ?? 0];
+            if (!blk || !ev.delta) break;
+            if (ev.delta.type === "text_delta" && typeof ev.delta.text === "string") {
+              blk.text = (blk.text || "") + ev.delta.text;
+              full += ev.delta.text;
+              try { opts.onText(ev.delta.text); } catch { /* consumer closed */ }
+            } else if (ev.delta.type === "input_json_delta" && typeof ev.delta.partial_json === "string") {
+              blk.jsonBuf = (blk.jsonBuf || "") + ev.delta.partial_json;
+            }
+            break;
+          }
+          case "message_delta":
+            if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
+            break;
+          case "message_stop":
+            finished = true;
+            break;
+          case "error":
+            throw new Error(`Anthropic stream error: ${JSON.stringify(ev.error || ev).slice(0, 200)}`);
+          default:
+            break;
+        }
+      }
+    }
+
+    // Rebuild the assistant message content (text + tool_use) in block order.
+    const content: Array<Record<string, unknown>> = [];
+    for (const i of Object.keys(blocks).map(Number).sort((a, b) => a - b)) {
+      const b = blocks[i];
+      if (b.type === "text" && b.text) content.push({ type: "text", text: b.text });
+      else if (b.type === "tool_use" && b.id && b.name) {
+        let input: Record<string, unknown> = {};
+        try { input = b.jsonBuf ? JSON.parse(b.jsonBuf) : {}; } catch { input = {}; }
+        content.push({ type: "tool_use", id: b.id, name: b.name, input });
+      }
+    }
+
+    if (stopReason === "tool_use") {
+      messages.push({ role: "assistant", content });
+      const results: Array<{ type: string; tool_use_id: string; content: string }> = [];
+      for (const b of content) {
+        if (b.type === "tool_use" && b.id && b.name) {
+          let out = "";
+          try { out = await opts.runTool(b.name as string, (b.input as Record<string, unknown>) || {}); }
+          catch (e) { out = `Error running ${String(b.name)}: ${e instanceof Error ? e.message.slice(0, 200) : "failed"}`; }
+          results.push({ type: "tool_result", tool_use_id: b.id as string, content: (out || "(no data)").slice(0, 6000) });
+        }
+      }
+      if (!results.length) break;
+      messages.push({ role: "user", content: results });
+      continue;
+    }
+    return full;
+  }
+  return full;
+}
+
 /** Shopify CDN serves ORIGINALS — routinely past the API's 8000px image
  *  limit — and a ten-product sweep lost three products to 400s because of it.
  *  Worse, the production gate swallows that 400 as a QA outage and passes the
