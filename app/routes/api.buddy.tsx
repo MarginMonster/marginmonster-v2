@@ -214,7 +214,7 @@ const BUDDY_TOOLS: ToolDef[] = [
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["image", "blog", "photo_edit", "campaign"], description: "What to create. 'image' = a plain Creator-mode image (opens the Studio). NOTE: faceless videos and music are made in-chat with make_content, as are image ads / product videos in marketing mode." },
+        kind: { type: "string", enum: ["image", "blog", "photo_edit", "campaign"], description: "What to create. Prefer make_content for anything it can make IN CHAT: a plain/creative image → make_content kind 'create' (NOT this); a product image ad or product video (marketing) → make_content 'image'/'video'; a faceless video or music → make_content; a photo the user attached → make_content 'edit'. Use set_up_task mainly for a 'blog' or a 'campaign' (and 'photo_edit' only to open the Studio to pick/upload a photo). 'image' here is a legacy Studio hand-off — avoid it; it will be redirected to make_content." },
         product: { type: "string", description: "The product title to feature (only for blog)" },
       },
       required: ["kind"],
@@ -245,11 +245,11 @@ const BUDDY_TOOLS: ToolDef[] = [
     // model's say-so: it shows a one-tap confirm with the cost, the user taps,
     // it generates on the tested pipeline, and the result renders inline here.
     name: "make_content",
-    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), a MUSIC track, or an EDIT of a photo the user just attached to the chat. Use this whenever they ask you to make or edit any of those ('make me an ad', 'make a faceless video about X', 'make me a track', 'restyle this', 'remove the background'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (marketing-only). For a faceless video or music track: set a clear 'topic'. For an EDIT: ONLY when the user has ATTACHED a photo to this chat (you'll see it) — set kind 'edit' and the right editOp (no product/topic; the attached photo is the subject, picked up automatically). This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it runs on the tested path, and the finished piece appears right here. To make SEVERAL at once: for several of the SAME thing ('make 3 of these', 'a few options') set 'count'; for DIFFERENT products or kinds, call make_content once per item — either way they QUEUE and run together on one confirm that shows the total. Only call when they clearly want to CREATE or EDIT.",
+    description: "THE default way to CREATE a piece right here in the chat: an image ad, a product video, a FACELESS video (a scripted 9:16 social video — topic → voiceover + captions + b-roll + music, no product needed), a MUSIC track, a CREATE (a standalone image from a text description — a picture/art/logo of anything, not a product ad), or an EDIT of a photo the user just attached to the chat. Use this whenever they ask you to make or edit any of those ('make me an ad', 'make a faceless video about X', 'make me a track', 'restyle this', 'remove the background'). PREFER this over set_up_task — it makes the piece HERE instead of sending them to the Studio. For an image ad or product video: call get_catalog FIRST and pick a REAL product that hasPhoto (marketing-only). For a faceless video or music track: set a clear 'topic'. For an EDIT: ONLY when the user has ATTACHED a photo to this chat (you'll see it) — set kind 'edit' and the right editOp (no product/topic; the attached photo is the subject, picked up automatically). This SPENDS tokens, so it does NOT run immediately — it shows a one-tap 'Make it' confirm with the exact cost; they approve, it runs on the tested path, and the finished piece appears right here. To make SEVERAL at once: for several of the SAME thing ('make 3 of these', 'a few options') set 'count'; for DIFFERENT products or kinds, call make_content once per item — either way they QUEUE and run together on one confirm that shows the total. Only call when they clearly want to CREATE or EDIT.",
     input_schema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["image", "video", "faceless", "music", "edit"], description: "image ad / product video (need a catalog product) · faceless video / music (need a topic) · edit (a photo the user ATTACHED, or — with source:'recent' — their most recent creation)" },
+        kind: { type: "string", enum: ["image", "video", "faceless", "music", "edit", "create"], description: "image ad / product video (need a catalog product, MARKETING only) · faceless video / music (need a topic) · edit (a photo the user ATTACHED, or source:'recent') · create (a standalone IMAGE from a description — 'make me a picture of a cat astronaut', art/logos/scenes — NOT tied to a catalog product; works in BOTH modes, put what to picture in 'direction'). In Creator/casual mode, a plain image request is always 'create' (there's no catalog there)." },
         product: { type: "string", description: "image/video ONLY: the REAL product title to feature — must exist in the catalog and have a photo (call get_catalog first)" },
         topic: { type: "string", description: "faceless/music ONLY: what the video or track is about, e.g. '5 facts about the deep ocean', 'a hype pump-up anthem', or a product-themed angle like 'why collectors love the Pokemon 30th anniversary set'" },
         format: { type: "string", enum: ["facts", "storytime", "listicle", "motivational"], description: "faceless ONLY: the video style (default facts). Pick from the user's phrasing — 'storytime …' → storytime, '5 reasons …' → listicle." },
@@ -344,7 +344,7 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 // catalog-product based (marketing); faceless/music are TOPIC based (both modes).
 // "edit" is the one kind whose subject comes from the CLIENT (a photo the user
 // uploaded into the chat), so MakeSpec carries sourceImageUrl + editOp for it.
-type MakeKind = "image" | "video" | "faceless" | "music" | "edit";
+type MakeKind = "image" | "video" | "faceless" | "music" | "edit" | "create";
 type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; label: string };
 
 // FREE TIER: a signed-in account with NO active plan gets a few FREE photo edits on
@@ -391,7 +391,7 @@ async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: Ma
     return json({ jobId, cursor: Date.now(), kind: "edit", cost: 0 });
   } catch (e) { console.error("[buddy] free edit enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: "Couldn't start it — mind trying again?" }, { status: 500 }); }
 }
-const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music", "edit"];
+const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music", "edit", "create"];
 const asMakeKind = (v: unknown): MakeKind => (typeof v === "string" && (MAKE_KINDS as string[]).includes(v) ? (v as MakeKind) : "image");
 // Faceless format/voice allow-lists (the Studio doesn't validate these server-side
 // — we do, since Helpurr is now a second entry point into the same job).
@@ -566,7 +566,7 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   // account can actually complete them. Image ads, videos, faceless, music → upgrade.
   if (kind !== "edit") {
     const upsell = (kind === "video" || kind === "faceless") ? "STUDIO" as const : kind === "music" ? "CREATOR" as const : "STARTER" as const;
-    const unlocks = (kind === "video" || kind === "faceless") ? "videos" : kind === "music" ? "music" : "AI image ads for your products";
+    const unlocks = (kind === "video" || kind === "faceless") ? "videos" : kind === "music" ? "music" : kind === "create" ? "making images from a description" : "AI image ads for your products";
     return { make: null, upsell, toolResult: JSON.stringify({ upgrade: true, note: `This is a FREE account — ${unlocks} come with a plan. A "See plans" button is now shown. Warmly say it's a paid feature and offer to EDIT a photo they upload right now instead — photo edits are free. Do NOT make it.` }) };
   }
   // Edit the attached photo, OR (source:'recent' / nothing attached) the shop's own
@@ -651,9 +651,33 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
     };
   }
 
+  // CREATE: a standalone image from a text prompt (the Studio's "Make an image"
+  // text-to-image) — made RIGHT HERE, no catalog product. This is how a plain
+  // "make me a picture of X" is handled, in BOTH modes (and the whole reason a
+  // Creator-mode image no longer has to detour to the Studio). Rides the SAME
+  // tested GENERATE_IMAGE_AD createImage path; cost = TOKEN_COST.createImage.
+  if (kind === "create") {
+    if (!caps.has("image")) return { make: null, toolResult: JSON.stringify({ error: "Their plan doesn't include image generation — point them to plans; don't make it." }) };
+    const prompt = ((typeof input.direction === "string" && input.direction.trim())
+      || (typeof input.topic === "string" && input.topic.trim())
+      || (typeof input.product === "string" && input.product.trim()) || "").slice(0, 400);
+    if (!prompt) return { make: null, toolResult: JSON.stringify({ error: "Ask WHAT they want pictured (put it in direction), then call make_content again." }) };
+    const cost = TOKEN_COST.createImage;
+    if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
+    const label = tr(lang, "Make an image of {prompt}", { prompt: prompt.slice(0, 44) });
+    const make: MakeSpec = { kind: "create", product: "", topic: prompt, presenter: false, direction: prompt, cost, label };
+    return {
+      make,
+      toolResult: JSON.stringify({
+        readyToMake: true, kind: "create", cost,
+        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown to create an image of "${prompt}". Say in ONE line what you'll picture and that tapping it makes it right here. Do NOT claim it is already made or that tokens were spent.`,
+      }),
+    };
+  }
+
   // CATALOG-DRIVEN: image ad + product video. Marketing only — in Creator mode
   // images/videos are the Studio's job, so steer those elsewhere.
-  if (mode === "casual") return { make: null, toolResult: JSON.stringify({ error: "In Creator mode, make_content only makes faceless videos and music tracks. For a plain image, call set_up_task with kind 'image' (it opens the Studio); or offer them a faceless video instead. Do NOT call make_content again for an image here." }) };
+  if (mode === "casual") return { make: null, toolResult: JSON.stringify({ error: "In Creator mode, make_content doesn't do catalog image ads — for a plain image call make_content with kind 'create' (it makes it right here), or offer a faceless video. Do NOT send them to the Studio for an image." }) };
   const title = typeof input.product === "string" ? input.product.trim().slice(0, 120) : "";
   if (!title) return { make: null, toolResult: JSON.stringify({ error: "No product named — ask which product to feature." }) };
   const prod = await resolveProduct(id.shop.id, title);
@@ -1176,6 +1200,32 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
 
+    // CREATE: standalone text-to-image (both modes). Re-validate cap + prompt,
+    // spend createImage, enqueue the SAME GENERATE_IMAGE_AD createImage job the
+    // Studio uses. No product, no catalog. prePaid+chargedTokens so a terminal
+    // failure refunds the real cost.
+    if (kind === "create") {
+      if (!caps.has("image")) return json({ error: "Your plan doesn't include image generation." }, { status: 400 });
+      const prompt = ((typeof spec.direction === "string" && spec.direction.trim()) || (typeof spec.topic === "string" && spec.topic.trim()) || "").slice(0, 400);
+      if (!prompt) return json({ error: "Tell me what to picture first." }, { status: 400 });
+      const cost = TOKEN_COST.createImage;
+      if (tokensLeft < cost) return json({ error: `Not enough tokens — ${tokensLeft} left, needs ${cost}.` }, { status: 400 });
+      const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
+      const cursor = Date.now();
+      try {
+        const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", {
+          createImage: true, createPrompt: prompt, section: "creator",
+          productTitle: prompt.slice(0, 60),
+          prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
+        });
+        return json({ jobId, cursor, kind, cost });
+      } catch (e) {
+        try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
+        console.error("[buddy] make (create) enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
+        return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+      }
+    }
+
     // CATALOG-DRIVEN: image ad + product video (marketing only).
     if (mode === "casual") return json({ error: "In Creator mode, images and videos are made in the Studio." }, { status: 400 });
     const title = typeof spec.product === "string" ? spec.product.trim().slice(0, 120) : "";
@@ -1232,7 +1282,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // campaign/series drops); an edit shares IMAGE_AD with image ads. Over the poll
     // window a concurrent same-type asset could be mis-correlated, so narrow on the
     // pipeline's metaJson.kind stamp (faceless/song/edit) when there is one.
-    const metaKind = kind === "faceless" ? '"kind":"faceless"' : kind === "music" ? '"kind":"song"' : kind === "edit" ? '"kind":"edit"' : "";
+    const metaKind = kind === "faceless" ? '"kind":"faceless"' : kind === "music" ? '"kind":"song"' : kind === "edit" ? '"kind":"edit"' : kind === "create" ? '"kind":"create"' : "";
     const asset = await db.asset.findFirst({
       where: { shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) }, ...(metaKind ? { metaJson: { contains: metaKind } } : {}) },
       orderBy: { createdAt: "desc" }, select: { title: true, bodyJson: true },
@@ -1346,8 +1396,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const toolNote = !id
     ? ""
     : mode === "casual"
-    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message, so you can describe it, read text in it, critique it, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content still gives them a FEW FREE photo edits on the house — offer them genuinely; when they want video/music or use up their free creations, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You never spend their tokens or post yourself — the button confirms first. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
-    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it, so you can describe it, read text in it, critique it for ad use, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content gives them a FEW FREE PHOTO EDITS on the house (upload a photo → restyle / cartoonize / remove-background) — offer that genuinely and enthusiastically; image ads, videos and music need a plan, so when they want those or use up their free edits, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You NEVER spend their tokens or post without their tap. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
+    ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN MAKE AN IMAGE RIGHT HERE: for a plain picture / art / logo / scene of ANYTHING (not a product ad), call make_content with kind 'create' and put what to picture in 'direction' — a one-tap 'Make it' appears and the image lands in this chat. This is the image path in Creator mode — do NOT send them to the Studio for an image. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message, so you can describe it, read text in it, critique it, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for anything that lives in the Studio (not images/edits/faceless/music — those you make right here), call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content still gives them a FEW FREE photo edits on the house — offer them genuinely; when they want video/music or use up their free creations, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You never spend their tokens or post yourself — the button confirms first. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
+    : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic), or a standalone CREATIVE image (kind 'create' — a picture/art/logo of anything that ISN'T a catalog product ad; put what to picture in 'direction'). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT — do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it, so you can describe it, read text in it, critique it for ad use, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content gives them a FEW FREE PHOTO EDITS on the house (upload a photo → restyle / cartoonize / remove-background) — offer that genuinely and enthusiastically; image ads, videos and music need a plan, so when they want those or use up their free edits, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You NEVER spend their tokens or post without their tap. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
   const facts = id ? await recallFacts(id.shop.id, messages[messages.length - 1]?.content || "") : "";
   // The one line that makes Helpurr SPEAK the interface language. The model is
   // fluently multilingual, so this reliably switches the whole reply.
@@ -1374,16 +1424,17 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!id) return "(not signed in)";
     if (n === "set_up_task") {
       // Redirect anything make_content can make in-chat to make_content. Faceless
-      // and music are in-chat in BOTH modes. Image/video are in-chat only in
-      // MARKETING (catalog-based); in Creator mode the Studio owns images, so
-      // those fall through to a Studio hand-off here — otherwise a casual image
-      // request ping-pongs between make_content and this redirect. The proactive
-      // opener calls buildTask directly (not here), so its buttons are safe.
+      // and music are in-chat in BOTH modes. A catalog image AD / product video is
+      // in-chat in MARKETING. A plain IMAGE now makes in-chat in BOTH modes via the
+      // 'create' kind (text-to-image) — in Creator/casual that's the ONLY image path
+      // (no catalog), so it no longer detours to the Studio. The proactive opener
+      // calls buildTask directly (not here), so its buttons are safe.
       const k = String((i as { kind?: unknown }).kind || "");
       const isCatalogMakeable = (k === "image_ad" || k === "image" || k === "video") && mode === "marketing";
-      if (k === "faceless" || k === "music" || isCatalogMakeable) {
-        const mc = k === "faceless" ? "faceless" : k === "music" ? "music" : k === "video" ? "video" : "image";
-        const how = (mc === "faceless" || mc === "music") ? "pass a 'topic'" : "call get_catalog first for a real product with a photo";
+      const isCasualImage = (k === "image_ad" || k === "image") && mode === "casual";
+      if (k === "faceless" || k === "music" || isCatalogMakeable || isCasualImage) {
+        const mc = k === "faceless" ? "faceless" : k === "music" ? "music" : k === "video" ? "video" : isCasualImage ? "create" : "image";
+        const how = (mc === "faceless" || mc === "music") ? "pass a 'topic'" : mc === "create" ? "put what to picture in 'direction'" : "for a PRODUCT ad call get_catalog first for a real product with a photo — or for a creative/non-product image use kind 'create' with what to picture in 'direction'";
         return JSON.stringify({ wrongTool: true, note: `Don't use set_up_task for that. Use make_content with kind "${mc}" (${how}) — it makes it right here in the chat.` });
       }
       const r = buildTask(i, lang); pending.action = r.action; return r.toolResult;

@@ -286,7 +286,7 @@ type MMAction = { label: string; to: string };
 // the actual spend. Helpurr never spends tokens itself.
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
-type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; label: string };
+type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit" | "create"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; label: string };
 type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; makes?: MMPendingMake[]; followups?: string[] };
 
 // Render a SAFE light-markdown subset — **bold** and nicer •-bullets — as React
@@ -311,10 +311,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // opened from the nav. Same chat, same logic — just a roomier layout with a
   // backdrop. The floating panel is the compact default.
   const [max, setMax] = useState(false);
-  // On the landing HOME, tapping a make (e.g. the performance→action loop button)
-  // adds no user message, so atHome wouldn't flip on its own — this forces us out
-  // of the home into the chat view so the "On it…" progress + results are visible.
-  const [leftHome, setLeftHome] = useState(false);
+  // The Google-style landing HOME is an EXPLICIT view (not just "a fresh thread"):
+  // the maximized Helpurr opens ON it, a 🏠 button returns to it, and "new chat"
+  // lands on it. Sending / entering a thread / tapping a home make leaves it for
+  // the chat view. Only ever shown maximized.
+  const [showHome, setShowHome] = useState(false);
   const [msgs, setMsgs] = useState<MMMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -348,10 +349,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
 
   // Flipping mode is a different project set — back to that mode's Main thread.
   useEffect(() => { setActiveThreadId("main"); }, [mode]);
-  // A fresh thread / mode — and every (re)open — starts back on its home (if it's
-  // empty). Including `open` means reopening a perf-tapped but persistence-empty
-  // thread lands on the home again instead of a bare chat list.
-  useEffect(() => { setLeftHome(false); }, [activeThreadId, mode, open]);
+  // Home only exists maximized — shrinking/closing (or opening compact) clears it,
+  // so compact→expand restores the last chat instead of unexpectedly landing home.
+  useEffect(() => { if (!max) setShowHome(false); }, [max]);
 
   // Load Helpurr's saved conversation for this mode when the chat opens, so it
   // continues where it left off instead of starting fresh each reload. Marketing
@@ -422,8 +422,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     const h = (e: Event) => {
       setOpen(true);
       const detail = (e as CustomEvent<{ text?: string; max?: boolean }>).detail;
-      // The nav "Helpurr" entry opens the dedicated full-screen surface.
-      if (detail?.max) setMax(true);
+      // The nav "Helpurr" entry opens the dedicated full-screen surface — ON the
+      // Google-style home (its landing), not whatever chat was last open.
+      if (detail?.max) { setMax(true); setShowHome(true); }
       // The Creator home's Chat mode passes the typed prompt — prefill the box
       // so the user just hits send (we don't auto-send; let them confirm).
       const prefill = detail?.text;
@@ -458,6 +459,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     const trimmed = text.trim();
     // Allow sending a photo on its own (no text), but never while busy/uploading.
     if ((!trimmed && !attach) || busy || uploading) return;
+    setShowHome(false); // sending from the home hero/cards drops into the chat view
     const photo = attach;
     const carryPhoto = photo?.url || lastPhoto; // subject for a follow-up edit
     const userMsg: MMMsg = { role: "user", content: trimmed || (photo ? t("Here's a photo") : ""), media: photo ? [{ url: photo.url, type: "IMAGE_AD", title: photo.name }] : undefined };
@@ -620,6 +622,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         setThreads((ts) => [...ts, { id: data.threadId as string, title: data.title || "New chat" }]);
         setActiveThreadId(data.threadId);
         setAttach(null); setLastPhoto(null); // a fresh thread starts photo-free
+        if (max) setShowHome(true); // a new chat lands on the home (maximized)
       }
     } catch { /* ignore */ }
   };
@@ -632,11 +635,13 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // quick-start cards + your saved chats) shown when the dedicated full-screen Helpurr
   // is open on a fresh thread (no questions asked yet). The moment a message is sent
   // it flips to the normal chat view. Compact/floating mode keeps the simple list.
-  const atHome = max && authed && !leftHome && !msgs.some((m) => m.role === "user");
-  // The performance→action loop, surfaced on the home: the proactive opener may
+  const atHome = max && authed && showHome;
+  // The performance→action loop, surfaced on the home: the proactive OPENER may
   // carry a one-tap make queue ("your top piece got the most clicks — want 3
-  // more?"). Show it as a highlighted banner above the hero.
-  const perfMake = atHome ? msgs.find((m) => m.role === "assistant" && m.makes && m.makes.length) : undefined;
+  // more?"). Only when the thread has no user turns yet — i.e. this really is the
+  // proactive opener — so tapping 🏠 over an existing conversation can't resurface
+  // some old un-run make as a fake "performance" banner.
+  const perfMake = atHome && !msgs.some((m) => m.role === "user") ? msgs.find((m) => m.role === "assistant" && m.makes && m.makes.length) : undefined;
   const homeCards = mode === "casual"
     ? [
         { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
@@ -664,6 +669,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             <span className="mm-head-crest"><Familiar think={busy} /></span>
             <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
             <button type="button" className="mm-expand" onClick={() => setMax((m) => !m)} aria-label={max ? t("Shrink chat") : t("Expand chat")} title={max ? t("Shrink") : t("Expand")}>{max ? "⤡" : "⤢"}</button>
+            {max && authed && !atHome && <button type="button" className="mm-homebtn" onClick={() => setShowHome(true)} aria-label={t("Helpurr home")} title={t("Home")}>🏠</button>}
             <button type="button" className="mm-x" onClick={() => { setOpen(false); setMax(false); }} aria-label={t("Close chat")}>×</button>
           </div>
           {authed && !atHome && (
@@ -683,7 +689,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               {perfMake && (
                 <div className="mm-home-perf">
                   <p className="mm-home-perf-tx">{renderRich(perfMake.content)}</p>
-                  <button type="button" className="mm-make mm-make-go mm-home-perf-btn" disabled={making} onClick={() => { setLeftHome(true); void runMakes(perfMake.makes!); }}>
+                  <button type="button" className="mm-make mm-make-go mm-home-perf-btn" disabled={making} onClick={() => { setShowHome(false); void runMakes(perfMake.makes!); }}>
                     {(() => { const specs = perfMake.makes!; const tot = specs.reduce((s, x) => s + (x.cost || 0), 0); const n = specs.length; return <><span>{making ? t("Working…") : (n > 1 ? t("✨ Make all {n}", { n }) : t("✨ {label}", { label: specs[0].label }))}</span><b>{tot > 0 ? t("{n} tokens →", { n: tot }) : t("Free →")}</b></>; })()}
                   </button>
                 </div>
@@ -715,7 +721,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 <div className="mm-home-chats">
                   {threads.map((th) => (
                     <button key={th.id} type="button" className={`mm-home-chat${th.id === activeThreadId ? " on" : ""}`}
-                      onClick={() => { if (!busy) { setActiveThreadId(th.id); setAttach(null); setLastPhoto(null); } }} title={th.title}>
+                      onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach(null); setLastPhoto(null); } }} title={th.title}>
                       <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
                       <span className="mm-home-chat-tx">{th.title}</span>
                     </button>
@@ -1800,6 +1806,8 @@ const CSS = `
 @media(max-width:620px){.mm-home{padding:24px 16px;gap:18px;}.mm-home-cards{grid-template-columns:1fr;}}
 .mm-expand{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.82);font-size:15px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;}
 .mm-expand:hover{color:#fff;background:rgba(255,255,255,.12);}
+.mm-homebtn{background:none;border:0;font-size:14px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;opacity:.85;}
+.mm-homebtn:hover{opacity:1;background:rgba(255,255,255,.12);}
 .mm-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(168deg,#0E5233,#0A3421);color:#F4EAC8;}
 .mm-head-crest{width:42px;height:42px;flex:0 0 auto;overflow:visible;}
 .mm-head-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0;}
