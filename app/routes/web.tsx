@@ -289,18 +289,41 @@ type MMMedia = { url: string; type: string; title?: string };
 type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit" | "create"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; label: string };
 type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; makes?: MMPendingMake[]; followups?: string[] };
 
-// Render a SAFE light-markdown subset — **bold** and nicer •-bullets — as React
-// nodes (NEVER dangerouslySetInnerHTML, so model text can't inject HTML). The
-// bubble's white-space:pre-wrap preserves newlines, so we render inline and let
-// "\n" text nodes do the line breaks; anything else shows as plain text.
-function renderRich(text: string): ReactNode {
-  return text.split("\n").map((line, li) => {
-    const withBullet = line.replace(/^(\s*)[-*•]\s+/, "$1• ");
-    const segs = withBullet.split(/(\*\*[^*\n]+\*\*)/g).map((p, pi) => {
-      const b = /^\*\*([^*\n]+)\*\*$/.exec(p);
-      return b ? <strong key={pi}>{b[1]}</strong> : <Fragment key={pi}>{p}</Fragment>;
+// Render a SAFE light-markdown subset — **bold**, •-bullets, `inline code`,
+// ```fenced code```, and clickable http(s) links — as React nodes (NEVER
+// dangerouslySetInnerHTML, so model text can't inject HTML; only http/https URLs
+// become anchors, so no javascript:/data: ever). Robust on partial input (runs on
+// every stream delta): an unclosed fence/backtick just stays plain text. The
+// bubble's white-space:pre-wrap does the line breaks for inline text.
+const MM_URL_RE = /\bhttps?:\/\/[^\s<>]+[^\s<>.,!?;:'"]/g;
+function renderInline(s: string, kb: string): ReactNode {
+  return s.split(/(`[^`\n]+`)/g).map((part, i) => {
+    const code = /^`([^`\n]+)`$/.exec(part);
+    if (code) return <code key={kb + "c" + i} className="mm-code">{code[1]}</code>;
+    return part.split(/(\*\*[^*\n]+\*\*)/g).map((bp, j) => {
+      const b = /^\*\*([^*\n]+)\*\*$/.exec(bp);
+      if (b) return <strong key={kb + "b" + i + "-" + j}>{b[1]}</strong>;
+      const out: ReactNode[] = []; let last = 0; let m: RegExpExecArray | null; MM_URL_RE.lastIndex = 0;
+      while ((m = MM_URL_RE.exec(bp)) !== null) {
+        if (m.index > last) out.push(bp.slice(last, m.index));
+        out.push(<a key={kb + "a" + i + "-" + j + "-" + m.index} href={m[0]} target="_blank" rel="noreferrer noopener" className="mm-link">{m[0]}</a>);
+        last = m.index + m[0].length;
+      }
+      if (last < bp.length) out.push(bp.slice(last));
+      return <Fragment key={kb + "t" + i + "-" + j}>{out}</Fragment>;
     });
-    return <Fragment key={li}>{li > 0 ? "\n" : ""}{segs}</Fragment>;
+  });
+}
+function renderRich(text: string): ReactNode {
+  return (text || "").split(/(```[\s\S]*?```)/g).map((blk, bi) => {
+    const block = /^```[^\n]*\n([\s\S]*?)```\s*$/.exec(blk); // ```lang\n…\n``` → a code block
+    if (block) return <pre key={"pre" + bi} className="mm-pre"><code>{block[1].replace(/\n+$/, "")}</code></pre>;
+    const oneLine = /^```[ \t]*(.*?)[ \t]*```$/.exec(blk); // ```code``` on one line → inline code (not an empty box)
+    if (oneLine && oneLine[1]) return <code key={"ic" + bi} className="mm-code">{oneLine[1]}</code>;
+    return blk.split("\n").map((line, li) => {
+      const withBullet = line.replace(/^(\s*)[-*•]\s+/, "$1• ");
+      return <Fragment key={bi + "-" + li}>{li > 0 ? "\n" : ""}{renderInline(withBullet, bi + "-" + li)}</Fragment>;
+    });
   });
 }
 function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level: number }; authed: boolean; mode: "marketing" | "casual" }) {
@@ -344,6 +367,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [lastPhoto, setLastPhoto] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Threads this session has deleted — so the post-delete thread-list refetch (and
+  // any later load) can't resurrect a just-deleted chat before the POST commits.
+  const deletedIdsRef = useRef<Set<string>>(new Set());
   // Message actions: copy (which bubble shows "Copied"), edit-a-user-message, and
   // a re-send queue (pendingResend) that regenerate + edit both route through so
   // they re-run a turn on the TRUNCATED message list without duplicating send().
@@ -351,6 +377,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [pendingResend, setPendingResend] = useState<string | null>(null);
+  // Rename / delete a saved chat thread (from the home "Your chats" grid).
+  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const t = useT();
 
@@ -374,7 +404,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         const res = await fetch(`/api/buddy?mode=${mode}&thread=${activeThreadId}&_=${Date.now()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null; makes?: MMPendingMake[] } | null; threads?: Array<{ id: string; title: string }> };
         if (cancelled) return;
-        if (Array.isArray(data.threads) && data.threads.length) setThreads(data.threads);
+        if (Array.isArray(data.threads) && data.threads.length) setThreads(data.threads.filter((th) => !deletedIdsRef.current.has(th.id)));
         const hist = (Array.isArray(data.history) ? data.history : [])
           .filter((m) => m && typeof m.content === "string" && m.content.trim())
           .map((m): MMMsg => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content as string }));
@@ -634,6 +664,36 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     } catch { /* ignore */ }
   };
 
+  // Rename a saved thread (optimistic; "main" isn't renameable so it has no button).
+  // Reverts the title if the server rejects, so the UI never silently diverges.
+  const commitRename = async (threadId: string) => {
+    const title = renameText.trim().slice(0, 42);
+    setRenamingThreadId(null);
+    const cur = threads.find((th) => th.id === threadId);
+    if (!title || !cur || cur.title === title) return;
+    const prevTitle = cur.title;
+    setThreads((ts) => ts.map((th) => (th.id === threadId ? { ...th, title } : th)));
+    try {
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "renameThread", threadId, title, mode }) });
+      if (!res.ok) throw new Error("rename");
+    } catch { setThreads((ts) => ts.map((th) => (th.id === threadId ? { ...th, title: prevTitle } : th))); }
+  };
+  // Delete a saved thread — armed-to-confirm so one tap can't nuke a chat. Optimistic,
+  // but reverts (and un-marks the id) if the server rejects, so it can't come back a
+  // ghost on reload after a real failure.
+  const armDelete = (threadId: string) => { setArmedDeleteId(threadId); window.setTimeout(() => setArmedDeleteId((c) => (c === threadId ? null : c)), 3200); };
+  const deleteThread = async (threadId: string) => {
+    setArmedDeleteId(null);
+    const prev = threads;
+    deletedIdsRef.current.add(threadId);
+    setThreads((ts) => ts.filter((th) => th.id !== threadId));
+    if (activeThreadId === threadId) { setActiveThreadId("main"); if (max) setShowHome(true); }
+    try {
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "deleteThread", threadId, mode }) });
+      if (!res.ok) throw new Error("delete");
+    } catch { deletedIdsRef.current.delete(threadId); setThreads(prev); }
+  };
+
   // Auto-grow the composer textarea up to ~6 lines, then it scrolls. Runs on every
   // value change (typing, paste, prefill, reset) and when the composer swaps home↔chat.
   useEffect(() => {
@@ -652,7 +712,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const taKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey && !window.matchMedia("(max-width: 620px)").matches) { e.preventDefault(); void send(input); } };
   // Copy a message's text (minus the light-markdown markers) to the clipboard.
   const copyText = async (text: string, idx: number) => {
-    const plain = (text || "").replace(/\*\*(.+?)\*\*/g, "$1");
+    const plain = (text || "").replace(/```[^\n]*\n([\s\S]*?)```/g, "$1").replace(/```[ \t]*([^\n]*?)[ \t]*```/g, "$1").replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`\n]+)`/g, "$1");
     try {
       if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(plain);
       else { const ta = document.createElement("textarea"); ta.value = plain; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }
@@ -771,11 +831,29 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 <div className="mm-home-recent-h"><span>{t("Your chats")}</span><button type="button" onClick={newThread}>+ {t("New chat")}</button></div>
                 <div className="mm-home-chats">
                   {threads.map((th) => (
-                    <button key={th.id} type="button" className={`mm-home-chat${th.id === activeThreadId ? " on" : ""}`}
-                      onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach(null); setLastPhoto(null); } }} title={th.title}>
-                      <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
-                      <span className="mm-home-chat-tx">{th.title}</span>
-                    </button>
+                    <div key={th.id} className={`mm-home-chat${th.id === activeThreadId ? " on" : ""}`}>
+                      {renamingThreadId === th.id ? (
+                        <input className="mm-home-chat-rename" value={renameText} autoFocus maxLength={42}
+                          onChange={(e) => setRenameText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") void commitRename(th.id); else if (e.key === "Escape") setRenamingThreadId(null); }}
+                          onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
+                      ) : (
+                        <>
+                          <button type="button" className="mm-home-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach(null); setLastPhoto(null); } }} title={th.title}>
+                            <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
+                            <span className="mm-home-chat-tx">{th.title}</span>
+                          </button>
+                          {th.id !== "main" && (
+                            <span className="mm-home-chat-acts">
+                              <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(th.title); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
+                              {armedDeleteId === th.id
+                                ? <button type="button" className="mm-chat-act mm-chat-del" onClick={() => void deleteThread(th.id)} title={t("Tap to confirm")}>{t("Delete?")}</button>
+                                : <button type="button" className="mm-chat-act" onClick={() => armDelete(th.id)} title={t("Delete")} aria-label={t("Delete chat")}>🗑</button>}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1867,12 +1945,20 @@ const CSS = `
 .mm-home-recent-h button{border:0;background:none;color:var(--green);font-weight:800;font-size:12.5px;cursor:pointer;padding:4px 7px;border-radius:8px;}
 .mm-home-recent-h button:hover{background:rgba(12,122,70,.08);}
 .mm-home-chats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
-.mm-home-chat{display:flex;align-items:center;gap:8px;min-width:0;text-align:left;cursor:pointer;
-  background:rgba(253,252,247,.7);border:1px solid var(--line);border-radius:12px;padding:9px 11px;transition:border-color .14s,background .14s;}
+.mm-home-chat{display:flex;align-items:stretch;min-width:0;overflow:hidden;
+  background:rgba(253,252,247,.7);border:1px solid var(--line);border-radius:12px;transition:border-color .14s,background .14s;}
 .mm-home-chat:hover{border-color:var(--green);background:var(--card);}
 .mm-home-chat.on{border-color:var(--green);background:var(--card);box-shadow:inset 0 0 0 1px rgba(12,122,70,.3);}
+.mm-home-chat-main{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;background:none;border:0;padding:9px 11px;font:inherit;}
 .mm-home-chat-ic{flex:0 0 auto;font-size:14px;opacity:.75;}
 .mm-home-chat-tx{font-weight:700;font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-home-chat-acts{display:flex;align-items:center;gap:1px;padding-right:4px;opacity:.5;transition:opacity .12s;}
+.mm-home-chat:hover .mm-home-chat-acts,.mm-home-chat:focus-within .mm-home-chat-acts{opacity:1;}
+.mm-chat-act{border:0;background:none;cursor:pointer;font-size:12px;padding:5px 6px;border-radius:7px;color:var(--ink2);line-height:1;}
+.mm-chat-act:hover{background:rgba(12,122,70,.12);}
+.mm-chat-del{color:#B23B3B;font-size:10.5px;font-weight:800;white-space:nowrap;}
+.mm-chat-del:hover{background:rgba(178,59,59,.13);}
+.mm-home-chat-rename{flex:1;min-width:0;border:1.5px solid var(--green);border-radius:9px;margin:4px;padding:5px 8px;font:inherit;font-size:12.5px;font-weight:700;color:var(--ink);background:#fff;outline:none;}
 .mm-home-links{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:2px;}
 .mm-home-links button{border:1px solid var(--line2);background:var(--card);color:var(--ink2);font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 15px;border-radius:999px;transition:border-color .14s,color .14s;}
 .mm-home-links button:hover{border-color:var(--green);color:var(--ink);}
@@ -1902,6 +1988,12 @@ const CSS = `
 .mm-row{display:flex;flex-direction:column;gap:7px;}
 .mm-row.user{align-items:flex-end;}
 .mm-row.assistant{align-items:flex-start;}
+/* Rich inline bits: clickable links, inline code, fenced code blocks. */
+.mm-msg a.mm-link{color:var(--green);font-weight:700;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;}
+.mm-msg a.mm-link:hover{color:var(--green2);}
+.mm-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:rgba(12,122,70,.08);border:1px solid rgba(12,122,70,.15);border-radius:5px;padding:1px 5px;overflow-wrap:anywhere;}
+.mm-pre{margin:6px 0;background:#10201A;color:#EAF4EE;border-radius:11px;padding:11px 13px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.55;white-space:pre;max-width:100%;}
+.mm-pre code{font:inherit;background:none;border:0;padding:0;color:inherit;}
 /* Per-message actions: copy any reply, regenerate the last, edit your last message. */
 .mm-msgacts{display:flex;gap:3px;align-items:center;margin-top:-2px;opacity:.6;transition:opacity .12s;}
 .mm-row:hover .mm-msgacts{opacity:1;}

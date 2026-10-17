@@ -1100,7 +1100,7 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
   const lang = readUiLang(request);
-  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; lastPhotoUrl?: string; product?: string };
+  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; title?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; lastPhotoUrl?: string; product?: string };
   try { body = await request.json(); } catch { return json({ reply: tr(lang, "Hmm, I didn't catch that — try again?") }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
@@ -1119,6 +1119,35 @@ export async function action({ request }: ActionFunctionArgs) {
       const th = await db.buddyThread.create({ data: { shopId: id.shop.id, mode, title: "New chat" } });
       return json({ threadId: th.id, title: th.title });
     } catch { return json({ error: "create" }, { status: 500 }); }
+  }
+
+  // RENAME a chat thread. "main" is the implicit NULL thread (fixed title); only
+  // named threads rename. Scoped to this shop so one shop can't touch another's.
+  if (body.intent === "renameThread") {
+    if (!id) return json({ error: "auth" }, { status: 401 });
+    const threadId = typeof body.threadId === "string" ? body.threadId : "";
+    const title = (typeof body.title === "string" ? body.title : "").trim().slice(0, 42);
+    if (!threadId || threadId === "main" || !title) return json({ error: "bad" }, { status: 400 });
+    try {
+      const r = await db.buddyThread.updateMany({ where: { id: threadId, shopId: id.shop.id }, data: { title } });
+      if (!r.count) return json({ error: "not found" }, { status: 404 });
+      return json({ ok: true, title });
+    } catch { return json({ error: "rename" }, { status: 500 }); }
+  }
+
+  // DELETE a chat thread + its saved messages (scoped to this shop). "main" can't
+  // be deleted (it's the implicit default). Idempotent-ish: a missing thread 404s.
+  if (body.intent === "deleteThread") {
+    if (!id) return json({ error: "auth" }, { status: 401 });
+    const threadId = typeof body.threadId === "string" ? body.threadId : "";
+    if (!threadId || threadId === "main") return json({ error: "bad" }, { status: 400 });
+    try {
+      const owned = await db.buddyThread.findFirst({ where: { id: threadId, shopId: id.shop.id }, select: { id: true } });
+      if (!owned) return json({ error: "not found" }, { status: 404 });
+      await db.buddyMessage.deleteMany({ where: { shopId: id.shop.id, threadId } });
+      await db.buddyThread.delete({ where: { id: threadId } });
+      return json({ ok: true });
+    } catch { return json({ error: "delete" }, { status: 500 }); }
   }
 
   // MAKE — the user tapped the in-chat "Make it" confirm. Re-validate server-side
