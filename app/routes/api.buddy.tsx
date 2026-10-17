@@ -1339,12 +1339,19 @@ export async function action({ request }: ActionFunctionArgs) {
       try {
         full = await anthropicToolLoopStream({
           system, messages: chat, tools: id ? BUDDY_TOOLS : [], runTool,
-          model: BUDDY_MODEL, maxTokens: 1400,
+          // Extended thinking ON for the chat: the model reasons more on hard,
+          // multi-step asks and self-regulates (barely thinks on simple ones).
+          // maxTokens is well above the thinking budget so a full visible answer
+          // always has room — the old empty-answer bug was small-budget STRUCTURED
+          // calls, which stay thinking-off.
+          model: BUDDY_MODEL, maxTokens: 3400, thinkingBudget: 1600,
           onText: (d) => safeEnqueue(frameOf("text", { delta: d })),
           onStatus: (toolName) => safeEnqueue(frameOf("status", { label: statusLabel(toolName, lang) })),
         });
       } catch {
         try {
+          // Fallback is deliberately thinking-OFF (the proven config) — so if
+          // extended thinking itself ever fails, this still delivers an answer.
           full = await anthropicToolLoop({ system, messages: chat, tools: id ? BUDDY_TOOLS : [], runTool, model: BUDDY_MODEL, maxTokens: 1400 });
           safeEnqueue(frameOf("text", { delta: tidyReply(full), replace: true }));
         } catch { errored = true; full = ""; }

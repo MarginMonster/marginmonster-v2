@@ -28,9 +28,16 @@ export interface AnthropicOptions {
  *  were all this one default. Our calls are short structured outputs (30-word
  *  scripts, JSON verdicts); they don't need thinking, they need the budget.
  *  Sonnet 5 accepts an explicit disabled; other models we use keep their
- *  default behaviour, so only sonnet-5 gets the field. */
-function thinkingFieldFor(model: string): Record<string, unknown> {
-  return model.startsWith("claude-sonnet-5") ? { thinking: { type: "disabled" } } : {};
+ *  default behaviour, so only sonnet-5 gets the field.
+ *
+ *  EXCEPTION: pass a `budget` (>=1024) to ENABLE extended thinking for a call
+ *  that genuinely benefits (the Helpurr chat, which has a big max_tokens). The
+ *  structured/vision/extraction calls pass no budget and stay disabled, so the
+ *  empty-answer regression above never recurs — it was only ever those. */
+function thinkingFieldFor(model: string, budget?: number): Record<string, unknown> {
+  if (!model.startsWith("claude-sonnet-5")) return {};
+  if (budget && budget >= 1024) return { thinking: { type: "enabled", budget_tokens: Math.floor(budget) } };
+  return { thinking: { type: "disabled" } };
 }
 
 export async function anthropicText(
@@ -147,6 +154,10 @@ export async function anthropicToolLoop(opts: {
   model?: string;
   maxTokens?: number;
   maxRounds?: number;
+  /** Enable extended thinking with this budget (sonnet-5 only; needs maxTokens
+   *  comfortably above it). The loop already pushes the full content back, so
+   *  thinking blocks are preserved across tool rounds automatically. */
+  thinkingBudget?: number;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -167,7 +178,7 @@ export async function anthropicToolLoop(opts: {
           body: JSON.stringify({
             model,
             max_tokens: maxTokens,
-            ...thinkingFieldFor(model),
+            ...thinkingFieldFor(model, opts.thinkingBudget),
             system: opts.system,
             ...(opts.tools.length ? { tools: opts.tools } : {}),
             messages,
@@ -223,6 +234,11 @@ export async function anthropicToolLoopStream(opts: {
   maxRounds?: number;
   onText: (delta: string) => void;
   onStatus?: (toolName: string) => void;
+  /** Enable extended thinking with this budget (sonnet-5 only; maxTokens must be
+   *  comfortably above it). Thinking deltas are NOT forwarded as visible text;
+   *  thinking blocks are accumulated with their signature and preserved in the
+   *  assistant turn across tool rounds (the API requires this). */
+  thinkingBudget?: number;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -239,7 +255,7 @@ export async function anthropicToolLoopStream(opts: {
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
-        ...thinkingFieldFor(model),
+        ...thinkingFieldFor(model, opts.thinkingBudget),
         system: opts.system,
         ...(opts.tools.length ? { tools: opts.tools } : {}),
         messages,
@@ -255,8 +271,8 @@ export async function anthropicToolLoopStream(opts: {
     const decoder = new TextDecoder();
     let buf = "";
     let stopReason = "";
-    // content blocks accumulated by index (text blocks + tool_use blocks)
-    const blocks: Record<number, { type: string; text?: string; id?: string; name?: string; jsonBuf?: string }> = {};
+    // content blocks accumulated by index (text / tool_use / thinking / redacted_thinking)
+    const blocks: Record<number, { type: string; text?: string; id?: string; name?: string; jsonBuf?: string; thinkingText?: string; signature?: string; data?: string }> = {};
     let finished = false;
 
     while (!finished) {
@@ -271,12 +287,20 @@ export async function anthropicToolLoopStream(opts: {
         if (!dataLine) continue;
         const dataStr = dataLine.slice(5).trim();
         if (!dataStr) continue;
-        let ev: { type?: string; index?: number; delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string }; content_block?: { type?: string; id?: string; name?: string }; error?: unknown };
+        let ev: { type?: string; index?: number; delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string; thinking?: string; signature?: string }; content_block?: { type?: string; id?: string; name?: string; data?: string }; error?: unknown };
         try { ev = JSON.parse(dataStr); } catch { continue; }
         switch (ev.type) {
           case "content_block_start": {
             const b = ev.content_block || {};
-            blocks[ev.index ?? 0] = { type: b.type || "", text: b.type === "text" ? "" : undefined, id: b.id, name: b.name, jsonBuf: b.type === "tool_use" ? "" : undefined };
+            blocks[ev.index ?? 0] = {
+              type: b.type || "",
+              text: b.type === "text" ? "" : undefined,
+              id: b.id, name: b.name,
+              jsonBuf: b.type === "tool_use" ? "" : undefined,
+              thinkingText: b.type === "thinking" ? "" : undefined,
+              signature: b.type === "thinking" ? "" : undefined,
+              data: b.type === "redacted_thinking" ? (b.data || "") : undefined,
+            };
             if (b.type === "tool_use" && b.name && opts.onStatus) opts.onStatus(b.name);
             break;
           }
@@ -289,6 +313,12 @@ export async function anthropicToolLoopStream(opts: {
               try { opts.onText(ev.delta.text); } catch { /* consumer closed */ }
             } else if (ev.delta.type === "input_json_delta" && typeof ev.delta.partial_json === "string") {
               blk.jsonBuf = (blk.jsonBuf || "") + ev.delta.partial_json;
+            } else if (ev.delta.type === "thinking_delta" && typeof ev.delta.thinking === "string") {
+              // Internal reasoning — accumulate (to preserve across tool rounds),
+              // but do NOT forward to onText; it never shows in the bubble.
+              blk.thinkingText = (blk.thinkingText || "") + ev.delta.thinking;
+            } else if (ev.delta.type === "signature_delta" && typeof ev.delta.signature === "string") {
+              blk.signature = (blk.signature || "") + ev.delta.signature;
             }
             break;
           }
@@ -306,11 +336,15 @@ export async function anthropicToolLoopStream(opts: {
       }
     }
 
-    // Rebuild the assistant message content (text + tool_use) in block order.
+    // Rebuild the assistant message content in block order. Thinking blocks come
+    // FIRST (as the API emits them) and MUST be preserved with their signature
+    // when continuing after a tool, or the next request is rejected.
     const content: Array<Record<string, unknown>> = [];
     for (const i of Object.keys(blocks).map(Number).sort((a, b) => a - b)) {
       const b = blocks[i];
-      if (b.type === "text" && b.text) content.push({ type: "text", text: b.text });
+      if (b.type === "thinking" && b.thinkingText) content.push({ type: "thinking", thinking: b.thinkingText, signature: b.signature || "" });
+      else if (b.type === "redacted_thinking" && b.data) content.push({ type: "redacted_thinking", data: b.data });
+      else if (b.type === "text" && b.text) content.push({ type: "text", text: b.text });
       else if (b.type === "tool_use" && b.id && b.name) {
         let input: Record<string, unknown> = {};
         try { input = b.jsonBuf ? JSON.parse(b.jsonBuf) : {}; } catch { input = {}; }
