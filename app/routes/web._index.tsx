@@ -22,7 +22,10 @@ import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-export const meta = () => [{ title: "Dashboard · EasyMode" }];
+export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
+  const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
+  return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Dashboard") + " · EasyMode" }];
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lang = readUiLang(request);
@@ -251,7 +254,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try {
       const pending = await resolvePendingCheckout(account.id);
       if (pending.state === "paid") {
-        const name = PLAN_BY_KEY[(pending.tierKey || tierKey) as PlanKey]?.name || "Your plan";
+        const name = PLAN_BY_KEY[(pending.tierKey || tierKey) as PlanKey]?.name || tr(lang, "Your plan");
         return json({ error: tr(lang, "{name} is already active — that last payment just took a moment to land. Reload to see it.", { name }) });
       }
     } catch (e) {
@@ -734,7 +737,7 @@ export default function WebDashboard() {
           <span className="wd-solo-emoji" aria-hidden="true"><Ico n="palette" size={28} /></span>
           <div className="wd-solo-txt">
             <b>{t("Just want the creative tools?")}</b>
-            <p>{t("Skip the social plans — get Creator on its own: AI images, photo editing & music with Helpurr.")} <b>${CREATOR_PRICE}/mo</b>{t(", no social plan needed.")}</p>
+            <p>{t("Skip the social plans — get Creator on its own: AI images, photo editing & music with Helpurr.")} <b>${CREATOR_PRICE}{t("/mo")}</b>{t(", no social plan needed.")}</p>
           </div>
           <Form method="post" className="wd-solo-cta">
             <input type="hidden" name="intent" value="subscribe" />

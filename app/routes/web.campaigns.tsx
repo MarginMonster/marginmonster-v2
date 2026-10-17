@@ -30,7 +30,10 @@ import { CATALOG_CAP } from "../lib/catalog-import.server";
 import { Ico } from "../lib/icons";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-export const meta = () => [{ title: "Campaigns · EasyMode" }];
+export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
+  const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
+  return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Campaigns") + " · EasyMode" }];
+};
 
 /* The four plans, in the order a merchant should read them: cheapest and
  * safest first, so the ladder sells itself instead of the biggest number
@@ -57,10 +60,10 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** "2 Video" / "Image" — a count only when it earns one. Labels beat dots:
  *  a merchant scanning the month wants to know WHAT lands, not just that
  *  something does. */
-function typeLines(day: { video: number; image: number }): string[] {
+function typeLines(day: { video: number; image: number }, t: (s: string) => string): string[] {
   const out: string[] = [];
-  if (day.video) out.push(`${day.video > 1 ? day.video + " " : ""}Video`);
-  if (day.image) out.push(`${day.image > 1 ? day.image + " " : ""}Image`);
+  if (day.video) out.push(`${day.video > 1 ? day.video + " " : ""}${t("Video")}`);
+  if (day.image) out.push(`${day.image > 1 ? day.image + " " : ""}${t("Image")}`);
   return out;
 }
 
@@ -90,6 +93,7 @@ function fmtWhen(dateStr: string, timeStr: string): string {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
+  const lang = readUiLang(request);
   const full = await db.shop.findUnique({
     where: { id: shop.id },
     include: { activePlan: true, questlines: { orderBy: { createdAt: "desc" }, take: 20 } },
@@ -226,7 +230,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return {
         id: a.id,
         kind: a.type === "VIDEO_AD" ? "video" : "image",
-        title: a.title || "Untitled",
+        title: a.title || tr(lang, "Untitled"),
         media: body.imageUrl || body.videoUrl || null,
         isVideo: a.type === "VIDEO_AD",
       };
@@ -551,12 +555,12 @@ export default function WebCampaigns() {
                   <div
                     className={`wc-dy${n ? " drop" : ""}${past ? " past" : ""}${isToday ? " today" : ""}${endHere ? " endday" : ""}`}
                     key={i}
-                    title={n ? `${day}: ${typeLines(cell!).join(" · ")}` : undefined}
+                    title={n ? `${day}: ${typeLines(cell!, t).join(" · ")}` : undefined}
                   >
                     <span className="wc-dn">{day}</span>
                     {n > 0 ? (
                       <div className="wc-types">
-                        {typeLines(cell!).map((t, j) => <span className="wc-t" key={j}>{t}</span>)}
+                        {typeLines(cell!, t).map((line, j) => <span className="wc-t" key={j}>{line}</span>)}
                         {endHere && <span className="wc-endtag">{t("ENDS")}</span>}
                       </div>
                     ) : null}

@@ -13,7 +13,7 @@ import { normalizeContentLang } from "../lib/content-lang";
 import { totalXpForLevel, ACHIEVEMENTS } from "../lib/achievements";
 import { Ico } from "../lib/icons";
 import { LangToggle } from "../components/LangToggle";
-import { UI_LANG_NATIVE } from "../lib/ui-i18n";
+import { UI_LANG_NATIVE, readUiLang, tr } from "../lib/ui-i18n";
 import { useT, useUiLang } from "../lib/ui-lang";
 
 const EMPTY_HUD = {
@@ -33,6 +33,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
   if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false });
   const { account, shop } = id;
+  const lang = readUiLang(request);
   const plan = shop.activePlan;
   const tier = plan?.active ? resolveTierKey(plan.type) : null;
   // Wallet ceiling = the plan's monthly allowance + purchased top-ups (mirrors
@@ -70,7 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       tokensPct: tokensMax > 0 ? Math.max(0, Math.min(100, Math.round((tokens / tokensMax) * 100))) : 0,
       videos: Math.floor(tokens / TOKEN_COST.video),
       ads: Math.floor(tokens / TOKEN_COST.image),
-      planLabel: tier ? `${PLAN_BY_KEY[tier].name}${planTrialing(plan) ? " · Trial" : ""}` : null,
+      planLabel: tier ? `${PLAN_BY_KEY[tier].name}${planTrialing(plan) ? " · " + tr(lang, "Trial") : ""}` : null,
       planActive: usage.active,
       trialing: usage.trialing,
       monthly: usage.monthly,

@@ -47,7 +47,10 @@ import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 import { externalOrigin } from "../lib/origin.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-export const meta = () => [{ title: "Archive · EasyMode" }];
+export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
+  const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
+  return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Archive") + " · EasyMode" }];
+};
 
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -157,6 +160,7 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
+  const lang = readUiLang(request);
 
   // SEPARATE ARCHIVES per section. Creator (casual) pieces carry
   // metaJson.section === "creator"; everything else — marketing content and all
@@ -287,7 +291,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return {
         id: a.id,
         type: a.type,
-        title: a.title || body.title || "Untitled",
+        title: a.title || body.title || tr(lang, "Untitled"),
         media: expired ? null : rawMedia,
         expired,
         isVideo: a.type === "VIDEO_AD",
@@ -727,12 +731,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
  *  past a typical time, and a stuck "5s left" makes a working render look
  *  frozen. Below ~10s we stop giving a number at all, because a number that
  *  keeps not arriving is worse than no number. */
-function fmtEta(etaSec: number, elapsedSec?: number): string {
-  if (etaSec > 60) return `${Math.ceil(etaSec / 60)} min left`;
-  if (etaSec > 10) return `${etaSec}s left`;
-  if (etaSec > 0) return "almost there";
+function fmtEta(etaSec: number, elapsedSec: number | undefined, t: (s: string, p?: Record<string, string | number>) => string): string {
+  if (etaSec > 60) return t("{n} min left", { n: Math.ceil(etaSec / 60) });
+  if (etaSec > 10) return t("{n}s left", { n: etaSec });
+  if (etaSec > 0) return t("almost there");
   const mins = Math.floor((elapsedSec ?? 0) / 60);
-  return mins >= 1 ? `taking longer than usual · ${mins} min in` : "taking longer than usual";
+  return mins >= 1 ? t("taking longer than usual · {mins} min in", { mins }) : t("taking longer than usual");
 }
 // Sanitized download filename from the piece's title.
 function dlName(title: string, isVideo: boolean, isAudio = false): string {
@@ -1168,8 +1172,8 @@ export default function WebArchive() {
           {shelf.length === 0
             // None of THIS type are in the recent window (older ones got crowded
             // out by newer pieces of other types) — don't pretend there are none.
-            ? <>{t("Your")} <b>{tabTotal}</b> {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`} {t("are further back.")}{" "}</>
-            : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`}.{" "}</>}
+            ? <>{t("Your")} <b>{tabTotal}</b> {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")} {t("are further back.")}{" "}</>
+            : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")}.{" "}</>}
           <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
         </p>
       )}
@@ -1177,7 +1181,7 @@ export default function WebArchive() {
           tabTotal === 0 — not merely none in the current page (which is the
           "are further back" note above). */}
       {shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
-        <div className="wb-card">{t("No")} {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : `${tab}s`} {t("yet — make one in the")} <Link to="/web/studio">Studio</Link>.</div>
+        <div className="wb-card">{t("No")} {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")} {t("yet — make one in the")} <Link to="/web/studio">Studio</Link>.</div>
       )}
 
       {/* Cooking tiles stay pinned at the top of the shelf. */}
@@ -1189,13 +1193,13 @@ export default function WebArchive() {
                 className="wb-cookimg"
                 style={j.productImage ? { backgroundImage: `linear-gradient(rgba(10,14,12,.5),rgba(10,14,12,.55)), url(${j.productImage})` } : undefined}
               >
-                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</span></span>
+                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</span></span>
               </div>
               <div className="m">
                 {j.kind === "blog"
                   ? (j.productTitle ? t("Writing about {title}…", { title: j.productTitle }) : t("Writing your article…"))
                   : (j.productTitle ? t("Creating your {kind} — {title}…", { kind: j.kind, title: j.productTitle }) : t("Creating your {kind}…", { kind: j.kind }))}
-                <div className="s">{t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec)}</div>
+                <div className="s">{t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</div>
               </div>
             </div>
           ))}

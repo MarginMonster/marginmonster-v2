@@ -19,7 +19,10 @@ import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 
-export const meta = () => [{ title: "Product Channels · EasyMode" }];
+export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
+  const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
+  return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Product Channels") + " · EasyMode" }];
+};
 
 const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -129,15 +132,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ error: tr(lang, "Unknown action.") }, { status: 400 });
 };
 
-function relTime(iso: string | null): string {
+function relTime(iso: string | null, t: (s: string, p?: Record<string, string | number>) => string): string {
   if (!iso) return "";
   const ms = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return "any minute now";
+  if (ms <= 0) return t("any minute now");
   const m = Math.round(ms / 60000);
-  if (m < 60) return `in ${m} min`;
+  if (m < 60) return t("in {m} min", { m });
   const h = Math.round(m / 60);
-  if (h < 24) return `in ${h}h`;
-  return `in ${Math.round(h / 24)}d`;
+  if (h < 24) return t("in {h}h", { h });
+  return t("in {d}d", { d: Math.round(h / 24) });
 }
 
 type Series = ReturnType<typeof useLoaderData<typeof loader>>["series"][number];
@@ -288,7 +291,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
         <span>{s.autoPost ? t("auto-post") : t("approve")}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
-      {s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt) || t("soon")}</div>}
+      {s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("soon")}</div>}
       {paused && s.pauseReason && (
         <div className="pc-paused-note">{reasonText[s.pauseReason] || t("Paused")}
           {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="pc-link">{t("top up")}</Link></>}

@@ -15,7 +15,10 @@ const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Insta
 const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-export const meta = () => [{ title: "Auto-posting · EasyMode" }];
+export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
+  const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
+  return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Auto-posting") + " · EasyMode" }];
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);

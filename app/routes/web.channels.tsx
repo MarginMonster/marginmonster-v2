@@ -18,7 +18,10 @@ import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 
-export const meta = () => [{ title: "Channels · EasyMode" }];
+export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
+  const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
+  return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Channels") + " · EasyMode" }];
+};
 
 const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -155,15 +158,15 @@ const FORMATS: [string, string][] = [["motivational", "Motivational"], ["facts",
 const VOICES: [string, string][] = [["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]];
 const NICHES = ["Deep ocean facts", "Stoic motivation", "Weird history", "Money & side hustles", "Mind-blowing science", "Space facts", "Fitness tips", "Life hacks", "Mythology stories", "True crime shorts"];
 
-function relTime(iso: string | null): string {
+function relTime(iso: string | null, t: (s: string, p?: Record<string, string | number>) => string): string {
   if (!iso) return "";
   const ms = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return "any minute now";
+  if (ms <= 0) return t("any minute now");
   const m = Math.round(ms / 60000);
-  if (m < 60) return `in ${m} min`;
+  if (m < 60) return t("in {m} min", { m });
   const h = Math.round(m / 60);
-  if (h < 24) return `in ${h}h`;
-  return `in ${Math.round(h / 24)}d`;
+  if (h < 24) return t("in {h}h", { h });
+  return t("in {d}d", { d: Math.round(h / 24) });
 }
 
 type Series = ReturnType<typeof useLoaderData<typeof loader>>["series"][number];
@@ -357,7 +360,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       </div>
 
       {s.status === "ACTIVE" && (
-        <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt) || t("soon")}</div>
+        <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("soon")}</div>
       )}
       {paused && s.pauseReason && (
         <div className="ch-paused-note">

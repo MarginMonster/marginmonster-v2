@@ -1427,6 +1427,18 @@ const es: Record<string, string> = {
   "Blog post": "Entrada de blog",
   "Listing / ad copy": "Ficha / texto publicitario",
   "Best value": "Mejor valor",
+  "any minute now": "en cualquier momento",
+  "in {m} min": "en {m} min",
+  "in {h}h": "en {h} h",
+  "in {d}d": "en {d} d",
+  "{n} min left": "{n} min restantes",
+  "{n}s left": "{n} s restantes",
+  "almost there": "casi listo",
+  "taking longer than usual · {mins} min in": "tardando más de lo habitual · {mins} min",
+  "taking longer than usual": "tardando más de lo habitual",
+  "images": "imágenes",
+  "Trial": "Prueba",
+  "Untitled": "Sin título",
 };
 
 const fr: Record<string, string> = {
@@ -2837,6 +2849,18 @@ const fr: Record<string, string> = {
   "Blog post": "Article de blog",
   "Listing / ad copy": "Fiche / texte publicitaire",
   "Best value": "Meilleure offre",
+  "any minute now": "d'un instant à l'autre",
+  "in {m} min": "dans {m} min",
+  "in {h}h": "dans {h} h",
+  "in {d}d": "dans {d} j",
+  "{n} min left": "{n} min restantes",
+  "{n}s left": "{n} s restantes",
+  "almost there": "presque terminé",
+  "taking longer than usual · {mins} min in": "plus long que d'habitude · {mins} min",
+  "taking longer than usual": "plus long que d'habitude",
+  "videos": "vidéos",
+  "Trial": "Essai",
+  "Untitled": "Sans titre",
 };
 
 const de: Record<string, string> = {
@@ -4253,6 +4277,19 @@ const de: Record<string, string> = {
   "Blog post": "Blogpost",
   "Listing / ad copy": "Produktbeschreibung / Werbetext",
   "Best value": "Bestes Angebot",
+  "any minute now": "jeden Moment",
+  "in {m} min": "in {m} Min.",
+  "in {h}h": "in {h} Std.",
+  "in {d}d": "in {d} Tg.",
+  "{n} min left": "noch {n} Min.",
+  "{n}s left": "noch {n} Sek.",
+  "almost there": "fast fertig",
+  "taking longer than usual · {mins} min in": "dauert länger als sonst · {mins} Min.",
+  "taking longer than usual": "dauert länger als sonst",
+  "videos": "Videos",
+  "images": "Bilder",
+  "Trial": "Test",
+  "Untitled": "Ohne Titel",
 };
 
 const zh: Record<string, string> = {
@@ -5701,6 +5738,19 @@ const zh: Record<string, string> = {
   "Blog post": "博客文章",
   "Listing / ad copy": "产品详情 / 广告文案",
   "Best value": "最超值",
+  "any minute now": "即将",
+  "in {m} min": "{m} 分钟后",
+  "in {h}h": "{h} 小时后",
+  "in {d}d": "{d} 天后",
+  "{n} min left": "还剩 {n} 分钟",
+  "{n}s left": "还剩 {n} 秒",
+  "almost there": "马上就好",
+  "taking longer than usual · {mins} min in": "比平时久 · 已 {mins} 分钟",
+  "taking longer than usual": "比平时久",
+  "videos": "视频",
+  "images": "图片",
+  "Trial": "试用",
+  "Untitled": "未命名",
 };
 
 const ur: Record<string, string> = {
@@ -7127,6 +7177,19 @@ const ur: Record<string, string> = {
   "Blog post": "بلاگ پوسٹ",
   "Listing / ad copy": "لسٹنگ / اشتہاری کاپی",
   "Best value": "بہترین ویلیو",
+  "any minute now": "بس ابھی",
+  "in {m} min": "{m} منٹ میں",
+  "in {h}h": "{h} گھنٹے میں",
+  "in {d}d": "{d} دن میں",
+  "{n} min left": "{n} منٹ باقی",
+  "{n}s left": "{n} سیکنڈ باقی",
+  "almost there": "تقریباً تیار",
+  "taking longer than usual · {mins} min in": "معمول سے زیادہ وقت لگ رہا ہے · {mins} منٹ",
+  "taking longer than usual": "معمول سے زیادہ وقت لگ رہا ہے",
+  "videos": "ویڈیوز",
+  "images": "تصاویر",
+  "Trial": "آزمائش",
+  "Untitled": "بلا عنوان",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };
