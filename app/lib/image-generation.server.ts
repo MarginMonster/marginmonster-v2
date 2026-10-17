@@ -4609,7 +4609,12 @@ export async function generateImageAd(
    *  still is the WRONG deliverable, so FAIL (the prePaid charge refunds) rather
    *  than charge for and silently ship it. Normal image ads leave this off and
    *  still fall through to the real product photo. */
-  presenterOnly?: boolean
+  presenterOnly?: boolean,
+  /** A CLEAN product shot: skip the headline + CTA overlay entirely and ship the
+   *  bare product render. For when the user asked for a "product-only / cinematic
+   *  / plain" shot, not an ad — the invented headline + "SHOP NOW" button is the
+   *  wrong deliverable there. Mirrors the PRESENTER_AD_TEXT skip for presenters. */
+  noCopy?: boolean
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -5238,7 +5243,9 @@ export async function generateImageAd(
     // copy or the ffmpeg composite fails, we keep the clean still.
     // FORMAT ads already carry their own typography — never double-text them.
     const isFormatAd = typeof genMeta.method === "string" && genMeta.method.startsWith("format:");
-    if (!isFormatAd) try {
+    // noCopy = the caller asked for a CLEAN product shot (no headline/CTA). Skip
+    // the whole overlay and ship the bare render — same as a format ad skips it.
+    if (!isFormatAd && !noCopy) try {
       const voiceTone = (() => { try { return JSON.parse(brandProfile.voiceJson || "{}").tone as string | undefined; } catch { return undefined; } })();
       const copy = await adCopy(productTitle, voiceTone, stylePrompt, !!serviceMode, contentLang);
       if (copy) {

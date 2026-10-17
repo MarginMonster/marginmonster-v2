@@ -513,7 +513,8 @@ async function runJob(
         typeof payload.merchantOffer === "string" ? payload.merchantOffer : undefined,
         typeof payload.productSize === "string" ? payload.productSize : undefined,
         payload.freshShot === true,
-        payload.presenterOnly === true
+        payload.presenterOnly === true,
+        payload.noCopy === true
       );
       // The Studio deliberately puts productUrl on the image payload so the
       // caption can deep-link the buy page, and stampProductUrl was called

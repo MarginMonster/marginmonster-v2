@@ -257,6 +257,7 @@ const BUDDY_TOOLS: ToolDef[] = [
         editOp: { type: "string", enum: ["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "describe"], description: "edit ONLY: how to edit the photo — restyle (general glow-up, default), cartoonize, bgremove (cut out the background), bgswap (new backdrop — put it in 'direction'), colorize, upscale (sharpen), or describe (any freeform change you put in 'direction'). Pick from what they asked." },
         source: { type: "string", enum: ["attached", "recent"], description: "edit ONLY: 'attached' (default) edits the photo they just sent; 'recent' edits their MOST RECENT creation — use it when they say 'edit my last ad', 'remove the bg on the one you made', 'tweak that last image' and haven't attached a new photo." },
         presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
+        clean: { type: "boolean", description: "image ONLY: true = a CLEAN product shot — just the product, NO headline text and NO 'Shop now' button. Set it when they ask for a 'product-only' / 'cinematic' / 'plain' / 'just the product' / 'no text' shot, i.e. a photo not an ad. Default false = a full image ad with a headline + call-to-action." },
         direction: { type: "string", description: "image/video: optional creative direction. edit: the freeform instruction for editOp 'describe', or the new backdrop for 'bgswap'." },
         count: { type: "integer", minimum: 1, maximum: 4, description: "how MANY to make at once (default 1, max 4). Set it only when the user wants SEVERAL of the SAME thing — 'make 3 of these', 'give me 4 variations', 'a couple options'. They queue and all run on ONE confirm tap that shows the total cost. For DIFFERENT products or kinds, call make_content once per item instead of using count." },
       },
@@ -345,7 +346,7 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 // "edit" is the one kind whose subject comes from the CLIENT (a photo the user
 // uploaded into the chat), so MakeSpec carries sourceImageUrl + editOp for it.
 type MakeKind = "image" | "video" | "faceless" | "music" | "edit" | "create";
-type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; label: string };
+type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; clean?: boolean; label: string };
 
 // FREE TIER: a signed-in account with NO active plan gets a few FREE photo edits on
 // the house, then upgrade. The allowance is counted off the shop's own free-edit
@@ -699,13 +700,18 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
   // is the fast-follow. Keep the flag so Helpurr can talk about it accurately.
   const presenter = false;
   const direction = typeof input.direction === "string" ? input.direction.trim().slice(0, 300) : "";
-  const label = tr(lang, "{verb} for {product}", { verb: kind === "video" ? tr(lang, "Make a product video") : tr(lang, "Make an image ad"), product: prod.title });
-  const make: MakeSpec = { kind, product: prod.title, presenter, direction, cost, label };
+  // CLEAN product shot (image only): a bare product render with NO headline/CTA
+  // overlay — for when they asked for a product-only/cinematic/plain shot, not an
+  // ad. Skips the invented "SHOP NOW" copy. Video is already presenter-less and
+  // text-free, so this only applies to the image kind.
+  const clean = kind === "image" && input.clean === true;
+  const label = tr(lang, "{verb} for {product}", { verb: kind === "video" ? tr(lang, "Make a product video") : clean ? tr(lang, "Make a product shot") : tr(lang, "Make an image ad"), product: prod.title });
+  const make: MakeSpec = { kind, product: prod.title, presenter, direction, cost, clean, label };
   return {
     make,
     toolResult: JSON.stringify({
-      readyToMake: true, kind, product: prod.title, presenter, cost,
-      note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown. Say in ONE line exactly what you'll make — the product${kind === "video" ? " as a product-cinematic video (no presenter in this version)" : " as an image ad"}${direction ? `, ${direction}` : ""} — and that tapping it makes it right here where they approve the spend. Do NOT claim it is already made or that tokens were spent.`,
+      readyToMake: true, kind, product: prod.title, presenter, cost, clean,
+      note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown. Say in ONE line exactly what you'll make — the product${kind === "video" ? " as a product-cinematic video (no presenter in this version)" : clean ? " as a clean product shot (no headline or SHOP NOW text — just the product)" : " as an image ad"}${direction ? `, ${direction}` : ""} — and that tapping it makes it right here where they approve the spend. Do NOT claim it is already made or that tokens were spent.`,
     }),
   };
 }
@@ -1283,7 +1289,7 @@ export async function action({ request }: ActionFunctionArgs) {
       let jobId: string;
       if (kind === "image") {
         jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", {
-          section: "marketing", freshShot: true,
+          section: "marketing", freshShot: true, noCopy: spec.clean === true,
           productTitle: prod.title, productImageUrl: prod.imageUrl, productUrl: prod.url || "",
           stylePrompt: direction, styleMode: direction ? "scene" : "backdrop",
           serviceMode: false, prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",

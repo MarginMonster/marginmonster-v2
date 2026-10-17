@@ -288,7 +288,7 @@ type MMAction = { label: string; to: string };
 // the actual spend. Helpurr never spends tokens itself.
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
-type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit" | "create"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; label: string };
+type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit" | "create"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; clean?: boolean; label: string };
 type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; makes?: MMPendingMake[]; followups?: string[] };
 
 // Render a SAFE light-markdown subset — **bold**, •-bullets, `inline code`,
