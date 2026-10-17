@@ -436,7 +436,7 @@ export default function WebDashboard() {
         <h1 className="wd-hero-word">Easy<b>Mode</b></h1>
         <p className="wd-hero-sub">{firstName ? t("Hey {name} — what are we making today?", { name: firstName }) : t("What are we making today?")}</p>
         <form className="wd-hero-ask" onSubmit={(e) => { e.preventDefault(); askHelpurr(); }}>
-          <span className="wd-hero-spark" aria-hidden="true">✨</span>
+          <span className="wd-hero-spark" aria-hidden="true"><Ico n="sparkle" size={17} /></span>
           <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder={t("Ask Helpurr anything — or tell it what to make…")} aria-label={t("Ask Helpurr")} />
           <button type="submit" className="wd-hero-send" aria-label={t("Ask Helpurr")}>➤</button>
         </form>
@@ -447,15 +447,15 @@ export default function WebDashboard() {
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
             <button type="button" className="wd-path" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
-              <span className="wd-path-ic" aria-hidden="true">🎨</span>
+              <span className="wd-path-ic"><Ico n="palette" size={19} /></span>
               <span className="wd-path-tx"><b>{t("Creator")}</b><i>{t("Make images, videos & music")}</i></span>
             </button>
             <button type="button" className="wd-path" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
-              <span className="wd-path-ic" aria-hidden="true">📣</span>
+              <span className="wd-path-ic"><Ico n="trend" size={19} /></span>
               <span className="wd-path-tx"><b>{t("Social")}</b><i>{t("Turn products into ads & auto-post")}</i></span>
             </button>
             <button type="button" className="wd-path" onClick={() => navigate("/web/studio")}>
-              <span className="wd-path-ic" aria-hidden="true">🎛️</span>
+              <span className="wd-path-ic"><Ico n="sliders" size={19} /></span>
               <span className="wd-path-tx"><b>{t("Studio")}</b><i>{t("Full manual controls")}</i></span>
             </button>
           </div>
@@ -837,7 +837,7 @@ const DASH_CSS = `
   border:1.5px solid var(--line2,#D7DCCB);border-radius:999px;padding:7px 8px 7px 16px;
   box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
 .wd-hero-ask:focus-within{border-color:var(--green);box-shadow:0 10px 30px rgba(12,122,70,.18);}
-.wd-hero-spark{flex:0 0 auto;font-size:15px;opacity:.8;}
+.wd-hero-spark{flex:0 0 auto;display:grid;place-items:center;color:var(--gold,#B08526);}
 .wd-hero-ask input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;}
 .wd-hero-ask input::placeholder{color:#97a19a;}
 .wd-hero-send{flex:0 0 auto;width:42px;height:42px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
@@ -852,7 +852,7 @@ const DASH_CSS = `
 .wd-path{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2,#D7DCCB);border-radius:15px;padding:11px 12px;transition:border-color .14s,transform .12s,box-shadow .14s;}
 .wd-path:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 18px rgba(12,122,70,.12);}
-.wd-path-ic{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;font-size:17px;background:linear-gradient(140deg,rgba(18,168,94,.14),rgba(176,133,38,.14));}
+.wd-path-ic{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;color:var(--green,#0C7A46);background:linear-gradient(140deg,rgba(18,168,94,.14),rgba(176,133,38,.14));}
 .wd-path-tx{display:flex;flex-direction:column;gap:1px;min-width:0;}
 .wd-path-tx b{font-weight:800;font-size:13px;color:var(--ink);}
 .wd-path-tx i{font-style:normal;font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;}
