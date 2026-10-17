@@ -1653,7 +1653,7 @@ const CSS = `
 /* Inline media Helpurr shows (real creations from the Archive). */
 .mm-media{display:flex;flex-wrap:wrap;gap:8px;max-width:92%;margin-top:2px;}
 .mm-media-link{display:block;flex:0 0 auto;line-height:0;}
-.mm-media-item{width:116px;height:116px;object-fit:cover;border-radius:12px;border:1px solid var(--line,#E4DFCF);background:#0b0f0d;display:block;}
+.mm-media-item{max-width:210px;max-height:260px;width:auto;height:auto;border-radius:12px;border:1px solid var(--line,#E4DFCF);display:block;}
 video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-media-link:hover .mm-media-item{filter:brightness(1.05);}
 .mm-media-aud{width:100%;max-width:260px;}
