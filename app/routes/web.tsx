@@ -2033,7 +2033,12 @@ const CSS = `
 .mm-side-scrim{display:none;}
 /* Sidebar becomes a slide-in drawer when there isn't room for it beside the chat. */
 @media(max-width:820px){
-  .mm-panel.mm-max{width:100vw;height:100vh;height:100dvh;border-radius:0;}
+  /* Pin to the top-left and DROP the base rule's margin:auto + bottom:0. On iOS
+     Safari that centering (an explicit height inside inset:0) pushes the fixed
+     panel's top — the whole header, with the × close — above the visible
+     viewport, leaving the user trapped in the chat with no way out. top:0 +
+     bottom:auto + margin:0 keeps the header on screen; 100dvh fits the rest. */
+  .mm-panel.mm-max{top:0;left:0;right:0;bottom:auto;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0;}
   .mm-side{position:absolute;top:0;bottom:0;left:0;z-index:4;width:272px;flex-basis:272px;transform:translateX(-102%);transition:transform .22s cubic-bezier(.2,.8,.3,1);box-shadow:0 0 44px rgba(10,20,14,.34);}
   .mm-panel.mm-side-open .mm-side{transform:none;}
   .mm-side-scrim{display:block;position:absolute;inset:0;z-index:3;background:rgba(10,20,14,.42);animation:mmFade .18s both;}
