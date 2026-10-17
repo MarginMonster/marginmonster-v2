@@ -618,6 +618,24 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const chips = mode === "casual"
     ? [t("Edit one of my photos"), t("Make a fun post"), t("Turn this into a sticker")]
     : [t("Make me an ad"), t("Which format converts best?"), t("Give me an idea for a video")];
+  // The HOME landing surface: a Google-homepage-style hero (wordmark + big ask bar +
+  // quick-start cards + your saved chats) shown when the dedicated full-screen Helpurr
+  // is open on a fresh thread (no questions asked yet). The moment a message is sent
+  // it flips to the normal chat view. Compact/floating mode keeps the simple list.
+  const atHome = max && authed && !msgs.some((m) => m.role === "user");
+  const homeCards = mode === "casual"
+    ? [
+        { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
+        { icon: "📱", label: t("Faceless video"), sub: t("A scripted 9:16 clip"), act: () => void send(t("Make me a faceless video")) },
+        { icon: "🎵", label: t("Make a track"), sub: t("An original music clip"), act: () => void send(t("Make me a music track")) },
+        { icon: "✨", label: t("Something to post"), sub: t("Ideas on tap"), act: () => void send(t("Make me something fun to post")) },
+      ]
+    : [
+        { icon: "✨", label: t("Make an ad"), sub: t("An image ad for a product"), act: () => void send(t("Make me an ad")) },
+        { icon: "🎬", label: t("Make a video"), sub: t("A product video"), act: () => void send(t("Make me a product video")) },
+        { icon: "📱", label: t("Faceless video"), sub: t("A scripted 9:16 clip"), act: () => void send(t("Make me a faceless video")) },
+        { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
+      ];
 
   return (
     <>
@@ -634,7 +652,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             <button type="button" className="mm-expand" onClick={() => setMax((m) => !m)} aria-label={max ? t("Shrink chat") : t("Expand chat")} title={max ? t("Shrink") : t("Expand")}>{max ? "⤡" : "⤢"}</button>
             <button type="button" className="mm-x" onClick={() => { setOpen(false); setMax(false); }} aria-label={t("Close chat")}>×</button>
           </div>
-          {authed && (
+          {authed && !atHome && (
             <div className="mm-tabs" role="tablist" aria-label={t("Your chats")}>
               {threads.map((th) => (
                 <button key={th.id} type="button" role="tab" aria-selected={th.id === activeThreadId}
@@ -646,6 +664,50 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               <button type="button" className="mm-tab mm-tab-new" onClick={newThread} title={t("New chat")} aria-label={t("Start a new chat")}>+</button>
             </div>
           )}
+          {atHome && (
+            <div className="mm-home">
+              <div className="mm-home-hero">
+                <span className="mm-home-crest"><Familiar /></span>
+                <h1 className="mm-home-word">Easy<b>Mode</b></h1>
+                <p className="mm-home-sub">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
+                <form className="mm-home-ask" onSubmit={(e) => { e.preventDefault(); void send(input); }}>
+                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
+                  <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
+                  <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
+                  <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>
+                </form>
+                {(attach || uploading) && (
+                  <div className="mm-home-attach">{uploading ? <span>{t("Uploading photo…")}</span> : attach ? <><img src={attach.url} alt={attach.name} /><span>{attach.name}</span><button type="button" onClick={() => setAttach(null)} aria-label={t("Remove photo")}>×</button></> : null}</div>
+                )}
+                <div className="mm-home-cards">
+                  {homeCards.map((c) => (
+                    <button key={c.label} type="button" className="mm-home-card" onClick={c.act} disabled={busy || uploading}>
+                      <span className="mm-home-card-ic" aria-hidden="true">{c.icon}</span>
+                      <span className="mm-home-card-tx"><b>{c.label}</b><i>{c.sub}</i></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mm-home-recent">
+                <div className="mm-home-recent-h"><span>{t("Your chats")}</span><button type="button" onClick={newThread}>+ {t("New chat")}</button></div>
+                <div className="mm-home-chats">
+                  {threads.map((th) => (
+                    <button key={th.id} type="button" className={`mm-home-chat${th.id === activeThreadId ? " on" : ""}`}
+                      onClick={() => { if (!busy) { setActiveThreadId(th.id); setAttach(null); setLastPhoto(null); } }} title={th.title}>
+                      <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
+                      <span className="mm-home-chat-tx">{th.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mm-home-links">
+                <button type="button" onClick={() => go("/web/studio")}>{t("Studio")}</button>
+                <button type="button" onClick={() => go("/web/archive")}>{t("Gallery")}</button>
+                <button type="button" onClick={() => go(mode === "casual" ? "/web" : "/web/channels")}>{mode === "casual" ? t("Home") : t("Social")}</button>
+              </div>
+            </div>
+          )}
+          {!atHome && (<>
           <div className="mm-list" ref={listRef} role="log" aria-live="polite" aria-relevant="additions">
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
@@ -721,6 +783,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
               : <button type="submit" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>}
           </form>
+          </>)}
         </div>
       )}
     </>
@@ -1658,6 +1721,56 @@ const CSS = `
 .mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:auto;width:min(780px,94vw);height:min(86vh,900px);border-radius:22px;}
 .mm-panel.mm-max .mm-list{padding-left:max(14px,calc((100% - 680px)/2));padding-right:max(14px,calc((100% - 680px)/2));}
 .mm-panel.mm-max .mm-input{padding-left:max(10px,calc((100% - 680px)/2));padding-right:max(10px,calc((100% - 680px)/2));}
+/* HOME — the dedicated Helpurr landing surface (Google-homepage energy, EasyMode
+   skin): centered wordmark + big ask bar + quick-start cards + your saved chats.
+   Fills the maximized panel under the header and scrolls if it needs to. */
+.mm-home{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:22px;
+  padding:clamp(20px,5vh,46px) clamp(16px,6%,56px) 28px;background:radial-gradient(130% 78% at 50% 0,#FEFDF9,#F2EFE4 80%);}
+.mm-home-hero{display:flex;flex-direction:column;align-items:center;text-align:center;}
+.mm-home-crest{width:74px;height:74px;display:grid;place-items:center;filter:drop-shadow(0 7px 15px rgba(12,122,70,.22));}
+.mm-home-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,6vw,44px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}
+.mm-home-word b{color:var(--gold);font-weight:800;}
+.mm-home-sub{font-size:14px;color:var(--ink2);margin:0 0 20px;}
+.mm-home-ask{display:flex;align-items:center;gap:8px;width:min(560px,100%);background:var(--card);
+  border:1.5px solid var(--line2);border-radius:999px;padding:7px 8px 7px 15px;
+  box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
+.mm-home-ask:focus-within{border-color:var(--green);box-shadow:0 10px 30px rgba(12,122,70,.18);}
+.mm-home-ask>input:not([type=file]){flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;}
+.mm-home-ask>input::placeholder{color:#97a19a;}
+.mm-home-clip{flex:0 0 auto;background:none;border:0;font-size:17px;cursor:pointer;opacity:.7;padding:4px;border-radius:8px;line-height:1;}
+.mm-home-clip:hover:not(:disabled){opacity:1;background:rgba(12,122,70,.08);}
+.mm-home-send{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
+  background:linear-gradient(135deg,var(--green2) 40%,var(--green));box-shadow:0 3px 10px rgba(12,122,70,.3);transition:filter .12s,transform .12s;}
+.mm-home-send:hover:not(:disabled){filter:brightness(1.07);transform:translateY(-1px);}
+.mm-home-send:disabled{opacity:.42;cursor:default;}
+.mm-home-attach{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 10px;}
+.mm-home-attach img{width:30px;height:30px;border-radius:7px;object-fit:cover;}
+.mm-home-attach button{margin-left:2px;border:0;background:none;color:var(--ink2);font-size:15px;cursor:pointer;line-height:1;}
+.mm-home-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(560px,100%);margin-top:22px;}
+.mm-home-card{display:flex;align-items:center;gap:11px;text-align:left;cursor:pointer;
+  background:var(--card);border:1px solid var(--line2);border-radius:15px;padding:12px 13px;transition:border-color .14s,transform .12s,box-shadow .14s;}
+.mm-home-card:hover:not(:disabled){border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 20px rgba(12,122,70,.12);}
+.mm-home-card:disabled{opacity:.55;cursor:default;}
+.mm-home-card-ic{flex:0 0 auto;width:38px;height:38px;display:grid;place-items:center;border-radius:11px;font-size:19px;background:linear-gradient(140deg,rgba(18,168,94,.14),rgba(176,133,38,.14));}
+.mm-home-card-tx{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.mm-home-card-tx b{font-weight:800;font-size:13.5px;color:var(--ink);}
+.mm-home-card-tx i{font-style:normal;font-size:11.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-home-recent{width:min(560px,100%);margin:4px auto 0;}
+.mm-home-recent-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
+.mm-home-recent-h span{font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);}
+.mm-home-recent-h button{border:0;background:none;color:var(--green);font-weight:800;font-size:12.5px;cursor:pointer;padding:4px 7px;border-radius:8px;}
+.mm-home-recent-h button:hover{background:rgba(12,122,70,.08);}
+.mm-home-chats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
+.mm-home-chat{display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;
+  background:rgba(253,252,247,.7);border:1px solid var(--line);border-radius:12px;padding:9px 11px;transition:border-color .14s,background .14s;}
+.mm-home-chat:hover{border-color:var(--green);background:var(--card);}
+.mm-home-chat.on{border-color:var(--green);background:var(--card);box-shadow:inset 0 0 0 1px rgba(12,122,70,.3);}
+.mm-home-chat-ic{flex:0 0 auto;font-size:14px;opacity:.75;}
+.mm-home-chat-tx{font-weight:700;font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-home-links{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:2px;}
+.mm-home-links button{border:1px solid var(--line2);background:var(--card);color:var(--ink2);font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 15px;border-radius:999px;transition:border-color .14s,color .14s;}
+.mm-home-links button:hover{border-color:var(--green);color:var(--ink);}
+@media(max-width:620px){.mm-home{padding:24px 16px;gap:18px;}.mm-home-cards{grid-template-columns:1fr;}.mm-home-chats{grid-template-columns:1fr 1fr;}}
 .mm-expand{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.82);font-size:15px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;}
 .mm-expand:hover{color:#fff;background:rgba(255,255,255,.12);}
 .mm-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(168deg,#0E5233,#0A3421);color:#F4EAC8;}
