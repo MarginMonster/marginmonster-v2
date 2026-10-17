@@ -2095,11 +2095,18 @@ export default function WebStudio() {
   const applyCombineEdit = () => {
     const s = combineEdit.trim();
     if (s) {
-      // Apply the change: it becomes the current look, and the box clears so the
-      // button turns into Retry (another take of the look you just applied).
-      setCombineScene(s); setCombineEdit(""); doCombine({ scene: s });
+      // ACCUMULATE the change onto the look so far — don't replace it. The combine
+      // re-composes from presenter+product each time using `scene` as the directive,
+      // so replacing it dropped every earlier edit and the next edit effectively
+      // started from the original frame again. Stacking directives ("green shirt" +
+      // "add a hat") makes each edit build on the last. Keep the most-recent ones
+      // within the compose's ~200-char scene budget (oldest fall off first).
+      const parts = (combineScene ? combineScene.split(", ") : []).concat(s);
+      while (parts.length > 1 && parts.join(", ").length > 190) parts.shift();
+      const next = parts.join(", ");
+      setCombineScene(next); setCombineEdit(""); doCombine({ scene: next });
     } else {
-      // Retry: re-run the SAME look (whatever edit is applied, or the base shot).
+      // Retry: re-run the SAME accumulated look (or the base shot) for another take.
       doCombine({ scene: combineScene || undefined });
     }
   };

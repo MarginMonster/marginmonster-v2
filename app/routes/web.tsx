@@ -387,9 +387,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       setMsgs([{ role: "assistant", content: greet }]);
     }
   }, [open, histReady, msgs.length, authed, hud.name, hud.ads, mode, t]);
-  // Follow the conversation DOWN only when the user is already near the bottom —
-  // never yank them away from an earlier message they scrolled up to read.
-  useEffect(() => { const el = listRef.current; if (!el) return; if (el.scrollHeight - el.scrollTop - el.clientHeight < 140) el.scrollTop = el.scrollHeight; }, [msgs, busy, making]);
+  // On OPEN / thread switch, jump straight to the NEWEST message (the history can
+  // be long — it used to open stranded at the oldest). The ref makes the next
+  // render after one of those events force-scroll to the bottom once.
+  const pinBottomRef = useRef(true);
+  useEffect(() => { if (open) pinBottomRef.current = true; }, [open, activeThreadId]);
+  // Then follow the conversation DOWN only when the user is already near the
+  // bottom — never yank them away from an earlier message they scrolled up to read.
+  useEffect(() => {
+    const el = listRef.current; if (!el) return;
+    if (pinBottomRef.current) { el.scrollTop = el.scrollHeight; pinBottomRef.current = false; }
+    else if (el.scrollHeight - el.scrollTop - el.clientHeight < 140) el.scrollTop = el.scrollHeight;
+  }, [msgs, busy, making]);
   // Move focus into the message box when the chat opens, so you can just type
   // (and keyboard users aren't stranded on the FAB). A soft focus; not on mobile
   // where it would pop the keyboard unprompted.
