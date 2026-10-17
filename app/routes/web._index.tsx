@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { Ico } from "../lib/icons";
+import { Familiar } from "../components/Familiar";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import {
@@ -444,7 +445,7 @@ export default function WebDashboard() {
       {/* ── Helpurr landing hero — the Google-style front door: ask Helpurr to
            drive it, or take the Creator / Social / Studio path yourself. ── */}
       <section className="wd-hero">
-        <img src="/familiar-px.png" alt="" className="wd-hero-crest" />
+        <span className="wd-hero-crest"><Familiar /></span>
         <h1 className="wd-hero-word">Easy<b>Mode</b></h1>
         <p className="wd-hero-sub">{firstName ? t("Hey {name} — what are we making today?", { name: firstName }) : t("What are we making today?")}</p>
         <form className="wd-hero-ask" onSubmit={(e) => { e.preventDefault(); askHelpurr(); }}>
@@ -841,7 +842,7 @@ const DASH_CSS = `
   background:radial-gradient(130% 90% at 50% 0,#FEFDF9,#F1EEE3 80%);border:1px solid var(--line2,#D7DCCB);
   border-radius:24px;padding:clamp(22px,4vw,40px) clamp(16px,5%,40px) clamp(20px,3vw,30px);margin:0 0 14px;
   box-shadow:0 6px 22px rgba(12,122,70,.08);}
-.wd-hero-crest{width:66px;height:66px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 6px 13px rgba(12,122,70,.22));}
+.wd-hero-crest{width:72px;height:72px;display:grid;place-items:center;filter:drop-shadow(0 6px 13px rgba(12,122,70,.22));}
 .wd-hero-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(28px,5.5vw,42px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}
 .wd-hero-word b{color:var(--gold);font-weight:800;}
 .wd-hero-sub{font-size:14.5px;color:var(--ink2);margin:0 0 18px;}

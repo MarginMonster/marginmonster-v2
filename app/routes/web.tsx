@@ -12,6 +12,7 @@ import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { normalizeContentLang } from "../lib/content-lang";
 import { totalXpForLevel, ACHIEVEMENTS } from "../lib/achievements";
 import { Ico } from "../lib/icons";
+import { Familiar } from "../components/Familiar";
 import { LangToggle } from "../components/LangToggle";
 import { UI_LANG_NATIVE, readUiLang, tr } from "../lib/ui-i18n";
 import { useT, useUiLang } from "../lib/ui-lang";
@@ -832,12 +833,20 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
       ];
 
+  // The dashboard home already leads with a big animated Helpurr (the hero) and a
+  // Helpurr nav tab, so a third floating cat down in the corner is redundant and
+  // reads as clutter. Keep the floating button only on the manual-work pages
+  // (Studio, Campaigns, Channels, Archive…) where it's the quick way to ask a
+  // question mid-project. (It still opens maximized from the hero/nav on home.)
+  const onHome = loc.pathname === "/web" || loc.pathname === "/web/";
   return (
     <>
-      <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={t("Chat with Helpurr, your AI helper")}>
-        <Familiar />
-        {!open && <span className="mm-fab-dot" aria-hidden="true" />}
-      </button>
+      {!onHome && (
+        <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={t("Chat with Helpurr, your AI helper")}>
+          <Familiar />
+          {!open && <span className="mm-fab-dot" aria-hidden="true" />}
+        </button>
+      )}
       {open && max && <div className="mm-backdrop" onClick={() => setMax(false)} aria-hidden="true" />}
       {open && (
         <div className={`mm-panel${max ? " mm-max" : ""}${sideOpen ? " mm-side-open" : ""}`} role="dialog" aria-modal={max ? true : undefined} aria-label={t("Helpurr chat")} onKeyDown={(e) => { if (e.key === "Escape") { if (sideOpen) setSideOpen(false); else if (max) setMax(false); else setOpen(false); } }}>
@@ -1084,61 +1093,6 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
  * with CSS: it idly bobs and breathes, blinks on its own by swapping frames, and
  * bursts gold pixel-sparks when tapped. Each instance self-animates on its own
  * rAF; honours prefers-reduced-motion (stays still). */
-const FAM = { open: "/familiar-px.png", blink: "/familiar-px-blink.png?v=2", pawup: "/familiar-px-pawup.png", lick: "/familiar-px-lick.png" };
-function famBurst(el: HTMLElement) {
-  const img = el.querySelector("img.mm-fam-img") as HTMLImageElement | null;
-  if (img) img.animate([{ filter: "brightness(1)" }, { filter: "brightness(1.4)" }, { filter: "brightness(1)" }], { duration: 400, easing: "ease-out" });
-  const R = el.getBoundingClientRect();
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2, sp = document.createElement("span");
-    sp.className = "mm-fam-spark";
-    sp.style.left = R.width / 2 + "px"; sp.style.top = R.height * 0.45 + "px";
-    el.appendChild(sp);
-    const d = R.width * 0.52;
-    sp.animate([{ transform: "translate(-50%,-50%) scale(1)", opacity: 1 }, { transform: `translate(${Math.cos(a) * d - 2}px, ${Math.sin(a) * d - 2}px) scale(.3)`, opacity: 0 }], { duration: 520 + Math.random() * 200, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => sp.remove();
-  }
-}
-function Familiar({ think }: { think?: boolean }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof window === "undefined") return;
-    const img = el.querySelector("img.mm-fam-img") as HTMLImageElement | null;
-    if (!img) return;
-    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    [FAM.blink, FAM.pawup, FAM.lick].forEach((s) => { const im = new Image(); im.src = s; }); // preload frames
-    const ph = Math.random() * 6.28;
-    let raf = 0;
-    const t0 = performance.now();
-    let nextAction = 2000 + Math.random() * 3000;
-    let steps: { src: string; dur: number }[] | null = null, idx = 0, stepStart = 0;
-    const frame = (now: number) => {
-      const t = now - t0;
-      const bob = Math.sin(t / 640 + ph) * 2.3, br = 1 + Math.sin(t / 1250 + ph) * 0.02;
-      img.style.transform = `translateY(${bob.toFixed(2)}px) scale(${br.toFixed(3)})`;
-      if (steps) {
-        if (now - stepStart >= steps[idx].dur) {
-          idx++;
-          if (idx >= steps.length) { steps = null; img.src = FAM.open; nextAction = t + 2600 + Math.random() * 4000; }
-          else { stepStart = now; img.src = steps[idx].src; }
-        }
-      } else if (t >= nextAction) {
-        steps = Math.random() < 0.65
-          ? [{ src: FAM.blink, dur: 150 }]
-          : [{ src: FAM.pawup, dur: 200 }, { src: FAM.lick, dur: 260 }, { src: FAM.pawup, dur: 150 }, { src: FAM.lick, dur: 260 }, { src: FAM.pawup, dur: 170 }];
-        idx = 0; stepStart = now; img.src = steps[0].src;
-      }
-      raf = requestAnimationFrame(frame);
-    };
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return (
-    <span className={`mm-fam${think ? " think" : ""}`} ref={ref} onClick={() => { if (ref.current) famBurst(ref.current); }}>
-      <img className="mm-fam-img" src={FAM.open} alt="" draggable={false} />
-    </span>
-  );
-}
 
 /* The EasyMode mark — Helpurr's head. A clean pixel-art cutout (no tile, no
  * rim): just the cat, ears and glasses, floating on the page the way a mascot
