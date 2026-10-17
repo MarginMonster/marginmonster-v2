@@ -1050,8 +1050,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   // "Main" is the implicit default thread (threadId NULL — also every pre-threads
   // message). Named threads are the extra projects, in a stable creation order.
-  const named = await db.buddyThread.findMany({ where: { shopId, mode }, orderBy: { createdAt: "asc" }, select: { id: true, title: true } }).catch(() => []);
-  const threads = [{ id: "main", title: "Main" }, ...named];
+  const named = await db.buddyThread.findMany({ where: { shopId, mode }, orderBy: { createdAt: "asc" }, select: { id: true, title: true, createdAt: true } }).catch(() => []);
+  // Last-activity time per thread (most recent message) so the sidebar can group
+  // chats by recency, Claude-style. threadId NULL = the implicit "main" thread.
+  const lastByThread: Record<string, number> = {};
+  try {
+    const g = await db.buddyMessage.groupBy({ by: ["threadId"], where: { shopId, mode }, _max: { createdAt: true } });
+    for (const row of g) { const k = row.threadId ?? "main"; const d = row._max.createdAt; if (d) lastByThread[k] = d.getTime(); }
+  } catch { /* grouping is a nicety — fall back to thread creation time */ }
+  const nowMs = Date.now();
+  const threads = [
+    { id: "main", title: "Main", ts: lastByThread["main"] ?? nowMs },
+    ...named.map((n) => ({ id: n.id, title: n.title, ts: lastByThread[n.id] ?? n.createdAt.getTime() })),
+  ];
   const activeThreadId = reqThread === "main" || named.some((t) => t.id === reqThread) ? reqThread : "main";
 
   const [history, proactive] = await Promise.all([

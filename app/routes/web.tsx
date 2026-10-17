@@ -355,7 +355,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [histReady, setHistReady] = useState(false);
   // Chat tabs (projects). "main" is the default thread; others are created on
   // demand. Threads are per mode (marketing/casual keep separate sets).
-  const [threads, setThreads] = useState<Array<{ id: string; title: string }>>([{ id: "main", title: "Main" }]);
+  const [threads, setThreads] = useState<Array<{ id: string; title: string; ts?: number }>>([{ id: "main", title: "Main" }]);
   const [activeThreadId, setActiveThreadId] = useState("main");
   // A photo the user attached to send to Helpurr (uploaded on pick; url is the
   // /uploads path Helpurr edits). uploading = the free upload call is in flight.
@@ -407,7 +407,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         // Cache-buster: the proactive suggestion is freshly randomised server-side,
         // so bypass the browser's GET cache to get a new one each open.
         const res = await fetch(`/api/buddy?mode=${mode}&thread=${activeThreadId}&_=${Date.now()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null; makes?: MMPendingMake[] } | null; threads?: Array<{ id: string; title: string }> };
+        const data = (await res.json().catch(() => ({ history: [] }))) as { history?: Array<{ role?: string; content?: string }>; proactive?: { reply?: string; pendingAction?: MMPending | null; makes?: MMPendingMake[] } | null; threads?: Array<{ id: string; title: string; ts?: number }> };
         if (cancelled) return;
         if (Array.isArray(data.threads) && data.threads.length) setThreads(data.threads.filter((th) => !deletedIdsRef.current.has(th.id)));
         const hist = (Array.isArray(data.history) ? data.history : [])
@@ -675,7 +675,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "newThread", mode }) });
       const data = await res.json().catch(() => ({})) as { threadId?: string; title?: string };
       if (data.threadId) {
-        setThreads((ts) => [...ts, { id: data.threadId as string, title: data.title || "New chat" }]);
+        setThreads((ts) => [...ts, { id: data.threadId as string, title: data.title || "New chat", ts: Date.now() }]);
         setActiveThreadId(data.threadId);
         setAttach(null); setLastPhoto(null); // a fresh thread starts photo-free
         if (max) setShowHome(true); // a new chat lands on the home (maximized)
@@ -772,6 +772,27 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   // some old un-run make as a fake "performance" banner.
   const perfMake = atHome && !msgs.some((m) => m.role === "user") ? msgs.find((m) => m.role === "assistant" && m.makes && m.makes.length) : undefined;
   const lastUserIdx = msgs.reduce((acc, m, idx) => (m.role === "user" ? idx : acc), -1);
+  // Group the sidebar's chats into recency buckets (Today / Yesterday / …), sorted
+  // newest-first, Claude-style. Computed each render from each thread's last-activity ts.
+  const recencyGroups = (() => {
+    const now = Date.now();
+    const sot = new Date(); sot.setHours(0, 0, 0, 0); const sotMs = sot.getTime();
+    const DAY = 86_400_000;
+    const defs = [
+      { key: "today", label: t("Today"), min: sotMs },
+      { key: "yesterday", label: t("Yesterday"), min: sotMs - DAY },
+      { key: "week", label: t("Previous 7 days"), min: now - 7 * DAY },
+      { key: "month", label: t("Previous 30 days"), min: now - 30 * DAY },
+      { key: "older", label: t("Older"), min: -Infinity },
+    ];
+    const out = defs.map((d) => ({ key: d.key, label: d.label, items: [] as typeof threads }));
+    for (const th of [...threads].sort((a, b) => (b.ts || 0) - (a.ts || 0))) {
+      const ts = th.ts || 0;
+      const gi = defs.findIndex((d) => ts >= d.min);
+      out[gi >= 0 ? gi : out.length - 1].items.push(th);
+    }
+    return out.filter((g) => g.items.length);
+  })();
   const homeCards = mode === "casual"
     ? [
         { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
@@ -800,7 +821,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               <div className="mm-side-brand"><span className="mm-side-crest"><Familiar /></span><span className="mm-side-word">Easy<b>Mode</b></span></div>
               <button type="button" className="mm-side-new" onClick={() => { void newThread(); setSideOpen(false); }}>{t("+ New chat")}</button>
               <div className="mm-side-list">
-                {threads.map((th) => (
+                {recencyGroups.map((group) => (
+                  <div key={group.key} className="mm-side-group">
+                    <div className="mm-side-group-h">{group.label}</div>
+                    {group.items.map((th) => (
                   <div key={th.id} className={`mm-side-chat${th.id === activeThreadId && !showHome ? " on" : ""}`}>
                     {renamingThreadId === th.id ? (
                       <input className="mm-side-chat-rename" value={renameText} autoFocus maxLength={42}
@@ -822,6 +846,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                         )}
                       </>
                     )}
+                  </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -1970,6 +1996,9 @@ const CSS = `
 .mm-side-new{margin:2px 12px 10px;padding:10px 13px;border:1px solid var(--green);border-radius:12px;background:var(--card);color:var(--green);font:inherit;font-weight:800;font-size:13px;cursor:pointer;text-align:left;position:relative;z-index:1;transition:background .14s,color .14s;}
 .mm-side-new:hover{background:var(--green);color:#fff;}
 .mm-side-list{flex:1;min-height:0;overflow-y:auto;padding:4px 8px;display:flex;flex-direction:column;gap:2px;position:relative;z-index:1;scrollbar-width:thin;}
+.mm-side-group{display:flex;flex-direction:column;gap:2px;}
+.mm-side-group + .mm-side-group{margin-top:9px;}
+.mm-side-group-h{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);opacity:.72;padding:4px 10px 3px;}
 .mm-side-chat{display:flex;align-items:center;min-width:0;max-width:100%;border-radius:10px;transition:background .12s;}
 .mm-side-chat:hover{background:rgba(12,122,70,.08);}
 .mm-side-chat.on{background:rgba(12,122,70,.15);}
