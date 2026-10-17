@@ -15,7 +15,7 @@ import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } f
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
-import { anthropicToolLoop, anthropicToolLoopStream, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
+import { anthropicToolLoop, anthropicToolLoopStream, anthropicText, anthropicVision, type ToolDef, type ChatMsg } from "../lib/anthropic.server";
 import { UPLOAD_NAME_RE, shopSlug } from "../lib/upload-names";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
@@ -772,29 +772,86 @@ async function runBuddyTool(id: WebId, name: string, input: Record<string, unkno
     });
   }
   if (name === "remember_fact") {
-    const fact = typeof input.fact === "string" ? input.fact.trim().replace(/\s+/g, " ").slice(0, 300) : "";
-    if (!fact) return "Nothing to remember.";
+    const fact = typeof input.fact === "string" ? input.fact : "";
     try {
-      const recent = await db.buddyFact.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: 60, select: { fact: true } });
-      const norm = (s: string) => s.trim().toLowerCase();
-      if (recent.some((f) => norm(f.fact) === norm(fact))) return `Already remembered that.`;
-      await db.buddyFact.create({ data: { shopId, fact } });
-      const stale = await db.buddyFact.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, skip: BUDDY_FACTS_KEEP, take: 50, select: { id: true } });
-      if (stale.length) await db.buddyFact.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
-      return `Saved — I'll remember that.`;
+      const r = await storeFactSmart(shopId, fact);
+      return r === "empty" ? "Nothing to remember." : r === "dup" ? "Already remembered that." : r === "updated" ? "Updated what I remembered." : "Saved — I'll remember that.";
     } catch { return "I couldn't save that just now."; }
   }
   return "(unknown tool)";
 }
 
-// Helpurr's memory, folded into the system prompt so it carries context about
-// who it's talking to without being asked. Newest first in storage; oldest-first
-// here so the model reads them as a timeline.
-async function recallFacts(shopId: string): Promise<string> {
+// Significant (non-stopword) tokens of a fact/message — used to judge whether two
+// facts are about the SAME subject (supersession) and to rank facts by relevance.
+const FACT_STOP = new Set("the a an and or but to of for with in on at is are was were be been being has have had do does did will would can could should about like likes love want wants need make makes made just really very more most this that these those i im you we our your their them us it its my me".split(" "));
+function sigWords(s: string): Set<string> {
+  return new Set((s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 2 && !FACT_STOP.has(w)));
+}
+const SECRET_RE = /\b(password|passcode|api[ -]?key|secret key|bearer|ssn|social security|card number|credit card|cvv|routing number|account number)\b/i;
+
+// Store a remembered fact SMARTLY: skip exact dups and secrets, and SUPERSEDE a
+// same-subject fact (high significant-word overlap) instead of keeping both — so
+// "favourite product is the matcha tin" then "…the mug" replaces, not contradicts.
+async function storeFactSmart(shopId: string, raw: string): Promise<"saved" | "updated" | "dup" | "empty"> {
+  const fact = (raw || "").trim().replace(/\s+/g, " ").slice(0, 300);
+  if (!fact || SECRET_RE.test(fact)) return "empty";
+  const nw = sigWords(fact);
+  if (nw.size < 2) return "empty";
+  const existing = await db.buddyFact.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: 60, select: { id: true, fact: true } });
+  const nf = fact.toLowerCase();
+  if (existing.some((f) => f.fact.trim().toLowerCase() === nf)) return "dup";
+  const supersede: string[] = [];
+  for (const f of existing) {
+    const ow = sigWords(f.fact);
+    if (ow.size < 2) continue;
+    let shared = 0; for (const w of nw) if (ow.has(w)) shared++;
+    if (shared >= 2 && shared / Math.min(nw.size, ow.size) >= 0.6) supersede.push(f.id);
+  }
+  if (supersede.length) await db.buddyFact.deleteMany({ where: { id: { in: supersede } } });
+  await db.buddyFact.create({ data: { shopId, fact } });
+  const stale = await db.buddyFact.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, skip: BUDDY_FACTS_KEEP, take: 100, select: { id: true } });
+  if (stale.length) await db.buddyFact.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
+  return supersede.length ? "updated" : "saved";
+}
+
+// AUTO-EXTRACT durable facts from a turn (fire-and-forget) so memory doesn't
+// depend on the model remembering to call remember_fact. Cheap Haiku call, gated
+// to personal messages so it's rare; never captures secrets; supersedes via
+// storeFactSmart. Best-effort — any failure is silent.
+async function extractFacts(shopId: string, userMsg: string, reply: string): Promise<void> {
+  const u = (userMsg || "").trim();
+  if (u.length < 16 || !/\b(i|i'm|im|my|we|we're|our|us)\b/i.test(u) || SECRET_RE.test(u)) return;
+  try {
+    const prompt = `From this message by an e-commerce merchant chatting with their assistant, extract 0-2 NEW, DURABLE facts about THEM or THEIR STORE worth remembering for next time — their goals, audience, niche, products, brand, style/tone preferences, or constraints. ONLY lasting facts, never one-off requests, questions, or anything transient, and NEVER secrets (passwords, keys, card/account numbers). Write each as a short third-person statement (e.g. "Sells Pokémon blind boxes to collectors"). Return an empty list if nothing durable.\n\nAssistant just replied: ${(reply || "").slice(0, 300)}\nMerchant said: ${u.slice(0, 600)}`;
+    const out = await anthropicText(prompt, { model: "claude-haiku-4-5-20251001", maxTokens: 160, jsonSchema: { name: "facts", schema: { type: "object", properties: { facts: { type: "array", items: { type: "string" } } }, required: ["facts"] } } });
+    const parsed = JSON.parse(out) as { facts?: unknown };
+    const facts = Array.isArray(parsed.facts) ? parsed.facts.filter((f): f is string => typeof f === "string").slice(0, 2) : [];
+    for (const f of facts) { try { await storeFactSmart(shopId, f); } catch { /* */ } }
+  } catch { /* best-effort */ }
+}
+
+// Helpurr's memory, folded into the system prompt so it carries context about who
+// it's talking to without being asked. When few, read as a timeline (oldest
+// first); once they pile up, rank by relevance to THIS turn (+ recency) and keep
+// the top slice so the prompt stays focused.
+async function recallFacts(shopId: string, currentMsg?: string): Promise<string> {
   try {
     const rows = await db.buddyFact.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: BUDDY_FACTS_KEEP, select: { fact: true } });
     if (!rows.length) return "";
-    return "\n\nWHAT YOU'VE LEARNED ABOUT THIS MERCHANT (remembered from past chats — treat as true and weave in naturally; never recite the list back at them):\n" + rows.reverse().map((r) => `• ${r.fact}`).join("\n");
+    const LIMIT = 18;
+    let lines: string[];
+    if (rows.length <= LIMIT) {
+      lines = rows.reverse().map((r) => r.fact); // oldest-first timeline
+    } else {
+      const qw = sigWords(currentMsg || "");
+      const scored = rows.map((r, idx) => {
+        let rel = 0; const fw = sigWords(r.fact); for (const w of fw) if (qw.has(w)) rel++;
+        return { fact: r.fact, score: rel * 10 + (rows.length - idx) * 0.1 }; // relevance, recency tiebreak
+      });
+      scored.sort((a, b) => b.score - a.score);
+      lines = scored.slice(0, LIMIT).map((s) => s.fact);
+    }
+    return "\n\nWHAT YOU'VE LEARNED ABOUT THIS MERCHANT (remembered from past chats — treat as true and weave in naturally; never recite the list back at them):\n" + lines.map((f) => `• ${f}`).join("\n");
   } catch { return ""; }
 }
 
@@ -920,6 +977,9 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
     if (reply.trim()) data.push({ shopId, mode, threadId, role: "assistant", content: reply.trim().slice(0, 4000) });
     if (!data.length) return;
     await db.buddyMessage.createMany({ data });
+    // Auto-learn durable facts from this turn in the background (no await — never
+    // delays the reply). Gated + secret-filtered inside; supersedes stale facts.
+    void extractFacts(shopId, userMsg, reply).catch(() => {});
     const stale = await db.buddyMessage.findMany({
       where: { shopId, mode, threadId }, orderBy: { createdAt: "desc" }, skip: BUDDY_KEEP, take: 200, select: { id: true },
     });
@@ -1210,7 +1270,7 @@ export async function action({ request }: ActionFunctionArgs) {
     : mode === "casual"
     ? "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE A FACELESS VIDEO OR A MUSIC TRACK RIGHT HERE: when they want one, call make_content with kind 'faceless' (a scripted 9:16 social video — give it a topic, optionally a format/voice) or kind 'music' (a track — give it a topic) — it shows a one-tap 'Make it' confirm with the cost, and when they tap it the finished piece appears right in this chat. Do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it in the message, so you can describe it, read text in it, critique it, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove = cut out the background / bgswap = new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically — you don't need a URL. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for an image, a photo edit, or anything else, call set_up_task — it shows a confirm button that opens the Studio pre-filled, where they approve the spend. YOU CAN REMEMBER THINGS: when they tell you something durable about them — what they like to make, their style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content still gives them a FEW FREE photo edits on the house — offer them genuinely; when they want video/music or use up their free creations, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You never spend their tokens or post yourself — the button confirms first. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
     : "\n\nYOU CAN LOOK THINGS UP with the get_* tools (plan, tokens, what they've made, catalog, campaigns) — when a question touches their real data, call the right tool and answer from it; never guess a number. YOU CAN MAKE THINGS RIGHT HERE: call make_content to create — an image ad or product video (call get_catalog first, pick a REAL product that hasPhoto), a FACELESS video (kind 'faceless', give it a topic + optional format/voice — a scripted 9:16 social video, no product needed), or a MUSIC track (kind 'music', give it a topic). It shows a one-tap 'Make it' confirm with the cost; when they tap it, it generates and the finished piece appears in this chat. This is the DEFAULT for all four — do NOT send them to the Studio for those. YOU CAN SEE & EDIT A PHOTO THEY ATTACH: they can tap the attach (📎) button to send you a photo — when they do you'll SEE it, so you can describe it, read text in it, critique it for ad use, or answer questions about it (do that directly, no tool needed). ONLY when they actually want it CHANGED, call make_content with kind 'edit' and the right editOp (restyle / cartoonize / bgremove / bgswap with the new backdrop in 'direction' / colorize / upscale, or 'describe' with their instruction in 'direction'). The attached photo is picked up automatically. YOU CAN SHOW THEIR PAST WORK: when they ask to SEE something they already made, call show_work — the real media renders inline; just caption it. YOU CAN SET UP OTHER CREATIONS: for a blog post, a photo edit, or a campaign, call set_up_task — it shows a confirm button that opens the Studio pre-filled to finish. YOU CAN REMEMBER THINGS: when they tell you something durable about them or their store — goals, audience, style, preferences — call remember_fact so you recall it next time (don't announce it mechanically; a light 'got it, I'll remember that' is plenty). FREE ACCOUNTS (no plan): make_content gives them a FEW FREE PHOTO EDITS on the house (upload a photo → restyle / cartoonize / remove-background) — offer that genuinely and enthusiastically; image ads, videos and music need a plan, so when they want those or use up their free edits, a 'See plans' button appears and you warmly (never pushy) pitch what a plan unlocks. You NEVER spend their tokens or post without their tap. Keep replies warm; light formatting (**bold**, short bullets) only when it genuinely helps."
-  const facts = id ? await recallFacts(id.shop.id) : "";
+  const facts = id ? await recallFacts(id.shop.id, messages[messages.length - 1]?.content || "") : "";
   // The one line that makes Helpurr SPEAK the interface language. The model is
   // fluently multilingual, so this reliably switches the whole reply.
   const langLine = lang !== "en"
