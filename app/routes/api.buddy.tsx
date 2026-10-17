@@ -1348,7 +1348,8 @@ export async function action({ request }: ActionFunctionArgs) {
           onText: (d) => safeEnqueue(frameOf("text", { delta: d })),
           onStatus: (toolName) => safeEnqueue(frameOf("status", { label: statusLabel(toolName, lang) })),
         });
-      } catch {
+      } catch (streamErr) {
+        safeEnqueue(frameOf("status", { label: "DBG:" + (streamErr instanceof Error ? streamErr.message : String(streamErr)).slice(0, 220) }));
         try {
           // Fallback is deliberately thinking-OFF (the proven config) — so if
           // extended thinking itself ever fails, this still delivers an answer.
