@@ -793,6 +793,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     }
     return out.filter((g) => g.items.length);
   })();
+  // The active chat's title, shown in the full-page top bar (Claude-style).
+  const activeTitle = threads.find((th) => th.id === activeThreadId)?.title || "";
   const homeCards = mode === "casual"
     ? [
         { icon: "🖼️", label: t("Edit a photo"), sub: t("Restyle · cut out · swap bg"), act: () => fileRef.current?.click() },
@@ -859,7 +861,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           <div className="mm-head">
             {max && authed && <button type="button" className="mm-side-toggle" onClick={() => setSideOpen((o) => !o)} aria-label={t("Your chats")} title={t("Your chats")}>☰</button>}
             <span className="mm-head-crest"><Familiar think={busy} /></span>
-            <div className="mm-head-txt"><b>Helpurr</b><span>{busy ? t("thinking…") : t("your AI helper")}</span></div>
+            <div className="mm-head-txt">
+              <b>{max && !showHome && activeTitle ? activeTitle : "Helpurr"}</b>
+              <span>{busy ? t("thinking…") : (max && !showHome && activeTitle ? "Helpurr" : t("your AI helper"))}</span>
+            </div>
             <button type="button" className="mm-expand" onClick={() => setMax((m) => !m)} aria-label={max ? t("Shrink chat") : t("Expand chat")} title={max ? t("Shrink") : t("Expand")}>{max ? "⤡" : "⤢"}</button>
             {max && authed && !atHome && <button type="button" className="mm-homebtn" onClick={() => setShowHome(true)} aria-label={t("Helpurr home")} title={t("Home")}>🏠</button>}
             <button type="button" className="mm-x" onClick={() => { setOpen(false); setMax(false); setSideOpen(false); }} aria-label={t("Close chat")}>×</button>
@@ -2095,8 +2100,8 @@ const CSS = `
 .mm-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(168deg,#0E5233,#0A3421);color:#F4EAC8;}
 .mm-head-crest{width:42px;height:42px;flex:0 0 auto;overflow:visible;}
 .mm-head-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0;}
-.mm-head-txt b{font-family:Poppins,sans-serif;font-size:14.5px;}
-.mm-head-txt span{font-size:11px;color:rgba(244,234,200,.72);}
+.mm-head-txt b{font-family:Poppins,sans-serif;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-head-txt span{font-size:11px;color:rgba(244,234,200,.72);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mm-x{margin-left:2px;background:none;border:0;color:rgba(244,234,200,.85);font-size:23px;line-height:1;cursor:pointer;padding:2px 5px;}
 .mm-x:hover{color:#fff;}
 /* Chat tabs (projects) — a scrollable chip row under the header. */
