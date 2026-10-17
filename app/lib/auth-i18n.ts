@@ -11,7 +11,7 @@
  * the server can answer errors in the same language it was asked in.
  */
 
-export type AuthLang = "en" | "es" | "fr" | "de" | "zh";
+export type AuthLang = "en" | "es" | "fr" | "de" | "zh" | "ur";
 
 export type AuthCopy = {
   signupTitle: string;
@@ -209,13 +209,45 @@ const ZH: AuthCopy = {
   errBadLogin: "邮箱或密码不正确。",
 };
 
-export const AUTH_I18N: Record<AuthLang, AuthCopy> = { en: EN, es: ES, fr: FR, de: DE, zh: ZH };
+const UR: AuthCopy = {
+  "signupTitle": "مفت شروع کریں · EasyMode",
+  "signupH1": "اپنا اکاؤنٹ بنائیں",
+  "signupSub": "ہر پلان پر 7 دن کا مفت ٹرائل۔ Shopify اسٹور کی ضرورت نہیں۔",
+  "nameLabel": "آپ کا نام (یا برانڈ)",
+  "namePlaceholder": "Sunny Supply Co.",
+  "emailLabel": "ای میل",
+  "emailPlaceholder": "you@brand.com",
+  "passwordLabel": "پاس ورڈ",
+  "passwordPlaceholder": "8+ حروف",
+  "createBtn": "اکاؤنٹ بنائیں →",
+  "creating": "بنایا جا رہا ہے…",
+  "consentPre": "اکاؤنٹ بنا کر آپ ہماری ",
+  "consentTerms": "شرائط",
+  "consentMid": " اور ",
+  "consentPrivacy": "پرائیویسی پالیسی",
+  "haveOne": "پہلے سے اکاؤنٹ ہے؟ ",
+  "logInLink": "لاگ اِن کریں",
+  "loginTitle": "لاگ اِن · EasyMode",
+  "loginH1": "لاگ اِن کریں",
+  "loginBtn": "لاگ اِن کریں →",
+  "loggingIn": "لاگ اِن ہو رہا ہے…",
+  "forgot": "پاس ورڈ بھول گئے؟",
+  "newHere": "یہاں نئے ہیں؟ ",
+  "createLink": "اکاؤنٹ بنائیں",
+  "errEmail": "درست ای میل ایڈریس درج کریں۔",
+  "errPassword": "پاس ورڈ میں کم از کم 8 حروف ہونے چاہییں۔",
+  "errRate": "حال ہی میں یہاں سے بہت زیادہ اکاؤنٹس بنائے گئے ہیں۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔",
+  "errGeneric": "ابھی اکاؤنٹ نہیں بن سکا — ایک لمحے بعد دوبارہ کوشش کریں۔",
+  "errBadLogin": "ای میل یا پاس ورڈ مطابقت نہیں رکھتے۔"
+};
+
+export const AUTH_I18N: Record<AuthLang, AuthCopy> = { en: EN, es: ES, fr: FR, de: DE, zh: ZH, ur: UR };
 
 /** Narrow anything (localStorage value, posted field, Accept-Language) to a
  *  language we actually have copy for. Never throws; falls back to English. */
 export function authLang(raw: unknown): AuthLang {
   const s = String(raw ?? "").slice(0, 2).toLowerCase();
-  return s === "es" || s === "fr" || s === "de" || s === "zh" ? s : "en";
+  return s === "es" || s === "fr" || s === "de" || s === "zh" || s === "ur" ? s : "en";
 }
 
 /** Copy for a language, always defined. */

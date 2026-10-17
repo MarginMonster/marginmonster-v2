@@ -80,7 +80,7 @@ export default function WebSignup() {
   // The copy swaps client-side, so the DOCUMENT has to follow it: a screen
   // reader given Spanish text inside lang="en" reads it with English rules,
   // and the tab kept the English title. The landing already does this.
-  useEffect(() => { try { document.documentElement.lang = lang; document.title = authCopy(lang).signupTitle; } catch { /* SSR */ } }, [lang]);
+  useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; document.title = authCopy(lang).signupTitle; } catch { /* SSR */ } }, [lang]);
   // Same language the landing page was read in — see auth-i18n.
   const c = authCopy(lang);
   return (

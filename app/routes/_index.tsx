@@ -81,7 +81,7 @@ export default function Index() {
   // Language toggle — persisted per browser, auto-detected on first visit.
   const [lang, setLang] = useState<LangKey>("en");
   useEffect(() => { setLang(detectLang()); }, []);
-  useEffect(() => { try { document.documentElement.lang = lang; } catch { /* SSR */ } }, [lang]);
+  useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; } catch { /* SSR */ } }, [lang]);
   // Carry the landing's language into the APP: the uiLang cookie is what the
   // whole web app (shell, Studio, everything) reads to pick its display
   // language. Mirroring it here — on auto-detect and on every explicit pick —
