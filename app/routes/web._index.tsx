@@ -11,7 +11,7 @@ import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import {
   PLAN_TIERS, MARKETING_TIERS, PLAN_BY_KEY, CREATOR_PRICE, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
-  annualPrice, planCapacityLine, resolveTierKey, type PlanKey,
+  annualPrice, planCapacity, resolveTierKey, type PlanKey,
 } from "../lib/plan-config";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
 import { createPackCheckout, createPlanCheckout, resolvePendingCheckout, setSubscriptionCreatorAddon, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
@@ -134,7 +134,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     nextMove,
     tiers: MARKETING_TIERS.map((t) => ({
       key: t.key, name: t.name, price: t.price, yearly: annualPrice(t), tagline: t.tagline,
-      tokens: t.monthlyTokens, capacity: planCapacityLine(t), features: t.features, highlight: !!t.highlight,
+      tokens: t.monthlyTokens, capacity: planCapacity(t).map((c) => ({ count: c.count, noun: c.noun })), features: t.features, highlight: !!t.highlight,
     })),
     packs: TOKEN_PACKS.map((p) => ({ tokens: p.tokens, price: p.price, best: !!(p as { best?: boolean }).best })),
     // Cancelled but still inside the period they paid for.
@@ -344,6 +344,15 @@ export default function WebDashboard() {
   const [params] = useSearchParams();
   const busy = nav.state !== "idle";
   const t = useT();
+  // The capacity line ("≈ 6 product videos, 180 image ads, or 90 blog posts") is
+  // COMPOSED from the wallet, so it can't be a single dict key — translate the
+  // nouns + a shape template instead, and reassemble in the viewer's language.
+  const capacityText = (parts: { count: number; noun: string }[]) => {
+    const items = parts.map((c) => `${c.count.toLocaleString("en-US")} ${t(c.noun)}`);
+    if (items.length <= 1) return t("≈ {a} a month", { a: items[0] || "" });
+    if (items.length === 2) return t("≈ {a}, or {b}", { a: items[0], b: items[1] });
+    return t("≈ {a}, {b}, or {c}", { a: items[0], b: items[1], c: items[2] });
+  };
   const navigate = useNavigate();
   const { mode, setMode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>();
   // The Helpurr "Google-style" landing hero at the top of the home: ask Helpurr to
@@ -635,14 +644,14 @@ export default function WebDashboard() {
           <div className={`wb-card wd-plancard${tier.highlight ? " hot" : ""}`} key={tier.key}>
             {tier.highlight && <div className="wd-ribbon">{t("Most popular")}</div>}
             <div className="wb-price-name">{tier.name} {isCurrent && t("· your plan ✓")}</div>
-            <div className="wd-tagline">{tier.tagline}</div>
+            <div className="wd-tagline">{t(tier.tagline)}</div>
             <div className="wb-price-amt">
               {annual ? <>${tier.yearly.toLocaleString("en-US")}<small>{t("/yr")}</small></> : <>${tier.price}<small>{t("/mo")}</small></>}
             </div>
             <div className="wb-note">{annual ? t("Just ${price}/mo, billed yearly · 2 months free", { price: Math.round((tier.price * 10) / 12) }) : t("billed monthly")}</div>
             <div className="wb-note"><Ico n="coin" /> {t("{tokens} tokens/mo", { tokens: tier.tokens.toLocaleString("en-US") })}</div>
-            <div className="wb-note">{tier.capacity}</div>
-            <ul className="wb-feats">{tier.features.map((f) => <li key={f}>{f}</li>)}</ul>
+            <div className="wb-note">{capacityText(tier.capacity)}</div>
+            <ul className="wb-feats">{tier.features.map((f) => <li key={f}>{t(f)}</li>)}</ul>
 
             {/* Flipping to Annual re-prices every card, including the one the
                 merchant is already on — which had no buy button, because the
@@ -740,7 +749,7 @@ export default function WebDashboard() {
         <div className="wdg-h">{t("One balance runs everything")}</div>
         <div className="wdg-row">
           {TOKEN_COST_LEGEND.map((l) => (
-            <div className="wdg-item" key={l.action}><b>{l.cost}</b><span>{l.label}</span></div>
+            <div className="wdg-item" key={l.action}><b>{l.cost}</b><span>{t(l.label)}</span></div>
           ))}
         </div>
         <div className="wdg-note">{t("Your plan unlocks WHICH generators you can use; tokens meter HOW MUCH you make. Run out mid-month? Top up below — tokens never unlock a generator your plan doesn't include.")}</div>
@@ -763,7 +772,7 @@ export default function WebDashboard() {
           <div className="wb-grid">
             {d.packs.map((p) => (
               <div className={`wb-card wd-plancard${p.best ? " hot" : ""}`} key={p.tokens}>
-                {p.best && <div className="wd-ribbon gold">Best value</div>}
+                {p.best && <div className="wd-ribbon gold">{t("Best value")}</div>}
                 <div className="wb-price-name">+{p.tokens.toLocaleString("en-US")} {t("tokens")}</div>
                 <p className="wb-note" style={{ margin: "6px 0 4px" }}>{PACK_FRAMING[p.tokens] ? t(PACK_FRAMING[p.tokens]) : t("Extra fuel for anything your plan unlocks.")}</p>
                 <div className="wb-note" style={{ margin: "0 0 12px" }}>{t("One-time · they never expire")}</div>
