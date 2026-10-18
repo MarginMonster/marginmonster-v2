@@ -128,11 +128,13 @@ export default function WebLayout() {
   // freely. To make it a true ONE-TIME choice later, swap `sessionStorage` +
   // `emChose` for a localStorage check on `emMode` being unset.
   const navigate = useNavigate();
+  // RETIRED (owner pref 2026-10-17): the full-screen mode gate used to show once
+  // per session, but its job AND its Creator/Social imagery now live in the
+  // dashboard hero's "…or drive it yourself" cards, so a second splash on top of
+  // the hero was redundant — "incorporate those photos into the hero to make it
+  // flow better". Kept dormant (never shown) rather than deleted, in case it's
+  // wanted back; the mode toggle up top + the hero cards cover mode selection.
   const [showChooser, setShowChooser] = useState(false);
-  useEffect(() => {
-    if (!authed) return;
-    try { if (!sessionStorage.getItem("emChose")) setShowChooser(true); } catch { /* storage is a nicety */ }
-  }, [authed]);
   const pickMode = (m: "marketing" | "casual") => {
     chooseMode(m);
     try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }

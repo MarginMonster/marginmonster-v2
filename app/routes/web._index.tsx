@@ -459,19 +459,27 @@ export default function WebDashboard() {
         <div className="wd-hero-paths">
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
-            <button type="button" className="wd-path" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
-              <span className="wd-path-ic"><Ico n="palette" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Creator")}</b><i>{t("Make images, videos & music")}</i></span>
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Creator · Free roam")}</span>
+                <b>{t("Create anything")}</b>
+                <i>{t("Make images, videos & music")}</i>
+              </span>
             </button>
-            <button type="button" className="wd-path" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
-              <span className="wd-path-ic"><Ico n="trend" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Social")}</b><i>{t("Turn products into ads & auto-post")}</i></span>
-            </button>
-            <button type="button" className="wd-path" onClick={() => navigate("/web/studio")}>
-              <span className="wd-path-ic"><Ico n="sliders" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Studio")}</b><i>{t("Full manual controls")}</i></span>
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Social")}</span>
+                <b>{t("Grow on social")}</b>
+                <i>{t("Turn products into ads & auto-post")}</i>
+              </span>
             </button>
           </div>
+          <button type="button" className="wd-path wd-path-studio" onClick={() => navigate("/web/studio")}>
+            <span className="wd-path-ic"><Ico n="sliders" size={19} /></span>
+            <span className="wd-path-tx"><b>{t("Studio")}</b><i>{t("Full manual controls")}</i></span>
+          </button>
         </div>
       </section>
       <p className="wb-sub wd-plan-line">
@@ -861,7 +869,7 @@ const DASH_CSS = `
 .wd-hero-chips button:hover{border-color:var(--green);color:var(--ink);}
 .wd-hero-paths{width:min(620px,100%);margin-top:22px;}
 .wd-hero-paths-h{display:block;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px;}
-.wd-hero-paths-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;}
+.wd-hero-paths-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 .wd-path{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2,#D7DCCB);border-radius:15px;padding:11px 12px;transition:border-color .14s,transform .12s,box-shadow .14s;}
 .wd-path:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 18px rgba(12,122,70,.12);}
@@ -869,8 +877,17 @@ const DASH_CSS = `
 .wd-path-tx{display:flex;flex-direction:column;gap:1px;min-width:0;}
 .wd-path-tx b{font-weight:800;font-size:13px;color:var(--ink);}
 .wd-path-tx i{font-style:normal;font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;}
+/* Image-rich mode cards — the gorgeous Creator/Social art from the old mode gate,
+   pulled into the hero so it's one flowing lander instead of a splash + a hero. */
+.wd-path-img{flex-direction:column;align-items:stretch;gap:0;padding:0;overflow:hidden;}
+.wd-path-hero{display:block;height:96px;background-size:cover;background-position:center;}
+.wd-path-body{display:flex;flex-direction:column;gap:2px;padding:11px 13px;min-width:0;}
+.wd-path-eyebrow{font-weight:800;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);}
+.wd-path-body b{font-weight:800;font-size:14.5px;color:var(--ink);font-family:Poppins,sans-serif;}
+.wd-path-body i{font-style:normal;font-size:11.5px;color:var(--ink2);line-height:1.35;}
+.wd-path-studio{width:100%;margin-top:10px;}
 .wd-plan-line{text-align:center;margin:0 0 20px;}
-@media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i{white-space:normal;}}
+@media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
