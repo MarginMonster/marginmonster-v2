@@ -973,8 +973,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             ))}
             {busy && (!msgs.length || msgs[msgs.length - 1].role !== "assistant" || !msgs[msgs.length - 1].content) && (
               streamStatus
-                ? <div className="mm-msg assistant mm-status" aria-live="polite"><span className="mm-run" aria-hidden="true"><span className="mm-run-cat" /><span className="mm-run-dust" /><span className="mm-run-dust" /><span className="mm-run-dust" /></span><span className="mm-status-tx">{streamStatus}</span></div>
-                : <div className="mm-msg assistant mm-run-bubble" aria-label={t("Helpurr is thinking…")} aria-live="polite"><span className="mm-run" aria-hidden="true"><span className="mm-run-cat" /><span className="mm-run-dust" /><span className="mm-run-dust" /><span className="mm-run-dust" /></span></div>
+                ? <div className="mm-msg assistant mm-status" aria-live="polite"><span className="mm-status-dot" aria-hidden="true" />{streamStatus}</div>
+                : <div className="mm-msg assistant mm-typing"><i /><i /><i /></div>
             )}
             {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("still working on it — hang tight…")}</div>}
             {msgs.length <= 1 && !busy && (
@@ -2014,19 +2014,6 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}
 @keyframes mmBlink{0%,60%,100%{opacity:.3}30%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.mm-typing i{animation:none;opacity:.6}}
-/* RUNNING HELPURR — the "thinking" loader. He gallops in place (bob + forward
-   lean + a squash on the landing) while little dust puffs kick up behind, so a
-   wait reads as "Helpurr's on it", not a dead spinner. Reuses the pixel sprite. */
-.mm-run-bubble{padding:7px 12px;}
-.mm-run{position:relative;display:inline-flex;align-items:flex-end;width:50px;height:38px;flex:0 0 auto;vertical-align:bottom;}
-.mm-run-cat{position:absolute;left:13px;bottom:2px;width:34px;height:34px;background:url(/familiar-px.png) center bottom/contain no-repeat;image-rendering:pixelated;transform-origin:50% 92%;z-index:2;animation:mmGallop .5s ease-in-out infinite;}
-.mm-run-dust{position:absolute;bottom:3px;left:18px;width:8px;height:8px;border-radius:50%;background:#B7D9C6;z-index:1;opacity:0;animation:mmDust .5s linear infinite;}
-.mm-run-dust:nth-child(3){animation-delay:.17s;width:6px;height:6px;}
-.mm-run-dust:nth-child(4){animation-delay:.33s;width:5px;height:5px;}
-@keyframes mmGallop{0%{transform:translateY(0) rotate(-5deg) scaleY(1)}22%{transform:translateY(-8px) rotate(5deg) scaleY(1.05)}48%{transform:translateY(0) rotate(6deg) scaleY(.9)}72%{transform:translateY(-5px) rotate(-3deg) scaleY(1.03)}100%{transform:translateY(0) rotate(-5deg) scaleY(1)}}
-@keyframes mmDust{0%{transform:translateX(0) scale(.5);opacity:.6}55%{opacity:.4}100%{transform:translateX(-22px) scale(0);opacity:0}}
-.mm-status-tx{min-width:0;}
-@media (prefers-reduced-motion:reduce){.mm-run-cat{animation:none}.mm-run-dust{display:none}}
 /* The "still making" line during the long make poll — so a 2-6 min render never
    looks frozen. A soft shimmer pill with the typing dots. */
 .mm-making{display:flex;align-items:center;gap:8px;align-self:flex-start;max-width:92%;margin-top:2px;font-size:12.5px;color:var(--ink2);background:#F3F0E4;border:1px solid var(--line);border-radius:12px;padding:8px 12px;}
