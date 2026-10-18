@@ -613,7 +613,7 @@ export default function WebDashboard() {
 
       {/* ── Brand voice ────────────────────────────────────────────────── */}
       <div id="brand" className="wb-card" style={{ marginBottom: 22, scrollMarginTop: 80 }}>
-        <div className="wb-price-name">{t("1 · Brand voice")} {d.hasBrand && "✓"}</div>
+        <div className="wb-price-name" role="heading" aria-level={2}>{t("1 · Brand voice")} {d.hasBrand && "✓"}</div>
         <p className="wb-note" style={{ margin: "6px 0 0" }}>{t("Every script, caption and article is written in your voice.")}</p>
         {d.hasBrand && d.brand && (d.brand.tagline || d.brand.tone || d.brand.about) && (
           <div className="wd-voice">
@@ -643,7 +643,7 @@ export default function WebDashboard() {
       </div>
 
       {/* ── Plans ──────────────────────────────────────────────────────── */}
-      <div id="plans" className="wb-price-name" style={{ marginBottom: 10, scrollMarginTop: 80 }}>{t("2 · Your plan")}</div>
+      <div id="plans" className="wb-price-name" role="heading" aria-level={2} style={{ marginBottom: 10, scrollMarginTop: 80 }}>{t("2 · Your plan")}</div>
       {!d.billingOn && <div className="wb-err">{t("Billing is coming online — plans can't be purchased on the web quite yet.")}</div>}
       <div className="wd-toggle" role="group" aria-label={t("Billing period")}>
         <button type="button" className={annual ? "" : "on"} onClick={() => setAnnual(false)}>{t("Monthly")}</button>
@@ -780,7 +780,7 @@ export default function WebDashboard() {
           refuses it too — this only stops us asking. */}
       {d.tier && !d.trialing && (
         <>
-          <div className="wb-price-name" style={{ marginBottom: 10 }}>{t("Top up tokens")}</div>
+          <div className="wb-price-name" role="heading" aria-level={2} style={{ marginBottom: 10 }}>{t("Top up tokens")}</div>
           <div className="wb-grid">
             {d.packs.map((p) => (
               <div className={`wb-card wd-plancard${p.best ? " hot" : ""}`} key={p.tokens}>

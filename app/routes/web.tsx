@@ -120,101 +120,16 @@ export default function WebLayout() {
   useEffect(() => { try { const m = localStorage.getItem("emMode"); if (m === "casual" || m === "marketing") setMode(m); } catch { /* storage is a nicety */ } }, []);
   const chooseMode = (m: "marketing" | "casual") => { setMode(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
 
-  // THE FRONT DOOR — a dedicated path chooser (Marketing vs Creator) so an
-  // arrival explicitly picks their side instead of silently landing in the
-  // marketing Dashboard and wondering why they're looking at campaigns. Gated
-  // on a PER-SESSION flag for now (owner: "make it the default landing even if
-  // it's annoying") — it shows once each fresh visit, then lets them move
-  // freely. To make it a true ONE-TIME choice later, swap `sessionStorage` +
-  // `emChose` for a localStorage check on `emMode` being unset.
+  // The front door is now the DASHBOARD HERO (web._index.tsx) — the old
+  // full-screen Creator/Social mode gate was retired and its art folded into
+  // the hero's "…or drive it yourself" cards. Mode is chosen via the nav toggle
+  // + those cards. (navigate stays — the mode toggle below uses it.)
   const navigate = useNavigate();
-  // RETIRED (owner pref 2026-10-17): the full-screen mode gate used to show once
-  // per session, but its job AND its Creator/Social imagery now live in the
-  // dashboard hero's "…or drive it yourself" cards, so a second splash on top of
-  // the hero was redundant — "incorporate those photos into the hero to make it
-  // flow better". Kept dormant (never shown) rather than deleted, in case it's
-  // wanted back; the mode toggle up top + the hero cards cover mode selection.
-  const [showChooser, setShowChooser] = useState(false);
-  const pickMode = (m: "marketing" | "casual") => {
-    chooseMode(m);
-    try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
-    setShowChooser(false);
-    // Honor a deep link: the chooser is an overlay on top of the page the
-    // visitor actually asked for, so once they pick a mode we just close it and
-    // leave them there. Only from the /web home (which has no casual view) do we
-    // route to the creator Studio. Previously this always jumped to /web/studio
-    // or /web, so a shared /web/archive or /web/channels link was discarded.
-    if (loc.pathname === "/web" && m === "casual") navigate("/web/studio");
-  };
-  // Skip the front door without choosing — closes the overlay and leaves them on
-  // the page they landed on, in whatever mode they already had (default
-  // marketing). Same session flag so it doesn't pop back up this visit.
-  const dismissChooser = () => {
-    try { sessionStorage.setItem("emChose", "1"); } catch { /* ignore */ }
-    setShowChooser(false);
-  };
-  // A warm, time-aware greeting for the front door instead of a static line. Safe
-  // to read the local hour at render: the chooser only ever renders client-side
-  // (showChooser starts false and is flipped on in a mount effect), so there's no
-  // SSR/UTC mismatch. The ternary evaluates just the one t() that's shown.
-  const greetHour = new Date().getHours();
-  const chooserGreeting =
-    greetHour >= 22 || greetHour < 5 ? t("Burning the midnight oil? Let's make something.")
-    : greetHour < 11 ? t("Morning — what are we making?")
-    : greetHour < 17 ? t("What are we working on today?")
-    : t("What are we making tonight?");
 
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wb">
-        {authed && showChooser && (
-          <div className="wb-chooser" role="dialog" aria-modal="true" aria-label={t("Choose where to start")}>
-            {/* The chooser is a full-screen overlay, so the real header (language,
-                account, log out) is hidden behind it — carry the essentials here,
-                plus an X to skip straight into the app. */}
-            <div className="wb-ch-top">
-              <LangToggle
-                value={uiLang}
-                labels={UI_LANG_NATIVE}
-                align="right"
-                title={t("Display language — translates the app")}
-                onPick={(c) => submitLang({ lang: c }, { method: "post", action: "/set-ui-lang" })}
-              />
-              {authed
-                ? <AccountMenu hud={hud} />
-                : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
-              <button type="button" className="wb-ch-skip" onClick={dismissChooser} aria-label={t("Skip into the app")} title={t("Skip into the app")}>✕</button>
-            </div>
-            <div className="wb-ch-panel">
-              <div className="wb-ch-brand"><Crest size={30} /><span>Easy<b>Mode</b></span></div>
-              <h1 className="wb-ch-h">{chooserGreeting}</h1>
-              <p className="wb-ch-sub">{t("Jump into either — switch between them anytime from the toggle up top.")}</p>
-              <div className="wb-ch-grid">
-                <button type="button" className="wb-ch-card cr" onClick={() => pickMode("casual")}>
-                  <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
-                  <span className="wb-ch-body">
-                    <span className="wb-ch-eyebrow">{t("Creator · Free roam")}</span>
-                    <span className="wb-ch-title">{t("Create anything")}</span>
-                    <span className="wb-ch-desc">{t("Turn any idea into an image, video or song — just describe it, and it’s yours.")}</span>
-                    <span className="wb-ch-nav">{t("Studio · Gallery · Share")}</span>
-                    <span className="wb-ch-go">{t("Enter creator")} <span aria-hidden="true">→</span></span>
-                  </span>
-                </button>
-                <button type="button" className="wb-ch-card mk" onClick={() => pickMode("marketing")}>
-                  <span className="wb-ch-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
-                  <span className="wb-ch-body">
-                    <span className="wb-ch-eyebrow">{t("Social")}</span>
-                    <span className="wb-ch-title">{t("Grow on social")}</span>
-                    <span className="wb-ch-desc">{t("AI reels, videos and ads — auto-posted to TikTok, Instagram & Facebook.")}</span>
-                    <span className="wb-ch-nav">{t("Dashboard · Campaigns · Channels")}</span>
-                    <span className="wb-ch-go">{t("Enter social")} <span aria-hidden="true">→</span></span>
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
         <header className="wb-nav">
           <Link to="/" className="wb-brand">
             <Crest size={30} />
@@ -274,7 +189,7 @@ export default function WebLayout() {
         <main className="wb-main">
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
-        {!showChooser && <Buddy hud={hud} authed={authed} mode={mode} />}
+        <Buddy hud={hud} authed={authed} mode={mode} />
       </div>
     </>
   );
@@ -1312,7 +1227,7 @@ const CSS = `
   background-image:url(/gstyle-rosette-green.svg);animation:wbDriftBack 260s linear infinite;}
 @keyframes wbDrift{to{transform:rotate(360deg)}}
 @keyframes wbDriftBack{to{transform:rotate(-360deg)}}
-@media (prefers-reduced-motion:reduce){.wb::before,.wb::after,.wb-chooser::before,.wb-chooser::after,.wb-ch-go::after{animation:none}}
+@media (prefers-reduced-motion:reduce){.wb::before,.wb::after{animation:none}}
 /* Everything real sits above the ambient layer. The nav sits ABOVE the HUD and
    main so the language dropdown — which overflows the header downward — paints
    over them instead of being hidden behind the HUD pill (which also stole the
@@ -1325,8 +1240,7 @@ const CSS = `
 /* Keyboard focus ring — the shell had no :focus-visible at all, so tabbing
    through it was invisible. One token-based ring for every focusable control
    (outline follows each element's own radius; no layout shift). */
-.wb a:focus-visible,.wb button:focus-visible,.wb input:focus-visible,.wb select:focus-visible,.wb textarea:focus-visible,.wb [tabindex]:focus-visible,
-.wb-chooser a:focus-visible,.wb-chooser button:focus-visible{
+.wb a:focus-visible,.wb button:focus-visible,.wb input:focus-visible,.wb select:focus-visible,.wb textarea:focus-visible,.wb [tabindex]:focus-visible{
   outline:2px solid var(--green2,#12A85E);outline-offset:2px;
 }
 .wb-nav{position:relative;z-index:30;display:flex;align-items:center;gap:14px 18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
@@ -1356,76 +1270,6 @@ const CSS = `
 .wb-mode-opt{border:0;background:none;padding:6px 13px;border-radius:999px;font:inherit;font-size:12px;font-weight:800;letter-spacing:.02em;color:var(--ink2);cursor:pointer;line-height:1;white-space:nowrap;}
 .wb-mode-opt.on{background:linear-gradient(135deg,var(--green,#12A85E),var(--green2,#0C7A46));color:#fff;box-shadow:0 1px 4px rgba(12,122,70,.3);}
 .wb-mode-opt:not(.on):hover{color:var(--ink);}
-/* THE FRONT DOOR — full-screen path chooser shown on arrival (see WebLayout).
-   Inside .wb so it inherits the theme tokens; fixed over everything. */
-.wb-chooser{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:calc(62px + env(safe-area-inset-top,0px)) 18px 20px;overflow-x:hidden;overflow-y:auto;
-  background:radial-gradient(74% 54% at 50% -4%,rgba(15,145,82,.16),transparent 60%),radial-gradient(50% 36% at 98% 96%,rgba(176,133,38,.1),transparent 66%),var(--paper);}
-/* EasyMode spinning rosette "flowers" behind the panel — the brand page-field
-   motif (green) + the spinning-gold accent, the same wbDrift the HUD field uses.
-   position:fixed so they anchor to the viewport and never add scroll. */
-.wb-chooser::before,.wb-chooser::after{content:"";position:fixed;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center;background-size:contain;}
-.wb-chooser::before{top:-170px;right:-200px;width:560px;height:560px;opacity:.1;background-image:url(/gstyle-rosette-green.svg);animation:wbDrift 210s linear infinite;}
-.wb-chooser::after{bottom:-200px;left:-200px;width:520px;height:520px;opacity:.08;background-image:url(/gstyle-rosette.svg);animation:wbDriftBack 240s linear infinite;}
-.wb-ch-panel{position:relative;z-index:1;width:100%;max-width:640px;margin:auto;text-align:center;animation:wbChIn .3s ease both;}
-/* Chooser top bar — the essentials the full-screen overlay otherwise hides. */
-.wb-ch-top{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:16px;right:16px;z-index:3;display:flex;align-items:center;justify-content:flex-end;gap:10px;}
-.wb-ch-skip{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--ink2);font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center;flex-shrink:0;transition:border-color .14s,color .14s;}
-.wb-ch-skip:hover{border-color:var(--ink2);color:var(--ink);}
-/* Desktop: the two cards were tiny marooned in the middle — give them room. */
-@media(min-width:720px){
-  .wb-ch-panel{max-width:900px;}
-  .wb-ch-h{font-size:31px;}
-  .wb-ch-sub{font-size:15px;margin-bottom:26px;}
-  .wb-ch-grid{gap:22px;}
-  .wb-ch-hero{height:212px;}
-  .wb-ch-body{padding:20px 24px 22px;}
-  .wb-ch-title{font-size:23px;}
-  .wb-ch-desc{font-size:14.5px;}
-  .wb-ch-nav{font-size:12px;margin-bottom:16px;}
-  .wb-ch-go{font-size:14px;padding:12px 24px;}
-}
-@keyframes wbChIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.wb-ch-brand{display:inline-flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:19px;color:var(--ink);margin-bottom:14px;}
-.wb-ch-brand b{color:var(--gold);}
-.wb-ch-h{font-family:Poppins,sans-serif;font-weight:800;font-size:25px;color:var(--ink);margin:0 0 5px;line-height:1.14;}
-.wb-ch-sub{font-size:13.5px;color:var(--ink2);margin:0 0 18px;}
-.wb-ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;text-align:left;}
-.wb-ch-card{display:flex;flex-direction:column;align-items:stretch;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:0;overflow:hidden;cursor:pointer;font:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
-.wb-ch-card:hover{transform:translateY(-3px);box-shadow:0 20px 40px -18px rgba(20,32,26,.45);}
-.wb-ch-card.mk:hover{border-color:var(--green2);}
-.wb-ch-card.cr:hover{border-color:var(--gold);}
-.wb-ch-hero{display:block;width:100%;height:138px;background:center/cover no-repeat;border-bottom:1px solid var(--line);}
-.wb-ch-card.cr .wb-ch-hero{background-color:#E6EFDD;}
-.wb-ch-card.mk .wb-ch-hero{background-color:#DCEBE0;}
-.wb-ch-body{display:flex;flex-direction:column;align-items:flex-start;padding:14px 18px 16px;}
-.wb-ch-eyebrow{font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;}
-.wb-ch-card.mk .wb-ch-eyebrow{color:var(--green);}
-.wb-ch-card.cr .wb-ch-eyebrow{color:var(--gold-deep);}
-.wb-ch-title{font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:3px 0 6px;}
-.wb-ch-desc{font-size:13px;line-height:1.45;color:var(--ink2);margin:0 0 10px;}
-.wb-ch-nav{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink2);opacity:.72;margin-bottom:13px;}
-/* CTA buttons carry the EasyMode treatment: guilloche hatch + the gold GStyle
-   rosette peeking from the right + a gold inner hairline (same as the landing). */
-.wb-ch-go{position:relative;overflow:hidden;isolation:isolate;display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#fff;border-radius:11px;padding:9px 18px;box-shadow:0 4px 12px -4px rgba(20,32,26,.3);}
-.wb-ch-card.mk .wb-ch-go{background:repeating-linear-gradient(57deg,rgba(255,220,120,.16) 0 1px,transparent 1px 8px),repeating-linear-gradient(123deg,rgba(255,220,120,.11) 0 1px,transparent 1px 8px),linear-gradient(135deg,var(--green2),var(--green));}
-.wb-ch-card.cr .wb-ch-go{background:repeating-linear-gradient(57deg,rgba(255,255,255,.18) 0 1px,transparent 1px 8px),repeating-linear-gradient(123deg,rgba(255,255,255,.12) 0 1px,transparent 1px 8px),linear-gradient(135deg,var(--gold),var(--gold-deep));}
-.wb-ch-go::after{content:"";position:absolute;z-index:-1;top:50%;right:-12px;width:50px;height:50px;transform:translateY(-50%);pointer-events:none;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.32;animation:wbDrift 90s linear infinite;}
-.wb-ch-card.cr .wb-ch-go::after{background:#FFF6DC;opacity:.36;}
-.wb-ch-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,214,102,.5);border-radius:8px;pointer-events:none;z-index:1;}
-.wb-ch-card.cr .wb-ch-go::before{border-color:rgba(255,248,224,.55);}
-@media(max-width:560px){
-  .wb-chooser{padding:calc(56px + env(safe-area-inset-top,0px)) 14px 16px}
-  .wb-ch-brand{margin-bottom:10px;font-size:18px}
-  .wb-ch-h{font-size:21px}
-  .wb-ch-sub{margin-bottom:13px}
-  .wb-ch-grid{grid-template-columns:1fr;gap:10px}
-  .wb-ch-hero{height:clamp(104px,18vh,176px)}
-  .wb-ch-body{padding:12px 15px 14px}
-  .wb-ch-title{font-size:16px;margin:2px 0 4px}
-  .wb-ch-desc{margin:0 0 9px}
-  .wb-ch-nav{display:none}
-  .wb-ch-go{padding:8px 14px}
-}
 /* The mark: Helpurr's head as a clean cutout — no tile, no rim. The pixel art
    is set a touch larger than its box so the ears reach the edges, and a soft
    drop-shadow lifts it off the cream. */
