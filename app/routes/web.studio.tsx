@@ -1461,11 +1461,6 @@ export default function WebStudio() {
   // Creator is now the single create surface (Home merged in): it opens
   // prompt-first on "Make an image" (describe box) instead of the video tiles.
   const [tab, setTab] = useState<Tab>(initTab || (casual ? "image" : "video"));
-  // Marketing Studio opens on a "what do you want to make?" chooser instead of
-  // dumping the user straight into one builder (it used to land pre-set on a
-  // format). A deep-link that names a format (?do=/?tab=) skips it — they already
-  // chose. Casual (the Easel) has its own entry, so it's unaffected.
-  const [chose, setChose] = useState<boolean>(!!initTab);
   const [productTitle, setProductTitle] = useState(searchParams.get("product") || "");
   // ?src=<renders url> imports an existing creation (from the Gallery) straight
   // into the edit flow — the cross-section "edit my own content" bridge. It
@@ -2511,32 +2506,11 @@ export default function WebStudio() {
           section that holds the inline error is collapsed or scrolled away. */}
       {err && <div className="wb-err">{t("Couldn’t generate: {err}", { err })}</div>}
 
-      {/* LANDING CHOOSER (marketing) — "what do you want to make?" before any
-          builder. Picking a card reveals that builder; the tab bar then switches
-          formats. Skipped when a format was deep-linked (chose starts true). */}
-      {!casual && !chose && (
-        <div className="ws-chooser">
-          <div className="ws-chooser-h">{t("What do you want to make?")}</div>
-          <div className="ws-chooser-grid">
-            {([["image", t("Image"), t("Scroll-stopping image ads & product shots")],
-               ["video", t("Video"), t("Product videos — cinematic or with a presenter")],
-               ["blog", t("Article"), t("SEO blog posts, written in your voice")]] as [Tab, string, string][]).map(([k, title, sub]) => (
-              <button type="button" key={k} className="ws-choose" onClick={() => { setTab(k); setChose(true); setUpsell(null); }}>
-                <span className="ws-choose-ic"><TabIcon kind={k} /></span>
-                <span className="ws-choose-tx"><b>{title}</b><i>{sub}</i></span>
-              </button>
-            ))}
-          </div>
-          <button type="button" className="ws-choose-more" onClick={() => { setTab("import"); setChose(true); }}>{t("…or bring your store in first")} →</button>
-        </div>
-      )}
-
       {/* THE EASEL (casual) — a left instrument rail + controls beside a Stage,
           with a creations shelf below. Marketing is untouched: its wrappers are
           display:contents (.ws-flow), so tabs + Form render in the old flow. */}
-      <div className={casual ? "ws-easel" : "ws-flow"} style={!casual && !chose ? { display: "none" } : undefined}>
+      <div className={casual ? "ws-easel" : "ws-flow"}>
        <div className={casual ? "ws-easel-left" : "ws-flow"}>
-      {!casual && <button type="button" className="ws-chooser-back" onClick={() => setChose(false)}>‹ {t("What to make")}</button>}
       <div className="ws-tabs">
         {/* Casual drops Article (every blog angle is sell-coded) and Import (a
             store-catalogue concept) — it's about making & editing, not merchandising. */}
@@ -4173,21 +4147,6 @@ function needsPresenterField(ct: CType | null): boolean {
  * #14201A, green #12A85E, gold #B08526/#E7C879), extending the ws-* look
  * that lives in the /web layout. */
 const WS_STYLE = `
-/* Landing chooser — "what do you want to make?" before the builder. */
-.ws-chooser{margin:6px 0 10px;}
-.ws-chooser-h{font-family:Poppins,sans-serif;font-weight:800;font-size:17px;color:var(--ink,#14201A);margin:0 0 12px;}
-.ws-chooser-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;}
-.ws-choose{display:flex;flex-direction:column;align-items:flex-start;gap:11px;text-align:left;min-width:0;cursor:pointer;background:var(--card,#fff);border:1px solid var(--line,#E4DFCF);border-radius:16px;padding:18px 16px;box-shadow:0 1px 2px rgba(20,32,26,.05);transition:border-color .14s,transform .14s,box-shadow .14s;}
-.ws-choose:hover{border-color:var(--green,#0C7A46);transform:translateY(-2px);box-shadow:0 10px 24px rgba(12,122,70,.12);}
-.ws-choose-ic{width:44px;height:44px;display:grid;place-items:center;border-radius:12px;color:var(--green,#0C7A46);background:linear-gradient(140deg,rgba(18,168,94,.14),rgba(176,133,38,.14));}
-.ws-choose-tx{display:flex;flex-direction:column;gap:3px;min-width:0;}
-.ws-choose-tx b{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink,#14201A);}
-.ws-choose-tx i{font-style:normal;font-size:12.5px;line-height:1.35;color:var(--ink2,#4A554E);}
-.ws-choose-more{margin-top:12px;border:0;background:none;color:var(--green,#0C7A46);font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;padding:6px 2px;}
-.ws-choose-more:hover{text-decoration:underline;}
-.ws-chooser-back{border:0;background:none;color:var(--ink2,#4A554E);font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;padding:4px 2px;margin:0 0 8px;}
-.ws-chooser-back:hover{color:var(--green,#0C7A46);}
-@media(max-width:680px){.ws-chooser-grid{grid-template-columns:1fr;}}
 /* Search above the presenter row — typing a name beats scrubbing 100 faces. */
 .ws-castsearch{position:relative;margin:0 0 8px}
 .ws-castsearch .wb-in{width:100%;padding-right:34px}
