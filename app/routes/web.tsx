@@ -502,9 +502,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         if (detail?.max) setShowHome(true);
         setInput(prefill);
       } else if (detail?.max) {
-        // The nav "Helpurr" entry opens the dedicated full-screen surface ON its
-        // Google-style home, not whatever chat was last open.
-        setShowHome(true);
+        // The nav "Helpurr" entry opens the full-screen surface straight into the
+        // chat workspace (last thread, or a fresh composer) — the DASHBOARD hero
+        // is the landing now, so re-showing an identical Helpurr home splash here
+        // just duplicated it. 🏠 / Home is the explicit way to the chat list.
+        setShowHome(false);
       }
     };
     window.addEventListener("helpurr:open", h);
@@ -926,9 +928,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 </div>
               )}
               <div className="mm-home-hero">
-                <span className="mm-home-crest"><Familiar /></span>
-                <h1 className="mm-home-word">Easy<b>Mode</b></h1>
-                <p className="mm-home-sub">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
+                {/* No EasyMode crest/wordmark splash here — the dashboard hero is the
+                    branded front door; this surface (reached via 🏠 / Home) is the
+                    chat workspace, so it leads straight with the composer + your chats. */}
+                <p className="mm-home-sub mm-home-greet">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
                 <form className="mm-home-ask" onSubmit={(e) => { e.preventDefault(); void send(input); }}>
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
                   <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
@@ -2038,11 +2041,12 @@ const CSS = `
 .mm-home-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,6vw,44px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}
 .mm-home-word b{color:var(--gold);font-weight:800;}
 .mm-home-sub{font-size:14px;color:var(--ink2);margin:0 0 20px;}
+.mm-home-greet{font-family:Poppins,sans-serif;font-size:18px;font-weight:600;color:var(--ink);margin:2px 0 16px;}
 .mm-home-ask{display:flex;align-items:flex-end;gap:8px;width:min(560px,100%);background:var(--card);
   border:1.5px solid var(--line2);border-radius:24px;padding:6px 7px 6px 15px;
   box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
 .mm-home-ask:focus-within{border-color:var(--green);box-shadow:0 10px 30px rgba(12,122,70,.18);}
-.mm-home-ask>textarea{flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;resize:none;line-height:1.4;max-height:120px;overflow-y:auto;padding:9px 0;display:block;}
+.mm-home-ask>textarea{flex:1;border:0;background:none;outline:none;font:inherit;font-size:16px;color:var(--ink);min-width:0;resize:none;line-height:1.4;max-height:120px;overflow-y:auto;padding:9px 0;display:block;}
 .mm-home-ask>textarea::placeholder{color:#97a19a;}
 .mm-home-clip{flex:0 0 auto;background:none;border:0;font-size:17px;cursor:pointer;opacity:.7;padding:4px;border-radius:8px;line-height:1;}
 .mm-home-clip:hover:not(:disabled){opacity:1;background:rgba(12,122,70,.08);}
@@ -2085,7 +2089,10 @@ const CSS = `
 .mm-home-links{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:2px;}
 .mm-home-links button{border:1px solid var(--line2);background:var(--card);color:var(--ink2);font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 15px;border-radius:999px;transition:border-color .14s,color .14s;}
 .mm-home-links button:hover{border-color:var(--green);color:var(--ink);}
-@media(max-width:620px){.mm-home{padding:24px 16px;gap:18px;}.mm-home-cards{grid-template-columns:1fr;}}
+@media(max-width:620px){.mm-home{padding:24px 16px;gap:18px;}.mm-home-cards{grid-template-columns:1fr;}
+  .mm-home-send,.mm-home-clip{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;}
+  .mm-home-links button,.mm-home-recent-h button{min-height:44px;display:inline-flex;align-items:center;}
+  .mm-chat-act{min-width:44px;min-height:44px;}}
 .mm-expand{margin-left:auto;background:none;border:0;color:rgba(244,234,200,.82);font-size:15px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;}
 .mm-expand:hover{color:#fff;background:rgba(255,255,255,.12);}
 .mm-homebtn{background:none;border:0;font-size:14px;line-height:1;cursor:pointer;padding:3px 7px;border-radius:7px;opacity:.85;}

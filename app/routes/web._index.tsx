@@ -859,9 +859,9 @@ const DASH_CSS = `
   box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
 .wd-hero-ask:focus-within{border-color:var(--green);box-shadow:0 10px 30px rgba(12,122,70,.18);}
 .wd-hero-spark{flex:0 0 auto;display:grid;place-items:center;color:var(--gold,#B08526);}
-.wd-hero-ask input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:15px;color:var(--ink);min-width:0;}
+.wd-hero-ask input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:16px;color:var(--ink);min-width:0;}
 .wd-hero-ask input::placeholder{color:#97a19a;}
-.wd-hero-send{flex:0 0 auto;width:42px;height:42px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
+.wd-hero-send{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
   background:linear-gradient(135deg,var(--green2,#12A85E) 40%,var(--green));box-shadow:0 3px 10px rgba(12,122,70,.3);transition:filter .12s,transform .12s;}
 .wd-hero-send:hover{filter:brightness(1.07);transform:translateY(-1px);}
 .wd-hero-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px;}
@@ -880,14 +880,19 @@ const DASH_CSS = `
 /* Image-rich mode cards — the gorgeous Creator/Social art from the old mode gate,
    pulled into the hero so it's one flowing lander instead of a splash + a hero. */
 .wd-path-img{flex-direction:column;align-items:stretch;gap:0;padding:0;overflow:hidden;}
-.wd-path-hero{display:block;height:96px;background-size:cover;background-position:center;}
+.wd-path-hero{display:block;height:96px;background-size:cover;background-position:center;border-bottom:1px solid var(--line2,#D7DCCB);transition:transform .25s ease;}
+.wd-path-img:hover .wd-path-hero{transform:scale(1.04);}
+.wd-path-img{overflow:hidden;}
 .wd-path-body{display:flex;flex-direction:column;gap:2px;padding:11px 13px;min-width:0;}
 .wd-path-eyebrow{font-weight:800;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);}
+/* Creator card keeps its gold identity (its art is warm/gold); --gold-deep passes
+   AA at 9.5px where --gold would not. Social stays green. */
+.wd-hero-paths-row .wd-path-img:first-child .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
 .wd-path-body b{font-weight:800;font-size:14.5px;color:var(--ink);font-family:Poppins,sans-serif;}
 .wd-path-body i{font-style:normal;font-size:11.5px;color:var(--ink2);line-height:1.35;}
 .wd-path-studio{width:100%;margin-top:10px;}
 .wd-plan-line{text-align:center;margin:0 0 20px;}
-@media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}}
+@media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
