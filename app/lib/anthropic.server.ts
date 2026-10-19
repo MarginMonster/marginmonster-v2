@@ -160,6 +160,11 @@ export async function anthropicToolLoop(opts: {
    *  comfortably high). The loop already pushes the full content back, so
    *  thinking blocks are preserved across tool rounds automatically. */
   thinkingEffort?: string;
+  /** Give the model Anthropic's hosted web-search tool, capped at this many
+   *  searches per turn (0/undefined = off). The search runs SERVER-SIDE inside
+   *  the same request — no client runTool — so results and citations come back
+   *  in the same response; stop_reason "pause_turn" is handled below. */
+  webSearchMaxUses?: number;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -167,6 +172,12 @@ export async function anthropicToolLoop(opts: {
   const maxTokens = opts.maxTokens || 700;
   const maxRounds = Math.max(1, opts.maxRounds ?? 5);
   const messages: ChatMsg[] = [...opts.messages];
+  const reqTools: unknown[] = [
+    ...opts.tools,
+    ...(opts.webSearchMaxUses && opts.webSearchMaxUses > 0
+      ? [{ type: "web_search_20250305", name: "web_search", max_uses: opts.webSearchMaxUses }]
+      : []),
+  ];
 
   let lastText = "";
   for (let round = 0; round < maxRounds; round++) {
@@ -182,7 +193,7 @@ export async function anthropicToolLoop(opts: {
             max_tokens: maxTokens,
             ...thinkingFieldFor(model, opts.thinkingEffort),
             system: opts.system,
-            ...(opts.tools.length ? { tools: opts.tools } : {}),
+            ...(reqTools.length ? { tools: reqTools } : {}),
             messages,
           }),
         },
@@ -198,6 +209,14 @@ export async function anthropicToolLoop(opts: {
     const content = json.content || [];
     const text = content.filter((c) => c.type === "text").map((c) => c.text || "").join("").trim();
     if (text) lastText = text;
+
+    // Server tool (web search) can pause a long turn; resend the content to
+    // resume. The full content already carries the server_tool_use +
+    // web_search_tool_result blocks, so just push it back and continue.
+    if (json.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content });
+      continue;
+    }
 
     if (json.stop_reason === "tool_use") {
       messages.push({ role: "assistant", content });
@@ -241,6 +260,12 @@ export async function anthropicToolLoopStream(opts: {
    *  accumulated with their signature and preserved in the assistant turn across
    *  tool rounds (the API requires this). */
   thinkingEffort?: string;
+  /** Give the model Anthropic's hosted web-search tool, capped at this many
+   *  searches per turn (0/undefined = off). Runs SERVER-SIDE inside the request —
+   *  no client runTool — so onStatus fires "web_search", results+citations arrive
+   *  in the same stream, and the server_tool_use / web_search_tool_result blocks
+   *  are preserved so a mixed tool turn or a pause_turn resumes cleanly. */
+  webSearchMaxUses?: number;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -248,6 +273,12 @@ export async function anthropicToolLoopStream(opts: {
   const maxTokens = opts.maxTokens || 700;
   const maxRounds = Math.max(1, opts.maxRounds ?? 5);
   const messages: ChatMsg[] = [...opts.messages];
+  const reqTools: unknown[] = [
+    ...opts.tools,
+    ...(opts.webSearchMaxUses && opts.webSearchMaxUses > 0
+      ? [{ type: "web_search_20250305", name: "web_search", max_uses: opts.webSearchMaxUses }]
+      : []),
+  ];
   let full = "";
 
   for (let round = 0; round < maxRounds; round++) {
@@ -259,7 +290,7 @@ export async function anthropicToolLoopStream(opts: {
         max_tokens: maxTokens,
         ...thinkingFieldFor(model, opts.thinkingEffort),
         system: opts.system,
-        ...(opts.tools.length ? { tools: opts.tools } : {}),
+        ...(reqTools.length ? { tools: reqTools } : {}),
         messages,
         stream: true,
       }),
@@ -273,8 +304,9 @@ export async function anthropicToolLoopStream(opts: {
     const decoder = new TextDecoder();
     let buf = "";
     let stopReason = "";
-    // content blocks accumulated by index (text / tool_use / thinking / redacted_thinking)
-    const blocks: Record<number, { type: string; text?: string; id?: string; name?: string; jsonBuf?: string; thinkingText?: string; signature?: string; data?: string }> = {};
+    // content blocks accumulated by index (text / tool_use / thinking /
+    // redacted_thinking / server_tool_use / web_search_tool_result)
+    const blocks: Record<number, { type: string; text?: string; id?: string; name?: string; jsonBuf?: string; thinkingText?: string; signature?: string; data?: string; toolUseId?: string; resultContent?: unknown }> = {};
     let finished = false;
 
     while (!finished) {
@@ -289,7 +321,7 @@ export async function anthropicToolLoopStream(opts: {
         if (!dataLine) continue;
         const dataStr = dataLine.slice(5).trim();
         if (!dataStr) continue;
-        let ev: { type?: string; index?: number; delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string; thinking?: string; signature?: string }; content_block?: { type?: string; id?: string; name?: string; data?: string }; error?: unknown };
+        let ev: { type?: string; index?: number; delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string; thinking?: string; signature?: string }; content_block?: { type?: string; id?: string; name?: string; data?: string; tool_use_id?: string; content?: unknown }; error?: unknown };
         try { ev = JSON.parse(dataStr); } catch { continue; }
         switch (ev.type) {
           case "content_block_start": {
@@ -298,12 +330,17 @@ export async function anthropicToolLoopStream(opts: {
               type: b.type || "",
               text: b.type === "text" ? "" : undefined,
               id: b.id, name: b.name,
-              jsonBuf: b.type === "tool_use" ? "" : undefined,
+              // server_tool_use streams its query as input_json just like tool_use
+              jsonBuf: (b.type === "tool_use" || b.type === "server_tool_use") ? "" : undefined,
               thinkingText: b.type === "thinking" ? "" : undefined,
               signature: b.type === "thinking" ? "" : undefined,
               data: b.type === "redacted_thinking" ? (b.data || "") : undefined,
+              // web_search_tool_result arrives whole (server-produced); keep it so
+              // the assistant turn can be replayed on pause_turn / a mixed tool turn
+              toolUseId: b.type === "web_search_tool_result" ? b.tool_use_id : undefined,
+              resultContent: b.type === "web_search_tool_result" ? b.content : undefined,
             };
-            if (b.type === "tool_use" && b.name && opts.onStatus) opts.onStatus(b.name);
+            if ((b.type === "tool_use" || b.type === "server_tool_use") && b.name && opts.onStatus) opts.onStatus(b.name);
             break;
           }
           case "content_block_delta": {
@@ -352,6 +389,23 @@ export async function anthropicToolLoopStream(opts: {
         try { input = b.jsonBuf ? JSON.parse(b.jsonBuf) : {}; } catch { input = {}; }
         content.push({ type: "tool_use", id: b.id, name: b.name, input });
       }
+      // Hosted server tools (web search) — Anthropic runs them; we just replay the
+      // blocks verbatim so a mixed tool turn / pause_turn keeps a valid history.
+      else if (b.type === "server_tool_use" && b.id && b.name) {
+        let input: Record<string, unknown> = {};
+        try { input = b.jsonBuf ? JSON.parse(b.jsonBuf) : {}; } catch { input = {}; }
+        content.push({ type: "server_tool_use", id: b.id, name: b.name, input });
+      }
+      else if (b.type === "web_search_tool_result" && b.toolUseId && b.resultContent !== undefined) {
+        content.push({ type: "web_search_tool_result", tool_use_id: b.toolUseId, content: b.resultContent });
+      }
+    }
+
+    // A server tool can pause a long turn; resend the accumulated content (which
+    // carries the server_tool_use + result blocks) to resume — no user message.
+    if (stopReason === "pause_turn" && content.length) {
+      messages.push({ role: "assistant", content });
+      continue;
     }
 
     if (stopReason === "tool_use") {
