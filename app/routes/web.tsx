@@ -973,8 +973,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             ))}
             {busy && (!msgs.length || msgs[msgs.length - 1].role !== "assistant" || !msgs[msgs.length - 1].content) && (
               streamStatus
-                ? <div className="mm-msg assistant mm-status" aria-live="polite"><span className="mm-think-fam" aria-hidden="true"><Familiar think /></span><span className="mm-status-tx">{streamStatus}</span></div>
-                : <div className="mm-msg assistant mm-think-bubble" aria-label={t("Helpurr is thinking…")} aria-live="polite"><span className="mm-think-fam" aria-hidden="true"><Familiar think /></span><span className="mm-typing" aria-hidden="true"><i /><i /><i /></span></div>
+                ? <div className="mm-msg assistant mm-status" aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif" alt="" aria-hidden="true" /><span className="mm-status-tx">{streamStatus}</span></div>
+                : <div className="mm-msg assistant mm-think-bubble" aria-label={t("Helpurr is thinking…")} aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif" alt="" aria-hidden="true" /><span className="mm-typing" aria-hidden="true"><i /><i /><i /></span></div>
             )}
             {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("still working on it — hang tight…")}</div>}
             {msgs.length <= 1 && !busy && (
@@ -2014,14 +2014,11 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-typing i:nth-child(2){animation-delay:.2s}.mm-typing i:nth-child(3){animation-delay:.4s}
 @keyframes mmBlink{0%,60%,100%{opacity:.3}30%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.mm-typing i{animation:none;opacity:.6}}
-/* THINKING = the crafted Helpurr sprite bobbing with his think-glow (and his own
-   blink / paw-lick) beside a soft dots cue — alive and on-brand, not three dead
-   dots. Reuses the approved frames; no risky generated run cycle. */
+/* THINKING = Helpurr RUNNING (a looping 4-frame side-profile run sprite, legs
+   cycling) beside a soft dots cue — he's off doing it, not three dead dots. */
 .mm-think-bubble{display:inline-flex;align-items:center;gap:9px;padding:7px 12px;}
-.mm-think-fam{display:inline-grid;place-items:center;width:34px;height:34px;flex:0 0 auto;animation:mmThinkBob .72s ease-in-out infinite;}
-@keyframes mmThinkBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.mm-run-gif{width:46px;height:auto;flex:0 0 auto;image-rendering:pixelated;}
 .mm-status-tx{min-width:0;}
-@media (prefers-reduced-motion:reduce){.mm-think-fam{animation:none}}
 /* The "still making" line during the long make poll — so a 2-6 min render never
    looks frozen. A soft shimmer pill with the typing dots. */
 .mm-making{display:flex;align-items:center;gap:8px;align-self:flex-start;max-width:92%;margin-top:2px;font-size:12.5px;color:var(--ink2);background:#F3F0E4;border:1px solid var(--line);border-radius:12px;padding:8px 12px;}
