@@ -2033,11 +2033,11 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-chips button{font:inherit;font-size:12px;font-weight:600;color:var(--green);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:6px 11px;cursor:pointer;}
 .mm-chips button:hover{background:#DCF0E5;}
 .mm-input{display:flex;gap:8px;padding:11px;border-top:1px solid var(--line);background:var(--card);align-items:flex-end;}
-.mm-input textarea{flex:1;border:1px solid var(--line2);border-radius:18px;padding:9px 15px;font:inherit;font-size:16px;background:#fff;color:var(--ink);outline:none;resize:none;line-height:1.4;min-height:40px;max-height:132px;overflow-y:auto;box-sizing:border-box;}
+.mm-input textarea{flex:1;border:1px solid var(--line2);border-radius:18px;padding:8px 15px;font:inherit;font-size:16px;background:#fff;color:var(--ink);outline:none;resize:none;line-height:1.35;min-height:42px;max-height:132px;overflow-y:auto;box-sizing:border-box;scrollbar-width:thin;}
 .mm-input textarea:focus{border-color:var(--green);}
 .mm-input textarea::placeholder{color:#97a19a;}
 .mm-input input:focus{border-color:var(--green2);}
-.mm-input button{flex:0 0 auto;width:42px;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
+.mm-input button{flex:0 0 auto;width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:50%;background:linear-gradient(168deg,#12A85E,#0B6B3E);color:#fff;font-size:14px;cursor:pointer;}
 .mm-input button:disabled{opacity:.4;cursor:not-allowed;}
 /* Attach-a-photo: a flat icon button (overrides the green send circle) + a preview chip. */
 .mm-input .mm-clip{width:38px;background:transparent;color:var(--ink2);font-size:18px;line-height:1;box-shadow:none;}
