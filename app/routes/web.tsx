@@ -2017,7 +2017,7 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 /* THINKING = Helpurr RUNNING (a looping 4-frame side-profile run sprite, legs
    cycling) beside a soft dots cue — he's off doing it, not three dead dots. */
 .mm-think-bubble{display:inline-flex;align-items:center;gap:9px;padding:7px 12px;}
-.mm-run-gif{width:46px;height:auto;flex:0 0 auto;image-rendering:pixelated;}
+.mm-run-gif{width:56px;height:auto;flex:0 0 auto;image-rendering:pixelated;}
 .mm-status-tx{min-width:0;}
 /* The "still making" line during the long make poll — so a 2-6 min render never
    looks frozen. A soft shimmer pill with the typing dots. */
