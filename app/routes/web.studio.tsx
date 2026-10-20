@@ -610,7 +610,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ frameUrl: `${base}/uploads/${name}` });
   }
 
-  const productTitle = ((form.get("productTitle") as string) || "").trim();
+  // Same reasoning as `direction` below: productTitle is interpolated into the
+  // prompt (and in casual video mode it IS the scene description), so a pasted
+  // brief here buries the fidelity clauses just the same. Word-safe clamp — 300
+  // fits a full creative sentence and stops a novel; a short title passes
+  // through untouched. Mirrors the client maxLength on both inputs.
+  const productTitle = trimToWord((form.get("productTitle") as string) || "", 300);
   const urlField = ((form.get("productImageUrl") as string) || "").trim() || undefined;
   // THE LINK THE STUDIO PROMISES TWICE.
   //
@@ -658,7 +663,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const genSection = casualMode ? "creator" : "marketing";
   const service = !casualMode && form.get("service") === "1"; // intangible offering — sell the outcome
   const wear = form.get("wear") === "1";
-  const scene = ((form.get("scene") as string) || "").trim() || undefined;
+  // Composed client-side from doWhat+where (or the direction), both already
+  // capped — but clamp here too so a crafted POST can't smuggle a novel into
+  // the prompt. Word-safe: the scene line is read by the model.
+  const scene = trimToWord((form.get("scene") as string) || "", 300) || undefined;
   // Creator flows carry their own title (the prompt): photo edits, text-to-image
   // "create", and music never ask for a product name — only the product-based ad
   // flows do. (Masked until Creator became free on every plan — now reachable.)
@@ -3302,11 +3310,11 @@ export default function WebStudio() {
               </button>
             )}
             {(casual && tab === "video") ? (
-              <textarea className="wb-in ws-ta ws-hero" name="productTitle" required value={productTitle} rows={3}
+              <textarea className="wb-in ws-ta ws-hero" name="productTitle" required value={productTitle} rows={3} maxLength={300}
                 onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }}
                 placeholder={t("Describe your video — e.g. a cozy autumn morning, steam rising off a mug by a rainy window")} />
             ) : (
-              <input className="wb-in" name="productTitle" required={!isEdit} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
+              <input className="wb-in" name="productTitle" required={!isEdit} maxLength={120} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
             )}
             {/* The product photo now lives in the source branches above — the
                 store pick carries its image, the upload card shows a file input
@@ -3453,7 +3461,7 @@ export default function WebStudio() {
                     ↺ {t("Use last: {title}", { title: lastProd.title })}
                   </button>
                 )}
-                <input className="wb-in" name="productTitle" required value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={t("Midnight Roast — whole bean coffee")} />
+                <input className="wb-in" name="productTitle" required maxLength={120} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={t("Midnight Roast — whole bean coffee")} />
               </>
             )}
             {tab === "image" && !casual && (

@@ -202,7 +202,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop.brandProfile) return json({ error: "Analyze your store first (on the dashboard) so content matches your brand." });
   if (!shop.activePlan?.active) return json({ error: "Pick a plan first — content runs on tokens." });
 
-  const productTitle = ((form.get("productTitle") as string) || "").trim();
+  // productTitle rides into the image/video prompts alongside `direction`, so
+  // the same reasoning applies: word-safe clamp so a very long product name (or
+  // a hand-typed one) can't bury the fidelity clauses. Short titles pass
+  // through untouched.
+  const productTitle = trimToWord((form.get("productTitle") as string) || "", 300);
   const productImageUrl = ((form.get("productImageUrl") as string) || "").trim() || undefined;
   // The input carries maxLength={300}, which is a courtesy to the merchant and
   // nothing to the server: this string is interpolated straight into the image
@@ -215,7 +219,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const direction = trimToWord((form.get("direction") as string) || "", 500) || undefined;
   const wear = form.get("wear") === "1";
   const service = form.get("service") === "1"; // intangible offering — sell the outcome
-  const scene = ((form.get("scene") as string) || "").trim() || undefined;
+  // Clamp like `direction` above — a crafted POST shouldn't be able to bury the
+  // fidelity clauses with a huge scene line. Word-safe: the model reads it.
+  const scene = trimToWord((form.get("scene") as string) || "", 300) || undefined;
   if (!productTitle) return json({ error: "Pick a product to feature." });
 
   // TWO-CURRENCY RULE: the tier decides WHICH generators are unlocked, tokens
