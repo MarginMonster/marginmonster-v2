@@ -386,7 +386,7 @@ function PresenterPicker({ cast, value, onChange, allowNone, brandFaceId }: { ca
       {videoId && (
         <div className="cs-vscrim" onClick={() => setVideoId(null)}>
           <div className="cs-vbox" onClick={(e) => e.stopPropagation()}>
-            <video src={`/voice-videos/${videoId}.mp4?v=1`} autoPlay controls playsInline className="cs-video" />
+            <video src={`/voice-videos/${videoId}.mp4?v=2`} autoPlay controls playsInline className="cs-video" />
             <button type="button" className="cs-vx" onClick={() => setVideoId(null)}>✕</button>
           </div>
         </div>

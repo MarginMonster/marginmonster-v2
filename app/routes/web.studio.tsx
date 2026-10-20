@@ -1316,7 +1316,7 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
       {videoId && (
         <div className="ws-vscrim" onClick={() => setVideoId(null)}>
           <div className="ws-vbox" onClick={(e) => e.stopPropagation()}>
-            <video src={`/voice-videos/${videoId}.mp4?v=1`} autoPlay controls playsInline className="ws-video" />
+            <video src={`/voice-videos/${videoId}.mp4?v=2`} autoPlay controls playsInline className="ws-video" />
             <button type="button" className="ws-vx" onClick={() => setVideoId(null)}>✕</button>
           </div>
         </div>
