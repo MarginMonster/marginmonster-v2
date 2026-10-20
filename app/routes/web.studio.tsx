@@ -11,7 +11,7 @@ import { trimToWord } from "../lib/text-trim";
 import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { LangToggle } from "../components/LangToggle";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -1249,39 +1249,9 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
   onCreateOwn?: () => void;
 }) {
   const t = useT();
-  // Voice preview: one sample at a time. Designed ("true voice") faces get a
-  // lip-sync video instead of the mp3 snippet.
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState<string | null>(null);
-  // Designed ("true voice") presenters are live video tiles now: the still comes
-  // alive MUTED on hover, and a click selects the presenter AND plays the intro
-  // WITH sound inline. One sound clip plays at a time.
-  const vids = useRef<Map<string, HTMLVideoElement>>(new Map());
-  const [soundId, setSoundId] = useState<string | null>(null);
-  const stopAudio = () => { audioRef.current?.pause(); audioRef.current = null; setPlaying(null); };
-  const reduceMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  // Hover preview is desktop-only: on a touch device the synthetic mouseenter
-  // would fire a muted play() a tick before the tap's unmuted play(), and iOS
-  // then blocks the one that matters. Tap-to-play (playSound) is the mobile path.
-  const previewIn = (id: string) => { if (soundId) return; if (typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches) return; const v = vids.current.get(id); if (!v || reduceMotion()) return; v.muted = true; v.loop = true; v.play().catch(() => {}); };
-  const previewOut = (id: string) => { if (soundId === id) return; const v = vids.current.get(id); if (!v) return; v.pause(); try { v.currentTime = 0; } catch { /* noop */ } };
-  const stopSound = (id: string) => { const v = vids.current.get(id); if (v) { v.pause(); v.muted = true; v.loop = true; try { v.currentTime = 0; } catch { /* noop */ } } setSoundId((s) => (s === id ? null : s)); };
-  const playSound = (c: CastItem) => {
-    stopAudio();
-    if (soundId && soundId !== c.id) stopSound(soundId);
-    const v = vids.current.get(c.id); if (!v) return;
-    setSoundId(c.id); v.loop = false; v.muted = false; try { v.currentTime = 0; } catch { /* noop */ }
-    v.play().catch(() => {});
-  };
-  // mp3 snippet for the non-video presenters (custom faces, brand face).
-  const sample = (c: CastItem) => {
-    if (playing === c.id) { stopAudio(); return; }
-    stopAudio();
-    const a = new Audio(`/voices/${c.id}.mp3?v=3`);
-    audioRef.current = a; setPlaying(c.id);
-    a.onended = () => setPlaying(null);
-    a.play().catch(() => setPlaying(null));
-  };
+  // Just the selection row now — small circle heads. Picking one plays that
+  // presenter's intro (with sound) in the hero tile above; the preview no
+  // longer lives on each chip, which keeps this compact.
 
   // Brand Face leads the cast.
   const ordered = brandFaceId ? [...cast.filter((c) => c.id === brandFaceId), ...cast.filter((c) => c.id !== brandFaceId)] : cast;
@@ -1318,35 +1288,10 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
         {shown.map((c) => {
           const bf = c.id === brandFaceId;
           const sel = avatarId === c.id;
-          if (c.designed) {
-            // Live video tile — a still of the presenter's intro that plays MUTED
-            // on hover and, on click, selects them AND plays the intro with sound.
-            return (
-              <div key={c.id} className={`ws-face vid${sel ? " sel" : ""}${bf ? " bf" : ""}${soundId === c.id ? " playing" : ""}`}
-                onMouseEnter={() => previewIn(c.id)} onMouseLeave={() => previewOut(c.id)}>
-                <button type="button" className="ws-face-pick" aria-label={t("Cast {name} — tap to watch their intro", { name: c.name })}
-                  onClick={() => { setAvatarId(c.id); if (soundId === c.id) stopSound(c.id); else playSound(c); }}>
-                  <span className="ws-face-img">
-                    <video className="ws-face-vid" playsInline preload="metadata"
-                      src={`/voice-videos/${c.id}.mp4?v=2`} poster={`/voice-videos/${c.id}.jpg?v=2`}
-                      ref={(el) => { if (el) { if (!vids.current.has(c.id)) { el.muted = true; el.loop = true; } vids.current.set(c.id, el); } else vids.current.delete(c.id); }}
-                      onEnded={() => stopSound(c.id)} />
-                    <i className="ws-face-play" aria-hidden="true"><Ico n={soundId === c.id ? "music" : "play"} size={11} /></i>
-                    {sel && <b>✓</b>}
-                  </span>
-                </button>
-                <span>{bf ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
-              </div>
-            );
-          }
           return (
             <div key={c.id} className={`ws-face${sel ? " sel" : ""}${bf ? " bf" : ""}`}>
               <button type="button" className="ws-face-pick" onClick={() => setAvatarId(c.id)} aria-label={t("Cast {name}", { name: c.name })}>
                 <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{sel && <b>✓</b>}</span>
-              </button>
-              <button type="button" className={`ws-samp${playing === c.id ? " on" : ""}`} onClick={() => sample(c)}
-                title={t("Hear {name}", { name: c.name })} aria-label={t("Hear {name}’s voice", { name: c.name })}>
-                <Ico n={playing === c.id ? "music" : "sound"} size={15} />
               </button>
               <span>{bf ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
             </div>
@@ -2328,6 +2273,45 @@ export default function WebStudio() {
   useEffect(() => {
     if (!avatarVideoHub) setHubPick(null);
   }, [avatarVideoHub]);
+  // ── Hero presenter video ────────────────────────────────────────────────
+  // The selected presenter's intro plays in the big hub tile. It autoplays
+  // MUTED on first load (no gesture yet), and plays WITH SOUND the moment you
+  // pick a presenter (the tap is the gesture, so iOS — even in Low Power Mode —
+  // allows it). Controlled imperatively so the with-sound play() fires inside
+  // the selecting tap, not in an effect a tick later (which iOS would block).
+  const heroVid = useRef<HTMLVideoElement | null>(null);
+  const [heroMuted, setHeroMuted] = useState(true);
+  const avatarIdRef = useRef(avatarId); avatarIdRef.current = avatarId;
+  const wantHeroSound = useRef(false);
+  const heroShown = useRef<string | null>(null);
+  const heroDesigned = !!d.cast.find((c) => c.id === avatarId)?.designed;
+  const applyHero = (id: string, withSound: boolean) => {
+    const v = heroVid.current; if (!v || !id) return;
+    if (heroShown.current !== id) { v.src = `/voice-videos/${id}.mp4?v=2`; heroShown.current = id; try { v.load(); } catch { /* noop */ } }
+    v.loop = true; v.muted = !withSound; setHeroMuted(!withSound);
+    const p = v.play(); if (p && typeof (p as Promise<void>).catch === "function") (p as Promise<void>).catch(() => {});
+  };
+  // Stable ref callback: fires on mount/unmount of the hero <video>. On mount,
+  // start it (muted, or with sound if a selection is pending from a remount).
+  const heroVidRef = useCallback((el: HTMLVideoElement | null) => {
+    heroVid.current = el;
+    if (el) { heroShown.current = null; const snd = wantHeroSound.current; wantHeroSound.current = false; applyHero(avatarIdRef.current || "", snd); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const toggleHeroSound = () => {
+    const v = heroVid.current; if (!v) return;
+    if (v.muted) { v.muted = false; setHeroMuted(false); const p = v.play(); if (p && typeof (p as Promise<void>).catch === "function") (p as Promise<void>).catch(() => {}); }
+    else { v.muted = true; setHeroMuted(true); }
+  };
+  // Picking a presenter: select it + play its intro with sound in the SAME tap.
+  const selectPresenter = (id: string | null) => {
+    setAvatarId(id); setHubPick(null);
+    const designed = !!d.cast.find((c) => c.id === id)?.designed;
+    if (id && designed && avatarVideoHub) {
+      if (heroVid.current) applyHero(id, true); // element persists → play now, in the gesture
+      else wantHeroSound.current = true;        // hero will mount → play with sound then
+    }
+  };
   // The product source chooser (cards + store grid/connect/import + upload box +
   // the hidden productImageUrl). Defined once and rendered in EITHER the classic
   // step-2 layout OR inside the avatar-video Combine panel — exactly one mounts
@@ -2933,14 +2917,25 @@ export default function WebStudio() {
               <div className={`ws-combine ws-scene${combining ? " combining" : ""}${combineUrl ? " done" : ""}`}>
                 {/* Ingredients = two tap-tiles; tap to pick/upload inline. */}
                 <div className="ws-hubtiles" role="group" aria-label={t("Your presenter and product")}>
-                  <button type="button" className={`ws-hubtile${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set" : ""}`}
-                    aria-expanded={hubPick === "presenter"} onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}>
-                    <span className="ws-hubtile-img" style={avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
+                  <div className={`ws-hubtile ws-hubhero${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set" : ""}`}>
+                    <span className="ws-hubtile-img" style={!heroDesigned && avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
+                      {heroDesigned && (
+                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=2`} />
+                      )}
+                      <button type="button" className="ws-hubtile-face" aria-expanded={hubPick === "presenter"}
+                        onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}
+                        aria-label={avatarId ? t("Change presenter") : t("Pick a presenter")} />
+                      {heroDesigned && (
+                        <button type="button" className={`ws-hubtile-sound${heroMuted ? "" : " on"}`} onClick={(e) => { e.stopPropagation(); toggleHeroSound(); }}
+                          aria-label={heroMuted ? t("Play with sound") : t("Mute")} title={heroMuted ? t("Play with sound") : t("Mute")}>
+                          <Ico n="sound" size={15} />
+                        </button>
+                      )}
                       <span className="ws-hubtile-badge" aria-hidden="true">{avatarThumb ? "✎" : "＋"}</span>
                     </span>
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
                     <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
-                  </button>
+                  </div>
                   <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set" : ""}`}
                     aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
                     <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
@@ -2950,10 +2945,11 @@ export default function WebStudio() {
                     <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
                   </button>
                 </div>
-                {/* Presenter picker reveal — picking collapses it. */}
+                {/* Presenter picker reveal — picking selects + plays the intro in
+                    the hero above (with sound), and collapses this. */}
                 {hubPick === "presenter" && (
                   <div className="ws-hub-reveal open">
-                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
+                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={selectPresenter} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
                   </div>
                 )}
                 {avatarId && avatarId !== d.brandFaceId && (
@@ -4215,18 +4211,17 @@ const WS_STYLE = `
 }
 .ws-face{position:relative}
 .ws-face-pick{display:block;width:100%;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:center}
-.ws-samp{position:absolute;top:88px;right:8px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font-size:11px;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(20,32,26,.14);z-index:3;padding:0}
-.ws-samp.on{border-color:var(--green2);color:var(--green2)}
-.ws-samp.prem{border-color:#E7C879;background:#FFFBEF}
-/* Live presenter video tile: a still of their intro that comes alive muted on
-   hover and plays with sound on click. object-position favours the face since
-   the clips are 9:16 shown in a square. */
-.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 50%;display:block;background:var(--paper,#F4F1E6)}
-/* Small corner chip, not a face-covering disc — just a "this plays" hint. */
-.ws-face-play{position:absolute;left:6px;bottom:6px;width:23px;height:23px;border-radius:50%;background:rgba(12,18,14,.5);color:#fff;display:grid;place-items:center;pointer-events:none;opacity:.95;transition:opacity .16s;z-index:2}
-.ws-face.vid:hover .ws-face-play,.ws-face.vid.playing .ws-face-play{opacity:0}
-.ws-face.vid:hover .ws-face-img{border-color:var(--green2);box-shadow:0 4px 16px rgba(12,18,14,.16)}
-@media (max-width:560px){.ws-face{width:104px}.ws-face-img{height:104px}.ws-samp{top:74px}}
+/* HERO presenter tile — the selected presenter's intro plays here (bigger
+   preview, no extra vertical space): autoplays with sound right after you pick
+   one, muted on first load, with a sound toggle. The circle picker below just
+   selects. */
+.ws-hubhero .ws-hubtile-img{overflow:hidden}
+.ws-hubtile-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;border-radius:inherit;display:block;background:#EAF6EF;z-index:0}
+.ws-hubtile-face{position:absolute;inset:0;z-index:1;border:0;background:transparent;cursor:pointer;border-radius:inherit}
+.ws-hubhero .ws-hubtile-badge{z-index:2;pointer-events:none}
+.ws-hubtile-sound{position:absolute;left:8px;top:8px;z-index:3;width:34px;height:34px;border-radius:50%;border:0;background:rgba(12,18,14,.5);color:#fff;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:background .14s}
+.ws-hubtile-sound:hover{background:rgba(12,18,14,.72)}
+.ws-hubtile-sound.on,.ws-hubtile-sound.on:hover{background:var(--green,#0C7A46)}
 .ws-face.bf .ws-face-img{border-color:var(--gold);box-shadow:0 0 0 2px rgba(176,133,38,.35)}
 .ws-face.bf>span:last-child{color:var(--gold-deep);font-weight:700}
 /* "Create your own" — the forge promoted to a hero tile at the head of the

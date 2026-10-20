@@ -1659,13 +1659,13 @@ const CSS = `
 .ws-back{border:0;background:none;color:var(--green);font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-bottom:6px;}
 .ws-note{font-size:13px;color:var(--ink2);background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:8px 0;}
 .ws-cast{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scrollbar-gutter:stable;}
-.ws-face{flex:0 0 auto;width:120px;border:0;background:none;cursor:pointer;text-align:center;font-size:11.5px;color:var(--ink2);font-weight:600;}
-.ws-face-img{position:relative;display:block;width:100%;height:120px;margin:0 0 6px;border-radius:16px;background-size:cover;background-position:center 20%;
-  border:2px solid var(--line);overflow:hidden;transition:border-color .14s,box-shadow .14s;}
+.ws-face{flex:0 0 auto;width:76px;border:0;background:none;cursor:pointer;text-align:center;font-size:11px;color:var(--ink2);font-weight:600;}
+.ws-face-img{position:relative;display:block;width:68px;height:68px;margin:0 auto 5px;border-radius:50%;background-size:cover;background-position:center 20%;
+  border:2px solid var(--line);}
 .ws-face-img.none{display:grid;place-items:center;font-size:18px;color:var(--ink2);background:var(--paper);}
 .ws-face.sel .ws-face-img{border-color:var(--green2);box-shadow:0 0 0 2px rgba(18,168,94,.25);}
-.ws-face-img b{position:absolute;bottom:7px;right:7px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
-  background:var(--green2);color:#fff;font-size:11px;box-shadow:0 1px 4px rgba(12,18,14,.35);z-index:3;}
+.ws-face-img b{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+  background:var(--green2);color:#fff;font-size:11px;}
 .ws-engines{display:flex;gap:8px;flex-wrap:wrap;}
 /* Dimmed, not hidden: the merchant should still see the engines exist and
    why they aren't in play, rather than the row silently vanishing. */
