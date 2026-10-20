@@ -1478,7 +1478,15 @@ export async function action({ request }: ActionFunctionArgs) {
   // facts, language) goes in a second, uncached block so it never thrashes the
   // cached prefix.
   const cachedSystem = `${persona}\n\n${GUARDRAILS}${toolNote}`;
-  const dynamicSystem = `\n\n${contextLine(id, path, mode)}${facts}${langLine}`;
+  const userLocation = userLocationFromTz(body.tz, request.headers.get("cf-ipcountry") || request.headers.get("x-vercel-ip-country"));
+  // Tell Helpurr the user's APPROXIMATE location explicitly. The web_search
+  // user_location localizes results silently, but without this the model distrusts
+  // the localized city ("I can't tell where you are, despite what my settings imply")
+  // and hedges on weather. Stating it as known fact fixes the refusal.
+  const locLine = userLocation?.city
+    ? `\n\nLOCATION: The user is in or near ${userLocation.city}${userLocation.country ? ", " + userLocation.country : ""} (timezone ${userLocation.timezone || "unknown"}), detected from their device. Treat this as their location for the WEATHER and any local question — look it up and answer for it directly and confidently. It is approximate (their metro area), so if they name or imply a different city, use that instead; never say you can't tell where they are or that a setting might be wrong.`
+    : "";
+  const dynamicSystem = `\n\n${contextLine(id, path, mode)}${facts}${locLine}${langLine}`;
   const system = [
     { type: "text" as const, text: cachedSystem, cache_control: { type: "ephemeral" as const } },
     { type: "text" as const, text: dynamicSystem },
@@ -1567,10 +1575,6 @@ export async function action({ request }: ActionFunctionArgs) {
       let gotText = false;
       const onText = (d: string) => { gotText = true; safeEnqueue(frameOf("text", { delta: d })); };
       const onStatus = (toolName: string) => safeEnqueue(frameOf("status", { label: statusLabel(toolName, lang) }));
-      // Approximate location for web search so "what's the weather" resolves to
-      // the user's area instead of failing for lack of a place (from their
-      // browser timezone + any country header).
-      const userLocation = userLocationFromTz(body.tz, request.headers.get("cf-ipcountry") || request.headers.get("x-vercel-ip-country"));
       // Extended thinking ON for the chat: the model reasons more on hard,
       // multi-step asks and self-regulates. maxTokens is well above the thinking
       // budget so a full visible answer always has room. Web search is ON (hosted
