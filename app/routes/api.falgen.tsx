@@ -34,8 +34,11 @@ export async function action({ request }: ActionFunctionArgs) {
       const sj = (await s.json().catch(() => ({}))) as { status?: string };
       if (sj.status !== "COMPLETED") return json({ status: sj.status || "UNKNOWN" });
       const r = await fetch(`https://queue.fal.run/${app}/requests/${rid}`, { headers: { Authorization: `Key ${FK}` } });
-      const rj = (await r.json().catch(() => ({}))) as { video?: { url?: string }; video_url?: string };
-      return json({ status: "COMPLETED", url: rj.video?.url || rj.video_url || null });
+      const rj = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      const v = rj.video as { url?: string } | undefined;
+      const url = v?.url || (rj.video_url as string) || null;
+      // DEBUG: when no url, hand back the raw result keys so we can see Seedance's schema / moderation.
+      return json({ status: "COMPLETED", url, raw: url ? undefined : JSON.stringify(rj).slice(0, 600) });
     }
     return json({ error: "bad op" }, { status: 400 });
   } catch (e) {
