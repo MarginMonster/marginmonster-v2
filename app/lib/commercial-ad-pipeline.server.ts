@@ -137,7 +137,7 @@ export async function planCommercial(
         ? `scene: one sentence, concrete and filmable — who/where/light/mood, and how the offer's result shows on screen.`
         : `scene: one sentence, concrete and filmable — who/where/light/mood, and where the product sits in frame.`,
       `CRITICAL: every scene sentence MUST restate the protagonist's appearance (gender, age, hair, wardrobe) in full — each scene is rendered by an image model that sees ONLY that sentence, and any detail you drop gets re-invented differently, breaking the character between shots.`,
-      `motion: one short camera/subject motion phrase (e.g. "slow push-in as she turns toward the window").`,
+      `motion: one short, LIVELY camera/subject motion phrase with real movement (e.g. "she turns and gestures animatedly toward the product as the camera pushes in").`,
       `narration: the voice-over line for this beat, 8-12 words, spoken ad copy — no scene description, no style words.`,
       // UNCONDITIONAL on purpose: when a product has no description this anchor
       // used to vanish, leaving a title-only spot free to invent features and
@@ -163,7 +163,7 @@ export async function planCommercial(
   if (!Array.isArray(j.beats) || j.beats.length < 3) throw new Error("commercial plan: fewer than 3 beats");
   j.beats = j.beats.slice(0, 5).map((b) => ({
     scene: trimToWord(String(b.scene || ""), 300),
-    motion: trimToWord(String(b.motion || "slow cinematic push-in"), 120),
+    motion: trimToWord(String(b.motion || "dynamic cinematic motion with a confident reveal"), 120),
     // Narration is SPOKEN — a mid-word cut is audible. Deterministic backstop:
     // strip an implied endorsement possessive ("Nintendo's") the in-prompt
     // guardrail may not have caught.

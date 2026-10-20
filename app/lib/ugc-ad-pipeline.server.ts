@@ -1407,11 +1407,11 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       await ckpt({ ckEngine: engine }); // written BEFORE the create — see above
       const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
         start_image: animSourceDataUri,
-        prompt: `${avatar.desc}, talking directly to the camera with natural hand gestures and subtle head movement, enthusiastic friendly energy, static camera, plain studio background, vertical video. Anything held in frame stays SOLID and fully visible for the entire clip — same object, same size, same position in the hands, never fading, never vanishing, never re-forming.`,
+        prompt: `${avatar.desc}, speaking animatedly straight to the camera — expressive natural hand gestures, lively genuine head movement and warm shifting facial expressions, enthusiastic friendly energy, subtle breathing and lifelike micro-movements, authentic UGC selfie energy. If a product is held, it stays STILL and steady in the hand, fully visible the entire clip — same object, same label, same size and position, never rotating, turning, fading, vanishing, warping or re-forming. Plain studio background, vertical video.`,
         // "glitching in and out of his hands" — the motion brief never
         // mentioned the product, so nothing anchored it and the model treated
         // it as scenery it could drop between frames.
-        negative_prompt: "object disappearing, product vanishing, flickering, fading in and out, object changing shape, hands passing through the product, camera movement, zoom, pan, morphing, distortion, extra people, text, watermark",
+        negative_prompt: "object disappearing, product vanishing, flickering, fading in and out, object changing shape, label changing, hands passing through the product, morphing, distortion, extra people, extra fingers, deformed hands, stiff, frozen, robotic, text, watermark",
         duration: 10,
         cfg_scale: 0.5,
       });

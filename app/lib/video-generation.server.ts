@@ -387,7 +387,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     " frame — no invented '#1', 'best seller', 'sale', 'X% off', '★★★★★' or review-count" +
     " overlays; the only lettering allowed is what is genuinely printed on the real product shown.";
   const breakoutLook = `The product bursts OUT of a flat social-post card that sits behind it: the card stays static and flat while the product pushes further toward the camera in true 3D, its shadow sliding across the card as it emerges. Subtle parallax between the product, the card and the background, gentle float, premium product-commercial finish, vertical, photorealistic live-action footage.${productTruth}`;
-  const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, confident slow camera push-in and orbit, premium big-brand energy, vertical, photorealistic live-action footage, not an illustration or 3D render.${productTruth}`;
+  const commercialLook = `High-budget television commercial: the product hero-lit on a seamless single-color studio cyc wall and floor in a bold saturated color that complements the product's palette, crisp professional three-point lighting, subtle floor reflection, dynamic energetic camera motion and a confident product reveal with real movement, premium big-brand energy, vertical, photorealistic live-action footage, not an illustration or 3D render. The product's label art, lettering and shape stay crisp and unchanged throughout.${productTruth}`;
   // Strip a store curation tag ("– Comic-Con Pick") off the title before it
   // steers the motion prompt toward an endorsement/superlative-flavored visual.
   const cleanTitle = stripPromoTag(productTitle);
@@ -401,7 +401,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       ? `${commercialLook} The product: ${cleanTitle}.`
       : params.serviceMode
       ? `Cinematic promotional video that conveys the BENEFIT and outcome of "${cleanTitle}" (a service/offer, not a physical product). ${visual.imageStyle || "clean, vibrant"}. Aspirational lifestyle moments of someone enjoying the result, smooth camera motion, professional advertising quality, vertical, no text overlay.${noInventedText}`
-      : `Dynamic product showcase video for ${cleanTitle}. ${visual.imageStyle || "clean, vibrant"}. Smooth camera motion, professional advertising quality, photorealistic live-action footage, vertical.${productTruth}`;
+      : `Dynamic product showcase video for ${cleanTitle}. ${visual.imageStyle || "clean, vibrant"}. Lively, energetic motion and a confident product reveal, professional advertising quality, photorealistic live-action footage, vertical. The product's label and shape stay crisp and unchanged.${productTruth}`;
   // Bounded for the same reason the image pipeline bounds its brief: this is
   // appended AFTER the fidelity clause, so an unbounded paste buries it.
   const direction = trimToWord(params.customPrompt, 500) || undefined;

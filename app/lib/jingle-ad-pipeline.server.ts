@@ -618,7 +618,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   if (!talkingUrl && !animUrl) {
     const created = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
-      prompt: `Upbeat retro TV-commercial hero shot: the product stays the clear star, slow confident camera push-in, gentle sparkle and shine sweeps, bright cheerful energy, vertical video.`,
+      prompt: `Upbeat retro TV-commercial hero shot: the product stays the clear star, lively dynamic camera motion and a confident reveal, gentle sparkle and shine sweeps, bright cheerful energy, vertical video. The product's label and shape stay crisp and unchanged.`,
       negativePrompt: "morphing, distortion, extra objects, people appearing, text, watermark, blur, style change",
     });
     animModel = created.model;
