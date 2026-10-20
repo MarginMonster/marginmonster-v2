@@ -1260,7 +1260,10 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
   const [soundId, setSoundId] = useState<string | null>(null);
   const stopAudio = () => { audioRef.current?.pause(); audioRef.current = null; setPlaying(null); };
   const reduceMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const previewIn = (id: string) => { if (soundId) return; const v = vids.current.get(id); if (!v || reduceMotion()) return; v.muted = true; v.loop = true; v.play().catch(() => {}); };
+  // Hover preview is desktop-only: on a touch device the synthetic mouseenter
+  // would fire a muted play() a tick before the tap's unmuted play(), and iOS
+  // then blocks the one that matters. Tap-to-play (playSound) is the mobile path.
+  const previewIn = (id: string) => { if (soundId) return; if (typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches) return; const v = vids.current.get(id); if (!v || reduceMotion()) return; v.muted = true; v.loop = true; v.play().catch(() => {}); };
   const previewOut = (id: string) => { if (soundId === id) return; const v = vids.current.get(id); if (!v) return; v.pause(); try { v.currentTime = 0; } catch { /* noop */ } };
   const stopSound = (id: string) => { const v = vids.current.get(id); if (v) { v.pause(); v.muted = true; v.loop = true; try { v.currentTime = 0; } catch { /* noop */ } } setSoundId((s) => (s === id ? null : s)); };
   const playSound = (c: CastItem) => {
@@ -1324,11 +1327,11 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
                 <button type="button" className="ws-face-pick" aria-label={t("Cast {name} — tap to watch their intro", { name: c.name })}
                   onClick={() => { setAvatarId(c.id); if (soundId === c.id) stopSound(c.id); else playSound(c); }}>
                   <span className="ws-face-img">
-                    <video className="ws-face-vid" playsInline preload="none"
+                    <video className="ws-face-vid" playsInline preload="metadata"
                       src={`/voice-videos/${c.id}.mp4?v=2`} poster={`/voice-videos/${c.id}.jpg?v=2`}
                       ref={(el) => { if (el) { if (!vids.current.has(c.id)) { el.muted = true; el.loop = true; } vids.current.set(c.id, el); } else vids.current.delete(c.id); }}
                       onEnded={() => stopSound(c.id)} />
-                    <i className="ws-face-play" aria-hidden="true"><Ico n={soundId === c.id ? "music" : "play"} size={15} /></i>
+                    <i className="ws-face-play" aria-hidden="true"><Ico n={soundId === c.id ? "music" : "play"} size={11} /></i>
                     {sel && <b>✓</b>}
                   </span>
                 </button>
@@ -4218,8 +4221,9 @@ const WS_STYLE = `
 /* Live presenter video tile: a still of their intro that comes alive muted on
    hover and plays with sound on click. object-position favours the face since
    the clips are 9:16 shown in a square. */
-.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 20%;display:block;background:var(--paper,#F4F1E6)}
-.ws-face-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:rgba(12,18,14,.44);color:#fff;display:grid;place-items:center;pointer-events:none;opacity:.92;transition:opacity .16s;z-index:2}
+.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 50%;display:block;background:var(--paper,#F4F1E6)}
+/* Small corner chip, not a face-covering disc — just a "this plays" hint. */
+.ws-face-play{position:absolute;left:6px;bottom:6px;width:23px;height:23px;border-radius:50%;background:rgba(12,18,14,.5);color:#fff;display:grid;place-items:center;pointer-events:none;opacity:.95;transition:opacity .16s;z-index:2}
 .ws-face.vid:hover .ws-face-play,.ws-face.vid.playing .ws-face-play{opacity:0}
 .ws-face.vid:hover .ws-face-img{border-color:var(--green2);box-shadow:0 4px 16px rgba(12,18,14,.16)}
 @media (max-width:560px){.ws-face{width:104px}.ws-face-img{height:104px}.ws-samp{top:74px}}
