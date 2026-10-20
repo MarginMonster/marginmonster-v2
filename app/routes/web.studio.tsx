@@ -4216,7 +4216,7 @@ const WS_STYLE = `
    one, muted on first load, with a sound toggle. The circle picker below just
    selects. */
 .ws-hubhero .ws-hubtile-img{overflow:hidden}
-.ws-hubtile-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;border-radius:inherit;display:block;background:#EAF6EF;z-index:0}
+.ws-hubtile-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 58%;border-radius:inherit;display:block;background:#EAF6EF;z-index:0}
 .ws-hubtile-face{position:absolute;inset:0;z-index:1;border:0;background:transparent;cursor:pointer;border-radius:inherit}
 .ws-hubhero .ws-hubtile-badge{z-index:2;pointer-events:none}
 .ws-hubtile-sound{position:absolute;left:8px;top:8px;z-index:3;width:34px;height:34px;border-radius:50%;border:0;background:rgba(12,18,14,.5);color:#fff;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:background .14s}
