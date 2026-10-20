@@ -22,9 +22,11 @@ export async function action({ request }: ActionFunctionArgs) {
       const v = (AV as Record<string, { voice: string; pitch?: number; speed?: number }>)[id];
       if (!v || !v.voice.startsWith("ttv-")) return json({ error: "no designed voice for " + id }, { status: 400 });
       const origin = new URL(request.url).origin;
-      const portraitUrl = `${origin}/avatars/${id}_0.jpg?v=3`;
+      // optional custom seed (e.g. the presenter composited onto an EasyMode set
+      // for the preview templates); default to the plain styled portrait.
+      const image = body.image ? String(body.image) : `${origin}/avatars/${id}_0.jpg?v=3`;
       const audioUrl = await falTts(line, v.voice, v.speed ?? 1, { emotion: "happy", lang: null, pitch: v.pitch });
-      const h = await submitAvatar(portraitUrl, audioUrl);
+      const h = await submitAvatar(image, audioUrl);
       return json({ requestId: h.requestId, audioUrl });
     }
     if (op === "status") {
