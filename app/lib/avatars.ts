@@ -150,7 +150,7 @@ export const OUTFITS = [
 ] as const;
 
 // bump when the portrait set is replaced so browsers reload (not the stale cache)
-export const AVATAR_V = "2";
+export const AVATAR_V = "3";
 
 export function avatarImg(id: string, variant: number = 0): string {
   const v = Math.max(0, Math.min(OUTFITS.length - 1, Math.floor(variant)));
