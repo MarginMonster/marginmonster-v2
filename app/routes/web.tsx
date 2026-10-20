@@ -474,7 +474,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-40).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photo?.url, lastPhotoUrl: carryPhoto || undefined }), signal: controller.signal });
+      const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-40).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photo?.url, lastPhotoUrl: carryPhoto || undefined, tz }), signal: controller.signal });
       if ((res.headers.get("content-type") || "").includes("text/event-stream") && res.body) {
         // STREAMING reply: append an empty assistant bubble and grow it as deltas
         // arrive; the terminal `done` frame carries actions/pending/media/followups.

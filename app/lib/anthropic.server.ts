@@ -142,6 +142,18 @@ export type ChatMsg = { role: "user" | "assistant"; content: unknown };
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 export type SystemParam = string | SystemBlock[];
 
+/** Approximate location handed to the hosted web_search tool so LOCAL queries
+ *  (weather, "near me") resolve instead of failing for lack of a place. All
+ *  fields optional; this is Anthropic's user_location shape. */
+export interface WebSearchUserLocation { type: "approximate"; city?: string; region?: string; country?: string; timezone?: string }
+/** Build the hosted web_search tool entry (empty when disabled). */
+function webSearchTool(maxUses?: number, loc?: WebSearchUserLocation): Record<string, unknown>[] {
+  if (!maxUses || maxUses <= 0) return [];
+  const t: Record<string, unknown> = { type: "web_search_20250305", name: "web_search", max_uses: maxUses };
+  if (loc) t.user_location = loc;
+  return [t];
+}
+
 /** Multi-turn TOOL-USE loop. Sends the conversation with the given tools; when
  *  the model calls a tool, runs it via `runTool`, feeds the result back, and
  *  repeats up to `maxRounds` until the model returns a final text answer. Same
@@ -165,6 +177,8 @@ export async function anthropicToolLoop(opts: {
    *  the same request — no client runTool — so results and citations come back
    *  in the same response; stop_reason "pause_turn" is handled below. */
   webSearchMaxUses?: number;
+  /** Approximate location for the web_search tool so weather/"near me" resolve. */
+  webSearchUserLocation?: WebSearchUserLocation;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -172,12 +186,7 @@ export async function anthropicToolLoop(opts: {
   const maxTokens = opts.maxTokens || 700;
   const maxRounds = Math.max(1, opts.maxRounds ?? 5);
   const messages: ChatMsg[] = [...opts.messages];
-  const reqTools: unknown[] = [
-    ...opts.tools,
-    ...(opts.webSearchMaxUses && opts.webSearchMaxUses > 0
-      ? [{ type: "web_search_20250305", name: "web_search", max_uses: opts.webSearchMaxUses }]
-      : []),
-  ];
+  const reqTools: unknown[] = [...opts.tools, ...webSearchTool(opts.webSearchMaxUses, opts.webSearchUserLocation)];
 
   let lastText = "";
   for (let round = 0; round < maxRounds; round++) {
@@ -266,6 +275,8 @@ export async function anthropicToolLoopStream(opts: {
    *  in the same stream, and the server_tool_use / web_search_tool_result blocks
    *  are preserved so a mixed tool turn or a pause_turn resumes cleanly. */
   webSearchMaxUses?: number;
+  /** Approximate location for the web_search tool so weather/"near me" resolve. */
+  webSearchUserLocation?: WebSearchUserLocation;
 }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not set");
@@ -273,12 +284,7 @@ export async function anthropicToolLoopStream(opts: {
   const maxTokens = opts.maxTokens || 700;
   const maxRounds = Math.max(1, opts.maxRounds ?? 5);
   const messages: ChatMsg[] = [...opts.messages];
-  const reqTools: unknown[] = [
-    ...opts.tools,
-    ...(opts.webSearchMaxUses && opts.webSearchMaxUses > 0
-      ? [{ type: "web_search_20250305", name: "web_search", max_uses: opts.webSearchMaxUses }]
-      : []),
-  ];
+  const reqTools: unknown[] = [...opts.tools, ...webSearchTool(opts.webSearchMaxUses, opts.webSearchUserLocation)];
   let full = "";
 
   for (let round = 0; round < maxRounds; round++) {
