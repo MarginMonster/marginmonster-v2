@@ -1253,10 +1253,25 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
   // lip-sync video instead of the mp3 snippet.
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
-  const [videoId, setVideoId] = useState<string | null>(null);
+  // Designed ("true voice") presenters are live video tiles now: the still comes
+  // alive MUTED on hover, and a click selects the presenter AND plays the intro
+  // WITH sound inline. One sound clip plays at a time.
+  const vids = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const [soundId, setSoundId] = useState<string | null>(null);
   const stopAudio = () => { audioRef.current?.pause(); audioRef.current = null; setPlaying(null); };
+  const reduceMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const previewIn = (id: string) => { if (soundId) return; const v = vids.current.get(id); if (!v || reduceMotion()) return; v.muted = true; v.loop = true; v.play().catch(() => {}); };
+  const previewOut = (id: string) => { if (soundId === id) return; const v = vids.current.get(id); if (!v) return; v.pause(); try { v.currentTime = 0; } catch { /* noop */ } };
+  const stopSound = (id: string) => { const v = vids.current.get(id); if (v) { v.pause(); v.muted = true; v.loop = true; try { v.currentTime = 0; } catch { /* noop */ } } setSoundId((s) => (s === id ? null : s)); };
+  const playSound = (c: CastItem) => {
+    stopAudio();
+    if (soundId && soundId !== c.id) stopSound(soundId);
+    const v = vids.current.get(c.id); if (!v) return;
+    setSoundId(c.id); v.loop = false; v.muted = false; try { v.currentTime = 0; } catch { /* noop */ }
+    v.play().catch(() => {});
+  };
+  // mp3 snippet for the non-video presenters (custom faces, brand face).
   const sample = (c: CastItem) => {
-    if (c.designed) { stopAudio(); setVideoId(c.id); return; } // premium "true voice" → lip-sync video
     if (playing === c.id) { stopAudio(); return; }
     stopAudio();
     const a = new Audio(`/voices/${c.id}.mp3?v=3`);
@@ -1299,28 +1314,42 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
         )}
         {shown.map((c) => {
           const bf = c.id === brandFaceId;
+          const sel = avatarId === c.id;
+          if (c.designed) {
+            // Live video tile — a still of the presenter's intro that plays MUTED
+            // on hover and, on click, selects them AND plays the intro with sound.
+            return (
+              <div key={c.id} className={`ws-face vid${sel ? " sel" : ""}${bf ? " bf" : ""}${soundId === c.id ? " playing" : ""}`}
+                onMouseEnter={() => previewIn(c.id)} onMouseLeave={() => previewOut(c.id)}>
+                <button type="button" className="ws-face-pick" aria-label={t("Cast {name} — tap to watch their intro", { name: c.name })}
+                  onClick={() => { setAvatarId(c.id); if (soundId === c.id) stopSound(c.id); else playSound(c); }}>
+                  <span className="ws-face-img">
+                    <video className="ws-face-vid" playsInline preload="none"
+                      src={`/voice-videos/${c.id}.mp4?v=2`} poster={`/voice-videos/${c.id}.jpg?v=2`}
+                      ref={(el) => { if (el) { if (!vids.current.has(c.id)) { el.muted = true; el.loop = true; } vids.current.set(c.id, el); } else vids.current.delete(c.id); }}
+                      onEnded={() => stopSound(c.id)} />
+                    <i className="ws-face-play" aria-hidden="true"><Ico n={soundId === c.id ? "music" : "play"} size={15} /></i>
+                    {sel && <b>✓</b>}
+                  </span>
+                </button>
+                <span>{bf ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
+              </div>
+            );
+          }
           return (
-            <div key={c.id} className={`ws-face${avatarId === c.id ? " sel" : ""}${bf ? " bf" : ""}`}>
+            <div key={c.id} className={`ws-face${sel ? " sel" : ""}${bf ? " bf" : ""}`}>
               <button type="button" className="ws-face-pick" onClick={() => setAvatarId(c.id)} aria-label={t("Cast {name}", { name: c.name })}>
-                <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{avatarId === c.id && <b>✓</b>}</span>
+                <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{sel && <b>✓</b>}</span>
               </button>
-              <button type="button" className={`ws-samp${playing === c.id ? " on" : ""}${c.designed ? " prem" : ""}`} onClick={() => sample(c)}
-                title={c.designed ? t("Watch {name} speak", { name: c.name }) : t("Hear {name}", { name: c.name })} aria-label={c.designed ? t("Watch {name} speak", { name: c.name }) : t("Hear {name}’s voice", { name: c.name })}>
-                <Ico n={playing === c.id ? "music" : c.designed ? "play" : "sound"} size={15} />
+              <button type="button" className={`ws-samp${playing === c.id ? " on" : ""}`} onClick={() => sample(c)}
+                title={t("Hear {name}", { name: c.name })} aria-label={t("Hear {name}’s voice", { name: c.name })}>
+                <Ico n={playing === c.id ? "music" : "sound"} size={15} />
               </button>
               <span>{bf ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
             </div>
           );
         })}
       </div>
-      {videoId && (
-        <div className="ws-vscrim" onClick={() => setVideoId(null)}>
-          <div className="ws-vbox" onClick={(e) => e.stopPropagation()}>
-            <video src={`/voice-videos/${videoId}.mp4?v=2`} autoPlay controls playsInline className="ws-video" />
-            <button type="button" className="ws-vx" onClick={() => setVideoId(null)}>✕</button>
-          </div>
-        </div>
-      )}
     </>
   );
 }
@@ -4183,9 +4212,17 @@ const WS_STYLE = `
 }
 .ws-face{position:relative}
 .ws-face-pick{display:block;width:100%;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:center}
-.ws-samp{position:absolute;top:46px;right:0;width:24px;height:24px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font-size:11px;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(20,32,26,.14);z-index:2;padding:0}
+.ws-samp{position:absolute;top:88px;right:8px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;font-size:11px;line-height:1;display:grid;place-items:center;box-shadow:0 1px 4px rgba(20,32,26,.14);z-index:3;padding:0}
 .ws-samp.on{border-color:var(--green2);color:var(--green2)}
 .ws-samp.prem{border-color:#E7C879;background:#FFFBEF}
+/* Live presenter video tile: a still of their intro that comes alive muted on
+   hover and plays with sound on click. object-position favours the face since
+   the clips are 9:16 shown in a square. */
+.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 20%;display:block;background:var(--paper,#F4F1E6)}
+.ws-face-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:rgba(12,18,14,.44);color:#fff;display:grid;place-items:center;pointer-events:none;opacity:.92;transition:opacity .16s;z-index:2}
+.ws-face.vid:hover .ws-face-play,.ws-face.vid.playing .ws-face-play{opacity:0}
+.ws-face.vid:hover .ws-face-img{border-color:var(--green2);box-shadow:0 4px 16px rgba(12,18,14,.16)}
+@media (max-width:560px){.ws-face{width:104px}.ws-face-img{height:104px}.ws-samp{top:74px}}
 .ws-face.bf .ws-face-img{border-color:var(--gold);box-shadow:0 0 0 2px rgba(176,133,38,.35)}
 .ws-face.bf>span:last-child{color:var(--gold-deep);font-weight:700}
 /* "Create your own" — the forge promoted to a hero tile at the head of the
