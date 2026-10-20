@@ -9,6 +9,18 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  // Helpurr tool status labels (shown briefly while a tool runs)
+  "Looking at your products…": "Revisando tus productos…",
+  "Pulling your numbers…": "Consultando tus cifras…",
+  "Checking your campaigns…": "Revisando tus campañas…",
+  "Finding your work…": "Buscando tu trabajo…",
+  "Setting that up…": "Preparando eso…",
+  "Lining that up…": "Organizando eso…",
+  "Checking your plan…": "Revisando tu plan…",
+  "Checking your balance…": "Revisando tu saldo…",
+  "Noting that down…": "Tomando nota…",
+  "Searching the web…": "Buscando en la web…",
+  "Working on it…": "Trabajando en ello…",
   "Hmm, I didn't catch that — try again?": "Mmm, no te entendí bien — ¿lo intentas de nuevo?",
   "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?": "¡Hola! Soy Helpurr 🐾 tu asistente de IA — ¿qué creamos hoy?",
   "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)": "Hemos tenido un gran día 🐾 — ese es mi límite diario de chat. Mañana estaré como nuevo, y mientras tanto todo lo demás en la app sigue funcionando. (Los planes superiores tienen más chat.)",
@@ -1442,6 +1454,18 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  // Helpurr tool status labels (shown briefly while a tool runs)
+  "Looking at your products…": "Je regarde tes produits…",
+  "Pulling your numbers…": "Je récupère tes chiffres…",
+  "Checking your campaigns…": "Je vérifie tes campagnes…",
+  "Finding your work…": "Je retrouve ton travail…",
+  "Setting that up…": "Je prépare ça…",
+  "Lining that up…": "Je mets ça en place…",
+  "Checking your plan…": "Je vérifie ton forfait…",
+  "Checking your balance…": "Je vérifie ton solde…",
+  "Noting that down…": "Je note ça…",
+  "Searching the web…": "Je cherche sur le web…",
+  "Working on it…": "Je m'en occupe…",
   "Hmm, I didn't catch that — try again?": "Hmm, je n'ai pas bien saisi — tu peux réessayer ?",
   "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?": "Salut ! Je suis Helpurr 🐾 ton assistant IA — qu'est-ce qu'on crée aujourd'hui ?",
   "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)": "On a bien avancé aujourd'hui 🐾 — c'est ma limite de discussion quotidienne. Je serai de nouveau en forme demain, et tout le reste de l'app fonctionne entre-temps. (Les forfaits supérieurs ont plus de discussion.)",
@@ -2864,6 +2888,18 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  // Helpurr tool status labels (shown briefly while a tool runs)
+  "Looking at your products…": "Ich sehe mir deine Produkte an…",
+  "Pulling your numbers…": "Ich hole deine Zahlen…",
+  "Checking your campaigns…": "Ich prüfe deine Kampagnen…",
+  "Finding your work…": "Ich suche deine Arbeit…",
+  "Setting that up…": "Ich richte das ein…",
+  "Lining that up…": "Ich bereite das vor…",
+  "Checking your plan…": "Ich prüfe deinen Tarif…",
+  "Checking your balance…": "Ich prüfe dein Guthaben…",
+  "Noting that down…": "Ich notiere das…",
+  "Searching the web…": "Ich suche im Web…",
+  "Working on it…": "Ich kümmere mich darum…",
   "Hmm, I didn't catch that — try again?": "Hmm, das habe ich nicht ganz verstanden — nochmal versuchen?",
   "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?": "Hey! Ich bin Helpurr 🐾 dein KI-Helfer — was erstellen wir heute?",
   "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)": "Wir hatten heute einen guten Lauf 🐾 — das ist mein tägliches Chat-Limit. Morgen bin ich wieder frisch, und alles andere in der App funktioniert in der Zwischenzeit weiter. (Höhere Tarife bekommen mehr Chat.)",
@@ -4293,6 +4329,18 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  // Helpurr tool status labels (shown briefly while a tool runs)
+  "Looking at your products…": "正在查看你的产品…",
+  "Pulling your numbers…": "正在获取你的数据…",
+  "Checking your campaigns…": "正在查看你的活动…",
+  "Finding your work…": "正在查找你的作品…",
+  "Setting that up…": "正在为你设置…",
+  "Lining that up…": "正在安排…",
+  "Checking your plan…": "正在查看你的方案…",
+  "Checking your balance…": "正在查看你的余额…",
+  "Noting that down…": "正在记下来…",
+  "Searching the web…": "正在搜索网络…",
+  "Working on it…": "正在处理…",
   "Hmm, I didn't catch that — try again?": "嗯，我没太听懂——再试一次？",
   "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?": "嗨！我是 Helpurr 🐾 你的 AI 助手——今天我们做点什么？",
   "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)": "今天聊得很开心 🐾——这是我每天的聊天上限。明天我又会满血复活，其间应用里的其他功能都照常可用。（更高的套餐有更多聊天次数。）",
@@ -5754,6 +5802,18 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  // Helpurr tool status labels (shown briefly while a tool runs)
+  "Looking at your products…": "آپ کی مصنوعات دیکھ رہا ہوں…",
+  "Pulling your numbers…": "آپ کے اعداد و شمار نکال رہا ہوں…",
+  "Checking your campaigns…": "آپ کی مہمات دیکھ رہا ہوں…",
+  "Finding your work…": "آپ کا کام تلاش کر رہا ہوں…",
+  "Setting that up…": "یہ ترتیب دے رہا ہوں…",
+  "Lining that up…": "اسے قطار میں لگا رہا ہوں…",
+  "Checking your plan…": "آپ کا پلان دیکھ رہا ہوں…",
+  "Checking your balance…": "آپ کا بیلنس دیکھ رہا ہوں…",
+  "Noting that down…": "نوٹ کر رہا ہوں…",
+  "Searching the web…": "ویب پر تلاش کر رہا ہوں…",
+  "Working on it…": "اس پر کام کر رہا ہوں…",
   "Hmm, I didn't catch that — try again?": "ہممم، میں سمجھ نہیں پایا — دوبارہ کوشش کریں؟",
   "Hey! I'm Helpurr 🐾 your AI helper — what are we making today?": "ہیلو! میں Helpurr ہوں 🐾 آپ کا AI مددگار — آج ہم کیا بنا رہے ہیں؟",
   "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. (Higher plans get more chat.)": "آج ہمارا دن زبردست رہا 🐾 — یہ میری روزانہ چیٹ کی حد ہے۔ کل میں پھر تازہ دم ہوں گا، اور اس دوران ایپ کا باقی سب کچھ کام کرتا رہے گا۔ (بڑے پلانز میں زیادہ چیٹ ملتی ہے۔)",
