@@ -973,8 +973,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             ))}
             {busy && (!msgs.length || msgs[msgs.length - 1].role !== "assistant" || !msgs[msgs.length - 1].content) && (
               streamStatus
-                ? <div className="mm-msg assistant mm-status" aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif?v=walk4" alt="" aria-hidden="true" /><span className="mm-status-tx">{streamStatus}</span></div>
-                : <div className="mm-msg assistant mm-think-bubble" aria-label={t("Helpurr is thinking…")} aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif?v=walk4" alt="" aria-hidden="true" /><span className="mm-typing" aria-hidden="true"><i /><i /><i /></span></div>
+                ? <div className="mm-msg assistant mm-status" aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif?v=walk5" alt="" aria-hidden="true" /><span className="mm-status-tx">{streamStatus}</span></div>
+                : <div className="mm-msg assistant mm-think-bubble" aria-label={t("Helpurr is thinking…")} aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif?v=walk5" alt="" aria-hidden="true" /><span className="mm-typing" aria-hidden="true"><i /><i /><i /></span></div>
             )}
             {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("still working on it — hang tight…")}</div>}
             {msgs.length <= 1 && !busy && (
