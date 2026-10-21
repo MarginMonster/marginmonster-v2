@@ -63,6 +63,17 @@ export async function action({ request }: ActionFunctionArgs) {
       }
       return json({ status: job.status, attempts: job.attempts, error: job.lastError ? String(job.lastError).slice(0, 220) : null, ageMin: Math.round((Date.now() - job.updatedAt.getTime()) / 60000), videoUrl, assetId });
     }
+    if (op === "cleanup") {
+      // Delete specific TEST asset rows (removes them from the Archive). The
+      // render files in /renders are a cache the 30-day sweep clears anyway.
+      const ids = Array.isArray(body.assetIds) ? (body.assetIds as unknown[]).map(String) : [];
+      const results: Array<{ id: string; deleted: boolean }> = [];
+      for (const id of ids) {
+        const r = await db.asset.deleteMany({ where: { id } });
+        results.push({ id, deleted: r.count === 1 });
+      }
+      return json({ results });
+    }
     return json({ error: "bad op" }, { status: 400 });
   } catch (e) {
     return json({ error: String((e as Error).message || e).slice(0, 300) }, { status: 500 });
