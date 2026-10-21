@@ -300,7 +300,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [activeThreadId, setActiveThreadId] = useState("main");
   // A photo the user attached to send to Helpurr (uploaded on pick; url is the
   // /uploads path Helpurr edits). uploading = the free upload call is in flight.
-  const [attach, setAttach] = useState<{ url: string; name: string } | null>(null);
+  // Up to a handful of photos per message — Helpurr can SEE them all (compare,
+  // caption, pick the best), like Gemini/ChatGPT. The FIRST is the subject of an
+  // "edit". Was a single photo; a beta tester asked for multi-upload.
+  const MAX_ATTACH = 6;
+  const [attach, setAttach] = useState<{ url: string; name: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   // The most recent photo sent this thread — kept so a follow-up ("now cartoonize
   // it") still resolves a subject after the attach chip is consumed. Cleared on a
@@ -435,36 +439,44 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
 
   // Upload a picked photo to the FREE, tested frameUpload endpoint and hold the
   // returned /uploads URL so the next message carries it to Helpurr. No tokens.
-  const pickPhoto = async (file: File | null | undefined) => {
-    if (!file || uploading) return;
-    if (!/^image\//.test(file.type)) { setMsgs((m) => [...m, { role: "assistant", content: t("That doesn't look like an image — send a JPG, PNG or WebP.") }]); return; }
-    if (file.size > 8 * 1024 * 1024) { setMsgs((m) => [...m, { role: "assistant", content: t("That photo's a bit big — keep it under 8MB.") }]); return; }
+  const pickPhoto = async (files: FileList | File[] | null | undefined) => {
+    const list = files ? Array.from(files) : [];
+    if (!list.length || uploading) return;
+    const room = MAX_ATTACH - attach.length;
+    if (room <= 0) { setMsgs((m) => [...m, { role: "assistant", content: t("That's the most I can take at once ({n}) — remove one to add another.", { n: MAX_ATTACH }) }]); if (fileRef.current) fileRef.current.value = ""; return; }
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.set("productPhoto", file);
-      // Dedicated resource route — a plain fetch gets JSON back (a POST to a page
-      // route like /web/studio returns HTML). Free, token-less; just stores the photo.
-      const r = await fetch("/api/buddy-upload", { method: "POST", body: fd });
-      const d = await r.json().catch(() => ({})) as { frameUrl?: string; error?: string };
-      if (d.frameUrl) setAttach({ url: d.frameUrl, name: file.name });
-      else setMsgs((m) => [...m, { role: "assistant", content: d.error || t("Couldn't upload that photo — mind trying again?") }]);
-    } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: t("Couldn't upload that photo — mind trying again?") }]);
+      // Upload each (free, token-less resource route) and append as it lands, so a
+      // bad file in the batch doesn't sink the good ones. Respect the cap.
+      for (const file of list.slice(0, room)) {
+        if (!/^image\//.test(file.type)) { setMsgs((m) => [...m, { role: "assistant", content: t("That doesn't look like an image — send a JPG, PNG or WebP.") }]); continue; }
+        if (file.size > 8 * 1024 * 1024) { setMsgs((m) => [...m, { role: "assistant", content: t("That photo's a bit big — keep it under 8MB.") }]); continue; }
+        try {
+          const fd = new FormData();
+          fd.set("productPhoto", file);
+          const r = await fetch("/api/buddy-upload", { method: "POST", body: fd });
+          const d = await r.json().catch(() => ({})) as { frameUrl?: string; error?: string };
+          if (d.frameUrl) { const url = d.frameUrl; setAttach((a) => (a.length >= MAX_ATTACH ? a : [...a, { url, name: file.name }])); }
+          else setMsgs((m) => [...m, { role: "assistant", content: d.error || t("Couldn't upload that photo — mind trying again?") }]);
+        } catch {
+          setMsgs((m) => [...m, { role: "assistant", content: t("Couldn't upload that photo — mind trying again?") }]);
+        }
+      }
     } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   };
+  const removeAttach = (url: string) => setAttach((a) => a.filter((p) => p.url !== url));
 
   const send = async (text: string) => {
     const trimmed = text.trim();
     // Allow sending a photo on its own (no text), but never while busy/uploading.
-    if ((!trimmed && !attach) || busy || uploading) return;
+    if ((!trimmed && !attach.length) || busy || uploading) return;
     setShowHome(false); // sending from the home hero/cards drops into the chat view
-    const photo = attach;
-    const carryPhoto = photo?.url || lastPhoto; // subject for a follow-up edit
-    const userMsg: MMMsg = { role: "user", content: trimmed || (photo ? t("Here's a photo") : ""), media: photo ? [{ url: photo.url, type: "IMAGE_AD", title: photo.name }] : undefined };
+    const photos = attach;
+    const carryPhoto = photos[0]?.url || lastPhoto; // first photo = subject for a follow-up edit
+    const userMsg: MMMsg = { role: "user", content: trimmed || (photos.length ? t("Here's a photo") : ""), media: photos.length ? photos.map((p) => ({ url: p.url, type: "IMAGE_AD" as const, title: p.name })) : undefined };
     const next: MMMsg[] = [...msgs, userMsg];
-    setMsgs(next); setInput(""); setAttach(null); setBusy(true);
-    if (photo) setLastPhoto(photo.url);
+    setMsgs(next); setInput(""); setAttach([]); setBusy(true);
+    if (photos.length) setLastPhoto(photos[0].url);
     // Optimistically name a brand-new thread from the first message (the server
     // does the same; this just avoids a flash of "New chat" on the tab).
     const title = trimmed || t("Photo");
@@ -475,7 +487,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     abortRef.current = controller;
     try {
       const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
-      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-40).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photo?.url, lastPhotoUrl: carryPhoto || undefined, tz }), signal: controller.signal });
+      const res = await fetch("/api/buddy", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next.slice(-40).map(({ role, content }) => ({ role, content })), path: loc.pathname, mode, threadId: activeThreadId, imageUrl: photos[0]?.url, imageUrls: photos.map((p) => p.url), lastPhotoUrl: carryPhoto || undefined, tz }), signal: controller.signal });
       if ((res.headers.get("content-type") || "").includes("text/event-stream") && res.body) {
         // STREAMING reply: append an empty assistant bubble and grow it as deltas
         // arrive; the terminal `done` frame carries actions/pending/media/followups.
@@ -621,7 +633,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       if (data.threadId) {
         setThreads((ts) => [...ts, { id: data.threadId as string, title: data.title || "New chat", ts: Date.now() }]);
         setActiveThreadId(data.threadId);
-        setAttach(null); setLastPhoto(null); // a fresh thread starts photo-free
+        setAttach([]); setLastPhoto(null); // a fresh thread starts photo-free
         if (max) setShowHome(true); // a new chat lands on the home (maximized)
       }
     } catch { /* ignore */ }
@@ -787,7 +799,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                         onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
                     ) : (
                       <>
-                        <button type="button" className="mm-side-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach(null); setLastPhoto(null); setSideOpen(false); } }} title={th.title}>
+                        <button type="button" className="mm-side-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); setSideOpen(false); } }} title={th.title}>
                           <span className="mm-side-chat-tx">{th.title}</span>
                         </button>
                         {th.id !== "main" && (
@@ -826,7 +838,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               {threads.map((th) => (
                 <button key={th.id} type="button" role="tab" aria-selected={th.id === activeThreadId}
                   className={`mm-tab${th.id === activeThreadId ? " on" : ""}`}
-                  onClick={() => { if (th.id !== activeThreadId && !busy) { setActiveThreadId(th.id); setAttach(null); setLastPhoto(null); } }} title={th.title}>
+                  onClick={() => { if (th.id !== activeThreadId && !busy) { setActiveThreadId(th.id); setAttach([]); setLastPhoto(null); } }} title={th.title}>
                   {th.title}
                 </button>
               ))}
@@ -849,13 +861,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                     chat workspace, so it leads straight with the composer + your chats. */}
                 <p className="mm-home-sub mm-home-greet">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
                 <form className="mm-home-ask" onSubmit={(e) => { e.preventDefault(); void send(input); }}>
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
+                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => pickPhoto(e.target.files)} />
                   <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
                   <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
-                  <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>
+                  <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}>➤</button>
                 </form>
-                {(attach || uploading) && (
-                  <div className="mm-home-attach">{uploading ? <span>{t("Uploading photo…")}</span> : attach ? <><img src={attach.url} alt={attach.name} /><span>{attach.name}</span><button type="button" onClick={() => setAttach(null)} aria-label={t("Remove photo")}>×</button></> : null}</div>
+                {(attach.length > 0 || uploading) && (
+                  <div className="mm-home-attach">
+                    {attach.map((p) => (
+                      <span key={p.url} className="mm-home-attach-item"><img src={p.url} alt={p.name} /><button type="button" onClick={() => removeAttach(p.url)} aria-label={t("Remove photo")}>×</button></span>
+                    ))}
+                    {uploading && <span className="mm-attach-up">{t("Uploading…")}</span>}
+                  </div>
                 )}
                 <div className="mm-home-cards">
                   {homeCards.map((c) => (
@@ -878,7 +895,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                           onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
                       ) : (
                         <>
-                          <button type="button" className="mm-home-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach(null); setLastPhoto(null); } }} title={th.title}>
+                          <button type="button" className="mm-home-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); } }} title={th.title}>
                             <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
                             <span className="mm-home-chat-tx">{th.title}</span>
                           </button>
@@ -982,24 +999,24 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               <div className="mm-chips">{chips.map((c) => <button key={c} type="button" onClick={() => send(c)}>{c}</button>)}</div>
             )}
           </div>
-          {(attach || uploading) && (
+          {(attach.length > 0 || uploading) && (
             <div className="mm-attach">
-              {uploading
-                ? <span className="mm-attach-up">{t("Uploading photo…")}</span>
-                : attach && <>
-                    <img src={attach.url} alt={attach.name} className="mm-attach-thumb" />
-                    <span className="mm-attach-name">{attach.name}</span>
-                    <button type="button" className="mm-attach-x" onClick={() => setAttach(null)} aria-label={t("Remove photo")}>×</button>
-                  </>}
+              {attach.map((p) => (
+                <span key={p.url} className="mm-attach-item">
+                  <img src={p.url} alt={p.name} className="mm-attach-thumb" />
+                  <button type="button" className="mm-attach-x" onClick={() => removeAttach(p.url)} aria-label={t("Remove photo")}>×</button>
+                </span>
+              ))}
+              {uploading && <span className="mm-attach-up">{t("Uploading…")}</span>}
             </div>
           )}
           <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => pickPhoto(e.target.files?.[0])} />
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => pickPhoto(e.target.files)} />
             <button type="button" className="mm-clip" onClick={() => fileRef.current?.click()} disabled={busy || uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
-            <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={attach ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
+            <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={attach.length ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
             {busy
               ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
-              : <button type="submit" disabled={uploading || (!input.trim() && !attach)} aria-label={t("Send")}>➤</button>}
+              : <button type="submit" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}>➤</button>}
           </form>
           </>)}
           </div>
@@ -1899,9 +1916,10 @@ const CSS = `
   background:linear-gradient(135deg,var(--green2) 40%,var(--green));box-shadow:0 3px 10px rgba(12,122,70,.3);transition:filter .12s,transform .12s;}
 .mm-home-send:hover:not(:disabled){filter:brightness(1.07);transform:translateY(-1px);}
 .mm-home-send:disabled{opacity:.42;cursor:default;}
-.mm-home-attach{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 10px;}
-.mm-home-attach img{width:30px;height:30px;border-radius:7px;object-fit:cover;}
-.mm-home-attach button{margin-left:2px;border:0;background:none;color:var(--ink2);font-size:15px;cursor:pointer;line-height:1;}
+.mm-home-attach{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:10px;font-size:12px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
+.mm-home-attach-item{position:relative;flex:0 0 auto;line-height:0;}
+.mm-home-attach img{width:34px;height:34px;border-radius:7px;object-fit:cover;display:block;}
+.mm-home-attach-item button{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.3);}
 .mm-home-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(560px,100%);margin-top:22px;}
 .mm-home-card{display:flex;align-items:center;gap:11px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2);border-radius:15px;padding:12px 13px;transition:border-color .14s,transform .12s,box-shadow .14s;}
@@ -2043,11 +2061,12 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-input .mm-stop{background:var(--ink,#14201A);font-size:12px;}
 .mm-status{font-style:italic;opacity:.92;display:inline-flex;align-items:center;gap:8px;}
 .mm-status-dot{width:8px;height:8px;border-radius:50%;background:#12A85E;animation:mmBlink 1s infinite both;flex:0 0 auto;}
-.mm-attach{display:flex;align-items:center;gap:9px;padding:8px 12px;border-top:1px solid var(--line);background:#F3F0E4;}
-.mm-attach-thumb{width:40px;height:40px;object-fit:cover;border-radius:9px;border:1px solid var(--line2);flex:0 0 auto;}
+.mm-attach{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid var(--line);background:#F3F0E4;}
+.mm-attach-item{position:relative;flex:0 0 auto;line-height:0;}
+.mm-attach-thumb{width:46px;height:46px;object-fit:cover;border-radius:9px;border:1px solid var(--line2);display:block;}
 .mm-attach-name{font-size:12px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
-.mm-attach-x{flex:0 0 auto;width:26px;height:26px;border:0;border-radius:50%;background:#E4DFCF;color:#4A554E;font-size:16px;line-height:1;cursor:pointer;}
-.mm-attach-x:hover{background:#D8D2BE;}
+.mm-attach-x{position:absolute;top:-7px;right:-7px;width:20px;height:20px;min-width:0;min-height:0;border:0;border-radius:50%;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.35);}
+.mm-attach-x:hover{background:#2f3833;}
 .mm-attach-up{font-size:12px;color:var(--ink2);font-style:italic;}
 @media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}
   .mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
@@ -2072,7 +2091,7 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 @media(max-width:620px){
   .mm-x{min-width:44px;min-height:44px}
   .mm-expand{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
-  .mm-attach-x{min-width:44px;min-height:44px}
+  .mm-attach-x{width:24px;height:24px}
   .mm-tab{min-height:44px;display:inline-flex;align-items:center}
   .mm-chips button{min-height:44px;display:inline-flex;align-items:center}
   .mm-act{min-height:44px;display:inline-flex;align-items:center}

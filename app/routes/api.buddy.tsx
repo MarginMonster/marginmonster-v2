@@ -276,7 +276,7 @@ const BUDDY_TOOLS: ToolDef[] = [
         format: { type: "string", enum: ["facts", "storytime", "listicle", "motivational"], description: "faceless ONLY: the video style (default facts). Pick from the user's phrasing — 'storytime …' → storytime, '5 reasons …' → listicle." },
         voice: { type: "string", enum: ["f-warm", "f-hype", "m-warm", "m-hype"], description: "faceless ONLY: narrator voice (default f-warm). f=female m=male, warm=calm hype=energetic." },
         editOp: { type: "string", enum: ["restyle", "cartoonize", "bgremove", "bgswap", "colorize", "upscale", "describe"], description: "edit ONLY: how to edit the photo — restyle (general glow-up, default), cartoonize, bgremove (cut out the background), bgswap (new backdrop — put it in 'direction'), colorize, upscale (sharpen), or describe (any freeform change you put in 'direction'). Pick from what they asked." },
-        source: { type: "string", enum: ["attached", "recent"], description: "edit ONLY: 'attached' (default) edits the photo they just sent; 'recent' edits their MOST RECENT creation — use it when they say 'edit my last ad', 'remove the bg on the one you made', 'tweak that last image' and haven't attached a new photo." },
+        source: { type: "string", enum: ["attached", "recent"], description: "edit ONLY: 'attached' (default) edits the photo they just sent; 'recent' edits their MOST RECENT creation — use it when they say 'edit my last ad', 'remove the bg on the one you made', 'tweak that last image' and haven't attached a new photo. When SEVERAL photos are attached, an edit uses the FIRST one; the rest are only for you to see and compare — don't claim you can edit a specific other one." },
         presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
         clean: { type: "boolean", description: "image ONLY: true = a CLEAN product shot — just the product, NO headline text and NO 'Shop now' button. Set it when they ask for a 'product-only' / 'cinematic' / 'plain' / 'just the product' / 'no text' shot, i.e. a photo not an ad. Default false = a full image ad with a headline + call-to-action." },
         direction: { type: "string", description: "image/video: optional creative direction. edit: the freeform instruction for editOp 'describe', or the new backdrop for 'bgswap'." },
@@ -1138,7 +1138,7 @@ async function remember(shopId: string, mode: "marketing" | "casual", threadId: 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") return json({ error: "method" }, { status: 405 });
   const lang = readUiLang(request);
-  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; title?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; lastPhotoUrl?: string; product?: string; tz?: string };
+  let body: { messages?: Array<{ role?: string; content?: string }>; path?: string; mode?: string; threadId?: string; title?: string; intent?: string; make?: Partial<MakeSpec>; jobId?: string; cursor?: number; kind?: string; imageUrl?: string; imageUrls?: string[]; lastPhotoUrl?: string; product?: string; tz?: string };
   try { body = await request.json(); } catch { return json({ reply: tr(lang, "Hmm, I didn't catch that — try again?") }); }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const path = typeof body.path === "string" ? body.path : "";
@@ -1424,20 +1424,33 @@ export async function action({ request }: ActionFunctionArgs) {
   // The photo to edit: the fresh attach (body.imageUrl) OR the last one attached in
   // this thread (body.lastPhotoUrl) so a follow-up ("now cartoonize it") still has a
   // subject. Both are validated to be THIS shop's own upload.
-  const freshPhoto = id ? safeEditSource(body.imageUrl, id.shop.id, origin) : null;
+  // Fresh attachments: the ARRAY (imageUrls, multi-upload) or the single legacy
+  // imageUrl. All validated to be THIS shop's own uploads. The FIRST is the
+  // subject of an "edit" make; Helpurr SEES them all (compare / caption / pick).
+  const rawFreshUrls: string[] = Array.isArray(body.imageUrls)
+    ? body.imageUrls.filter((u): u is string => typeof u === "string" && !!u)
+    : (typeof body.imageUrl === "string" && body.imageUrl ? [body.imageUrl] : []);
+  const freshPhotos = id ? rawFreshUrls.map((u) => safeEditSource(u, id.shop.id, origin)).filter((u): u is string => !!u) : [];
+  const freshPhoto = freshPhotos[0] || null;
   const editSource = freshPhoto || (id ? safeEditSource(body.lastPhotoUrl, id.shop.id, origin) : null);
-  // Let Helpurr SEE a FRESHLY attached photo (not re-shown every turn). Skip the
-  // injection — never break the reply — if the image is too big for the vision API
-  // (its edit still works), unreadable, or an unsupported format.
-  if (freshPhoto) {
-    const buf = await readUploadBytes(freshPhoto);
-    const media_type = buf ? sniffImageMedia(buf) : null;
-    if (buf && media_type && buf.length <= 4_500_000) {
-      const block = { type: "image" as const, source: { type: "base64" as const, media_type, data: buf.toString("base64") } };
+  // Let Helpurr SEE the FRESHLY attached photos (not re-shown every turn). Skip
+  // any that are too big for the vision API (the edit still works), unreadable,
+  // or an unsupported format — never break the reply over one image.
+  if (freshPhotos.length) {
+    const blocks: Array<{ type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp"; data: string } }> = [];
+    for (const fp of freshPhotos) {
+      const buf = await readUploadBytes(fp);
+      const media_type = buf ? sniffImageMedia(buf) : null;
+      if (buf && media_type && buf.length <= 4_500_000) {
+        blocks.push({ type: "image", source: { type: "base64", media_type, data: buf.toString("base64") } });
+      }
+    }
+    if (blocks.length) {
       for (let i = chat.length - 1; i >= 0; i--) {
         if (chat[i].role === "user") {
           const text = typeof chat[i].content === "string" ? (chat[i].content as string) : "";
-          chat[i] = { role: "user", content: [{ type: "text", text: text || "(the user attached this photo)" }, block] };
+          const label = blocks.length > 1 ? `(the user attached ${blocks.length} photos)` : "(the user attached this photo)";
+          chat[i] = { role: "user", content: [{ type: "text", text: text || label }, ...blocks] };
           break;
         }
       }
