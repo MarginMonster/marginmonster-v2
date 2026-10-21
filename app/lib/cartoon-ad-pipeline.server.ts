@@ -916,10 +916,12 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       talkingPath: animPath,
       audioPath,
       productImagePath,
-      // Land the product only at the END (a clean closing beat), never cut it
-      // into the cartoon mid-performance — that's the glitch we avoid.
+      // Land the product ONLY at the END, as a single clean overlay. NOT a Ken
+      // Burns `cutaway` — that mode ALSO fires a mid-ad reveal beat (≈38% in),
+      // so the real photo cut into the cartoon mid-performance = the exact
+      // cartoon→real→cartoon glitch we're avoiding. The static end branch honors
+      // productCutAt:"end" → one closing product beat, no mid-cut.
       productCutAt: "end",
-      cutaway: true,
       script,
       outPath,
       // true = omni baked the narration in; false = silent kling motion with
