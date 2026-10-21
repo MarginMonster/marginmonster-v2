@@ -616,32 +616,14 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       if (portraitUrl) {
         sourcePhotoUrl = portraitUrl;
         withCharacter = true;
-        // Prefer the merchant-approved Combine frame (params.composedFrameUrl);
-        // only compose internally when none was supplied (classic flow / no hub).
-        let composedUrl = resume.composedUrl || params.composedFrameUrl || "";
-        if (!composedUrl && !params.serviceMode && params.productImageUrl) {
-          try {
-            const { composeHoldingFrames } = await import("./fal-image.server");
-            // Without a scale hint the composer guesses, and a 12-piece case
-            // guesses small — the same "too small even on Large" the UGC path
-            // had. The merchant's choice wins over inference.
-            const { resolveProductScale } = await import("./product-scale.server");
-            const hint = await resolveProductScale({
-              productTitle: params.productTitle,
-              productDescription: params.productDescription,
-              productImageUrl: params.productImageUrl,
-              productSize: params.productSize,
-            });
-            // Continuity comes from the RESOLVED presenter, so a custom one
-            // carries its own rather than looking up undefined in the public cast.
-            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase, presenter.avatar.continuity);
-            composedUrl = frames[0] || "";
-            if (composedUrl) await ckpt({ ckComposedUrl: composedUrl });
-          } catch (e) {
-            console.error(`[cartoon] compose failed (stylizing plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
-          }
-        }
-        if (composedUrl) sourcePhotoUrl = composedUrl;
+        // CARTOON IS CHARACTER-ONLY (owner call, after beta feedback).
+        // Cartoonizing a real product blurs it into an unrecognisable blob —
+        // even with the "keep the product exact" rule, the stylize + animate
+        // passes degrade it. So we stylize the presenter PORTRAIT alone and
+        // never composite the product into the frame, not even a merchant-
+        // approved Combine frame. The real product is shown SHARP instead, as a
+        // Ken Burns endcard in assembly (productCutAt:"end"). sourcePhotoUrl
+        // stays the portrait set just above.
       }
     }
 
@@ -898,8 +880,11 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   });
 
 
-  // 6) ASSEMBLY — loop the animation to the narration, captions on, no photo
-  // b-roll (a real photo cutting into a cartoon reads as a glitch).
+  // 6) ASSEMBLY — loop the animation to the narration, captions on, and CLOSE
+  // on a sharp real-product endcard. A real photo cutting in MID-cartoon reads
+  // as a glitch, so it lands only at the END (productCutAt:"end"): the character
+  // performs the hook, then a clean Ken Burns push on the merchant's REAL
+  // product photo closes it — the product stays recognisable (owner call).
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "toon-"));
   try {
     const animPath = path.join(tmp, "anim.mp4");
@@ -912,11 +897,29 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     const fileName = `toon-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const outPath = path.join(rendersDir, fileName);
 
+    // Real product ENDCARD — download the merchant's actual photo so assembly
+    // can close on it (sharp, never cartoonized). Non-fatal: a download miss
+    // just drops the endcard rather than failing a paid render.
+    let productImagePath: string | null = null;
+    if (!params.serviceMode && params.productImageUrl) {
+      try {
+        productImagePath = path.join(tmp, "product.jpg");
+        await download(params.productImageUrl, productImagePath);
+      } catch (e) {
+        console.error("[cartoon] product endcard download failed (non-fatal):", e instanceof Error ? e.message.slice(0, 140) : e);
+        productImagePath = null;
+      }
+    }
+
     await assemble({
       jobId: params.jobId,
       talkingPath: animPath,
       audioPath,
-      productImagePath: null,
+      productImagePath,
+      // Land the product only at the END (a clean closing beat), never cut it
+      // into the cartoon mid-performance — that's the glitch we avoid.
+      productCutAt: "end",
+      cutaway: true,
       script,
       outPath,
       // true = omni baked the narration in; false = silent kling motion with

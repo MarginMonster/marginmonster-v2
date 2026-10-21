@@ -43,7 +43,7 @@ const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
   { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator talks straight to camera — no product, authentic selfie-TikTok energy", cap: "video", tier: "Studio", price: 39 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter redrawn viral-style — real product closes it", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
   { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
   { key: "review", name: "Creator Demo", cover: "/ad-templates/ctcover-review.jpg?v=1", sub: "A creator's phone-shot product demo — social-feed real", cap: "video", tier: "Studio", price: 39 },
@@ -2717,7 +2717,7 @@ export default function WebStudio() {
                   ))}
                 </div>
                 {contentType === "cartoon" && (cartoonStyle ? (
-                  <p className="ws-note"><Ico n="palette" /> <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "")}</b>{t(" — ")}{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb || "")}{t(". Your presenter and product get redrawn in this style, then animated with a narrator.")}</p>
+                  <p className="ws-note"><Ico n="palette" /> <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "")}</b>{t(" — ")}{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb || "")}{t(". Your presenter gets redrawn in this style and animated with a narrator — then your real product closes it, sharp (never cartoonized).")}</p>
                 ) : (
                   <p className="ws-note">{t("Pick the style — your presenter becomes the character, your product stays recognizable.")}</p>
                 ))}
