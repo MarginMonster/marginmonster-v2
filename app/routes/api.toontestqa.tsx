@@ -13,6 +13,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   if (url.searchParams.get("key") !== KEY) return new Response("not found", { status: 404 });
 
+  if (url.searchParams.get("cleanup")) {
+    // Remove the test assets this route created, so they don't clutter the
+    // shop's gallery. Title-scoped to "ToonTest" — only our own artifacts.
+    const del = await db.asset.deleteMany({ where: { title: { contains: "ToonTest" } } });
+    return Response.json({ deleted: del.count });
+  }
+
   if (url.searchParams.get("poll")) {
     const rows = await db.asset.findMany({
       where: { title: { contains: "ToonTest" } },
