@@ -671,15 +671,22 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       // instead of restyling the product into the frame, we draw a product-FREE
       // "story" scene that sets the mood, and let the merchant's REAL product
       // close the ad sharp as the endcard (productCutAt:"end" in assembly, which
-      // already fires for this exact case). A cheerful character gives kling
-      // something lively to animate. No input_image (it would bias the model
-      // back toward drawing the product) and no preserveText (nothing to
+      // already fires for this exact case). No input_image (it would bias the
+      // model back toward drawing the product) and no preserveText (nothing to
       // preserve — the scene carries no lettering at all). [Option A, owner 10-21]
+      //
+      // THE TRICK (validated on flux-dev): forbidding "no bottle/can/cup" in a
+      // positive prompt BACKFIRES — the model attends to those nouns and draws
+      // one anyway (a calm standing character gets a generic drink put in its
+      // hand). What actually keeps the frame product-free is a DYNAMIC pose that
+      // gives the hands a job: arms raised, celebrating, both hands open+empty.
+      // That reliably yields an empty-handed, product-free scene across product
+      // categories (tested: sparkling water → beach jump; candle → cozy room).
       const prompt =
-        `${recipe.look}. A delightful, scroll-stopping advertising scene that sets the MOOD for "${params.productTitle}" — ` +
-        `a cheerful character (or lively mascot) enjoying the world this product belongs to. ` +
-        `Do NOT draw the product itself, nor any packaging, box, bottle, label or replica of it — ` +
-        `the real product is shown separately. No lettering or text anywhere in the scene.${sceneBits} ` +
+        `${recipe.look}. A joyful, scroll-stopping advertising scene that captures the FEELING of "${params.productTitle}" — ` +
+        `a cheerful character caught mid-moment, celebrating: laughing, playing, arms raised high with both hands open and empty, full of delight. ` +
+        `Show the character and a vibrant world that evokes the product's vibe; the real product is revealed later and does NOT appear in this scene. ` +
+        `No lettering or text anywhere.${sceneBits} ` +
         `Vertical 9:16 composition, advertising quality, no watermark, no caption text.`;
       url = await run({
         prompt,
