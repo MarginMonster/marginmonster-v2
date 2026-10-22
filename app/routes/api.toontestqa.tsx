@@ -16,6 +16,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return Response.json({ deleted: del.count });
   }
 
+  if (url.searchParams.get("visioncheck")) {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const { cartoonHoldOk } = await import("~/lib/cartoon-ad-pipeline.server");
+    const good = await cartoonHoldOk(`${base}/_vtest-good.jpg`, "ToonTest Sparkling Water");
+    const empty = await cartoonHoldOk(`${base}/_vtest-empty.jpg`, "ToonTest Sparkling Water");
+    return Response.json({ good_expectTrue: good, empty_expectFalse: empty, correct: good === true && empty === false });
+  }
+
   if (url.searchParams.get("compose")) {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const productImageUrl = `${base}/_toontest-product.jpg`;

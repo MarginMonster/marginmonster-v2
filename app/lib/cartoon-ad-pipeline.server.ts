@@ -533,16 +533,17 @@ export async function stylizeKeyframeForTest(o: {
  *  the photo (that's qaPresenterHold's job on the photoreal compose). This only
  *  decides whether to redraw. Fails OPEN on a vision outage so a QA hiccup never
  *  blocks a paid gen. */
-async function cartoonHoldOk(cartoonUrl: string, productTitle: string): Promise<boolean> {
+export async function cartoonHoldOk(cartoonUrl: string, productTitle: string): Promise<boolean> {
   try {
     const { anthropicVision } = await import("./anthropic.server");
     const ans = await anthropicVision(
-      `This is a frame from a cartoon/animated ad. A character should be clearly HOLDING a product ("${stripPromoTag(productTitle)}") in their hand. Reply with ONE word, YES or NO:\n` +
-        `YES = a clearly visible, recognizable product is held in the character's hand (a bottle, can, box, jar, pouch or similar), prominent and large enough to read as a product.\n` +
-        `NO = the hands are empty, OR the product is a tiny shapeless blob/smudge, OR no product is visible at all.\n` +
-        `The product being stylized/cartoonized is FINE — judge ONLY whether a recognizable, prominent held product is PRESENT.`,
+      `Look at this cartoon ad frame. Decide whether the character is physically holding a VISIBLE PRODUCT OBJECT — an actual can, bottle, box, jar, pouch or similar item with a clearly visible solid body you could point to — in their hand.\n` +
+        `Reply with ONE word, YES or NO:\n` +
+        `YES = there is a distinct product object clearly held in the hand, a solid item large enough to read as a product.\n` +
+        `NO = the hands are EMPTY, OR they are only making a GESTURE (cupped, pointing, open palm, presenting) with no actual object in them, OR any "product" is just a tiny unrecognizable smudge or blob.\n` +
+        `BE STRICT: a holding gesture with nothing visible in the hand is NO. The product being stylized/cartoonized is fine — judge only PRESENCE of a real held object. Reply YES or NO only.`,
       [cartoonUrl],
-      { maxTokens: 8 }
+      { maxTokens: 8, model: "claude-sonnet-4-6" }
     );
     return /\byes\b/i.test(ans);
   } catch {
@@ -690,15 +691,16 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
             // cartoon we let the composer draw it at a good, visible held size.
             // Retry once: the fal compose fails intermittently, and a single
             // miss must not silently drop us to an empty-handed portrait.
-            // Positive PROMINENCE hint (replaces the realistic-size hint): a
-            // big, clearly-held product reads through the cartoonize; a small
-            // one blobs.
-            const prominence = "Show the product held UP toward the camera as a clear hero element — large and prominent, its label easy to read; do NOT shrink it, miniaturize it, or tuck it away.";
+            // NO scale/prominence hint: the one confirmed-good cartoonize came
+            // from a plain, natural chest-level compose (the "held UP, large"
+            // hint produced frames the cartoonize then dropped). Let the composer
+            // place the product naturally; the vision gate + redraw handles any
+            // miss. Retry once on an intermittent fal failure.
             let frames: string[] = [];
             let lastErr: unknown;
             for (let attempt = 1; attempt <= 2 && !frames[0]; attempt++) {
               try {
-                frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, prominence, presenter.avatar.continuity);
+                frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, undefined, presenter.avatar.continuity);
               } catch (e) { lastErr = e; }
             }
             if (!frames[0] && lastErr) throw lastErr;
