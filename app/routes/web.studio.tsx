@@ -146,13 +146,17 @@ const TALKINGHEAD_SETTINGS = [
 
 const CARTOON_STYLES = [
   { key: "dreamanime", name: "Dream Anime", tint: "#6FAF7C", blurb: "Your presenter as a soft painterly anime character — the style the whole internet shares" },
-  { key: "toyfigure", name: "Boxed Figure", tint: "#F4B400", blurb: "Presenter & product as a collectible figure in the pack — the viral format" },
-  { key: "papercut", name: "Paper Craft", tint: "#E58A4E", blurb: "A handmade layered-paper diorama — the craft style feeds fall in love with" },
   { key: "pixar", name: "3D Toon", tint: "#34C3E7", blurb: "Big-studio 3D character film — glossy and cinematic" },
   { key: "retroanime", name: "Retro Anime", tint: "#E5397D", blurb: "90s VHS anime — sunset palettes and speed lines" },
   { key: "vintagetoon", name: "Vintage Toon", tint: "#E7A33C", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
-  { key: "puppet", name: "Felt Puppet", tint: "#8E5BD9", blurb: "Fuzzy felt and googly eyes — puppet-show charm" },
   { key: "clay", name: "Claymation", tint: "#B08526", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  // Hidden from the picker 2026-10-22 (owner call) — the product-in-hand change
+  // keeps the real product photo-exact, which pulls the whole frame photoreal:
+  //   toyfigure  → character stays un-stylized + the card header garbles
+  //   papercut   → loses its layered-paper texture (reads photoreal)
+  //   puppet     → loses its felt texture (reads photoreal)
+  // Their CARTOON_RECIPES entries stay (pipeline-side) so an already-made asset
+  // in one of those styles still remixes. Re-enable here if we harden them.
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
