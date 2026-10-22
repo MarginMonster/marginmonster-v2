@@ -616,14 +616,36 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       if (portraitUrl) {
         sourcePhotoUrl = portraitUrl;
         withCharacter = true;
-        // CARTOON IS CHARACTER-ONLY (owner call, after beta feedback).
-        // Cartoonizing a real product blurs it into an unrecognisable blob —
-        // even with the "keep the product exact" rule, the stylize + animate
-        // passes degrade it. So we stylize the presenter PORTRAIT alone and
-        // never composite the product into the frame, not even a merchant-
-        // approved Combine frame. The real product is shown SHARP instead, as a
-        // Ken Burns endcard in assembly (productCutAt:"end"). sourcePhotoUrl
-        // stays the portrait set just above.
+        // CARTOON + PRODUCT (owner call 2026-10-22, test-validated): when there
+        // IS a real product, first compose a photoreal "presenter holding the
+        // product" frame (the SAME composer UGC/avatar video uses), then
+        // cartoonize THAT below — so the product rides into the cartoon in their
+        // hand, matching the style previews. The cartoonize prompt
+        // (characterKeyframePrompt) already keeps the product un-stylized and
+        // recognizable, and the omni lip-sync animates the face while the held
+        // product stays put — a test gen confirmed the product survives the
+        // motion. The real-product endcard still closes it SHARP, which also
+        // fixes any cartoonized-label garble. No product (casual video /
+        // service) → the portrait set just above is stylized alone. Compose
+        // failure is NON-FATAL: fall back to the plain portrait, never lose the ad.
+        if (!params.serviceMode && params.productImageUrl) {
+          try {
+            const { composeHoldingFrames } = await import("./fal-image.server");
+            const { resolveProductScale } = await import("./product-scale.server");
+            // Without a scale hint the composer guesses the size (a 12-can case
+            // vs a single can), so a held product can come out the wrong size.
+            const hint = await resolveProductScale({
+              productTitle: params.productTitle,
+              productDescription: params.productDescription,
+              productImageUrl: params.productImageUrl,
+              productSize: params.productSize,
+            });
+            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase, presenter.avatar.continuity);
+            if (frames[0]) sourcePhotoUrl = frames[0];
+          } catch (e) {
+            console.error(`[cartoon] compose failed (stylizing plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+          }
+        }
       }
     }
 
