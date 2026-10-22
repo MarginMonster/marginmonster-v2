@@ -18,16 +18,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (url.searchParams.get("compose")) {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    const portraitUrl = `${base}/avatars/valentina_0.jpg`;
     const productImageUrl = `${base}/_toontest-product.jpg`;
-    const { composeHoldingFrames, falImageEnabled } = await import("~/lib/fal-image.server");
+    const out: Record<string, unknown> = {};
+    // Isolate resolveProductScale (the suspect) from the compose.
+    let scaleHint: string | undefined;
     try {
-      const t0 = Date.now();
-      const frames = await composeHoldingFrames(portraitUrl, productImageUrl, "ToonTest Sparkling Water", 1, "hold");
-      return Response.json({ falEnabled: falImageEnabled(), ms: Date.now() - t0, frames });
-    } catch (e) {
-      return Response.json({ falEnabled: falImageEnabled(), error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? (e.stack || "").slice(0, 600) : null });
-    }
+      const { resolveProductScale } = await import("~/lib/product-scale.server");
+      const hint = await resolveProductScale({ productTitle: "ToonTest Sparkling Water", productDescription: "A crisp, lightly carbonated spring water in a slim 16oz can.", productImageUrl });
+      out.hint = hint; scaleHint = hint?.phrase;
+    } catch (e) { out.scaleErr = e instanceof Error ? e.message : String(e); }
+    try {
+      const { composeHoldingFrames } = await import("~/lib/fal-image.server");
+      out.frames = await composeHoldingFrames(`${base}/avatars/valentina_0.jpg`, productImageUrl, "ToonTest Sparkling Water", 1, "hold", undefined, scaleHint);
+    } catch (e) { out.composeErr = e instanceof Error ? e.message : String(e); }
+    return Response.json(out);
   }
 
   if (url.searchParams.get("poll")) {

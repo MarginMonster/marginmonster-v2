@@ -631,16 +631,22 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         if (!params.serviceMode && params.productImageUrl) {
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
-            const { resolveProductScale } = await import("./product-scale.server");
-            // Without a scale hint the composer guesses the size (a 12-can case
-            // vs a single can), so a held product can come out the wrong size.
-            const hint = await resolveProductScale({
-              productTitle: params.productTitle,
-              productDescription: params.productDescription,
-              productImageUrl: params.productImageUrl,
-              productSize: params.productSize,
-            });
-            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, hint?.phrase, presenter.avatar.continuity);
+            // Scale hint is a NICE-TO-HAVE (keeps a 12-pack from being drawn as
+            // a single can). It's a vision call that can throw/time out, so it
+            // gets its OWN guard — a hint failure must NOT skip the compose and
+            // drop us back to an empty-handed portrait (that bug shipped once).
+            let scaleHint: string | undefined;
+            try {
+              const { resolveProductScale } = await import("./product-scale.server");
+              const hint = await resolveProductScale({
+                productTitle: params.productTitle,
+                productDescription: params.productDescription,
+                productImageUrl: params.productImageUrl,
+                productSize: params.productSize,
+              });
+              scaleHint = hint?.phrase;
+            } catch { /* no hint — compose still runs at the guessed size */ }
+            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, scaleHint, presenter.avatar.continuity);
             if (frames[0]) sourcePhotoUrl = frames[0];
           } catch (e) {
             console.error(`[cartoon] compose failed (stylizing plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
