@@ -533,7 +533,7 @@ export async function stylizeKeyframeForTest(o: {
  *  the photo (that's qaPresenterHold's job on the photoreal compose). This only
  *  decides whether to redraw. Fails OPEN on a vision outage so a QA hiccup never
  *  blocks a paid gen. */
-export async function cartoonHoldOk(cartoonUrl: string, productTitle: string): Promise<boolean> {
+async function cartoonHoldOk(cartoonUrl: string, productTitle: string): Promise<boolean> {
   try {
     const { anthropicVision } = await import("./anthropic.server");
     const ans = await anthropicVision(
@@ -552,7 +552,7 @@ export async function cartoonHoldOk(cartoonUrl: string, productTitle: string): P
 }
 
 export async function generateCartoonAd(params: CartoonAdParams): Promise<string> {
-  let composeDbg = "init"; // TEMP diagnostic — surfaced in asset bodyJson
+  let composeDbg = "init"; // compose + hold-gate outcome, kept in bodyJson to monitor the product-in-hand rate
   const recipe = CARTOON_RECIPES[(params.styleKey as CartoonStyleKey)] || CARTOON_RECIPES.dreamanime;
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const resume = params.resume || {};
