@@ -41,11 +41,11 @@ export const meta = () => [{ title: "Studio · EasyMode" }];
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
-  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=3", sub: "Straight to camera, selfie-style — no product", cap: "video", tier: "Studio", price: 39 },
+  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=4", sub: "Straight to camera, selfie-style — no product", cap: "video", tier: "Studio", price: 39 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/ad-templates/ctcover-cartoon.jpg?v=1", sub: "Your presenter, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head 2000s theme song", cap: "anthem", tier: "Studio", price: 39 },
-  { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic, big-budget story ad", cap: "video", tier: "Studio", price: 39 },
+  { key: "commercial", name: "Commercial", cover: "/ad-templates/ctcover-commercial.jpg?v=1", sub: "A cinematic, big-budget story ad", cap: "video", tier: "Studio", price: 39 },
   // Creator Demo (review) retired from the picker 2026-10-21 — it was the SAME
   // presenter+product UGC pipeline as Avatar AI (base:"avatar"), just with a
   // casual phone-shot direction, so it read as a duplicate card. CT_PRESETS.review
@@ -57,6 +57,11 @@ const CONTENT_TYPES = [
   // leaves 6 clean video formats. "asmr" stays a valid CType (below) so an
   // already-made Close-Up still remixes.
 ] as const;
+
+// The two flagship formats lead the marketing picker and render LARGER (span 2
+// columns), so the 6 cards read as 2 big on top + 4 under — no empty "void"
+// from an odd fill. Owner's call; easy to swap the keys.
+const FLAGSHIP_KEYS = new Set<string>(["avatar", "highlight"]);
 
 // Casual (Creator) reframes the kept video types in its own, non-sell language —
 // same pipelines, creator-native names. Only the three casual keeps it shows.
@@ -2647,10 +2652,13 @@ export default function WebStudio() {
                 // ones a creator makes from an idea or a photo: a cartoon, a
                 // cinematic showcase, and satisfying macro loops.
                 ? true
-                : (ct.key === "cartoon" || ct.key === "highlight")).map((ct) => {
+                : (ct.key === "cartoon" || ct.key === "highlight"))
+                // Flagships lead so they fill the top row (they span 2 columns).
+                .sort((a, b) => (casual ? 0 : (FLAGSHIP_KEYS.has(b.key) ? 1 : 0) - (FLAGSHIP_KEYS.has(a.key) ? 1 : 0)))
+                .map((ct) => {
                 const locked = !can(ct.cap);
                 return (
-                  <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}`}
+                  <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}${!casual && FLAGSHIP_KEYS.has(ct.key) ? " ws-tile-flag" : ""}`}
                     onClick={() => (locked ? setUpsell({ name: ct.name, tier: ct.tier, price: ct.price }) : (setContentType(ct.key), setUpsell(null)))}>
                     <span className={`ws-tile-img${casual && CASUAL_VIDEO_COPY[ct.key] ? " ws-tile-casual" : ""}`}
                       style={casual && CASUAL_VIDEO_COPY[ct.key] ? undefined : { backgroundImage: `url(${ct.cover})` }}>

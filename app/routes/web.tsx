@@ -1602,6 +1602,11 @@ const CSS = `
 .ws-lbl:first-child{margin-top:0}
 .ws-opt{font-family:Inter,sans-serif;font-weight:500;font-size:11px;color:var(--ink2);}
 .ws-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+/* Content-type picker: fixed 4-col so the two flagship cards (span 2) make a
+ * clean top row of 2 big + a row of 4 under — no empty "void" from 6 cards in
+ * an auto-fill row. Mobile falls to 2-col below, where a flagship spans full. */
+.ws-ctgrid{grid-template-columns:repeat(4,minmax(0,1fr));}
+.ws-ctgrid .ws-tile-flag{grid-column:span 2;}
 /* minmax(0,…) not minmax(220px,…): a hard 220px floor on two columns needs
  * 454px of room, which a phone doesn't have — the first card got clipped. */
 .ws-tiles.two{grid-template-columns:repeat(2,minmax(0,300px));justify-content:center;}
