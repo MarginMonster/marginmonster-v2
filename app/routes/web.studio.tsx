@@ -43,7 +43,7 @@ const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
   { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=4", sub: "Straight to camera, selfie-style — no product", cap: "video", tier: "Studio", price: 39 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/ad-templates/ctcover-cartoon.jpg?v=1", sub: "Your presenter, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/ad-templates/ctcover-cartoon.jpg?v=2", sub: "Cartoon hook, then your real product", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head 2000s theme song", cap: "anthem", tier: "Studio", price: 39 },
   { key: "commercial", name: "Commercial", cover: "/ad-templates/ctcover-commercial.jpg?v=1", sub: "A cinematic, big-budget story ad", cap: "video", tier: "Studio", price: 39 },
   // Creator Demo (review) retired from the picker 2026-10-21 — it was the SAME
@@ -2273,6 +2273,12 @@ export default function WebStudio() {
   // presenter/product yet (empty tiles); showCombine still gates the Combine
   // button + result inside it.
   const avatarVideoHub = tab === "video" && hubType && !serviceOn;
+  // Cartoon is a HUB format (so it gets the presenter + product pickers), but it
+  // never animates from a physical "presenter holding the product" frame — the
+  // presenter is redrawn as a character and the real product only closes the ad.
+  // So the Combine step is hidden for cartoon (it used to charge a token for a
+  // frame the cartoon pipeline discards — owner-approved scrub 2026-10-21).
+  const isCartoon = tab === "video" && contentType === "cartoon";
   // Which hub ingredient tile has its inline picker open. Collapsing happens in
   // the pick handlers (store-catalogue tap, presenter tap) — NOT an effect keyed
   // on hasMarketingProduct/avatarId, which would slam the drawer shut the instant
@@ -2734,7 +2740,7 @@ export default function WebStudio() {
                 {contentType === "cartoon" && (cartoonStyle ? (
                   <p className="ws-note"><Ico n="palette" /> <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "")}</b>{t(" — ")}{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb || "")}{t(". Your presenter gets redrawn in this style and animated with a narrator — then your real product closes it, sharp (never cartoonized).")}</p>
                 ) : (
-                  <p className="ws-note">{t("Pick the style — your presenter becomes the character, your product stays recognizable.")}</p>
+                  <p className="ws-note">{t("Pick the style — your presenter becomes the character. Your real product appears at the end, sharp (never cartoonized).")}</p>
                 ))}
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
@@ -2917,7 +2923,7 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
-            <StepHead n={avatarVideoHub ? 1 : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? t("your presenter, holding your product") : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
+            <StepHead n={avatarVideoHub ? 1 : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? (isCartoon ? t("your character, and the product it shows off") : t("your presenter, holding your product")) : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
             {/* ======================================================================
                 AVATAR-VIDEO COMBINE PANEL — ONE immersive flow (owner-requested).
@@ -2957,7 +2963,7 @@ export default function WebStudio() {
                       <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
                     </span>
                     <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
-                    <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
+                    <span>{hasMarketingProduct ? t("Tap to change") : isCartoon ? t("Shown sharp at the end") : t("What they'll hold")}</span>
                   </button>
                 </div>
                 {/* Presenter picker reveal — picking selects + plays the intro in
@@ -2979,6 +2985,12 @@ export default function WebStudio() {
                     the combine (the combine identifies the product from the PHOTO).
                     Only the buy-link hidden input rides along here. */}
                 {pickedUrl ? <input type="hidden" name="productUrl" value={pickedUrl} /> : null}
+                {/* The whole physical-combine block (size/wear + the composed
+                    "presenter holding product" frame + its Combine button) is
+                    hidden for cartoon — see isCartoon note above. Cartoon still
+                    picks a presenter + product via the tiles above; it just never
+                    combines, so no wasted token. */}
+                {!isCartoon && (<>
                 {/* Combine inputs — size + how they show it, once a product's set. */}
                 {hasMarketingProduct && showWear && (
                   <>
@@ -3103,6 +3115,7 @@ export default function WebStudio() {
                     <input ref={frameUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => doFrameUpload(e.currentTarget.files?.[0])} />
                   </>
                 )}
+                </>)}{/* /!isCartoon — end hidden combine machinery */}
                 {needsPhoto && (
                   <p className="ws-note" style={{ color: "#8A5A12", marginTop: 8 }}>
                     {prodSource === null

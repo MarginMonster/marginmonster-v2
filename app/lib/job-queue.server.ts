@@ -651,7 +651,6 @@ async function runJob(
           productTitle: payload.productTitle as string,
           productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
-          composedFrameUrl: typeof payload.composedFrameUrl === "string" ? payload.composedFrameUrl : undefined,
           styleKey: (payload.cartoonStyle as string) || "dreamanime",
           avatarId: payload.avatarId as string | undefined,
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
@@ -666,7 +665,8 @@ async function runJob(
           jobId: payload.__jobId as string | undefined,
           resume: {
             script: payload.ckScript as string | undefined,
-            composedUrl: payload.ckComposedUrl as string | undefined,
+            // (cartoon never composes a presenter-holding-product frame, so it
+            //  has no composedUrl to resume — that checkpoint is avatar-only.)
             keyframeUrl: payload.ckKeyframeUrl as string | undefined,
             klingPredictionId: payload.ckKlingId as string | undefined,
             animUrl: payload.ckAnimUrl as string | undefined,

@@ -321,11 +321,6 @@ interface CartoonAdParams {
   productTitle: string;
   productDescription?: string;
   productImageUrl?: string;
-  /** A Studio-approved "presenter holding the product" frame from the Combine
-   *  hub. When set it is STYLIZED directly (the internal compose is skipped),
-   *  so cartoon inherits the same approve-the-frame flow as avatar/review.
-   *  Absolute URL (the loader absolutizes the combine result). */
-  composedFrameUrl?: string;
   styleKey: string; // one of CARTOON_RECIPES; unknown keys fall back to dreamanime
   avatarId?: string; // presenter — the CHARACTER the style redraws ("turn yourself into X")
   avatarVariant?: number;
@@ -340,7 +335,6 @@ interface CartoonAdParams {
   jobId?: string; // enables stage checkpointing
   resume?: {
     script?: string;
-    composedUrl?: string; // photoreal presenter-holding-product frame
     keyframeUrl?: string;
     klingPredictionId?: string; // re-attach to a live animate run — never re-buy it
     /** Which model actually animated the checkpointed clip. A resumed run never
@@ -411,7 +405,13 @@ async function writeCartoonScriptOnce(o: {
     ``,
     `Rules: The FIRST sentence must be a scroll-stopping hook. 24 to 30 words`,
     `TOTAL (about 11 seconds spoken). Playful, warm, a little witty — like a`,
-    `beloved animated commercial. End with a short call to action.`,
+    `beloved animated commercial. Ground every line in the REAL, specific`,
+    `details above — never invent a feature, number, ingredient, or claim.`,
+    // The ad ENDS on the merchant's real product shown sharp (an endcard), so
+    // the voice-over must hand off to it: the final line names the product and
+    // points the viewer at it, rather than a generic "shop now."
+    `The LAST line is a short call to action that NAMES the product and tees up`,
+    `the moment it appears on screen — e.g. "Meet ${stripPromoTag(o.productTitle)}." or "This is ${stripPromoTag(o.productTitle)} — take a look."`,
     `SPEECH PACING (a voice model reads this aloud): commas where a person`,
     `breathes, a period at the END of every sentence. Short complete sentences.`,
     // A spoken cartoon ad carries the same claim liability as a printed one —
