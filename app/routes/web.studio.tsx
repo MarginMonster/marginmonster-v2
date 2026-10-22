@@ -2717,8 +2717,14 @@ export default function WebStudio() {
               * described idea, not a presenter. */}
             {/* Avatar-video folds the presenter picker into the hub (step 2); it
                 stays here for cartoon/jingle style grids. */}
-            {!casual && !avatarVideoHub && (baseOf(contentType) === "avatar" || showCartoonGrid) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />}
-            {contentType === "cartoon" && !avatarId && <p className="ws-note">{t("No presenter? We'll animate a fun scene in the picked style, then close on your real product.")}</p>}
+            {/* Cartoon/jingle show the character picker in BOTH Marketing AND
+                Creator (casual): the style tiles literally show a character and
+                the copy promises "your chosen presenter", so there MUST be a way
+                to pick/change them — otherwise it "prompts an avatar with no
+                picker" (owner bug). Creator stays presenter-less for the OTHER
+                formats (avatar-video is marketing-only, gated by !casual). */}
+            {!avatarVideoHub && (showCartoonGrid || (!casual && baseOf(contentType) === "avatar")) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />}
+            {contentType === "cartoon" && !avatarId && <p className="ws-note">{casual ? t("No presenter? We'll animate a fun scene in the picked style from your idea.") : t("No presenter? We'll animate a fun scene in the picked style, then close on your real product.")}</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
             {showCartoonGrid && (
               <>
@@ -2740,9 +2746,9 @@ export default function WebStudio() {
                   ))}
                 </div>
                 {contentType === "cartoon" && (cartoonStyle ? (
-                  <p className="ws-note"><Ico n="palette" /> <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "")}</b>{t(" — ")}{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb || "")}{avatarId ? t(". Your presenter gets redrawn in this style and animated with a narrator — then your real product closes it, sharp (never cartoonized).") : t(". We animate a scene in this style with a narrator — then your real product closes it, sharp (never cartoonized).")}</p>
+                  <p className="ws-note"><Ico n="palette" /> <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "")}</b>{t(" — ")}{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.blurb || "")}{casual ? (avatarId ? t(". Your character gets redrawn in this style and animated with a narrator.") : t(". We animate a scene in this style with a narrator.")) : (avatarId ? t(". Your presenter gets redrawn in this style and animated with a narrator — then your real product closes it, sharp (never cartoonized).") : t(". We animate a scene in this style with a narrator — then your real product closes it, sharp (never cartoonized)."))}</p>
                 ) : (
-                  <p className="ws-note">{avatarId ? t("Pick the style — your presenter becomes the character. Your real product appears at the end, sharp (never cartoonized).") : t("Pick the style — we animate a scene in it. Your real product appears at the end, sharp (never cartoonized).")}</p>
+                  <p className="ws-note">{casual ? (avatarId ? t("Pick the style — your character stars in it.") : t("Pick the style — we animate a scene in it.")) : (avatarId ? t("Pick the style — your presenter becomes the character. Your real product appears at the end, sharp (never cartoonized).") : t("Pick the style — we animate a scene in it. Your real product appears at the end, sharp (never cartoonized)."))}</p>
                 ))}
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
