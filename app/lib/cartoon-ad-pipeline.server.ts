@@ -527,6 +527,29 @@ export async function stylizeKeyframeForTest(o: {
   return repPoll(String(id), 5 * 60_000, "qa-keyframe");
 }
 
+/** Cartoon-appropriate product check: is a recognizable product clearly HELD in
+ *  the character's hand (not missing, not a tiny blob)? Deliberately lenient on
+ *  fidelity — the product is stylized here, so it does NOT need to pixel-match
+ *  the photo (that's qaPresenterHold's job on the photoreal compose). This only
+ *  decides whether to redraw. Fails OPEN on a vision outage so a QA hiccup never
+ *  blocks a paid gen. */
+async function cartoonHoldOk(cartoonUrl: string, productTitle: string): Promise<boolean> {
+  try {
+    const { anthropicVision } = await import("./anthropic.server");
+    const ans = await anthropicVision(
+      `This is a frame from a cartoon/animated ad. A character should be clearly HOLDING a product ("${stripPromoTag(productTitle)}") in their hand. Reply with ONE word, YES or NO:\n` +
+        `YES = a clearly visible, recognizable product is held in the character's hand (a bottle, can, box, jar, pouch or similar), prominent and large enough to read as a product.\n` +
+        `NO = the hands are empty, OR the product is a tiny shapeless blob/smudge, OR no product is visible at all.\n` +
+        `The product being stylized/cartoonized is FINE — judge ONLY whether a recognizable, prominent held product is PRESENT.`,
+      [cartoonUrl],
+      { maxTokens: 8 }
+    );
+    return /\byes\b/i.test(ans);
+  } catch {
+    return true; // vision outage → accept, never block a paid gen on a QA hiccup
+  }
+}
+
 export async function generateCartoonAd(params: CartoonAdParams): Promise<string> {
   let composeDbg = "init"; // TEMP diagnostic — surfaced in asset bodyJson
   const recipe = CARTOON_RECIPES[(params.styleKey as CartoonStyleKey)] || CARTOON_RECIPES.dreamanime;
@@ -571,7 +594,33 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     const resumedRaw = !!raw && (await checkpointUrlAlive(raw));
     if (!resumedRaw) raw = "";
     priorRawKeyframe = "";
-    if (!raw) raw = await renderKeyframe();
+    if (!raw) {
+      // CARTOON + PRODUCT must land the product in-hand EVERY time. The compose
+      // and the cartoonize are both stochastic — they sometimes shrink the
+      // product to a blob or drop it entirely — so we VISION-CHECK the drawn
+      // frame and REDRAW until a recognizable product is clearly held. If 3
+      // tries never land it, draw character-only (clean) and let the real-
+      // product endcard carry it — so a blob/empty-handed frame NEVER ships.
+      // Non-presenter / service frames have nothing to hold → render once.
+      const wantsHeldProduct = !!params.avatarId && !params.serviceMode && !!params.productImageUrl;
+      if (wantsHeldProduct) {
+        let passed = false;
+        let tries = 0;
+        for (let attempt = 1; attempt <= 3 && !passed; attempt++) {
+          tries = attempt;
+          raw = await renderKeyframe(false);
+          passed = await cartoonHoldOk(raw, params.productTitle);
+          if (!passed) console.log(`[cartoon] product not clearly held (attempt ${attempt}/3) — redrawing`);
+        }
+        if (!passed) {
+          console.log("[cartoon] product never landed in-hand after 3 tries — character-only + real endcard");
+          raw = await renderKeyframe(true);
+        }
+        composeDbg += ` | held=${passed ? "ok@" + tries : "fallback(" + tries + "tries)"}`;
+      } else {
+        raw = await renderKeyframe();
+      }
+    }
     // Repair ids only apply to the frame they were run on — pass them solely
     // when this IS that frame, or the gate would re-attach to an edit of a
     // different keyframe.
@@ -586,7 +635,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     return gated;
   };
 
-  const renderKeyframe = async (): Promise<string> => {
+  const renderKeyframe = async (skipCompose = false): Promise<string> => {
     const sceneBits = params.direction ? ` Scene direction: ${params.direction.slice(0, 200)}.` : "";
 
     // 2a) source photo to stylize: composed presenter+product frame, else the
@@ -629,7 +678,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         // fixes any cartoonized-label garble. No product (casual video /
         // service) → the portrait set just above is stylized alone. Compose
         // failure is NON-FATAL: fall back to the plain portrait, never lose the ad.
-        if (!params.serviceMode && params.productImageUrl) {
+        if (!skipCompose && !params.serviceMode && params.productImageUrl) {
           composeDbg = "reached";
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
