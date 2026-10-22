@@ -40,12 +40,12 @@ export const meta = () => [{ title: "Studio · EasyMode" }];
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
-  { key: "avatar", name: "Avatar AI", cover: "/ad-templates/ctcover-u-avatar.jpg?v=1", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
-  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-u-talkinghead.jpg?v=1", sub: "A creator talks straight to camera — no product, authentic selfie-TikTok energy", cap: "video", tier: "Studio", price: 39 },
-  { key: "highlight", name: "Product Highlight", cover: "/ad-templates/ctcover-u-highlight.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/ad-templates/ctcover-u-cartoon.jpg?v=1", sub: "Your presenter redrawn viral-style — real product closes it", cap: "cartoon", tier: "Studio", price: 39 },
-  { key: "jingle", name: "Anthem", cover: "/ad-templates/ctcover-u-jingle.jpg?v=1", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
-  { key: "commercial", name: "Commercial", cover: "/ad-templates/ctcover-u-commercial.jpg?v=1", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
+  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
+  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=1", sub: "A creator talks straight to camera — no product, authentic selfie-TikTok energy", cap: "video", tier: "Studio", price: 39 },
+  { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter redrawn viral-style — real product closes it", cap: "cartoon", tier: "Studio", price: 39 },
+  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
+  { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
   // Creator Demo (review) retired from the picker 2026-10-21 — it was the SAME
   // presenter+product UGC pipeline as Avatar AI (base:"avatar"), just with a
   // casual phone-shot direction, so it read as a duplicate card. CT_PRESETS.review
@@ -54,7 +54,7 @@ const CONTENT_TYPES = [
   // out" beat is hard to render accurately (the real product rarely survives the
   // reveal), leaving an even 8 video paths. CT_PRESETS.unboxing + its note stay so
   // any already-made unboxing asset still resolves on remix.
-  { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-u-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
+  { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
 ] as const;
 
 // Casual (Creator) reframes the kept video types in its own, non-sell language —
