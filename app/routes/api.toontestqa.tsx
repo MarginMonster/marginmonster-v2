@@ -45,7 +45,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       rows.map((r) => {
         let v: Record<string, unknown> = {};
         try { v = JSON.parse(r.bodyJson || "{}"); } catch { /* ignore */ }
-        return { id: r.id, title: r.title, status: r.status, videoUrl: v.videoUrl, keyframeUrl: v.keyframeUrl, engine: v.engine, script: v.script, at: r.createdAt };
+        return { id: r.id, title: r.title, status: r.status, videoUrl: v.videoUrl, keyframeUrl: v.keyframeUrl, engine: v.engine, composeDbg: v.composeDbg, script: v.script, at: r.createdAt };
       })
     );
   }

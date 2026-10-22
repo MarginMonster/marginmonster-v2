@@ -528,6 +528,7 @@ export async function stylizeKeyframeForTest(o: {
 }
 
 export async function generateCartoonAd(params: CartoonAdParams): Promise<string> {
+  let composeDbg = "init"; // TEMP diagnostic — surfaced in asset bodyJson
   const recipe = CARTOON_RECIPES[(params.styleKey as CartoonStyleKey)] || CARTOON_RECIPES.dreamanime;
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const resume = params.resume || {};
@@ -629,6 +630,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         // service) → the portrait set just above is stylized alone. Compose
         // failure is NON-FATAL: fall back to the plain portrait, never lose the ad.
         if (!params.serviceMode && params.productImageUrl) {
+          composeDbg = "reached";
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
             // Scale hint is a NICE-TO-HAVE (keeps a 12-pack from being drawn as
@@ -647,8 +649,10 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
               scaleHint = hint?.phrase;
             } catch { /* no hint — compose still runs at the guessed size */ }
             const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, scaleHint, presenter.avatar.continuity);
+            composeDbg = `frames=${frames.length} first=${frames[0] ? "y" : "n"} hint=${scaleHint ? "y" : "n"}`;
             if (frames[0]) sourcePhotoUrl = frames[0];
           } catch (e) {
+            composeDbg = "ERR:" + (e instanceof Error ? e.message : String(e)).slice(0, 180);
             console.error(`[cartoon] compose failed (stylizing plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
           }
         }
@@ -996,6 +1000,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           keyframeUrl,
           prompt: script,
           script,
+          composeDbg,
         }),
         metaJson: JSON.stringify({
           style: "CARTOON",
