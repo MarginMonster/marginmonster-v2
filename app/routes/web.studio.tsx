@@ -41,20 +41,21 @@ export const meta = () => [{ title: "Studio · EasyMode" }];
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
-  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=1", sub: "A creator talks straight to camera — no product, authentic selfie-TikTok energy", cap: "video", tier: "Studio", price: 39 },
+  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=2", sub: "Straight to camera, selfie-style — no product", cap: "video", tier: "Studio", price: 39 },
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
-  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter redrawn viral-style — real product closes it", cap: "cartoon", tier: "Studio", price: 39 },
-  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", cap: "anthem", tier: "Studio", price: 39 },
-  { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", cap: "video", tier: "Studio", price: 39 },
+  { key: "cartoon", name: "Cartoon Avatar", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter, redrawn viral-style", cap: "cartoon", tier: "Studio", price: 39 },
+  { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head 2000s theme song", cap: "anthem", tier: "Studio", price: 39 },
+  { key: "commercial", name: "Commercial", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic, big-budget story ad", cap: "video", tier: "Studio", price: 39 },
   // Creator Demo (review) retired from the picker 2026-10-21 — it was the SAME
   // presenter+product UGC pipeline as Avatar AI (base:"avatar"), just with a
   // casual phone-shot direction, so it read as a duplicate card. CT_PRESETS.review
   // stays below so any already-made Creator Demo asset still remixes.
   // Unboxing retired from the picker 2026-10-15 — the "box opens, product lifted
   // out" beat is hard to render accurately (the real product rarely survives the
-  // reveal), leaving an even 8 video paths. CT_PRESETS.unboxing + its note stay so
-  // any already-made unboxing asset still resolves on remix.
-  { key: "asmr", name: "Satisfying Close-Up", cover: "/ad-templates/ctcover-asmr.jpg?v=1", sub: "Macro textures in slow motion — the loop nobody scrolls past", cap: "video", tier: "Studio", price: 39 },
+  // reveal). CT_PRESETS.unboxing + its note stay so an already-made one remixes.
+  // Satisfying Close-Up (asmr) retired from the picker 2026-10-21 (owner call) —
+  // leaves 6 clean video formats. "asmr" stays a valid CType (below) so an
+  // already-made Close-Up still remixes.
 ] as const;
 
 // Casual (Creator) reframes the kept video types in its own, non-sell language —
@@ -1178,7 +1179,7 @@ type Tab = "video" | "image" | "music" | "faceless" | "blog" | "import";
 // "review" (Creator Demo) is retired from the picker but stays a valid content
 // type: its CT_PRESETS entry + the note/presenter-field handling keep any
 // already-made Creator Demo asset remixing correctly.
-type CType = (typeof CONTENT_TYPES)[number]["key"] | "review";
+type CType = (typeof CONTENT_TYPES)[number]["key"] | "review" | "asmr";
 type CastItem = { id: string; name: string; img: string; designed: boolean };
 
 /* Module-level on purpose: defined inside the page component, React would
@@ -2638,7 +2639,7 @@ export default function WebStudio() {
         {tab === "video" && !contentType && (
           <>
             <div className="ws-lbl">{casual ? t("What kind of video?") : t("Pick your content type")}</div>
-            <div className="ws-tiles ws-scrollbox">
+            <div className="ws-tiles ws-ctgrid ws-scrollbox">
               {CONTENT_TYPES.filter((ct) => !casual
                 // Casual = Creator: drop the presenter/ad formats (avatar,
                 // Creator Demo, unboxing = a person on camera; jingle = a song,
@@ -2646,7 +2647,7 @@ export default function WebStudio() {
                 // ones a creator makes from an idea or a photo: a cartoon, a
                 // cinematic showcase, and satisfying macro loops.
                 ? true
-                : (ct.key === "cartoon" || ct.key === "highlight" || ct.key === "asmr")).map((ct) => {
+                : (ct.key === "cartoon" || ct.key === "highlight")).map((ct) => {
                 const locked = !can(ct.cap);
                 return (
                   <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}`}

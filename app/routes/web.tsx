@@ -1612,6 +1612,11 @@ const CSS = `
 .ws-tile.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2),0 8px 22px rgba(12,122,70,.16);}
 .ws-tile b{display:block;padding:10px 12px 0;font-family:Poppins,sans-serif;font-size:13.5px;color:var(--ink);}
 .ws-tile-sub{display:block;padding:3px 12px 0;font-size:11.5px;color:var(--ink2);line-height:1.4;}
+/* Content-type picker only: even, scannable cards. The description clamps to 2
+ * lines AND reserves that height, so a long sub can't tower one card over its
+ * row-mate (the old ragged grid). Scoped to .ws-ctgrid — format/style grids
+ * keep their full-wrap descriptions. */
+.ws-ctgrid .ws-tile-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.9em;padding-bottom:2px;}
 /* Every picker card shares the tall square art treatment — the art IS the
  * pitch, so no card gets a cropped little strip. */
 .ws-tile-img{position:relative;display:block;height:auto;aspect-ratio:1/1;background-size:cover;background-position:center 25%;}
