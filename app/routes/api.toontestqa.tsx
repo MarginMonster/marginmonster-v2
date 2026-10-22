@@ -16,6 +16,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return Response.json({ deleted: del.count });
   }
 
+  if (url.searchParams.get("compose")) {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const portraitUrl = `${base}/avatars/valentina_0.jpg`;
+    const productImageUrl = `${base}/_toontest-product.jpg`;
+    const { composeHoldingFrames, falImageEnabled } = await import("~/lib/fal-image.server");
+    try {
+      const t0 = Date.now();
+      const frames = await composeHoldingFrames(portraitUrl, productImageUrl, "ToonTest Sparkling Water", 1, "hold");
+      return Response.json({ falEnabled: falImageEnabled(), ms: Date.now() - t0, frames });
+    } catch (e) {
+      return Response.json({ falEnabled: falImageEnabled(), error: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? (e.stack || "").slice(0, 600) : null });
+    }
+  }
+
   if (url.searchParams.get("poll")) {
     const rows = await db.asset.findMany({
       where: { title: { contains: "ToonTest" } },
