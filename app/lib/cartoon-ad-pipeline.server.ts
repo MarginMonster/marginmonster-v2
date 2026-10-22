@@ -633,23 +633,27 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           composeDbg = "reached";
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
-            // Scale hint is a NICE-TO-HAVE (keeps a 12-pack from being drawn as
-            // a single can). It's a vision call that can throw/time out, so it
-            // gets its OWN guard — a hint failure must NOT skip the compose and
-            // drop us back to an empty-handed portrait (that bug shipped once).
-            let scaleHint: string | undefined;
-            try {
-              const { resolveProductScale } = await import("./product-scale.server");
-              const hint = await resolveProductScale({
-                productTitle: params.productTitle,
-                productDescription: params.productDescription,
-                productImageUrl: params.productImageUrl,
-                productSize: params.productSize,
-              });
-              scaleHint = hint?.phrase;
-            } catch { /* no hint — compose still runs at the guessed size */ }
-            const frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, scaleHint, presenter.avatar.continuity);
-            composeDbg = `frames=${frames.length} first=${frames[0] ? "y" : "n"} hint=${scaleHint ? "y" : "n"}`;
+            // NO scale hint for cartoon. The "keep it small, don't enlarge" hint
+            // (great for photoreal avatar video) draws the product tiny, and a
+            // tiny product cartoonizes into an unrecognizable blob. A product
+            // held up PROMINENTLY survives the stylize cleanly (validated), and
+            // the real-product endcard carries true size/label anyway — so for
+            // cartoon we let the composer draw it at a good, visible held size.
+            // Retry once: the fal compose fails intermittently, and a single
+            // miss must not silently drop us to an empty-handed portrait.
+            // Positive PROMINENCE hint (replaces the realistic-size hint): a
+            // big, clearly-held product reads through the cartoonize; a small
+            // one blobs.
+            const prominence = "Show the product held UP toward the camera as a clear hero element — large and prominent, its label easy to read; do NOT shrink it, miniaturize it, or tuck it away.";
+            let frames: string[] = [];
+            let lastErr: unknown;
+            for (let attempt = 1; attempt <= 2 && !frames[0]; attempt++) {
+              try {
+                frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, prominence, presenter.avatar.continuity);
+              } catch (e) { lastErr = e; }
+            }
+            if (!frames[0] && lastErr) throw lastErr;
+            composeDbg = `frames=${frames.length} first=${frames[0] ? "y" : "n"}`;
             if (frames[0]) sourcePhotoUrl = frames[0];
           } catch (e) {
             composeDbg = "ERR:" + (e instanceof Error ? e.message : String(e)).slice(0, 180);
