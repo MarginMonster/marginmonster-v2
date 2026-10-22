@@ -791,11 +791,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       // A Studio-approved "presenter holding the product" frame (the Combine
       // step) seeds the video directly — the pipeline uses exactly what the
-      // merchant approved and skips its own internal compose. Forwarded for ANY
-      // presenter+product video: avatar/review ANIMATE from it; cartoon/jingle
-      // STYLIZE it into their keyframe (so they inherit the same compose-hub
-      // flow). Gated to a real presenter + not-service so a stray value can
-      // never ride a service clip; with no product the form sends none anyway.
+      // merchant approved and skips its own internal compose. Forwarded for a
+      // presenter+product video so avatar/review ANIMATE from it. Cartoon does
+      // NOT consume a composed frame any more (it's character-only with a real-
+      // product endcard, and its Combine step is hidden), so this value is
+      // simply absent for cartoon. Gated to a real presenter + not-service so a
+      // stray value can never ride a service clip; with no product none is sent.
       const composedFrameUrl = !!avatarId && !service
         ? (((form.get("composedFrameUrl") as string) || "").trim() || undefined)
         : undefined;

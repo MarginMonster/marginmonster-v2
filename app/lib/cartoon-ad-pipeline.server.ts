@@ -666,17 +666,29 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         output_format: "jpg",
       }, "black-forest-labs/flux-kontext-pro");
     } else if (!params.serviceMode && params.productImageUrl) {
+      // NO presenter, but we DO have a real product photo. Cartoon NEVER redraws
+      // the product (that blur-blob was the original beta-tester complaint) — so
+      // instead of restyling the product into the frame, we draw a product-FREE
+      // "story" scene that sets the mood, and let the merchant's REAL product
+      // close the ad sharp as the endcard (productCutAt:"end" in assembly, which
+      // already fires for this exact case). A cheerful character gives kling
+      // something lively to animate. No input_image (it would bias the model
+      // back toward drawing the product) and no preserveText (nothing to
+      // preserve — the scene carries no lettering at all). [Option A, owner 10-21]
       const prompt =
-        `Redraw this exact product as a ${recipe.look}. Keep the product's shape, colors, ` +
-        `proportions, logos and text clearly recognizable — same product, new art style. ` +
-        `Place it as the hero of a delightful advertising scene with a simple complementary background.${sceneBits}${preserveText} ` +
-        `Vertical 9:16 composition, no watermark, no caption text.`;
+        `${recipe.look}. A delightful, scroll-stopping advertising scene that sets the MOOD for "${params.productTitle}" — ` +
+        `a cheerful character (or lively mascot) enjoying the world this product belongs to. ` +
+        `Do NOT draw the product itself, nor any packaging, box, bottle, label or replica of it — ` +
+        `the real product is shown separately. No lettering or text anywhere in the scene.${sceneBits} ` +
+        `Vertical 9:16 composition, advertising quality, no watermark, no caption text.`;
       url = await run({
         prompt,
-        input_image: params.productImageUrl,
+        num_inference_steps: 30,
+        guidance: 3,
         aspect_ratio: "9:16",
         output_format: "jpg",
-      }, "black-forest-labs/flux-kontext-pro");
+        output_quality: 92,
+      }, "black-forest-labs/flux-dev");
     } else {
       const subject = params.serviceMode
         ? `a joyful scene showing the happy OUTCOME of "${params.productTitle}" (a service) — a delighted character enjoying the result`
@@ -853,7 +865,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       // over the animation. So a character animated as though talking can only
       // ever look out of sync. It is narration, and the animation must not
       // pretend otherwise.
-      prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible. The character does NOT speak: no talking, no mouth opening and closing, no lip movement — the voice is a narrator off-screen, so keep the mouth closed or in a natural smile throughout" : "the product stays the clear hero"}, vertical video.`,
+      prompt: `${recipe.motion}. Keep the same art style as the first frame throughout — consistent ${recipe.name} look, ${params.avatarId ? "the character presents the product to camera with warm natural gestures, product clearly visible. The character does NOT speak: no talking, no mouth opening and closing, no lip movement — the voice is a narrator off-screen, so keep the mouth closed or in a natural smile throughout" : "keep the scene lively and on-style with gentle, natural motion"}, vertical video.`,
       negativePrompt: "talking, speaking, mouth opening, lip movement, photorealistic, live action, morphing, distortion, style change, extra objects, text, watermark, blur",
     });
     animModel = created.model;
