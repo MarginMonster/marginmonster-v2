@@ -1791,6 +1791,12 @@ const CSS = `
  * stays a page and the choosing happens inside it. */
 @media(max-width:620px){
   .ws-tiles,.ws-tiles.styles,.ws-tiles.fmt,.ws-tiles.two{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+  /* Mobile: the two flagship cards do NOT span full-width. A full-width square
+   * flagship (span 2 + 1:1 art) is a near-full-screen card, so two of them
+   * stacked read as a doomscroll inside the picker's scroll box. On a phone all
+   * six content types sit in an even 2-col grid (flagships still lead, by
+   * position) — the span-2 "two big" treatment is a desktop-only enhancement. */
+  .ws-ctgrid .ws-tile-flag{grid-column:span 1;}
   .ws-tile b{font-size:12.5px;padding:8px 9px 0;}
   .ws-tile.fmt b{font-size:12.5px;}
   .ws-tile-sub{font-size:10.5px;padding:2px 9px 0;line-height:1.35;}
