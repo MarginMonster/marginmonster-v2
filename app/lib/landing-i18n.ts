@@ -41,6 +41,10 @@ export interface LandingCopy {
    *  packs fall back to English until translated. */
   powered?: { eyebrow: string; note: string };
   autopost?: { eyebrow: string; note: string; points: string[] };
+  /** The standalone Creator plan callout in the pricing section — advertises
+   *  the $6.99 "just create" flagship (video included). Optional → EN fallback.
+   *  Price + token count come from plan-config, never hard-coded here. */
+  creatorPlan?: { tag: string; h: string; p: string; cta: string; feats: string[] };
 }
 
 const EN: LandingCopy = {
@@ -147,13 +151,20 @@ const EN: LandingCopy = {
     ],
   },
   band: {
-    h2: "Made for founders who don't have a marketing team.",
-    p: "Set it up in a couple of minutes. Wake up to finished content, posted and working.",
+    h2: "Built for creators and founders alike.",
+    p: "Make just for yourself, or sell on autopilot — set up in a couple of minutes and wake up to finished work.",
     cta: "Get EasyMode",
   },
-  footer: { copy: "AI marketing autopilot for your store." },
+  footer: { copy: "Create anything. Market everything. On easy mode." },
   powered: { eyebrow: "Powered by frontier AI", note: "Claude, Kling, MiniMax and more, wired into one pipeline and pointed at your catalog. Every ad is built, quality-checked against your real product photo, then approved by you before it ships." },
   autopost: { eyebrow: "Made here. Posted everywhere.", note: "Link your socials once and every approved piece can publish itself — AI caption, per-platform hashtags, and the AI-disclosure tag Meta now requires, handled automatically.", points: ["One-tap posting to TikTok, Instagram & Facebook", "Big-studio output at a budget price — plans from $19/mo", "AI-disclosure compliant captions, so ads don't get rejected"] },
+  creatorPlan: {
+    tag: "No store? No problem.",
+    h: "Just here to create?",
+    p: "Make AI videos, images, faceless social clips and music — all from a prompt. No store, no marketing plan needed. For about half the people here, this is the whole point.",
+    cta: "Start creating",
+    feats: ["AI videos — short clips, faceless social & cartoons", "Image generator + photo editor", "AI music from a prompt", "Run low? Top up with token packs anytime"],
+  },
 };
 
 const ES: LandingCopy = {

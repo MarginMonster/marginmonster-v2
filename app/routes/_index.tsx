@@ -1,7 +1,7 @@
 import { json, redirect, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { useEffect, useState } from "react";
-import { MARKETING_TIERS, annualPrice, planCapacityLine } from "../lib/plan-config";
+import { MARKETING_TIERS, CREATOR_TIER, annualPrice, planCapacityLine } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { LANDING_I18N, LANG_LABELS, detectLang, type LangKey } from "../lib/landing-i18n";
 import { LangToggle } from "../components/LangToggle";
@@ -95,6 +95,8 @@ export default function Index() {
   const t = LANDING_I18N[lang] || LANDING_I18N.en;
   // Two-paths (Create / Market) copy — falls back to English until translated.
   const P = t.paths || LANDING_I18N.en.paths!;
+  // The standalone Creator plan callout — same EN-fallback pattern.
+  const CP = t.creatorPlan || LANDING_I18N.en.creatorPlan!;
 
   return (
     <>
@@ -309,6 +311,22 @@ export default function Index() {
             ))}
           </div>
           <div className="lz-price-note">{t.price.note}</div>
+          {/* The standalone Creator plan — the "just make things, no store" path,
+              a co-flagship for everyone who isn't running a shop. Price + tokens
+              come straight from plan-config so this can never drift. */}
+          <div className="lz-creatorplan">
+            <div className="lz-cp-main">
+              <span className="lz-cp-tag">{CP.tag}</span>
+              <h3>{CP.h}</h3>
+              <p>{CP.p}</p>
+              <ul className="lz-cp-feats">{CP.feats.map((f) => <li key={f}>{f}</li>)}</ul>
+            </div>
+            <div className="lz-cp-buy">
+              <div className="lz-cp-price">${CREATOR_TIER.price}<small>/mo</small></div>
+              <div className="lz-cp-tok">{CREATOR_TIER.monthlyTokens.toLocaleString()} tokens / mo</div>
+              <a className="lz-price-cta" href="/web/signup">{CP.cta} →</a>
+            </div>
+          </div>
         </section>
 
         <section className="lz-faq">
@@ -553,6 +571,23 @@ html,body{margin:0;padding:0}
   background:linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530),linear-gradient(165deg,#12A85E,#0B6B3E);}
 .lz-price-cta:hover{filter:brightness(1.06);}
 .lz-price-note{margin-top:20px;font-size:13px;color:var(--ink2);}
+/* The standalone Creator plan — a gold-rimmed "or just create" callout under
+   the three marketing tiers, so the $6.99 flagship is visible and priced. */
+.lz-creatorplan{max-width:1000px;margin:26px auto 0;display:grid;grid-template-columns:1fr auto;gap:26px;align-items:center;text-align:left;
+  background:linear-gradient(170deg,#FFFDF7,#F6F1E2);border:1px solid #E6D8B0;border-radius:20px;padding:26px 28px;
+  box-shadow:0 10px 30px rgba(20,32,26,.07),inset 0 1px 0 rgba(255,255,255,.8);}
+.lz-cp-tag{display:inline-block;font:800 11px Poppins,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-deep);margin-bottom:8px;}
+.lz-creatorplan h3{font:800 22px Poppins,sans-serif;letter-spacing:-.02em;margin:0 0 7px;color:var(--ink);}
+.lz-creatorplan p{font-size:14px;line-height:1.55;color:var(--ink2);margin:0 0 13px;max-width:62ch;}
+.lz-cp-feats{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:7px 18px;}
+.lz-cp-feats li{position:relative;padding-left:20px;font-size:13px;color:var(--ink2);}
+.lz-cp-feats li::before{content:"✓";position:absolute;left:0;color:var(--green2);font-weight:900;}
+.lz-cp-buy{flex:0 0 auto;text-align:center;min-width:152px;}
+.lz-cp-price{font:800 34px Poppins,sans-serif;color:var(--green);line-height:1;}
+.lz-cp-price small{font-size:14px;color:var(--ink2);font-weight:600;}
+.lz-cp-tok{font-size:12.5px;color:var(--gold-deep);font-weight:700;margin:5px 0 13px;}
+.lz-cp-buy .lz-price-cta{display:block;}
+@media(max-width:640px){.lz-creatorplan{grid-template-columns:1fr;gap:16px;text-align:center;padding:22px 20px;}.lz-cp-main{text-align:center;}.lz-cp-feats{justify-content:center;}}
 .lz-faq-list{max-width:660px;margin:26px auto 0;display:flex;flex-direction:column;gap:10px;text-align:left;}
 .lz-faq details{background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid #D7DCCB;border-radius:14px;padding:15px 18px;
   box-shadow:0 2px 8px rgba(20,32,26,.05),inset 0 1px 0 rgba(255,255,255,.8);}
