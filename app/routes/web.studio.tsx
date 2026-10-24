@@ -20,7 +20,7 @@ import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
-import { TOKEN_COST } from "../lib/plan-config";
+import { TOKEN_COST, CREATOR_PRICE } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
@@ -825,13 +825,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       const videoDirection = [presetDir, direction].filter(Boolean).join(" ") || direction;
       if (preset) contentType = preset.base;
-      const avatarId = ((form.get("avatarId") as string) || "").trim() || undefined;
+      // Creator has NO presenter picker — casual video is always the cheap
+      // no-presenter path. Forcing avatarId off in casual also CLOSES an exploit:
+      // a crafted casual request carrying avatarId would otherwise run the
+      // expensive AI_AVATAR lipsync pipeline at the cheap creatorvideo gate/price.
+      const avatarId = casualMode ? undefined : (((form.get("avatarId") as string) || "").trim() || undefined);
       const cartoonStyle = ((form.get("cartoonStyle") as string) || "").trim() || undefined;
       const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
       const videoEngine = normalizeEngineKey((form.get("videoEngine") as string) || "");
       const commercial = !casualMode && form.get("commercial") === "1"; // the packshot endcard reads "ad" — never in casual
       const breakout = form.get("breakout") === "1";
-      assertCapability(shop.activePlan, videoCapabilityFor(contentType));
+      // Creator-section (casual) video uses the cheap "creatorvideo" cap — the
+      // $6.99 Creator plan can make these, metered by tokens. A marketing video
+      // keeps its full video/cartoon/anthem requirement (Studio+).
+      assertCapability(shop.activePlan, casualMode ? "creatorvideo" : videoCapabilityFor(contentType));
       // Pre-charge validation: a presenter has to have something to hold —
       // fail BEFORE tokens are spent, not in the pipeline.
       const presenterVideo = !!avatarId && contentType !== "cartoon" && contentType !== "jingle";
@@ -1177,8 +1184,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     if (intent === "faceless") {
       // Creator "Faceless video" — topic → scripted 9:16 social video. No product,
-      // no photo. Gated at the "video" capability (video-shaped pipeline).
-      assertCapability(shop.activePlan, "video");
+      // no photo. The cheap, token-metered path, so it's gated at "creatorvideo"
+      // (the $6.99 Creator plan carries it; the expensive marketing pipeline does
+      // not). COGS ~$0.08 vs 30 tokens = margin-safe even on the Creator floor.
+      assertCapability(shop.activePlan, "creatorvideo");
       const topic = trimToWord((form.get("facelessTopic") as string) || (direction || ""), 300);
       if (!topic) return json({ error: tr(lang, "Give your video a topic.") });
       const facelessFormat = ((form.get("facelessFormat") as string) || "facts").trim();
@@ -2869,14 +2878,21 @@ export default function WebStudio() {
                 // Flagships lead so they fill the top row (they span 2 columns).
                 .sort((a, b) => (casual ? 0 : (FLAGSHIP_KEYS.has(b.key) ? 1 : 0) - (FLAGSHIP_KEYS.has(a.key) ? 1 : 0)))
                 .map((ct) => {
-                const locked = !can(ct.cap);
+                // Casual (Creator) video is the cheap token-metered path — gate it
+                // on "creatorvideo" (included wherever the Creator section is) and
+                // upsell to Creator, not the marketing video/cartoon caps + Studio.
+                const tileCap = casual ? "creatorvideo" : ct.cap;
+                const tileTier = casual ? "Creator" : ct.tier;
+                const tilePrice = casual ? CREATOR_PRICE : ct.price;
+                const tileName = casual && CASUAL_VIDEO_COPY[ct.key] ? CASUAL_VIDEO_COPY[ct.key].name : ct.name;
+                const locked = !can(tileCap);
                 return (
                   <button type="button" key={ct.key} className={`ws-tile${locked ? " lockd" : ""}${!casual && FLAGSHIP_KEYS.has(ct.key) ? " ws-tile-flag" : ""}`}
-                    onClick={() => (locked ? setUpsell({ name: ct.name, tier: ct.tier, price: ct.price }) : (setContentType(ct.key), setUpsell(null)))}>
+                    onClick={() => (locked ? setUpsell({ name: tileName, tier: tileTier, price: tilePrice }) : (setContentType(ct.key), setUpsell(null)))}>
                     <span className={`ws-tile-img${casual && CASUAL_VIDEO_COPY[ct.key] ? " ws-tile-casual" : ""}`}
                       style={casual && CASUAL_VIDEO_COPY[ct.key] ? undefined : { backgroundImage: `url(${ct.cover})` }}>
                       {casual && CASUAL_VIDEO_COPY[ct.key] ? <span className="ws-tile-emoji" aria-hidden="true"><Ico n={CASUAL_VIDEO_COPY[ct.key].icon} size={32} /></span> : null}
-                      {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {ct.tier}</span>}
+                      {locked && <span className="ws-lock"><Ico n="lock" size={13} /> {tileTier}</span>}
                     </span>
                     <b>{casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].name) : t(ct.name)}</b>
                     {/* The description, always. With no plan every tile is

@@ -63,7 +63,7 @@ export function capabilitiesFor(plan: PlanLike | null | undefined): Set<Capabili
   // The $6.99 Creator add-on unlocks the Creator section — and everything in
   // it (image/photo-edit via "image", plus "music") — on top of a marketing
   // tier. (The CREATOR and ANTHEM/Legend tiers already include both.)
-  if (plan.creatorAddon) { caps.add("creator"); caps.add("music"); }
+  if (plan.creatorAddon) { caps.add("creator"); caps.add("music"); caps.add("creatorvideo"); }
   return caps;
 }
 
@@ -82,4 +82,20 @@ export function videoCapabilityFor(contentType: string | null | undefined): Capa
   if (contentType === "jingle") return "anthem";
   if (contentType === "cartoon") return "cartoon";
   return "video";
+}
+
+/** The capability a video job needs, accounting for its SECTION. Creator-section
+ *  video — faceless clips and single casual clips (highlight/asmr/cartoon, no
+ *  presenter) — are the cheap, token-metered paths, so they need only the
+ *  "creatorvideo" cap the $6.99 Creator plan carries. Marketing-section video
+ *  (presenter avatar ads, multi-scene commercials, marketing cartoon/jingle)
+ *  keeps its full "video"/"cartoon"/"anthem" requirement, so the expensive
+ *  pipeline never runs on the Creator floor. Section is authoritative here
+ *  because the route forces casual video to the cheap no-presenter path. */
+export function videoCapabilityForSection(
+  section: string | null | undefined,
+  contentType: string | null | undefined
+): Capability {
+  if (section === "creator") return "creatorvideo";
+  return videoCapabilityFor(contentType);
 }

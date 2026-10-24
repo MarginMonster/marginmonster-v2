@@ -40,7 +40,7 @@ function currentRetryCost(type: string, pl: Record<string, unknown>): number {
   if (type === "GENERATE_BLOG_POST") return TOKEN_COST.blog;
   return TOKEN_COST.image;
 }
-import { assertCapability, videoCapabilityFor } from "../lib/capabilities.server";
+import { assertCapability, videoCapabilityFor, videoCapabilityForSection } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
 import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
@@ -351,7 +351,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // the tier no longer includes. (Two-currency rule: tokens never unlock a
     // generator the tier lacks.) The worker's own cases re-assert too.
     {
-      const retryCap = job.type === "GENERATE_VIDEO_AD" ? videoCapabilityFor((payload.contentType as string) || undefined)
+      const retryCap = job.type === "GENERATE_VIDEO_AD" ? videoCapabilityForSection((payload.section as string) || undefined, (payload.contentType as string) || undefined)
         : job.type === "GENERATE_IMAGE_AD" ? "image" as const
         : job.type === "GENERATE_SONG" ? "music" as const
         : "blog" as const;
@@ -480,12 +480,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         error: tr(lang, "This {kind} was made before we started saving its product photo, so a remix would invent a product instead of using yours. Remake it from the Studio — pick the product and we'll keep the rest.", { kind: type === "video" ? "video" : "ad" }),
       });
     }
-    const cost = type === "video" ? TOKEN_COST.video : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
+    // Creator-section pieces (faceless / casual clips) remix on the cheap path:
+    // the casual-video price + the "creatorvideo" cap, not the marketing video
+    // price + "video" cap — otherwise a Creator remixing their own clip would be
+    // over-charged and blocked behind Studio.
+    const assetSection = (meta as { section?: string }).section === "creator" ? "creator" : "marketing";
+    const cost = type === "video" ? (assetSection === "creator" ? TOKEN_COST.casualVideo : TOKEN_COST.video) : type === "image" ? TOKEN_COST.image : TOKEN_COST.blog;
     // Tier gate BEFORE the spend: old assets stay viewable/postable forever,
     // but remixing (new generation) needs the capability on the current tier.
     {
       const cap = type === "video"
-        ? videoCapabilityFor(meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined)
+        ? videoCapabilityForSection(assetSection, meta.style === "CARTOON" ? "cartoon" : meta.style === "JINGLE" ? "jingle" : undefined)
         : type === "image" ? ("image" as const) : ("blog" as const);
       try { assertCapability(shop.activePlan, cap); }
       catch (e) { return json({ error: (e as Error).message }); }
@@ -552,7 +557,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // local service paid 150 tokens for the AI-slop path the guard above
       // exists to refuse. The image branch below already passes it.
       const serviceMode = !!meta.serviceMode;
-      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, serviceMode, holdProduct: !!avatarId && !contentType && !serviceMode, wearProduct: false, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra, initiator: "remix" });
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { section: assetSection, productTitle, style, contentType, cartoonStyle: meta.cartoonStyle, customPrompt: direction, avatarId, avatarVariant: nextVariant, productImageUrl, productDescription: direction, serviceMode, holdProduct: !!avatarId && !contentType && !serviceMode, wearProduct: false, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra, initiator: "remix" });
     } else if (type === "image") {
       // A remix is a VARIATION of this ad, so the recipe rides along — without
       // the format/template the "remix" quietly became a different ad entirely.

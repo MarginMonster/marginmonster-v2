@@ -1,6 +1,7 @@
 // DB-backed job queue. Worker calls processNextJob() in a loop.
 // Jobs are claimed with status=IN_PROGRESS to prevent double-processing.
 
+import type { BrandProfile } from "@prisma/client";
 import { db } from "../db.server";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
@@ -539,8 +540,10 @@ async function runJob(
       if (payload.contentType === "faceless") {
         if (!shop?.activePlan) throw new Error("Shop missing active plan");
         {
+          // Faceless is the cheap token-metered Creator path — "creatorvideo",
+          // not "video" (which would wrongly demand a Studio+ marketing plan).
           const { assertCapability } = await import("./capabilities.server");
-          assertCapability(shop.activePlan, "video");
+          assertCapability(shop.activePlan, "creatorvideo");
         }
         const facelessAssetId = await generateFacelessVideo({
           shopId,
@@ -598,15 +601,27 @@ async function runJob(
         }
         break;
       }
-      if (!shop?.brandProfile || !shop?.activePlan) {
+      if (!shop?.activePlan) throw new Error("Shop missing active plan");
+      // Marketing video needs a brand voice; creator-section video does NOT — a
+      // standalone Creator plan has no brand profile. (Faceless was handled
+      // above; casual clips are below.) Synthesize a neutral default so the
+      // pipelines fall back to the merchant's own direction/prompt — both read
+      // brand JSON with a `|| "{}"` guard, so empty is safe.
+      if (!shop.brandProfile && payload.section !== "creator") {
         throw new Error("Shop missing brand profile or active plan");
       }
+      const bp: BrandProfile = shop.brandProfile ?? {
+        id: `creator-${shopId}`, shopId, createdAt: new Date(), updatedAt: new Date(),
+        voiceJson: "{}", visualJson: "{}", productJson: "{}",
+      };
       // Belt-and-braces tier gate: the route already checked, but a downgrade
-      // between enqueue and run must not slip a locked generator through. A
-      // throw here terminal-fails the job → refundPrepaidOnce returns tokens.
+      // between enqueue and run must not slip a locked generator through. A throw
+      // here terminal-fails the job → refundPrepaidOnce returns tokens.
+      // videoCapabilityForSection routes creator-section video to the cheap
+      // "creatorvideo" cap and marketing video to its full video/cartoon/anthem.
       {
-        const { assertCapability, videoCapabilityFor } = await import("./capabilities.server");
-        assertCapability(shop.activePlan, videoCapabilityFor((payload.contentType as string) || undefined));
+        const { assertCapability, videoCapabilityForSection } = await import("./capabilities.server");
+        assertCapability(shop.activePlan, videoCapabilityForSection((payload.section as string) || undefined, (payload.contentType as string) || undefined));
       }
       // GROUND THE SCRIPT IN REAL FACTS — the same win generateImageAd gets.
       // Every video script/VO/lyric writer takes productDescription as its
@@ -647,7 +662,7 @@ async function runJob(
         const { generateCartoonAd } = await import("./cartoon-ad-pipeline.server");
         forgedAssetId = await generateCartoonAd({
           shopId,
-          brandProfile: shop.brandProfile,
+          brandProfile: bp,
           productTitle: payload.productTitle as string,
           productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
@@ -688,7 +703,7 @@ async function runJob(
         const { generateCommercialAd } = await import("./commercial-ad-pipeline.server");
         forgedAssetId = await generateCommercialAd({
           shopId,
-          brandProfile: shop.brandProfile,
+          brandProfile: bp,
           productTitle: payload.productTitle as string,
           productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
@@ -714,7 +729,7 @@ async function runJob(
         const { generateJingleAd } = await import("./jingle-ad-pipeline.server");
         forgedAssetId = await generateJingleAd({
           shopId,
-          brandProfile: shop.brandProfile,
+          brandProfile: bp,
           productTitle: payload.productTitle as string,
           productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
@@ -748,7 +763,7 @@ async function runJob(
         // performance → captioned assembly). Zeely-class output.
         forgedAssetId = await generateUgcAd({
           shopId,
-          brandProfile: shop.brandProfile,
+          brandProfile: bp,
           productTitle: payload.productTitle as string,
           productDescription: groundedDescription,
           productImageUrl: payload.productImageUrl as string | undefined,
@@ -786,7 +801,7 @@ async function runJob(
         // PRODUCT ONLY → showcase reel (minimax i2v seeded with product image)
         forgedAssetId = await generateVideoAd({
           shopId,
-          brandProfile: shop.brandProfile,
+          brandProfile: bp,
           plan: shop.activePlan,
           productTitle: payload.productTitle as string,
           productDescription: groundedDescription,

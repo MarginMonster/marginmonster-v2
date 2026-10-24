@@ -112,17 +112,18 @@ export const PLAN_TIERS: PlanTier[] = [
     key: "CREATOR",
     name: "Creator",
     price: CREATOR_PRICE,
-    tagline: "Just the creative tools — make AI images, edit your photos and generate music. No marketing plan needed.",
+    tagline: "Make it all from a prompt — AI videos, images, faceless social clips and music. No store, no marketing plan needed.",
     section: "creator",
     monthlyTokens: 500,
     blogQuota: 0,
-    videoQuota: 0,
+    videoQuota: 10,
     imageQuota: 100,
     campaignAutopilot: false,
     features: [
+      "AI videos — short clips, faceless social videos & cartoon animations",
       "AI image generator + photo editor (restyle, cartoonize, swap bg)",
       "AI music — describe a track, get a song",
-      "~100 creations a month",
+      "Run low? Top up with token packs anytime",
       "Helpurr, your AI helper, along for the ride",
     ],
   },
@@ -169,7 +170,14 @@ export function minTierRank(minTier: string): number {
 }
 
 // ---- Capabilities: what each tier UNLOCKS (cumulative) ----
-export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem" | "creator" | "music";
+// "creatorvideo" is the CHEAP, token-metered video paths that belong to the
+// Creator section — faceless social clips + single casual clips (highlight/asmr/
+// cartoon, no presenter). Deliberately SEPARATE from "video": the standalone
+// $6.99 Creator plan gets creatorvideo (so it can make video, burning tokens +
+// top-up packs) but NOT "video", which unlocks the expensive marketing pipeline
+// (presenter avatar ads, multi-scene commercials — $1-3.50 COGS) that would lose
+// money on Creator's $0.014/token floor. The forge stays on "video" too.
+export type Capability = "image" | "blog" | "autopost" | "video" | "cartoon" | "anthem" | "creator" | "music" | "creatorvideo";
 
 // Studio unlocks EVERY generator (video, cartoon, anthem included) — the
 // Anthem tier differentiates on VOLUME (1,600 tokens vs 900) and price-per-
@@ -182,13 +190,21 @@ export const TIER_CAPABILITIES: Record<PlanKey, readonly Capability[]> = {
   // metered and margin-safe — the capability unlock is pure value, not compute.
   // (Pricing analysis 2026-10-08: free-on-all beats a $6.99 add-on — the add-on
   // was a low-attach paywall with checkout friction on a shareable feature.)
-  STARTER: ["image", "blog", "autopost", "creator", "music"],
-  STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music"],
-  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music"],
-  // Standalone Creator: the section + image/photo-edit/music only — for people
-  // who want the creative tools and NO marketing plan. No video/blog/campaigns,
-  // so it can't run the expensive path and stays margin-safe at $6.99.
-  CREATOR: ["image", "creator", "music"],
+  // creatorvideo tracks "creator": wherever the Creator SECTION is unlocked, its
+  // cheap token-metered video (faceless + casual clips) works too — so the
+  // included section is fully functional on every plan, and nobody sees casual
+  // video locked behind a cheaper plan. The premium MARKETING video pipeline
+  // stays "video" (Studio+), which is the real upsell.
+  STARTER: ["image", "blog", "autopost", "creator", "music", "creatorvideo"],
+  STUDIO: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music", "creatorvideo"],
+  ANTHEM: ["image", "blog", "autopost", "video", "cartoon", "anthem", "creator", "music", "creatorvideo"],
+  // Standalone Creator: the section + image/photo-edit/music + CHEAP video
+  // (creatorvideo = faceless + single casual clips, metered by tokens with
+  // top-up packs as the upsell). It still does NOT get "video" (the expensive
+  // marketing avatar/commercial pipeline) or the forge, so every path it can run
+  // clears margin on the $6.99/500 floor. For many users this IS the flagship —
+  // they just want to make things, no store required.
+  CREATOR: ["image", "creator", "music", "creatorvideo"],
 };
 
 /** The cheapest tier that includes a capability (upgrade-prompt target). */
@@ -201,6 +217,7 @@ export const CAPABILITY_TIER: Record<Capability, PlanKey> = {
   anthem: "STUDIO",
   creator: "CREATOR",
   music: "CREATOR",
+  creatorvideo: "CREATOR",
 };
 
 export const CAPABILITY_LABEL: Record<Capability, string> = {
@@ -212,6 +229,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   anthem: "Anthem singing videos",
   creator: "Creator mode",
   music: "Music tracks",
+  creatorvideo: "Casual & faceless video",
 };
 
 // ---- Trial ----
@@ -347,10 +365,11 @@ const PLAN_SHOWCASE: Record<PlanKey, TokenAction[]> = {
   STARTER: ["image", "blog"],
   STUDIO: ["video", "image", "blog"],
   ANTHEM: ["video", "image", "blog"],
-  CREATOR: ["image"],
+  CREATOR: ["casualVideo", "image"],
 };
 const CAPACITY_NOUN: Partial<Record<TokenAction, string>> = {
   video: "product videos",
+  casualVideo: "videos",
   blog: "blog posts",
   image: "image ads",
   landing: "landing pages",
