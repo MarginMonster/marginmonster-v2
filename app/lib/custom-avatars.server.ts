@@ -31,7 +31,7 @@ const rendersDir = () => {
 
 type Row = {
   id: string; name: string; desc: string; gender: string; energy: string;
-  status: string; error: string | null; files: string;
+  voiceId: string | null; status: string; error: string | null; files: string;
 };
 
 const toAvatar = (r: Row): Avatar => ({
@@ -42,6 +42,9 @@ const toAvatar = (r: Row): Avatar => ({
   gender: (r.gender === "f" ? "f" : "m"),
   ageBand: "mid",
   energy: (["hype", "warm", "calm"].includes(r.energy) ? r.energy : "warm") as Avatar["energy"],
+  // The owner's picked voice, used verbatim by castFor — this is the fix for a
+  // forged presenter falling through to the scorer and getting a random accent.
+  voiceId: r.voiceId || undefined,
 });
 
 const fileList = (r: { files: string }): string[] => {

@@ -25,6 +25,7 @@ import { xpForSpend } from "../lib/achievements";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
+import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE, safeVoiceId } from "../lib/avatar-voice-catalog";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
 import { CREATE_STYLES } from "../lib/create-styles";
@@ -190,6 +191,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const forgingAvatars = custom
     .filter((c) => c.status !== "ready")
     .map((c) => ({ name: c.name, status: c.status, startedAt: c.createdAt.toISOString() }));
+  // The merchant's ready custom presenters, for the Manage panel: change the
+  // voice (fixes a presenter forged before voice-pick existed) or delete one to
+  // free a slot. voiceId drives which chip shows selected; gender picks defaults.
+  const myPresenters = custom
+    .filter((c) => c.status === "ready")
+    .map((c) => ({ id: c.id, name: c.name, img: c.img, voiceId: c.voiceId || "", gender: c.gender }));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // The merchant's own catalogue, mirrored by the importer. Present = the
   // Studio can offer a picker instead of asking for a link every single time.
@@ -357,6 +364,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cast,
     brandFaceId,
     forgingAvatars,
+    myPresenters,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
     costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, combine: TOKEN_COST.combine, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless, avatarForge: TOKEN_COST.avatarForge },
     // OUTPUT language — the language the generated copy/script/captions are
@@ -563,6 +571,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const row = await db.customAvatar.create({
         data: {
           shopId: shop.id, name, gender,
+          // Vibe sets the speaking PACE (castFor maps energy → speed); voice is
+          // the owner's explicit pick, coerced to a known clean voice so a bad id
+          // can never reach the TTS model.
+          energy: ["hype", "warm", "calm"].includes(String(form.get("avatarEnergy"))) ? String(form.get("avatarEnergy")) : "warm",
+          voiceId: safeVoiceId((form.get("avatarVoice") as string) || "", gender),
           desc: ((form.get("avatarDesc") as string) || "").trim().slice(0, 200) || `${name}, the brand's own presenter character`,
           refFile: fileName,
         },
@@ -586,6 +599,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       return json({ avatarError: e instanceof Error ? e.message : tr(lang, "Couldn't start the forge — your tokens were returned.") });
     }
+  }
+
+  // Managing your OWN presenters (delete / change voice) is deliberately NOT
+  // gated on an active plan or brand voice — a lapsed merchant must still be able
+  // to free a slot or fix a voice. These sit before the generic gates below.
+  if (intent === "deleteAvatar") {
+    const pub = ((form.get("avatarId") as string) || "").trim();
+    const id = pub.startsWith("cav") ? pub.slice(3) : pub;
+    const row = await db.customAvatar.findFirst({ where: { id, shopId: shop.id } });
+    if (!row) return json({ avatarError: tr(lang, "That presenter is already gone.") });
+    const [fsMod, pathMod] = await Promise.all([import("node:fs"), import("node:path")]);
+    const rdir = pathMod.join(process.cwd(), "data", "renders");
+    try {
+      const files: string[] = JSON.parse(row.files || "[]");
+      for (const f of files) { try { fsMod.unlinkSync(pathMod.join(rdir, f)); } catch { /* cache file — non-fatal */ } }
+    } catch { /* files column unparseable — nothing to unlink */ }
+    if (row.refFile) { try { fsMod.unlinkSync(pathMod.join(rdir, "uploads", row.refFile)); } catch { /* non-fatal */ } }
+    await db.customAvatar.delete({ where: { id: row.id } });
+    return json({ avatarDeleted: row.name });
+  }
+
+  // Change a custom presenter's voice — including FIXING one forged before the
+  // voice picker shipped (the "my character got an accent" case). Coerced to a
+  // known clean voice; shop-scoped so it can only touch this shop's presenters.
+  if (intent === "setAvatarVoice") {
+    const pub = ((form.get("avatarId") as string) || "").trim();
+    const id = pub.startsWith("cav") ? pub.slice(3) : pub;
+    const row = await db.customAvatar.findFirst({ where: { id, shopId: shop.id } });
+    if (!row) return json({ avatarError: tr(lang, "That presenter is already gone.") });
+    const voiceId = safeVoiceId((form.get("avatarVoice") as string) || "", row.gender === "f" ? "f" : "m");
+    await db.customAvatar.update({ where: { id: row.id }, data: { voiceId } });
+    return json({ avatarVoiceSet: row.name });
   }
 
   // The Creator section (casual mode) is its own entitlement — gate it here.
@@ -1246,7 +1291,7 @@ function ForgingPresenter({ name, status, startedAt }: { name: string; status: s
         </div>
       </div>
       <div className="ws-forge-row">
-        {["Casual", "Smart", "Branded", "Outdoor"].map((o, i) => (
+        {["Casual", "Smart", "Active", "Street"].map((o, i) => (
           <div className="ws-forge-card" key={o} style={{ animationDelay: `${i * 0.18}s` }}>
             <span className="ws-forge-img" aria-hidden="true" />
             <span className="ws-forge-nm">{t(o)}</span>
@@ -1257,15 +1302,148 @@ function ForgingPresenter({ name, status, startedAt }: { name: string; status: s
   );
 }
 
-function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCreateOwn }: {
+/* Pick a voice for a custom presenter — chips under the gender toggle, each with
+ * a ▶ that plays the real pre-rendered sample (free, instant) so a merchant
+ * HEARS the voice before spending. One <audio>, one playing at a time. Shared by
+ * the forge modal and the Manage panel. The catalog is deliberately small and
+ * all-neutral-English, so nothing here surprises them with an accent. */
+function VoicePicker({ gender, value, onChange }: { gender: "f" | "m"; value: string; onChange: (id: string) => void }) {
+  const t = useT();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const voices = AVATAR_VOICES.filter((v) => v.gender === gender);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const done = () => setPlaying(null);
+    a.addEventListener("ended", done);
+    return () => a.removeEventListener("ended", done);
+  }, []);
+  const play = (id: string) => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing === id) { a.pause(); setPlaying(null); return; }
+    a.src = `/voice-samples/${id}.mp3`;
+    a.currentTime = 0;
+    a.play().then(() => setPlaying(id)).catch(() => setPlaying(null));
+  };
+  return (
+    <div className="ws-vp">
+      {voices.map((v) => {
+        const sel = value === v.id;
+        const on = playing === v.id;
+        return (
+          <div key={v.id} className={`ws-vp-chip${sel ? " sel" : ""}`}>
+            <button type="button" className="ws-vp-pick" onClick={() => onChange(v.id)} aria-pressed={sel}>
+              <b>{t(v.label)}</b>
+              <em className="ws-vp-blurb">{t(v.blurb)}</em>
+              {sel ? <i className="ws-vp-tick" aria-hidden="true">✓</i> : null}
+            </button>
+            <button type="button" className={`ws-vp-play${on ? " on" : ""}`} onClick={() => play(v.id)}
+              aria-label={on ? t("Stop preview") : t("Preview the {label} voice", { label: t(v.label) })}>
+              {on ? "⏸" : "▶"}
+            </button>
+          </div>
+        );
+      })}
+      <audio ref={audioRef} preload="none" />
+    </div>
+  );
+}
+
+type MyPresenter = { id: string; name: string; img: string; voiceId: string; gender: string };
+
+/* Manage YOUR custom presenters — the home the quota error always promised
+ * ("delete one to forge another") but never had, plus the fix for a presenter
+ * forged before voices were pickable: change its voice here, no re-forge. Each
+ * row can expand a VoicePicker (save on confirm) or arm-to-confirm a delete. */
+function ManagePresenters({ presenters, onClose }: { presenters: MyPresenter[]; onClose: () => void }) {
+  const t = useT();
+  const fetcher = useFetcher<{ avatarDeleted?: string; avatarVoiceSet?: string; avatarError?: string }>();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [pendingVoice, setPendingVoice] = useState("");
+  const [armed, setArmed] = useState<string | null>(null);
+  const busy = fetcher.state !== "idle";
+  // A successful save/delete revalidates the loader (presenters updates); fold
+  // the open editor and disarm so the panel settles to the new truth.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data && (fetcher.data.avatarVoiceSet || fetcher.data.avatarDeleted)) {
+      setEditing(null); setArmed(null);
+    }
+  }, [fetcher.state, fetcher.data]);
+  return (
+    <div className="ws-scrim" onClick={onClose}>
+      <div className="ws-managem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <button type="button" className="ws-forgem-x" onClick={onClose} aria-label={t("Close")}><Ico n="x" size={16} /></button>
+        <div className="ws-forgem-h">
+          <span className="ws-forgem-crest"><Ico n="sliders" size={20} /></span>
+          <div>
+            <b>{t("Your presenters")}</b>
+            <span>{t("Change a voice, or delete one to free a slot. You have {n} of 12.", { n: presenters.length })}</span>
+          </div>
+        </div>
+        {fetcher.data?.avatarError ? <p className="ws-forgem-err">{String(fetcher.data.avatarError)}</p> : null}
+        <div className="ws-mp-list">
+          {presenters.length === 0 && <p className="ws-offernote">{t("No custom presenters yet — create one from the presenter picker.")}</p>}
+          {presenters.map((p) => {
+            const open = editing === p.id;
+            const gender = p.gender === "f" ? "f" : "m";
+            return (
+              <div key={p.id} className="ws-mp-row">
+                <div className="ws-mp-head">
+                  <span className="ws-mp-img" style={{ backgroundImage: p.img ? `url(${p.img})` : undefined }} aria-hidden="true" />
+                  <b className="ws-mp-nm">{p.name}</b>
+                  <button type="button" className={`ws-mp-act${open ? " on" : ""}`} disabled={busy}
+                    onClick={() => { if (open) { setEditing(null); } else { setEditing(p.id); setPendingVoice(p.voiceId || DEFAULT_AVATAR_VOICE[gender]); setArmed(null); } }}>
+                    <Ico n="mic" size={14} /> {t("Voice")}
+                  </button>
+                  {armed === p.id ? (
+                    <button type="button" className="ws-mp-act danger" disabled={busy}
+                      onClick={() => { const fd = new FormData(); fd.set("intent", "deleteAvatar"); fd.set("avatarId", p.id); fetcher.submit(fd, { method: "post" }); }}>
+                      {t("Delete")}
+                    </button>
+                  ) : (
+                    <button type="button" className="ws-mp-act danger" disabled={busy}
+                      onClick={() => { setArmed(p.id); setEditing(null); }} aria-label={t("Delete {name}", { name: p.name })}>
+                      <Ico n="trash" size={14} />
+                    </button>
+                  )}
+                </div>
+                {armed === p.id && (
+                  <p className="ws-mp-warn">
+                    {t("Delete {name}? This can't be undone.", { name: p.name })}
+                    <button type="button" className="ws-mp-undo" onClick={() => setArmed(null)}>{t("Keep")}</button>
+                  </p>
+                )}
+                {open && (
+                  <div className="ws-mp-voice">
+                    <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} />
+                    <button type="button" className="wb-btn ws-mp-save" disabled={busy || pendingVoice === (p.voiceId || "")}
+                      onClick={() => { const fd = new FormData(); fd.set("intent", "setAvatarVoice"); fd.set("avatarId", p.id); fd.set("avatarVoice", pendingVoice); fetcher.submit(fd, { method: "post" }); }}>
+                      {busy ? t("Saving…") : t("Save voice")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCreateOwn, onManage }: {
   cast: CastItem[];
   avatarId: string | null;
   setAvatarId: (id: string | null) => void;
   optional?: boolean;
   brandFaceId: string | null;
   onCreateOwn?: () => void;
+  onManage?: () => void;
 }) {
   const t = useT();
+  const hasCustom = cast.some((c) => c.id.startsWith("cav"));
   // Just the selection row now — small circle heads. Picking one plays that
   // presenter's intro (with sound) in the hero tile above; the preview no
   // longer lives on each chip, which keeps this compact.
@@ -1295,6 +1473,12 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
           <button type="button" className="ws-face ws-face-create" onClick={onCreateOwn} aria-label={t("Create your own presenter")}>
             <span className="ws-face-img create"><Ico n="upload" size={23} /></span>
             <span>{t("Create your own")}</span>
+          </button>
+        )}
+        {onManage && hasCustom && !needle && (
+          <button type="button" className="ws-face ws-face-manage" onClick={onManage} aria-label={t("Manage your presenters")}>
+            <span className="ws-face-img manage"><Ico n="sliders" size={21} /></span>
+            <span>{t("Manage")}</span>
           </button>
         )}
         {optional && !needle && (
@@ -1711,6 +1895,23 @@ export default function WebStudio() {
   const [avatarName, setAvatarName] = useState("");
   const [avatarGender, setAvatarGender] = useState("m");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  // Voice is now an explicit PICK (was a scorer guess that sometimes handed a
+  // merchant an accent). desc + energy let them shape the character/pace; the
+  // preview is a local object-URL of the uploaded photo so they see what they're
+  // forging before they spend.
+  const [avatarVoice, setAvatarVoice] = useState(DEFAULT_AVATAR_VOICE.m);
+  const [avatarDesc, setAvatarDesc] = useState("");
+  const [avatarEnergy, setAvatarEnergy] = useState("warm");
+  const [avatarPreview, setAvatarPreview] = useState("");
+  useEffect(() => {
+    if (!avatarFile) { setAvatarPreview(""); return; }
+    const url = URL.createObjectURL(avatarFile);
+    setAvatarPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [avatarFile]);
+  // Manage YOUR presenters: change a voice (incl. fixing a pre-picker one) or
+  // delete one to free a slot. The panel owns its own fetcher.
+  const [manageOpen, setManageOpen] = useState(false);
   // "Create your own presenter" — the forge, promoted from a buried Import card
   // to a first-class modal opened straight from the presenter picker. A
   // dedicated fetcher (not the global submit) keeps the forge's own
@@ -2727,7 +2928,7 @@ export default function WebStudio() {
                 to pick/change them — otherwise it "prompts an avatar with no
                 picker" (owner bug). Creator stays presenter-less for the OTHER
                 formats (avatar-video is marketing-only, gated by !casual). */}
-            {!avatarVideoHub && (showCartoonGrid || (!casual && baseOf(contentType) === "avatar")) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />}
+            {!avatarVideoHub && (showCartoonGrid || (!casual && baseOf(contentType) === "avatar")) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} onManage={() => setManageOpen(true)} />}
             {contentType === "cartoon" && !avatarId && <p className="ws-note">{casual ? t("No presenter? We'll animate a fun scene in the picked style from your idea.") : t("No presenter? We'll animate a fun scene in the picked style, then close on your real product.")}</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
             {showCartoonGrid && (
@@ -2906,7 +3107,7 @@ export default function WebStudio() {
             )}
             {imageMode === "presenter" && (
               <>
-                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
+                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} onManage={() => setManageOpen(true)} />
                 {avatarId && <p className="ws-note">{casual ? t("The character will hold your subject in the shot — add a photo below.") : t("The presenter will hold your product in the shot — add a product photo below.")}</p>}
                 {avatarId && <input type="hidden" name="avatarId" value={avatarId} />}
               </>
@@ -2982,7 +3183,7 @@ export default function WebStudio() {
                     the hero above (with sound), and collapses this. */}
                 {hubPick === "presenter" && (
                   <div className="ws-hub-reveal open">
-                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={selectPresenter} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
+                    <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={selectPresenter} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} onManage={() => setManageOpen(true)} />
                   </div>
                 )}
                 {avatarId && avatarId !== d.brandFaceId && (
@@ -3180,7 +3381,7 @@ export default function WebStudio() {
                 the drawer so the hub snaps back to the tiles. */}
             {avatarVideoHub && hubPick === "presenter" && (
               <div className="ws-hub-reveal open">
-                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} />
+                <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={(id) => { setAvatarId(id); setHubPick(null); }} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} onManage={() => setManageOpen(true)} />
               </div>
             )}
             {/* Outfit note + Brand-Face CTA — reads WITH the presenter tile here
@@ -4129,7 +4330,7 @@ export default function WebStudio() {
                   <span className="ws-forgem-check"><Ico n="check" size={30} /></span>
                   <b>{t("{name} is on the way!", { name: String(forgeFetcher.data.avatarQueued) })}</b>
                   <p>{t("We're forging four outfits — about a minute. Your new presenter appears in your presenter list when it's ready; keep creating in the meantime.")}</p>
-                  <button type="button" className="wb-btn ws-forgem-go" onClick={() => { setForgeOpen(false); setForging(false); setAvatarName(""); setAvatarFile(null); }}>{t("Got it")}</button>
+                  <button type="button" className="wb-btn ws-forgem-go" onClick={() => { setForgeOpen(false); setForging(false); setAvatarName(""); setAvatarFile(null); setAvatarDesc(""); setAvatarEnergy("warm"); }}>{t("Got it")}</button>
                 </div>
               ) : (
                 <div className="ws-forgem-done">
@@ -4149,16 +4350,29 @@ export default function WebStudio() {
                 </div>
                 <input className="wb-in ws-forgem-nm" placeholder={t("Presenter name (e.g. your mascot)")}
                   value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
-                <label className="ws-forgem-up">
+                <label className={`ws-forgem-up${avatarPreview ? " has" : ""}`}>
                   <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} hidden />
-                  <Ico n="upload" size={18} />
-                  <span>{avatarFile ? avatarFile.name : t("Upload a photo")}</span>
+                  {avatarPreview
+                    ? <><span className="ws-forgem-thumb" style={{ backgroundImage: `url(${avatarPreview})` }} aria-hidden="true" /><span>{t("Photo added — tap to change")}</span></>
+                    : <><Ico n="upload" size={18} /><span>{t("Upload a photo")}</span></>}
                 </label>
                 <div className="ws-seg ws-forgem-seg">
                   {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
-                    <button type="button" key={g} className={avatarGender === g ? "sel" : ""} onClick={() => setAvatarGender(g)}>{t(label)}</button>
+                    <button type="button" key={g} className={avatarGender === g ? "sel" : ""}
+                      onClick={() => { setAvatarGender(g); setAvatarVoice(DEFAULT_AVATAR_VOICE[g as "f" | "m"]); }}>{t(label)}</button>
                   ))}
                 </div>
+                <div className="ws-forgem-lbl">{t("Voice")}<span>{t("tap ▶ to hear it")}</span></div>
+                <VoicePicker gender={avatarGender === "f" ? "f" : "m"} value={avatarVoice} onChange={setAvatarVoice} />
+                <div className="ws-forgem-lbl">{t("Vibe")}</div>
+                <div className="ws-seg ws-forgem-seg">
+                  {([["warm", "Warm"], ["hype", "Energetic"], ["calm", "Chill"]] as [string, string][]).map(([e, label]) => (
+                    <button type="button" key={e} className={avatarEnergy === e ? "sel" : ""} onClick={() => setAvatarEnergy(e)}>{t(label)}</button>
+                  ))}
+                </div>
+                <textarea className="wb-in ws-forgem-desc" rows={2} maxLength={200}
+                  placeholder={t("Describe your character (optional) — e.g. a friendly green monster mascot")}
+                  value={avatarDesc} onChange={(e) => setAvatarDesc(e.target.value)} />
                 {!d.caps.includes("video") && (
                   <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
                 )}
@@ -4168,6 +4382,9 @@ export default function WebStudio() {
                     fd.set("intent", "forgeAvatar");
                     fd.set("avatarName", avatarName.trim());
                     fd.set("avatarGender", avatarGender);
+                    fd.set("avatarVoice", avatarVoice);
+                    fd.set("avatarEnergy", avatarEnergy);
+                    fd.set("avatarDesc", avatarDesc.trim());
                     if (avatarFile) fd.set("avatarPhoto", avatarFile);
                     forgeFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
                     setForging(true);
@@ -4179,6 +4396,8 @@ export default function WebStudio() {
           </div>
         </div>
       )}
+
+      {manageOpen && <ManagePresenters presenters={d.myPresenters} onClose={() => setManageOpen(false)} />}
 
       {showDone && queued && (
         <div className="ws-scrim" onClick={() => setShowDone(false)}>
@@ -4286,6 +4505,48 @@ const WS_STYLE = `
 .ws-forgem-spin{width:30px;height:30px;border-width:3px;margin:6px auto 2px}
 .ws-forgem-check{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#E9F5EE;color:var(--green,#0C7A46)}
 .ws-forgem-bad{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#FDF4F4;color:#8C2F2F}
+/* "Manage" tile in the presenter strip — neutral ink vs the green "create". */
+.ws-face-manage{color:var(--ink2,#4A554E)}
+.ws-face-manage .ws-face-img.manage{display:grid;place-items:center;border:2px solid var(--line,#E4DFCF);background:var(--paper,#F4F1E6);color:var(--ink2,#4A554E);transition:background .14s}
+.ws-face-manage:hover .ws-face-img.manage{background:#EFEADB}
+.ws-face-manage>span:last-child{color:var(--ink2,#4A554E);font-weight:700}
+/* Forge modal is taller now (voice + vibe + describe) and the Manage modal is a
+   list — both scroll inside the viewport on small screens. */
+.ws-forgem,.ws-managem{max-height:90vh;overflow:auto}
+.ws-forgem-thumb{flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:#fff center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(12,18,14,.12)}
+.ws-forgem-up.has{border-style:solid;border-color:var(--green2,#1FA463);background:#EFF8F1}
+.ws-forgem-lbl{display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:12px;color:var(--ink,#14201A);margin:4px 0 7px}
+.ws-forgem-lbl span{font-weight:500;font-size:11px;color:var(--ink2,#4A554E)}
+.ws-forgem-desc{width:100%;margin:10px 0 2px;resize:vertical;min-height:40px;font-family:inherit}
+/* Voice picker — a scroll-capped column of (pick label + ▶ preview) rows. */
+.ws-vp{display:flex;flex-direction:column;gap:7px;max-height:188px;overflow-y:auto;margin-bottom:12px;padding-right:2px}
+.ws-vp-chip{display:flex;align-items:stretch;gap:0;border:1px solid var(--line,#E4DFCF);border-radius:12px;background:var(--card,#FDFCF7);overflow:hidden;transition:border-color .12s,box-shadow .12s,background .12s}
+.ws-vp-chip.sel{border-color:var(--green2,#1FA463);box-shadow:0 0 0 1px var(--green2,#1FA463);background:#F0FAF4}
+.ws-vp-pick{flex:1 1 auto;display:flex;align-items:center;gap:8px;min-width:0;text-align:left;border:0;background:transparent;padding:10px 11px;cursor:pointer}
+.ws-vp-pick b{flex:0 0 auto;font-size:13px;color:var(--ink,#14201A)}
+.ws-vp-blurb{flex:1 1 auto;min-width:0;font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-vp-tick{flex:0 0 auto;font-style:normal;color:var(--green,#0C7A46);font-size:12px}
+.ws-vp-play{flex:0 0 auto;width:42px;border:0;border-left:1px solid var(--line,#E4DFCF);background:#F3F9F4;color:var(--green,#0C7A46);font-size:12px;cursor:pointer;display:grid;place-items:center;transition:background .12s}
+.ws-vp-play:hover{background:#E6F3EC}
+.ws-vp-play.on{background:var(--green,#0C7A46);color:#fff}
+/* Manage modal rows: head (thumb · name · Voice · delete), then optional voice
+   editor / delete-confirm. */
+.ws-managem{position:relative;width:min(440px,94vw);background:var(--card,#FDFCF7);border-radius:18px;padding:22px 20px 20px;box-shadow:0 24px 70px rgba(8,12,10,.4);animation:ws-lb-in .16s ease}
+.ws-mp-list{display:flex;flex-direction:column;gap:9px}
+.ws-mp-row{border:1px solid var(--line,#E4DFCF);border-radius:13px;background:var(--paper,#F4F1E6);padding:9px 10px}
+.ws-mp-head{display:flex;align-items:center;gap:10px}
+.ws-mp-img{flex:0 0 auto;width:38px;height:38px;border-radius:9px;background:#fff center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(12,18,14,.12)}
+.ws-mp-nm{flex:1 1 auto;font-size:13.5px;font-weight:700;color:var(--ink,#14201A);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-mp-act{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;padding:7px 11px;border-radius:10px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12px;cursor:pointer}
+.ws-mp-act.on{border-color:var(--green2,#1FA463);color:var(--green,#0C7A46);background:#F0FAF4}
+.ws-mp-act.danger{color:#8C2F2F}
+.ws-mp-act.danger:hover{background:#FDF4F4;border-color:#D9A2A2}
+.ws-mp-act:disabled{opacity:.5;cursor:default}
+.ws-mp-warn{display:flex;align-items:center;gap:9px;font-size:12px;color:#8C2F2F;margin:8px 2px 2px}
+.ws-mp-undo{margin-left:auto;padding:5px 11px;border-radius:9px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink,#14201A);font-weight:700;font-size:12px;cursor:pointer}
+.ws-mp-voice{margin-top:9px}
+.ws-mp-voice .ws-vp{max-height:168px;margin-bottom:9px}
+.ws-mp-save{width:100%}
 .ws-vscrim{position:fixed;inset:0;z-index:10600;background:rgba(12,18,14,.6);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px}
 .ws-vbox{position:relative;width:min(420px,92vw)}
 .ws-video{width:100%;border-radius:16px;display:block;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.4)}

@@ -251,6 +251,7 @@ model CustomAvatar {
   desc      String // prompt descriptor injected into generation, like Avatar.desc
   gender    String   @default("m") // drives voice selection
   energy    String   @default("warm")
+  voiceId   String? // merchant-chosen MiniMax voice (avatar-voice-catalog); null = auto-pick (legacy rows)
   status    String   @default("forging") // forging | ready | failed
   error     String?
   files     String   @default("[]") // JSON: renders-disk filenames, wardrobe order 0-3

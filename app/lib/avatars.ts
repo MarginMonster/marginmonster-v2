@@ -19,6 +19,10 @@ export type Avatar = {
   gender: Gender; // explicit — drives voice selection (no more coin-flip)
   ageBand: AgeBand; // so the voice's age fits the face
   energy: Energy; // so the voice's character fits the persona
+  /** A specific MiniMax voice id used VERBATIM, overriding the gender/age/energy
+   *  scorer. Set for custom presenters whose owner picked a voice in the forge;
+   *  blank for the human cast (they're hand-cast in avatar-voices.json). */
+  voiceId?: string;
   /** What has to stay true BELOW the face when this presenter is composed
    *  into a new shot. The compose prompt locks "same face, same hairstyle,
    *  same outfit" — which is everything a human presenter needs, and not

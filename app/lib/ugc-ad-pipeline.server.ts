@@ -417,7 +417,7 @@ export function pickVoice(avatar: { id: string; gender: "f" | "m"; ageBand: "you
 type VoiceCast = { voice: string; pitch: number; speed: number };
 const AVATAR_CAST = AVATAR_CAST_RAW as Record<string, VoiceCast>;
 
-export function castFor(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm" }): VoiceCast & { emotion: string } {
+export function castFor(avatar: { id: string; gender: "f" | "m"; ageBand: "young" | "mid" | "mature"; energy: "hype" | "warm" | "calm"; voiceId?: string }): VoiceCast & { emotion: string } {
   // Never send "neutral" — MiniMax reads it with ZERO affect, which is exactly
   // the "robotic / tame / no emotion" failure merchants flag. Every presenter
   // now gets the lively "happy" read; the calm↔hype RANGE lives in speed + pitch
@@ -425,13 +425,19 @@ export function castFor(avatar: { id: string; gender: "f" | "m"; ageBand: "young
   // speaking slower, not by going emotionally dead). "happy" is MiniMax's only
   // genuinely alive positive emotion, so it is the floor for ALL personas.
   const emotion = "happy";
+  // Pace carries energy. These used to sit low (0.95–1.08) and read sluggish for
+  // TikTok; nudged up so even the calm floor (1.0) has life and hype stays punchy.
+  const fallbackSpeed = avatar.energy === "hype" ? 1.12 : avatar.energy === "calm" ? 1.0 : 1.06;
+  // A custom presenter's owner-CHOSEN voice wins over the scorer and every pin —
+  // it's an explicit pick from the forge, not a guess, and it's the whole reason
+  // the picker exists (a forged presenter used to fall through to pickVoice and
+  // sometimes got an accent the merchant never asked for). Energy still rides on
+  // speed; pitch stays neutral since these are untuned system voices.
+  if (avatar.voiceId) return { voice: avatar.voiceId, pitch: 0, speed: fallbackSpeed, emotion };
   const pinned = VOICE_OVERRIDES[avatar.id];
   const entry = AVATAR_CAST[avatar.id];
   if (pinned) return { voice: pinned, pitch: entry?.pitch ?? 0, speed: entry?.speed ?? 1.0, emotion };
   if (entry) return { ...entry, emotion };
-  // Pace carries energy. These used to sit low (0.95–1.08) and read sluggish for
-  // TikTok; nudged up so even the calm floor (1.0) has life and hype stays punchy.
-  const fallbackSpeed = avatar.energy === "hype" ? 1.12 : avatar.energy === "calm" ? 1.0 : 1.06;
   return { voice: pickVoice(avatar), pitch: 0, speed: fallbackSpeed, emotion };
 }
 
