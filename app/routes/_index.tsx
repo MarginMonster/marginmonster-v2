@@ -1,6 +1,6 @@
 import { json, redirect, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MARKETING_TIERS, CREATOR_TIER, annualPrice, planCapacityLine } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { LANDING_I18N, LANG_LABELS, detectLang, type LangKey } from "../lib/landing-i18n";
@@ -76,6 +76,13 @@ function FeatIcon({ name }: { name: string }) {
   );
 }
 
+/* Minimal inline formatting for Helpurr's replies — **bold** → <b>; the
+ * container's white-space:pre-wrap keeps line breaks and "- " bullets. No links,
+ * tables or code (the persona is told not to use them). */
+function renderChat(text: string): (string | JSX.Element)[] {
+  return text.split(/\*\*/).map((p, i) => (i % 2 === 1 ? <b key={i}>{p}</b> : p));
+}
+
 export default function Index() {
   useLoaderData<typeof loader>();
   // Language toggle — persisted per browser, auto-detected on first visit.
@@ -97,6 +104,64 @@ export default function Index() {
   const P = t.paths || LANDING_I18N.en.paths!;
   // The standalone Creator plan callout — same EN-fallback pattern.
   const CP = t.creatorPlan || LANDING_I18N.en.creatorPlan!;
+
+  // Anonymous Helpurr chat — the no-signup front door. Ephemeral: the thread
+  // lives only in React state, so a refresh clears it (which is itself the gentle
+  // "make a free account to save this" nudge). Text only; an account is what
+  // unlocks saving, multiple chats, and actually making things.
+  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatCap, setChatCap] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = chatScrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [chatMsgs, chatBusy]);
+  const sendChat = async (preset?: string) => {
+    const text = (preset ?? chatInput).trim();
+    if (!text || chatBusy || chatCap) return;
+    const next: { role: "user" | "assistant"; content: string }[] = [...chatMsgs, { role: "user", content: text }];
+    setChatMsgs([...next, { role: "assistant", content: "" }]);
+    setChatInput("");
+    setChatBusy(true);
+    let acc = "";
+    try {
+      const res = await fetch("/api/helpurr-anon", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next }) });
+      if (res.status === 429) {
+        const j = (await res.json().catch(() => ({}))) as { note?: string };
+        setChatMsgs(next);
+        setChatCap(j.note || "Create a free account to keep chatting — no card needed.");
+        return;
+      }
+      if (!res.ok || !res.body) throw new Error("stream failed");
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buf.indexOf("\n\n")) !== -1) {
+          const line = buf.slice(0, sep).split("\n").find((l) => l.startsWith("data:"));
+          buf = buf.slice(sep + 2);
+          if (!line) continue;
+          try {
+            const ev = JSON.parse(line.slice(5).trim()) as { t?: string; error?: string };
+            if (ev.t) acc += ev.t;
+            else if (ev.error && !acc) acc = ev.error;
+            if (ev.t || ev.error) setChatMsgs([...next, { role: "assistant", content: acc }]);
+          } catch { /* partial frame — wait for the rest */ }
+        }
+      }
+      if (!acc) setChatMsgs([...next, { role: "assistant", content: "Helpurr hit a snag — mind trying again?" }]);
+    } catch {
+      setChatMsgs([...next, { role: "assistant", content: "Helpurr hit a snag — mind trying again?" }]);
+    } finally {
+      setChatBusy(false);
+      if (next.filter((m) => m.role === "user").length >= 10) {
+        setChatCap("Loving it? Create a free account to keep chatting, save this & start making — no card needed.");
+      }
+    }
+  };
 
   return (
     <>
@@ -203,6 +268,50 @@ export default function Index() {
               <p>{P.market.p}</p>
               <span className="lz-path-go">{P.market.cta} <span className="lz-arr">→</span></span>
             </a>
+          </div>
+        </section>
+
+        {/* ANON CHAT — the no-signup front door. Chat with Helpurr right here;
+            an account is only needed to save, start new chats, or make things. */}
+        <section className="lz-chat" aria-label="Chat with Helpurr, no signup">
+          <span className="lz-eyebrow">Meet Helpurr</span>
+          <h2>Chat free. No signup.</h2>
+          <p className="lz-show-sub">Your AI creative buddy — ask anything, brainstorm, plan a post. When you want to actually make it, a free account takes two seconds.</p>
+          <div className="lz-chatbox">
+            <div className="lz-chat-stream" ref={chatScrollRef}>
+              {chatMsgs.length === 0 ? (
+                <div className="lz-chat-empty">
+                  <span className="lz-chat-ava"><img src="/helpurr-head.png?v=4" alt="Helpurr" /></span>
+                  <p>Hey — I’m Helpurr. 🐾 What are you working on? Ask me anything, or tell me what you’d love to make.</p>
+                  <div className="lz-chat-chips">
+                    {["Give me a TikTok idea for my product", "Write me a punchy ad caption", "What should I post this week?"].map((q) => (
+                      <button type="button" key={q} onClick={() => sendChat(q)}>{q}</button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                chatMsgs.map((m, i) => (
+                  <div className={`lz-cmsg ${m.role}`} key={i}>
+                    {m.role === "assistant" && <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=4" alt="" /></span>}
+                    <span className="lz-cmsg-tx">{m.content ? renderChat(m.content) : (chatBusy && i === chatMsgs.length - 1 ? "…" : "")}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            {chatCap ? (
+              <div className="lz-chat-cap">
+                <p>{chatCap}</p>
+                <a className="lz-navcta" href="/web/signup">Create a free account →</a>
+              </div>
+            ) : (
+              <div className="lz-chat-in">
+                <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
+                  placeholder="Message Helpurr…" aria-label="Message Helpurr" disabled={chatBusy} maxLength={2000} />
+                <button type="button" onClick={() => sendChat()} disabled={chatBusy || !chatInput.trim()} aria-label="Send message"><span className="lz-arr">→</span></button>
+              </div>
+            )}
+            <div className="lz-chat-foot">Free preview · <a href="/web/signup">Sign up</a> to save chats, start new ones &amp; make images</div>
           </div>
         </section>
 
@@ -517,6 +626,36 @@ html,body{margin:0;padding:0}
 .lz-path-mk .lz-path-go{color:var(--green);}
 .lz-path:hover .lz-arr{transform:translateX(3px);}
 @media(max-width:640px){.lz-paths-grid{grid-template-columns:1fr}.lz-paths{margin-top:30px}}
+/* Anonymous Helpurr chat — the no-signup front door, on-brand green/cream. */
+.lz-chat{max-width:720px;margin:52px auto 0;padding:0 26px;text-align:center;}
+.lz-chatbox{margin-top:22px;text-align:left;background:var(--card,#FDFCF7);border:1px solid #D7DCCB;border-radius:20px;
+  box-shadow:0 14px 40px rgba(20,32,26,.1),inset 0 1px 0 rgba(255,255,255,.8);overflow:hidden;}
+.lz-chat-stream{min-height:210px;max-height:420px;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;}
+.lz-chat-empty{margin:auto;max-width:440px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:14px 0;}
+.lz-chat-empty p{font-size:15px;color:var(--ink,#14201A);line-height:1.5;margin:0;}
+.lz-chat-ava{width:52px;height:52px;border-radius:50%;overflow:hidden;background:#EAF3DE;border:1px solid #CFE0B8;flex:0 0 auto;display:grid;place-items:center;}
+.lz-chat-ava img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;}
+.lz-chat-ava.sm{width:28px;height:28px;}
+.lz-chat-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:2px;}
+.lz-chat-chips button{font:600 12.5px Inter,sans-serif;color:var(--green,#0C7A46);background:#F0FAF4;border:1px solid #BFE2CD;border-radius:999px;padding:8px 13px;cursor:pointer;transition:background .12s;}
+.lz-chat-chips button:hover{background:#E2F3E9;}
+.lz-cmsg{display:flex;gap:9px;align-items:flex-end;max-width:85%;}
+.lz-cmsg.user{margin-left:auto;flex-direction:row-reverse;}
+.lz-cmsg-tx{font-size:14.5px;line-height:1.5;padding:10px 14px;border-radius:16px;white-space:pre-wrap;word-break:break-word;}
+.lz-cmsg.user .lz-cmsg-tx{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
+.lz-cmsg.assistant .lz-cmsg-tx{background:var(--paper,#F4F1E6);color:var(--ink,#14201A);border:1px solid var(--line,#E4DFCF);border-bottom-left-radius:5px;}
+.lz-chat-in{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line,#E4DFCF);background:#FCFBF5;}
+.lz-chat-in input{flex:1;min-width:0;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink,#14201A);background:#fff;}
+.lz-chat-in input:focus{outline:none;border-color:var(--green2,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.18);}
+.lz-chat-in button{flex:0 0 auto;width:46px;border:0;border-radius:12px;background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;}
+.lz-chat-in button:disabled{opacity:.5;cursor:default;}
+.lz-chat-cap{padding:18px 16px;border-top:1px solid var(--line,#E4DFCF);background:#FCFBF5;text-align:center;}
+.lz-chat-cap p{font-size:14px;color:var(--ink,#14201A);margin:0 0 12px;line-height:1.5;}
+.lz-chat-cap .lz-navcta{display:inline-block;}
+.lz-chat-foot{font-size:12px;color:var(--ink2,#4A554E);text-align:center;padding:10px 16px;border-top:1px solid var(--line,#E4DFCF);opacity:.92;}
+.lz-chat-foot a{color:var(--green,#0C7A46);font-weight:700;text-decoration:none;}
+.lz-chat-foot a:hover{text-decoration:underline;}
+@media(max-width:620px){.lz-chat{padding:0 16px;}.lz-cmsg{max-width:92%;}}
 .lz-powered{max-width:900px;margin:44px auto 0;padding:0 26px;text-align:center;}
 .lz-autopost{max-width:900px;margin:40px auto 0;padding:0 26px;text-align:center;}
 .lz-ap-points{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 10px;margin:16px 0 0;padding:0;}
