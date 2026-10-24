@@ -880,17 +880,20 @@ const WC_STYLE = `
 .wc-ct{font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.12em;color:#E7C879;
   border:1px solid rgba(231,200,121,.3);border-radius:999px;padding:3px 10px;white-space:nowrap}
 .wc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
-.wc-dow{text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(243,241,230,.5);padding-bottom:5px}
+.wc-dow{text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(243,241,230,.72);padding-bottom:5px}
 .wc-dy{position:relative;min-height:62px;border-radius:11px;padding:5px 5px;
-  border:1px solid rgba(243,241,230,.07);background:#0B130E;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+  border:1px solid rgba(243,241,230,.14);background:#111E16;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
   display:flex;flex-direction:column;gap:3px;overflow:hidden}
 .wc-dy.empty{border-color:transparent;background:none;box-shadow:none}
-.wc-dn{font-size:11px;font-weight:700;color:rgba(243,241,230,.62);font-variant-numeric:tabular-nums;line-height:1}
+.wc-dn{font-size:11.5px;font-weight:700;color:rgba(243,241,230,.9);font-variant-numeric:tabular-nums;line-height:1}
 .wc-dy.drop{border-color:rgba(18,168,94,.55);background:linear-gradient(180deg,rgba(18,168,94,.24),rgba(18,168,94,.07)),#0B130E}
 .wc-dy.drop .wc-dn{color:#EAF7EF}
 .wc-dy.today{border-color:#E7C879;box-shadow:0 0 0 1px #E7C879,0 0 18px rgba(231,200,121,.22),inset 0 1px 0 rgba(255,255,255,.03)}
-.wc-dy.past{opacity:.5}
+/* Past days stay subtly recessed but READABLE — the old .5 opacity on top of
+ * a 62%-opacity number rendered most of the month at ~31% (near-invisible). */
+.wc-dy.past{opacity:.78}
+.wc-dy.past .wc-dn{color:rgba(243,241,230,.72)}
 .wc-dy.endday{border-color:rgba(231,200,121,.6)}
 .wc-types{display:flex;flex-direction:column;gap:2px}
 .wc-t{font-size:9.5px;font-weight:700;letter-spacing:.02em;color:#D6F0E0;background:rgba(18,168,94,.34);
