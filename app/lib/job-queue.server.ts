@@ -10,6 +10,7 @@ import { generateVideoAd } from "./video-generation.server";
 import { generateMusic } from "./music-generation.server";
 import { generateFacelessVideo } from "./faceless-video.server";
 import { generateUgcAd } from "./ugc-ad-pipeline.server";
+import { editVideo, type VideoEditOp } from "./video-edit.server";
 import { awardXp, checkLevelAchievements, unlockAchievement, checkCreationAchievements } from "./xp.server";
 import { XP_EVENTS } from "./achievements";
 import { refundTokens } from "./tokens.server";
@@ -26,6 +27,7 @@ const MAX_ATTEMPTS = 3;
 // and questline retrySlot both), so it's always one spend per piece.
 export const REFUND_BY_TYPE: Record<string, number> = {
   GENERATE_VIDEO_AD: TOKEN_COST.video,
+  EDIT_VIDEO: TOKEN_COST.videoEdit,
   GENERATE_IMAGE_AD: TOKEN_COST.image,
   GENERATE_SONG: TOKEN_COST.music,
   GENERATE_BLOG_POST: TOKEN_COST.blog,
@@ -869,6 +871,67 @@ async function runJob(
         console.error("[job] video accounting failed (non-fatal):", e);
       }
       // take-count achievements (campaign + studio takes both count)
+      try {
+        const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
+        if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
+        if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
+        await checkCreationAchievements(shopId);
+      } catch { /* non-fatal */ }
+      break;
+    }
+
+    case "EDIT_VIDEO": {
+      // Creator "edit a video" — ONE ffmpeg op (trim / caption / speed) on an
+      // uploaded clip. No provider, no quota counter; token-metered like the
+      // other cheap Creator paths. The ffmpeg half (video-edit.server.ts) reads
+      // the uploaded source, runs the single re-encode, stores the result under
+      // data/renders and hands back a /renders/<name> URL — so all we do here is
+      // create the Asset on that URL, exactly like a casual video.
+      if (!shop?.activePlan) throw new Error("Shop missing active plan");
+      // Belt-and-braces tier gate, mirroring the casual video case above: a
+      // downgrade between enqueue and run must not slip a locked path through.
+      // The enqueue side (web.studio videoedit) asserts "creatorvideo"; a throw
+      // here terminal-fails the job → refundPrepaidOnce returns the tokens.
+      {
+        const { assertCapability } = await import("./capabilities.server");
+        assertCapability(shop.activePlan, "creatorvideo");
+      }
+      // Field-for-field with the payload written in web.studio's videoedit action.
+      const storedUrl = await editVideo({
+        sourceVideoUrl: payload.sourceVideoUrl as string,
+        op: payload.editOp as VideoEditOp,
+        startSec: typeof payload.startSec === "number" ? payload.startSec : undefined,
+        endSec: typeof payload.endSec === "number" ? payload.endSec : undefined,
+        captionText: typeof payload.captionText === "string" ? payload.captionText : undefined,
+        speed: typeof payload.speed === "number" ? payload.speed : undefined,
+      });
+      // Same Asset shape a casual video gets (video-generation.server.ts): a
+      // VIDEO_AD with videoUrl in bodyJson so the Gallery + remix read it like
+      // any other clip. metaJson records how it was made so the card/remix know.
+      const editTitle =
+        (typeof payload.title === "string" && payload.title.trim()) ||
+        `Edited video — ${String(payload.editOp || "edit")}`;
+      const editAsset = await db.asset.create({
+        data: {
+          shopId,
+          type: "VIDEO_AD",
+          status: "PENDING",
+          title: editTitle,
+          bodyJson: JSON.stringify({ style: "VIDEO_EDIT", videoUrl: storedUrl, sourceUrl: payload.sourceVideoUrl || null }),
+          metaJson: JSON.stringify({
+            style: "VIDEO_EDIT",
+            editOp: payload.editOp || null,
+            startSec: typeof payload.startSec === "number" ? payload.startSec : null,
+            endSec: typeof payload.endSec === "number" ? payload.endSec : null,
+            captionText: typeof payload.captionText === "string" ? payload.captionText : null,
+            speed: typeof payload.speed === "number" ? payload.speed : null,
+            sourceVideoUrl: payload.sourceVideoUrl || null,
+          }),
+        },
+      });
+      // Land it in the Creator gallery (same tagger the casual video uses).
+      await tagAssetSection(editAsset.id, payload.section as string | undefined);
+      // take-count achievements — an edited clip is still a VIDEO_AD take.
       try {
         const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
         if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");

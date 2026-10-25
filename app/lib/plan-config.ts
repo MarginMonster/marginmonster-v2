@@ -272,6 +272,11 @@ export const TOKEN_COST = {
   // ($0.028 < $0.039). Repriced 2 → 4 (2026-10-10): 4 tokens = $0.056 vs the
   // $0.039 worst-case op ≈ 30% on Creator, and the cheap ops stay high-margin.
   quickEdit: 4,
+  // Creator "edit a video" — ONE ffmpeg re-encode (trim / caption / speed) via
+  // video-edit.server.ts. No provider call, no token-burning model: COGS is the
+  // compute for a single re-encode (cents), the same shape as quickEdit for
+  // images. Priced like quickEdit — cheap and margin-safe on the Creator floor.
+  videoEdit: 5,
   // Standalone AI music track (Creator). musicgen/minimax COGS ~$0.05-0.15 —
   // an order of magnitude under video. Priced for perceived value + wallet
   // pacing (~50 tracks on the 500-token Creator wallet), not cost recovery.
@@ -344,6 +349,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   combine: "Combined frame",
   createImage: "Image",
   quickEdit: "Quick edit",
+  videoEdit: "Video edit",
   music: "Music track",
   strategy: "Marketing plan",
   blog: "Blog post",

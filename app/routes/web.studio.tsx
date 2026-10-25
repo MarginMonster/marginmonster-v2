@@ -365,7 +365,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     forgingAvatars,
     myPresenters,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
-    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, combine: TOKEN_COST.combine, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless, avatarForge: TOKEN_COST.avatarForge },
+    costs: { video: TOKEN_COST.video, casualVideo: TOKEN_COST.casualVideo, image: TOKEN_COST.image, combine: TOKEN_COST.combine, createImage: TOKEN_COST.createImage, quickEdit: TOKEN_COST.quickEdit, videoEdit: TOKEN_COST.videoEdit, blog: TOKEN_COST.blog, music: TOKEN_COST.music, faceless: TOKEN_COST.faceless, avatarForge: TOKEN_COST.avatarForge },
     // OUTPUT language — the language the generated copy/script/captions are
     // written in (shop.contentLang). Surfaced as a subtle chip by the Make
     // button so a merchant can, e.g., run an English store but make Spanish ads.
@@ -907,6 +907,65 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         backed(each, perPieceFromExtra + (i < rem ? 1 : 0));
       }
       return json({ ok: true, queued: "video", count: n });
+    }
+    if (intent === "videoedit") {
+      // Creator "edit a video" — upload a clip + ONE ffmpeg op (trim / caption /
+      // speed). The cheap, token-metered path, so it's gated at "creatorvideo"
+      // (the $6.99 Creator plan carries it), exactly like casual video + faceless.
+      assertCapability(shop.activePlan, "creatorvideo");
+      // The source is its OWN upload field (productVideo), not productPhoto, so
+      // the image-only productPhoto block above never touches it. Stored on the
+      // persistent disk at /uploads/* and served publicly so the ffmpeg half can
+      // read it like any uploaded asset — same shape as the productPhoto path.
+      const vid = form.get("productVideo");
+      if (!vid || typeof vid === "string" || vid.size === 0) {
+        return json({ error: tr(lang, "Add a video to edit — upload an MP4, MOV or WebM.") });
+      }
+      if (!/^video\//.test(vid.type)) {
+        return json({ error: tr(lang, "That file isn't a video — use an MP4, MOV or WebM.") });
+      }
+      if (vid.size > 150 * 1024 * 1024) {
+        return json({ error: tr(lang, "Video too large — keep it under 150 MB.") });
+      }
+      const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+      // ext from mime first, then the filename, defaulting to mp4 — kept inside
+      // the uploadFileName allowlist (mp4/mov/webm).
+      const nm = typeof vid.name === "string" ? vid.name.toLowerCase() : "";
+      const vext: UploadExt =
+        vid.type === "video/webm" || nm.endsWith(".webm") ? "webm"
+        : vid.type === "video/quicktime" || nm.endsWith(".mov") ? "mov"
+        : "mp4";
+      const vdir = pathMod.join(process.cwd(), "data", "renders", "uploads");
+      fsMod.mkdirSync(vdir, { recursive: true });
+      const vname = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), vext, "video");
+      fsMod.writeFileSync(pathMod.join(vdir, vname), Buffer.from(await vid.arrayBuffer()));
+      const vbase = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      if (!vbase) return json({ error: tr(lang, "Video uploads aren't configured on this server yet.") });
+      const sourceVideoUrl = `${vbase}/uploads/${vname}`;
+      // The op + its params. Validation of ranges/values lives in the ffmpeg half
+      // (editVideo throws a clear Error on bad params); here we just parse.
+      const editOp = ((form.get("editOp") as string) || "").trim();
+      if (editOp !== "trim" && editOp !== "caption" && editOp !== "speed") {
+        return json({ error: tr(lang, "Pick what to do with the video — trim, caption or speed.") });
+      }
+      const startSecRaw = Number(form.get("startSec"));
+      const endSecRaw = Number(form.get("endSec"));
+      const speedRaw = Number(form.get("speed"));
+      const startSec = Number.isFinite(startSecRaw) ? startSecRaw : undefined;
+      const endSec = Number.isFinite(endSecRaw) ? endSecRaw : undefined;
+      const speed = Number.isFinite(speedRaw) ? speedRaw : undefined;
+      const captionText = trimToWord((form.get("captionText") as string) || "", 200) || undefined;
+      const editTitle = trimToWord((form.get("title") as string) || "", 80) || undefined;
+      // Spend FIRST, enqueue after — the same order (and the same unbacked-token
+      // guard) every branch uses, so a db.job.create that throws refunds.
+      const veFromExtra = (await spendTokens(shop.id, TOKEN_COST.videoEdit)).fromExtra;
+      charged(TOKEN_COST.videoEdit, veFromExtra);
+      await enqueueJob(shop.id, "EDIT_VIDEO", {
+        section: "creator", sourceVideoUrl, editOp, startSec, endSec, captionText, speed, title: editTitle,
+        prePaid: true, chargedTokens: TOKEN_COST.videoEdit, chargedFromExtra: veFromExtra,
+      });
+      backed(TOKEN_COST.videoEdit, veFromExtra);
+      return json({ ok: true, queued: "videoedit", count: 1 });
     }
     if (intent === "image") {
       assertCapability(shop.activePlan, "image");
