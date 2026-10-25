@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { engineKeyForModel, surchargeShortfall, downgradeNote } from "../app/lib/engine-delivery.ts";
 
-/* Surcharges live in video-engines.ts: veo31 +75, veo +75, hailuo +25,
- * seedance +25, everything else 0. */
+/* Surcharges live in video-engines.ts: veo31 +75, veo +75, seedance +75,
+ * hailuo +25, everything else 0. */
 
 test("the fal-only premium engine is recognised when it really ran", () => {
   assert.equal(engineKeyForModel("fal-ai/veo3.1/fast/image-to-video"), "veo31");
@@ -22,9 +22,9 @@ test("veo 3 downgraded to the default is also 75", () => {
   assert.equal(surchargeShortfall("veo", "google/veo-3-fast"), 0);
 });
 
-test("the 25-token engines are reconciled too", () => {
+test("the add-on engines are reconciled too (hailuo 25, seedance 75)", () => {
   assert.equal(surchargeShortfall("hailuo", "kwaivgi/kling-v2.5-turbo-pro"), 25);
-  assert.equal(surchargeShortfall("seedance", "kwaivgi/kling-v2.5-turbo-pro"), 25);
+  assert.equal(surchargeShortfall("seedance", "kwaivgi/kling-v2.5-turbo-pro"), 75);
   // ...and NOT refunded when they actually ran
   assert.equal(surchargeShortfall("hailuo", "minimax/hailuo-02"), 0);
   assert.equal(surchargeShortfall("seedance", "bytedance/seedance-1-pro"), 0);

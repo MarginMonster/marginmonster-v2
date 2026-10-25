@@ -1,5 +1,6 @@
-/* Mock the landing PRICING section + the new Creator plan callout with the real
- * _index.tsx CSS, to eyeball the card before deploy. */
+/* Mock the REDESIGNED landing pricing — Free + Creator lead pair, then the
+ * marketing tiers under a "Selling a store?" divider — with the real _index.tsx
+ * CSS, to eyeball it before deploy. */
 const fs = require("fs");
 const REPO = "C:/Users/Magic/Downloads/Wholesalesite/marginmonster-remix";
 const CSS = (fs.readFileSync(REPO + "/app/routes/_index.tsx", "utf8").match(/const CSS = `([\s\S]*?)`;/) || [])[1] || "";
@@ -16,39 +17,36 @@ const card = (name, price, yr, tok, feats, feat) => `
   <a class="lz-price-cta" href="#">Start free →</a>
 </div>`;
 
-const grid = card("Starter", 19, 190, 300, ["AI image ads built on famous ad formats", "SEO articles, ready to paste", "Auto-posted to TikTok, IG & Facebook", "AI product listings & ad copy"], false)
+const grid = card("Starter", 19, 190, 300, ["AI image ads built on famous formats", "SEO articles, ready to paste", "Auto-posted to TikTok, IG & Facebook", "AI product listings & ad copy"], false)
   + card("Studio", 39, 390, 900, ["Everything in Starter — plus EVERY video generator", "Avatar AI & Product Highlight", "Anthem + all 8 Cartoon styles", "Campaign Autopilot"], true)
   + card("Legend", 69, 690, "1,600", ["Every generator, nearly 2× the tokens", "Best price per generation", "Biggest Campaign Autopilot mixes", "Campaign discount on token costs"], false);
 
-const creator = `
-<div class="lz-creatorplan">
-  <div class="lz-cp-main">
-    <span class="lz-cp-tag">No store? No problem.</span>
-    <h3>Just here to create?</h3>
-    <p>Make AI videos, images, faceless social clips and music — all from a prompt. No store, no marketing plan needed. For about half the people here, this is the whole point.</p>
-    <ul class="lz-cp-feats">
-      <li>AI videos — short clips, faceless social &amp; cartoons</li>
-      <li>Image generator + photo editor</li>
-      <li>AI music from a prompt</li>
-      <li>Run low? Top up with token packs anytime</li>
-    </ul>
-  </div>
-  <div class="lz-cp-buy">
-    <div class="lz-cp-price">$6.99<small>/mo</small></div>
-    <div class="lz-cp-tok">500 tokens / mo</div>
-    <a class="lz-price-cta" href="#">Start creating →</a>
-  </div>
-</div>`;
-
+const efeats = (list) => list.map((f) => `<li>${f}</li>`).join("");
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>${CSS}</style></head>
 <body><div class="lz"><section class="lz-price" id="pricing">
   <span class="lz-eyebrow">Pricing</span>
-  <h2>Three plans. Each unlocks more firepower.</h2>
-  <p class="lz-show-sub">Your plan unlocks the generators; monthly tokens meter how much you make. Top up any time.</p>
+  <h2>Start free. Go unlimited for $6.99.</h2>
+  <p class="lz-show-sub">Chat with Helpurr and make a couple of things a day, free — no card. Go unlimited on Creator, or add store marketing anytime.</p>
+  <div class="lz-entry">
+    <div class="lz-entry-card">
+      <div class="lz-entry-name">Free</div>
+      <div class="lz-entry-amt">$0<small>forever</small></div>
+      <ul class="lz-entry-feats">${efeats(["Chat with Helpurr, free", "2 AI images a day", "Edit your own photos", "No card, no catch"])}</ul>
+      <a class="lz-entry-cta ghost" href="#">Start free →</a>
+    </div>
+    <div class="lz-entry-card feat">
+      <span class="lz-price-ribbon">Most popular</span>
+      <div class="lz-entry-name">Creator</div>
+      <div class="lz-entry-amt">$6.99<small>/mo</small></div>
+      <div class="lz-entry-tag">Everything free — now unlimited.</div>
+      <ul class="lz-entry-feats">${efeats(["Unlimited AI images", "AI videos, faceless clips & cartoons", "AI music from a prompt", "Top up with token packs anytime"])}</ul>
+      <a class="lz-entry-cta" href="#">Start creating →</a>
+    </div>
+  </div>
+  <div class="lz-price-split"><span>Selling a store? Add marketing.</span></div>
   <div class="lz-price-grid">${grid}</div>
   <div class="lz-price-note">Every plan starts with a 7-day free trial. Cancel anytime.</div>
-  ${creator}
 </section></div></body></html>`;
 fs.writeFileSync(REPO + "/public/_preview.html", html);
-console.log("wrote landing pricing mock (CSS " + CSS.length + ")");
+console.log("wrote redesigned landing pricing mock (CSS " + CSS.length + ")");

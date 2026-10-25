@@ -27,10 +27,10 @@ test("ONE beat on the default still owes the surcharge — they bought the engin
   assert.equal(surchargeOwed("veo31", [VEO, VEO, DEFAULT]), 75);
 });
 
-test("the 25-token engines reconcile the same way", () => {
+test("the add-on engines reconcile the same way (hailuo 25, seedance 75)", () => {
   assert.equal(surchargeOwed("hailuo", [DEFAULT]), 25);
   assert.equal(surchargeOwed("hailuo", ["minimax/hailuo-02"]), 0);
-  assert.equal(surchargeOwed("seedance", ["bytedance/seedance-1-pro", DEFAULT]), 25);
+  assert.equal(surchargeOwed("seedance", ["bytedance/seedance-1-pro", DEFAULT]), 75);
 });
 
 test("no surcharge was charged, so nothing is ever owed", () => {

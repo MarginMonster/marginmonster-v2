@@ -45,6 +45,14 @@ export interface LandingCopy {
    *  the $6.99 "just create" flagship (video included). Optional → EN fallback.
    *  Price + token count come from plan-config, never hard-coded here. */
   creatorPlan?: { tag: string; h: string; p: string; cta: string; feats: string[] };
+  /** The Free + Creator pair that now LEADS the pricing section (owner: lead with
+   *  the cheap hook). Optional → EN fallback. Creator's price/tokens come from
+   *  plan-config; only the copy lives here. */
+  entry?: {
+    h2: string; sub: string; storeHdr: string;
+    free: { name: string; amt: string; feats: string[]; cta: string };
+    creator: { tagline: string; feats: string[]; cta: string };
+  };
 }
 
 const EN: LandingCopy = {
@@ -164,6 +172,13 @@ const EN: LandingCopy = {
     p: "Make AI videos, images, faceless social clips and music — all from a prompt. No store, no marketing plan needed. For about half the people here, this is the whole point.",
     cta: "Start creating",
     feats: ["AI videos — short clips, faceless social & cartoons", "Image generator + photo editor", "AI music from a prompt", "Run low? Top up with token packs anytime"],
+  },
+  entry: {
+    h2: "Start free. Go unlimited for $6.99.",
+    sub: "Chat with Helpurr and make a couple of things a day, free — no card. Go unlimited on Creator, or add store marketing anytime.",
+    storeHdr: "Selling a store? Add marketing.",
+    free: { name: "Free", amt: "$0", feats: ["Chat with Helpurr, free", "2 AI images a day", "Edit your own photos", "No card, no catch"], cta: "Start free" },
+    creator: { tagline: "Everything free — now unlimited.", feats: ["Unlimited AI images", "AI videos, faceless clips & cartoons", "AI music from a prompt", "Top up with token packs anytime"], cta: "Start creating" },
   },
 };
 
