@@ -492,8 +492,8 @@ export default function WebDashboard() {
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Free roam")}</span>
                 <b>{t("Create anything")}</b>
-                <i>{t("Make images, videos & music")}</i>
-                <span className="wd-path-cue"><Ico n="sliders" size={12} />{t("Open the Studio")}</span>
+                <i>{t("Images, video & music")}</i>
+                <span className="wd-path-cue">{t("Open the Studio")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
             <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
@@ -501,8 +501,8 @@ export default function WebDashboard() {
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Social")}</span>
                 <b>{t("Grow on social")}</b>
-                <i>{t("Turn products into ads & auto-post")}</i>
-                <span className="wd-path-cue"><Ico n="trend" size={12} />{t("Open Social")}</span>
+                <i>{t("Product ads & auto-posting")}</i>
+                <span className="wd-path-cue">{t("Open Social")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
           </div>
@@ -909,16 +909,18 @@ const DASH_CSS = `
 .wd-path-hero{display:block;height:96px;background-size:cover;background-position:center;border-bottom:1px solid var(--line2,#D7DCCB);transition:transform .25s ease;}
 .wd-path-img:hover .wd-path-hero{transform:scale(1.04);}
 .wd-path-img{overflow:hidden;}
-.wd-path-body{display:flex;flex-direction:column;gap:2px;padding:11px 13px;min-width:0;}
-.wd-path-eyebrow{font-weight:800;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);}
+.wd-path-body{display:flex;flex-direction:column;gap:3px;padding:13px 15px 14px;min-width:0;}
+.wd-path-eyebrow{font-weight:800;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--green);margin-bottom:1px;}
 /* Creator card keeps its gold identity (its art is warm/gold); --gold-deep passes
    AA at 9.5px where --gold would not. Social stays green. */
 .wd-hero-paths-row .wd-path-img:first-child .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
-.wd-path-body b{font-weight:800;font-size:14.5px;color:var(--ink);font-family:Poppins,sans-serif;}
-.wd-path-body i{font-style:normal;font-size:11.5px;color:var(--ink2);line-height:1.35;}
+.wd-path-body b{font-weight:800;font-size:16px;line-height:1.2;color:var(--ink);font-family:Poppins,sans-serif;}
+.wd-path-body i{font-style:normal;font-size:12.5px;color:var(--ink2);line-height:1.4;}
 /* Subtle cue that these cards FLIP the app's mode — shows "Current mode" with a
    dot when already active, or a "Switch to …" hint (with a swap glyph) otherwise. */
-.wd-path-cue{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-weight:700;font-size:10.5px;letter-spacing:.02em;color:var(--green);}
+.wd-path-cue{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-weight:800;font-size:12px;letter-spacing:.01em;color:var(--green);}
+.wd-path-cue svg{transition:transform .15s ease;}
+.wd-path:hover .wd-path-cue svg{transform:translateX(3px);}
 .wd-path-img:first-child .wd-path-cue{color:var(--gold-deep,#7E5E13);}
 .wd-path-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(18,168,94,.16);}
 .wd-path-img:first-child .wd-path-dot{box-shadow:0 0 0 3px rgba(176,133,38,.16);}
