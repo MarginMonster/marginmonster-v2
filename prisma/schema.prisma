@@ -495,6 +495,9 @@ model Asset {
   metaJson String // JSON: targetProductId, planType, generationPrompt
 
   campaigns Campaign[]
+
+  @@index([shopId, type, status, createdAt])
+  @@index([shopId, createdAt])
 }
 
 enum JobType {
@@ -535,6 +538,10 @@ model Job {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   processedAt DateTime?
+
+  @@index([status, runAt, createdAt])
+  @@index([status, updatedAt])
+  @@index([shopId, status, createdAt])
 }
 
 enum AdPlatform {

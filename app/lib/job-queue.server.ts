@@ -475,7 +475,11 @@ async function runJob(
         // between enqueue and run must not slip the image generator through. The
         // enqueue side (web.studio photo-edit actions) asserts "image"; a throw
         // here terminal-fails the job → refundPrepaidOnce returns the tokens.
-        {
+        // The advertised FREE daily makes (freeGen, planless by design) are
+        // intentionally gate-free — only assert the tier on a PAID/charged gen,
+        // or this belt-and-braces check would terminal-fail the free images and
+        // photo edits we promise "on the house".
+        if (!payload.freeGen) {
           const { assertCapability } = await import("./capabilities.server");
           assertCapability(shop?.activePlan, "image");
         }
@@ -495,7 +499,11 @@ async function runJob(
         // between enqueue and run must not slip the image generator through. The
         // enqueue side (web.studio "Make an image") asserts "image"; a throw here
         // terminal-fails the job → refundPrepaidOnce returns the tokens.
-        {
+        // The advertised FREE daily makes (freeGen, planless by design) are
+        // intentionally gate-free — only assert the tier on a PAID/charged gen,
+        // or this belt-and-braces check would terminal-fail the free images and
+        // photo edits we promise "on the house".
+        if (!payload.freeGen) {
           const { assertCapability } = await import("./capabilities.server");
           assertCapability(shop?.activePlan, "image");
         }

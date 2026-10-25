@@ -690,7 +690,8 @@ export async function retrySlot(shopId: string, questlineId: string, slotIdx: nu
   });
   if (!claim.ok) return { ok: false, error: claim.error };
 
-  try { await spendTokens(shopId, cost); } catch (e) {
+  let retryFromExtra = 0;
+  try { retryFromExtra = (await spendTokens(shopId, cost)).fromExtra; } catch (e) {
     // Hand the slot back — it is not being forged after all.
     await editSchedule(q.id, (fresh) => {
       const target = fresh.slots.find((x) => x.idx === slotIdx);
@@ -700,12 +701,28 @@ export async function retrySlot(shopId: string, questlineId: string, slotIdx: nu
     });
     return { ok: false, error: e instanceof Error ? e.message : "Not enough tokens." };
   }
-  const objectives: { key: string; type: string }[] = JSON.parse(q.objectivesJson || "[]");
-  const obj = objectives.find((o) => o.type === slot.type);
-  const base = { productTitle: slot.productTitle, productImageUrl: slot.productImageUrl || undefined, customPrompt: slot.topic, productDescription: slot.topic, questlineId: q.id, objectiveKey: obj?.key, slotIdx, prePaid: true };
-  if (slot.type === "video") await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, new Date());
-  else if (slot.type === "image") await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, new Date());
-  else await enqueueJob(shopId, "GENERATE_BLOG_POST", base, new Date());
+  // Parsing the objectives and enqueuing can both throw. The tokens are already
+  // spent and the slot already claimed FORGING, so a throw here would charge
+  // the merchant for a regeneration that never got queued AND strand the slot
+  // mid-forge. Mirror the spend-failure rollback above: refund the charge into
+  // the bucket it came from, then hand the slot back to SCHEDULED.
+  try {
+    const objectives: { key: string; type: string }[] = JSON.parse(q.objectivesJson || "[]");
+    const obj = objectives.find((o) => o.type === slot.type);
+    const base = { productTitle: slot.productTitle, productImageUrl: slot.productImageUrl || undefined, customPrompt: slot.topic, productDescription: slot.topic, questlineId: q.id, objectiveKey: obj?.key, slotIdx, prePaid: true };
+    if (slot.type === "video") await enqueueJob(shopId, "GENERATE_VIDEO_AD", { ...base, avatarId: q.avatarId || undefined, avatarVariant: q.avatarVariant, holdProduct: true }, new Date());
+    else if (slot.type === "image") await enqueueJob(shopId, "GENERATE_IMAGE_AD", base, new Date());
+    else await enqueueJob(shopId, "GENERATE_BLOG_POST", base, new Date());
+  } catch (e) {
+    await refundTokens(shopId, cost, retryFromExtra).catch(() => { /* logged inside */ });
+    await editSchedule(q.id, (fresh) => {
+      const target = fresh.slots.find((x) => x.idx === slotIdx);
+      if (!target || target.status !== "FORGING") return { error: "moved on" };
+      target.status = "SCHEDULED";
+      return { result: true };
+    });
+    return { ok: false, error: e instanceof Error ? e.message : "Couldn't start the regeneration." };
+  }
   return { ok: true, cost };
 }
 

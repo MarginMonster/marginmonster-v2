@@ -559,6 +559,11 @@ export async function anthropicVision(
   }
   const bodyText = await res.text();
   if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${bodyText.slice(0, 300)}`);
-  const json = JSON.parse(bodyText) as { content?: Array<{ type: string; text?: string }> };
+  let json: { content?: Array<{ type: string; text?: string }> };
+  try {
+    json = JSON.parse(bodyText) as { content?: Array<{ type: string; text?: string }> };
+  } catch {
+    throw new Error("Anthropic returned invalid JSON");
+  }
   return json.content?.find((c) => c.type === "text")?.text || "";
 }

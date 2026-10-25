@@ -7,7 +7,7 @@ import { Page, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
 import { enqueueJob } from "../lib/job-queue.server";
-import { spendTokens } from "../lib/tokens.server";
+import { spendTokens, refundTokens } from "../lib/tokens.server";
 import { tokensRemaining, tokensRemainingLive } from "../lib/tokens.server";
 import { TOKEN_COST } from "../lib/plan-config";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
@@ -272,7 +272,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try { chargedFromExtra = (await spendTokens(shop.id, charged)).fromExtra; }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for this video." }); }
     // Services: the presenter explains the offer to camera — nothing to hold.
-    await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true, chargedFromExtra });
+    // Enqueue can throw (DB hiccup): without this the tokens are already spent
+    // and no job will ever run them, so give them back to the bucket they came from.
+    try {
+      await enqueueJob(shop.id, "GENERATE_VIDEO_AD", { productTitle, style, contentType: contentType || undefined, cartoonStyle, customPrompt: videoDirection, avatarId, avatarVariant, productImageUrl, productDescription: direction, holdProduct: !!avatarId && !service, wearProduct: !!avatarId && wear && !service, serviceMode: service, scene, videoEngine: effectiveEngine, commercial, breakout, chargedTokens: charged, prePaid: true, chargedFromExtra });
+    } catch (e) {
+      await refundTokens(shop.id, charged, chargedFromExtra);
+      return json({ error: "Couldn't queue that — your tokens were returned." });
+    }
     return json({ ok: true, queued: "video" });
   }
   if (intent === "genImage") {
@@ -291,18 +298,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { AD_FORMAT_BY_KEY } = await import("../lib/ad-formats");
     const rawFormat = ((form.get("formatKey") as string) || "").trim();
     const formatKey = AD_FORMAT_BY_KEY[rawFormat] ? rawFormat : undefined;
-    try { await spendTokens(shop.id, TOKEN_COST.image); }
+    // Capture the bucket the spend drew from (expiring allowance vs purchased
+    // top-up) so a failed enqueue refunds to the SAME place — discarding it
+    // meant a bought, never-expiring token came back as expiring allowance.
+    let imgFromExtra = 0;
+    try { imgFromExtra = (await spendTokens(shop.id, TOKEN_COST.image)).fromExtra; }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for a still." }); }
     // Services skip the presenter-hold and product photo → outcome scene.
-    await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { productTitle, productImageUrl, stylePrompt: direction, styleMode, templateKey, formatKey, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true });
+    // freshShot: the client rotates avatarVariant and collides on the shot-cache
+    // key, so a repeat press would return a frozen cached shot at full price —
+    // force a fresh render. Enqueue can throw: refund to the same bucket if it does.
+    try {
+      await enqueueJob(shop.id, "GENERATE_IMAGE_AD", { freshShot: true, productTitle, productImageUrl, stylePrompt: direction, styleMode, templateKey, formatKey, avatarId: service ? undefined : avatarId, avatarVariant, wear: !!avatarId && wear && !service, serviceMode: service, scene, prePaid: true, chargedTokens: TOKEN_COST.image, chargedFromExtra: imgFromExtra });
+    } catch (e) {
+      await refundTokens(shop.id, TOKEN_COST.image, imgFromExtra);
+      return json({ error: "Couldn't queue that — your tokens were returned." });
+    }
     return json({ ok: true, queued: "image" });
   }
   if (intent === "genBlog") {
     try { assertCapability(shop.activePlan, "blog"); }
     catch (e) { return json({ error: (e as Error).message }); }
-    try { await spendTokens(shop.id, TOKEN_COST.blog); }
+    // Capture the spend bucket so a failed enqueue refunds to the same place.
+    let blogFromExtra = 0;
+    try { blogFromExtra = (await spendTokens(shop.id, TOKEN_COST.blog)).fromExtra; }
     catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens for an article." }); }
-    await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, serviceMode: service, prePaid: true });
+    try {
+      await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, serviceMode: service, prePaid: true, chargedTokens: TOKEN_COST.blog, chargedFromExtra: blogFromExtra });
+    } catch (e) {
+      await refundTokens(shop.id, TOKEN_COST.blog, blogFromExtra);
+      return json({ error: "Couldn't queue that — your tokens were returned." });
+    }
     return json({ ok: true, queued: "blog" });
   }
   return json({ ok: true });

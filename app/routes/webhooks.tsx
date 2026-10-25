@@ -68,7 +68,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // wallet that cannot cover a piece simply skips it — this is a courtesy
         // the app performs unasked, so it must never fail the webhook or leave
         // the merchant owing anything.
-        const { spendTokens } = await import("../lib/tokens.server");
+        const { spendTokens, refundTokens } = await import("../lib/tokens.server");
         const { TOKEN_COST } = await import("../lib/plan-config");
 
         // A second ceiling, on top of the wallet: a bulk import should not be
@@ -95,13 +95,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           } catch {
             return; // wallet cannot cover it — skip quietly, nothing is owed
           }
-          await enqueueJob(shopRecord.id, type, {
-            ...extra,
-            autoFromProduct: true,
-            prePaid: true,
-            chargedTokens: cost,
-            chargedFromExtra,
-          });
+          // Spend already landed. If the enqueue throws, letting it bubble
+          // 500s the webhook and Shopify RETRIES it — charging the wallet
+          // AGAIN for the same product (double/triple spend). Refund what we
+          // just took, back into the exact bucket it came from, and continue:
+          // a courtesy auto-gen must never fail the webhook or leave the
+          // merchant owing. The refund is best-effort (it has its own
+          // owed-refund alerting), so its own failure is swallowed too.
+          try {
+            await enqueueJob(shopRecord.id, type, {
+              ...extra,
+              autoFromProduct: true,
+              prePaid: true,
+              chargedTokens: cost,
+              chargedFromExtra,
+            });
+          } catch (e) {
+            console.error(`[auto-content] ${shop}: enqueue failed for ${type}, refunding ${cost} tokens:`, e);
+            try {
+              await refundTokens(shopRecord.id, cost, chargedFromExtra);
+            } catch (re) {
+              console.error(`[auto-content] ${shop}: refund after failed enqueue also failed:`, re);
+            }
+          }
         };
 
         // Enqueue whatever the plan's quotas include.

@@ -11,7 +11,7 @@
 
 import { db } from "../db.server";
 import { TOKEN_COST } from "./plan-config";
-import { spendTokens, tokensRemainingLive } from "./tokens.server";
+import { spendTokens, refundTokens, tokensRemainingLive } from "./tokens.server";
 import { enqueueJob } from "./job-queue.server";
 import { anthropicText } from "./anthropic.server";
 import { FACELESS_FORMATS } from "./faceless-video.server";
@@ -155,25 +155,21 @@ export async function tickDueSeries(): Promise<void> {
           topic = await nextTopic(s.niche, s.format, recent);
         }
 
-        // Spend at enqueue, like the Studio. A terminal render failure refunds
-        // via refundPrepaidOnce (chargedTokens), same as a manual faceless.
-        let fromExtra = 0;
-        try {
-          const r = await spendTokens(s.shopId, TOKEN_COST.faceless);
-          fromExtra = r.fromExtra;
-        } catch { await pause(s.id, "out-of-tokens"); continue; }
-
-        await enqueueJob(s.shopId, "GENERATE_VIDEO_AD", {
-          contentType: "faceless", topic, facelessFormat: s.format, voiceKey: s.voiceKey,
-          section, prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: fromExtra,
-          seriesId: s.id, seriesName: s.name, seriesAutoPost: s.autoPost, seriesPlatforms: wantPlatforms,
-          ...(product ? { product, seriesProductUrl: productUrl } : {}),
-          initiator: s.sourceType === "product" ? "product-channel" : "series",
-        });
-
+        // CLAIM THE SLOT BEFORE SPENDING — the read above is NOT the claim.
+        // Two overlapping worker ticks (or two instances mid-deploy — channels
+        // resume with nextRunAt=now+60s, so they're immediately due) both
+        // selected this row and, with a blind spend+enqueue+advance, BOTH spent
+        // 30 tokens, BOTH enqueued a render, and with autoPost BOTH posted a
+        // DUPLICATE video to the merchant's live socials. Mirror processNextJob:
+        // flip the drop forward with a CONDITIONAL updateMany pinned on the
+        // exact nextRunAt we read, advancing every field the drop consumes
+        // (cursor + recent-topics included so a loser can't re-pick them). Only
+        // the caller whose updateMany reports count === 1 owns this drop; losers
+        // move on. The pure/idempotent bits (topic, nextCursor) are computed
+        // above, so the claim is the first and only mutation of the slot.
         const interval = cadenceOf(s.cadence).intervalHours * 3600_000;
-        await db.creatorSeries.update({
-          where: { id: s.id },
+        const claim = await db.creatorSeries.updateMany({
+          where: { id: s.id, status: "ACTIVE", nextRunAt: s.nextRunAt },
           data: {
             lastRunAt: new Date(now),
             nextRunAt: new Date(now + interval),
@@ -183,6 +179,32 @@ export async function tickDueSeries(): Promise<void> {
             pauseReason: null,
           },
         });
+        if (claim.count !== 1) continue; // someone else claimed this drop
+
+        // Spend at enqueue, like the Studio. A terminal render failure refunds
+        // via refundPrepaidOnce (chargedTokens), same as a manual faceless.
+        let fromExtra = 0;
+        try {
+          const r = await spendTokens(s.shopId, TOKEN_COST.faceless);
+          fromExtra = r.fromExtra;
+        } catch { await pause(s.id, "out-of-tokens"); continue; }
+
+        // Refund on enqueue failure — we've already spent and already claimed the
+        // slot, so a throw here would strand the 30 tokens. Credit them back into
+        // the SAME buckets (fromExtra split) and move on.
+        try {
+          await enqueueJob(s.shopId, "GENERATE_VIDEO_AD", {
+            contentType: "faceless", topic, facelessFormat: s.format, voiceKey: s.voiceKey,
+            section, prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: fromExtra,
+            seriesId: s.id, seriesName: s.name, seriesAutoPost: s.autoPost, seriesPlatforms: wantPlatforms,
+            ...(product ? { product, seriesProductUrl: productUrl } : {}),
+            initiator: s.sourceType === "product" ? "product-channel" : "series",
+          });
+        } catch (e) {
+          await refundTokens(s.shopId, TOKEN_COST.faceless, fromExtra);
+          console.error(`[series] enqueue failed for ${s.id}, refunded (non-fatal):`, e instanceof Error ? e.message : e);
+          continue;
+        }
       } catch (e) {
         console.error(`[series] drop failed for ${s.id} (non-fatal):`, e instanceof Error ? e.message : e);
       }
