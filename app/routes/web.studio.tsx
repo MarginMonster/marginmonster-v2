@@ -5100,6 +5100,12 @@ const WS_STYLE = `
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
 .ws-tile-emoji{font-size:34px;line-height:1;filter:saturate(1.05)}
+/* In the Creator Easel the content-type grid lives in a ~300px rail, so the
+   default 4-column .ws-ctgrid squeezed the 2 casual video tiles to ~65px and
+   clipped their labels to "Show…" / "Carto…". Two columns fills the rail
+   cleanly; the brand icon tile doesn't need a full square, so cap its height. */
+.ws-casual .ws-ctgrid{grid-template-columns:1fr 1fr;gap:10px;}
+.ws-casual .ws-ctgrid .ws-tile-casual{aspect-ratio:auto;height:92px;}
 /* Pick-by-look art-style swatches (casual "Make an image"). */
 /* 4-up so the 12 styles fill clean 3×4 rows on both the narrow desktop
    controls column and mobile (no half-empty last row). */
