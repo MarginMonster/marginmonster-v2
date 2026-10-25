@@ -19,9 +19,9 @@
 
 /** Hyphen-separated lowercase alphanumeric segments, one extension. No dots and
  *  no slashes, so a name can never walk out of the uploads directory. */
-export const UPLOAD_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*\.(jpg|png|webp)$/;
+export const UPLOAD_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*\.(jpg|png|webp|mp4|mov|webm)$/;
 
-export type UploadExt = "jpg" | "png" | "webp";
+export type UploadExt = "jpg" | "png" | "webp" | "mp4" | "mov" | "webm";
 
 export function isServableUploadName(name: string): boolean {
   return UPLOAD_NAME_RE.test(name);
@@ -34,7 +34,7 @@ export const shopSlug = (shopId: string): string => shopId.toLowerCase().replace
 
 /** `kind` is omitted for a plain product photo and present for anything else,
  *  which is what keeps the two shapes distinguishable on disk. */
-export function uploadFileName(shopId: string, randomHex: string, ext: UploadExt, kind?: "mascot"): string {
+export function uploadFileName(shopId: string, randomHex: string, ext: UploadExt, kind?: "mascot" | "video"): string {
   const parts = [shopSlug(shopId), kind, randomHex].filter(Boolean);
   return `${parts.join("-")}.${ext}`;
 }

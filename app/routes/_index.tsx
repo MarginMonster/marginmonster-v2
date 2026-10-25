@@ -699,13 +699,16 @@ html,body{margin:0;padding:0}
 .lz-cmsg-tx{font-size:14.5px;line-height:1.5;padding:10px 14px;border-radius:16px;white-space:pre-wrap;word-break:break-word;}
 .lz-cmsg.user .lz-cmsg-tx{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
 .lz-cmsg.assistant .lz-cmsg-tx{background:var(--paper,#F4F1E6);color:var(--ink,#14201A);border:1px solid var(--line,#E4DFCF);border-bottom-left-radius:5px;}
-.lz-chat-in{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line,#E4DFCF);background:#FCFBF5;align-items:flex-end;}
+.lz-chat-in{display:flex;gap:6px;align-items:center;margin:14px 16px 16px;padding:5px 7px 5px 22px;border:1px solid var(--line,#E4DFCF);border-radius:30px;background:#fff;box-shadow:0 1px 6px rgba(20,32,26,.07);transition:box-shadow .16s,border-color .16s;}
+.lz-chat-in:focus-within{box-shadow:0 6px 22px rgba(20,32,26,.13);border-color:var(--green2,#12A85E);}
 /* Composer is a textarea (Enter sends, Shift+Enter = newline) to match the
    in-app chat — it grows with field-sizing where supported, else scrolls. */
-.lz-chat-in textarea{flex:1;min-width:0;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font:inherit;font-size:14.5px;line-height:1.45;color:var(--ink,#14201A);background:#fff;resize:none;max-height:140px;overflow-y:auto;field-sizing:content;}
-.lz-chat-in textarea:focus{outline:none;border-color:var(--green2,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.18);}
-.lz-chat-in button{flex:0 0 auto;width:46px;height:46px;border:0;border-radius:12px;background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;}
-.lz-chat-in button:disabled{opacity:.5;cursor:default;}
+.lz-chat-in textarea{flex:1;min-width:0;border:0;padding:11px 0;font:inherit;font-size:15.5px;line-height:1.4;color:var(--ink,#14201A);background:none;resize:none;max-height:120px;overflow-y:auto;field-sizing:content;}
+.lz-chat-in textarea:focus{outline:none;}
+.lz-chat-in textarea::placeholder{color:var(--ink2,#8A968E);}
+.lz-chat-in button{flex:0 0 auto;width:40px;height:40px;border:0;border-radius:50%;background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;transition:transform .12s,box-shadow .12s;}
+.lz-chat-in button:hover:not(:disabled){transform:scale(1.06);box-shadow:0 4px 12px rgba(12,122,70,.3);}
+.lz-chat-in button:disabled{opacity:.4;cursor:default;}
 /* Animated typing indicator — three dots bouncing in sequence. Reduced-motion
    users get a static row of dots (no bounce) via the media query below. */
 .lz-typing{display:inline-flex;gap:4px;align-items:center;padding:3px 0;}

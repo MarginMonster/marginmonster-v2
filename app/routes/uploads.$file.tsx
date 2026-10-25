@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isServableUploadName } from "../lib/upload-names";
 
-const TYPE: Record<string, string> = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" };
+const TYPE: Record<string, string> = { jpg: "image/jpeg", png: "image/png", webp: "image/webp", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" };
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const name = params.file || "";

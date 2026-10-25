@@ -1770,6 +1770,15 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [casual]);
+  // Casual image never shows the Make/Edit picker — it leads with the describe
+  // box (create); dropping a photo on the Stage switches to edit. So whenever
+  // casual lands on the image tab with no mode (tab click, back button, pre-
+  // hydration), default to create.
+  useEffect(() => { if (casual && tab === "image" && imageMode === null) setImageMode("create"); }, [casual, tab, imageMode]);
+  // Casual video likewise skips the Showcase/Cartoon picker — it leads with the
+  // describe box; default to the cinematic "highlight" path (describe -> make, or
+  // upload a video to edit it). Uploading a video switches to the edit flow.
+  useEffect(() => { if (casual && tab === "video" && contentType === null) setContentType("highlight"); }, [casual, tab, contentType]);
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   // Seeded from ?src= so an imported Gallery creation shows on the Stage the
@@ -2999,9 +3008,9 @@ export default function WebStudio() {
         )}
 
         {/* ---- VIDEO: pick your content type (big live-render tiles) ---- */}
-        {tab === "video" && !contentType && (
+        {tab === "video" && !contentType && !casual && (
           <>
-            <div className="ws-lbl">{casual ? t("What kind of video?") : t("Pick your content type")}</div>
+            <div className="ws-lbl">{t("Pick your content type")}</div>
             <div className="ws-tiles ws-ctgrid ws-scrollbox">
               {CONTENT_TYPES.filter((ct) => !casual
                 // Casual = Creator: drop the presenter/ad formats (avatar,
@@ -3056,7 +3065,7 @@ export default function WebStudio() {
         )}
         {tab === "video" && contentType && (
           <>
-            <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>
+            {!casual && <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>}
             {/* Avatar video folds step 1 away — its only control (Commercial look)
                 moves into the scene hub, which then becomes step 1. */}
             {!avatarVideoHub && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
@@ -3150,9 +3159,9 @@ export default function WebStudio() {
         )}
 
         {/* ---- IMAGE: product-ad templates or presenter-holding ---- */}
-        {tab === "image" && !imageMode && (
+        {tab === "image" && !imageMode && !casual && (
           <>
-            <div className="ws-lbl">{casual ? t("What do you want to make?") : t("What kind of image ad?")}</div>
+            <div className="ws-lbl">{t("What kind of image ad?")}</div>
             <div className={`ws-tiles${casual ? "" : " two"}`}>
               {casual && (
                 <button type="button" className="ws-tile" onClick={() => setImageMode("create")}>
@@ -3184,7 +3193,7 @@ export default function WebStudio() {
                 collapsed disclosure BELOW the box. Every other image mode keeps
                 the back link + header. */}
             {!(isCreate && casual) && (
-              <button type="button" className="ws-back" onClick={() => { setImageMode(null); setTemplateKey(null); }}>‹ {t("Image type")}</button>
+              <button type="button" className="ws-back" onClick={() => { if (casual) { setImageMode("create"); setTemplateKey(null); } else { setImageMode(null); setTemplateKey(null); } }}>‹ {casual ? t("Make an image") : t("Image type")}</button>
             )}
             {!((isCreate || isEdit) && casual) && (
               <StepHead n={1} title={isCreate ? t("Pick a style") : t("Pick the look")} hint={isCreate ? t("optional — pick a look, or skip for a natural photo") : casual ? t("how your image is styled") : t("the structure your ad is built on")} />
