@@ -1,5 +1,6 @@
 import { db } from "../db.server";
 import { emailEnabled, sendEmail } from "./email-provider.server";
+import { unsubscribeUrl } from "./unsubscribe.server";
 import { publicWebUrl } from "./public-url.ts";
 
 /* Monthly "here's what we made you" digest — a warm recap of the content
@@ -17,7 +18,7 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function digestHtml(d: { storeName: string; total: number; videos: number; images: number; blogs: number; published: number; appUrl: string }): string {
+function digestHtml(d: { storeName: string; total: number; videos: number; images: number; blogs: number; published: number; appUrl: string; optOutUrl: string }): string {
   const row = (label: string, n: number, emoji: string) =>
     n > 0 ? `<tr><td style="padding:6px 0;font-size:15px;color:#14201b;">${emoji} ${label}</td><td style="padding:6px 0;font-size:15px;font-weight:700;color:#0F7A46;text-align:right;">${n}</td></tr>` : "";
   const body = d.total > 0
@@ -34,7 +35,9 @@ function digestHtml(d: { storeName: string; total: number; videos: number; image
     <h1 style="font-size:26px;line-height:1.2;color:#14201b;margin:8px 0 18px;">${d.total > 0 ? `We made you ${d.total} new piece${d.total === 1 ? "" : "s"}` : "Ready when you are"}</h1>
     ${body}
     <a href="${d.appUrl}/app/archive" style="display:inline-block;margin-top:14px;background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;text-decoration:none;font-weight:800;font-size:15px;padding:13px 26px;border-radius:12px;">Open your Archive →</a>
-    <p style="margin:22px 0 0;font-size:12px;color:#9aa197;">You're getting this because EasyMode is active on your store. Manage content anytime from your Shopify admin.</p>
+    <p style="margin:22px 0 0;font-size:12px;color:#9aa197;">You're getting this because EasyMode is active on your store. Manage content anytime from your Shopify admin.${
+      /^https?:\/\//.test(d.optOutUrl) ? ` · <a href="${esc(d.optOutUrl)}" style="color:#9aa197;">Unsubscribe from these summaries</a>` : ""
+    }</p>
   </div>`;
 }
 
@@ -61,6 +64,28 @@ export async function sendMonthlyDigests(): Promise<void> {
     const appUrl = publicWebUrl();
     for (const s of shops) {
       if (!s.contactEmail) continue;
+      const to = s.contactEmail.trim().toLowerCase();
+
+      // Honour the opt-out. Same Subscriber row the one-click unsubscribe
+      // (u.$token.tsx) and sendBrandEmail write/read, keyed on this shop's own
+      // contactEmail — if that exact address unsubscribed, no digest goes out.
+      const optedOut = await db.subscriber.findUnique({
+        where: { shopId_email: { shopId: s.id, email: to } },
+        select: { status: true },
+      });
+      if (optedOut && optedOut.status !== "subscribed") continue;
+
+      // A working opt-out link for the footer + the List-Unsubscribe header.
+      // publicWebUrl(), not the Shopify Render host, so the link is on the
+      // brand domain. A missing signing secret must not kill the whole worker:
+      // fall back to a header-less, link-less send (the opt-out note stays).
+      let optOutUrl = "";
+      try {
+        optOutUrl = unsubscribeUrl(appUrl, s.id, to);
+      } catch (e) {
+        console.error("[digest] no unsubscribe link (signing secret unset?):", (e as Error).message);
+      }
+
       const made = await db.asset.findMany({
         where: { shopId: s.id, createdAt: { gte: cutoff } },
         select: { type: true },
@@ -73,8 +98,8 @@ export async function sendMonthlyDigests(): Promise<void> {
       const subject = total > 0
         ? `EasyMode made you ${total} piece${total === 1 ? "" : "s"} this month 🏝️`
         : `A fresh month of content awaits 🏝️`;
-      const html = digestHtml({ storeName, total, videos, images, blogs, published, appUrl });
-      const r = await sendEmail({ to: s.contactEmail, subject, html });
+      const html = digestHtml({ storeName, total, videos, images, blogs, published, appUrl, optOutUrl });
+      const r = await sendEmail({ to, subject, html, unsubscribeUrl: optOutUrl || undefined });
       if (r.ok) await db.shop.update({ where: { id: s.id }, data: { lastDigestAt: new Date() } });
     }
     console.log(`[digest] processed ${shops.length} shop(s)`);

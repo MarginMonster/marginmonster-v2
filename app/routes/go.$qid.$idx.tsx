@@ -88,7 +88,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
         slot?.productUrl ||
         q.shop.storeUrl ||
         (/\.easymode\.app$/i.test(q.shop.domain) ? "https://easymodeapp.com" : `https://${q.shop.domain}`);
-      const u = new URL(base);
+      // slot.productUrl is crawl/sitemap data, so scheme-gate it exactly like
+      // the asset turnstile does before trusting it in new URL/redirect.
+      const safe = /^https?:\/\//i.test(base) ? base : "https://easymodeapp.com";
+      const u = new URL(safe);
       u.searchParams.set("utm_source", "easymode");
       u.searchParams.set("utm_medium", "social");
       u.searchParams.set("utm_campaign", q.template.toLowerCase());

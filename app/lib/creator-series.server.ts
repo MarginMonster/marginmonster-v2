@@ -202,6 +202,12 @@ export async function tickDueSeries(): Promise<void> {
           });
         } catch (e) {
           await refundTokens(s.shopId, TOKEN_COST.faceless, fromExtra);
+          // The claim already bumped dropsMade (+1) assuming this drop would land
+          // in the Gallery. The enqueue just failed and we've refunded, so no
+          // video will ever exist — roll the count back so the Channels card
+          // doesn't overstate what's actually there. Mirrors the claim's
+          // `{ dropsMade: { increment: 1 } }`; non-fatal like dropsPosted below.
+          try { await db.creatorSeries.update({ where: { id: s.id }, data: { dropsMade: { decrement: 1 } } }); } catch { /* */ }
           console.error(`[series] enqueue failed for ${s.id}, refunded (non-fatal):`, e instanceof Error ? e.message : e);
           continue;
         }

@@ -3,7 +3,7 @@ import { spendTokens, refundTokens } from "./tokens.server";
 import { awardXp, unlockAchievement, checkLevelAchievements } from "./xp.server";
 import { enqueueJob } from "./job-queue.server";
 import { zonedInstant, calendarDaysBetween, zonedDateString } from "./timezone";
-import { TOKEN_COST } from "./plan-config";
+import { TOKEN_COST, minTierRank, planRank } from "./plan-config";
 import {
   QUESTLINE_BY_KEY, questlineTokenCost, questlineCostFor, spotName, parseSchedule,
   QUEST_DURATION_DAYS, type ObjectiveType, type QuestSlot, type QuestSchedule,
@@ -189,9 +189,19 @@ export async function acceptQuestline(params: {
   if (!shop?.activePlan) return { ok: false, error: "Choose a plan first to run questlines." };
   if (!shop.activePlan.active) return { ok: false, error: "Your subscription is paused — resubscribe on the Packages page to launch campaigns." };
 
-  // TIER GATE — before any money moves. A campaign containing videos needs
-  // the video capability; without this, Starter shops would be charged and
-  // then watch every video slot fail-and-refund at the worker.
+  // TIER GATE — before any money moves. The posted plan key is not trusted:
+  // enforce the campaign's own minTier against the shop's REAL tier, so a
+  // client can't unlock a higher-plan questline by sending its key. Ranks
+  // share one 1-3 scale (minTierRank for the def's legacy string, planRank for
+  // the live plan type); planRank returns 0 for an unknown type, which fails
+  // closed.
+  if (minTierRank(def.minTier) > planRank(shop.activePlan.type)) {
+    return { ok: false, error: "This campaign unlocks on a higher plan." };
+  }
+
+  // A campaign containing videos needs the video capability; without this,
+  // Starter shops would be charged and then watch every video slot
+  // fail-and-refund at the worker.
   const { capabilitiesFor } = await import("./capabilities.server");
   const caps = capabilitiesFor(shop.activePlan);
   if (def.objectives.some((o) => o.type === "video" && o.target > 0) && !caps.has("video")) {
@@ -823,8 +833,12 @@ export async function scheduleExistingAssets(
   const days = Math.max(1, Math.min(90, Math.round(params.days || 30)));
   const time = /^\d{2}:\d{2}$/.test(params.time || "") ? (params.time as string) : "12:00";
 
-  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  const shop = await db.shop.findUnique({ where: { id: shopId }, include: { activePlan: true } });
   if (!shop) return { ok: false, error: "Shop not found." };
+  // GATE LIKE acceptQuestline — a repost/schedule also puts content on the
+  // merchant's real accounts, so a cancelled/churned shop must not keep
+  // auto-posting for free.
+  if (!shop.activePlan?.active) return { ok: false, error: "Your subscription is paused — resubscribe to schedule posts." };
 
   // Only this shop's own postable assets — never trust ids off the wire.
   const assets = await db.asset.findMany({
@@ -1153,12 +1167,17 @@ export async function settleQuestlineIfDone(questlineId: string): Promise<void> 
     //
     // Once the whole schedule is a day past its last slot there is nothing
     // left to wait for, whatever the counters say.
+    //
+    // Each slot's time is a WALL time in the merchant's day, so resolve it with
+    // their zone (zonedInstant) exactly as the poster/calendar do — see
+    // slotRunAt and getContentCalendar. Parsing in container UTC marked a
+    // far-west campaign COMPLETE up to ~12h early and stranded its final drops;
+    // settle must agree with the poster's own elapsed gate.
+    const settleTz = await tzFor(q.shopId);
     const lastSlotMs = schedule.slots.reduce((m, s) => {
-      const t = new Date(`${s.date}T${s.time}:00`).getTime();
+      const t = zonedInstant(s.date, s.time, settleTz).getTime();
       return Number.isFinite(t) && t > m ? t : m;
     }, 0);
-    // Parsed without the shop's timezone, which is worth at most ±14h — well
-    // inside the GEN_LEAD_MS day of slack this adds on top.
     const scheduleElapsed = lastSlotMs > 0 && Date.now() > lastSlotMs + GEN_LEAD_MS;
 
     const allContentDone = objectives.filter((o) => o.type !== "post").every((o) => o.done >= o.target);

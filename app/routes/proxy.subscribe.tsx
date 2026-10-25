@@ -54,29 +54,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop) return json({ ok: false }, { status: 404 });
 
   try {
+    // Does this address already consent? Reading first lets us charge the
+    // new-subscriber rate limit and the welcome job only to genuinely new rows.
     const existing = await db.subscriber.findUnique({
       where: { shopId_email: { shopId: shop.id, email } },
     });
+
     if (existing) {
+      // Known opt-in (even a re-submit of a live popup) — re-affirm consent and
+      // stop. No rate-limit charge, no second welcome.
       if (existing.status !== "subscribed") {
         await db.subscriber.update({ where: { id: existing.id }, data: { status: "subscribed" } });
       }
+      return json({ ok: true });
+    }
+
+    const recent = await db.subscriber.count({
+      where: { shopId: shop.id, createdAt: { gte: new Date(Date.now() - WINDOW_MS) } },
+    });
+    if (recent >= HARD_LIMIT) {
+      console.warn(`[subscribe] hard limit hit for ${shopDomain}: ${recent} signups in the window`);
+      return json({ ok: false, error: "Too many signups right now. Please try again shortly." }, { status: 429 });
+    }
+
+    // upsert, not create: two simultaneous first-time POSTs for the same address
+    // both read no row above, so a bare create would make one of them hit the
+    // @@unique([shopId, email]) and surface as a generic 500 to a real
+    // subscriber. The update branch absorbs that collision idempotently —
+    // mirrors how u.$token.tsx upserts this same table.
+    await db.subscriber.upsert({
+      where: { shopId_email: { shopId: shop.id, email } },
+      update: { status: "subscribed" },
+      create: { shopId: shop.id, email, source: "popup", status: "subscribed" },
+    });
+    // WELCOME flow — fires for brand-new subscribers only (the row did not exist
+    // when we read above). PCD-free: this is our own consented opt-in.
+    // Inert-safe (job no-ops if email not connected).
+    if (recent < SOFT_LIMIT) {
+      await enqueueJob(shop.id, "SEND_WELCOME", { email });
     } else {
-      const recent = await db.subscriber.count({
-        where: { shopId: shop.id, createdAt: { gte: new Date(Date.now() - WINDOW_MS) } },
-      });
-      if (recent >= HARD_LIMIT) {
-        console.warn(`[subscribe] hard limit hit for ${shopDomain}: ${recent} signups in the window`);
-        return json({ ok: false, error: "Too many signups right now. Please try again shortly." }, { status: 429 });
-      }
-      await db.subscriber.create({ data: { shopId: shop.id, email, source: "popup", status: "subscribed" } });
-      // WELCOME flow — fires for brand-new subscribers only. PCD-free: this is
-      // our own consented opt-in. Inert-safe (job no-ops if email not connected).
-      if (recent < SOFT_LIMIT) {
-        await enqueueJob(shop.id, "SEND_WELCOME", { email });
-      } else {
-        console.warn(`[subscribe] ${shopDomain} past ${SOFT_LIMIT} signups in the window — saved without a welcome email`);
-      }
+      console.warn(`[subscribe] ${shopDomain} past ${SOFT_LIMIT} signups in the window — saved without a welcome email`);
     }
   } catch (e) {
     console.error("[subscribe] failed:", e);

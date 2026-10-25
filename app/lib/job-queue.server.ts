@@ -916,28 +916,40 @@ async function runJob(
       const id = payload.abandonedCheckoutId as string;
       const ac = await db.abandonedCheckout.findUnique({ where: { id } });
       if (!ac || ac.status !== "pending") break; // recovered / already handled
-      const { emailEnabled, sendEmail } = await import("./email-provider.server");
-      if (!ac.email || !emailEnabled()) {
-        await db.abandonedCheckout.update({ where: { id }, data: { status: "skipped" } });
-        break;
-      }
-      const s = await db.shop.findUnique({ where: { id: shopId }, include: { brandProfile: true } });
-      if (!s?.brandProfile) {
+      if (!ac.email) {
         await db.abandonedCheckout.update({ where: { id }, data: { status: "skipped" } });
         break;
       }
       let items: { title?: string }[] = [];
       try { items = JSON.parse(ac.itemsJson); } catch { /* empty */ }
-      const { writeMarketingEmail } = await import("./email-writer.server");
-      const email = await writeMarketingEmail(s.brandProfile, {
+      // WIN THE SEND BEFORE SENDING. A worker retry (or two overlapping ticks)
+      // both passed the pending read above and both mailed the shopper twice —
+      // the read is not the claim. Flip pending→emailed with a CONDITIONAL
+      // updateMany, exactly like the claim in processNextJob and the recovery
+      // flip in the ORDERS_CREATE webhook: only the caller whose count === 1
+      // owns the send; everyone else bails having done nothing.
+      const claim = await db.abandonedCheckout.updateMany({
+        where: { id, status: "pending" },
+        data: { status: "emailed" },
+      });
+      if (claim.count !== 1) break; // someone else is sending (or it recovered)
+      // Route through the shared brand-email path — NOT writeMarketingEmail +
+      // sendEmail directly. sendBrandEmail is the one place that attaches a
+      // working unsubscribe link + List-Unsubscribe header (CAN-SPAM), honours
+      // opt-outs, and — because an automated email is a metered generation —
+      // gates on activePlan.active and spends TOKEN_COST.email (refunding on a
+      // failed send). The direct path did none of that: a dead "Unsubscribe"
+      // footer, and free unmetered AI emails from a cancelled shop.
+      const { sendBrandEmail } = await import("./email-flows.server");
+      const r = await sendBrandEmail(shopId, {
+        to: ac.email,
         kind: "abandoned_cart",
         productTitle: items[0]?.title,
-        storeName: s.domain.replace(/\.myshopify\.com$/, ""),
         ctaUrl: ac.recoveryUrl || undefined,
-        contentLang: s.contentLang,
       });
-      const res = await sendEmail({ to: ac.email, subject: email.subject, html: email.html });
-      await db.abandonedCheckout.update({ where: { id }, data: { status: res.ok ? "emailed" : "skipped" } });
+      // Nothing was delivered → record it as skipped so the merchant's reporting
+      // reflects reality (sendBrandEmail already refunded any tokens it spent).
+      if (!r.ok) await db.abandonedCheckout.update({ where: { id }, data: { status: "skipped" } });
       break;
     }
 

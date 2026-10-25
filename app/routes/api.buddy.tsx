@@ -13,7 +13,7 @@ import path from "node:path";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } from "../lib/tokens.server";
-import { rateLimit } from "../lib/rate-limit.server";
+import { rateLimit, clientIp } from "../lib/rate-limit.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -47,6 +47,12 @@ const BUDDY_FACTS_KEEP = 50;
 const BUDDY_MODEL = "claude-sonnet-5";
 const BUDDY_DAILY_CAP: Record<string, number> = { STARTER: 100, STUDIO: 250, ANTHEM: 600 };
 const BUDDY_CAP_NO_PLAN = 30;
+// Signed-in chat is gated per-shop by the caps above. A GUEST (no identity) can
+// still reach the chat turn, so it needs the SAME per-IP daily ceiling the
+// landing endpoint (api.helpurr-anon) uses — otherwise this is a free, uncapped
+// Sonnet proxy. ~40 turns/IP/day bounds worst-case cost to pennies; a real
+// visitor never comes close. Mirrors helpurr-anon's IP_DAILY_CAP.
+const BUDDY_ANON_IP_CAP = 40;
 
 const PERSONA =
   "You are Helpurr — EASYMODE's AI helper (a friendly pixel-cat) and a sharp, clever marketing mind. You think like a seasoned creative director: you read a situation fast and give a confident, well-reasoned take in plain, modern language. EASYMODE turns any store's products into image ads and short product videos, 'on easy mode'. " +
@@ -1542,6 +1548,14 @@ export async function action({ request }: ActionFunctionArgs) {
         return json({ reply: tr(lang, "We've had a great run today 🐾 — that's my daily chat limit. I'll be fresh again tomorrow, and everything else in the app still works in the meantime. A plan gets you a lot more chat (and unlocks making things)."), actions: [], pendingAction: upsellAction("plans", lang) });
       }
     } catch { /* a failed count must never block the chat */ }
+  }
+
+  // GUEST chat (no identity): the per-shop daily cap above never runs, so a hard
+  // per-IP daily ceiling is the real abuse gate — otherwise the stream below is a
+  // free, uncapped Sonnet proxy (the exact surface api.helpurr-anon was built to
+  // close). Signed-in traffic is already bounded per shop and skips this.
+  if (!id && !rateLimit(`buddyanon:${clientIp(request)}`, BUDDY_ANON_IP_CAP, 24 * 60 * 60_000).ok) {
+    return json({ reply: tr(lang, "We've had a great run today 🐾 — that's the free preview limit. Create a free account to keep chatting (no card needed).") }, { status: 429 });
   }
 
   const persona = mode === "casual" ? PERSONA_CASUAL : PERSONA;

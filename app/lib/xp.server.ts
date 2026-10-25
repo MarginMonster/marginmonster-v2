@@ -43,8 +43,16 @@ export async function awardXp(shopId: string, gained: number): Promise<XpResult 
     const bumped = await db.shop.update({
       where: { id: shopId },
       data: { xp: { increment: gained } },
-      select: { xp: true, level: true },
+      select: { xp: true, level: true, domain: true },
     });
+
+    // pendingLevelUp is a one-shot flash for the global level-up popup, but ONLY
+    // the Shopify app shell (app.tsx) reads and clears it. A web account's
+    // synthetic web-<id>.easymode.app shop has no route that consumes it, so
+    // every web level-up wrote a flag that was never read — it just accumulated
+    // forever. Web shops therefore do not write it. (Same host test the other
+    // web-shop branches use, e.g. go.a.$assetId.tsx.)
+    const isWebShop = /\.easymode\.app$/i.test(bumped.domain);
 
     let level = bumped.level;
     let giftedTokens = 0;
@@ -61,8 +69,10 @@ export async function awardXp(shopId: string, gained: number): Promise<XpResult 
         where: { id: shopId, level: cur.level },
         data: {
           level: reached,
-          // flash for the global level-up popup (read + cleared by the app shell)
-          pendingLevelUp: JSON.stringify({ level: reached, gift }),
+          // flash for the global level-up popup (read + cleared by the app shell).
+          // Shopify shops only — a web shop has no route that reads it, so writing
+          // it there just leaves a flag that never clears.
+          ...(isWebShop ? {} : { pendingLevelUp: JSON.stringify({ level: reached, gift }) }),
         },
       });
       if (claimed.count === 1) {
@@ -153,18 +163,40 @@ export async function checkCreationAchievements(shopId: string): Promise<void> {
 export async function onTokensRefunded(shopId: string, amount: number): Promise<void> {
   if (amount <= 0) return;
   try {
-    const shop = await db.shop.findUnique({ where: { id: shopId }, select: { xp: true, tokensSpent: true } });
-    if (!shop) return;
-    // XP is wound back at the SAME rate it was granted (xpForSpend), while the
-    // lifetime tokensSpent counter tracks raw tokens — so the refund stays
-    // proportional and BIG_SPENDER still measures real spend.
-    await db.shop.update({
-      where: { id: shopId },
-      data: {
-        xp: { decrement: Math.min(xpForSpend(amount), Math.max(0, shop.xp)) },
-        tokensSpent: { decrement: Math.min(amount, Math.max(0, shop.tokensSpent)) },
-      },
-    });
+    // THE CLAMP AND THE DECREMENT HAVE TO BE ONE STEP.
+    //
+    // Reading {xp, tokensSpent}, clamping the decrement against those values,
+    // and then issuing an unconditional decrement is the same stale
+    // read-then-write refundTokens (tokens.server.ts) was fixed for. Two
+    // refunds can genuinely overlap — the worker's terminal-failure refund and
+    // a route's catch block share one event loop — and both would clamp against
+    // the SAME stale read and both decrement, driving xp or tokensSpent
+    // NEGATIVE. A negative lifetime counter is not merely untidy: it under-reads
+    // real spend (BIG_SPENDER) and a negative xp mis-levels the account.
+    //
+    // So each counter's decrement is conditional on the value it was clamped
+    // against: re-read, clamp to what's actually there, and write with a guard
+    // on the read values. If another refund moved either column between the read
+    // and the write, re-read and re-clamp rather than writing through a stale
+    // figure. XP is wound back at the SAME rate it was granted (xpForSpend),
+    // while the lifetime tokensSpent counter tracks raw tokens — so the refund
+    // stays proportional and BIG_SPENDER still measures real spend.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cur = await db.shop.findUnique({ where: { id: shopId }, select: { xp: true, tokensSpent: true } });
+      if (!cur) break;
+      const xpTake = Math.min(xpForSpend(amount), Math.max(0, cur.xp));
+      const spentTake = Math.min(amount, Math.max(0, cur.tokensSpent));
+      if (xpTake <= 0 && spentTake <= 0) break; // nothing left to wind back
+      const applied = await db.shop.updateMany({
+        where: { id: shopId, xp: cur.xp, tokensSpent: cur.tokensSpent },
+        data: {
+          xp: { decrement: xpTake },
+          tokensSpent: { decrement: spentTake },
+        },
+      });
+      if (applied.count === 1) break;
+      // Someone else moved a counter between the read and the write — re-read and re-clamp.
+    }
   } catch (e) {
     console.error("[xp] onTokensRefunded failed (non-fatal):", e);
   }
