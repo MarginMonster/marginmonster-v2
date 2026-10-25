@@ -387,7 +387,7 @@ async function freeMakesLeft(shopId: string): Promise<number> {
 function upsellAction(target: "STARTER" | "CREATOR" | "STUDIO" | "plans" | "topup", lang: UiLang): PendingAction {
   const label = target === "topup" ? tr(lang, "Add tokens")
     : target === "STUDIO" ? tr(lang, "Unlock video — see plans")
-    : target === "CREATOR" ? tr(lang, "Unlock making — see plans")
+    : target === "CREATOR" ? tr(lang, "Make more — see plans")
     : tr(lang, "See plans");
   return { label, to: "/web#plans", cost: 0, kind: "plans" };
 }
@@ -402,10 +402,10 @@ async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: Ma
   // account can actually finish them. Videos/faceless/music/branded ads need a
   // plan. One shared daily pool (FREE_DAILY_MAKES).
   if (kind !== "edit" && kind !== "create") {
-    return json({ error: "That one needs a plan — upgrade to unlock it. (Chatting, photo edits and a couple of images a day are free!)", upsell: (kind === "video" || kind === "faceless") ? "STUDIO" : "CREATOR" }, { status: 402 });
+    return json({ error: `That one needs a plan. Chatting's always free, and so are ${FREE_DAILY_MAKES} makes a day — images or photo edits — on the house! 🐾`, upsell: (kind === "video" || kind === "faceless") ? "STUDIO" : "CREATOR" }, { status: 402 });
   }
   const left = await freeMakesLeft(id.shop.id);
-  if (left <= 0) return json({ error: "You've used today's free creations — they refresh tomorrow, or upgrade to keep going.", upsell: "CREATOR" }, { status: 402 });
+  if (left <= 0) return json({ error: `That's your ${FREE_DAILY_MAKES} free makes for today 🐾 — they refresh tomorrow. A plan lets you keep going now.`, upsell: "CREATOR" }, { status: 402 });
   if (kind === "create") {
     const prompt = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 400) : "";
     if (!prompt) return json({ error: "Tell me what to picture first." }, { status: 400 });
@@ -603,17 +603,17 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   if (kind !== "edit" && kind !== "create") {
     const upsell = (kind === "video" || kind === "faceless") ? "STUDIO" as const : kind === "music" ? "CREATOR" as const : "STARTER" as const;
     const unlocks = (kind === "video" || kind === "faceless") ? "videos" : kind === "music" ? "music" : "AI image ads for your products";
-    return { make: null, upsell, toolResult: JSON.stringify({ upgrade: true, note: `This is a FREE account — ${unlocks} come with a plan. A "See plans" button is now shown. Warmly say it's a paid feature; meanwhile editing a photo and a couple of images a day are free. Do NOT make it.` }) };
+    return { make: null, upsell, toolResult: JSON.stringify({ upgrade: true, note: `This is a FREE account — ${unlocks} come with a plan. A "See plans" button is now shown. Warmly say it's a paid feature; meanwhile chatting is free, and so are ${FREE_DAILY_MAKES} makes a day (images or photo edits). Do NOT make it.` }) };
   }
   const left = await freeMakesLeft(id.shop.id);
   if (left <= 0) {
-    return { make: null, upsell: "CREATOR", toolResult: JSON.stringify({ upgrade: true, note: `This FREE account has used today's ${FREE_DAILY_MAKES} free creations (they refresh tomorrow). A "See plans" button is now shown. Warmly tell them that, and that a plan unlocks unlimited making plus videos and music. Do NOT make it.` }) };
+    return { make: null, upsell: "CREATOR", toolResult: JSON.stringify({ upgrade: true, note: `This FREE account has used today's ${FREE_DAILY_MAKES} free creations (they refresh tomorrow). A "See plans" button is now shown. Warmly tell them that, and that a plan adds a big monthly token pool for images, videos and music (top up anytime). Do NOT make it.` }) };
   }
   if (kind === "create") {
     const prompt = (typeof input.direction === "string" && input.direction.trim()) || (typeof input.topic === "string" && input.topic.trim()) || "";
     if (!prompt) return { make: null, toolResult: JSON.stringify({ error: "Ask in one line WHAT they want to picture before offering to make it." }) };
     const make: MakeSpec = { kind: "create", product: "", presenter: false, direction: String(prompt).slice(0, 400), cost: 0, free: true, label: tr(lang, "Make this image — free") };
-    return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "create", free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free creation${left === 1 ? "" : "s"} left today) to generate the image. Say it's on the house, name what you'll make in one line, and mention a plan unlocks unlimited making plus videos and music. Do NOT claim it is done.` }) };
+    return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "create", free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free make${left === 1 ? "" : "s"} left today) to generate the image. Say it's on the house, name what you'll make in one line, and — only if it fits — note a plan adds a monthly token pool for videos, music and more (keep it light, never a pitch). Do NOT claim it is done.` }) };
   }
   // EDIT — the attached photo, OR (source:'recent' / nothing attached) the shop's
   // own most-recent creation.
@@ -627,7 +627,7 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   const EDIT_VERB: Record<string, string> = { restyle: "Restyle this photo", cartoonize: "Cartoonize this photo", bgremove: "Remove the background", bgswap: "Swap the background", colorize: "Colorize this photo", upscale: "Sharpen this photo", describe: "Edit this photo" };
   const label = tr(lang, "{verb} — free", { verb: tr(lang, EDIT_VERB[editOp] || "Edit this photo") });
   const make: MakeSpec = { kind: "edit", product: "", presenter: false, direction, sourceImageUrl: src, editOp, cost: 0, free: true, label };
-  return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "edit", editOp, free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free creation${left === 1 ? "" : "s"} left today) to edit ${subject}. Say it's on the house, name the edit in one line, and mention a plan unlocks unlimited making plus videos and music. Do NOT claim it is done.` }) };
+  return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "edit", editOp, free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free make${left === 1 ? "" : "s"} left today) to edit ${subject}. Say it's on the house, name the edit in one line, and — only if it fits — note a plan adds a monthly token pool for videos, music and more (keep it light, never a pitch). Do NOT claim it is done.` }) };
 }
 
 async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang, mode: "marketing" | "casual", editSource: string | null, recentSource: string | null): Promise<{ make: MakeSpec | null; toolResult: string; upsell?: "STARTER" | "CREATOR" | "STUDIO" }> {
@@ -997,9 +997,9 @@ async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiL
     if (!id.shop.activePlan?.active) {
       const freeLeft = await freeMakesLeft(shopId);
       if (freeLeft > 0) {
-        return { reply: tr(lang, "Hey {first}! 🐾 I'm your free AI helper — ask me anything, and you've got {left} free photo edits on the house. Upload a photo and I'll restyle it, cartoonize it, or drop the background. (Image ads, videos & music come with a plan.)", { first, left: freeLeft }) };
+        return { reply: tr(lang, "Hey {first}! 🐾 I'm your free AI helper — ask me anything, and you've got {left} free makes a day on the house: ask me to picture something, or drop a photo and I'll restyle, cartoonize or cut out the background. (Videos, music & branded product ads come with a plan.)", { first, left: freeLeft }) };
       }
-      return { reply: tr(lang, "Hey {first}! 🐾 Still here free to chat, brainstorm and plan with you. You've used today's free creations (they refresh tomorrow) — whenever you're ready, a plan unlocks unlimited making plus videos and music.", { first }), pendingAction: upsellAction("plans", lang) };
+      return { reply: tr(lang, "Hey {first}! 🐾 Still here free to chat, brainstorm and plan with you. You've used today's free makes (they refresh tomorrow) — whenever you're ready, a plan adds a monthly token pool for videos, music and lots more.", { first }), pendingAction: upsellAction("plans", lang) };
     }
     const [catCount, madeWeek, activeQ] = await Promise.all([
       db.catalogProduct.count({ where: { shopId } }),

@@ -2027,19 +2027,20 @@ video.mm-media-item{width:132px;height:176px;object-fit:cover;}
 .mm-act{font:inherit;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;border:0;border-radius:999px;padding:8px 15px;
   background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 2px 8px rgba(12,122,70,.26),inset 0 0 0 1px rgba(231,200,121,.3);}
 .mm-act:hover{filter:brightness(1.07);transform:translateY(-1px);}
-/* Phase-2 "make it" confirm button — bigger + gold-trimmed so a creation stands
-   apart from the small nav chips. Opens the task in the Studio to approve the spend. */
-.mm-make{display:flex;align-items:center;justify-content:space-between;gap:10px;width:92%;cursor:pointer;border:0;text-align:left;
-  font:inherit;font-weight:800;font-size:13px;color:#fff;border-radius:13px;padding:11px 14px;transition:filter .12s,transform .12s;
-  background:linear-gradient(135deg,#12A85E 42%,#0B6B3E);box-shadow:0 3px 12px rgba(12,122,70,.3),inset 0 0 0 1px rgba(231,200,121,.42);}
+/* The "Make it" confirm — a crafted button that HUGS its label with the cost as
+   a rounded chip, so a creation reads as a tidy call-to-action, not a full-width
+   slab. Gold = the spend-confirm; green = a suggestion/open-in-Studio. */
+.mm-make{display:inline-flex;align-items:center;gap:10px;max-width:92%;cursor:pointer;border:0;text-align:left;
+  font:inherit;font-weight:800;font-size:13px;color:#fff;border-radius:13px;padding:10px 10px 10px 15px;transition:filter .12s,transform .12s,box-shadow .12s;
+  background:linear-gradient(135deg,#12A85E 42%,#0B6B3E);box-shadow:0 4px 14px rgba(12,122,70,.3),inset 0 0 0 1px rgba(231,200,121,.42);}
 .mm-make span{overflow-wrap:anywhere;}
-.mm-make b{flex:0 0 auto;font-size:11.5px;font-weight:800;color:#F6E6B4;white-space:nowrap;}
-.mm-make:hover{filter:brightness(1.06);transform:translateY(-1px);}
-.mm-make-go{background:linear-gradient(135deg,#E7C879 38%,#C9A23F);box-shadow:0 3px 14px rgba(201,162,63,.34),inset 0 0 0 1px rgba(255,255,255,.3);color:#1A130A;}
-.mm-make-go b{color:#4A3410;}
+.mm-make b{flex:0 0 auto;font-size:11px;font-weight:800;white-space:nowrap;background:rgba(0,0,0,.16);color:#F6E6B4;border-radius:999px;padding:4px 11px;}
+.mm-make:hover{filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 6px 18px rgba(12,122,70,.36),inset 0 0 0 1px rgba(231,200,121,.6);}
+.mm-make-go{background:linear-gradient(135deg,#F1D481 0%,#E7C879 42%,#CBA23F);color:#2A1E08;box-shadow:0 4px 16px rgba(201,162,63,.38),inset 0 0 0 1px rgba(255,255,255,.4);}
+.mm-make-go b{background:rgba(74,52,16,.18);color:#4A3410;}
 .mm-make-go:disabled{opacity:.6;cursor:default;filter:none;transform:none;}
 .mm-makeq{display:flex;flex-direction:column;gap:7px;width:92%;}
-.mm-makeq .mm-make{width:100%;}
+.mm-makeq .mm-make{width:100%;max-width:100%;justify-content:space-between;}
 .mm-makeq-list{list-style:none;margin:0;padding:8px 11px;display:flex;flex-direction:column;gap:3px;
   background:rgba(12,122,70,.06);border:1px solid rgba(12,122,70,.16);border-radius:11px;font-size:12px;color:#2A3B32;}
 .mm-makeq-list li{display:flex;align-items:center;gap:7px;overflow-wrap:anywhere;}

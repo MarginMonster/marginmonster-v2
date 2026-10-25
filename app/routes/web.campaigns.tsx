@@ -700,7 +700,7 @@ export default function WebCampaigns() {
                       ? t("Scheduling…")
                       : (pickedAssets.length === 1
                           ? t("Schedule {n} post — free", { n: pickedAssets.length })
-                          : t("Schedule {n} posts — free", { n: pickedAssets.length || "" }))}
+                          : t("Schedule {n} posts — free", { n: pickedAssets.length }))}
                   </button>
                 </>
               )}
