@@ -139,20 +139,20 @@ export default function WebLayout() {
             <nav className="wb-tabs">
               {/* Creator Home merged into the Studio — casual leads with Studio;
                   only Marketing keeps a separate Dashboard. */}
-              {mode === "marketing" && <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>}
+              <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">{t("Studio")}</Link>
               {/* Helpurr as a dedicated section: opens the chat maximized (full
                   surface), not just the floating bubble. Works in both modes. */}
               {authed && <button type="button" className="wb-tab wb-tab-btn wb-tab-helpurr" onClick={() => window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true } }))}>{t("Helpurr")}</button>}
               {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
                   in casual, where there's nothing being marketed. */}
-              {mode === "marketing" && <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>}
+              <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>
               {/* Channels = the autopilot, now a Social surface. One nav entry; the
                   page carries a source switch (My products ↔ Trending topics) that
                   cross-links /web/product-channels and /web/channels. Keep Creator
                   simple (Studio · Gallery · Share) — faceless lives there only as a
                   Studio taste, the recurring autopilot moved to Social. */}
-              {mode === "marketing" && <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" ? " on" : ""}`} to="/web/product-channels">{t("Channels")}</Link>}
+              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" ? " on" : ""}`} to="/web/product-channels">{t("Channels")}</Link>
               {/* One consistent name — "Archive" — in BOTH sections; the page
                   labels itself "Creator Archive" / "Social Archive" and carries a
                   section toggle, so the two separate stores read as parallel
@@ -169,12 +169,9 @@ export default function WebLayout() {
               title={t("Display language — translates the app")}
               onPick={(c) => submitLang({ lang: c }, { method: "post", action: "/set-ui-lang" })}
             />
-            {authed && (
-              <div className="wb-mode" role="group" aria-label={t("Creation mode")}>
-                <button type="button" className={`wb-mode-opt${mode === "casual" ? " on" : ""}`} aria-pressed={mode === "casual"} onClick={() => { chooseMode("casual"); if (loc.pathname === "/web") navigate("/web/studio"); }} title={t("Create for yourself — images, videos & music, no store needed")}>{t("Creator")}</button>
-                <button type="button" className={`wb-mode-opt${mode === "marketing" ? " on" : ""}`} aria-pressed={mode === "marketing"} onClick={() => chooseMode("marketing")} title={t("Grow on social — AI reels, videos & auto-posting")}>{t("Social")}</button>
-              </div>
-            )}
+            {/* Creator/Social mode toggle removed — EasyMode is one unified home.
+                Helpurr and the dashboard route creative vs. marketing by what you
+                ask / tap; there's no mode to manage. */}
             {isAdmin && (
               <Link to="/admin/dashboard" className="wb-admin" title={t("Admin dashboard")} aria-label={t("Admin dashboard")}>
                 <Ico n="trend" />
