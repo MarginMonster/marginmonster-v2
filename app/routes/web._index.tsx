@@ -357,16 +357,16 @@ export default function WebDashboard() {
     return t("≈ {a}, {b}, or {c}", { a: items[0], b: items[1], c: items[2] });
   };
   const navigate = useNavigate();
-  const { mode, setMode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>();
+  const { setMode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>();
   // The Helpurr "Google-style" landing hero at the top of the home: ask Helpurr to
   // drive, or take the Creator/Social/Studio path to drive it yourself.
   const [ask, setAsk] = useState("");
   const firstName = (d.name || "").split(" ")[0];
   const openHelpurr = (text?: string) => { window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true, text: text || undefined, send: !!(text && text.trim()) } })); };
   const askHelpurr = () => { const text = ask.trim(); openHelpurr(text || undefined); if (text) setAsk(""); };
-  const heroChips = mode === "casual"
-    ? [t("Make me an image"), t("Edit a photo"), t("Make a faceless video")]
-    : [t("Make me an ad"), t("What's working best?"), t("Plan my week of content")];
+  // Unified home — one set of chips spanning both creative and social making,
+  // since there's no Creator/Social mode to switch between anymore.
+  const heroChips = [t("Make me an ad"), t("Make an image"), t("Make a video"), t("What's working best?")];
 
   // ── Purchase-success celebration modal (replaces the old flat banners).
   // Initialized from ?welcome= / ?topped=; the params are scrubbed on dismiss.
@@ -487,29 +487,25 @@ export default function WebDashboard() {
         <div className="wd-hero-paths">
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
-            <button type="button" aria-pressed={mode === "casual"} className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
               <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Creator · Free roam")}</span>
+                <span className="wd-path-eyebrow">{t("Free roam")}</span>
                 <b>{t("Create anything")}</b>
                 <i>{t("Make images, videos & music")}</i>
-                <span className="wd-path-cue">{mode === "casual" ? <><span className="wd-path-dot on" aria-hidden="true" />{t("Current mode")}</> : <><Ico n="refresh" size={12} />{t("Switch to Creator mode")}</>}</span>
+                <span className="wd-path-cue"><Ico n="sliders" size={12} />{t("Open the Studio")}</span>
               </span>
             </button>
-            <button type="button" aria-pressed={mode === "marketing"} className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Social")}</span>
                 <b>{t("Grow on social")}</b>
                 <i>{t("Turn products into ads & auto-post")}</i>
-                <span className="wd-path-cue">{mode === "marketing" ? <><span className="wd-path-dot on" aria-hidden="true" />{t("Current mode")}</> : <><Ico n="refresh" size={12} />{t("Switch to Social mode")}</>}</span>
+                <span className="wd-path-cue"><Ico n="trend" size={12} />{t("Open Social")}</span>
               </span>
             </button>
           </div>
-          <button type="button" className="wd-path wd-path-studio" onClick={() => navigate("/web/studio")}>
-            <span className="wd-path-ic"><Ico n="sliders" size={19} /></span>
-            <span className="wd-path-tx"><b>{t("Studio")}</b><i>{t("Full manual controls")}</i></span>
-          </button>
         </div>
       </section>
       <p className="wb-sub wd-plan-line">

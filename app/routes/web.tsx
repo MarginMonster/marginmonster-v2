@@ -120,11 +120,9 @@ export default function WebLayout() {
   useEffect(() => { try { const m = localStorage.getItem("emMode"); if (m === "casual" || m === "marketing") setMode(m); } catch { /* storage is a nicety */ } }, []);
   const chooseMode = (m: "marketing" | "casual") => { setMode(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
 
-  // The front door is now the DASHBOARD HERO (web._index.tsx) — the old
-  // full-screen Creator/Social mode gate was retired and its art folded into
-  // the hero's "…or drive it yourself" cards. Mode is chosen via the nav toggle
-  // + those cards. (navigate stays — the mode toggle below uses it.)
-  const navigate = useNavigate();
+  // The front door is the DASHBOARD HERO (web._index.tsx) — the old full-screen
+  // Creator/Social mode gate AND the header mode toggle were retired; the app is
+  // one unified home, and the hero's "…or drive it yourself" cards route by intent.
 
   return (
     <>
@@ -137,28 +135,23 @@ export default function WebLayout() {
           </Link>
           {authed && (
             <nav className="wb-tabs">
-              {/* Creator Home merged into the Studio — casual leads with Studio;
-                  only Marketing keeps a separate Dashboard. */}
+              {/* Dashboard = the unified home — the Helpurr hero + the two intent
+                  cards (Create anything / Grow on social). */}
               <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">{t("Studio")}</Link>
               {/* Helpurr as a dedicated section: opens the chat maximized (full
                   surface), not just the floating bubble. Works in both modes. */}
               {authed && <button type="button" className="wb-tab wb-tab-btn wb-tab-helpurr" onClick={() => window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true } }))}>{t("Helpurr")}</button>}
-              {/* Campaigns is a pure selling surface (scheduled ad runs) — hidden
-                  in casual, where there's nothing being marketed. */}
+              {/* Campaigns — scheduled ad runs, the selling surface. */}
               <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>
-              {/* Channels = the autopilot, now a Social surface. One nav entry; the
-                  page carries a source switch (My products ↔ Trending topics) that
-                  cross-links /web/product-channels and /web/channels. Keep Creator
-                  simple (Studio · Gallery · Share) — faceless lives there only as a
-                  Studio taste, the recurring autopilot moved to Social. */}
+              {/* Channels = the social autopilot. One nav entry; the page carries a
+                  source switch (My products ↔ Trending topics) that cross-links
+                  /web/product-channels and /web/channels. */}
               <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" ? " on" : ""}`} to="/web/product-channels">{t("Channels")}</Link>
-              {/* One consistent name — "Archive" — in BOTH sections; the page
-                  labels itself "Creator Archive" / "Social Archive" and carries a
-                  section toggle, so the two separate stores read as parallel
-                  places instead of a Gallery-vs-Archive mismatch. */}
-              <Link className={tab("/web/archive")} to={mode === "casual" ? "/web/archive?section=creator" : "/web/archive"}>{t("Archive")}</Link>
-              <Link className={tab("/web/connect")} to="/web/connect">{mode === "casual" ? t("Share") : t("Auto-posting")}</Link>
+              {/* Archive holds both stores (Creator + Social) under one name; the
+                  page itself carries the section toggle. */}
+              <Link className={tab("/web/archive")} to="/web/archive">{t("Archive")}</Link>
+              <Link className={tab("/web/connect")} to="/web/connect">{t("Auto-posting")}</Link>
             </nav>
           )}
           <div className="wb-me">
