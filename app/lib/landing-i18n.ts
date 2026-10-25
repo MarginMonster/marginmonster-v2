@@ -404,7 +404,7 @@ const FR: LandingCopy = {
   },
   footer: { copy: "Crée tout. Vends tout. En mode facile." },
   entry: {
-    h2: "Commence gratis. Passe en illimité pour $6.99.",
+    h2: "Commence gratuitement. Illimité pour $6.99.",
     sub: "Discute avec Helpurr et crée deux-trois choses par jour, gratuitement — sans carte. Passe en illimité avec Creator, ou ajoute le marketing de ta boutique quand tu veux.",
     storeHdr: "Tu as une boutique ? Ajoute le marketing.",
     free: { name: "Free", amt: "$0", feats: ["Discute avec Helpurr, gratuitement", "2 images AI par jour", "Retouche tes propres photos", "Sans carte, sans piège"], cta: "Commencer gratuitement" },
