@@ -11,13 +11,12 @@ import { Familiar } from "../components/Familiar";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import {
-  PLAN_TIERS, MARKETING_TIERS, PLAN_BY_KEY, CREATOR_PRICE, TOKEN_PACKS, TOKEN_COST, TOKEN_COST_LEGEND, TRIAL_TOKEN_CAP,
+  PLAN_TIERS, MARKETING_TIERS, PLAN_BY_KEY, CREATOR_PRICE, TOKEN_PACKS, TOKEN_COST, TRIAL_TOKEN_CAP,
   annualPrice, planCapacity, resolveTierKey, type PlanKey,
 } from "../lib/plan-config";
 import { tokensRemainingLive, planTrialing } from "../lib/tokens.server";
 import { createPackCheckout, createPlanCheckout, resolvePendingCheckout, setSubscriptionCreatorAddon, stripeEnabled, trialAlreadyTaken } from "../lib/stripe.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
-import { xpForSpend } from "../lib/achievements";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
@@ -638,7 +637,7 @@ export default function WebDashboard() {
               <p>{d.nextMove.reason}</p>
             </div>
           </div>
-          <span className="wdn-cta">{t("Create it — {cost} tokens · +{xp} XP", { cost: d.nextMove.cost, xp: xpForSpend(d.nextMove.cost) })} →</span>
+          <span className="wdn-cta">{t("Create it — {cost} tokens", { cost: d.nextMove.cost })} →</span>
         </Link>
       )}
 
@@ -792,16 +791,11 @@ export default function WebDashboard() {
         </div>
       ) : null)}
 
-      {/* One balance, one currency — what each action costs */}
-      <div className="wd-legend">
-        <div className="wdg-h">{t("One balance runs everything")}</div>
-        <div className="wdg-row">
-          {TOKEN_COST_LEGEND.map((l) => (
-            <div className="wdg-item" key={l.action}><b>{l.cost}</b><span>{t(l.label)}</span></div>
-          ))}
-        </div>
-        <div className="wdg-note">{t("Your plan unlocks WHICH generators you can use; tokens meter HOW MUCH you make. Run out mid-month? Top up below — tokens never unlock a generator your plan doesn't include.")}</div>
-      </div>
+      {/* One balance, one currency — the concept in a single quiet line; the
+          actual costs live on each Make button now, not in a standalone grid. */}
+      <p className="wb-note" style={{ margin: "0 0 26px" }}>
+        {t("Your plan unlocks which generators you can use; tokens meter how much you make — every Make button shows its cost.")}
+      </p>
 
       {d.tier && d.trialing && (
         <div className="wb-note" style={{ marginBottom: 22 }}>

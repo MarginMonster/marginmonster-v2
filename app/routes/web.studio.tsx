@@ -21,7 +21,6 @@ import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "..
 import { enqueueJob } from "../lib/job-queue.server";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
 import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT } from "../lib/plan-config";
-import { xpForSpend } from "../lib/achievements";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
@@ -4211,13 +4210,6 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            {/* For a single gen the Make button already states "{cost} tokens ·
-                +XP", so the pill is redundant — show it only for a burst, where
-                it adds the PER-PIECE cost next to the button's total. */}
-            {burst > 1 && (
-              <div className="ws-tok"><span className="tt">{t("Each {noun}", { noun: t(noun) })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
-            )}
-
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
             {/* The trial cap is the ONE spend failure the merchant can clear
                 themselves, so the way out sits on the message that blocked
@@ -4279,24 +4271,17 @@ export default function WebStudio() {
                   : !d.hasPlan
                     ? t("Pick a plan to start")
                   : shortBy > 0
-                    ? (shortBy === 1
-                        ? t("Needs {short} more token — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun: t(noun) }) : t("this {noun}", { noun: t(noun) }) })
-                        : t("Needs {short} more tokens — {total} for {what}", { short: shortBy.toLocaleString("en-US"), total: cost * burst, what: burst > 1 ? t("{n} {noun}s", { n: burst, noun: t(noun) }) : t("this {noun}", { noun: t(noun) }) }))
+                    ? (shortBy === 1 ? t("Need 1 more token") : t("Need {short} more tokens", { short: shortBy.toLocaleString("en-US") }))
                   : burst > 1
-                    ? t("{verb} {n} {noun}s — {total} tokens · +{xp} XP", { verb: t(verb), n: burst, noun: t(noun), total: cost * burst, xp: xpForSpend(cost * burst) })
-                    : t("{verb} {noun} — {cost} tokens{extra} · +{xp} XP", {
-                        verb: t(verb), noun: t(noun), cost, xp: xpForSpend(cost),
-                        extra: engineFee ? t(" (incl. +{n} engine)", { n: engineFee })
-                             : createFee ? t(" (incl. +{n} {model})", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") })
-                             : facelessFee ? t(" (incl. +{n} Ultra)", { n: facelessFee })
-                             : "" })}
+                    ? t("{verb} {n} {noun}s", { verb: t(verb), n: burst, noun: t(noun) })
+                    : t("{verb} {noun}", { verb: t(verb), noun: t(noun) })}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
                   ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
                   : shortBy > 0
-                    ? <>{t("Wallet: {n} tokens · ", { n: d.tokens.toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{burst > 1 ? t(" or make fewer at once") : ""}</>
-                    : t("Wallet: {n} tokens", { n: d.tokens.toLocaleString("en-US") })}
+                    ? <>{t("{total} tokens · ", { total: (cost * burst).toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{burst > 1 ? t(" or make fewer") : ""}</>
+                    : <>{t("{total} tokens", { total: cost * burst })}{burst > 1 ? t(" · {cost} each", { cost }) : ""}{engineFee ? t(" · incl. {n} engine", { n: engineFee }) : createFee ? t(" · incl. {n} {model}", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") }) : facelessFee ? t(" · incl. {n} Ultra", { n: facelessFee }) : ""}</>}
               </p>
             </div>
           </>
@@ -4432,7 +4417,7 @@ export default function WebStudio() {
                      {(making || busy)
                        ? t("Applying your edit…")
                        : quickSel
-                         ? t("Apply {label} — {n} tokens · +{xp} XP", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "", n: d.costs.quickEdit, xp: xpForSpend(d.costs.quickEdit) })
+                         ? t("Apply {label}", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "" })
                          : t("Pick an edit above to apply")}
                    </button>
                  </div>
