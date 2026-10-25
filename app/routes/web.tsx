@@ -877,7 +877,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 <p className="mm-home-sub mm-home-greet">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
                 <form className="mm-home-ask" onSubmit={(e) => { e.preventDefault(); void send(input); }}>
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => pickPhoto(e.target.files)} />
-                  <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
+                  <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}><Ico n="clip" size={17} /></button>
                   <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
                   <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}><Ico n="bolt" size={18} /></button>
                 </form>
@@ -1037,7 +1037,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           )}
           <form className="mm-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => pickPhoto(e.target.files)} />
-            <button type="button" className="mm-clip" onClick={() => fileRef.current?.click()} disabled={busy || uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
+            <button type="button" className="mm-clip" onClick={() => fileRef.current?.click()} disabled={busy || uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}><Ico n="clip" size={17} /></button>
             <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={attach.length ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
             {busy
               ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
