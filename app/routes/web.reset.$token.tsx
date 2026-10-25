@@ -14,7 +14,7 @@ import { db } from "../db.server";
 import { verifyPasswordReset } from "../lib/password-reset.server";
 import { clientIp, rateLimit, rateLimitReset } from "../lib/rate-limit.server";
 import { hashPassword, webSessionRedirect } from "../lib/web-auth.server";
-import { authCopy } from "../lib/auth-i18n";
+import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
 
 export const meta = () => [
@@ -26,11 +26,16 @@ export const meta = () => [
 
 const CONTACT = "hello@easymodeapp.com";
 
-export const loader = async ({ params }: LoaderFunctionArgs) => {
-  // Deliberately returns nothing about the account: not the email, not the
-  // name. A leaked link must not double as a profile lookup, and expiry must
-  // look exactly like forgery so neither confirms an account exists.
-  return json({ valid: !!(await verifyPasswordReset(params.token)) });
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  // Seed the display language from the uiLang cookie SERVER-SIDE so the first
+  // paint is already localized — no English-then-swap flash (and no Urdu
+  // LTR→RTL flip). Same cookie + inline parse the landing loader uses, and it
+  // reveals nothing about any account.
+  const m = (request.headers.get("Cookie") || "").match(/(?:^|;\s*)uiLang=([^;]+)/);
+  // Otherwise returns nothing about the account: not the email, not the name.
+  // A leaked link must not double as a profile lookup, and expiry must look
+  // exactly like forgery so neither confirms an account exists.
+  return json({ valid: !!(await verifyPasswordReset(params.token)), lang: authLang(m ? decodeURIComponent(m[1]) : "") });
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -84,21 +89,27 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function ResetPassword() {
-  const { valid } = useLoaderData<typeof loader>();
+  const { valid, lang: cookieLang } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
   const error = actionData && "error" in actionData ? actionData.error : null;
   const orphaned = actionData && "orphaned" in actionData;
 
-  // Same uiLang-cookie read + document effect as login/signup, so this page is
-  // no longer stranded in English.
-  const [lang, setLang] = useState("en");
+  // Seeded SERVER-SIDE from the uiLang cookie (loader) so SSR paints the right
+  // language — this page is no longer stranded in English; the effect then
+  // refines it from an explicit localStorage pick / browser language.
+  const [lang, setLang] = useState<string>(cookieLang);
   useEffect(() => { try { const m = document.cookie.match(/(?:^|;\s*)uiLang=([^;]+)/); setLang((m && decodeURIComponent(m[1])) || localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
   useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; document.title = authCopy(lang).resetTitle; } catch { /* SSR */ } }, [lang]);
   const c = authCopy(lang);
 
   const busy = nav.state !== "idle";
   const [showPw, setShowPw] = useState(false);
+  // Live length hint — this is the one password a merchant types blind, with
+  // the account on the line, so unlike signup's onBlur hint it updates AS they
+  // type: it appears only once they've started and clears the moment the 8th
+  // character lands. Advisory; the server stays the source of truth.
+  const [pwShort, setPwShort] = useState(false);
 
   if (orphaned) {
     return (
@@ -142,12 +153,16 @@ export default function ResetPassword() {
             minLength={8}
             autoComplete="new-password"
             placeholder={c.passwordPlaceholder}
+            aria-invalid={pwShort ? true : undefined}
+            aria-describedby={pwShort ? "rp-pw-hint" : undefined}
+            onChange={(e) => setPwShort(e.currentTarget.value.length > 0 && e.currentTarget.value.length < 8)}
             autoFocus
           />
           <button type="button" className="wb-pw-eye" aria-label={showPw ? c.hidePw : c.showPw} aria-pressed={showPw} onClick={() => setShowPw((v) => !v)}>
             <Ico n="eye" size={18} />
           </button>
         </div>
+        {pwShort && <div className="wb-hint" id="rp-pw-hint">{c.resetShortPw}</div>}
         <div style={{ marginTop: 18 }}>
           <button className="wb-btn" type="submit" disabled={busy} aria-busy={busy}>
             {busy ? <span className="wb-busy"><span className="wb-busy-dot" aria-hidden="true" />{c.resetSaving}</span> : c.resetBtn}
@@ -168,6 +183,7 @@ const AUTH_FX = `
 .wb-pw-eye:hover{color:var(--green);}
 [dir=rtl] .wb-pw .wb-in{padding-right:13px;padding-left:44px;}
 [dir=rtl] .wb-pw-eye{right:auto;left:0;border-radius:11px 0 0 11px;}
+.wb-hint{margin-top:6px;font-size:12.5px;color:#7A2E1D;}
 .wb-busy{display:inline-flex;align-items:center;gap:8px;}
 .wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
   border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}

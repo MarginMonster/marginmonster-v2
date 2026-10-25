@@ -13,7 +13,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useT, useUiLang } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
@@ -385,6 +385,21 @@ export default function WebCampaigns() {
   const [pickedAssets, setPickedAssets] = useState<string[]>(pickValid ? [pickParam!] : []);
   const [spreadDays, setSpreadDays] = useState(30);
   const [postTime, setPostTime] = useState("12:00");
+  // Stopping a campaign is destructive (cancels unstarted drops), so it uses the
+  // app's own arm-to-confirm instead of a native confirm() that clashes with the
+  // premium UI: the first tap arms the Stop button, a second within 4s commits.
+  // Arming auto-clears so a stray tap is harmless.
+  const [armedStop, setArmedStop] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armedStop) return;
+    const timer = setTimeout(() => setArmedStop(null), 4000);
+    return () => clearTimeout(timer);
+  }, [armedStop]);
+  const askStop = (id: string) => {
+    if (armedStop !== id) { setArmedStop(id); return; }
+    setArmedStop(null);
+    submit({ intent: "stop", campaignId: id }, { method: "post" });
+  };
 
   // The soonest unposted drop across every running campaign — the single most
   // useful fact on this page, and the one the month grid can't tell you.
@@ -394,6 +409,16 @@ export default function WebCampaigns() {
   // questline outright, so "Auto-posts to …" is a claim the scheduler will
   // not honour for any of them.
   const allHeldForReview = activeCampaigns.length > 0 && activeCampaigns.every((c) => c.holdsForReview);
+
+  // Move focus to the launch/repost error so a screen reader announces it and
+  // the banner scrolls into view — a silent, off-screen failure otherwise looks
+  // like the Start button simply did nothing. Mirrors the auth pages' pattern.
+  const launchError = actionData && "error" in actionData ? actionData.error : null;
+  const errRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (launchError) errRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (launchError) errRef.current?.focus();
+  }, [launchError]);
 
   const needle = castQ.trim().toLowerCase();
   const castShown = needle
@@ -461,8 +486,8 @@ export default function WebCampaigns() {
         )}
       </div>
 
-      {actionData && "error" in actionData && actionData.error
-        ? <div className="wb-err">{String(actionData.error)}</div> : null}
+      {launchError
+        ? <div className="wb-err" role="alert" tabIndex={-1} ref={errRef}>{String(launchError)}</div> : null}
       {actionData && "launched" in actionData && actionData.launched
         ? <p className="wc-ok">
             {"reposted" in actionData && actionData.reposted
@@ -529,9 +554,12 @@ export default function WebCampaigns() {
                     onClick={() => submit({ intent: "pauseToggle", campaignId: c.id }, { method: "post" })}>
                     {c.status === "PAUSED" ? t("Resume") : t("Pause")}
                   </button>
-                  <button type="button" className="danger" disabled={busy}
-                    onClick={() => { if (confirm(t('Stop "{name}"? Drops that haven\'t started yet are cancelled and refunded — anything already made is yours to keep and is not refunded.', { name: c.name }))) submit({ intent: "stop", campaignId: c.id }, { method: "post" }); }}>
-                    {t("Stop")}
+                  <button type="button" className={`danger${armedStop === c.id ? " armed" : ""}`} disabled={busy}
+                    title={armedStop === c.id
+                      ? t("Tap again to stop — unstarted drops are cancelled and refunded, anything already made is yours to keep")
+                      : t('Stop "{name}"? Drops that haven\'t started yet are cancelled and refunded — anything already made is yours to keep and is not refunded.', { name: c.name })}
+                    onClick={() => askStop(c.id)}>
+                    {armedStop === c.id ? t("Tap again to stop") : t("Stop")}
                   </button>
                 </div>
               </div>
@@ -556,7 +584,7 @@ export default function WebCampaigns() {
                 <span className="wc-mo">{d.monthLabel}</span>
                 <Link className="wc-nav" to={`?ym=${d.nextYm}`} aria-label={t("Next month")} prefetch="intent">›</Link>
               </div>
-              <span className="wc-ct">{d.total} {d.total === 1 ? t("DROP") : t("DROPS")}</span>
+              <span className="wc-ct">{d.total.toLocaleString(localeOf(uiLang))} {d.total === 1 ? t("DROP") : t("DROPS")}</span>
             </div>
 
             <div className="wc-grid">
@@ -680,14 +708,21 @@ export default function WebCampaigns() {
                     })}
                   </div>
 
-                  <div className="wc-lbl sm">{t("Spread them over")}</div>
-                  <div className="ws-seg">
-                    {[7, 14, 30, 60].map((dd) => (
-                      <button type="button" key={dd} className={spreadDays === dd ? "sel" : ""} onClick={() => setSpreadDays(dd)}>
-                        {t("{n} days", { n: dd })}
-                      </button>
-                    ))}
-                  </div>
+                  {/* "Spread over N days" only means something with more than
+                      one piece to spread — for a single asset it does nothing,
+                      so it (and the spacing line below) stay hidden. */}
+                  {pickedAssets.length > 1 && (
+                    <>
+                      <div className="wc-lbl sm">{t("Spread them over")}</div>
+                      <div className="ws-seg">
+                        {[7, 14, 30, 60].map((dd) => (
+                          <button type="button" key={dd} className={spreadDays === dd ? "sel" : ""} onClick={() => setSpreadDays(dd)}>
+                            {t("{n} days", { n: dd })}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   {pickedAssets.length > 1 && (
                     <p className="wc-hint">
                       {t("Evenly spaced — about one post every")}{" "}
@@ -733,8 +768,8 @@ export default function WebCampaigns() {
                     {p.videoLocked
                       ? t("Video unlocks on the Studio plan")
                       : p.affordable
-                        ? t("{cost} of your {tokens} tokens · +{xp} XP", { cost: p.cost.toLocaleString("en-US"), tokens: d.tokens.toLocaleString("en-US"), xp: xpForSpend(p.cost).toLocaleString("en-US") })
-                        : t("{cost} tokens — top up to run this", { cost: p.cost.toLocaleString("en-US") })}
+                        ? t("{cost} of your {tokens} tokens · +{xp} XP", { cost: p.cost.toLocaleString(localeOf(uiLang)), tokens: d.tokens.toLocaleString(localeOf(uiLang)), xp: xpForSpend(p.cost).toLocaleString(localeOf(uiLang)) })
+                        : t("{cost} tokens — top up to run this", { cost: p.cost.toLocaleString(localeOf(uiLang)) })}
                   </span>
                 </span>
                 <span className="wc-worth">{t(p.worth)}</span>
@@ -797,9 +832,18 @@ export default function WebCampaigns() {
               : <>{t("No accounts connected yet — drops will be saved to your Archive.")} <Link to="/web/connect">{t("Connect auto-posting")}</Link>.</>}
           </p>
 
+          {/* Why the Start button is dead sits right next to it — a videoLocked
+              plan otherwise disables with the only reason buried up in the plan
+              card's foot. */}
+          {plan && plan.videoLocked && (
+            <p className="wc-hint wc-afford">
+              {t("This plan includes presenter video, which unlocks on the Studio plan —")}{" "}
+              <Link to="/web#plans">{t("see plans")}</Link>.
+            </p>
+          )}
           {plan && !plan.videoLocked && !plan.affordable && (
             <p className="wc-hint wc-afford">
-              {t("This runs {cost} tokens and you have {tokens} —", { cost: plan.cost.toLocaleString("en-US"), tokens: d.tokens.toLocaleString("en-US") })}{" "}
+              {t("This runs {cost} tokens and you have {tokens} —", { cost: plan.cost.toLocaleString(localeOf(uiLang)), tokens: d.tokens.toLocaleString(localeOf(uiLang)) })}{" "}
               <Link to="/web#plans">{t("top up")}</Link>.
             </p>
           )}
@@ -862,6 +906,9 @@ const WC_STYLE = `
 .wc-card-acts button:hover{border-color:var(--green2)}
 .wc-card-acts button.danger{color:#A33232}
 .wc-card-acts button.danger:hover{border-color:#A33232}
+/* armed Stop — first tap turns the button red; a second within 4s commits. */
+.wc-card-acts button.danger.armed{color:#fff;background:#A33232;border-color:#A33232;animation:wcArm .18s ease}
+@keyframes wcArm{from{transform:scale(.97)}to{transform:scale(1)}}
 
 /* THE MONTH SLAB.
    The embedded app renders this on a dark slab and it is the best-looking
@@ -922,7 +969,7 @@ const WC_STYLE = `
 /* legacy campaigns may still carry article slots in their upcoming list */
 .t-blog{background:#3B7EA1}
 @media (prefers-reduced-motion:reduce){
-  .wc-rose,.wc-pulse{animation:none}
+  .wc-rose,.wc-pulse,.wc-card-acts button.danger.armed{animation:none}
 }
 
 /* plan picker */
@@ -944,7 +991,10 @@ const WC_STYLE = `
 .wc-worth{font-size:11px;color:var(--ink3,#8A938D);border-top:1px solid var(--line,#E4DFCF);padding-top:7px}
 
 /* cast + products */
-.wc-cast{display:flex;gap:11px;overflow-x:auto;padding:2px 2px 8px}
+/* A soft right-edge fade hints the presenter strip scrolls past the fold —
+   otherwise the row looks like the whole cast with no affordance for more. */
+.wc-cast{display:flex;gap:11px;overflow-x:auto;padding:2px 2px 8px;
+  -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent);mask-image:linear-gradient(90deg,#000 94%,transparent)}
 .wc-face{flex:0 0 auto;width:66px;border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:center;color:var(--ink,#14201A)}
 .wc-face-img{position:relative;display:block;width:66px;height:88px;border-radius:11px;background:var(--paper,#F4F1E6) center/cover no-repeat;border:1px solid var(--line,#E4DFCF)}
 .wc-face.sel .wc-face-img{border-color:var(--green2);box-shadow:0 0 0 2px rgba(18,168,94,.35)}

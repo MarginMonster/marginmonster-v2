@@ -480,7 +480,11 @@ export default function Index() {
                   </svg>
                   <span>{t.price.tokensMo.replace("{N}", tier.monthlyTokens.toLocaleString())}</span>
                 </div>
-                {lang === "en" && <div className="lz-price-cap">{planCapacityLine(tier)}</div>}
+                {/* Capacity line shows on EVERY language — hiding it from non-EN
+                    cards made them shorter and dropped real info. The nouns fall
+                    back to English (plan-config, same EN-fallback the page uses
+                    throughout); the counts are already locale-formatted. */}
+                <div className="lz-price-cap">{planCapacityLine(tier)}</div>
                 <ul>{(t.price.tiers[tier.key as "STARTER" | "STUDIO" | "ANTHEM"] || tier.features).map((f: string) => <li key={f}>{f}</li>)}</ul>
                 <a className="lz-price-cta" href="/web/signup">{t.price.cta}</a>
               </div>
@@ -728,7 +732,11 @@ html,body{margin:0;padding:0}
 .lz-ap-points li::before{content:"✓";margin-right:7px;color:#1f7a4d;font-weight:900;}
 .lz-pow-row{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 34px;margin:18px 0 14px;}
 .lz-pow{display:inline-flex;flex-direction:column;align-items:center;gap:4px;opacity:.62;filter:grayscale(1);transition:opacity .2s,filter .2s;}
-.lz-pow:hover{opacity:1;filter:none;}
+.lz-pow:hover,.lz-pow:focus-within{opacity:1;filter:none;}
+/* Touch devices have no :hover, so the strip would stay greyed forever on a
+   phone. Coarse pointers get the brand colour always-on — the strip is meant
+   to reassure, not to require a mouse-over nobody can perform. */
+@media (hover:none){.lz-pow{opacity:1;filter:none;}}
 .lz-pow img{width:26px;height:26px;display:block;}
 .lz-pow b{font-family:Poppins,sans-serif;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--ink);}
 .lz-pow i{font-style:normal;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);opacity:.75;}

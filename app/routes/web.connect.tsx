@@ -81,7 +81,13 @@ export default function WebConnect() {
         {linkedNames.length > 0 ? (
           <p className="wc-armed"><Ico n="bolt" /> {t("Armed on {names} — pieces can post themselves from the Archive.", { names: fmtList(linkedNames, lang) })}</p>
         ) : (
-          <p className="wb-note" style={{ margin: "10px 0 14px" }}>{t("Nothing linked yet — link one account and your pieces can post themselves hands-free.")}</p>
+          <div className="wc-empty">
+            <Ico n="link" size={26} />
+            <div>
+              <div className="wc-empty-h">{t("Nothing linked yet")}</div>
+              <p className="wb-note">{t("Link one account and your pieces can post themselves hands-free — an AI caption and the #EasyModeAi disclosure, one tap from the Archive.")}</p>
+            </div>
+          </div>
         )}
         <Form method="post">
           <button className="wb-btn" disabled={!enabled || nav.state !== "idle"}>
@@ -94,6 +100,9 @@ export default function WebConnect() {
                   : <>{t("Link TikTok, Instagram & Facebook")} →</>}
           </button>
         </Form>
+        {linked.length > 0 && (
+          <p className="wb-note" style={{ margin: "10px 0 0" }}>{t("Manage opens the connect page, where you can unlink an account at any time.")}</p>
+        )}
       </div>
       <p className="wb-note" style={{ marginTop: 18 }}>
         {t("Linked already? Post anything from the")} <Link to="/web/archive">{t("Archive")}</Link>.
@@ -106,6 +115,12 @@ const CONNECT_CSS = `
 .wc-card{max-width:480px;}
 .wc-title{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;color:var(--ink);}
 .wb-info{margin:14px 0;padding:12px 16px;border-radius:12px;background:#EEF3F0;border:1px solid var(--line2);color:var(--ink2);font-size:13.5px;}
+/* Empty state: a quiet icon + a two-line prompt, so "nothing linked" reads as
+   an invitation rather than a lonely sentence. */
+.wc-empty{display:flex;gap:11px;align-items:flex-start;margin:12px 0 15px;color:var(--ink2);}
+.wc-empty svg{flex:0 0 auto;margin-top:1px;opacity:.6;}
+.wc-empty-h{font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink);margin-bottom:2px;}
+.wc-empty .wb-note{margin:0;max-width:40ch;}
 .wc-chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px;}
 .wc-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;border:1px solid var(--line);
   background:#fff;font-size:12.5px;font-weight:700;color:var(--ink2);}

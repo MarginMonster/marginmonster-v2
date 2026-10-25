@@ -4,8 +4,9 @@
  * who it's talking to, roughly where they are, and what EASYMODE does, and it
  * answers in a short, warm, encouraging voice. Backend only: the widget lives in
  * app/routes/web.tsx and POSTs the running conversation here; we prepend a
- * persona + light context and let Haiku (fast + cheap) reply. No actions are
- * taken on the user's behalf yet — it guides, it doesn't click. */
+ * persona + light context and let Sonnet (BUDDY_MODEL) reply over a tool loop.
+ * It now ALSO acts for the user — the make_content path spends tokens and
+ * enqueues the real jobs — but only ever behind an explicit one-tap confirm. */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -40,9 +41,9 @@ const BUDDY_KEEP = 300;
 // How many long-term FACTS Helpurr keeps per shop (its memory of who you are).
 const BUDDY_FACTS_KEEP = 50;
 
-// Phase 2 runs on Sonnet, which isn't free like Haiku — so chat gets a per-plan
-// daily allowance that resets rolling over 24h. Generous on purpose; this gates
-// CHAT only, never the rest of the app.
+// Chat runs on Sonnet (not free to run) — so it gets a per-plan daily allowance
+// that resets rolling over 24h. Generous on purpose; this gates CHAT only, never
+// the rest of the app.
 const BUDDY_MODEL = "claude-sonnet-5";
 const BUDDY_DAILY_CAP: Record<string, number> = { STARTER: 100, STUDIO: 250, ANTHEM: 600 };
 const BUDDY_CAP_NO_PLAN = 30;
@@ -83,9 +84,9 @@ const GUARDRAILS =
   "When you do decline something, keep it short, warm, and non-preachy, then offer a real next step.";
 
 // Quick nav buttons under a reply — only on EXPLICIT navigation intent. Creation
-// ("make me an ad") is handled deliberately by the LLM via set_up_task, so we no
-// longer tack a Studio redirect onto every message that merely contains "make"
-// or "idea" — that was the robotic every-message-ends-in-a-CTA feel.
+// ("make me an ad") is handled deliberately by the LLM via make_content/set_up_task,
+// so we no longer tack a Studio redirect onto every message that merely contains
+// "make" or "idea" — that was the robotic every-message-ends-in-a-CTA feel.
 function suggestActions(lastUserMsg: string, mode: "marketing" | "casual", lang: UiLang): Array<{ label: string; to: string }> {
   const s = lastUserMsg.toLowerCase();
   const acts: Array<{ label: string; to: string }> = [];
@@ -397,34 +398,34 @@ function upsellAction(target: "STARTER" | "CREATOR" | "STUDIO" | "plans" | "topu
 // free eligibility server-side (never trusts the client), then enqueues the SAME
 // tested image/edit job with NO spend: prePaid skips the worker charge and freeGen
 // tells the queue's terminal-failure refund to skip (there's nothing to refund).
-async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: MakeKind, _mode: "marketing" | "casual", request: Request): Promise<Response> {
+async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: MakeKind, _mode: "marketing" | "casual", request: Request, lang: UiLang): Promise<Response> {
   // FREE tier = photo EDITS + image CREATES: both run on the gate-free editImage/
   // createImage worker branches (no plan or brand profile needed), so a planless
   // account can actually finish them. Videos/faceless/music/branded ads need a
   // plan. One shared daily pool (FREE_DAILY_MAKES).
   if (kind !== "edit" && kind !== "create") {
-    return json({ error: `That one needs a plan. Chatting's always free, and so are ${FREE_DAILY_MAKES} makes a day — images or photo edits — on the house! 🐾`, upsell: (kind === "video" || kind === "faceless") ? "STUDIO" : "CREATOR" }, { status: 402 });
+    return json({ error: tr(lang, "That one needs a plan. Chatting's always free, and so are {n} makes a day — images or photo edits — on the house! 🐾", { n: FREE_DAILY_MAKES }), upsell: (kind === "video" || kind === "faceless") ? "STUDIO" : "CREATOR" }, { status: 402 });
   }
   const left = await freeMakesLeft(id.shop.id);
-  if (left <= 0) return json({ error: `That's your ${FREE_DAILY_MAKES} free makes for today 🐾 — they refresh tomorrow. A plan lets you keep going now.`, upsell: "CREATOR" }, { status: 402 });
+  if (left <= 0) return json({ error: tr(lang, "That's your {n} free makes for today 🐾 — they refresh tomorrow. A plan lets you keep going now.", { n: FREE_DAILY_MAKES }), upsell: "CREATOR" }, { status: 402 });
   if (kind === "create") {
     const prompt = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 400) : "";
-    if (!prompt) return json({ error: "Tell me what to picture first." }, { status: 400 });
+    if (!prompt) return json({ error: tr(lang, "Tell me what to picture first.") }, { status: 400 });
     try {
       const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", { createImage: true, createPrompt: prompt, section: "creator", productTitle: prompt.slice(0, 60), prePaid: true, chargedTokens: 0, freeGen: true, initiator: "web" });
       return json({ jobId, cursor: Date.now(), kind: "create", cost: 0 });
-    } catch (e) { console.error("[buddy] free create enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: "Couldn't start it — mind trying again?" }, { status: 500 }); }
+    } catch (e) { console.error("[buddy] free create enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: tr(lang, "Couldn't start it — mind trying again?") }, { status: 500 }); }
   }
   const origin = externalOrigin(request);
   const src = await resolveEditSource(spec.sourceImageUrl, id.shop.id, origin);
-  if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
+  if (!src) return json({ error: tr(lang, "That photo isn't one you uploaded here — attach it again and retry.") }, { status: 400 });
   const editOp = normEditOp(spec.editOp);
   const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
-  if (editOp === "describe" && !direction) return json({ error: "Tell me what to change about the photo." }, { status: 400 });
+  if (editOp === "describe" && !direction) return json({ error: tr(lang, "Tell me what to change about the photo.") }, { status: 400 });
   try {
     const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", { section: "creator", editOp, sourceImageUrl: src, editPrompt: direction, productImageUrl: src, productTitle: "Photo edit", prePaid: true, chargedTokens: 0, freeGen: true, initiator: "web" });
     return json({ jobId, cursor: Date.now(), kind: "edit", cost: 0 });
-  } catch (e) { console.error("[buddy] free edit enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: "Couldn't start it — mind trying again?" }, { status: 500 }); }
+  } catch (e) { console.error("[buddy] free edit enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: tr(lang, "Couldn't start it — mind trying again?") }, { status: 500 }); }
 }
 const MAKE_KINDS: MakeKind[] = ["image", "video", "faceless", "music", "edit", "create"];
 const asMakeKind = (v: unknown): MakeKind => (typeof v === "string" && (MAKE_KINDS as string[]).includes(v) ? (v as MakeKind) : "image");
@@ -978,7 +979,34 @@ async function topClickedMakeable(shopId: string): Promise<{ productTitle: strin
   } catch { return null; }
 }
 
-async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiLang): Promise<{ reply: string; pendingAction?: PendingAction; makes?: MakeSpec[] } | null> {
+type Proactive = { reply: string; pendingAction?: PendingAction; makes?: MakeSpec[] } | null;
+
+// The opener fires on EVERY chat open and runs ~10 read-only DB queries (catalog
+// count, week's assets, active quests, top-clicked walk, product pick…). A chat
+// gets opened/closed a lot in a session, so cache the computed nudge per
+// shop+mode+lang for a short TTL — repeated opens within the window reuse it (and
+// read MORE coherent, since the nudge stops reshuffling on every peek). Tiny
+// in-process Map, best-effort: a cold instance just recomputes. Keyed on lang too
+// so switching the UI language still yields a correctly-localized opener.
+const PROACTIVE_TTL_MS = 60_000;
+const proactiveCache = new Map<string, { at: number; value: Proactive }>();
+
+async function buildProactive(id: WebId, mode: "marketing" | "casual", lang: UiLang): Promise<Proactive> {
+  const key = `${id.shop.id}:${mode}:${lang}`;
+  const hit = proactiveCache.get(key);
+  if (hit && Date.now() - hit.at < PROACTIVE_TTL_MS) return hit.value;
+  const value = await computeProactive(id, mode, lang);
+  proactiveCache.set(key, { at: Date.now(), value });
+  // Bound the map so a busy multi-tenant instance can't grow it unboundedly:
+  // once it's large, drop the oldest half (entries are tiny, this is rare).
+  if (proactiveCache.size > 500) {
+    const oldest = [...proactiveCache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 250);
+    for (const [k] of oldest) proactiveCache.delete(k);
+  }
+  return value;
+}
+
+async function computeProactive(id: WebId, mode: "marketing" | "casual", lang: UiLang): Promise<Proactive> {
   const shopId = id.shop.id;
   const first = (id.account.name?.trim() || id.account.email.split("@")[0]).split(" ")[0];
   try {
@@ -1218,14 +1246,14 @@ export async function action({ request }: ActionFunctionArgs) {
     const spec = body.make || {};
     const kind = asMakeKind(spec.kind);
     // FREE account → the free make path (no spend; re-validated server-side).
-    if (!id.shop.activePlan?.active) return handleFreeMakeIntent(id, spec, kind, mode, request);
+    if (!id.shop.activePlan?.active) return handleFreeMakeIntent(id, spec, kind, mode, request, lang);
     const caps = capabilitiesFor(id.shop.activePlan);
     const tokensLeft = tokensRemainingLive(id.shop.activePlan);
     // Double-tap / slow-network-retry guard: an identical make from the same shop
     // within a few seconds is a double-fire, not two real creations — block the
     // second so a rushed double-tap can't spend tokens + enqueue the job twice.
     const dupeKey = `makedupe:${id.shop.id}:${kind}:${(spec.product || spec.topic || "").slice(0, 40)}:${(spec.direction || "").slice(0, 40)}:${spec.editOp || ""}`;
-    if (!rateLimit(dupeKey, 1, 4000).ok) return json({ error: "That one's already on its way — give it a sec. 🐾" }, { status: 429 });
+    if (!rateLimit(dupeKey, 1, 4000).ok) return json({ error: tr(lang, "That one's already on its way — give it a sec. 🐾") }, { status: 429 });
 
     // PHOTO EDIT: re-validate the client-supplied source is THIS shop's own upload
     // (can't be re-resolved — it's a photo the user attached), spend, and enqueue the
@@ -1233,13 +1261,13 @@ export async function action({ request }: ActionFunctionArgs) {
     if (kind === "edit") {
       const origin = externalOrigin(request);
       const src = await resolveEditSource(spec.sourceImageUrl, id.shop.id, origin);
-      if (!src) return json({ error: "That photo isn't one you uploaded here — attach it again and retry." }, { status: 400 });
-      if (!caps.has("creator") && !caps.has("image")) return json({ error: "Your plan doesn't include editing." }, { status: 400 });
+      if (!src) return json({ error: tr(lang, "That photo isn't one you uploaded here — attach it again and retry.") }, { status: 400 });
+      if (!caps.has("creator") && !caps.has("image")) return json({ error: tr(lang, "Your plan doesn't include editing.") }, { status: 400 });
       const editOp = normEditOp(spec.editOp);
       const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
-      if (editOp === "describe" && !direction) return json({ error: "Tell me what to change about the photo." }, { status: 400 });
+      if (editOp === "describe" && !direction) return json({ error: tr(lang, "Tell me what to change about the photo.") }, { status: 400 });
       const cost = TOKEN_COST.quickEdit;
-      if (tokensLeft < cost) return json({ error: `Not enough tokens — ${tokensLeft} left, needs ${cost}.` }, { status: 400 });
+      if (tokensLeft < cost) return json({ error: tr(lang, "Not enough tokens — {left} left, needs {cost}.", { left: tokensLeft, cost }) }, { status: 400 });
       const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
       const cursor = Date.now();
       try {
@@ -1252,7 +1280,7 @@ export async function action({ request }: ActionFunctionArgs) {
       } catch (e) {
         try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
         console.error("[buddy] make (edit) enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
-        return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+        return json({ error: tr(lang, "Couldn't start it — your tokens were returned.") }, { status: 500 });
       }
     }
 
@@ -1262,11 +1290,11 @@ export async function action({ request }: ActionFunctionArgs) {
     // terminal-failure refund uses the REAL cost (not the GENERATE_VIDEO_AD default).
     if (kind === "faceless" || kind === "music") {
       const topic = (typeof spec.topic === "string" ? spec.topic.trim().slice(0, 200) : "");
-      if (!topic) return json({ error: "No topic for that one — tell me what it should be about." }, { status: 400 });
+      if (!topic) return json({ error: tr(lang, "No topic for that one — tell me what it should be about.") }, { status: 400 });
       const capNeeded = kind === "faceless" ? "video" : "music";
-      if (!caps.has(capNeeded)) return json({ error: `Your plan doesn't include ${kind === "faceless" ? "video" : "music"}.` }, { status: 400 });
+      if (!caps.has(capNeeded)) return json({ error: kind === "faceless" ? tr(lang, "Your plan doesn't include video.") : tr(lang, "Your plan doesn't include music.") }, { status: 400 });
       const cost = kind === "faceless" ? TOKEN_COST.faceless : TOKEN_COST.music;
-      if (tokensLeft < cost) return json({ error: `Not enough tokens — ${tokensLeft} left, needs ${cost}.` }, { status: 400 });
+      if (tokensLeft < cost) return json({ error: tr(lang, "Not enough tokens — {left} left, needs {cost}.", { left: tokensLeft, cost }) }, { status: 400 });
       const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
       const cursor = Date.now();
       try {
@@ -1289,7 +1317,7 @@ export async function action({ request }: ActionFunctionArgs) {
       } catch (e) {
         try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
         console.error("[buddy] make (topic) enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
-        return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+        return json({ error: tr(lang, "Couldn't start it — your tokens were returned.") }, { status: 500 });
       }
     }
 
@@ -1298,11 +1326,11 @@ export async function action({ request }: ActionFunctionArgs) {
     // Studio uses. No product, no catalog. prePaid+chargedTokens so a terminal
     // failure refunds the real cost.
     if (kind === "create") {
-      if (!caps.has("image")) return json({ error: "Your plan doesn't include image generation." }, { status: 400 });
+      if (!caps.has("image")) return json({ error: tr(lang, "Your plan doesn't include image generation.") }, { status: 400 });
       const prompt = ((typeof spec.direction === "string" && spec.direction.trim()) || (typeof spec.topic === "string" && spec.topic.trim()) || "").slice(0, 400);
-      if (!prompt) return json({ error: "Tell me what to picture first." }, { status: 400 });
+      if (!prompt) return json({ error: tr(lang, "Tell me what to picture first.") }, { status: 400 });
       const cost = TOKEN_COST.createImage;
-      if (tokensLeft < cost) return json({ error: `Not enough tokens — ${tokensLeft} left, needs ${cost}.` }, { status: 400 });
+      if (tokensLeft < cost) return json({ error: tr(lang, "Not enough tokens — {left} left, needs {cost}.", { left: tokensLeft, cost }) }, { status: 400 });
       const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
       const cursor = Date.now();
       try {
@@ -1315,20 +1343,20 @@ export async function action({ request }: ActionFunctionArgs) {
       } catch (e) {
         try { await refundTokens(id.shop.id, cost, fromExtra); } catch { /* best-effort */ }
         console.error("[buddy] make (create) enqueue failed — refunded:", e instanceof Error ? e.message.slice(0, 160) : e);
-        return json({ error: "Couldn't start it — your tokens were returned." }, { status: 500 });
+        return json({ error: tr(lang, "Couldn't start it — your tokens were returned.") }, { status: 500 });
       }
     }
 
     // CATALOG-DRIVEN: image ad + product video (marketing only).
-    if (mode === "casual") return json({ error: "In Creator mode, images and videos are made in the Studio." }, { status: 400 });
+    if (mode === "casual") return json({ error: tr(lang, "In Creator mode, images and videos are made in the Studio.") }, { status: 400 });
     const title = typeof spec.product === "string" ? spec.product.trim().slice(0, 120) : "";
-    if (kind === "video" && !caps.has("video")) return json({ error: "Your plan doesn't include video." }, { status: 400 });
-    if (!caps.has("image")) return json({ error: "Your plan doesn't include generation." }, { status: 400 });
+    if (kind === "video" && !caps.has("video")) return json({ error: tr(lang, "Your plan doesn't include video.") }, { status: 400 });
+    if (!caps.has("image")) return json({ error: tr(lang, "Your plan doesn't include generation.") }, { status: 400 });
     const prod = title ? await resolveProduct(id.shop.id, title) : null;
-    if (!prod || !prod.imageUrl) return json({ error: "Couldn't find that product's photo anymore." }, { status: 400 });
+    if (!prod || !prod.imageUrl) return json({ error: tr(lang, "Couldn't find that product's photo anymore.") }, { status: 400 });
     const cost = kind === "video" ? TOKEN_COST.video : TOKEN_COST.image;
     const tokens = tokensRemainingLive(id.shop.activePlan);
-    if (tokens < cost) return json({ error: `Not enough tokens — ${tokens} left, needs ${cost}.` }, { status: 400 });
+    if (tokens < cost) return json({ error: tr(lang, "Not enough tokens — {left} left, needs {cost}.", { left: tokens, cost }) }, { status: 400 });
     const direction = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 300) : "";
     const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
     const cursor = Date.now();
@@ -1388,7 +1416,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // isn't marked failed (a stuck worker, a lost row, a silent non-persist), say
     // so honestly instead of an eternal spinner — the piece still lands in Archive.
     if (cursor && Date.now() - cursor > 5 * 60_000) {
-      return json({ stalled: true, note: "This is taking longer than usual — it'll show up in your Archive when it's done. Mind checking back there in a bit? 🐾" });
+      return json({ stalled: true, note: tr(lang, "This is taking longer than usual — it'll show up in your Archive when it's done. Mind checking back there in a bit? 🐾") });
     }
     return json({ done: false });
   }
@@ -1476,12 +1504,23 @@ export async function action({ request }: ActionFunctionArgs) {
         blocks.push({ type: "image", source: { type: "base64", media_type, data: buf.toString("base64") } });
       }
     }
-    if (blocks.length) {
+    // Some (or all) attachments can be too large/unreadable/an unsupported format
+    // (HEIC/AVIF) to show the vision model. Tell the model so — otherwise it can't
+    // SEE them yet improvises ("nice photo!"); this note keeps it honest and lets
+    // it ask for a JPG/PNG/WebP re-send. Model-facing, like the other system notes.
+    const dropped = freshPhotos.length - blocks.length;
+    if (blocks.length || dropped) {
       for (let i = chat.length - 1; i >= 0; i--) {
         if (chat[i].role === "user") {
           const text = typeof chat[i].content === "string" ? (chat[i].content as string) : "";
-          const label = blocks.length > 1 ? `(the user attached ${blocks.length} photos)` : "(the user attached this photo)";
-          chat[i] = { role: "user", content: [{ type: "text", text: text || label }, ...blocks] };
+          const label = blocks.length > 1 ? `(the user attached ${blocks.length} photos)` : blocks.length === 1 ? "(the user attached this photo)" : "";
+          const dropNote = dropped > 0
+            ? ` (NOTE: ${dropped} attached ${dropped === 1 ? "photo" : "photos"} couldn't be shown to you — too large, or an unsupported format like HEIC. You CANNOT see ${blocks.length ? "that one" : "it"}; don't pretend to. Warmly ask them to re-send it as a JPG, PNG or WebP under ~4MB. An edit, if they want one, still runs on the original.)`
+            : "";
+          const content = text ? text + dropNote : (label + dropNote).trim();
+          chat[i] = blocks.length
+            ? { role: "user", content: [{ type: "text", text: content || label }, ...blocks] }
+            : { role: "user", content };
           break;
         }
       }

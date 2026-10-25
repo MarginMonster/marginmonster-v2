@@ -447,24 +447,28 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const pickPhoto = async (files: FileList | File[] | null | undefined) => {
     const list = files ? Array.from(files) : [];
     if (!list.length || uploading) return;
+    // An attach error lands as an assistant bubble in the message list — but the
+    // home hero hides that list, so drop out of home first (like send() does) or
+    // the error would be invisible when the photo was picked from the home card.
+    const sayErr = (content: string) => { setShowHome(false); setMsgs((m) => [...m, { role: "assistant", content }]); };
     const room = MAX_ATTACH - attach.length;
-    if (room <= 0) { setMsgs((m) => [...m, { role: "assistant", content: t("That's the most I can take at once ({n}) — remove one to add another.", { n: MAX_ATTACH }) }]); if (fileRef.current) fileRef.current.value = ""; return; }
+    if (room <= 0) { sayErr(t("That's the most I can take at once ({n}) — remove one to add another.", { n: MAX_ATTACH })); if (fileRef.current) fileRef.current.value = ""; return; }
     setUploading(true);
     try {
       // Upload each (free, token-less resource route) and append as it lands, so a
       // bad file in the batch doesn't sink the good ones. Respect the cap.
       for (const file of list.slice(0, room)) {
-        if (!/^image\//.test(file.type)) { setMsgs((m) => [...m, { role: "assistant", content: t("That doesn't look like an image — send a JPG, PNG or WebP.") }]); continue; }
-        if (file.size > 8 * 1024 * 1024) { setMsgs((m) => [...m, { role: "assistant", content: t("That photo's a bit big — keep it under 8MB.") }]); continue; }
+        if (!/^image\//.test(file.type)) { sayErr(t("That doesn't look like an image — send a JPG, PNG or WebP.")); continue; }
+        if (file.size > 8 * 1024 * 1024) { sayErr(t("That photo's a bit big — keep it under 8MB.")); continue; }
         try {
           const fd = new FormData();
           fd.set("productPhoto", file);
           const r = await fetch("/api/buddy-upload", { method: "POST", body: fd });
           const d = await r.json().catch(() => ({})) as { frameUrl?: string; error?: string };
           if (d.frameUrl) { const url = d.frameUrl; setAttach((a) => (a.length >= MAX_ATTACH ? a : [...a, { url, name: file.name }])); }
-          else setMsgs((m) => [...m, { role: "assistant", content: d.error || t("Couldn't upload that photo — mind trying again?") }]);
+          else sayErr(d.error || t("Couldn't upload that photo — mind trying again?"));
         } catch {
-          setMsgs((m) => [...m, { role: "assistant", content: t("Couldn't upload that photo — mind trying again?") }]);
+          sayErr(t("Couldn't upload that photo — mind trying again?"));
         }
       }
     } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
@@ -524,6 +528,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         setStreamStatus("");
         if (doneData) setMsgs((m) => finalize(m, doneData!, doneData!.reply || acc || "…"));
         else if (!acc) patchLast(t("Connection blipped — mind trying again?"));
+        // Partial text but no terminal `done` frame = the stream was cut mid-reply.
+        // A user Stop is intentional (leave it be); an unintentional network drop
+        // would otherwise look like a complete answer, so flag it so the reply
+        // doesn't read as finished (the ↻ Try again action is already there).
+        else if (!controller.signal.aborted) patchLast(acc.replace(/\s+$/, "") + t(" …(cut off — tap ↻ Try again to finish)"));
       } else {
         // NON-STREAM (daily cap, not signed in, cap upsell): plain JSON as before.
         const data = await res.json().catch(() => ({ reply: "" })) as ReplyData;

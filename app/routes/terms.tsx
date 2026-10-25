@@ -41,7 +41,8 @@ export default function Terms() {
         <p>
           EasyMode turns the products on your store into marketing content — videos, image
           ads, articles and landing pages — and can publish that content to social accounts
-          you connect. These terms apply to your use of easymodeapp.com and the EasyMode
+          you connect. Everything it produces is <a href="#ai">AI-generated</a>, and you review
+          what goes out. These terms apply to your use of easymodeapp.com and the EasyMode
           application. By creating an account you accept them.
         </p>
 

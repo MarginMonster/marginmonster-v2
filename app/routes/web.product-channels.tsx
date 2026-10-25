@@ -7,7 +7,7 @@
 
 import { json, redirect, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
@@ -174,7 +174,7 @@ export default function ProductChannels() {
           <p className="pc-sub">{t("Your store, on autopilot — we turn each product into a short video & post it on repeat.")} <span className="pc-accent">{t("Hands off.")}</span></p>
         </div>
         {series.length > 0 && canUse && productCount > 0 && (
-          <button className="pc-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : t("＋ New channel")}</button>
+          <button className="pc-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : <><span className="pc-plus" aria-hidden="true">+</span> {t("New channel")}</>}</button>
         )}
       </header>
 
@@ -248,7 +248,7 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, exist
       <input type="hidden" name="autoPost" value={autoPost ? "1" : "0"} />
       <input type="hidden" name="name" value={name.trim() || defaultName} />
 
-      <div className="pc-setup-head"><span className="pc-spark">✦</span> {t("Start a product channel")} {onCancel && <button type="button" className="pc-x" onClick={onCancel}>✕</button>}</div>
+      <div className="pc-setup-head"><span className="pc-spark"><Ico n="sparkle" size={18} /></span> {t("Start a product channel")} {onCancel && <button type="button" className="pc-x" onClick={onCancel} aria-label={t("Close")}><Ico n="x" size={16} /></button>}</div>
 
       <fieldset className="pc-setup-body" disabled={creating}>
       <div className="pc-feats">{t("Rotates all")} <b>{productCount}</b> {t("of your products — one video per drop, with the real product.")}</div>
@@ -308,6 +308,14 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
   // Brand-new channel that hasn't produced anything yet — reassure that the
   // first video is on its way instead of showing an empty "0 made" card.
   const firstVideo = s.status === "ACTIVE" && s.dropsMade === 0;
+  // "Next drop" is a live countdown — re-render active cards every 30s so it
+  // doesn't read a stale "in 3 min" long after that minute has passed.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (s.status !== "ACTIVE") return;
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [s.status]);
   // Arm-to-confirm end (matches the app's delete pattern): first tap arms,
   // a second within 4s submits. Replaces the native confirm().
   const [armEnd, setArmEnd] = useState(false);
@@ -315,7 +323,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
     <div className={`pc-card${paused ? " paused" : ""}`}>
       <div className="pc-card-top">
         <div><div className="pc-card-name">{s.name}</div><div className="pc-card-niche">{t(angleLabel)} · {t("your store")}</div></div>
-        <span className={`pc-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? t("● Running") : t("❙❙ Paused")}</span>
+        <span className={`pc-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <><span className="pc-run-dot" aria-hidden="true" /> {t("Running")}</> : <><span className="pc-pause-bars" aria-hidden="true" /> {t("Paused")}</>}</span>
       </div>
       <div className="pc-card-meta">
         <span><b>{s.perWeek}</b> {t("videos/week")}</span>
@@ -364,11 +372,12 @@ const PC_CSS = `
 .pc-accent{background:linear-gradient(120deg,var(--g2),var(--g));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700;}
 .pc-newbtn{flex:0 0 auto;font:inherit;font-weight:700;font-size:13px;color:var(--g);background:#fff;border:1px solid var(--l);border-radius:999px;padding:9px 16px;cursor:pointer;box-shadow:var(--sh-sm);transition:all .12s;}
 .pc-newbtn:hover{transform:translateY(-1px);box-shadow:var(--sh-md);}
+.pc-plus{font-weight:800;font-size:15px;line-height:1;color:var(--g);}
 .pc-upsell{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--l);border-radius:18px;padding:18px 20px;box-shadow:var(--sh-sm);margin-bottom:22px;}
 .pc-upsell-ic{font-size:30px;}.pc-upsell b{font-size:15px;}.pc-upsell p{margin:2px 0 0;color:var(--ink2);font-size:13px;}
 .pc-setup{position:relative;background:#fff;border:1px solid var(--l);border-radius:22px;padding:22px;box-shadow:var(--sh-md),inset 0 0 0 1px rgba(231,200,121,.22);margin-bottom:26px;}
 .pc-setup-head{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;margin-bottom:12px;}
-.pc-spark{color:#C79A2E;}.pc-x{margin-left:auto;border:0;background:transparent;color:var(--ink3);font-size:15px;cursor:pointer;}
+.pc-spark{color:#C79A2E;display:inline-flex;align-items:center;}.pc-x{margin-left:auto;border:0;background:transparent;color:var(--ink3);font-size:15px;cursor:pointer;line-height:1;}
 .pc-feats{background:#F7FBF8;border:1px solid #D9EDE2;border-radius:12px;padding:10px 14px;font-size:13px;color:var(--ink2);margin-bottom:4px;}
 .pc-feats b{color:var(--ink);}
 .pc-lbl{display:block;font-weight:700;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink2);margin:16px 0 8px;}
@@ -418,8 +427,11 @@ const PC_CSS = `
 .pc-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
 .pc-card-name{font-weight:800;font-size:16px;letter-spacing:-.01em;}
 .pc-card-niche{color:var(--ink3);font-size:12px;font-weight:500;margin-top:2px;}
-.pc-badge{flex:0 0 auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;}
+.pc-badge{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;}
 .pc-badge.live{color:var(--g);background:#EAF6EF;}.pc-badge.off{color:#8A7A3A;background:#F6F0DE;}
+.pc-run-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 0 rgba(18,168,94,.5);animation:pcRun 1.8s ease-out infinite;}
+@keyframes pcRun{0%{box-shadow:0 0 0 0 rgba(18,168,94,.5)}70%{box-shadow:0 0 0 5px rgba(18,168,94,0)}100%{box-shadow:0 0 0 0 rgba(18,168,94,0)}}
+.pc-pause-bars{width:8px;height:9px;flex:0 0 auto;background:linear-gradient(to right,currentColor 0 36%,transparent 36% 64%,currentColor 64% 100%);border-radius:1px;}
 .pc-card-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0;font-size:12px;color:var(--ink2);font-weight:600;}.pc-card-meta b{color:var(--ink);}
 .pc-next{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--g);font-weight:700;}
 .pc-next-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:pcPulse 1.8s ease-in-out infinite;}
@@ -451,7 +463,7 @@ const PC_CSS = `
 /* ── respect reduced-motion: kill the 60s looping rosette + pulsing dot. ── */
 @media(prefers-reduced-motion:reduce){
   .pc-go-flower{animation:none;}
-  .pc-next-dot{animation:none;}
+  .pc-next-dot,.pc-run-dot{animation:none;}
   .pc-setup-body,.pc-card{transition:none;}
 }
 `;

@@ -191,7 +191,7 @@ const EN: LandingCopy = {
     error: "Helpurr hit a snag — mind trying again?",
     retry: "Retry",
   },
-  powered: { eyebrow: "Powered by frontier AI", note: "Claude, Kling, MiniMax and more, wired into one pipeline and pointed at your catalog. Every ad is built, quality-checked against your real product photo, then approved by you before it ships." },
+  powered: { eyebrow: "Powered by frontier AI", note: "Claude, Nano Banana, Seedream, Kling and MiniMax, wired into one pipeline and pointed at your catalog. Every ad is built, quality-checked against your real product photo, then approved by you before it ships." },
   autopost: { eyebrow: "Made here. Posted everywhere.", note: "Link your socials once and every approved piece can publish itself — AI caption, per-platform hashtags, and the AI-disclosure tag Meta now requires, handled automatically.", points: ["One-tap posting to TikTok, Instagram & Facebook", "Big-studio output at a budget price — plans from $19/mo", "AI-disclosure compliant captions, so ads don't get rejected"] },
   entry: {
     h2: "Start free. Go unlimited for $6.99.",
@@ -334,7 +334,7 @@ const ES: LandingCopy = {
     free: { name: "Free", amt: "$0", feats: ["Chatea con Helpurr, gratis", "2 imágenes con AI al día", "Edita tus propias fotos", "Sin tarjeta, sin truco"], cta: "Empieza gratis" },
     creator: { tagline: "Todo lo gratis — ahora sin límites.", feats: ["Imágenes con AI ilimitadas", "Videos con AI, clips sin rostro y dibujos", "Música con AI desde una idea", "Recarga con packs de tokens cuando quieras"], cta: "Empieza a crear" },
   },
-  powered: { eyebrow: "Impulsado por IA de frontera", note: "Claude, Kling, MiniMax y más, conectados en un solo flujo y apuntando a tu catálogo. Cada anuncio se crea, se verifica contra la foto real de tu producto y lo apruebas tú antes de publicarse." },
+  powered: { eyebrow: "Impulsado por IA de frontera", note: "Claude, Nano Banana, Seedream, Kling y MiniMax, conectados en un solo flujo y apuntando a tu catálogo. Cada anuncio se crea, se verifica contra la foto real de tu producto y lo apruebas tú antes de publicarse." },
   autopost: { eyebrow: "Creado aquí. Publicado en todas partes.", note: "Conecta tus redes una vez y cada pieza aprobada puede publicarse sola: texto con IA, hashtags por plataforma y la etiqueta de divulgación de IA que Meta exige.", points: ["Publicación con un toque en TikTok, Instagram y Facebook", "Calidad de gran estudio a precio económico — planes desde $19/mes", "Textos conformes con la divulgación de IA, sin anuncios rechazados"] },
 };
 
@@ -470,7 +470,7 @@ const FR: LandingCopy = {
     free: { name: "Free", amt: "$0", feats: ["Discute avec Helpurr, gratuitement", "2 images AI par jour", "Retouche tes propres photos", "Sans carte, sans piège"], cta: "Commencer gratuitement" },
     creator: { tagline: "Tout le gratuit — désormais illimité.", feats: ["Images AI illimitées", "Vidéos AI, clips sans visage et dessins animés", "Musique AI à partir d'une idée", "Recharge avec des packs de tokens quand tu veux"], cta: "Commencer à créer" },
   },
-  powered: { eyebrow: "Propulsé par une IA de pointe", note: "Claude, Kling, MiniMax et d'autres, réunis en un seul pipeline branché sur votre catalogue. Chaque publicité est créée, vérifiée face à la vraie photo de votre produit, puis validée par vous avant sa diffusion." },
+  powered: { eyebrow: "Propulsé par une IA de pointe", note: "Claude, Nano Banana, Seedream, Kling et MiniMax, réunis en un seul pipeline branché sur votre catalogue. Chaque publicité est créée, vérifiée face à la vraie photo de votre produit, puis validée par vous avant sa diffusion." },
   autopost: { eyebrow: "Créé ici. Publié partout.", note: "Connectez vos réseaux une fois : chaque création approuvée peut se publier seule — légende IA, hashtags par plateforme et mention de divulgation IA exigée par Meta.", points: ["Publication en un geste sur TikTok, Instagram et Facebook", "Qualité grand studio à petit prix — dès 19 $/mois", "Légendes conformes à la divulgation IA, zéro pub rejetée"] },
 };
 
@@ -606,7 +606,7 @@ const DE: LandingCopy = {
     free: { name: "Free", amt: "$0", feats: ["Chatte mit Helpurr, gratis", "2 AI-Bilder pro Tag", "Bearbeite deine eigenen Fotos", "Keine Karte, kein Haken"], cta: "Gratis starten" },
     creator: { tagline: "Alles Gratis — jetzt unbegrenzt.", feats: ["Unbegrenzte AI-Bilder", "AI-Videos, gesichtslose Clips & Cartoons", "AI-Musik aus einem Prompt", "Jederzeit mit Token-Paketen aufladen"], cta: "Loslegen und erstellen" },
   },
-  powered: { eyebrow: "Angetrieben von Frontier-KI", note: "Claude, Kling, MiniMax und mehr, zu einer Pipeline verbunden und auf deinen Katalog gerichtet. Jede Anzeige wird erstellt, gegen dein echtes Produktfoto geprüft und geht erst nach deiner Freigabe live." },
+  powered: { eyebrow: "Angetrieben von Frontier-KI", note: "Claude, Nano Banana, Seedream, Kling und MiniMax, zu einer Pipeline verbunden und auf deinen Katalog gerichtet. Jede Anzeige wird erstellt, gegen dein echtes Produktfoto geprüft und geht erst nach deiner Freigabe live." },
   autopost: { eyebrow: "Hier erstellt. Überall gepostet.", note: "Einmal verbinden — jedes freigegebene Stück postet sich selbst: KI-Caption, Hashtags pro Plattform und die von Meta geforderte KI-Kennzeichnung inklusive.", points: ["Ein-Tipp-Posting auf TikTok, Instagram & Facebook", "Studio-Qualität zum Budget-Preis — Pläne ab 19 $/Monat", "KI-Kennzeichnung automatisch — keine abgelehnten Anzeigen"] },
 };
 
@@ -742,7 +742,7 @@ const ZH: LandingCopy = {
     free: { name: "Free", amt: "$0", feats: ["和 Helpurr 聊天，免费", "每天 2 张 AI 图片", "编辑你自己的照片", "无需信用卡，绝无套路"], cta: "免费开始" },
     creator: { tagline: "免费的一切——如今无限畅享。", feats: ["无限 AI 图片", "AI 视频、无人出镜短片和卡通", "一句话生成 AI 音乐", "随时用代币包充值"], cta: "开始创作" },
   },
-  powered: { eyebrow: "由前沿 AI 驱动", note: "Claude、Kling、MiniMax 等前沿模型接入同一条流水线，直连你的商品目录。每条广告生成后都会与你的真实产品图核对，发布前由你亲自审核。" },
+  powered: { eyebrow: "由前沿 AI 驱动", note: "Claude、Nano Banana、Seedream、Kling 和 MiniMax 等前沿模型接入同一条流水线，直连你的商品目录。每条广告生成后都会与你的真实产品图核对，发布前由你亲自审核。" },
   autopost: { eyebrow: "在这里创作，发布到所有平台", note: "只需绑定一次社交账号，每条通过审核的内容都能自动发布——AI 文案、平台专属话题标签，以及 Meta 要求的 AI 声明标签，全部自动处理。", points: ["一键发布到 TikTok、Instagram 和 Facebook", "大工作室品质，预算价格——每月 $19 起", "AI 声明合规文案，广告不再被拒"] },
 };
 
@@ -965,7 +965,7 @@ const UR: LandingCopy = {
   },
   "powered": {
     "eyebrow": "جدید ترین AI کی طاقت سے",
-    "note": "Claude، Kling، MiniMax اور مزید — سب ایک ہی پائپ لائن میں جُڑے اور آپ کے کیٹلاگ پر مرکوز۔ ہر ایڈ بنایا جاتا ہے، آپ کی اصل پروڈکٹ فوٹو کے مطابق کوالٹی چیک ہوتا ہے، اور پھر شائع ہونے سے پہلے آپ خود اسے منظور کرتے ہیں۔"
+    "note": "Claude، Nano Banana، Seedream، Kling اور MiniMax — سب ایک ہی پائپ لائن میں جُڑے اور آپ کے کیٹلاگ پر مرکوز۔ ہر ایڈ بنایا جاتا ہے، آپ کی اصل پروڈکٹ فوٹو کے مطابق کوالٹی چیک ہوتا ہے، اور پھر شائع ہونے سے پہلے آپ خود اسے منظور کرتے ہیں۔"
   },
   "autopost": {
     "eyebrow": "یہیں بنائیں۔ ہر جگہ پوسٹ کریں۔",

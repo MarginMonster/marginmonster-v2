@@ -16,7 +16,7 @@ import { emailEnabled, sendEmail } from "../lib/email-provider.server";
 import { resetEmailHtml, resetUrl, signPasswordReset } from "../lib/password-reset.server";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { getWebIdentity } from "../lib/web-auth.server";
-import { authCopy } from "../lib/auth-i18n";
+import { authCopy, authLang } from "../lib/auth-i18n";
 
 export const meta = () => [
   { title: "Reset your password · EasyMode" },
@@ -28,8 +28,13 @@ const CONTACT = "hello@easymodeapp.com";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
-  // Decided BEFORE any address is seen, so the not-connected state leaks nothing.
-  return json({ emailReady: emailEnabled() });
+  // Seed the display language from the uiLang cookie SERVER-SIDE so the first
+  // paint is already localized — no English-then-swap flash (and no Urdu
+  // LTR→RTL flip). Same cookie + inline parse the landing loader uses.
+  const m = (request.headers.get("Cookie") || "").match(/(?:^|;\s*)uiLang=([^;]+)/);
+  // emailReady is decided BEFORE any address is seen, so the not-connected
+  // state leaks nothing.
+  return json({ emailReady: emailEnabled(), lang: authLang(m ? decodeURIComponent(m[1]) : "") });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -78,15 +83,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Forgot() {
-  const { emailReady } = useLoaderData<typeof loader>();
+  const { emailReady, lang: cookieLang } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
   const sent = actionData && "sent" in actionData ? actionData.sent : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
 
-  // Same uiLang-cookie read as login/signup, so a visitor who picked Spanish on
-  // the landing or login page keeps it here.
-  const [lang, setLang] = useState("en");
+  // Seeded SERVER-SIDE from the uiLang cookie (loader) so SSR paints the right
+  // language; the effect then refines it from an explicit localStorage pick /
+  // browser language — so a visitor who picked Spanish on the landing or login
+  // page keeps it here.
+  const [lang, setLang] = useState<string>(cookieLang);
   useEffect(() => { try { const m = document.cookie.match(/(?:^|;\s*)uiLang=([^;]+)/); setLang((m && decodeURIComponent(m[1])) || localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
   // The copy swaps client-side, so the DOCUMENT follows it — see login/signup.
   useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; document.title = authCopy(lang).forgotTitle; } catch { /* SSR */ } }, [lang]);

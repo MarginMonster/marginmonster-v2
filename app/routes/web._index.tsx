@@ -390,13 +390,27 @@ export default function WebDashboard() {
     } catch { /* cosmetic */ }
   };
   // Make the celebration modal keyboard-complete: Escape closes it, the primary
-  // CTA takes focus on open, and focus returns to wherever it was on close.
+  // CTA takes focus on open, a Tab focus-trap keeps focus inside while it's up,
+  // and focus returns to wherever it was on close.
   const successCtaRef = useRef<HTMLAnchorElement | null>(null);
+  const successModalRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!success) return;
     const prev = document.activeElement as HTMLElement | null;
     successCtaRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeSuccess(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { closeSuccess(); return; }
+      if (e.key !== "Tab") return;
+      const node = successModalRef.current;
+      if (!node) return;
+      const items = Array.from(node.querySelectorAll<HTMLElement>('a[href],button:not([disabled])'));
+      if (items.length === 0) return;
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+      const activeEl = document.activeElement;
+      if (e.shiftKey && (activeEl === firstEl || !node.contains(activeEl))) { e.preventDefault(); lastEl.focus(); }
+      else if (!e.shiftKey && activeEl === lastEl) { e.preventDefault(); firstEl.focus(); }
+    };
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("keydown", onKey); prev?.focus?.(); };
   }, [success]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -507,7 +521,7 @@ export default function WebDashboard() {
 
       {success && (
         <div className="ws-scrim" role="dialog" aria-modal="true" aria-label={t("Purchase confirmed")} onClick={closeSuccess}>
-          <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="ws-modal" ref={successModalRef} onClick={(e) => e.stopPropagation()}>
             <span className="ws-mrose" aria-hidden="true" />
             <div className="ws-mi"><Ico n={success.kind === "plan" ? "check" : "coin"} size={30} /></div>
             {success.kind === "plan" ? (
@@ -643,7 +657,10 @@ export default function WebDashboard() {
         )}
         <Form method="post">
           <input type="hidden" name="intent" value="brand" />
-          <label className="wb-lbl">{t("What do you sell, and to whom?")}</label>
+          {/* The server accepts "about" OR "tone", but an empty form trips a
+              generic error — so name the one field that satisfies it as required
+              (tone/tagline stay marked "(optional)" to match). */}
+          <label className="wb-lbl">{t("What do you sell, and to whom?")} <span className="wb-req">{t("(required)")}</span></label>
           <textarea className="wb-ta" name="about" maxLength={ABOUT_MAX} placeholder={t("Handmade ceramic mugs for coffee people who like slow mornings…")} defaultValue={d.brand?.about || ""} onChange={(e) => setAboutLen(e.target.value.length)} />
           <div className="wb-count" aria-live="polite">{t("{n}/{max}", { n: aboutLen, max: ABOUT_MAX })}</div>
           <label className="wb-lbl">{t("Tone (optional)")}</label>
@@ -1013,6 +1030,8 @@ const DASH_CSS = `
 .wdr-row input{flex:1;letter-spacing:.12em;font-weight:700;text-transform:uppercase;}
 /* brand "about" live char counter — sits flush-right under the textarea */
 .wb-count{text-align:right;font-size:11px;color:var(--ink2);margin:4px 2px 0;font-variant-numeric:tabular-nums;}
+/* "(required)" marker on the one brand field the server insists on */
+.wb-req{font-weight:700;font-size:11px;color:var(--green);letter-spacing:.01em;}
 /* brand voice readout */
 .wd-voice{margin:12px 0 2px;}
 .wdv-quote{font-family:Poppins,sans-serif;font-weight:700;font-size:15px;color:var(--ink);margin-bottom:8px;}

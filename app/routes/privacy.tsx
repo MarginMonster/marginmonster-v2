@@ -145,6 +145,18 @@ export default function Privacy() {
           purposes.
         </p>
 
+        <h2 id="transfers"><a className="anchor" href="#transfers">International data transfers</a></h2>
+        <p>
+          EasyMode is operated from the United States, and the providers above (Stripe,
+          Anthropic, fal.ai, Replicate, upload-post.com and our cloud storage) process data
+          in the United States and other countries. If you use EasyMode from the European
+          Economic Area, the United Kingdom or elsewhere, the data described here is
+          transferred to and processed in those countries. Where that transfer is from the
+          EEA or UK, we rely on the European Commission&rsquo;s Standard Contractual Clauses (and
+          their UK equivalent) with the providers that receive it, so your data carries the
+          same protection wherever it is handled.
+        </p>
+
         <h2 id="protect"><a className="anchor" href="#protect">How we protect it</a></h2>
         <ul>
           <li>Everything travels over encrypted connections (HTTPS).</li>

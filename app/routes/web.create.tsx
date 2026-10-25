@@ -10,7 +10,10 @@ import { redirect, type LoaderFunctionArgs } from "@remix-run/node";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  throw redirect(`/web/studio${url.search}`);
+  // 308 = permanent + method-preserving, so this merged route is cacheable and
+  // canonical for SEO/bookmarks. Keep the full search string so every legacy
+  // deep-link param (?do=…&prompt=…) still rides through to the Studio.
+  throw redirect(`/web/studio${url.search}`, 308);
 };
 
 // A redirect-only route still needs a default export for Remix.

@@ -6,7 +6,7 @@
 
 import { json, redirect, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
@@ -155,7 +155,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 /* ---------------- UI ---------------- */
 
 const FORMATS: [string, string][] = [["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]];
-const VOICES: [string, string][] = [["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]];
+// [key, label, sampleId] — the sampleId mirrors faceless-video.server VOICE_MAP so
+// the ▶ plays the SAME pre-rendered /voice-samples/*.mp3 the pipeline actually uses
+// (free, instant). Keep in sync if the server map changes.
+const VOICES: [string, string, string][] = [
+  ["f-warm", "Female · calm", "English_FriendlyPerson"],
+  ["f-hype", "Female · hype", "English_ConfidentWoman"],
+  ["m-warm", "Male · calm", "English_Trustworth_Man"],
+  ["m-hype", "Male · hype", "English_magnetic_voiced_man"],
+];
 const NICHES = ["Deep ocean facts", "Stoic motivation", "Weird history", "Money & side hustles", "Mind-blowing science", "Space facts", "Fitness tips", "Life hacks", "Mythology stories", "True crime shorts"];
 
 function relTime(iso: string | null, t: (s: string, p?: Record<string, string | number>) => string): string {
@@ -289,9 +297,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
         </div>
         <div>
           <label className="ch-lbl">{t("Voice")}</label>
-          <div className="ch-pills2">
-            {VOICES.map(([k, l]) => <button type="button" key={k} className={`ch-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(l)}</button>)}
-          </div>
+          <VoicePick value={voiceKey} onChange={setVoiceKey} />
         </div>
       </div>
 
@@ -309,7 +315,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
       <label className="ch-lbl">{t("Where it posts")}</label>
       {linked.length > 0 ? (
         <div className="ch-chips">
-          {linked.map((p) => <button type="button" key={p} className={`ch-chip plat${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) ? "✓ " : ""}{PLAT_LABEL[p]}</button>)}
+          {linked.map((p) => <button type="button" key={p} className={`ch-chip plat${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) && <Ico n="check" size={13} className="ch-chip-chk" />}{PLAT_LABEL[p]}</button>)}
         </div>
       ) : (
         <div className="ch-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="ch-link">{t("connect TikTok / Instagram / Facebook")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
@@ -342,6 +348,49 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
         {creating ? t("Starting…") : <>{t("Start my channel")} <Ico n="rocket" /></>}
       </button>
     </Form>
+  );
+}
+
+/* Voice picker with a ▶ that plays the real pre-rendered sample (free, instant)
+ * so a merchant HEARS the voice before committing to weeks of it — this is a
+ * channel that'll speak in this voice on repeat. Same /voice-samples/*.mp3 the
+ * faceless pipeline uses; one <audio>, one playing at a time. */
+function VoicePick({ value, onChange }: { value: string; onChange: (k: string) => void }) {
+  const t = useT();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const done = () => setPlaying(null);
+    a.addEventListener("ended", done);
+    return () => a.removeEventListener("ended", done);
+  }, []);
+  const play = (sampleId: string, key: string) => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing === key) { a.pause(); setPlaying(null); return; }
+    a.src = `/voice-samples/${sampleId}.mp3`;
+    a.currentTime = 0;
+    a.play().then(() => setPlaying(key)).catch(() => setPlaying(null));
+  };
+  return (
+    <div className="ch-voices">
+      {VOICES.map(([k, l, sampleId]) => {
+        const sel = value === k;
+        const on = playing === k;
+        return (
+          <div key={k} className={`ch-voice${sel ? " sel" : ""}`}>
+            <button type="button" className="ch-voice-pick" onClick={() => onChange(k)} aria-pressed={sel}>{t(l)}</button>
+            <button type="button" className={`ch-voice-play${on ? " on" : ""}`} onClick={() => play(sampleId, k)}
+              aria-label={on ? t("Stop preview") : t("Preview the {label} voice", { label: t(l) })}>
+              {on ? <Ico n="sound" size={15} /> : <Ico n="play" size={15} />}
+            </button>
+          </div>
+        );
+      })}
+      <audio ref={audioRef} preload="none" />
+    </div>
   );
 }
 
@@ -475,11 +524,22 @@ const CH_CSS = `
 .ch-chip{font:inherit;font-weight:600;font-size:12.5px;color:var(--ink2);background:#fff;border:1px solid var(--l);border-radius:999px;padding:7px 13px;cursor:pointer;transition:all .12s;}
 .ch-chip:hover{border-color:#9CCBB1;color:var(--ink);}
 .ch-chip.on{background:#EAF6EF;border-color:var(--g);color:var(--ink);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.ch-chip-chk{margin-right:5px;color:var(--g);}
 .ch-row2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 .ch-pills2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .ch-pill{font:inherit;font-weight:700;font-size:12.5px;color:var(--ink2);background:#fff;border:1px solid var(--l);border-radius:12px;padding:10px 8px;cursor:pointer;text-align:center;transition:all .12s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ch-pill:hover{border-color:#9CCBB1;transform:translateY(-1px);box-shadow:var(--sh-sm);}
 .ch-pill.sel{background:#EAF6EF;border-color:var(--g);color:var(--ink);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.ch-voices{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ch-voice{display:flex;align-items:stretch;background:#fff;border:1px solid var(--l);border-radius:12px;overflow:hidden;transition:all .12s;}
+.ch-voice:hover{border-color:#9CCBB1;box-shadow:var(--sh-sm);}
+.ch-voice.sel{background:#EAF6EF;border-color:var(--g);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.ch-voice-pick{flex:1;min-width:0;font:inherit;font-weight:700;font-size:12.5px;color:var(--ink2);background:none;border:0;padding:10px 8px;cursor:pointer;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ch-voice.sel .ch-voice-pick{color:var(--ink);}
+.ch-voice-play{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:34px;border:0;border-left:1px solid var(--l);background:none;color:var(--ink3);cursor:pointer;transition:all .12s;}
+.ch-voice-play:hover{color:var(--g);background:#F7FBF8;}
+.ch-voice-play.on{color:var(--g);background:#EAF6EF;}
+.ch-voice.sel .ch-voice-play{border-left-color:rgba(12,122,70,.25);}
 .ch-cads{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 .ch-cad{font:inherit;display:flex;flex-direction:column;gap:3px;align-items:center;background:#fff;border:1px solid var(--l);border-radius:14px;padding:13px 8px;cursor:pointer;transition:all .12s;}
 .ch-cad b{font-size:14px;color:var(--ink);} .ch-cad span{font-size:11.5px;color:var(--ink3);font-weight:600;}
@@ -553,5 +613,7 @@ const CH_CSS = `
   .ch-act{box-sizing:border-box;min-height:44px}
   .ch-newbtn{box-sizing:border-box;min-height:44px}
   .ch-pill{box-sizing:border-box;min-height:44px}
+  .ch-voice-pick{box-sizing:border-box;min-height:44px}
+  .ch-voice-play{box-sizing:border-box;min-width:44px}
 }
 `;

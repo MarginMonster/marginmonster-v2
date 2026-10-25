@@ -3875,6 +3875,7 @@ export default function WebStudio() {
                     <div>
                       <span className="ws-w">{contentType === "jingle" ? t("What should the anthem sing about?") : contentType === "cartoon" ? t("What should the narrator say?") : t("What do they say?")}</span>
                       <textarea className="wb-in ws-ta" value={saySomething} maxLength={400} placeholder={contentType === "jingle" ? t("Lines or claims to work into the lyrics…") : t("The hook + a couple talking points, in your voice…")} onChange={(e) => setSaySomething(e.target.value)} />
+                      <CharCount value={saySomething} max={400} />
                     </div>
                     <div>
                       <span className="ws-w">{contentType === "cartoon" || contentType === "jingle" ? t("What happens in the scene?") : t("What do they do?")}</span>
@@ -4375,6 +4376,12 @@ export default function WebStudio() {
                  </span>
                  <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) }) : (casual && tab === "video") ? t("Add a photo to animate, or just describe your video") : t("Add a photo, or make one")}</div>
                  <div className="ws-easel-sub">{(making || busy) ? t("This takes a few minutes — it'll land right here.") : (casual && tab === "video") ? t("Tap to upload or drop a photo to turn into a video — or just describe it below.") : t("Tap to upload or drop a photo to edit — or just describe what you want below.")}</div>
+                 {/* Without a plan the Stage still invites a photo, but nothing can
+                     be made — say so here (not only at the button), so the lock
+                     is visible on the canvas the merchant is looking at. */}
+                 {!d.hasPlan && !(making || busy) && (
+                   <div className="ws-easel-lock"><Ico n="lock" size={13} /> {t("Your free trial unlocks every maker — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to make this.")}</div>
+                 )}
                </div>
              )}
            </div>
@@ -4854,6 +4861,9 @@ const WS_STYLE = `
 .ws-combine.ws-scene.combining .ws-combine-stage::before{width:210px;height:210px;margin:-105px 0 0 -105px;animation:wsrosespin 5s linear infinite,ws-rose-glow 1.5s ease-in-out infinite}
 @keyframes ws-rose-glow{0%,100%{opacity:.16}50%{opacity:.46}}
 @media (prefers-reduced-motion:reduce){.ws-combine.ws-scene::after,.ws-combine.ws-scene .ws-combine-stage::before,.ws-combine.ws-scene.combining .ws-combine-stage::before{animation:none;opacity:.3}}
+/* The whole combining family — breathing border, the bouncing arrow, the src
+   pulse, the pop-in, the working dots and the button shimmer — stilled too. */
+@media (prefers-reduced-motion:reduce){.ws-combine.combining,.ws-combine.combining .ws-combine-to,.ws-combine.combining .ws-combine-src,.ws-combine-stage.has,.ws-combine-work i,.ws-combine.combining .ws-combine-btn::after{animation:none}}
 /* Combine step — presenter + product -> holding frame, in-flow, with theatrics. */
 .ws-combine{margin:14px 0 4px;padding:15px;border-radius:16px;border:1.5px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#F3F9F4,var(--card,#FDFCF7));transition:box-shadow .3s,border-color .3s}
 .ws-combine.combining{border-color:var(--green2,#12A85E);animation:ws-comb-breathe 1.8s ease-in-out infinite}
@@ -5012,6 +5022,9 @@ const WS_STYLE = `
 @keyframes wsrosespin{to{transform:rotate(360deg)}}
 .ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
 .ws-easel-sub{font-size:12px;color:var(--ink2,#8A968E);max-width:30ch;line-height:1.45}
+/* No-plan lock on the Stage — gentle gold, not an error; the link routes to plans. */
+.ws-easel-lock{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#8a5a12;background:#FDF4E3;border:1px solid #E8D3A6;border-radius:9px;padding:6px 11px;line-height:1.4}
+.ws-easel-lock a{color:var(--green,#0C7A46);font-weight:700;text-decoration:underline}
 /* Phase 2 — the finished piece renders ON the Stage, with verb chips. */
 /* The finished piece renders at its OWN aspect ratio. The frame grows to the
    image + the button rows (height:auto, NOT a fixed tall box) and the image
@@ -5188,7 +5201,9 @@ const WS_STYLE = `
   .ws-casual .ws-shelf-piece,.ws-casual .ws-shelf-thumb{width:96px}
   .ws-casual .ws-shelf-thumb{height:128px}
 }
-@media (prefers-reduced-motion:reduce){.ws-rose{animation:none}}
+/* The Stage rose — idle AND the making spinner (the .making selector is more
+   specific than .ws-rose, so it needs naming to actually stop). */
+@media (prefers-reduced-motion:reduce){.ws-rose,.ws-easelph.making .ws-rose{animation:none}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins; only
    hit boxes grow, glyph sizes unchanged. ── */
 .ws-vx{width:44px;height:44px}

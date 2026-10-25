@@ -987,6 +987,17 @@ const WA_CSS = `
 .wa-sectab:hover{background:#DCF0E5;}
 .wa-sectab.on{background:linear-gradient(135deg,#12A85E,#0C7A46);color:#fff;box-shadow:0 2px 8px rgba(12,122,70,.28);}
 @media(max-width:640px){.wa-sectab{min-height:40px;padding:8px 16px;}}
+/* Quick-filter chips — a light outlined pill row that sifts the current tab
+   ("All / Clearing soon / Kept"). Lit chip reuses the same green as the tabs so
+   the whole header reads as one control surface. */
+.wa-filters{display:flex;flex-wrap:wrap;gap:8px;margin:-4px 0 14px;}
+.wa-filterchip{display:inline-flex;align-items:center;gap:5px;font-family:Poppins,sans-serif;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);background:#fff;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:6px 13px;cursor:pointer;line-height:1;transition:background .12s,color .12s,border-color .12s;}
+.wa-filterchip:hover{color:var(--ink,#14201A);border-color:#CFD6C5;}
+.wa-filterchip.on{background:#EAF6EF;color:var(--green,#0C7A46);border-color:#BFE2CD;}
+/* An inline text button that reads as a link — for the "Show all" reset on an
+   empty filtered view, so it matches the Link styling the notes use. */
+.wa-linkbtn{border:0;background:none;padding:0;font:inherit;color:var(--green,#0C7A46);text-decoration:underline;cursor:pointer;}
+@media(max-width:640px){.wa-filterchip{min-height:44px;box-sizing:border-box;}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins over
    the shrunk mobile icon rules above; glyph sizes unchanged, only hit boxes. ── */
 @media(max-width:640px){
@@ -1032,6 +1043,12 @@ export default function WebArchive() {
   const [searchParams] = useSearchParams();
   const startTab = (["video", "image", "music", "blog"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<ATab>(startTab || "video");
+  // Quick-filter within a tab. Up to 600 pieces land here, and the two things a
+  // merchant actually hunts for are "what's about to be deleted" (un-kept media
+  // on the 30-day clock — oldest = nearest purge) and "what I already saved".
+  // "all" is the default; the chips only render when there's something to sift.
+  type AFilter = "all" | "clearing" | "kept";
+  const [filter, setFilter] = useState<AFilter>("all");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   const [copied, setCopied] = useState(false);
   // The fullscreen viewer portals to document.body (to escape the .wb-main
@@ -1148,23 +1165,41 @@ export default function WebArchive() {
   // The true library count for the open tab, so the note under the shelf
   // matches the number on the tab itself.
   const tabTotal = totals?.[tab] ?? shelf.length;
-  const vIdx = viewer ? shelf.findIndex((c) => c.id === viewer.id) : -1;
-  const openAt = (idx: number) => { const n = shelf[(idx % shelf.length + shelf.length) % shelf.length]; if (n) setViewer(n); };
+  // Quick-filter counts come off the full tab shelf (not the filtered view), so
+  // a chip can say how many it holds. "Clearing soon" = un-kept media on the
+  // 30-day clock (daysLeft is only set for video/image); "Kept" = saved or
+  // already posted. The chip row only shows on video/image, where clearing is a
+  // real concept and the volume lives.
+  const isKept = (a: { status: string }) => a.status === "APPROVED" || a.status === "PUBLISHED";
+  const clearingCount = shelf.filter((a) => a.daysLeft != null).length;
+  const keptCount = shelf.filter((a) => isKept(a)).length;
+  const canFilter = (tab === "video" || tab === "image") && (clearingCount > 0 || keptCount > 0);
+  // What actually renders + what the viewer arrows cycle through. Pagination and
+  // the empty state stay on the unfiltered `shelf` — they describe the library,
+  // not the chip. Oldest-first would bury the nearest-purge pieces, so the
+  // default desc order already puts "clearing soon" where the merchant expects.
+  const visibleShelf = !canFilter || filter === "all"
+    ? shelf
+    : filter === "clearing"
+      ? shelf.filter((a) => a.daysLeft != null)
+      : shelf.filter((a) => isKept(a));
+  const vIdx = viewer ? visibleShelf.findIndex((c) => c.id === viewer.id) : -1;
+  const openAt = (idx: number) => { const n = visibleShelf[(idx % visibleShelf.length + visibleShelf.length) % visibleShelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
   useEffect(() => {
     if (!viewer) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { setViewer(null); return; }
-      if (shelf.length < 2 || vIdx < 0) return;
+      if (visibleShelf.length < 2 || vIdx < 0) return;
       if (e.key === "ArrowLeft") openAt(vIdx - 1);
       else if (e.key === "ArrowRight") openAt(vIdx + 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // Deps: without them this rebound the listener on EVERY render. Re-bind only
-    // when the open piece, the tab's shelf, or the current index actually change
-    // (openAt closes over shelf, so shelf+vIdx cover it).
-  }, [viewer, shelf, vIdx]);
+    // when the open piece, the visible shelf, or the current index actually
+    // change (openAt closes over visibleShelf, so these cover it).
+  }, [viewer, visibleShelf, vIdx]);
 
   const chipFor = (a: { type: string; status: string }): [string, string] =>
     a.type === "BLOG_POST"
@@ -1217,12 +1252,27 @@ export default function WebArchive() {
           const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
             + cookingCards.filter((j) => j.kind === k).length;
           return (
-            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>
+            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); }}>
               <Ico n={icon} /> {label} · {n}
             </button>
           );
         })}
       </div>
+      {/* Quick-filters within a tab, so a library of hundreds isn't a single
+          doom-scroll. "Clearing soon" surfaces exactly the un-kept media on the
+          30-day clock (what a merchant comes here to rescue); "Kept" is the
+          saved shelf. Only shows when there's actually something to sift. */}
+      {canFilter && (
+        <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
+          <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {shelf.length}</button>
+          {clearingCount > 0 && (
+            <button type="button" className={`wa-filterchip${filter === "clearing" ? " on" : ""}`} aria-pressed={filter === "clearing"} onClick={() => setFilter("clearing")}><Ico n="hourglass" /> {t("Clearing soon")} · {clearingCount}</button>
+          )}
+          {keptCount > 0 && (
+            <button type="button" className={`wa-filterchip${filter === "kept" ? " on" : ""}`} aria-pressed={filter === "kept"} onClick={() => setFilter("kept")}><Ico n="heart" /> {t("Kept")} · {keptCount}</button>
+          )}
+        </div>
+      )}
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
         <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and hit")} <b>{t("Keep")}</b> {t("to save it for good.")}</p>
       )}
@@ -1274,6 +1324,14 @@ export default function WebArchive() {
           )}
         </div>
       )}
+      {/* A filter that hid everything on the page — say so plainly with a one-tap
+          way back, rather than leaving an empty grid that reads as broken. */}
+      {canFilter && filter !== "all" && visibleShelf.length === 0 && shelf.length > 0 && (
+        <p className="wa-shelfnote">
+          {filter === "clearing" ? t("Nothing's clearing soon — everything here is kept or still fresh.") : t("Nothing kept in this tab yet.")}{" "}
+          <button type="button" className="wa-linkbtn" onClick={() => setFilter("all")}>{t("Show all")}</button>
+        </p>
+      )}
 
       {/* Cooking tiles stay pinned at the top of the shelf. */}
       {genCards.length > 0 && (
@@ -1300,7 +1358,7 @@ export default function WebArchive() {
       {/* Finished pieces: poster-frame tiles (media) or read rows (blogs). */}
       {tab === "blog" ? (
         <div className="wa-blogrows">
-          {shelf.map((a) => {
+          {visibleShelf.map((a) => {
             const [cc, cl] = chipFor(a);
             return (
               <div className="wa-blogrow" key={a.id}>
@@ -1320,7 +1378,7 @@ export default function WebArchive() {
         </div>
       ) : (
         <div className="wb-assets">
-          {shelf.map((a) => {
+          {visibleShelf.map((a) => {
             const [cc, cl] = chipFor(a);
             return (
               <div className="wb-asset" key={a.id}>
@@ -1410,11 +1468,11 @@ export default function WebArchive() {
           <div className={`wa-viewer${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
             <div className={`wa-vstage${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " media" : ""}`}>
-              {shelf.length > 1 && vIdx >= 0 && (
+              {visibleShelf.length > 1 && vIdx >= 0 && (
                 <>
                   <button type="button" className="wa-vnav prev" aria-label={t("Previous")} onClick={() => openAt(vIdx - 1)}>‹</button>
                   <button type="button" className="wa-vnav next" aria-label={t("Next")} onClick={() => openAt(vIdx + 1)}>›</button>
-                  <span className="wa-vcount">{vIdx + 1} / {shelf.length}</span>
+                  <span className="wa-vcount">{vIdx + 1} / {visibleShelf.length}</span>
                 </>
               )}
               {/* Keep = a heart TOGGLE over the clip's top-right. Outline → tap to

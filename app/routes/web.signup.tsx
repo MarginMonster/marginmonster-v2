@@ -1,10 +1,10 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
-import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
+import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { createWebAccount, getWebIdentity, webSessionRedirect, SignupError } from "../lib/web-auth.server";
 import { isValidTimeZone } from "../lib/timezone";
-import { authCopy } from "../lib/auth-i18n";
+import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
@@ -12,7 +12,12 @@ export const meta = () => [{ title: "Start free · EasyMode" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
-  return json({});
+  // Seed the display language from the uiLang cookie SERVER-SIDE so the first
+  // paint is already localized — no English-then-swap flash (and no Urdu
+  // LTR→RTL flip) on a visitor who picked a language on the landing page.
+  // Same cookie + inline parse the landing loader uses.
+  const m = (request.headers.get("Cookie") || "").match(/(?:^|;\s*)uiLang=([^;]+)/);
+  return json({ lang: authLang(m ? decodeURIComponent(m[1]) : "") });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -70,10 +75,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function WebSignup() {
+  const { lang: cookieLang } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
-  // Seed the account's AI content language from the landing-page toggle.
-  const [lang, setLang] = useState("en");
+  // Seeded SERVER-SIDE from the uiLang cookie (loader) so SSR paints the right
+  // language; the effect then refines it from an explicit localStorage pick /
+  // browser language if that disagrees — same shape as the landing page.
+  const [lang, setLang] = useState<string>(cookieLang);
   const [tz, setTz] = useState("");
   useEffect(() => { try { const m = document.cookie.match(/(?:^|;\s*)uiLang=([^;]+)/); setLang((m && decodeURIComponent(m[1])) || localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
   // Same idea as the language above: ask the browser once, at signup.
