@@ -1855,6 +1855,26 @@ export default function WebStudio() {
   const [editPreview2, setEditPreview2] = useState<string | null>(null);
   const stageUpload2Ref = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // CREATOR "upload a video to edit it" — the alternative to describe->make on
+  // the casual Video tab. A real <input type=file name="productVideo"> inside
+  // the Form posts the File directly (no DataTransfer needed, unlike photos);
+  // we mirror the selection into state for the <video> preview + to know we're
+  // in edit mode. editVideoUrl is a blob preview, revoked on change so it can't
+  // leak (mirrors the avatarFile effect below). Ops: trim | caption | speed.
+  const [editVideoFile, setEditVideoFile] = useState<File | null>(null);
+  const [editVideoUrl, setEditVideoUrl] = useState<string | null>(null);
+  const [videoEditOp, setVideoEditOp] = useState<"trim" | "caption" | "speed">("trim");
+  const [trimStart, setTrimStart] = useState("");
+  const [trimEnd, setTrimEnd] = useState("");
+  const [videoCaption, setVideoCaption] = useState("");
+  const [videoSpeed, setVideoSpeed] = useState(1);
+  const editVideoUploadRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!editVideoFile) { setEditVideoUrl(null); return; }
+    const url = URL.createObjectURL(editVideoFile);
+    setEditVideoUrl(url);
+    return () => { try { URL.revokeObjectURL(url); } catch { /* */ } };
+  }, [editVideoFile]);
   // The plain (non-edit) product-photo file input, so the catalogue picker can
   // offer a visible "upload your own instead" shortcut — with a big store the
   // picker dominates and the upload field below it is easy to miss.
@@ -2162,16 +2182,22 @@ export default function WebStudio() {
   const isMusic = casual && tab === "music";
   // Creator "Faceless video" — topic → scripted 9:16 social video, own casual tab.
   const isFaceless = casual && tab === "faceless";
-  const submitIntent = isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
-  const verb = isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
+  // Creator "upload a video to edit it" — the casual Video tab with a clip
+  // loaded. One ffmpeg op (trim/caption/speed), its own intent + flat 5-tok
+  // cost; it REPLACES the describe->make flow while a video is loaded (removing
+  // the video returns to make). Gated to casual video so the make path is intact.
+  const isVideoEdit = casual && tab === "video" && !!editVideoFile;
+  const submitIntent = isVideoEdit ? "videoedit" : isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
+  const verb = isVideoEdit ? "Edit" : isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
-  const baseCost = isCreate ? d.costs.createImage : tab === "video" ? (casual ? d.costs.casualVideo : d.costs.video) : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
+  const baseCost = isVideoEdit ? d.costs.videoEdit : isCreate ? d.costs.createImage : tab === "video" ? (casual ? d.costs.casualVideo : d.costs.video) : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   // Premium "Make an image" model (Genius) adds a token surcharge, like the
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
   const createFee = (isCreate || isEdit) ? createModelSurcharge(createModel) : 0;
   const facelessFee = isFaceless ? facelessQualitySurcharge(facelessQuality) * CREATOR_SURCHARGE_MULT : 0;
-  const cost = baseCost + engineFee + createFee + facelessFee;
+  // A video edit is a flat per-op charge — no engine/model/burst surcharges ride it.
+  const cost = isVideoEdit ? d.costs.videoEdit : baseCost + engineFee + createFee + facelessFee;
 
   // ── THE EASEL, PHASE 2: live result on the Stage (casual only) ──────────────
   // The Studio is fire-and-confirm: a submit queues an async job and the piece
@@ -2248,6 +2274,10 @@ export default function WebStudio() {
       setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; });
       setEditFile(null);
       setHasFile(false);
+      // Same for a video-edit: drop the loaded clip so the panel resets to the
+      // describe->make flow once the edited video lands.
+      if (editVideoUploadRef.current) editVideoUploadRef.current.value = "";
+      setEditVideoFile(null);
       return;
     }
     // No new piece yet — did THIS generation fail? The newest creator job is
@@ -2860,6 +2890,10 @@ export default function WebStudio() {
   useEffect(() => {
     clearUpload();
     setProdSource(null);
+    // Drop any loaded video-to-edit too, so leaving the Video tab returns the
+    // describe->make flow and the native productVideo input starts empty.
+    if (editVideoUploadRef.current) editVideoUploadRef.current.value = "";
+    setEditVideoFile(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -2923,11 +2957,19 @@ export default function WebStudio() {
   // was live. The server refused it, correctly, so no money moved — but the
   // very first thing many merchants would try answered with an error instead
   // of the number they were short by and where to get it.
-  const shortBy = d.hasPlan ? Math.max(0, cost * burst - d.tokens) : 0;
+  // A video edit is always a single flat-cost op — never multiplied by the
+  // image/video burst that may be left over from a prior session.
+  const effBurst = isVideoEdit ? 1 : burst;
+  const shortBy = d.hasPlan ? Math.max(0, cost * effBurst - d.tokens) : 0;
   // Casual video is describe-first (no name field): it needs a description, not
-  // a productTitle — same as create/music/faceless.
+  // a productTitle — same as create/music/faceless. (A loaded video to EDIT is
+  // its own flow — no description required; see casualVideoMake below.)
   const casualVideo = casual && tab === "video";
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideo && !direction.trim()) || shortBy > 0;
+  // The describe->make video path specifically (a video loaded to edit is NOT it).
+  const casualVideoMake = casualVideo && !isVideoEdit;
+  // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
+  const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
 
   return (
     <div className={casual ? "ws-casual" : undefined}>
@@ -3127,7 +3169,7 @@ export default function WebStudio() {
             {!casual && <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>}
             {/* Avatar video folds step 1 away — its only control (Commercial look)
                 moves into the scene hub, which then becomes step 1. */}
-            {!avatarVideoHub && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
+            {!avatarVideoHub && !isVideoEdit && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
@@ -3178,7 +3220,7 @@ export default function WebStudio() {
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
             )}
-            {contentType === "highlight" && <p className="ws-note"><Ico n="video" /> <b>{casual ? t("Showcase") : t("Product Highlight")}</b>{" — "}{casual ? t("cinematic motion from your idea or a photo.") : t("cinematic motion built around your product. No presenter needed.")}</p>}
+            {contentType === "highlight" && !isVideoEdit && <p className="ws-note"><Ico n="video" /> <b>{casual ? t("Showcase") : t("Product Highlight")}</b>{" — "}{casual ? t("cinematic motion from your idea or a photo.") : t("cinematic motion built around your product. No presenter needed.")}</p>}
             {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>{t("Commercial")}</b>{t(" — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.")}</p>}
             {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>{t("Creator Demo")}</b>{t(" — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.")}</p>}
             {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>{t("Satisfying Close-Up")}</b>{t(" — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.")}</p>}
@@ -3190,7 +3232,7 @@ export default function WebStudio() {
                 <span><b><Ico n="video" /> {t("Commercial look")}</b>{t(" — big-budget studio spot: color-block set matched to your product, hero-lit")}</span>
               </label>
             )}
-            {contentType === "highlight" && (
+            {contentType === "highlight" && !isVideoEdit && (
               <label className="ws-commercial">
                 <input type="checkbox" name="breakout" value="1" checked={breakout}
                   onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
@@ -3201,7 +3243,7 @@ export default function WebStudio() {
                 ads and commercials ignore it, so showing 8 greyed-out engines + a
                 "doesn't apply" note was pure chore. Hidden there; the videoEngine
                 value still rides along for the pipeline. */}
-            {engineApplies && (
+            {engineApplies && !isVideoEdit && (
               <>
                 <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
                 <div className="ws-engines">
@@ -3962,20 +4004,90 @@ export default function WebStudio() {
             )}
             {tab === "video" ? (
               casual ? (
-                /* CREATOR video = describe-your-video. No brand voice, no
-                   presenter "what do they say/do/where" (that's a marketing
-                   spokesperson ad) — just describe the video you want. */
+                /* CREATOR video = describe-your-video OR upload-a-video-to-edit.
+                   No brand voice, no presenter "what do they say/do/where"
+                   (that's a marketing spokesperson ad). The file input below is
+                   ALWAYS mounted (just hidden) so a chosen clip's File rides the
+                   native multipart submit directly — picking a video flips to the
+                   edit panel, which replaces the describe box until it's removed. */
                 <>
-                  <div className="ws-lbl">{t("Describe your video")} <span className="ws-opt">{t("required")}</span></div>
-                  <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
-                    placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
-                    onChange={(e) => setDirection(e.target.value)} />
-                  <CharCount value={direction} max={400} />
-                  <div className="ws-chips" style={{ marginTop: 8 }}>
-                    {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
-                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
-                    ))}
-                  </div>
+                  {/* Always-mounted real file input — its own selection POSTs the
+                      File on submit (no DataTransfer needed, unlike the iOS photo
+                      path). We also mirror the File into state for the preview. */}
+                  <input ref={editVideoUploadRef} type="file" name="productVideo"
+                    accept="video/mp4,video/quicktime,video/webm" style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.currentTarget.files?.[0];
+                      if (f && !/^video\//.test(f.type)) { setEditVideoFile(null); e.currentTarget.value = ""; return; }
+                      setEditVideoFile(f || null);
+                    }} />
+                  {isVideoEdit ? (
+                    /* ── EDIT PANEL — a loaded clip + one ffmpeg op. Replaces the
+                       describe box; ✕ Remove returns to describe->make. ── */
+                    <div className="ws-vedit">
+                      <div className="ws-lbl"><span>{t("Edit your video")}</span> <span className="ws-opt">{t("one quick change")}</span></div>
+                      {editVideoUrl && <video className="ws-vedit-prev" src={editVideoUrl} controls playsInline />}
+                      <div className="ws-vedit-op ws-seg" role="group" aria-label={t("What to do with the video")}>
+                        {([["trim", "Trim"], ["caption", "Captions"], ["speed", "Speed"]] as ["trim" | "caption" | "speed", string][]).map(([k, label]) => (
+                          <button type="button" key={k} className={videoEditOp === k ? "sel" : ""} aria-pressed={videoEditOp === k}
+                            onClick={() => setVideoEditOp(k)}>{t(label)}</button>
+                        ))}
+                      </div>
+                      {videoEditOp === "trim" && (
+                        <div className="ws-vedit-trim">
+                          <label className="ws-vedit-num"><span>{t("Start (sec)")}</span>
+                            <input className="wb-in" type="number" min={0} step={0.1} value={trimStart}
+                              placeholder="0" onChange={(e) => setTrimStart(e.target.value)} /></label>
+                          <label className="ws-vedit-num"><span>{t("End (sec)")}</span>
+                            <input className="wb-in" type="number" min={0} step={0.1} value={trimEnd}
+                              placeholder={t("e.g. 10")} onChange={(e) => setTrimEnd(e.target.value)} /></label>
+                        </div>
+                      )}
+                      {videoEditOp === "caption" && (
+                        <input className="wb-in" type="text" maxLength={200} value={videoCaption}
+                          placeholder={t("Caption to burn in")} onChange={(e) => setVideoCaption(e.target.value)} />
+                      )}
+                      {videoEditOp === "speed" && (
+                        <div className="ws-vedit-speed ws-seg" role="group" aria-label={t("Playback speed")}>
+                          {[0.5, 1, 1.5, 2].map((s) => (
+                            <button type="button" key={s} className={videoSpeed === s ? "sel" : ""} aria-pressed={videoSpeed === s}
+                              onClick={() => setVideoSpeed(s)}>{s}×</button>
+                          ))}
+                        </div>
+                      )}
+                      <button type="button" className="ws-vedit-remove ws-back" style={{ marginTop: 10 }}
+                        onClick={() => { if (editVideoUploadRef.current) editVideoUploadRef.current.value = ""; setEditVideoFile(null); }}>
+                        ✕ {t("Remove video")}
+                      </button>
+                      {/* Op + params ride hidden inputs so the native multipart
+                          submit (carrying productVideo) sends them. Only meaningful
+                          values go — the server parses/validates ranges. */}
+                      <input type="hidden" name="editOp" value={videoEditOp} />
+                      {videoEditOp === "trim" && trimStart.trim() !== "" ? <input type="hidden" name="startSec" value={trimStart} /> : null}
+                      {videoEditOp === "trim" && trimEnd.trim() !== "" ? <input type="hidden" name="endSec" value={trimEnd} /> : null}
+                      {videoEditOp === "caption" && videoCaption.trim() ? <input type="hidden" name="captionText" value={videoCaption} /> : null}
+                      {videoEditOp === "speed" ? <input type="hidden" name="speed" value={videoSpeed} /> : null}
+                      {editVideoFile ? <input type="hidden" name="title" value={editVideoFile.name.replace(/\.[^.]+$/, "").slice(0, 80)} /> : null}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="ws-lbl">{t("Describe your video")} <span className="ws-opt">{t("required")}</span></div>
+                      <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
+                        placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
+                        onChange={(e) => setDirection(e.target.value)} />
+                      <CharCount value={direction} max={400} />
+                      <div className="ws-chips" style={{ marginTop: 8 }}>
+                        {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
+                          <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
+                        ))}
+                      </div>
+                      {/* The alternative path — subtle but discoverable, right under
+                          the describe box: upload a clip to trim / caption / speed it. */}
+                      <button type="button" className="ws-vedit-entry" onClick={() => editVideoUploadRef.current?.click()}>
+                        <Ico n="video" size={14} /> {t("Or upload a video to edit it")} →
+                      </button>
+                    </>
+                  )}
                 </>
               ) : (
               <>
@@ -4335,7 +4447,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && (
+            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && !isVideoEdit && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">{t("How many")}</span>
                 <div className="ws-burst-steps">
@@ -4357,7 +4469,7 @@ export default function WebStudio() {
                 )}
               </div>
             )}
-            <input type="hidden" name="burst" value={burst} />
+            <input type="hidden" name="burst" value={effBurst} />
             {!isMusic && (
               <div className="ws-outlang">
                 <span className="ws-outlang-lbl">{t("Writing in")}</span>
@@ -4376,16 +4488,16 @@ export default function WebStudio() {
                     ? t("Pick a plan to start")
                   : shortBy > 0
                     ? (shortBy === 1 ? t("Need 1 more token") : t("Need {short} more tokens", { short: shortBy.toLocaleString("en-US") }))
-                  : burst > 1
-                    ? t("{verb} {n} {noun}s", { verb: t(verb), n: burst, noun: t(noun) })
+                  : effBurst > 1
+                    ? t("{verb} {n} {noun}s", { verb: t(verb), n: effBurst, noun: t(noun) })
                     : t("{verb} {noun}", { verb: t(verb), noun: t(noun) })}
               </button>
               <p className="ws-wallet">
                 {!d.hasPlan
                   ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
                   : shortBy > 0
-                    ? <>{t("{total} tokens · ", { total: (cost * burst).toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{burst > 1 ? t(" or make fewer") : ""}</>
-                    : <>{t("{total} tokens", { total: cost * burst })}{burst > 1 ? t(" · {cost} each", { cost }) : ""}{engineFee ? t(" · incl. {n} engine", { n: engineFee }) : createFee ? t(" · incl. {n} {model}", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") }) : facelessFee ? t(" · incl. {n} Ultra", { n: facelessFee }) : ""}</>}
+                    ? <>{t("{total} tokens · ", { total: (cost * effBurst).toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{effBurst > 1 ? t(" or make fewer") : ""}</>
+                    : <>{t("{total} tokens", { total: cost * effBurst })}{effBurst > 1 ? t(" · {cost} each", { cost }) : ""}{engineFee ? t(" · incl. {n} engine", { n: engineFee }) : createFee ? t(" · incl. {n} {model}", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") }) : facelessFee ? t(" · incl. {n} Ultra", { n: facelessFee }) : ""}</>}
               </p>
             </div>
           </>
@@ -4811,6 +4923,16 @@ const WS_STYLE = `
 .ws-seg{display:flex;gap:8px;flex-wrap:wrap}
 .ws-seg button{padding:9px 14px;border-radius:11px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12.5px;cursor:pointer}
 .ws-seg button.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);color:var(--ink,#14201A);background:#F0FAF4}
+/* CREATOR "upload a video to edit it" — the edit panel + its entry affordance. */
+.ws-vedit{display:flex;flex-direction:column;gap:10px}
+.ws-vedit-prev{width:100%;max-height:300px;border-radius:13px;background:#000;display:block}
+.ws-vedit-op,.ws-vedit-speed{margin-top:2px}
+.ws-vedit-trim{display:flex;gap:10px;flex-wrap:wrap}
+.ws-vedit-num{display:flex;flex-direction:column;gap:4px;flex:1 1 120px;min-width:0;font-size:11.5px;font-weight:700;color:var(--ink2,#4A554E)}
+.ws-vedit-num .wb-in{width:100%}
+.ws-vedit-remove{align-self:flex-start}
+.ws-vedit-entry{margin-top:10px;background:none;border:0;padding:4px 0;color:var(--green,#0C7A46);font-weight:700;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.ws-vedit-entry:hover{text-decoration:underline}
 .ws-wq{font-weight:500;font-size:11px;color:var(--ink2,#4A554E)}
 .ws-svchint{font-size:12.5px;color:var(--ink2,#4A554E);background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:10px 13px;margin:8px 0 0}
 /* Shared semantic inline-message colors — one red, one amber — so combine /
