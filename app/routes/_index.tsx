@@ -19,7 +19,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // No shop param → the public marketing page (also serves as the health check).
   // The origin travels to meta() so og:url and og:image can be absolute, which
   // is what every link unfurler requires.
-  return json({ ok: true, origin: externalOrigin(request) });
+  //
+  // Seed the display language from the uiLang cookie SERVER-SIDE so the very
+  // first paint is already localized — no English-then-swap flash on reload.
+  // (Same cookie the whole app reads; parsed inline to keep this route's deps
+  // to its own two files.)
+  const cookie = request.headers.get("Cookie") || "";
+  const m = cookie.match(/(?:^|;\s*)uiLang=([^;]+)/);
+  const raw = m ? decodeURIComponent(m[1]) : "";
+  const lang: LangKey = (["en", "es", "fr", "de", "zh", "ur"] as const).includes(raw as LangKey) ? (raw as LangKey) : "en";
+  return json({ ok: true, origin: externalOrigin(request), lang });
 };
 
 /* Every string here is the site's own hero copy (LANDING_I18N.en), not a fresh
@@ -84,10 +93,13 @@ function renderChat(text: string): (string | JSX.Element)[] {
 }
 
 export default function Index() {
-  useLoaderData<typeof loader>();
-  // Language toggle — persisted per browser, auto-detected on first visit.
-  const [lang, setLang] = useState<LangKey>("en");
-  useEffect(() => { setLang(detectLang()); }, []);
+  const { lang: cookieLang } = useLoaderData<typeof loader>();
+  // Language toggle — SEEDED from the uiLang cookie by the loader so the first
+  // paint is already localized (no English flash). The client effect only
+  // refines it from an explicit localStorage pick / browser language if that
+  // differs, which won't flash because the common case already matches.
+  const [lang, setLang] = useState<LangKey>(cookieLang);
+  useEffect(() => { const d = detectLang(); if (d !== cookieLang) setLang(d); }, [cookieLang]);
   useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; } catch { /* SSR */ } }, [lang]);
   // Carry the landing's language into the APP: the uiLang cookie is what the
   // whole web app (shell, Studio, everything) reads to pick its display
@@ -104,6 +116,10 @@ export default function Index() {
   const P = t.paths || LANDING_I18N.en.paths!;
   // The Free + Creator lead pair that heads the pricing — same EN-fallback pattern.
   const E = t.entry || LANDING_I18N.en.entry!;
+  // Anonymous-chat copy — same EN-fallback pattern.
+  const C = t.chat || LANDING_I18N.en.chat!;
+  // Footer nav labels — same EN-fallback pattern.
+  const FN = t.footerNav || LANDING_I18N.en.footerNav!;
 
   // Anonymous Helpurr chat — the no-signup front door. Ephemeral: the thread
   // lives only in React state, so a refresh clears it (which is itself the gentle
@@ -113,14 +129,16 @@ export default function Index() {
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatCap, setChatCap] = useState<string | null>(null);
+  // When a turn errors, this holds the user-message list that failed so the
+  // error bubble's Retry button can resend it verbatim — no retyping.
+  const [chatErr, setChatErr] = useState<{ role: "user" | "assistant"; content: string }[] | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { const el = chatScrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [chatMsgs, chatBusy]);
-  const sendChat = async (preset?: string) => {
-    const text = (preset ?? chatInput).trim();
-    if (!text || chatBusy || chatCap) return;
-    const next: { role: "user" | "assistant"; content: string }[] = [...chatMsgs, { role: "user", content: text }];
+  // `history` lets Retry resend the exact failed turn; `sendChat` wraps it for
+  // the composer + chips (which append a fresh user message first).
+  const runChat = async (next: { role: "user" | "assistant"; content: string }[]) => {
+    setChatErr(null);
     setChatMsgs([...next, { role: "assistant", content: "" }]);
-    setChatInput("");
     setChatBusy(true);
     let acc = "";
     try {
@@ -128,7 +146,7 @@ export default function Index() {
       if (res.status === 429) {
         const j = (await res.json().catch(() => ({}))) as { note?: string };
         setChatMsgs(next);
-        setChatCap(j.note || "Create a free account to keep chatting — no card needed.");
+        setChatCap(j.note || C.capFirst);
         return;
       }
       if (!res.ok || !res.body) throw new Error("stream failed");
@@ -152,16 +170,24 @@ export default function Index() {
           } catch { /* partial frame — wait for the rest */ }
         }
       }
-      if (!acc) setChatMsgs([...next, { role: "assistant", content: "Helpurr hit a snag — mind trying again?" }]);
+      if (!acc) { setChatMsgs(next); setChatErr(next); }
     } catch {
-      setChatMsgs([...next, { role: "assistant", content: "Helpurr hit a snag — mind trying again?" }]);
+      setChatMsgs(next);
+      setChatErr(next);
     } finally {
       setChatBusy(false);
       if (next.filter((m) => m.role === "user").length >= 10) {
-        setChatCap("Loving it? Create a free account to keep chatting, save this & start making — no card needed.");
+        setChatCap(C.capMore);
       }
     }
   };
+  const sendChat = (preset?: string) => {
+    const text = (preset ?? chatInput).trim();
+    if (!text || chatBusy || chatCap) return;
+    setChatInput("");
+    runChat([...chatMsgs, { role: "user", content: text }]);
+  };
+  const retryChat = () => { if (chatErr && !chatBusy) runChat(chatErr); };
 
   return (
     <>
@@ -228,11 +254,11 @@ export default function Index() {
                 aria-label="An EasyMode cinematic product highlight"
               />
             </div>
-            <span className="lz-herotag">▶ Real output — generated &amp; voiced by EasyMode</span>
+            <span className="lz-herotag">{t.heroTag || LANDING_I18N.en.heroTag}</span>
           </div>
 
           <div className="lz-stats">
-            <div><b>4</b><span>{t.stats.types}</span></div>
+            <div><b>9</b><span>{t.stats.types}</span></div>
             <div className="lz-div" />
             <div><b>{t.stats.tap || "1-tap"}</b><span>{t.stats.channels}</span></div>
             <div className="lz-div" />
@@ -274,44 +300,66 @@ export default function Index() {
         {/* ANON CHAT — the no-signup front door. Chat with Helpurr right here;
             an account is only needed to save, start new chats, or make things. */}
         <section className="lz-chat" aria-label="Chat with Helpurr, no signup">
-          <span className="lz-eyebrow">Meet Helpurr</span>
-          <h2>Chat free. No signup.</h2>
-          <p className="lz-show-sub">Your AI creative buddy — ask anything, brainstorm, plan a post. When you want to actually make it, a free account takes two seconds.</p>
+          <span className="lz-eyebrow">{C.eyebrow}</span>
+          <h2>{C.h2}</h2>
+          <p className="lz-show-sub">{C.sub}</p>
           <div className="lz-chatbox">
             <div className="lz-chat-stream" ref={chatScrollRef}>
               {chatMsgs.length === 0 ? (
                 <div className="lz-chat-empty">
                   <span className="lz-chat-ava"><img src="/helpurr-head.png?v=4" alt="Helpurr" /></span>
-                  <p>Hey — I’m Helpurr. 🐾 What are you working on? Ask me anything, or tell me what you’d love to make.</p>
+                  <p>{C.greeting}</p>
                   <div className="lz-chat-chips">
-                    {["Give me a TikTok idea for my product", "Write me a punchy ad caption", "What should I post this week?"].map((q) => (
+                    {C.chips.map((q) => (
                       <button type="button" key={q} onClick={() => sendChat(q)}>{q}</button>
                     ))}
                   </div>
                 </div>
               ) : (
-                chatMsgs.map((m, i) => (
-                  <div className={`lz-cmsg ${m.role}`} key={i}>
-                    {m.role === "assistant" && <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=4" alt="" /></span>}
-                    <span className="lz-cmsg-tx">{m.content ? renderChat(m.content) : (chatBusy && i === chatMsgs.length - 1 ? "…" : "")}</span>
-                  </div>
-                ))
+                chatMsgs.map((m, i) => {
+                  const typing = m.role === "assistant" && !m.content && chatBusy && i === chatMsgs.length - 1;
+                  return (
+                    <div className={`lz-cmsg ${m.role}`} key={i}>
+                      {m.role === "assistant" && <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=4" alt="" /></span>}
+                      <span className="lz-cmsg-tx">
+                        {m.content ? renderChat(m.content) : (typing ? (
+                          <span className="lz-typing" aria-label="Helpurr is typing"><i /><i /><i /></span>
+                        ) : "")}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+              {/* Error turn: the request failed, so show an apology bubble with a
+                  one-tap Retry that resends the exact same messages. */}
+              {chatErr && !chatBusy && (
+                <div className="lz-cmsg assistant">
+                  <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=4" alt="" /></span>
+                  <span className="lz-cmsg-tx">
+                    {C.error}
+                    <button type="button" className="lz-chat-retry" onClick={retryChat}>↻ {C.retry}</button>
+                  </span>
+                </div>
               )}
             </div>
             {chatCap ? (
               <div className="lz-chat-cap">
                 <p>{chatCap}</p>
-                <a className="lz-navcta" href="/web/signup">Create a free account →</a>
+                <a className="lz-navcta" href="/web/signup">{t.nav.start} →</a>
               </div>
             ) : (
               <div className="lz-chat-in">
-                <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
-                  placeholder="Message Helpurr…" aria-label="Message Helpurr" disabled={chatBusy} maxLength={2000} />
+                <textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                  placeholder={C.placeholder} aria-label={C.placeholder} disabled={chatBusy} maxLength={2000} rows={1} />
                 <button type="button" onClick={() => sendChat()} disabled={chatBusy || !chatInput.trim()} aria-label="Send message"><span className="lz-arr">→</span></button>
               </div>
             )}
-            <div className="lz-chat-foot">Free preview · <a href="/web/signup">Sign up</a> to save chats, start new ones &amp; make images</div>
+            <div className="lz-chat-foot">
+              {C.foot.split("{link}").flatMap((part, i) => (
+                i === 0 ? [part] : [<a key="l" href="/web/signup">{C.footLink}</a>, part]
+              ))}
+            </div>
           </div>
         </section>
 
@@ -493,11 +541,11 @@ export default function Index() {
           </div>
           <span className="lz-copy">{t.footer.copy}</span>
           <nav className="lz-footlinks" aria-label="Footer">
-            <a href="#pricing">Pricing</a>
-            <a href="/privacy">Privacy</a>
-            <a href="/terms">Terms</a>
-            <a href="mailto:hello@easymodeapp.com">Contact</a>
-            <a href="mailto:partners@easymodeapp.com?subject=Affiliate%20program">Affiliates</a>
+            <a href="#pricing">{FN.pricing}</a>
+            <a href="/privacy">{FN.privacy}</a>
+            <a href="/terms">{FN.terms}</a>
+            <a href="mailto:hello@easymodeapp.com">{FN.contact}</a>
+            <a href="mailto:partners@easymodeapp.com?subject=Affiliate%20program">{FN.affiliates}</a>
           </nav>
         </footer>
       </div>
@@ -647,11 +695,24 @@ html,body{margin:0;padding:0}
 .lz-cmsg-tx{font-size:14.5px;line-height:1.5;padding:10px 14px;border-radius:16px;white-space:pre-wrap;word-break:break-word;}
 .lz-cmsg.user .lz-cmsg-tx{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;border-bottom-right-radius:5px;}
 .lz-cmsg.assistant .lz-cmsg-tx{background:var(--paper,#F4F1E6);color:var(--ink,#14201A);border:1px solid var(--line,#E4DFCF);border-bottom-left-radius:5px;}
-.lz-chat-in{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line,#E4DFCF);background:#FCFBF5;}
-.lz-chat-in input{flex:1;min-width:0;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink,#14201A);background:#fff;}
-.lz-chat-in input:focus{outline:none;border-color:var(--green2,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.18);}
-.lz-chat-in button{flex:0 0 auto;width:46px;border:0;border-radius:12px;background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;}
+.lz-chat-in{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line,#E4DFCF);background:#FCFBF5;align-items:flex-end;}
+/* Composer is a textarea (Enter sends, Shift+Enter = newline) to match the
+   in-app chat — it grows with field-sizing where supported, else scrolls. */
+.lz-chat-in textarea{flex:1;min-width:0;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font:inherit;font-size:14.5px;line-height:1.45;color:var(--ink,#14201A);background:#fff;resize:none;max-height:140px;overflow-y:auto;field-sizing:content;}
+.lz-chat-in textarea:focus{outline:none;border-color:var(--green2,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.18);}
+.lz-chat-in button{flex:0 0 auto;width:46px;height:46px;border:0;border-radius:12px;background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;}
 .lz-chat-in button:disabled{opacity:.5;cursor:default;}
+/* Animated typing indicator — three dots bouncing in sequence. Reduced-motion
+   users get a static row of dots (no bounce) via the media query below. */
+.lz-typing{display:inline-flex;gap:4px;align-items:center;padding:3px 0;}
+.lz-typing i{width:7px;height:7px;border-radius:50%;background:var(--green2,#12A85E);opacity:.5;animation:lz-typing 1.2s ease-in-out infinite;}
+.lz-typing i:nth-child(2){animation-delay:.18s;}
+.lz-typing i:nth-child(3){animation-delay:.36s;}
+@keyframes lz-typing{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
+@media (prefers-reduced-motion:reduce){.lz-typing i{animation:none;opacity:.6}}
+/* One-tap Retry inside the error bubble — reuses the pill chip look. */
+.lz-chat-retry{display:inline-flex;align-items:center;gap:4px;margin-left:10px;vertical-align:baseline;font:700 12.5px Inter,sans-serif;color:var(--green,#0C7A46);background:#F0FAF4;border:1px solid #BFE2CD;border-radius:999px;padding:4px 11px;cursor:pointer;transition:background .12s;}
+.lz-chat-retry:hover{background:#E2F3E9;}
 .lz-chat-cap{padding:18px 16px;border-top:1px solid var(--line,#E4DFCF);background:#FCFBF5;text-align:center;}
 .lz-chat-cap p{font-size:14px;color:var(--ink,#14201A);margin:0 0 12px;line-height:1.5;}
 .lz-chat-cap .lz-navcta{display:inline-block;}

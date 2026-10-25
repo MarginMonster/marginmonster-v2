@@ -12,6 +12,7 @@ import path from "node:path";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { tokensRemainingLive, monthlyUsageSummary, spendTokens, refundTokens } from "../lib/tokens.server";
+import { rateLimit } from "../lib/rate-limit.server";
 import { resolveTierKey, PLAN_BY_KEY, TOKEN_COST } from "../lib/plan-config";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -1220,6 +1221,11 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!id.shop.activePlan?.active) return handleFreeMakeIntent(id, spec, kind, mode, request);
     const caps = capabilitiesFor(id.shop.activePlan);
     const tokensLeft = tokensRemainingLive(id.shop.activePlan);
+    // Double-tap / slow-network-retry guard: an identical make from the same shop
+    // within a few seconds is a double-fire, not two real creations — block the
+    // second so a rushed double-tap can't spend tokens + enqueue the job twice.
+    const dupeKey = `makedupe:${id.shop.id}:${kind}:${(spec.product || spec.topic || "").slice(0, 40)}:${(spec.direction || "").slice(0, 40)}:${spec.editOp || ""}`;
+    if (!rateLimit(dupeKey, 1, 4000).ok) return json({ error: "That one's already on its way — give it a sec. 🐾" }, { status: 429 });
 
     // PHOTO EDIT: re-validate the client-supplied source is THIS shop's own upload
     // (can't be re-resolved — it's a photo the user attached), spend, and enqueue the
@@ -1361,7 +1367,6 @@ export async function action({ request }: ActionFunctionArgs) {
     const jobId = typeof body.jobId === "string" ? body.jobId : "";
     const cursor = Number(body.cursor) || 0;
     const kind = asMakeKind(body.kind);
-    // faceless rides the video pipeline → persists as VIDEO_AD; music → AUDIO.
     // faceless rides the video pipeline → persists as VIDEO_AD; music → AUDIO;
     // edit → IMAGE_AD (same as an image ad).
     const type: "IMAGE_AD" | "VIDEO_AD" | "AUDIO" = (kind === "video" || kind === "faceless") ? "VIDEO_AD" : kind === "music" ? "AUDIO" : "IMAGE_AD";
@@ -1379,6 +1384,12 @@ export async function action({ request }: ActionFunctionArgs) {
     if (url) return json({ done: true, media: [{ url, type, title: asset?.title || "" }] });
     const job = jobId ? await db.job.findUnique({ where: { id: jobId }, select: { status: true, lastError: true } }) : null;
     if (job?.status === "FAILED") return json({ failed: true, error: job.lastError || "It didn't finish — your tokens were refunded." });
+    // Don't spin forever: if it's been several minutes with no media and the job
+    // isn't marked failed (a stuck worker, a lost row, a silent non-persist), say
+    // so honestly instead of an eternal spinner — the piece still lands in Archive.
+    if (cursor && Date.now() - cursor > 5 * 60_000) {
+      return json({ stalled: true, note: "This is taking longer than usual — it'll show up in your Archive when it's done. Mind checking back there in a bit? 🐾" });
+    }
     return json({ done: false });
   }
 

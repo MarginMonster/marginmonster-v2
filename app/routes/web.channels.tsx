@@ -6,7 +6,7 @@
 
 import { json, redirect, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
@@ -184,9 +184,9 @@ export default function Channels() {
     <div className="ch">
       <style dangerouslySetInnerHTML={{ __html: CH_CSS }} />
 
-      <div className="ch-srcswitch" role="tablist" aria-label={t("Channel source")}>
-        <Link to="/web/product-channels" className="ch-src" role="tab">{t("My products")}</Link>
-        <span className="ch-src sel" role="tab" aria-selected="true">{t("Trending topics")}</span>
+      <div className="ch-srcswitch" role="group" aria-label={t("Channel source")}>
+        <Link to="/web/product-channels" className="ch-src">{t("My products")}</Link>
+        <Link to="/web/channels" className="ch-src sel" aria-current="page">{t("Trending topics")}</Link>
       </div>
 
       <header className="ch-head">
@@ -195,7 +195,7 @@ export default function Channels() {
           <p className="ch-sub">{t("Put your content on autopilot — we write, voice & post a fresh video on repeat.")}{" "}<span className="ch-accent">{t("Hands off.")}</span></p>
         </div>
         {series.length > 0 && canUse && (
-          <button className="ch-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : t("＋ New channel")}</button>
+          <button className="ch-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : <><span className="ch-plus" aria-hidden="true">+</span> {t("New channel")}</>}</button>
         )}
       </header>
 
@@ -244,6 +244,13 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
   const perWeek = useMemo(() => cadences.find((c) => c.key === cadence)?.perWeek || 3, [cadence, cadences]);
   const weeklyTokens = perWeek * facelessCost;
   const canAfford = tokens >= facelessCost;
+  // Honest runway: the summary advertises a weekly burn, so show how far the
+  // wallet actually stretches at this cadence — drops it can cover and roughly
+  // how many days that buys — and flag when it can't even cover one week.
+  const dropsLeft = Math.floor(tokens / facelessCost);
+  const daysLeft = perWeek > 0 ? Math.round((dropsLeft / perWeek) * 7) : 0;
+  const coversWeek = tokens >= weeklyTokens;
+  const heavyCadence = perWeek >= 14; // 2×/day
   const togglePlat = (p: string) => setPlats((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
   const disabled = creating || !niche.trim() || (autoPost && plats.length === 0) || !canAfford;
 
@@ -258,8 +265,8 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
       <input type="hidden" name="name" value={name || niche.slice(0, 48)} />
 
       <div className="ch-setup-head">
-        <span className="ch-spark">✦</span> {t("Start a channel")}
-        {onCancel && <button type="button" className="ch-x" onClick={onCancel}>✕</button>}
+        <span className="ch-spark"><Ico n="sparkle" size={18} /></span> {t("Start a channel")}
+        {onCancel && <button type="button" className="ch-x" onClick={onCancel} aria-label={t("Close")}><Ico n="x" size={16} /></button>}
       </div>
 
       <label className="ch-lbl">{t("What's it about?")}</label>
@@ -297,6 +304,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
           </button>
         ))}
       </div>
+      {heavyCadence && <div className="ch-hint">{t("That's a lot — ~{n}/day. Great for growth, but it burns tokens fast.", { n: Math.round(perWeek / 7) })}</div>}
 
       <label className="ch-lbl">{t("Where it posts")}</label>
       {linked.length > 0 ? (
@@ -318,12 +326,16 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
       </div>
 
       <div className="ch-summary">
-        <span><b>{perWeek}</b> {t("videos/week")} · ~<b>{weeklyTokens}</b> {t("tokens")} · <b>+{xpForSpend(weeklyTokens)}</b> {t("XP / wk")}</span>
+        <span><b>{perWeek}</b> {t("videos/week")} · ~<b>{weeklyTokens}</b> {t("tokens / wk")} · <b>+{xpForSpend(weeklyTokens)}</b> {t("XP / wk")}</span>
         <span className="ch-bal">{t("{tokens} tokens in wallet", { tokens })}</span>
       </div>
+      {canAfford && (
+        <div className="ch-runway">{t("Your wallet covers ~{drops} drops — about {days} days at this cadence.", { drops: dropsLeft, days: daysLeft })}</div>
+      )}
 
       {error && <div className="ch-err">{error}</div>}
       {!canAfford && <div className="ch-err">{t("You need at least {n} tokens to run a channel —", { n: facelessCost })} <Link to="/web#plans" className="ch-link">{t("top up")}</Link>.</div>}
+      {canAfford && !coversWeek && <div className="ch-warn">{t("Heads up — your wallet won't cover a full week at this cadence (~{n} tokens/wk). The channel pauses itself when it runs low —", { n: weeklyTokens })} <Link to="/web#plans" className="ch-link">{t("top up")}</Link>.</div>}
 
       <button className="ch-go" type="submit" disabled={disabled}>
         <span className="ch-go-flower" aria-hidden="true" />
@@ -333,10 +345,46 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
   );
 }
 
+/* Pausing is reversible, so this is a LIGHT confirm (one arm step) — not the
+ * red arm-to-delete. First tap asks, a second within 4s actually pauses. */
+function PauseForm({ id }: { id: string }) {
+  const t = useT();
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+  return (
+    <Form method="post" onSubmit={(e) => { if (!armed) { e.preventDefault(); setArmed(true); } }}>
+      <input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={id} />
+      <button className={`ch-act${armed ? " warn" : ""}`}>{armed ? t("Pause?") : t("Pause")}</button>
+    </Form>
+  );
+}
+
 function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; facelessCost: number }) {
   const t = useT();
   const paused = s.status === "PAUSED";
   const fmtLabel = FORMATS.find(([k]) => k === s.format)?.[1] || s.format;
+  // "Next drop" is a live countdown — re-render active cards every 30s so it
+  // doesn't read a stale "in 3 min" long after that minute has passed.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (s.status !== "ACTIVE") return;
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [s.status]);
+  // End is permanent, so guard it behind the app's arm-to-confirm: first tap
+  // arms the button, a second within 4s actually ends it. Auto-clears so a
+  // stray tap is harmless. (Same pattern as the Archive delete.)
+  const [armedEnd, setArmedEnd] = useState(false);
+  useEffect(() => {
+    if (!armedEnd) return;
+    const timer = setTimeout(() => setArmedEnd(false), 4000);
+    return () => clearTimeout(timer);
+  }, [armedEnd]);
+  const freshDrop = s.status === "ACTIVE" && s.dropsMade === 0;
   const reasonText: Record<string, string> = {
     "out-of-tokens": t("Out of tokens"),
     "no-accounts": t("No socials linked"),
@@ -350,7 +398,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
           <div className="ch-card-name">{s.name}</div>
           <div className="ch-card-niche">{t(fmtLabel)} · {s.niche}</div>
         </div>
-        <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <>● {t("Running")}</> : <>❙❙ {t("Paused")}</>}</span>
+        <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <><span className="ch-run-dot" aria-hidden="true" /> {t("Running")}</> : <><span className="ch-pause-bars" aria-hidden="true" /> {t("Paused")}</>}</span>
       </div>
 
       <div className="ch-card-meta">
@@ -359,9 +407,11 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
 
-      {s.status === "ACTIVE" && (
-        <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("soon")}</div>
-      )}
+      {freshDrop ? (
+        <div className="ch-next rendering"><span className="ch-next-dot" /> {t("First video rendering…")}</div>
+      ) : s.status === "ACTIVE" ? (
+        <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("any minute now")}</div>
+      ) : null}
       {paused && s.pauseReason && (
         <div className="ch-paused-note">
           {reasonText[s.pauseReason] || t("Paused")}
@@ -373,18 +423,18 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       <div className="ch-card-stats">
         <div><b>{s.dropsMade}</b><span>{t("made")}</span></div>
         <div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div>
-        <Link to="/web/archive?section=creator" className="ch-card-gal">{t("Archive")} →</Link>
+        <Link to="/web/archive?section=creator" className="ch-card-gal">{t("All drops")} →</Link>
       </div>
 
       <div className="ch-card-acts">
         {paused ? (
           <Form method="post"><input type="hidden" name="intent" value="resume" /><input type="hidden" name="id" value={s.id} /><button className="ch-act primary" disabled={tokens < facelessCost}>{t("Resume")}</button></Form>
         ) : (
-          <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="ch-act">{t("Pause")}</button></Form>
+          <PauseForm id={s.id} />
         )}
-        <Form method="post" onSubmit={(e) => { if (!confirm(t("End this channel? It stops making new videos (your Archive keeps everything)."))) e.preventDefault(); }}>
+        <Form method="post" onSubmit={(e) => { if (!armedEnd) { e.preventDefault(); setArmedEnd(true); } }}>
           <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} />
-          <button className="ch-act ghost">{t("End")}</button>
+          <button className={`ch-act ghost${armedEnd ? " armed" : ""}`} title={armedEnd ? t("Tap again to end — the channel stops making new videos") : t("End this channel")}>{armedEnd ? t("Tap again to end") : t("End")}</button>
         </Form>
       </div>
     </div>
@@ -392,7 +442,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
 }
 
 const CH_CSS = `
-.ch{--l:#E7E2D2;--ink:#14201A;--ink2:#5B6B61;--ink3:#8A968E;--g:#0C7A46;--g2:#12A85E;
+.ch{--l:#E7E2D2;--ink:#14201A;--ink2:#5B6B61;--ink3:#8A968E;--g:#0C7A46;--g2:#12A85E;--paper:#FFFDF7;
   --sh-sm:0 1px 2px rgba(20,32,26,.05);--sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);
   max-width:960px;margin:0 auto;padding:14px 16px 64px;font-family:Poppins,sans-serif;color:var(--ink);}
 .ch-srcswitch{display:inline-flex;gap:4px;background:#fff;border:1px solid #E2DCC8;border-radius:999px;padding:4px;margin:0 0 16px;}
@@ -405,6 +455,7 @@ const CH_CSS = `
 .ch-accent{background:linear-gradient(120deg,var(--g2),var(--g));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700;}
 .ch-newbtn{flex:0 0 auto;font:inherit;font-weight:700;font-size:13px;color:var(--g);background:#fff;border:1px solid var(--l);border-radius:999px;padding:9px 16px;cursor:pointer;box-shadow:var(--sh-sm);transition:all .12s;}
 .ch-newbtn:hover{transform:translateY(-1px);box-shadow:var(--sh-md);}
+.ch-plus{font-weight:800;font-size:15px;line-height:1;color:var(--g);}
 .ch-upsell{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--l);border-radius:18px;padding:18px 20px;box-shadow:var(--sh-sm);margin-bottom:22px;}
 .ch-upsell-ic{font-size:30px;}
 .ch-upsell b{font-size:15px;} .ch-upsell p{margin:2px 0 0;color:var(--ink2);font-size:13px;}
@@ -412,7 +463,7 @@ const CH_CSS = `
 /* setup */
 .ch-setup{position:relative;background:#fff;border:1px solid var(--l);border-radius:22px;padding:22px;box-shadow:var(--sh-md),inset 0 0 0 1px rgba(231,200,121,.22);margin-bottom:26px;}
 .ch-setup-head{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;margin-bottom:14px;}
-.ch-spark{color:#C79A2E;}
+.ch-spark{color:#C79A2E;display:inline-flex;align-items:center;}
 .ch-x{margin-left:auto;border:0;background:transparent;color:var(--ink3);font-size:15px;cursor:pointer;line-height:1;}
 .ch-lbl{display:block;font-weight:700;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink2);margin:16px 0 8px;}
 .ch-lbl:first-of-type{margin-top:0;}
@@ -444,6 +495,9 @@ const CH_CSS = `
 .ch-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 4px;font-size:13px;color:var(--ink2);}
 .ch-summary b{color:var(--ink);} .ch-bal{color:var(--ink3);font-size:12px;}
 .ch-err{background:#FDECEC;border:1px solid #F3C9C9;color:#A4342E;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-top:12px;}
+.ch-hint{margin-top:8px;font-size:12px;color:#8A7A3A;font-weight:600;}
+.ch-runway{margin-top:6px;font-size:12px;color:var(--ink3);font-weight:600;}
+.ch-warn{background:#FBF4E4;border:1px solid #EBD9A6;color:#8A6D1E;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-top:12px;}
 .ch-go{position:relative;isolation:isolate;overflow:hidden;width:100%;margin-top:14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;font:inherit;font-weight:800;font-size:15px;color:#fff;padding:15px 22px;border-radius:15px;transition:transform .1s,box-shadow .1s,filter .1s;
   background:linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530);box-shadow:0 4px 14px rgba(12,122,70,.32),inset 0 0 0 1px rgba(231,200,121,.34);}
 .ch-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:11px;pointer-events:none;}
@@ -461,12 +515,18 @@ const CH_CSS = `
 .ch-card-name{font-weight:800;font-size:16px;letter-spacing:-.01em;}
 .ch-card-niche{color:var(--ink3);font-size:12px;font-weight:500;margin-top:2px;max-width:30ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ch-badge{flex:0 0 auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;}
-.ch-badge.live{color:var(--green);background:#EAF6EF;}
+.ch-badge{display:inline-flex;align-items:center;gap:5px;}
+.ch-badge.live{color:var(--g);background:#EAF6EF;}
 .ch-badge.off{color:#8A7A3A;background:#F6F0DE;}
+.ch-run-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 0 rgba(18,168,94,.5);animation:chPulse 1.8s ease-out infinite;}
+@keyframes chPulse{0%{box-shadow:0 0 0 0 rgba(18,168,94,.5)}70%{box-shadow:0 0 0 5px rgba(18,168,94,0)}100%{box-shadow:0 0 0 0 rgba(18,168,94,0)}}
+.ch-pause-bars{width:8px;height:9px;flex:0 0 auto;background:linear-gradient(to right,currentColor 0 36%,transparent 36% 64%,currentColor 64% 100%);border-radius:1px;}
 .ch-card-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0;font-size:12px;color:var(--ink2);font-weight:600;}
 .ch-card-meta b{color:var(--ink);}
 .ch-next{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--g);font-weight:700;}
 .ch-next-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 3px rgba(18,168,94,.18);}
+.ch-next.rendering{color:var(--ink2);}
+.ch-next.rendering .ch-next-dot{animation:chPulse 1.4s ease-out infinite;}
 .ch-paused-note{font-size:12.5px;color:#8A7A3A;font-weight:600;}
 .ch-card-stats{display:flex;align-items:center;gap:20px;margin:14px 0;padding:12px 0;border-top:1px solid #F0ECDE;border-bottom:1px solid #F0ECDE;}
 .ch-card-stats>div{display:flex;flex-direction:column;}
@@ -479,6 +539,9 @@ const CH_CSS = `
 .ch-act:disabled{opacity:.4;cursor:not-allowed;}
 .ch-act.primary{background:#EAF6EF;border-color:var(--g);color:var(--g);}
 .ch-act.ghost{color:var(--ink3);} .ch-act.ghost:hover{color:#A4342E;border-color:#E6B9B6;background:#FDF3F2;}
+.ch-act.warn{background:#FBF4E4;border-color:#EBD9A6;color:#8A6D1E;}
+.ch-act.ghost.armed{background:#8C2E1B;border-color:#8C2E1B;color:#fff;animation:chArm .18s ease;}
+@keyframes chArm{from{transform:scale(.94)}to{transform:scale(1)}}
 .ch-empty{margin-top:10px;padding:22px;border-radius:16px;background:#fff;border:1px dashed var(--l);font-size:14px;color:var(--ink2);text-align:center;}
 .ch-link{color:var(--g);font-weight:700;background:none;border:0;cursor:pointer;font:inherit;text-decoration:underline;padding:0;}
 @media(max-width:560px){.ch-row2{grid-template-columns:1fr;}.ch-modes{grid-template-columns:1fr;}.ch-title{font-size:25px;}}

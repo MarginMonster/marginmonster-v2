@@ -13,7 +13,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useT, useUiLang } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
@@ -366,7 +366,10 @@ export default function WebCampaigns() {
   const plan = d.plans.find((p) => p.key === planKey) || d.plans[0];
   const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
   const [castQ, setCastQ] = useState("");
-  const [picked, setPicked] = useState<number[]>(d.catalog.length ? [0] : []);
+  // Start with NOTHING pre-selected: auto-picking product #0 let a merchant skim
+  // past the grid and launch a paid month featuring only product 1 without ever
+  // consciously choosing it. The Start button already guards on !picked.length.
+  const [picked, setPicked] = useState<number[]>([]);
   const [reviewMode, setReviewMode] = useState<"REVIEW_FIRST" | "SET_AND_FORGET">("SET_AND_FORGET");
   // ?pick=<assetId> arrives from the Creator Gallery's "Use in a campaign"
   // bridge — open the launcher straight onto the "schedule what I've made"
@@ -400,6 +403,9 @@ export default function WebCampaigns() {
   const cap = plan?.bagSize ?? 6;
   const toggleProduct = (i: number) =>
     setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length >= cap ? p : [...p, i]));
+  // Switching to a smaller-bag plan must trim the selection — otherwise the
+  // counter reads "10 of 6" and launch() would post the overflow past the cap.
+  useEffect(() => { setPicked((p) => (p.length > cap ? p.slice(0, cap) : p)); }, [cap]);
 
   const repost = () => {
     submit(

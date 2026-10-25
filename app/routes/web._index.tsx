@@ -3,7 +3,7 @@
 
 import { json, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit, useNavigate, useOutletContext, Link } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { Ico } from "../lib/icons";
@@ -389,6 +389,17 @@ export default function WebDashboard() {
       window.history.replaceState({}, "", u.toString());
     } catch { /* cosmetic */ }
   };
+  // Make the celebration modal keyboard-complete: Escape closes it, the primary
+  // CTA takes focus on open, and focus returns to wherever it was on close.
+  const successCtaRef = useRef<HTMLAnchorElement | null>(null);
+  useEffect(() => {
+    if (!success) return;
+    const prev = document.activeElement as HTMLElement | null;
+    successCtaRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeSuccess(); };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); prev?.focus?.(); };
+  }, [success]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Launch tracker: auto-hides once every step is done; dismissible (per
   // browser) once you've seen it through.
@@ -398,6 +409,10 @@ export default function WebDashboard() {
 
   // ── Billing period toggle + referral input.
   const [annual, setAnnual] = useState(false);
+  // Brand "about" is silently truncated server-side at 600 — mirror that cap in
+  // the field and show a live counter so nothing the merchant types is quietly lost.
+  const ABOUT_MAX = 600;
+  const [aboutLen, setAboutLen] = useState((d.brand?.about || "").length);
   const [refInput, setRefInput] = useState("");
   const [refCopied, setRefCopied] = useState(false);
   const referralApplied = !!(actionData && "referralApplied" in actionData);
@@ -451,7 +466,7 @@ export default function WebDashboard() {
         <form className="wd-hero-ask" onSubmit={(e) => { e.preventDefault(); askHelpurr(); }}>
           <span className="wd-hero-spark" aria-hidden="true"><Ico n="sparkle" size={17} /></span>
           <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder={t("Ask Helpurr anything — or tell it what to make…")} aria-label={t("Ask Helpurr")} />
-          <button type="submit" className="wd-hero-send" aria-label={t("Ask Helpurr")}>➤</button>
+          <button type="submit" className="wd-hero-send" aria-label={t("Ask Helpurr")}><Ico n="bolt" size={18} /></button>
         </form>
         <div className="wd-hero-chips">
           {heroChips.map((c) => <button key={c} type="button" onClick={() => openHelpurr(c)}>{c}</button>)}
@@ -459,20 +474,22 @@ export default function WebDashboard() {
         <div className="wd-hero-paths">
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
-            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
+            <button type="button" aria-pressed={mode === "casual"} className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Creator · Free roam")}</span>
                 <b>{t("Create anything")}</b>
                 <i>{t("Make images, videos & music")}</i>
+                <span className="wd-path-cue">{mode === "casual" ? <><span className="wd-path-dot on" aria-hidden="true" />{t("Current mode")}</> : <><Ico n="refresh" size={12} />{t("Switch to Creator mode")}</>}</span>
               </span>
             </button>
-            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
+            <button type="button" aria-pressed={mode === "marketing"} className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Social")}</span>
                 <b>{t("Grow on social")}</b>
                 <i>{t("Turn products into ads & auto-post")}</i>
+                <span className="wd-path-cue">{mode === "marketing" ? <><span className="wd-path-dot on" aria-hidden="true" />{t("Current mode")}</> : <><Ico n="refresh" size={12} />{t("Switch to Social mode")}</>}</span>
               </span>
             </button>
           </div>
@@ -489,7 +506,7 @@ export default function WebDashboard() {
       </p>
 
       {success && (
-        <div className="ws-scrim" role="dialog" aria-label={t("Purchase confirmed")} onClick={closeSuccess}>
+        <div className="ws-scrim" role="dialog" aria-modal="true" aria-label={t("Purchase confirmed")} onClick={closeSuccess}>
           <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
             <span className="ws-mrose" aria-hidden="true" />
             <div className="ws-mi"><Ico n={success.kind === "plan" ? "check" : "coin"} size={30} /></div>
@@ -514,7 +531,7 @@ export default function WebDashboard() {
                 <p className="ws-mp">{t("They're landing on your balance now — spend them on anything your plan unlocks.")}</p>
               </>
             )}
-            <Link className="wb-btn ws-mcta" to="/web/studio" onClick={closeSuccess}>{t("Open the Studio")} →</Link>
+            <Link ref={successCtaRef} className="wb-btn ws-mcta" to="/web/studio" onClick={closeSuccess}>{t("Open the Studio")} →</Link>
             <button type="button" className="ws-mclose" onClick={closeSuccess}>{t("Not now")}</button>
           </div>
         </div>
@@ -560,7 +577,7 @@ export default function WebDashboard() {
           <div className="wdw-big">
             {d.week.made > 0
               ? <>{t("This week you made")} <b>{d.week.made}</b> {d.week.made === 1 ? t("piece") : t("pieces")}{d.week.posted > 0 ? <> {t("and posted")} <b>{d.week.posted}</b></> : null}.</>
-              : t("Nothing made this week yet — the Studio is one click away.")}
+              : <>{t("Nothing made this week yet — the Studio is one click away.")}{" "}<Link className="wdw-review" to="/web/studio">{t("Open the Studio")} →</Link></>}
           </div>
           <div className="wdw-row">
             <div className="wdw-st"><div className="n">{d.week.made}</div><div className="k">{t("Made")}</div></div>
@@ -619,7 +636,7 @@ export default function WebDashboard() {
           <div className="wd-voice">
             {d.brand.tagline && <div className="wdv-quote">“{d.brand.tagline}”</div>}
             <div className="wdv-chips">
-              {d.brand.tone && <span className="wdv-chip tone">{d.brand.tone}</span>}
+              {d.brand.tone && <span className="wdv-chip tone" title={d.brand.tone}>{d.brand.tone}</span>}
               {d.brand.about && <span className="wdv-chip">{d.brand.about.length > 90 ? `${d.brand.about.slice(0, 90)}…` : d.brand.about}</span>}
             </div>
           </div>
@@ -627,7 +644,8 @@ export default function WebDashboard() {
         <Form method="post">
           <input type="hidden" name="intent" value="brand" />
           <label className="wb-lbl">{t("What do you sell, and to whom?")}</label>
-          <textarea className="wb-ta" name="about" placeholder={t("Handmade ceramic mugs for coffee people who like slow mornings…")} defaultValue={d.brand?.about || ""} />
+          <textarea className="wb-ta" name="about" maxLength={ABOUT_MAX} placeholder={t("Handmade ceramic mugs for coffee people who like slow mornings…")} defaultValue={d.brand?.about || ""} onChange={(e) => setAboutLen(e.target.value.length)} />
+          <div className="wb-count" aria-live="polite">{t("{n}/{max}", { n: aboutLen, max: ABOUT_MAX })}</div>
           <label className="wb-lbl">{t("Tone (optional)")}</label>
           <input className="wb-in" name="tone" placeholder={t("warm, playful, a little cheeky")} defaultValue={d.brand?.tone || ""} />
           <label className="wb-lbl">{t("Tagline (optional)")}</label>
@@ -654,7 +672,7 @@ export default function WebDashboard() {
           const isCurrent = d.tier === tier.key;
           return (
           <div className={`wb-card wd-plancard${tier.highlight ? " hot" : ""}`} key={tier.key}>
-            {tier.highlight && <div className="wd-ribbon">{t("Most popular")}</div>}
+            {tier.highlight && !isCurrent && <div className="wd-ribbon">{t("Most popular")}</div>}
             <div className="wb-price-name">{tier.name} {isCurrent && t("· your plan ✓")}</div>
             <div className="wd-tagline">{t(tier.tagline)}</div>
             <div className="wb-price-amt">
@@ -669,11 +687,12 @@ export default function WebDashboard() {
                 merchant is already on — which had no buy button, because the
                 subscribe form only renders for OTHER tiers. Say the path. */}
             {isCurrent && annual && (
-              <p className="wb-note" style={{ marginTop: 8 }}>
-                {t("Already on this plan. To move it to annual billing, email")}{" "}
-                <a href="mailto:hello@easymodeapp.com?subject=Switch%20me%20to%20annual%20billing">hello@easymodeapp.com</a>{" "}
-                {t("and we'll switch it over without you losing the period you've paid for.")}
-              </p>
+              <>
+                <p className="wb-note" style={{ marginTop: 8 }}>
+                  {t("Already on this plan — we'll move it to annual billing without you losing the period you've paid for.")}
+                </p>
+                <a className="wb-btn ghost" style={{ marginTop: 8, display: "inline-block" }} href="mailto:hello@easymodeapp.com?subject=Switch%20me%20to%20annual%20billing">{t("Request annual switch")}</a>
+              </>
             )}
             {isCurrent && d.billingOn && (
               d.cancelPending ? (
@@ -817,9 +836,9 @@ export default function WebDashboard() {
               the same condition applyReferralCode enforces. */}
           {!d.referral.canEarn && !d.referral.referredBy && !referralApplied && (
             <div className="wdr-enter">
-              <label className="wb-lbl" style={{ margin: "0 0 6px" }}>{t("Got a code from someone?")}</label>
+              <label className="wb-lbl" htmlFor="wd-refcode" style={{ margin: "0 0 6px" }}>{t("Got a code from someone?")}</label>
               <div className="wdr-row">
-                <input className="wb-in" value={refInput} maxLength={12} placeholder={t("ENTER CODE")} onChange={(e) => setRefInput(e.target.value.toUpperCase())} />
+                <input id="wd-refcode" className="wb-in" value={refInput} maxLength={12} placeholder={t("ENTER CODE")} onChange={(e) => setRefInput(e.target.value.toUpperCase())} />
                 <button
                   type="button"
                   className="wb-btn ghost"
@@ -861,7 +880,7 @@ const DASH_CSS = `
 .wd-hero-spark{flex:0 0 auto;display:grid;place-items:center;color:var(--gold,#B08526);}
 .wd-hero-ask input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:16px;color:var(--ink);min-width:0;}
 .wd-hero-ask input::placeholder{color:#97a19a;}
-.wd-hero-send{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
+.wd-hero-send{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;color:#fff;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--green2,#12A85E) 40%,var(--green));box-shadow:0 3px 10px rgba(12,122,70,.3);transition:filter .12s,transform .12s;}
 .wd-hero-send:hover{filter:brightness(1.07);transform:translateY(-1px);}
 .wd-hero-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px;}
@@ -890,6 +909,12 @@ const DASH_CSS = `
 .wd-hero-paths-row .wd-path-img:first-child .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
 .wd-path-body b{font-weight:800;font-size:14.5px;color:var(--ink);font-family:Poppins,sans-serif;}
 .wd-path-body i{font-style:normal;font-size:11.5px;color:var(--ink2);line-height:1.35;}
+/* Subtle cue that these cards FLIP the app's mode — shows "Current mode" with a
+   dot when already active, or a "Switch to …" hint (with a swap glyph) otherwise. */
+.wd-path-cue{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-weight:700;font-size:10.5px;letter-spacing:.02em;color:var(--green);}
+.wd-path-img:first-child .wd-path-cue{color:var(--gold-deep,#7E5E13);}
+.wd-path-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(18,168,94,.16);}
+.wd-path-img:first-child .wd-path-dot{box-shadow:0 0 0 3px rgba(176,133,38,.16);}
 .wd-path-studio{width:100%;margin-top:10px;}
 .wd-plan-line{text-align:center;margin:0 0 20px;}
 @media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
@@ -986,12 +1011,15 @@ const DASH_CSS = `
 .wdr-enter{flex:1 1 240px;}
 .wdr-row{display:flex;gap:8px;}
 .wdr-row input{flex:1;letter-spacing:.12em;font-weight:700;text-transform:uppercase;}
+/* brand "about" live char counter — sits flush-right under the textarea */
+.wb-count{text-align:right;font-size:11px;color:var(--ink2);margin:4px 2px 0;font-variant-numeric:tabular-nums;}
 /* brand voice readout */
 .wd-voice{margin:12px 0 2px;}
 .wdv-quote{font-family:Poppins,sans-serif;font-weight:700;font-size:15px;color:var(--ink);margin-bottom:8px;}
 .wdv-chips{display:flex;gap:8px;flex-wrap:wrap;}
-.wdv-chip{font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600;}
-.wdv-chip.tone{color:#0A3D26;background:#EAF6EF;border-color:#BFE2CD;}
+.wdv-chip{font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wdv-chip.tone{color:#0A3D26;background:#EAF6EF;border-color:#BFE2CD;max-width:min(260px,100%);}
 /* Action-feedback toast — fixed top-center so confirmation/errors from any
    control on the page are seen, not stranded at the body top. Reuses the
    .wb-ok/.wb-err colours; this only repositions + adds the dismiss ✕. */

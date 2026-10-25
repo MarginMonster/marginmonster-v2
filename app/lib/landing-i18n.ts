@@ -36,6 +36,18 @@ export interface LandingCopy {
   compare: { eyebrow: string; h2a: string; h2b: string; sub: string; themH: string; usH: string; them: string[]; us: string[] };
   band: { h2: string; p: string; cta: string };
   footer: { copy: string };
+  /** The ▶ caption under the hero video. Optional → EN fallback. */
+  heroTag?: string;
+  /** Footer nav link labels (destinations are routes, not translated). Optional → EN fallback. */
+  footerNav?: { pricing: string; privacy: string; terms: string; contact: string; affiliates: string };
+  /** The anonymous Helpurr chat — the no-signup front door. Proper nouns
+   *  (Helpurr, EasyMode) stay as-is. Optional → EN fallback. */
+  chat?: {
+    eyebrow: string; h2: string; sub: string;
+    greeting: string; chips: string[];
+    placeholder: string; capFirst: string; capMore: string;
+    foot: string; footLink: string; error: string; retry: string;
+  };
   /** The AI trust strip — provider names themselves are proper nouns and
    *  never translated; only the framing copy is. Optional so older language
    *  packs fall back to English until translated. */
@@ -131,7 +143,7 @@ const EN: LandingCopy = {
     eyebrow: "Questions",
     h2: "The stuff people ask.",
     items: [
-      { q: "How do tokens work?", a: "Your plan unlocks WHICH generators you can use (Starter: images & articles; Studio & Legend: every generator, video through Anthem). Tokens meter HOW MUCH you generate — every plan refills monthly, and you can top up any time. Tokens never unlock a generator your plan doesn't include." },
+      { q: "How do tokens work?", a: "Your plan unlocks WHICH generators you can use (Starter: images & articles; Studio & Anthem: every generator, video through Anthem). Tokens meter HOW MUCH you generate — every plan refills monthly, and you can top up any time. Tokens never unlock a generator your plan doesn't include." },
       { q: "What does the free trial include?", a: "7 days with every generator unlocked — real videos, cartoon styles, even your Anthem — on your plan's token allowance, up to 400. Cancel before day 7 and you pay nothing." },
       { q: "What happens if I downgrade?", a: "Everything you've kept or posted stays in your archive. Only NEW generation is gated by your current plan." },
       { q: "Is the content labeled as AI?", a: "Yes — every post EasyMode publishes carries the #EasyModeAi tag, keeping your store on the right side of AI-disclosure norms and FTC guidance." },
@@ -163,6 +175,22 @@ const EN: LandingCopy = {
     cta: "Get EasyMode",
   },
   footer: { copy: "Create anything. Market everything. On easy mode." },
+  heroTag: "▶ Real output — generated & voiced by EasyMode",
+  footerNav: { pricing: "Pricing", privacy: "Privacy", terms: "Terms", contact: "Contact", affiliates: "Affiliates" },
+  chat: {
+    eyebrow: "Meet Helpurr",
+    h2: "Chat free. No signup.",
+    sub: "Your AI creative buddy — ask anything, brainstorm, plan a post. When you want to actually make it, a free account takes two seconds.",
+    greeting: "Hey — I’m Helpurr. 🐾 What are you working on? Ask me anything, or tell me what you’d love to make.",
+    chips: ["Give me a TikTok idea for my product", "Write me a punchy ad caption", "What should I post this week?"],
+    placeholder: "Message Helpurr…",
+    capFirst: "Create a free account to keep chatting — no card needed.",
+    capMore: "Loving it? Create a free account to keep chatting, save this & start making — no card needed.",
+    foot: "Free preview · {link} to save chats, start new ones & make images",
+    footLink: "Sign up",
+    error: "Helpurr hit a snag — mind trying again?",
+    retry: "Retry",
+  },
   powered: { eyebrow: "Powered by frontier AI", note: "Claude, Kling, MiniMax and more, wired into one pipeline and pointed at your catalog. Every ad is built, quality-checked against your real product photo, then approved by you before it ships." },
   autopost: { eyebrow: "Made here. Posted everywhere.", note: "Link your socials once and every approved piece can publish itself — AI caption, per-platform hashtags, and the AI-disclosure tag Meta now requires, handled automatically.", points: ["One-tap posting to TikTok, Instagram & Facebook", "Big-studio output at a budget price — plans from $19/mo", "AI-disclosure compliant captions, so ads don't get rejected"] },
   entry: {
@@ -251,7 +279,7 @@ const ES: LandingCopy = {
     eyebrow: "Preguntas",
     h2: "Lo que todos preguntan.",
     items: [
-      { q: "¿Cómo funcionan los tokens?", a: "Tu plan desbloquea QUÉ generadores puedes usar (Starter: imágenes y artículos; Studio y Legend: todos los generadores). Los tokens miden CUÁNTO generas — cada plan se recarga mensualmente y puedes comprar más cuando quieras. Los tokens nunca desbloquean un generador que tu plan no incluye." },
+      { q: "¿Cómo funcionan los tokens?", a: "Tu plan desbloquea QUÉ generadores puedes usar (Starter: imágenes y artículos; Studio y Anthem: todos los generadores). Los tokens miden CUÁNTO generas — cada plan se recarga mensualmente y puedes comprar más cuando quieras. Los tokens nunca desbloquean un generador que tu plan no incluye." },
       { q: "¿Qué incluye la prueba gratis?", a: "7 días con todos los generadores desbloqueados — videos reales, estilos cartoon e incluso tu Anthem — con la asignación de tokens de tu plan, hasta 400. Cancela antes del día 7 y no pagas nada." },
       { q: "¿Qué pasa si bajo de plan?", a: "Todo lo que guardaste o publicaste queda en tu archivo. Solo la NUEVA generación depende de tu plan actual." },
       { q: "¿El contenido se marca como IA?", a: "Sí — cada publicación de EasyMode lleva la etiqueta #EasyModeAi, manteniendo tu tienda en regla con las normas de divulgación de IA." },
@@ -283,6 +311,22 @@ const ES: LandingCopy = {
     cta: "Consigue EasyMode",
   },
   footer: { copy: "Crea lo que sea. Vende de todo. En modo fácil." },
+  heroTag: "▶ Producción real — generada y narrada por EasyMode",
+  footerNav: { pricing: "Precios", privacy: "Privacidad", terms: "Términos", contact: "Contacto", affiliates: "Afiliados" },
+  chat: {
+    eyebrow: "Conoce a Helpurr",
+    h2: "Chatea gratis. Sin registro.",
+    sub: "Tu compañero creativo con IA — pregunta lo que sea, haz lluvia de ideas, planea una publicación. Cuando quieras crearlo de verdad, una cuenta gratis toma dos segundos.",
+    greeting: "Hola — soy Helpurr. 🐾 ¿En qué estás trabajando? Pregúntame lo que sea, o dime qué te encantaría crear.",
+    chips: ["Dame una idea de TikTok para mi producto", "Escríbeme un texto de anuncio con gancho", "¿Qué debería publicar esta semana?"],
+    placeholder: "Escríbele a Helpurr…",
+    capFirst: "Crea una cuenta gratis para seguir chateando — sin tarjeta.",
+    capMore: "¿Te gusta? Crea una cuenta gratis para seguir chateando, guardar esto y empezar a crear — sin tarjeta.",
+    foot: "Vista previa gratis · {link} para guardar chats, empezar nuevos y crear imágenes",
+    footLink: "Regístrate",
+    error: "Helpurr tuvo un problemita — ¿lo intentas de nuevo?",
+    retry: "Reintentar",
+  },
   entry: {
     h2: "Empieza gratis. Hazlo ilimitado por $6.99.",
     sub: "Chatea con Helpurr y crea un par de cosas al día, gratis — sin tarjeta. Pásate a ilimitado con Creator, o añade marketing para tu tienda cuando quieras.",
@@ -371,7 +415,7 @@ const FR: LandingCopy = {
     eyebrow: "Questions",
     h2: "Ce qu'on nous demande.",
     items: [
-      { q: "Comment fonctionnent les tokens ?", a: "Votre formule débloque QUELS générateurs vous pouvez utiliser (Starter : images et articles ; Studio et Legend : tous les générateurs). Les tokens mesurent COMBIEN vous générez — chaque formule se recharge tous les mois, et vous pouvez en acheter à tout moment. Les tokens ne débloquent jamais un générateur absent de votre formule." },
+      { q: "Comment fonctionnent les tokens ?", a: "Votre formule débloque QUELS générateurs vous pouvez utiliser (Starter : images et articles ; Studio et Anthem : tous les générateurs). Les tokens mesurent COMBIEN vous générez — chaque formule se recharge tous les mois, et vous pouvez en acheter à tout moment. Les tokens ne débloquent jamais un générateur absent de votre formule." },
       { q: "Que comprend l'essai gratuit ?", a: "7 jours avec tous les générateurs débloqués — vraies vidéos, styles cartoon et même votre Anthem — avec l'allocation de tokens de votre plan, jusqu'à 400. Annulez avant le 7e jour et vous ne payez rien." },
       { q: "Que se passe-t-il si je rétrograde ?", a: "Tout ce que vous avez gardé ou publié reste dans vos archives. Seule la NOUVELLE génération dépend de votre formule actuelle." },
       { q: "Le contenu est-il signalé comme IA ?", a: "Oui — chaque publication d'EasyMode porte le tag #EasyModeAi, gardant votre boutique en règle avec les normes de transparence sur l'IA." },
@@ -403,6 +447,22 @@ const FR: LandingCopy = {
     cta: "Adopter EasyMode",
   },
   footer: { copy: "Crée tout. Vends tout. En mode facile." },
+  heroTag: "▶ Vrai rendu — généré et doublé par EasyMode",
+  footerNav: { pricing: "Tarifs", privacy: "Confidentialité", terms: "Conditions", contact: "Contact", affiliates: "Affiliés" },
+  chat: {
+    eyebrow: "Rencontrez Helpurr",
+    h2: "Discutez gratuitement. Sans inscription.",
+    sub: "Votre compagnon créatif IA — demandez n'importe quoi, brainstormez, planifiez un post. Quand vous voulez vraiment le créer, un compte gratuit prend deux secondes.",
+    greeting: "Salut — je suis Helpurr. 🐾 Sur quoi travaillez-vous ? Demandez-moi n'importe quoi, ou dites-moi ce que vous aimeriez créer.",
+    chips: ["Donne-moi une idée TikTok pour mon produit", "Écris-moi une légende d'annonce percutante", "Que devrais-je publier cette semaine ?"],
+    placeholder: "Écrire à Helpurr…",
+    capFirst: "Créez un compte gratuit pour continuer à discuter — sans carte.",
+    capMore: "Ça vous plaît ? Créez un compte gratuit pour continuer à discuter, enregistrer ceci et commencer à créer — sans carte.",
+    foot: "Aperçu gratuit · {link} pour enregistrer vos discussions, en démarrer de nouvelles et créer des images",
+    footLink: "Inscrivez-vous",
+    error: "Helpurr a eu un souci — on réessaie ?",
+    retry: "Réessayer",
+  },
   entry: {
     h2: "Commence gratuitement. Illimité pour $6.99.",
     sub: "Discute avec Helpurr et crée deux-trois choses par jour, gratuitement — sans carte. Passe en illimité avec Creator, ou ajoute le marketing de ta boutique quand tu veux.",
@@ -491,7 +551,7 @@ const DE: LandingCopy = {
     eyebrow: "Fragen",
     h2: "Was alle wissen wollen.",
     items: [
-      { q: "Wie funktionieren Tokens?", a: "Dein Plan schaltet frei, WELCHE Generatoren du nutzen kannst (Starter: Bilder & Artikel; Studio & Legend: alle Generatoren). Tokens messen, WIE VIEL du erzeugst — jeder Plan lädt monatlich auf, und du kannst jederzeit nachkaufen. Tokens schalten nie einen Generator frei, den dein Plan nicht enthält." },
+      { q: "Wie funktionieren Tokens?", a: "Dein Plan schaltet frei, WELCHE Generatoren du nutzen kannst (Starter: Bilder & Artikel; Studio & Anthem: alle Generatoren). Tokens messen, WIE VIEL du erzeugst — jeder Plan lädt monatlich auf, und du kannst jederzeit nachkaufen. Tokens schalten nie einen Generator frei, den dein Plan nicht enthält." },
       { q: "Was ist im Gratis-Test enthalten?", a: "7 Tage mit allen Generatoren freigeschaltet — echte Videos, Cartoon-Styles und sogar dein Anthem — mit dem Token-Guthaben deines Plans, bis zu 400. Kündige vor Tag 7 und zahlst nichts." },
       { q: "Was passiert beim Downgrade?", a: "Alles, was du behalten oder gepostet hast, bleibt in deinem Archiv. Nur NEUE Generierungen richten sich nach deinem aktuellen Plan." },
       { q: "Wird der Content als KI gekennzeichnet?", a: "Ja — jeder Post von EasyMode trägt den Tag #EasyModeAi und hält deinen Shop damit konform mit KI-Kennzeichnungsnormen." },
@@ -523,6 +583,22 @@ const DE: LandingCopy = {
     cta: "EasyMode holen",
   },
   footer: { copy: "Erstelle alles. Vermarkte alles. Im Easy-Mode." },
+  heroTag: "▶ Echter Output — von EasyMode erstellt & vertont",
+  footerNav: { pricing: "Preise", privacy: "Datenschutz", terms: "AGB", contact: "Kontakt", affiliates: "Partner" },
+  chat: {
+    eyebrow: "Lerne Helpurr kennen",
+    h2: "Chatte gratis. Ohne Anmeldung.",
+    sub: "Dein kreativer KI-Buddy — frag alles, sammle Ideen, plane einen Post. Wenn du es wirklich erstellen willst, dauert ein kostenloses Konto zwei Sekunden.",
+    greeting: "Hey — ich bin Helpurr. 🐾 Woran arbeitest du gerade? Frag mich alles, oder sag mir, was du gern erstellen würdest.",
+    chips: ["Gib mir eine TikTok-Idee für mein Produkt", "Schreib mir eine knackige Anzeigen-Caption", "Was soll ich diese Woche posten?"],
+    placeholder: "Nachricht an Helpurr…",
+    capFirst: "Erstelle ein kostenloses Konto, um weiterzuchatten — ohne Karte.",
+    capMore: "Gefällt's dir? Erstelle ein kostenloses Konto, um weiterzuchatten, das zu speichern und loszulegen — ohne Karte.",
+    foot: "Kostenlose Vorschau · {link}, um Chats zu speichern, neue zu starten & Bilder zu erstellen",
+    footLink: "Registrieren",
+    error: "Helpurr hatte einen Aussetzer — nochmal versuchen?",
+    retry: "Erneut versuchen",
+  },
   entry: {
     h2: "Starte gratis. Für $6.99 wird's unbegrenzt.",
     sub: "Chatte mit Helpurr und erstelle täglich ein paar Dinge, gratis — ohne Karte. Mit Creator wird alles unbegrenzt, oder füge jederzeit Shop-Marketing hinzu.",
@@ -611,7 +687,7 @@ const ZH: LandingCopy = {
     eyebrow: "常见问题",
     h2: "大家常问的。",
     items: [
-      { q: "代币是怎么用的？", a: "套餐决定你能用哪些生成器（Starter：图片和文章；Studio 与 Legend：全部生成器）。代币决定你能生成多少 — 每月自动补充，也可随时充值。代币永远不能解锁套餐之外的生成器。" },
+      { q: "代币是怎么用的？", a: "套餐决定你能用哪些生成器（Starter：图片和文章；Studio 与 Anthem：全部生成器）。代币决定你能生成多少 — 每月自动补充，也可随时充值。代币永远不能解锁套餐之外的生成器。" },
       { q: "免费试用包含什么？", a: "7 天全部生成器解锁 — 真正的视频、卡通风格、甚至你的 Anthem — 按你所选套餐的代币额度，最多 400。第 7 天前取消则分文不付。" },
       { q: "降级会怎样？", a: "你保留或发布过的内容都保留在档案库里。只有新的生成受当前套餐限制。" },
       { q: "内容会标注为 AI 吗？", a: "会 — EasyMode 发布的每条内容都带 #EasyModeAi 标签，让你的店铺符合 AI 披露规范。" },
@@ -643,6 +719,22 @@ const ZH: LandingCopy = {
     cta: "获取 EasyMode",
   },
   footer: { copy: "创意无限，营销无界，一切轻松搞定。" },
+  heroTag: "▶ 真实作品 — 由 EasyMode 生成并配音",
+  footerNav: { pricing: "价格", privacy: "隐私", terms: "条款", contact: "联系我们", affiliates: "合作推广" },
+  chat: {
+    eyebrow: "认识 Helpurr",
+    h2: "免费聊天，无需注册。",
+    sub: "你的 AI 创意伙伴 — 什么都能问、一起头脑风暴、规划帖子。等你真想动手做时，免费账号两秒就能搞定。",
+    greeting: "嘿 — 我是 Helpurr。🐾 你在忙什么？随便问我，或者告诉我你想做点什么。",
+    chips: ["给我一个适合我产品的 TikTok 点子", "帮我写一句有冲击力的广告文案", "这周我该发什么？"],
+    placeholder: "给 Helpurr 发消息…",
+    capFirst: "创建免费账号即可继续聊天 — 无需信用卡。",
+    capMore: "喜欢吗？创建免费账号即可继续聊天、保存内容并开始创作 — 无需信用卡。",
+    foot: "免费预览 · {link}即可保存聊天、开启新对话并生成图片",
+    footLink: "注册",
+    error: "Helpurr 出了点小状况 — 再试一次好吗？",
+    retry: "重试",
+  },
   entry: {
     h2: "免费开始，$6.99 畅享无限。",
     sub: "和 Helpurr 聊天，每天免费做上几样东西——无需信用卡。升级 Creator 畅享无限，或随时加上店铺营销。",
@@ -811,7 +903,7 @@ const UR: LandingCopy = {
     "items": [
       {
         "q": "tokens کیسے کام کرتے ہیں؟",
-        "a": "آپ کا پلان یہ کھولتا ہے کہ آپ کون سے جنریٹرز استعمال کر سکتے ہیں (Starter: امیجز اور آرٹیکلز؛ Studio اور Legend: ہر جنریٹر، ویڈیو سے لے کر Anthem تک)۔ Tokens یہ طے کرتے ہیں کہ آپ کتنا بناتے ہیں — ہر پلان ماہانہ دوبارہ بھرتا ہے، اور آپ جب چاہیں top up کر سکتے ہیں۔ Tokens کبھی ایسا جنریٹر نہیں کھولتے جو آپ کے پلان میں شامل نہ ہو۔"
+        "a": "آپ کا پلان یہ کھولتا ہے کہ آپ کون سے جنریٹرز استعمال کر سکتے ہیں (Starter: امیجز اور آرٹیکلز؛ Studio اور Anthem: ہر جنریٹر، ویڈیو سے لے کر Anthem تک)۔ Tokens یہ طے کرتے ہیں کہ آپ کتنا بناتے ہیں — ہر پلان ماہانہ دوبارہ بھرتا ہے، اور آپ جب چاہیں top up کر سکتے ہیں۔ Tokens کبھی ایسا جنریٹر نہیں کھولتے جو آپ کے پلان میں شامل نہ ہو۔"
       },
       {
         "q": "مفت ٹرائل میں کیا کچھ شامل ہے؟",
@@ -854,6 +946,22 @@ const UR: LandingCopy = {
   },
   "footer": {
     "copy": "کچھ بھی تخلیق کریں۔ ہر چیز کی مارکیٹنگ کریں۔ آسان انداز میں۔"
+  },
+  "heroTag": "▶ اصل آؤٹ پٹ — EasyMode سے تیار اور آواز شدہ",
+  "footerNav": { "pricing": "قیمتیں", "privacy": "رازداری", "terms": "شرائط", "contact": "رابطہ", "affiliates": "ایفیلی ایٹس" },
+  "chat": {
+    "eyebrow": "Helpurr سے ملیں",
+    "h2": "مفت چیٹ کریں۔ کوئی سائن اپ نہیں۔",
+    "sub": "آپ کا AI تخلیقی ساتھی — کچھ بھی پوچھیں، آئیڈیاز سوچیں، پوسٹ کی منصوبہ بندی کریں۔ جب واقعی بنانا چاہیں، تو مفت اکاؤنٹ دو سیکنڈ میں بن جاتا ہے۔",
+    "greeting": "ہیلو — میں Helpurr ہوں۔ 🐾 آپ کس چیز پر کام کر رہے ہیں؟ مجھ سے کچھ بھی پوچھیں، یا بتائیں آپ کیا بنانا چاہیں گے۔",
+    "chips": ["میری پروڈکٹ کے لیے ایک TikTok آئیڈیا دیں", "میرے لیے ایک زوردار ایڈ کیپشن لکھیں", "اس ہفتے مجھے کیا پوسٹ کرنا چاہیے؟"],
+    "placeholder": "Helpurr کو پیغام بھیجیں…",
+    "capFirst": "چیٹ جاری رکھنے کے لیے مفت اکاؤنٹ بنائیں — کارڈ کی ضرورت نہیں۔",
+    "capMore": "پسند آ رہا ہے؟ چیٹ جاری رکھنے، اسے محفوظ کرنے اور بنانا شروع کرنے کے لیے مفت اکاؤنٹ بنائیں — کارڈ کی ضرورت نہیں۔",
+    "foot": "مفت پیش منظر · چیٹس محفوظ کرنے، نئی شروع کرنے اور امیجز بنانے کے لیے {link}",
+    "footLink": "سائن اپ کریں",
+    "error": "Helpurr کو ایک رکاوٹ پیش آئی — دوبارہ کوشش کریں؟",
+    "retry": "دوبارہ کوشش کریں"
   },
   "powered": {
     "eyebrow": "جدید ترین AI کی طاقت سے",

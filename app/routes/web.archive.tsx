@@ -754,9 +754,13 @@ const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUD
 
 // Route-local styles for everything the parity pass added (viewer, badges,
 // chips, caption box, failed section). Matches the web front-door look:
-// paper #F4F1E6 / card #FDFCF7 / ink #14201A / green #12A85E / gold #B08526.
+// paper #F4F1E6 / card #FDFCF7 / ink #14201A / green #0C7A46 / gold #B08526.
+// ONE accent green: the wallet + Kept chips resolve to the canonical brand
+// green (#0C7A46 = --green). The section pills keep a #12A85E→#0C7A46 gradient
+// on purpose — a lit pill reads as a toggle, not a status chip, so the two are
+// deliberately different weights of the same green.
 const WA_CSS = `
-.wa-wallet{font-size:13px;font-weight:800;color:var(--green);margin:0 0 12px;}
+.wa-wallet{font-size:13px;font-weight:800;color:var(--green,#0C7A46);margin:0 0 12px;}
 .wa-shelfnote{font-size:12.5px;color:var(--ink2,#5b6b61);margin:-4px 0 14px;}
 .wa-poster{position:relative;display:block;width:100%;padding:0;border:0;background:#0b0f0d;cursor:pointer;font:inherit;color:inherit;}
 .wa-poster video,.wa-poster img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;pointer-events:none;}
@@ -780,7 +784,7 @@ const WA_CSS = `
   background:#F3F1E4;color:#6B5312;border:1px solid rgba(176,133,38,.32);}
 .wa-chip{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
 .wa-chip.new{background:#FBF4E2;color:#8a6207;border:1px solid #E7C879;}
-.wa-chip.kept{background:#EAF6EF;color:var(--green);border:1px solid #BFE2CD;}
+.wa-chip.kept{background:#EAF6EF;color:var(--green,#0C7A46);border:1px solid #BFE2CD;}
 .wa-chip.posted{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;border:1px solid transparent;}
 .wa-tileacts{display:flex;gap:8px;align-items:center;margin-top:8px;}
 .wa-jacts{display:flex;gap:8px;margin-top:8px;}
@@ -795,6 +799,11 @@ const WA_CSS = `
 .wa-blogopen{flex:1;text-align:left;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit;}
 .wa-blogopen b{font-family:Poppins,sans-serif;font-size:15px;}
 .wa-blogopen p{margin:6px 0 8px;font-size:12.5px;color:var(--ink2,#5b6b61);line-height:1.5;}
+/* "Read" — a visible affordance so an Articles row looks like the rest of the
+   app (the other tabs have a play/▶ and a thumbnail; a blog row is just text).
+   It opens the same viewer the row click does. */
+.wa-read-btn{align-self:center;flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-family:Poppins,sans-serif;font-weight:800;font-size:12.5px;color:var(--green,#0C7A46);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:7px 14px;cursor:pointer;text-decoration:none;}
+.wa-read-btn:hover{background:#DCF0E5;}
 .wa-failsec{margin-top:26px;}
 .wa-faildiv{display:flex;align-items:center;gap:12px;margin:0 0 12px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:#8C2E1B;white-space:nowrap;}
 .wa-faildiv::before,.wa-faildiv::after{content:"";height:1px;background:var(--line,#E5E0CF);flex:1;}
@@ -849,7 +858,7 @@ const WA_CSS = `
 .wa-vmeta::-webkit-scrollbar{display:none;}
 .wa-vtitle{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .wa-vtitle b{font-family:Poppins,sans-serif;font-size:14.5px;}
-.wa-vok{font-size:12.5px;font-weight:800;color:var(--green);}
+.wa-vok{font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);}
 .wa-verr{font-size:12.5px;font-weight:700;color:#8C2E1B;}
 .wa-vcdnote{display:block;margin-top:6px;font-size:12px;color:#8a6207;font-weight:600;}
 .wa-vmissed{display:block;margin-top:8px;padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.45;
@@ -991,6 +1000,21 @@ const WA_CSS = `
 @media(max-width:620px){
   .wa-creator .ws-tab{min-height:44px;box-sizing:border-box}
 }
+/* Empty tab — a real empty state, not a bare sentence with an inline link.
+   An icon, one line of encouragement, and a prominent deep-linked button into
+   the Studio, so a fresh account has an obvious first move. */
+.wa-empty{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;background:linear-gradient(178deg,#FEFDF9,#F7F6EB);border:1px solid var(--line2,#D7DCCB);border-radius:18px;padding:40px 24px;}
+.wa-empty-ic{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#EAF6EF;border:1px solid #BFE2CD;color:var(--green,#0C7A46);}
+.wa-empty-ln{margin:0;font-size:14.5px;color:var(--ink2,#4A554E);max-width:360px;line-height:1.5;}
+.wa-empty .wa-empty-cta{margin-top:4px;}
+/* Delete / retry toast — a small confirmation that drops in at the bottom,
+   fades, and (for delete) offers an Undo while the piece is still recoverable.
+   Mirrors the wb-ok palette so it reads as the same system. */
+.wa-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:10700;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);background:#14201A;color:#fff;font-size:13.5px;font-weight:600;padding:12px 16px;border-radius:14px;box-shadow:0 14px 40px rgba(10,14,12,.4);animation:waToastIn .18s ease;}
+@keyframes waToastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+.wa-toast .wa-toast-ic{color:#8FE3B4;display:inline-grid;place-items:center;}
+.wa-toast-undo{border:0;background:none;color:#FFC24A;font:inherit;font-weight:800;cursor:pointer;padding:4px 6px;text-decoration:underline;flex:0 0 auto;}
+@media(max-width:640px){.wa-toast{left:16px;right:16px;transform:none;bottom:16px;}.wa-toast-undo{min-height:44px}@keyframes waToastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}}
 `;
 
 export default function WebArchive() {
@@ -1040,12 +1064,19 @@ export default function WebArchive() {
   const remixFree = !!(actionData && "free" in actionData && (actionData as { free?: boolean }).free);
   const draftText = actionData && "draft" in actionData ? (actionData as { draft: string }).draft : null;
 
+  // WHICH piece a viewer action was fired against. actionData.error is global
+  // and sticks around for the whole page, so without this an error from acting
+  // on piece A kept showing — and suppressed the real status chip — on piece B
+  // when the merchant cycled to it. Scope the inline error to this id, exactly
+  // the way postedAssetId scopes the "Posted ✓" badge. Reset on viewer change.
+  const [actedId, setActedId] = useState<string | null>(null);
+
   const retryJob = (jobId: string) => submit({ intent: "retryJob", jobId }, { method: "post" });
   const dismissJob = (jobId: string) => submit({ intent: "dismissJob", jobId }, { method: "post" });
-  const keepAsset = (assetId: string) => submit({ intent: "keep", assetId }, { method: "post" });
-  const unkeepAsset = (assetId: string) => submit({ intent: "unkeep", assetId }, { method: "post" });
+  const keepAsset = (assetId: string) => { setActedId(assetId); submit({ intent: "keep", assetId }, { method: "post" }); };
+  const unkeepAsset = (assetId: string) => { setActedId(assetId); submit({ intent: "unkeep", assetId }, { method: "post" }); };
   const deleteAsset = (assetId: string) => submit({ intent: "delete", assetId }, { method: "post" });
-  const remix = (assetId: string) => submit({ intent: "remix", assetId }, { method: "post" });
+  const remix = (assetId: string) => { setActedId(assetId); submit({ intent: "remix", assetId }, { method: "post" }); };
   // Delete is permanent and the trash icons are small and easy to mis-tap, so
   // guard it behind a confirm: the first tap arms the button, a second tap
   // within 4s actually deletes. Arming auto-clears so a stray tap is harmless.
@@ -1055,20 +1086,51 @@ export default function WebArchive() {
     const timer = setTimeout(() => setArmedDel(null), 4000);
     return () => clearTimeout(timer);
   }, [armedDel]);
+  // A small confirmation that fades, with an Undo for delete while the piece is
+  // still recoverable. `undo` runs on the Undo tap; `pending` is the timer that
+  // fires the real server delete once the window closes un-undone.
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout> } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    // Undo-able toasts linger until their delete actually commits (6s); plain
+    // confirmations clear on their own after 3s.
+    const timer = setTimeout(() => setToast(null), toast.undo ? 6200 : 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  // DELETE WITH UNDO. The grid/viewer trash is permanent, so the second ("armed")
+  // tap does NOT hit the server right away — it closes the piece, shows an Undo
+  // toast, and only submits the delete after a short window. Undo cancels the
+  // pending submit, so nothing is ever lost to a mis-tap. All client-side: the
+  // action still hard-deletes, we just hold the trigger for a beat.
   const askDelete = (assetId: string) => {
-    if (armedDel === assetId) { setArmedDel(null); deleteAsset(assetId); }
-    else setArmedDel(assetId);
+    if (armedDel !== assetId) { setArmedDel(assetId); return; }
+    setArmedDel(null);
+    setViewer(null); // close the piece being deleted (old flow closed it too)
+    const pending = setTimeout(() => { setToast(null); deleteAsset(assetId); }, 5000);
+    setToast({
+      msg: t("Deleted."),
+      pending,
+      undo: () => { clearTimeout(pending); setToast({ msg: t("Restored.") }); },
+    });
   };
+  // Retry a failed job and confirm it with the same toast system (no undo —
+  // nothing destructive to reverse, just a "back in the oven" acknowledgement).
+  const retryWithToast = (jobId: string) => { retryJob(jobId); setToast({ msg: t("Retrying — back in the oven.") }); };
 
   // Editable caption preview: "Post to socials" opens one caption box pre-filled
   // with an AI suggestion (intent "draft") the merchant can tweak or post as-is.
   const [capOpen, setCapOpen] = useState(false);
   const [caption, setCaption] = useState("");
   const [draftPending, setDraftPending] = useState(false);
-  const startPost = (assetId: string) => { setCaption(""); setCapOpen(true); setDraftPending(true); submit({ intent: "draft", assetId }, { method: "post" }); };
-  const doPost = (assetId: string) => submit({ intent: "post", assetId, caption }, { method: "post" });
+  const startPost = (assetId: string) => { setActedId(assetId); setCaption(""); setCapOpen(true); setDraftPending(true); submit({ intent: "draft", assetId }, { method: "post" }); };
+  const doPost = (assetId: string) => { setActedId(assetId); submit({ intent: "post", assetId, caption }, { method: "post" }); };
   useEffect(() => { if (draftText != null) { setCaption(draftText); setDraftPending(false); } }, [draftText]);
-  useEffect(() => { setCapOpen(false); setCaption(""); setDraftPending(false); setCopied(false); }, [viewer?.id]);
+  // Reset per-piece UI when the viewer opens or cycles to another piece. armedDel
+  // MUST reset here too: without it, arming a grid tile's trash and then opening
+  // that piece left the viewer's full-width Delete already armed — a single tap
+  // destroyed it with no confirm. Clearing it means the viewer's Delete always
+  // starts disarmed (tap once to arm, again to delete), like a fresh open.
+  useEffect(() => { setCapOpen(false); setCaption(""); setDraftPending(false); setCopied(false); setArmedDel(null); setActedId(null); }, [viewer?.id]);
   useEffect(() => { if (posted) setCapOpen(false); }, [posted]);
   // Close the viewer once a piece is deleted, or when a remix starts (so the
   // fresh "cooking…" tile is visible under the auto-revalidator). KEEP does NOT
@@ -1099,7 +1161,10 @@ export default function WebArchive() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+    // Deps: without them this rebound the listener on EVERY render. Re-bind only
+    // when the open piece, the tab's shelf, or the current index actually change
+    // (openAt closes over shelf, so shelf+vIdx cover it).
+  }, [viewer, shelf, vIdx]);
 
   const chipFor = (a: { type: string; status: string }): [string, string] =>
     a.type === "BLOG_POST"
@@ -1186,7 +1251,28 @@ export default function WebArchive() {
           tabTotal === 0 — not merely none in the current page (which is the
           "are further back" note above). */}
       {shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
-        <div className="wb-card">{t("No")} {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")} {t("yet — make one in the")} <Link to="/web/studio">Studio</Link>.</div>
+        // A real empty state: an icon, one line of encouragement, and a bold
+        // deep-link into the Studio — not a bare inline text link.
+        <div className="wa-empty">
+          <span className="wa-empty-ic"><Ico n={tab === "blog" ? "article" : tab === "music" ? "music" : tab === "image" ? "image" : "video"} size={26} /></span>
+          <p className="wa-empty-ln">
+            {tab === "video" ? t("No videos yet — your first one lands right here.")
+              : tab === "image" ? t("No image ads yet — your first one lands right here.")
+              : tab === "music" ? t("No music yet — your first track lands right here.")
+              : t("No articles yet — your first one lands right here.")}
+          </p>
+          {/* Marketing is the default mode, so a plain Link lands right. For
+              Creator, set emMode the way the cross-section bridge above does (a
+              full load so the shell re-reads it) and the Studio opens in casual. */}
+          {isCreator ? (
+            <button type="button" className="wb-btn wa-empty-cta"
+              onClick={() => { try { localStorage.setItem("emMode", "casual"); } catch { /* */ } window.location.href = "/web/studio"; }}>
+              <Ico n="sparkle" /> {t("Open the Studio")} →
+            </button>
+          ) : (
+            <Link to="/web/studio" className="wb-btn wa-empty-cta"><Ico n="sparkle" /> {t("Open the Studio")} →</Link>
+          )}
+        </div>
       )}
 
       {/* Cooking tiles stay pinned at the top of the shelf. */}
@@ -1223,6 +1309,10 @@ export default function WebArchive() {
                   {a.snippet && <p>{a.snippet}…</p>}
                   <span className={`wa-chip ${cc}`}>{cl}</span>
                 </button>
+                {/* A visible Read affordance, so an Articles row reads like the
+                    rest of the app instead of a wall of text. Opens the same
+                    viewer the row does. */}
+                <button type="button" className="wa-read-btn" onClick={() => setViewer(a)}><Ico n="book" /> {t("Read")}</button>
                 <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete — can't be undone") : t("Delete this article")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
               </div>
             );
@@ -1299,7 +1389,7 @@ export default function WebArchive() {
                   {t("This {kind} didn't make it", { kind: j.kind })}{j.refunded ? t(" — tokens refunded") : ""}.
                   <div className="s">{t("Failed — retry it right here")}</div>
                   <div className="wa-jacts">
-                    <button type="button" className="wb-btn" style={{ padding: "8px 16px", fontSize: 12.5 }} disabled={busy} onClick={() => retryJob(j.jobId)}>
+                    <button type="button" className="wb-btn" style={{ padding: "8px 16px", fontSize: 12.5 }} disabled={busy} onClick={() => retryWithToast(j.jobId)}>
                       {j.retryCost > 0 ? t("Retry · {n} tokens · +{xp} XP", { n: j.retryCost, xp: xpForSpend(j.retryCost) }) : t("Retry free")}
                     </button>
                     <button type="button" className="wb-btn ghost" style={{ padding: "8px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => dismissJob(j.jobId)}>{t("Dismiss")}</button>
@@ -1366,7 +1456,7 @@ export default function WebArchive() {
                 <b>{viewer.title}</b>
                 {viewer.recipe && <span className="wa-recipe" title={t("The recipe this ad was built with")}><Ico n="sliders" /> {viewer.recipe}</span>}
                 {posted && postedAssetId === viewer.id ? <span className="wa-vok">{t("Posted to {where}", { where: posted })} ✓</span>
-                  : err ? <span className="wa-verr">{err}</span>
+                  : err && actedId === viewer.id ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>
               {viewer.missed && (
@@ -1432,7 +1522,7 @@ export default function WebArchive() {
               {viewer.daysLeft != null && !posted && !viewer.expired && (
                 <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> {viewer.daysLeft === 1 ? t("Clears in {n} day", { n: viewer.daysLeft }) : t("Clears in {n} days", { n: viewer.daysLeft })} — {t("tap the heart to save it for good.")}</span>
               )}
-              {viewer.type !== "BLOG_POST" && <span className="wa-aitag">✦ {t("AI-generated · review before posting")}</span>}
+              {viewer.type !== "BLOG_POST" && <span className="wa-aitag"><Ico n="sparkle" /> {t("AI-generated · review before posting")}</span>}
               {viewer.type === "BLOG_POST" ? (
                 <div className="wa-vacts">
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? t("Copied ✓") : t("Copy HTML")}</button>}
@@ -1444,7 +1534,7 @@ export default function WebArchive() {
                 <>
                   <div className="wa-vacts">
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
-                      <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{t("Post to socials")}</button>
+                      <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{isCreator ? t("Share to socials") : t("Post to socials")}</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
@@ -1498,6 +1588,17 @@ export default function WebArchive() {
               )}
             </div>
           </div>
+        </div>
+      , document.body) : null}
+
+      {/* Delete / retry confirmation toast. Portaled to document.body so its
+          fixed position + z-index clear any stacking context and it shows
+          whether or not the viewer is open. */}
+      {toast && mounted ? createPortal(
+        <div className="wa-toast" role="status" aria-live="polite">
+          <span className="wa-toast-ic"><Ico n={toast.undo ? "trash" : "check"} /></span>
+          <span>{toast.msg}</span>
+          {toast.undo && <button type="button" className="wa-toast-undo" onClick={toast.undo}>{t("Undo")}</button>}
         </div>
       , document.body) : null}
     </div>

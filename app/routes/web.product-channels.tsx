@@ -27,6 +27,14 @@ export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }
 const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
 const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 const ANGLES: [string, string][] = [["spotlight", "Spotlight"], ["hype", "Hype"], ["story", "Storytime"], ["value", "Value"]];
+// One-line example hook per angle so users aren't picking blind. {product} is a
+// literal placeholder we show in the preview (the real pipeline fills the SKU).
+const ANGLE_HOOK: Record<string, string> = {
+  spotlight: "Meet the {product} everyone's talking about",
+  hype: "This {product} is selling out — here's why",
+  story: "How the {product} came to be…",
+  value: "Why the {product} is worth every penny",
+};
 const VOICES: [string, string][] = [["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -156,10 +164,10 @@ export default function ProductChannels() {
   return (
     <div className="pc">
       <style dangerouslySetInnerHTML={{ __html: PC_CSS }} />
-      <div className="pc-srcswitch" role="tablist" aria-label={t("Channel source")}>
-        <span className="pc-src sel" role="tab" aria-selected="true">{t("My products")}</span>
-        <Link to="/web/channels" className="pc-src" role="tab">{t("Trending topics")}</Link>
-      </div>
+      <nav className="pc-srcswitch" aria-label={t("Channel source")}>
+        <span className="pc-src sel" aria-current="page">{t("My products")}</span>
+        <Link to="/web/channels" className="pc-src">{t("Trending topics")}</Link>
+      </nav>
       <header className="pc-head">
         <div>
           <h1 className="pc-title">{t("Product Channels")}</h1>
@@ -187,7 +195,7 @@ export default function ProductChannels() {
       )}
 
       {canUse && productCount > 0 && showForm && (
-        <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} productCount={productCount} cadences={cadences} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
+        <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} productCount={productCount} cadences={cadences} existingNames={series.map((s) => s.name)} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
       )}
 
       {series.length > 0 && (
@@ -201,9 +209,10 @@ export default function ProductChannels() {
   );
 }
 
-function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error, creating, onCancel }: {
+function SetupForm({ linked, tokens, facelessCost, productCount, cadences, existingNames, error, creating, onCancel }: {
   linked: string[]; tokens: number; facelessCost: number; productCount: number;
   cadences: { key: string; label: string; perWeek: number }[];
+  existingNames: string[];
   error?: string; creating: boolean; onCancel?: () => void;
 }) {
   const t = useT();
@@ -218,6 +227,16 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
   const canAfford = tokens >= facelessCost;
   const togglePlat = (p: string) => setPlats((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
   const disabled = creating || (autoPost && plats.length === 0);
+  // When the user leaves the name blank we submit a default — but if a channel
+  // already carries that default, suffix "2", "3"… so they don't all collide.
+  const defaultName = useMemo(() => {
+    const base = "My product channel";
+    const taken = new Set(existingNames);
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base} ${n}`)) n++;
+    return `${base} ${n}`;
+  }, [existingNames]);
 
   return (
     <Form method="post" className="pc-setup">
@@ -227,19 +246,21 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
       <input type="hidden" name="cadence" value={cadence} />
       <input type="hidden" name="platforms" value={plats.join(",")} />
       <input type="hidden" name="autoPost" value={autoPost ? "1" : "0"} />
-      <input type="hidden" name="name" value={name || "My product channel"} />
+      <input type="hidden" name="name" value={name.trim() || defaultName} />
 
       <div className="pc-setup-head"><span className="pc-spark">✦</span> {t("Start a product channel")} {onCancel && <button type="button" className="pc-x" onClick={onCancel}>✕</button>}</div>
 
+      <fieldset className="pc-setup-body" disabled={creating}>
       <div className="pc-feats">{t("Rotates all")} <b>{productCount}</b> {t("of your products — one video per drop, with the real product.")}</div>
 
-      <label className="pc-lbl">{t("Channel name")} <span className="pc-opt">{t("(optional)")}</span></label>
-      <input className="pc-field" placeholder={t("My product channel")} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+      <label className="pc-lbl">{t("Channel name")} <span className="pc-opt">{t("(optional)")}</span> <span className="pc-count">{name.length}/60</span></label>
+      <input className="pc-field" placeholder={defaultName} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
 
       <div className="pc-row2">
         <div>
           <label className="pc-lbl">{t("Angle")}</label>
           <div className="pc-pills2">{ANGLES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${angle === k ? " sel" : ""}`} onClick={() => setAngle(k)}>{t(l)}</button>)}</div>
+          <div className="pc-hook">“{t(ANGLE_HOOK[angle])}”</div>
         </div>
         <div>
           <label className="pc-lbl">{t("Voice")}</label>
@@ -261,14 +282,18 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, error
 
       <label className="pc-lbl">{t("Posting")}</label>
       <div className="pc-modes">
-        <button type="button" className={`pc-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}><b><Ico n="sparkle" /> {t("Post automatically")}</b><span>{t("Each video posts to your socials with a link to the product.")}</span></button>
+        <div className={`pc-mode-wrap${linked.length === 0 ? " off" : ""}`}>
+          <button type="button" className={`pc-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}><b><Ico n="sparkle" /> {t("Post automatically")}</b><span>{t("Each video posts to your socials with a link to the product.")}</span></button>
+          {linked.length === 0 && <Link to="/web/connect" className="pc-mode-connect">{t("Connect to enable →")}</Link>}
+        </div>
         <button type="button" className={`pc-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}><b><Ico n="eye" /> {t("Let me approve each one")}</b><span>{t("Videos wait in your Archive — you post with one tap.")}</span></button>
       </div>
 
-      <div className="pc-summary"><span><b>{perWeek}</b> {t("videos/week")} · ~<b>{weeklyTokens}</b> {t("tokens")} · <b>+{xpForSpend(weeklyTokens)}</b> {t("XP / wk")}</span><span className="pc-bal">{t("{n} tokens in wallet", { n: tokens })}</span></div>
+      <div className="pc-summary"><span><b>{perWeek}</b> {t("videos/week")} · ~<b>{weeklyTokens}</b> {t("tokens / week")} · <b>+{xpForSpend(weeklyTokens)}</b> {t("XP / wk")}</span><span className="pc-bal">{t("{n} tokens in wallet", { n: tokens })}</span></div>
 
       {error && <div className="pc-err">{t(error)}</div>}
       {!canAfford && <div className="pc-err">{t("You need at least {n} tokens to run a channel —", { n: facelessCost })} <Link to="/web#plans" className="pc-link">{t("top up")}</Link>.</div>}
+      </fieldset>
 
       <button className="pc-go" type="submit" disabled={disabled}><span className="pc-go-flower" aria-hidden="true" />{creating ? t("Starting…") : t("Start my product channel")}</button>
     </Form>
@@ -280,6 +305,12 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
   const paused = s.status === "PAUSED";
   const angleLabel = ANGLES.find(([k]) => k === s.format)?.[1] || s.format;
   const reasonText: Record<string, string> = { "out-of-tokens": t("Out of tokens"), "no-accounts": t("No socials linked"), "no-products": t("No products imported"), "needs-plan": t("Plan changed"), user: t("Paused by you") };
+  // Brand-new channel that hasn't produced anything yet — reassure that the
+  // first video is on its way instead of showing an empty "0 made" card.
+  const firstVideo = s.status === "ACTIVE" && s.dropsMade === 0;
+  // Arm-to-confirm end (matches the app's delete pattern): first tap arms,
+  // a second within 4s submits. Replaces the native confirm().
+  const [armEnd, setArmEnd] = useState(false);
   return (
     <div className={`pc-card${paused ? " paused" : ""}`}>
       <div className="pc-card-top">
@@ -291,7 +322,9 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
         <span>{s.autoPost ? t("auto-post") : t("approve")}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
-      {s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("soon")}</div>}
+      {firstVideo
+        ? <div className="pc-next"><span className="pc-next-dot" /> {t("Making your first video…")}</div>
+        : s.status === "ACTIVE" && <div className="pc-next"><span className="pc-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("soon")}</div>}
       {paused && s.pauseReason && (
         <div className="pc-paused-note">{reasonText[s.pauseReason] || t("Paused")}
           {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="pc-link">{t("top up")}</Link></>}
@@ -299,14 +332,19 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
           {s.pauseReason === "no-products" && <> — <Link to="/web/studio" className="pc-link">{t("import store")}</Link></>}
         </div>
       )}
-      <div className="pc-card-stats"><div><b>{s.dropsMade}</b><span>{t("made")}</span></div><div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div><Link to="/web/archive" className="pc-card-gal">{t("Archive")} →</Link></div>
+      <div className="pc-card-stats"><div><b>{s.dropsMade}</b><span>{t("made")}</span></div><div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div><Link to={`/web/archive?section=marketing&series=${s.id}`} className="pc-card-gal">{t("Archive")} →</Link></div>
       <div className="pc-card-acts">
         {paused
           ? <Form method="post"><input type="hidden" name="intent" value="resume" /><input type="hidden" name="id" value={s.id} /><button className="pc-act primary" disabled={tokens < facelessCost}>{t("Resume")}</button></Form>
           : <Form method="post"><input type="hidden" name="intent" value="pause" /><input type="hidden" name="id" value={s.id} /><button className="pc-act">{t("Pause")}</button></Form>}
-        <Form method="post" onSubmit={(e) => { if (!confirm(t("End this channel? It stops making new videos (your Archive keeps everything)."))) e.preventDefault(); }}>
-          <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} /><button className="pc-act ghost">{t("End")}</button>
-        </Form>
+        {armEnd ? (
+          <Form method="post" onSubmit={() => setArmEnd(false)}>
+            <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} />
+            <button className="pc-act ghost armed" title={t("Tap again to end — your Archive keeps everything")}>{t("End channel?")}</button>
+          </Form>
+        ) : (
+          <button type="button" className="pc-act ghost" onClick={() => { setArmEnd(true); setTimeout(() => setArmEnd(false), 4000); }}>{t("End")}</button>
+        )}
       </div>
     </div>
   );
@@ -335,7 +373,11 @@ const PC_CSS = `
 .pc-feats b{color:var(--ink);}
 .pc-lbl{display:block;font-weight:700;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink2);margin:16px 0 8px;}
 .pc-opt{text-transform:none;letter-spacing:0;color:var(--ink3);font-weight:500;}
-.pc-field{width:100%;box-sizing:border-box;background:var(--paper);border:1px solid #E2DCC8;border-radius:14px;padding:13px 15px;font:inherit;font-size:14.5px;color:var(--ink);box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:all .15s;}
+.pc-count{float:right;text-transform:none;letter-spacing:0;color:var(--ink3);font-weight:600;font-variant-numeric:tabular-nums;}
+.pc-setup-body{border:0;padding:0;margin:0;min-width:0;transition:opacity .15s;}
+.pc-setup-body:disabled{opacity:.55;}
+.pc-hook{margin-top:8px;font-size:12.5px;font-style:italic;color:var(--ink2);}
+.pc-field{width:100%;box-sizing:border-box;background:#FBFAF4;border:1px solid #E2DCC8;border-radius:14px;padding:13px 15px;font:inherit;font-size:14.5px;color:var(--ink);box-shadow:inset 0 1px 3px rgba(20,32,26,.055);transition:all .15s;}
 .pc-field:focus{outline:none;border-color:#9CCBB1;box-shadow:inset 0 1px 3px rgba(20,32,26,.045),0 0 0 3px rgba(12,122,70,.14);}
 .pc-field::placeholder{color:#A9B2AA;}
 .pc-row2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
@@ -357,6 +399,10 @@ const PC_CSS = `
 .pc-mode b{font-size:13.5px;color:var(--ink);}.pc-mode span{font-size:11.5px;color:var(--ink3);font-weight:500;line-height:1.35;}
 .pc-mode:hover:not(:disabled){border-color:#9CCBB1;}.pc-mode.sel{background:#EAF6EF;border-color:var(--g);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
 .pc-mode:disabled{opacity:.45;cursor:not-allowed;}
+.pc-mode-wrap{display:flex;flex-direction:column;}
+.pc-mode-wrap.off .pc-mode{border-bottom-left-radius:0;border-bottom-right-radius:0;}
+.pc-mode-connect{display:block;text-align:center;font-weight:700;font-size:11.5px;color:var(--g);text-decoration:none;background:#EAF6EF;border:1px solid var(--g);border-top:0;border-radius:0 0 14px 14px;padding:8px 10px;min-height:36px;box-sizing:border-box;}
+.pc-mode-connect:hover{background:#DEF0E6;}
 .pc-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 4px;font-size:13px;color:var(--ink2);}
 .pc-summary b{color:var(--ink);}.pc-bal{color:var(--ink3);font-size:12px;}
 .pc-err{background:#FDECEC;border:1px solid #F3C9C9;color:#A4342E;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-top:12px;}
@@ -373,20 +419,22 @@ const PC_CSS = `
 .pc-card-name{font-weight:800;font-size:16px;letter-spacing:-.01em;}
 .pc-card-niche{color:var(--ink3);font-size:12px;font-weight:500;margin-top:2px;}
 .pc-badge{flex:0 0 auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;}
-.pc-badge.live{color:var(--green);background:#EAF6EF;}.pc-badge.off{color:#8A7A3A;background:#F6F0DE;}
+.pc-badge.live{color:var(--g);background:#EAF6EF;}.pc-badge.off{color:#8A7A3A;background:#F6F0DE;}
 .pc-card-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0;font-size:12px;color:var(--ink2);font-weight:600;}.pc-card-meta b{color:var(--ink);}
 .pc-next{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--g);font-weight:700;}
-.pc-next-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 3px rgba(18,168,94,.18);}
+.pc-next-dot{width:7px;height:7px;border-radius:50%;background:var(--g2);box-shadow:0 0 0 3px rgba(18,168,94,.18);animation:pcPulse 1.8s ease-in-out infinite;}
+@keyframes pcPulse{0%,100%{box-shadow:0 0 0 2px rgba(18,168,94,.22);}50%{box-shadow:0 0 0 6px rgba(18,168,94,.05);}}
 .pc-paused-note{font-size:12.5px;color:#8A7A3A;font-weight:600;}
 .pc-card-stats{display:flex;align-items:center;gap:20px;margin:14px 0;padding:12px 0;border-top:1px solid #F0ECDE;border-bottom:1px solid #F0ECDE;}
 .pc-card-stats>div{display:flex;flex-direction:column;}
 .pc-card-stats b{font-size:18px;font-weight:800;line-height:1;}.pc-card-stats span{font-size:11px;color:var(--ink3);font-weight:600;margin-top:3px;}
 .pc-card-gal{margin-left:auto;font-size:12px;font-weight:700;color:var(--g);text-decoration:none;}
-.pc-card-acts{display:flex;gap:8px;}.pc-card-acts form{flex:1;}
+.pc-card-acts{display:flex;gap:8px;}.pc-card-acts form,.pc-card-acts>button{flex:1;}
 .pc-act{width:100%;font:inherit;font-weight:700;font-size:12.5px;padding:9px;border-radius:11px;border:1px solid var(--l);background:#fff;color:var(--ink);cursor:pointer;transition:all .12s;}
 .pc-act:hover:not(:disabled){border-color:#9CCBB1;background:#F7FBF8;}.pc-act:disabled{opacity:.4;cursor:not-allowed;}
 .pc-act.primary{background:#EAF6EF;border-color:var(--g);color:var(--g);}
 .pc-act.ghost{color:var(--ink3);}.pc-act.ghost:hover{color:#A4342E;border-color:#E6B9B6;background:#FDF3F2;}
+.pc-act.ghost.armed{color:#A4342E;border-color:#E6B9B6;background:#FDF3F2;}
 .pc-empty{margin-top:10px;padding:22px;border-radius:16px;background:#fff;border:1px dashed var(--l);font-size:14px;color:var(--ink2);text-align:center;}
 .pc-link{color:var(--g);font-weight:700;background:none;border:0;cursor:pointer;font:inherit;text-decoration:underline;padding:0;}
 @media(max-width:560px){.pc-row2{grid-template-columns:1fr;}.pc-modes{grid-template-columns:1fr;}.pc-title{font-size:25px;}}
@@ -399,5 +447,11 @@ const PC_CSS = `
   .pc-card-gal{min-height:44px;display:inline-flex;align-items:center}
   .pc-chip{min-height:44px;box-sizing:border-box}
   .pc-pill{min-height:44px;box-sizing:border-box}
+}
+/* ── respect reduced-motion: kill the 60s looping rosette + pulsing dot. ── */
+@media(prefers-reduced-motion:reduce){
+  .pc-go-flower{animation:none;}
+  .pc-next-dot{animation:none;}
+  .pc-setup-body,.pc-card{transition:none;}
 }
 `;

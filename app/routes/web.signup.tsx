@@ -1,10 +1,11 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { createWebAccount, getWebIdentity, webSessionRedirect, SignupError } from "../lib/web-auth.server";
 import { isValidTimeZone } from "../lib/timezone";
 import { authCopy } from "../lib/auth-i18n";
+import { Ico } from "../lib/icons";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = () => [{ title: "Start free · EasyMode" }];
@@ -83,23 +84,56 @@ export default function WebSignup() {
   useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; document.title = authCopy(lang).signupTitle; } catch { /* SSR */ } }, [lang]);
   // Same language the landing page was read in — see auth-i18n.
   const c = authCopy(lang);
+
+  const busy = nav.state !== "idle";
+  const error = actionData && "error" in actionData ? actionData.error : null;
+
+  // Move focus to the error so a screen reader announces it, and so the
+  // autoFocus on the first field doesn't fight the announcement.
+  const errRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (error) errRef.current?.focus(); }, [error]);
+
+  const [showPw, setShowPw] = useState(false);
+  // Light client-side hints, shown onBlur only (never while typing), so the
+  // server stays the source of truth — these just save a round-trip.
+  const [emailHint, setEmailHint] = useState<string | null>(null);
+  const [pwHint, setPwHint] = useState<string | null>(null);
+
   return (
     <div className="wb-auth wb-card">
+      <style dangerouslySetInnerHTML={{ __html: AUTH_FX }} />
       <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.signupH1}</h1>
       <p className="wb-sub" style={{ marginBottom: 6 }}>{c.signupSub}</p>
-      {actionData && "error" in actionData && <div className="wb-err">{actionData.error}</div>}
+      {error && <div className="wb-err" role="alert" tabIndex={-1} ref={errRef}>{error}</div>}
       <Form method="post">
         <input type="hidden" name="lang" value={lang} />
         <input type="hidden" name="tz" value={tz} />
-        <label className="wb-lbl" htmlFor="su-name">{c.nameLabel}</label>
-        <input className="wb-in" id="su-name" name="name" autoComplete="organization" placeholder={c.namePlaceholder} />
+        <label className="wb-lbl" htmlFor="su-name">{c.nameLabel} <span className="wb-opt">({c.nameOptional})</span></label>
+        <input className="wb-in" id="su-name" name="name" autoComplete="organization" placeholder={c.namePlaceholder} autoFocus={!error} />
         <label className="wb-lbl" htmlFor="su-email">{c.emailLabel}</label>
-        <input className="wb-in" id="su-email" name="email" type="email" required autoComplete="email" placeholder={c.emailPlaceholder} />
+        <input
+          className="wb-in" id="su-email" name="email" type="email" required autoComplete="email" placeholder={c.emailPlaceholder}
+          aria-invalid={emailHint ? true : undefined} aria-describedby={emailHint ? "su-email-hint" : undefined}
+          onChange={() => emailHint && setEmailHint(null)}
+          onBlur={(e) => setEmailHint(e.currentTarget.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.currentTarget.value) ? c.errEmail : null)}
+        />
+        {emailHint && <div className="wb-hint" id="su-email-hint">{emailHint}</div>}
         <label className="wb-lbl" htmlFor="su-pw">{c.passwordLabel}</label>
-        <input className="wb-in" id="su-pw" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder={c.passwordPlaceholder} />
+        <div className="wb-pw">
+          <input
+            className="wb-in" id="su-pw" name="password" type={showPw ? "text" : "password"} required minLength={8} autoComplete="new-password" placeholder={c.passwordPlaceholder}
+            aria-invalid={pwHint ? true : undefined} aria-describedby={pwHint ? "su-pw-hint" : undefined}
+            onChange={() => pwHint && setPwHint(null)}
+            onBlur={(e) => setPwHint(e.currentTarget.value && e.currentTarget.value.length < 8 ? c.errPassword : null)}
+          />
+          <button type="button" className="wb-pw-eye" aria-label={showPw ? c.hidePw : c.showPw} aria-pressed={showPw} onClick={() => setShowPw((v) => !v)}>
+            <Ico n="eye" size={18} />
+          </button>
+        </div>
+        {pwHint && <div className="wb-hint" id="su-pw-hint">{pwHint}</div>}
         <div style={{ marginTop: 18 }}>
-          <button className="wb-btn" type="submit" disabled={nav.state !== "idle"}>
-            {nav.state !== "idle" ? c.creating : c.createBtn}
+          <button className="wb-btn" type="submit" disabled={busy} aria-busy={busy}>
+            {busy ? <span className="wb-busy"><span className="wb-busy-dot" aria-hidden="true" />{c.creating}</span> : c.createBtn}
           </button>
         </div>
       </Form>
@@ -115,3 +149,23 @@ export default function WebSignup() {
     </div>
   );
 }
+
+/* Scoped bits the shared /web stylesheet doesn't carry: the password eye, the
+ * "(optional)" dimmer, the onBlur hint line, and the button busy dot. Kept
+ * inline so these auth screens stay self-contained. */
+const AUTH_FX = `
+.wb-opt{font-weight:600;font-size:11.5px;color:var(--ink2);}
+.wb-pw{position:relative;}
+.wb-pw .wb-in{padding-right:44px;}
+.wb-pw-eye{position:absolute;top:0;right:0;height:100%;width:42px;display:grid;place-items:center;
+  border:0;background:none;cursor:pointer;color:var(--ink2);border-radius:0 11px 11px 0;}
+.wb-pw-eye:hover{color:var(--green);}
+[dir=rtl] .wb-pw .wb-in{padding-right:13px;padding-left:44px;}
+[dir=rtl] .wb-pw-eye{right:auto;left:0;border-radius:11px 0 0 11px;}
+.wb-hint{margin-top:6px;font-size:12.5px;color:#7A2E1D;}
+.wb-busy{display:inline-flex;align-items:center;gap:8px;}
+.wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}
+@keyframes wbBusySpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.wb-busy-dot{animation:none}}
+`;

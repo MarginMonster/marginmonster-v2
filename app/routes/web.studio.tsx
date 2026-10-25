@@ -1250,6 +1250,66 @@ type CastItem = { id: string; name: string; img: string; designed: boolean };
  * see a NEW component type on every render and remount the strip — which
  * reset the horizontal scroll to the first presenter on every click. Any
  * new inputs come in as explicit props. */
+/** Modal/lightbox accessibility, shared by every overlay in this route (forge,
+ *  Manage, the done/queued state, the two tap-to-enlarge lightboxes). Returns a
+ *  ref for the dialog container and wires up: Escape-to-close, initial focus
+ *  moved INTO the dialog on open, focus RETURNED to the opener on close, and a
+ *  Tab focus-trap that keeps keyboard focus inside while it's open. `active`
+ *  gates it so a closed overlay costs nothing. */
+function useModalA11y<T extends HTMLElement>(active: boolean, onClose: () => void) {
+  const ref = useRef<T | null>(null);
+  const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!active) return;
+    const node = ref.current;
+    const opener = document.activeElement as HTMLElement | null;
+    const focusable = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+        : [];
+    // Initial focus lands inside — the first control, else the container itself.
+    const first = focusable()[0];
+    if (first) first.focus();
+    else if (node) { node.setAttribute("tabindex", "-1"); node.focus(); }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); onCloseRef.current(); return; }
+      if (e.key !== "Tab" || !node) return;
+      const items = focusable();
+      if (items.length === 0) { e.preventDefault(); return; }
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+      const activeEl = document.activeElement;
+      if (e.shiftKey && (activeEl === firstEl || !node.contains(activeEl))) { e.preventDefault(); lastEl.focus(); }
+      else if (!e.shiftKey && activeEl === lastEl) { e.preventDefault(); firstEl.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      // Return focus to whatever opened the overlay (if it's still around).
+      if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+    };
+    // Only re-run on open/close — onClose is read through a ref so a new
+    // identity never re-triggers focus handling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  return ref;
+}
+
+/** Live character counter for the big describe/direction textareas. maxLength
+ *  silently truncates — this makes the limit VISIBLE so a merchant knows their
+ *  prompt is being cut, and warns as they near it. */
+function CharCount({ value, max }: { value: string; max: number }) {
+  const used = value.length;
+  const near = used >= max * 0.9;
+  return (
+    <span className={`ws-charcount${near ? " near" : ""}`} aria-live="polite">{used}/{max}</span>
+  );
+}
+
 /** The forge takes a minute or two of silence, and a line of text reading
  *  "forging…" makes that look like nothing is happening. So show the shape of
  *  what's coming: four placeholder character cards — one per outfit — shimmering
@@ -1373,6 +1433,7 @@ function ManagePresenters({ presenters, onClose }: { presenters: MyPresenter[]; 
   const [pendingVoice, setPendingVoice] = useState("");
   const [armed, setArmed] = useState<string | null>(null);
   const busy = fetcher.state !== "idle";
+  const dialogRef = useModalA11y<HTMLDivElement>(true, onClose);
   // A successful save/delete revalidates the loader (presenters updates); fold
   // the open editor and disarm so the panel settles to the new truth.
   useEffect(() => {
@@ -1382,7 +1443,7 @@ function ManagePresenters({ presenters, onClose }: { presenters: MyPresenter[]; 
   }, [fetcher.state, fetcher.data]);
   return (
     <div className="ws-scrim" onClick={onClose}>
-      <div className="ws-managem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div ref={dialogRef} className="ws-managem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <button type="button" className="ws-forgem-x" onClick={onClose} aria-label={t("Close")}><Ico n="x" size={16} /></button>
         <div className="ws-forgem-h">
           <span className="ws-forgem-crest"><Ico n="sliders" size={20} /></span>
@@ -1931,6 +1992,13 @@ export default function WebStudio() {
   const [forgeOpen, setForgeOpen] = useState(false);
   const [forging, setForging] = useState(false);
   const forgeFetcher = useFetcher<{ avatarQueued?: string; avatarError?: string }>();
+  // Escape-to-close + focus-trap + focus-return for the overlays. Each dialog
+  // gets a ref; the hook no-ops while its overlay is closed. (Manage runs the
+  // same hook inside its own component.)
+  const closeForge = useCallback(() => { setForgeOpen(false); setForging(false); }, []);
+  const forgeDialogRef = useModalA11y<HTMLDivElement>(forgeOpen, closeForge);
+  const doneDialogRef = useModalA11y<HTMLDivElement>(showDone, () => setShowDone(false));
+  const lightboxRef = useModalA11y<HTMLDivElement>(!!expandImg, () => setExpandImg(null));
   const [urlInput, setUrlInput] = useState("");
   // Last-used product memory — offer a one-tap refill next visit.
   const [lastProd, setLastProd] = useState<{ title: string; image: string } | null>(null);
@@ -2177,6 +2245,17 @@ export default function WebStudio() {
   const onStagePhoto = (f?: File | null) => {
     if (!f || !/^image\//.test(f.type)) return;
     setStageResult(null);
+    // On the VIDEO tab a dropped/uploaded photo SEEDS the video (image-to-video)
+    // — it must NOT yank the user over to the image editor. (Beta feedback: a
+    // photo uploaded while making a video wrongly jumped to the Image section.)
+    // The casual video submit injects uploadFile as productPhoto when
+    // prodSource==="upload" (see onFormSubmit), and the server animates a
+    // PRODUCT_HIGHLIGHT clip from it; with no photo it stays text-to-video.
+    if (casual && tab === "video") {
+      takeUpload(f);
+      setProdSource("upload");
+      return;
+    }
     setTab("image");
     setImageMode("product");
     setPendingPhoto(f);
@@ -2903,7 +2982,7 @@ export default function WebStudio() {
                         already said twice over by the badge and the tile
                         styling, and tapping one opens the panel that names the
                         tier and the price. */}
-                    <span className="ws-tile-sub" title={casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].sub) : t(ct.sub)}>{casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].sub) : t(ct.sub)}</span>
+                    <span className="ws-tile-sub">{casual && CASUAL_VIDEO_COPY[ct.key] ? t(CASUAL_VIDEO_COPY[ct.key].sub) : t(ct.sub)}</span>
                   </button>
                 );
               })}
@@ -3170,7 +3249,14 @@ export default function WebStudio() {
                   <div className={`ws-hubtile ws-hubhero${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set" : ""}`}>
                     <span className="ws-hubtile-img" style={!heroDesigned && avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
                       {heroDesigned && (
-                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=2`} />
+                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=2`}
+                          onError={(e) => {
+                            // A missing intro/poster would otherwise leave a black
+                            // tile — hide the dead video and paint the avatar still.
+                            const v = e.currentTarget; v.style.display = "none";
+                            const img = v.parentElement as HTMLElement | null;
+                            if (img && avatarThumb) img.style.backgroundImage = `url(${avatarThumb})`;
+                          }} />
                       )}
                       <button type="button" className="ws-hubtile-face" aria-expanded={hubPick === "presenter"}
                         onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}
@@ -3254,7 +3340,7 @@ export default function WebStudio() {
                     </div>
                   )}
                 </div>
-                {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
+                {combineErr && <p className="ws-note ws-err" style={{ marginTop: 8 }}>{combineErr}</p>}
                 {combineUrl ? (
                   <>
                     <div className="ws-combine-foot">
@@ -3326,7 +3412,8 @@ export default function WebStudio() {
                             <div className="ws-reuse-strip" ref={reuseStripRef} aria-label={t("Reuse a past shot")}>
                               {d.frameChoices.map((f) => (
                                 <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
-                                  <img src={f.media} alt="" loading="lazy" />
+                                  {/* A 404'd past shot would show a broken tile — hide the whole thumb instead. */}
+                                  <img src={f.media} alt="" loading="lazy" onError={(e) => { const b = e.currentTarget.closest(".ws-reuse-thumb") as HTMLElement | null; if (b) b.style.display = "none"; }} />
                                 </button>
                               ))}
                             </div>
@@ -3339,7 +3426,7 @@ export default function WebStudio() {
                   </>
                 )}
                 {needsPhoto && (
-                  <p className="ws-note" style={{ color: "#8A5A12", marginTop: 8 }}>
+                  <p className="ws-note ws-warn" style={{ marginTop: 8 }}>
                     {prodSource === null
                       ? t("Tap “Add your product” above — from your store, or upload a photo.")
                       : prodSource === "store"
@@ -3359,7 +3446,7 @@ export default function WebStudio() {
             )}
             {/* Tap-to-enlarge overlay for the combine ingredients/result. */}
             {avatarVideoHub && expandImg && (
-              <div className="ws-lightbox" onClick={() => setExpandImg(null)} role="dialog" aria-modal="true">
+              <div ref={lightboxRef} className="ws-lightbox" onClick={() => setExpandImg(null)} role="dialog" aria-modal="true">
                 <img src={expandImg} alt={t("Enlarged")} onClick={(e) => e.stopPropagation()} />
                 <button type="button" className="ws-lightbox-x" onClick={() => setExpandImg(null)} aria-label={t("Close")}>✕</button>
               </div>
@@ -3577,7 +3664,7 @@ export default function WebStudio() {
                     <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
                   </div>
                 )}
-                {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+                {importErr && <p className="ws-note ws-err">{importErr}</p>}
               </>
             )}
             {/* setPickedUrl("") because no URL is remembered with the last
@@ -3587,19 +3674,16 @@ export default function WebStudio() {
                 ↺ {t("Use last: {title}", { title: lastProd.title })}
               </button>
             )}
-            {(casual && tab === "video") ? (
-              <textarea className="wb-in ws-ta ws-hero" name="productTitle" required value={productTitle} rows={3} maxLength={300}
-                onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }}
-                placeholder={t("Describe your video — e.g. a cozy autumn morning, steam rising off a mug by a rainy window")} />
-            ) : (
-              <input className="wb-in" name="productTitle" required={!isEdit} maxLength={120} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
-            )}
+            {/* This whole block is already gated !(casual && tab==="video") above,
+                so casual video never renders here — its describe box lives in the
+                direction section below. Just the product-name input remains. */}
+            <input className="wb-in" name="productTitle" required={!isEdit} maxLength={120} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={isEdit ? t("Optional name for your edit") : casual ? t("My dog Biscuit · Sunset at the lake") : t("Midnight Roast — whole bean coffee")} />
             {/* The product photo now lives in the source branches above — the
                 store pick carries its image, the upload card shows a file input
                 + live preview. All that's left here is the nudge for when
                 neither path has produced a photo yet. */}
             {needsPhoto && (
-              <p className="ws-note" style={{ color: "#8A5A12" }}>
+              <p className="ws-note ws-warn">
                 {prodSource === null
                   ? t("Pick where your product comes from above — choose from your store, or upload a photo.")
                   : prodSource === "store"
@@ -3687,7 +3771,7 @@ export default function WebStudio() {
                     </div>
                   )}
                 </div>
-                {combineErr && <p className="ws-note" style={{ color: "#9A3120", marginTop: 8 }}>{combineErr}</p>}
+                {combineErr && <p className="ws-note ws-err" style={{ marginTop: 8 }}>{combineErr}</p>}
                 {combineUrl ? (
                   <div className="ws-combine-foot">
                     <span className="ws-combine-ok">✓ {t("Locked in — a copy’s in your gallery. Your video animates from this.")}</span>
@@ -3703,7 +3787,7 @@ export default function WebStudio() {
             )}
             {/* Tap-to-enlarge overlay (ingredients + combined result). */}
             {expandImg && (
-              <div className="ws-lightbox" onClick={() => setExpandImg(null)} role="dialog" aria-modal="true">
+              <div ref={lightboxRef} className="ws-lightbox" onClick={() => setExpandImg(null)} role="dialog" aria-modal="true">
                 <img src={expandImg} alt={t("Enlarged")} onClick={(e) => e.stopPropagation()} />
                 <button type="button" className="ws-lightbox-x" onClick={() => setExpandImg(null)} aria-label={t("Close")}>✕</button>
               </div>
@@ -3733,7 +3817,7 @@ export default function WebStudio() {
                     <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
                   </div>
                 )}
-                {importErr && <p className="ws-note" style={{ color: "#9A3120" }}>{importErr}</p>}
+                {importErr && <p className="ws-note ws-err">{importErr}</p>}
                 {prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
                   <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
                     ↺ {t("Use last: {title}", { title: lastProd.title })}
@@ -3761,6 +3845,7 @@ export default function WebStudio() {
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
                     placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
                     onChange={(e) => setDirection(e.target.value)} />
+                  <CharCount value={direction} max={400} />
                   <div className="ws-chips" style={{ marginTop: 8 }}>
                     {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
                       <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
@@ -3879,6 +3964,7 @@ export default function WebStudio() {
                     the box is the whole act of creation and deserves the room.
                     Edit / blog / marketing keep the compact single-line input. */}
                 {(isCreate || isMusic || isFaceless || (isEdit && casual)) ? (
+                  <>
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
                     placeholder={
                       isMusic ? t("e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat")
@@ -3887,6 +3973,8 @@ export default function WebStudio() {
                       : t("e.g. a red panda astronaut floating over neon Tokyo at night")
                     }
                     onChange={(e) => setDirection(e.target.value)} />
+                  <CharCount value={direction} max={isCreate ? 500 : 300} />
+                  </>
                 ) : (
                 <input className="wb-in" value={direction} maxLength={300}
                   disabled={isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")}
@@ -4100,7 +4188,12 @@ export default function WebStudio() {
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
-            <div className="ws-tok"><span className="tt">{t("This {noun}", { noun: t(noun) })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
+            {/* For a single gen the Make button already states "{cost} tokens ·
+                +XP", so the pill is redundant — show it only for a burst, where
+                it adds the PER-PIECE cost next to the button's total. */}
+            {burst > 1 && (
+              <div className="ws-tok"><span className="tt">{t("Each {noun}", { noun: t(noun) })}</span><span className="tb"><b>{cost}</b><i>{t("tokens")}</i><em className="xp">{t("+{n} XP", { n: xpForSpend(cost) })}</em></span></div>
+            )}
 
             {err && <div className="wb-err" style={{ marginTop: 4 }}>{err}</div>}
             {/* The trial cap is the ONE spend failure the merchant can clear
@@ -4246,9 +4339,27 @@ export default function WebStudio() {
                    </div>
                  )}
                </div>
+             ) : (casual && tab === "video" && uploadPreview) ? (
+               /* A photo attached in the VIDEO flow SEEDS the video (image-to-
+                  video). Show it ON the Stage so it's clearly part of the video —
+                  not shunted off to the image editor (beta feedback). */
+               <div className="ws-stageresult">
+                 <div className="ws-stagemedia ws-stagemedia-edit" role="button" tabIndex={0}
+                   onClick={() => { if (!(making || busy)) stageUploadRef.current?.click(); }}
+                   onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}>
+                   <img src={uploadPreview} alt={t("Your photo")}
+                     onLoad={(e) => { const el = e.currentTarget; if (el.naturalWidth && el.naturalHeight) setStageAspect(el.naturalWidth / el.naturalHeight); }} />
+                 </div>
+                 <div className="ws-verbs">
+                   <span className="ws-editcap">{making || busy ? t("Making your video…") : t("This photo becomes your video — describe the motion, then Make")}</span>
+                   {!(making || busy) && (
+                     <button type="button" className="ws-verb" onClick={() => { clearUpload(); setProdSource(null); }}>✕ {t("Remove")}</button>
+                   )}
+                 </div>
+               </div>
              ) : (
                <div className={`ws-easelph ws-easelph-drop${(making || busy) ? " making" : ""}`}
-                 role="button" tabIndex={0} aria-label={t("Drop or upload a photo to edit")}
+                 role="button" tabIndex={0} aria-label={(casual && tab === "video") ? t("Drop or upload a photo to animate") : t("Drop or upload a photo to edit")}
                  onClick={() => { if (!(making || busy)) stageUploadRef.current?.click(); }}
                  onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}
                  onDragOver={(e) => { if (making || busy) return; e.preventDefault(); e.currentTarget.classList.add("drag"); }}
@@ -4262,8 +4373,8 @@ export default function WebStudio() {
                      </span>
                    )}
                  </span>
-                 <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) }) : t("Add a photo, or make one")}</div>
-                 <div className="ws-easel-sub">{(making || busy) ? t("This takes a few minutes — it'll land right here.") : t("Tap to upload or drop a photo to edit — or just describe what you want below.")}</div>
+                 <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) }) : (casual && tab === "video") ? t("Add a photo to animate, or just describe your video") : t("Add a photo, or make one")}</div>
+                 <div className="ws-easel-sub">{(making || busy) ? t("This takes a few minutes — it'll land right here.") : (casual && tab === "video") ? t("Tap to upload or drop a photo to turn into a video — or just describe it below.") : t("Tap to upload or drop a photo to edit — or just describe what you want below.")}</div>
                </div>
              )}
            </div>
@@ -4330,9 +4441,9 @@ export default function WebStudio() {
       )}
 
       {forgeOpen && (
-        <div className="ws-scrim" onClick={() => { setForgeOpen(false); setForging(false); }}>
-          <div className="ws-forgem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <button type="button" className="ws-forgem-x" onClick={() => { setForgeOpen(false); setForging(false); }} aria-label={t("Close")}><Ico n="x" size={16} /></button>
+        <div className="ws-scrim" onClick={closeForge}>
+          <div ref={forgeDialogRef} className="ws-forgem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <button type="button" className="ws-forgem-x" onClick={closeForge} aria-label={t("Close")}><Ico n="x" size={16} /></button>
             {forging ? (
               forgeFetcher.data?.avatarError ? (
                 <div className="ws-forgem-done">
@@ -4389,6 +4500,7 @@ export default function WebStudio() {
                 <textarea className="wb-in ws-forgem-desc" rows={2} maxLength={200}
                   placeholder={t("Describe your character (optional) — e.g. a friendly green monster mascot")}
                   value={avatarDesc} onChange={(e) => setAvatarDesc(e.target.value)} />
+                <CharCount value={avatarDesc} max={200} />
                 {!d.caps.includes("video") && (
                   <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
                 )}
@@ -4417,7 +4529,7 @@ export default function WebStudio() {
 
       {showDone && queued && (
         <div className="ws-scrim" onClick={() => setShowDone(false)}>
-          <div className="ws-modal" onClick={(e) => e.stopPropagation()}>
+          <div ref={doneDialogRef} className="ws-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <span className="ws-mrose" aria-hidden />
             {/* The flex: crest, wordmark, gold rule. A stock sparkle emoji is
                 the one thing on screen that isn't ours — this is the moment
@@ -4476,6 +4588,16 @@ const WS_STYLE = `
 @media (prefers-reduced-motion:reduce){
   .ws-forge-spin,.ws-forge-card,.ws-forge-img{animation:none}
   .ws-forge-card{opacity:.7}
+  /* Catalog-sync spinner — stop the spin, keep the dot. */
+  .ws-catload-spin{animation:none}
+  /* Format/create tile entrance stagger — the inline animationDelay only
+     matters because the shared class animates; kill both so nothing drifts in.
+     !important is needed to beat the inline animation-delay. */
+  .ws-tiles .ws-tile,.ws-ctgrid .ws-tile,.ws-tiles.fmt .ws-tile{animation:none!important;animation-delay:0s!important}
+  /* Hub-slide drawer + modal/lightbox entrances — show them instantly. */
+  .ws-hub-reveal.open{animation:none}
+  .ws-scrim,.ws-forgem,.ws-managem,.ws-modal,.ws-lightbox{animation:none}
+  .ws-modal .ws-mrose,.ws-forgem-spin{animation:none}
 }
 .ws-face{position:relative}
 .ws-face-pick{display:block;width:100%;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:center}
@@ -4573,6 +4695,15 @@ const WS_STYLE = `
 .ws-seg button.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);color:var(--ink,#14201A);background:#F0FAF4}
 .ws-wq{font-weight:500;font-size:11px;color:var(--ink2,#4A554E)}
 .ws-svchint{font-size:12.5px;color:var(--ink2,#4A554E);background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:10px 13px;margin:8px 0 0}
+/* Shared semantic inline-message colors — one red, one amber — so combine /
+   import / photo-nudge notes stop hard-coding their own hex. Paired with
+   .ws-note for sizing/spacing. */
+.ws-err{color:#9A3120}
+.ws-warn{color:#8A5A12}
+/* Live char counter under the big describe/direction textareas — subtle, right
+   aligned; amber as you approach the limit so silent truncation is visible. */
+.ws-charcount{display:block;text-align:right;margin:4px 2px 0;font-size:11px;font-weight:600;color:var(--ink2,#8A968E);font-variant-numeric:tabular-nums}
+.ws-charcount.near{color:#8A5A12}
 .ws-autobox{font-size:13px;color:var(--ink,#14201A);background:var(--paper,#F4F1E6);border:1px dashed var(--gold);border-radius:12px;padding:11px 14px;margin:2px 0 8px}
 .ws-3w{display:flex;flex-direction:column;gap:10px;margin-top:2px}
 .ws-w{display:block;font-size:12px;font-weight:700;color:var(--ink,#14201A);margin-bottom:5px}

@@ -10,11 +10,13 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { db } from "../db.server";
 import { emailEnabled, sendEmail } from "../lib/email-provider.server";
 import { resetEmailHtml, resetUrl, signPasswordReset } from "../lib/password-reset.server";
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { getWebIdentity } from "../lib/web-auth.server";
+import { authCopy } from "../lib/auth-i18n";
 
 export const meta = () => [
   { title: "Reset your password · EasyMode" },
@@ -24,11 +26,6 @@ export const meta = () => [
 
 const CONTACT = "hello@easymodeapp.com";
 
-// Said on every path, so it can never become a signal.
-const NEUTRAL =
-  `If an account exists for that address, a reset link is on its way. It expires in 60 minutes. ` +
-  `Nothing within 10 minutes? Email ${CONTACT} from the address on your account.`;
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
   // Decided BEFORE any address is seen, so the not-connected state leaks nothing.
@@ -36,19 +33,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (!emailEnabled()) {
-    return json({ error: `Password reset by email isn't switched on yet. Email ${CONTACT} from the address on your account and we'll restore access by hand.` });
-  }
-
   const form = await request.formData();
   const email = ((form.get("email") as string) || "").trim().toLowerCase();
+  // Localise to the posted language, same as login/signup. Chosen the same way
+  // on every path, so it is never itself a signal.
+  const c = authCopy(form.get("lang"));
+
+  if (!emailEnabled()) {
+    return json({ error: c.forgotOff.replace("{contact}", CONTACT) });
+  }
+
+  // Said on every path, so it can never become a signal.
+  const NEUTRAL = c.forgotNeutral.replace("{contact}", CONTACT);
 
   // Per-source may answer 429 — it says nothing about any address. Per-address
   // must NOT: a 429 that only fires for real accounts is itself an enumeration
   // oracle, so a tripped address bucket gets the neutral reply and no email.
   const byIp = rateLimit(`forgot:ip:${clientIp(request)}`, 5, 60 * 60_000);
   if (!byIp.ok) {
-    return json({ error: "Too many reset requests from here. Try again a little later." }, { status: 429 });
+    return json({ error: c.forgotRate }, { status: 429 });
   }
   const byEmail = email ? rateLimit(`forgot:acct:${email}`, 3, 60 * 60_000) : { ok: false };
 
@@ -81,30 +84,48 @@ export default function Forgot() {
   const sent = actionData && "sent" in actionData ? actionData.sent : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
 
+  // Same uiLang-cookie read as login/signup, so a visitor who picked Spanish on
+  // the landing or login page keeps it here.
+  const [lang, setLang] = useState("en");
+  useEffect(() => { try { const m = document.cookie.match(/(?:^|;\s*)uiLang=([^;]+)/); setLang((m && decodeURIComponent(m[1])) || localStorage.getItem("emLang") || (navigator.language || "en").slice(0, 2)); } catch { /* private mode */ } }, []);
+  // The copy swaps client-side, so the DOCUMENT follows it — see login/signup.
+  useEffect(() => { try { document.documentElement.lang = lang; document.documentElement.dir = lang === "ur" ? "rtl" : "ltr"; document.title = authCopy(lang).forgotTitle; } catch { /* SSR */ } }, [lang]);
+  const c = authCopy(lang);
+
+  // Kept so the success state can offer a one-tap "Resend link" (the form is
+  // replaced by the confirmation, so the address would otherwise be lost).
+  const [email, setEmail] = useState("");
+  const busy = nav.state !== "idle";
+
   return (
     <div className="wb-auth wb-card">
-      <h1 className="wb-h1" style={{ marginTop: 0 }}>Reset your password</h1>
+      <style dangerouslySetInnerHTML={{ __html: AUTH_FX }} />
+      <h1 className="wb-h1" style={{ marginTop: 0 }}>{sent ? c.forgotSentH1 : c.forgotH1}</h1>
 
       {!emailReady ? (
-        <p className="wb-sub">
-          Password reset by email isn't switched on yet. Email{" "}
-          <a href={`mailto:${CONTACT}`}>{CONTACT}</a> from the address on your account and we'll restore
-          access by hand.
-        </p>
+        <p className="wb-sub">{c.forgotOff.replace("{contact}", CONTACT)}</p>
       ) : sent ? (
-        <p className="wb-sub">{sent}</p>
+        <>
+          <p className="wb-sub">{sent}</p>
+          <Form method="post">
+            <input type="hidden" name="lang" value={lang} />
+            <input type="hidden" name="email" value={email} />
+            <button className="wb-btn ghost" type="submit" disabled={busy} aria-busy={busy}>
+              {busy ? <span className="wb-busy"><span className="wb-busy-dot wb-busy-dot-dark" aria-hidden="true" />{c.forgotSending}</span> : c.forgotResend}
+            </button>
+          </Form>
+        </>
       ) : (
         <>
-          <p className="wb-sub" style={{ marginBottom: 6 }}>
-            We'll email you a link to choose a new one.
-          </p>
-          {error && <div className="wb-err">{error}</div>}
+          <p className="wb-sub" style={{ marginBottom: 6 }}>{c.forgotSub}</p>
+          {error && <div className="wb-err" role="alert">{error}</div>}
           <Form method="post">
-            <label className="wb-lbl">Email</label>
-            <input className="wb-in" name="email" type="email" required autoComplete="email" />
+            <input type="hidden" name="lang" value={lang} />
+            <label className="wb-lbl" htmlFor="fg-email">{c.emailLabel}</label>
+            <input className="wb-in" id="fg-email" name="email" type="email" required autoComplete="email" placeholder={c.emailPlaceholder} value={email} onChange={(e) => setEmail(e.currentTarget.value)} autoFocus />
             <div style={{ marginTop: 18 }}>
-              <button className="wb-btn" type="submit" disabled={nav.state !== "idle"}>
-                {nav.state !== "idle" ? "Sending…" : "Send the link →"}
+              <button className="wb-btn" type="submit" disabled={busy} aria-busy={busy}>
+                {busy ? <span className="wb-busy"><span className="wb-busy-dot" aria-hidden="true" />{c.forgotSending}</span> : c.forgotBtn}
               </button>
             </div>
           </Form>
@@ -112,8 +133,18 @@ export default function Forgot() {
       )}
 
       <p className="wb-note" style={{ marginTop: 16 }}>
-        <Link to="/web/login">Back to log in</Link>
+        <Link to="/web/login">{c.backToLogin}</Link>
       </p>
     </div>
   );
 }
+
+/* Scoped bits the shared /web stylesheet doesn't carry: the button busy dot. */
+const AUTH_FX = `
+.wb-busy{display:inline-flex;align-items:center;gap:8px;}
+.wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}
+.wb-busy-dot-dark{border-color:rgba(20,32,26,.25);border-top-color:var(--ink);}
+@keyframes wbBusySpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.wb-busy-dot{animation:none}}
+`;

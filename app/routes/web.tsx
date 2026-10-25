@@ -176,13 +176,15 @@ export default function WebLayout() {
               </div>
             )}
             {isAdmin && (
-              <Link to="/admin/dashboard" className="wb-admin" title="Admin dashboard" aria-label="Admin dashboard">
+              <Link to="/admin/dashboard" className="wb-admin" title={t("Admin dashboard")} aria-label={t("Admin dashboard")}>
                 <Ico n="trend" />
               </Link>
             )}
             {authed
               ? <AccountMenu hud={hud} />
-              : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
+              : (loc.pathname === "/web/login" || loc.pathname === "/web/signup")
+                ? null
+                : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
           </div>
         </header>
 
@@ -333,6 +335,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const t = useT();
+  // Thread titles are STORED canonically in English ("Main"/"New chat") so the
+  // rename/auto-name logic can compare against them; translate only on display.
+  const dispTitle = (title: string) => (title === "Main" ? t("Main") : title === "New chat" ? t("New chat") : title);
 
   // Flipping mode is a different project set — back to that mode's Main thread.
   useEffect(() => { setActiveThreadId("main"); }, [mode]);
@@ -548,7 +553,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         }
         if (s.done && Array.isArray(s.media) && s.media.length) {
           const media = s.media;
-          setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Tap to open it full-size."), media }]);
+          setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Open it to see it full-size."), media }]);
           // Helpurr takes an actual LOOK (images only) and gives one honest, grounded
           // line — the "views it like you do" pass. Only for a single make (a batch
           // would spam N reviews + N Redo buttons). Any failure just means no line.
@@ -682,7 +687,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
     if (pendingResend !== null && !busy && !uploading) { const text = pendingResend; setPendingResend(null); void send(text); }
   }, [pendingResend, busy, uploading]); // eslint-disable-line react-hooks/exhaustive-deps
   // Enter sends; Shift+Enter is a newline (standard desktop chat composer). On
-  // mobile, Enter inserts a newline and the ➤ button sends (phones have no easy
+  // mobile, Enter inserts a newline and the send button sends (phones have no easy
   // Shift+Enter, and you want to be able to type multi-line there too).
   const taKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey && !window.matchMedia("(max-width: 620px)").matches) { e.preventDefault(); void send(input); } };
   // Copy a message's text (minus the light-markdown markers) to the clipboard.
@@ -766,17 +771,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
       ];
 
   // The dashboard home already leads with a big animated Helpurr (the hero) and a
-  // Helpurr nav tab, so a third floating cat down in the corner is redundant and
-  // reads as clutter. Keep the floating button only on the manual-work pages
-  // (Studio, Campaigns, Channels, Archive…) where it's the quick way to ask a
-  // question mid-project. (It still opens maximized from the hero/nav on home.)
+  // Helpurr nav tab, so down in the corner we keep the floating button MINIMAL
+  // there (a touch smaller, no attention dot) rather than hiding it outright —
+  // the home is where sessions start, so the quick-ask must stay reachable
+  // without scrolling back to the hero. On the manual-work pages (Studio,
+  // Campaigns, Channels, Archive…) it's the full button with the nudge dot.
   const onHome = loc.pathname === "/web" || loc.pathname === "/web/";
   return (
     <>
-      {!onHome && (
-        <button type="button" className={`mm-fab${open ? " open" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={t("Chat with Helpurr, your AI helper")}>
+      {!(open && max) && (
+        <button type="button" className={`mm-fab${open ? " open" : ""}${onHome ? " mm-fab-min" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={t("Chat with Helpurr, your AI helper")}>
           <Familiar />
-          {!open && <span className="mm-fab-dot" aria-hidden="true" />}
+          {!open && !onHome && <span className="mm-fab-dot" aria-hidden="true" />}
         </button>
       )}
       {open && max && <div className="mm-backdrop" onClick={() => setMax(false)} aria-hidden="true" />}
@@ -799,12 +805,12 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                         onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
                     ) : (
                       <>
-                        <button type="button" className="mm-side-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); setSideOpen(false); } }} title={th.title}>
-                          <span className="mm-side-chat-tx">{th.title}</span>
+                        <button type="button" className="mm-side-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); setSideOpen(false); } }} title={dispTitle(th.title)}>
+                          <span className="mm-side-chat-tx">{dispTitle(th.title)}</span>
                         </button>
                         {th.id !== "main" && (
                           <span className="mm-side-chat-acts">
-                            <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(th.title); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
+                            <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(dispTitle(th.title)); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
                             {armedDeleteId === th.id
                               ? <button type="button" className="mm-chat-act mm-chat-del" onClick={() => void deleteThread(th.id)} title={t("Tap to confirm")}>{t("Delete?")}</button>
                               : <button type="button" className="mm-chat-act" onClick={() => armDelete(th.id)} title={t("Delete")} aria-label={t("Delete chat")}>🗑</button>}
@@ -826,7 +832,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             {max && authed && <button type="button" className="mm-side-toggle" onClick={() => setSideOpen((o) => !o)} aria-label={t("Your chats")} title={t("Your chats")}>☰</button>}
             <span className="mm-head-crest"><Familiar think={busy} /></span>
             <div className="mm-head-txt">
-              <b>{max && !showHome && activeTitle ? activeTitle : "Helpurr"}</b>
+              <b>{max && !showHome && activeTitle ? dispTitle(activeTitle) : "Helpurr"}</b>
               <span>{busy ? t("thinking…") : (max && !showHome && activeTitle ? "Helpurr" : t("your AI helper"))}</span>
             </div>
             <button type="button" className="mm-expand" onClick={() => setMax((m) => !m)} aria-label={max ? t("Shrink chat") : t("Expand chat")} title={max ? t("Shrink") : t("Expand")}>{max ? "⤡" : "⤢"}</button>
@@ -838,8 +844,8 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               {threads.map((th) => (
                 <button key={th.id} type="button" role="tab" aria-selected={th.id === activeThreadId}
                   className={`mm-tab${th.id === activeThreadId ? " on" : ""}`}
-                  onClick={() => { if (th.id !== activeThreadId && !busy) { setActiveThreadId(th.id); setAttach([]); setLastPhoto(null); } }} title={th.title}>
-                  {th.title}
+                  onClick={() => { if (th.id !== activeThreadId && !busy) { setActiveThreadId(th.id); setAttach([]); setLastPhoto(null); } }} title={dispTitle(th.title)}>
+                  {dispTitle(th.title)}
                 </button>
               ))}
               <button type="button" className="mm-tab mm-tab-new" onClick={newThread} title={t("New chat")} aria-label={t("Start a new chat")}>+</button>
@@ -864,7 +870,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => pickPhoto(e.target.files)} />
                   <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}>📎</button>
                   <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
-                  <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}>➤</button>
+                  <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}><Ico n="bolt" size={18} /></button>
                 </form>
                 {(attach.length > 0 || uploading) && (
                   <div className="mm-home-attach">
@@ -895,13 +901,13 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                           onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
                       ) : (
                         <>
-                          <button type="button" className="mm-home-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); } }} title={th.title}>
+                          <button type="button" className="mm-home-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); } }} title={dispTitle(th.title)}>
                             <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
-                            <span className="mm-home-chat-tx">{th.title}</span>
+                            <span className="mm-home-chat-tx">{dispTitle(th.title)}</span>
                           </button>
                           {th.id !== "main" && (
                             <span className="mm-home-chat-acts">
-                              <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(th.title); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
+                              <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(dispTitle(th.title)); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
                               {armedDeleteId === th.id
                                 ? <button type="button" className="mm-chat-act mm-chat-del" onClick={() => void deleteThread(th.id)} title={t("Tap to confirm")}>{t("Delete?")}</button>
                                 : <button type="button" className="mm-chat-act" onClick={() => armDelete(th.id)} title={t("Delete")} aria-label={t("Delete chat")}>🗑</button>}
@@ -921,7 +927,11 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             </div>
           )}
           {!atHome && (<>
-          <div className="mm-list" ref={listRef} role="log" aria-live="polite" aria-relevant="additions">
+          {/* aria-live is OFF on the list: a streamed reply mutates token-by-token
+              and a polite log would machine-gun every delta to a screen reader.
+              The completed reply is announced ONCE via the terminal live region
+              below (.mm-sr-live). */}
+          <div className="mm-list" ref={listRef} role="log" aria-live="off">
             {msgs.map((m, i) => (
               <div key={i} className={`mm-row ${m.role}`}>
                 {editingIdx === i && m.role === "user" ? (
@@ -939,10 +949,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                   <div className="mm-media">
                     {m.media.map((md, j) => (
                       md.type === "VIDEO_AD"
-                        ? <video key={j} src={md.url} className="mm-media-item" controls playsInline preload="metadata" />
+                        ? <span key={j} className="mm-media-wrap"><video src={md.url} className="mm-media-item" controls playsInline preload="metadata" /><a href={md.url} target="_blank" rel="noreferrer" className="mm-media-open" title={t("Open full-size")} aria-label={t("Open full-size")}><Ico n="expand" size={15} /></a></span>
                         : md.type === "AUDIO"
-                          ? <audio key={j} src={md.url} className="mm-media-aud" controls />
-                          : <a key={j} href={md.url} target="_blank" rel="noreferrer" className="mm-media-link" title={md.title || ""}><img src={md.url} alt={md.title || ""} className="mm-media-item" loading="lazy" /></a>
+                          ? <span key={j} className="mm-media-wrap mm-media-wrap-aud"><audio src={md.url} className="mm-media-aud" controls /><a href={md.url} target="_blank" rel="noreferrer" className="mm-media-open" title={t("Open full-size")} aria-label={t("Open full-size")}><Ico n="expand" size={15} /></a></span>
+                          : <a key={j} href={md.url} target="_blank" rel="noreferrer" className="mm-media-link" title={md.title || t("Open full-size")}><img src={md.url} alt={md.title || ""} className="mm-media-item" loading="lazy" /></a>
                     ))}
                   </div>
                 )}
@@ -992,12 +1002,18 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             {busy && (!msgs.length || msgs[msgs.length - 1].role !== "assistant" || !msgs[msgs.length - 1].content) && (
               streamStatus
                 ? <div className="mm-msg assistant mm-status" aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif?v=walk5" alt="" aria-hidden="true" /><span className="mm-status-tx">{streamStatus}</span></div>
-                : <div className="mm-msg assistant mm-think-bubble" aria-label={t("Helpurr is thinking…")} aria-live="polite"><img className="mm-run-gif" src="/helpurr-run.gif?v=walk5" alt="" aria-hidden="true" /><span className="mm-typing" aria-hidden="true"><i /><i /><i /></span></div>
+                : <div className="mm-msg assistant mm-think-bubble" aria-label={t("Helpurr is thinking…")}><img className="mm-run-gif" src="/helpurr-run.gif?v=walk5" alt="" aria-hidden="true" /><span className="mm-typing" aria-hidden="true"><i /><i /><i /></span></div>
             )}
-            {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("still working on it — hang tight…")}</div>}
+            {making && !busy && <div className="mm-making" aria-live="polite"><span className="mm-making-dots"><i /><i /><i /></span>{t("Still working on it — hang tight…")}</div>}
             {msgs.length <= 1 && !busy && (
               <div className="mm-chips">{chips.map((c) => <button key={c} type="button" onClick={() => send(c)}>{c}</button>)}</div>
             )}
+          </div>
+          {/* Terminal live region: announces the completed assistant reply ONCE
+              (only while idle), so screen-reader users hear the final answer
+              rather than every streamed token. */}
+          <div className="mm-sr-live" aria-live="polite" aria-atomic="true">
+            {!busy && msgs.length > 0 && msgs[msgs.length - 1].role === "assistant" ? msgs[msgs.length - 1].content : ""}
           </div>
           {(attach.length > 0 || uploading) && (
             <div className="mm-attach">
@@ -1016,7 +1032,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
             <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={attach.length ? t("Describe the edit, or just send…") : t("Ask Helpurr…")} aria-label={t("Message Helpurr")} />
             {busy
               ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
-              : <button type="submit" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}>➤</button>}
+              : <button type="submit" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}><Ico n="bolt" size={17} /></button>}
           </form>
           </>)}
           </div>
@@ -1118,8 +1134,8 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
         aria-label={t("Account menu — level {lvl}, {tokens} tokens", { lvl: hud.level, tokens: hud.tokens.toLocaleString() })}
       >
         <span className={`wb-chip-ava${avatar ? " photo" : " mono"}`}>{avatar ? <img src={avatar} alt="" /> : <span className="wb-ava-mono">{initial}</span>}</span>
-        <span className="wb-chip-lvl">LVL {hud.level}</span>
-        <span className="wb-chip-tok"><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
+        <span className="wb-chip-lvl" title={t("Level {lvl} — {n} XP to the next reward", { lvl: hud.level, n: toNext.toLocaleString() })}>LVL {hud.level}</span>
+        <span className="wb-chip-tok" title={t("{n} tokens left", { n: hud.tokens.toLocaleString() })}><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
         <span className="wb-chip-caret" aria-hidden="true">▾</span>
       </button>
 
@@ -1825,6 +1841,11 @@ const CSS = `
 .mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}
 .mm-fab:hover{transform:translateY(-2px) scale(1.06);}
 .mm-fab.open{transform:scale(.92);opacity:.95;}
+/* On the home the hero already carries a big Helpurr, so the corner quick-ask is
+   kept but dialed down — smaller and quieter, a persistent handle rather than a
+   second focal point. */
+.mm-fab-min{width:54px;height:54px;opacity:.9;}
+.mm-fab-min:hover{opacity:1;}
 /* Nudged up and out to the top-right corner — at top:4px/right:6px it sat on the
    cat's ear and read as an earring. Now it floats clear above the head as a badge. */
 .mm-fab-dot{position:absolute;top:-2px;right:-3px;width:12px;height:12px;border-radius:50%;background:#F3D98C;border:2px solid #0B6B3E;pointer-events:none;z-index:4;box-shadow:0 1px 3px rgba(0,0,0,.25);}
@@ -1928,7 +1949,7 @@ const CSS = `
 .mm-home-ask>textarea::placeholder{color:#97a19a;}
 .mm-home-clip{flex:0 0 auto;background:none;border:0;font-size:17px;cursor:pointer;opacity:.7;padding:4px;border-radius:8px;line-height:1;}
 .mm-home-clip:hover:not(:disabled){opacity:1;background:rgba(12,122,70,.08);}
-.mm-home-send{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;
+.mm-home-send{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;color:#fff;font-size:15px;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--green2) 40%,var(--green));box-shadow:0 3px 10px rgba(12,122,70,.3);transition:filter .12s,transform .12s;}
 .mm-home-send:hover:not(:disabled){filter:brightness(1.07);transform:translateY(-1px);}
 .mm-home-send:disabled{opacity:.42;cursor:default;}
@@ -2020,9 +2041,19 @@ const CSS = `
 .mm-media{display:flex;flex-wrap:wrap;gap:8px;max-width:92%;margin-top:2px;}
 .mm-media-link{display:block;flex:0 0 auto;line-height:0;}
 .mm-media-item{max-width:210px;max-height:260px;width:auto;height:auto;border-radius:12px;border:1px solid var(--line,#E4DFCF);display:block;}
-video.mm-media-item{width:132px;height:176px;object-fit:cover;}
+video.mm-media-item{width:176px;height:234px;object-fit:cover;}
 .mm-media-link:hover .mm-media-item{filter:brightness(1.05);}
 .mm-media-aud{width:100%;max-width:260px;}
+/* Video/audio keep their native controls; a small corner badge gives them the
+   same "open full-size in a new tab" affordance the still images have. */
+.mm-media-wrap{position:relative;flex:0 0 auto;line-height:0;display:inline-block;}
+.mm-media-wrap-aud{display:block;width:100%;max-width:260px;}
+.mm-media-open{position:absolute;top:6px;right:6px;z-index:2;display:grid;place-items:center;width:26px;height:26px;border-radius:8px;
+  color:#fff;background:rgba(10,20,14,.55);backdrop-filter:blur(2px);opacity:.85;transition:opacity .12s,background .12s;}
+.mm-media-open:hover{opacity:1;background:rgba(12,122,70,.9);}
+/* Visually hidden, screen-reader only — carries the finished reply for the
+   terminal aria-live region (see .mm-sr-live in the chat). */
+.mm-sr-live{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
 .mm-acts{display:flex;flex-wrap:wrap;gap:6px;max-width:92%;}
 .mm-act{font:inherit;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;border:0;border-radius:999px;padding:8px 15px;
   background:linear-gradient(168deg,#12A85E,#0B6B3E);box-shadow:0 2px 8px rgba(12,122,70,.26),inset 0 0 0 1px rgba(231,200,121,.3);}
