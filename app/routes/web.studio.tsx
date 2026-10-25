@@ -1709,12 +1709,20 @@ export default function WebStudio() {
   // just-for-fun making + photo edits and hides the merchant-only surfaces; it
   // never changes what the backend charges. Default marketing if, somehow,
   // there's no provider (keeps the live merchant flow safe).
-  const { mode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>() || { mode: "marketing" as const, setMode: () => {} };
-  const casual = mode === "casual";
+  const { mode, setMode } = useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>() || { mode: "marketing" as const, setMode: () => {} };
+  const can = (c: string) => d.caps.includes(c);
+  // "Social media" Studio mode is a marketing-plan feature. autopost is the
+  // capability that starts at Starter ($19) and is exactly what Creator ($6.99)
+  // and free/trial-without-plan users lack — so it's the clean gate.
+  const socialUnlocked = can("autopost");
+  // A plan that can't do social is ALWAYS in Create — derive casual from the gate
+  // (not just the mode) so there's never even a pre-hydration flash of the locked
+  // marketing Studio. caps come from the loader, so this is correct at SSR too.
+  // Unlocked users switch freely via the toggle.
+  const casual = !socialUnlocked || mode === "casual";
   const nav = useNavigation();
   const submit = useSubmit();
   const busy = nav.state !== "idle";
-  const can = (c: string) => d.caps.includes(c);
 
   // Deep-link support: arrive with ?tab= and ?product= pre-filled.
   const [searchParams] = useSearchParams();
@@ -1889,6 +1897,7 @@ export default function WebStudio() {
   const [commercial, setCommercial] = useState(false);
   const [breakout, setBreakout] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
+  const [socialLockOpen, setSocialLockOpen] = useState(false);
   const [showDone, setShowDone] = useState(false);
   // ?prompt= lets the Creator home's prompt-first box prefill the describe/
   // topic field when it deep-links into a mode (image/edit/video/music).
@@ -1911,6 +1920,9 @@ export default function WebStudio() {
   // while one of those is active, fall back to a visible tab so the user never
   // stares at a tab with no button. Runs after mount, when `casual` resolves.
   useEffect(() => { if (casual && (tab === "blog" || tab === "import")) { setTab("image"); setUpsell(null); } }, [casual, tab]);
+  // A plan that can't do social must never sit in the (fully locked) marketing
+  // Studio — keep locked users in Create; the Social toggle then upsells them.
+  useEffect(() => { if (!socialUnlocked && mode !== "casual") { setMode("casual"); setSocialLockOpen(false); } }, [socialUnlocked, mode]);
   // "Commercial look" is an ad treatment — clear it on entering casual so a value
   // ticked in marketing can't ride a casual submit (the control is hidden in
   // casual, but a control nobody can see must not change the order).
@@ -2858,6 +2870,30 @@ export default function WebStudio() {
           ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</>
           : <>{t("Make one piece by hand, in your voice — it lands in your ")}<Link to="/web/archive">{t("Archive")}</Link>.</>}
       </p>
+      {/* Create ↔ Social switch — the in-Studio mode toggle (replaces the retired
+          global header toggle). "Social media" flips the Studio to the marketing
+          creation tools; it's gated on a marketing plan (autopost = Starter+), so
+          Creator ($6.99) / free users see it locked with an upgrade prompt. */}
+      <div className="ws-modeswitch" role="group" aria-label={t("What are you making?")}>
+        <button type="button" className={`ws-ms-opt${casual ? " on" : ""}`} aria-pressed={casual}
+          onClick={() => { setMode("casual"); setUpsell(null); setSocialLockOpen(false); }}>
+          <Ico n="palette" size={15} />{t("Create")}
+        </button>
+        <button type="button" className={`ws-ms-opt${!casual ? " on" : ""}${socialUnlocked ? "" : " locked"}`} aria-pressed={!casual}
+          onClick={() => (socialUnlocked ? (setMode("marketing"), setUpsell(null), setSocialLockOpen(false)) : setSocialLockOpen(true))}
+          title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch the Studio into social mode")}>
+          <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social media")}
+          {!socialUnlocked && <span className="ws-ms-badge">{t("Starter")}</span>}
+        </button>
+      </div>
+      {socialLockOpen && !socialUnlocked && (
+        <div className="ws-upsell ws-ms-upsell">
+          <b><Ico n="lock" size={15} /> {t("Social media is a Starter feature")}</b>
+          <p>{t("Upgrade to Starter ($19/mo) to switch the Studio into social mode — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
+          <div><Link to="/web#plans" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>{t("See plans")}</Link>
+            <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setSocialLockOpen(false)}>{t("Not now")}</button></div>
+        </div>
+      )}
       {!d.hasBrand && !casual && <div className="wb-err">{t("Set your ")}<Link to="/web">{t("brand voice")}</Link>{t(" first so content sounds like you.")}</div>}
       {!d.hasPlan && <div className="wb-err">{t("Pick a ")}<Link to="/web">{t("plan")}</Link>{t(" first — content runs on tokens.")}</div>}
       {/* Top banner too — a failure must be visible even when the config
@@ -4970,6 +5006,16 @@ const WS_STYLE = `
    this only restyles. =================================================== */
 .ws-casual .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:34px;line-height:1.08;letter-spacing:-.025em;text-align:center;margin:8px 0 10px}
 .ws-casual .wb-sub{text-align:center;max-width:520px;margin:0 auto 20px;font-size:14.5px;color:var(--ink2,#4A554E)}
+/* Create ↔ Social switch at the top of the Studio (plan-gated). */
+.ws-modeswitch{display:inline-flex;gap:4px;padding:4px;border-radius:13px;background:var(--wash,#F1EEE3);border:1px solid var(--line,#E4DFCF);margin:0 0 18px}
+.ws-casual .ws-modeswitch{display:flex;width:max-content;margin:0 auto 20px}
+.ws-ms-opt{display:inline-flex;align-items:center;gap:7px;border:0;background:none;cursor:pointer;font:inherit;font-weight:700;font-size:13.5px;color:var(--ink2,#6A756E);padding:8px 15px;border-radius:10px;transition:background .14s,color .14s}
+.ws-ms-opt:hover{color:var(--ink,#14201A)}
+.ws-ms-opt.on{background:#fff;color:var(--ink,#14201A);box-shadow:0 2px 6px rgba(20,32,26,.08)}
+.ws-ms-opt.locked{color:var(--ink2,#9AA39C)}
+.ws-ms-badge{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#8a5a12;background:#FDF4E3;border:1px solid #E8D3A6;border-radius:6px;padding:2px 6px}
+.ws-ms-upsell{margin:0 0 18px}
+.ws-casual .ws-ms-upsell{max-width:520px;margin-left:auto;margin-right:auto;margin-bottom:20px}
 .ws-casual .ws-tabs{justify-content:center;gap:8px;margin-bottom:18px}
 .ws-casual .ws-tab{border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.05);font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;color:var(--ink2,#4A554E);padding:9px 17px;transition:transform .12s,box-shadow .12s,color .12s}
 .ws-casual .ws-tab:hover{transform:translateY(-1px);box-shadow:0 10px 22px -12px rgba(20,32,26,.3);color:var(--ink,#14201A)}
