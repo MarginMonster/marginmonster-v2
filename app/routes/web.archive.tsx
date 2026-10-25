@@ -5,7 +5,7 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
@@ -1186,20 +1186,26 @@ export default function WebArchive() {
   const vIdx = viewer ? visibleShelf.findIndex((c) => c.id === viewer.id) : -1;
   const openAt = (idx: number) => { const n = visibleShelf[(idx % visibleShelf.length + visibleShelf.length) % visibleShelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
+  // The handler reads the shelf + index off a ref so the listener can bind ONCE
+  // per open piece instead of re-binding every render — visibleShelf is a fresh
+  // array each render (shelf itself is assets.filter(...)), so depending on it
+  // defeated the point. The ref is refreshed each render (free) and the effect
+  // only re-runs when the open piece changes identity.
+  const navRef = useRef({ shelf: visibleShelf, vIdx });
+  navRef.current = { shelf: visibleShelf, vIdx };
   useEffect(() => {
     if (!viewer) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { setViewer(null); return; }
-      if (visibleShelf.length < 2 || vIdx < 0) return;
-      if (e.key === "ArrowLeft") openAt(vIdx - 1);
-      else if (e.key === "ArrowRight") openAt(vIdx + 1);
+      const { shelf: s, vIdx: i } = navRef.current;
+      if (s.length < 2 || i < 0) return;
+      const goTo = (idx: number) => { const n = s[(idx % s.length + s.length) % s.length]; if (n) setViewer(n); };
+      if (e.key === "ArrowLeft") goTo(i - 1);
+      else if (e.key === "ArrowRight") goTo(i + 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // Deps: without them this rebound the listener on EVERY render. Re-bind only
-    // when the open piece, the visible shelf, or the current index actually
-    // change (openAt closes over visibleShelf, so these cover it).
-  }, [viewer, visibleShelf, vIdx]);
+  }, [viewer?.id]);
 
   const chipFor = (a: { type: string; status: string }): [string, string] =>
     a.type === "BLOG_POST"

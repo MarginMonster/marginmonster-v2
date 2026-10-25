@@ -226,7 +226,7 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, exist
   const weeklyTokens = perWeek * facelessCost;
   const canAfford = tokens >= facelessCost;
   const togglePlat = (p: string) => setPlats((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
-  const disabled = creating || (autoPost && plats.length === 0);
+  const disabled = creating || (autoPost && plats.length === 0) || !canAfford;
   // When the user leaves the name blank we submit a default — but if a channel
   // already carries that default, suffix "2", "3"… so they don't all collide.
   const defaultName = useMemo(() => {

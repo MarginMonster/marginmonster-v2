@@ -1480,7 +1480,11 @@ const CSS = `
      to a second line keeps every tab visible; Creator's 4 tabs still fit on one. */
   .wb-tabs{order:3;flex:1 0 100%;gap:5px;flex-wrap:wrap;margin-top:2px;}
   .wb-tab{flex:0 0 auto;white-space:nowrap;padding:7px 13px;font-size:12.5px;}
-  .wb-me{margin-left:auto;gap:7px;}
+  /* Wrap so the me-cluster can't overflow the viewport: with the admin link
+     present (admin on a phone) lang + mode + admin + chip overran ~30px at
+     375px. Wrapping + right-align keeps everything on-screen; non-admin users
+     (no .wb-admin) stay on one line unchanged. */
+  .wb-me{margin-left:auto;gap:7px;flex-wrap:wrap;justify-content:flex-end;}
   .wb-login{padding:8px 15px;font-size:12.5px;}
   /* Compact chip on phones: drop the LVL pill, keep avatar + balance + caret so
      the top row stays next to the brand without overflowing. */
@@ -1899,8 +1903,11 @@ const CSS = `
 .mm-side-chat.on{background:rgba(12,122,70,.15);}
 .mm-side-chat-main{flex:1;min-width:0;text-align:left;background:none;border:0;cursor:pointer;font:inherit;padding:9px 10px;}
 .mm-side-chat-tx{display:block;font-size:12.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.mm-side-chat-acts{display:flex;align-items:center;gap:1px;padding-right:5px;opacity:0;transition:opacity .12s;}
+.mm-side-chat-acts{display:flex;align-items:center;gap:1px;padding-right:5px;opacity:.5;transition:opacity .12s;}
 .mm-side-chat:hover .mm-side-chat-acts,.mm-side-chat:focus-within .mm-side-chat-acts{opacity:1;}
+/* Touch has no hover/focus-within to reveal rename+delete — on coarse pointers
+   keep them fully shown so they're reachable (same guard as .mm-home-chat-acts). */
+@media(hover:none){.mm-side-chat-acts{opacity:1;}}
 .mm-side-chat-rename{flex:1;min-width:0;margin:4px;padding:5px 8px;border:1.5px solid var(--green);border-radius:8px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;outline:none;}
 .mm-side-foot-btn{margin:8px 12px 12px;padding:8px 12px;border:1px solid var(--line2);border-radius:11px;background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;position:relative;z-index:1;transition:border-color .14s,color .14s;}
 .mm-side-foot-btn:hover{border-color:var(--green);color:var(--ink);}
@@ -1965,7 +1972,9 @@ const CSS = `
 .mm-home-attach{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:10px;font-size:12px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
 .mm-home-attach-item{position:relative;flex:0 0 auto;line-height:0;}
 .mm-home-attach img{width:34px;height:34px;border-radius:7px;object-fit:cover;display:block;}
-.mm-home-attach-item button{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+/* inset-inline-end (not right) so the remove-x rides the trailing corner under
+   Urdu dir=rtl instead of sitting on the wrong side of the thumbnail. */
+.mm-home-attach-item button{position:absolute;top:-6px;inset-inline-end:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.3);}
 .mm-home-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(560px,100%);margin-top:22px;}
 .mm-home-card{display:flex;align-items:center;gap:11px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2);border-radius:15px;padding:12px 13px;transition:border-color .14s,transform .12s,box-shadow .14s;}

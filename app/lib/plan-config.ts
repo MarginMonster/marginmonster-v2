@@ -303,7 +303,9 @@ export const TOKEN_COST = {
   // faceless market (faceless.video/AutoShorts/faceless.so) sells short clips at
   // ~$1-1.30 each, and 80 tokens was ~$5/video on Starter — over-packaged, not a
   // cost floor. 30 tokens keeps a ~20× margin and makes volume competitive
-  // (Starter ~10/mo, Studio ~30, Creator ~16). Gated at the "video" capability.
+  // (Starter ~10/mo, Studio ~30, Creator ~16). Gated at "creatorvideo" (the
+  // $6.99 Creator plan carries it); the Ultra b-roll surcharge is scaled to the
+  // Creator floor via CREATOR_SURCHARGE_MULT so it stays margin-safe there.
   faceless: 30,
   // Casual (Creator) video — a single text/image-to-video clip via the chosen
   // engine, NO presenter/avatar lipsync and no multi-scene commercial (those are
@@ -322,6 +324,18 @@ export const TOKEN_COST = {
   email: 3,
 } as const;
 export type TokenAction = keyof typeof TOKEN_COST;
+
+// Premium surcharges (video engines in video-engines.ts, faceless Ultra in
+// create-models.ts) were sized against the STUDIO token value (~$0.0433/tok).
+// The "creatorvideo" capability lets the standalone $6.99 CREATOR plan
+// (~$0.0140/tok) reach the SAME premium levers in casual video + faceless,
+// where those tokens are worth ~1/3 as much — so a premium casual gen ran
+// underwater. On the Creator floor we scale the SURCHARGE (never the base,
+// which already clears margin) by this factor, so a premium gen costs about the
+// same DOLLARS it does at Studio and stays ≥30%. Owner 2026-10-24: keep premium
+// available on Creator, priced so the user tops up for it. 0.0433/0.0140 ≈ 3.1
+// → 3 (whole-token surcharges; Studio margins have headroom).
+export const CREATOR_SURCHARGE_MULT = 3;
 
 export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   description: "Product description",

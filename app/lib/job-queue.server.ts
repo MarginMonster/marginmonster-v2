@@ -471,6 +471,14 @@ async function runJob(
       // BEFORE the guard below. Token already spent + prePaid, same as an ad.
       if (payload.editOp) {
         if (!isEditOp(payload.editOp)) throw new Error("Unknown photo-edit operation");
+        // Belt-and-braces tier gate, like the video/song cases: a downgrade
+        // between enqueue and run must not slip the image generator through. The
+        // enqueue side (web.studio photo-edit actions) asserts "image"; a throw
+        // here terminal-fails the job → refundPrepaidOnce returns the tokens.
+        {
+          const { assertCapability } = await import("./capabilities.server");
+          assertCapability(shop?.activePlan, "image");
+        }
         await editImage({
           shopId,
           sourceImageUrl: payload.sourceImageUrl as string,
@@ -483,6 +491,14 @@ async function runJob(
       }
       // Creator "Make an image" — a text-to-image generation (no brand/ad ladder).
       if (payload.createImage) {
+        // Belt-and-braces tier gate, like the video/song cases: a downgrade
+        // between enqueue and run must not slip the image generator through. The
+        // enqueue side (web.studio "Make an image") asserts "image"; a throw here
+        // terminal-fails the job → refundPrepaidOnce returns the tokens.
+        {
+          const { assertCapability } = await import("./capabilities.server");
+          assertCapability(shop?.activePlan, "image");
+        }
         await createImage({
           shopId,
           prompt: payload.createPrompt as string,

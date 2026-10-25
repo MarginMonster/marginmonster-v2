@@ -20,7 +20,7 @@ import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
-import { TOKEN_COST, CREATOR_PRICE } from "../lib/plan-config";
+import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
@@ -870,7 +870,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Casual (Creator) video is a single clip — priced well below a full
       // marketing video ad (presenter/multi-scene). Engine surcharge still rides.
       const videoBase = casualMode ? TOKEN_COST.casualVideo : TOKEN_COST.video;
-      const each = videoBase + engineSurcharge(effectiveEngine);
+      // Creator floor: a premium engine's surcharge was sized for Studio tokens,
+      // so scale it up on casual video (creatorvideo cap) — see CREATOR_SURCHARGE_MULT.
+      const each = videoBase + engineSurcharge(effectiveEngine) * (casualMode ? CREATOR_SURCHARGE_MULT : 1);
       // Video bursts cap lower than image bursts — one video is 60+ tokens, so
       // a ten-pack would empty most wallets on a single tap. Three is enough
       // to pick from without being a decision the merchant regrets.
@@ -880,6 +882,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // top-up, and a single failed piece must refund only its own share.
       const burstFromExtra = (await spendTokens(shop.id, each * n)).fromExtra;
       const perPieceFromExtra = Math.floor(burstFromExtra / n);
+      // floor() drops up to n-1 tokens of the top-up share; hand that remainder
+      // to the first `rem` pieces so the per-piece extra sums back to the full
+      // burstFromExtra. Otherwise a fully-failed burst refunds the remainder to
+      // the expiring allowance instead of the purchased top-up it came from.
+      const rem = burstFromExtra - perPieceFromExtra * n;
       charged(each * n, burstFromExtra);
       for (let i = 0; i < n; i++) {
         // Services: the presenter explains the offer to camera — nothing to hold.
@@ -896,9 +903,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           productSize: ((form.get("productSize") as string) || "").trim() || undefined,
           wearProduct: !!avatarId && wear && !service,
           serviceMode: service, scene,
-          videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra, prePaid: true, initiator: "web",
+          videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra + (i < rem ? 1 : 0), prePaid: true, initiator: "web",
         }, burstRunAt(i));
-        backed(each, perPieceFromExtra);
+        backed(each, perPieceFromExtra + (i < rem ? 1 : 0));
       }
       return json({ ok: true, queued: "video", count: n });
     }
@@ -928,6 +935,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // period roll — the merchant paid cash for those.
       const imgFromExtra = (await spendTokens(shop.id, TOKEN_COST.image * n)).fromExtra;
       const imgPerPieceFromExtra = Math.floor(imgFromExtra / n);
+      // Same floor() remainder as the video burst above — give the leftover
+      // top-up tokens to the first `imgRem` pieces so a fully-failed burst
+      // refunds to the purchased bucket, not the expiring allowance.
+      const imgRem = imgFromExtra - imgPerPieceFromExtra * n;
       charged(TOKEN_COST.image * n, imgFromExtra);
       // A burst exists to give the merchant a SPREAD to choose from, so when
       // they haven't pinned a template or format, walk the format list instead
@@ -971,9 +982,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           avatarId: service ? undefined : avatarId, avatarVariant,
           wear: !!avatarId && wear && !service,
           serviceMode: service, scene, prePaid: true,
-          chargedTokens: TOKEN_COST.image, chargedFromExtra: imgPerPieceFromExtra,
+          chargedTokens: TOKEN_COST.image, chargedFromExtra: imgPerPieceFromExtra + (i < imgRem ? 1 : 0),
         }, burstRunAt(i));
-        backed(TOKEN_COST.image, imgPerPieceFromExtra);
+        backed(TOKEN_COST.image, imgPerPieceFromExtra + (i < imgRem ? 1 : 0));
       }
       return json({ ok: true, queued: "image", count: n });
     }
@@ -1195,7 +1206,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Ultra = nano-banana-pro b-roll (vs nano-banana for Pro) — a per-video
       // surcharge on top of the base faceless cost.
       const facelessQuality = normalizeFacelessQuality((form.get("facelessQuality") as string) || "");
-      const facelessCost = TOKEN_COST.faceless + facelessQualitySurcharge(facelessQuality);
+      // Faceless always rides the Creator floor (creatorvideo cap), so the Ultra
+      // b-roll surcharge is scaled to it — otherwise nano-banana-pro runs underwater.
+      const facelessCost = TOKEN_COST.faceless + facelessQualitySurcharge(facelessQuality) * CREATOR_SURCHARGE_MULT;
       const flFromExtra = (await spendTokens(shop.id, facelessCost)).fromExtra;
       charged(facelessCost, flFromExtra);
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
@@ -2056,7 +2069,7 @@ export default function WebStudio() {
   const presenterWillBeSent = !!avatarId && needsPresenterField(contentType);
   const engineForcedDefault = contentType === "commercial";
   const engineApplies = tab === "video" && !presenterWillBeSent && !engineForcedDefault;
-  const engineFee = engineApplies ? engineSurcharge(videoEngine) : 0;
+  const engineFee = engineApplies ? engineSurcharge(videoEngine) * (casual ? CREATOR_SURCHARGE_MULT : 1) : 0;
   // Re-clamp on every render rather than in an effect: switching from a ×10
   // image burst to the video tab must not quote — or charge — ten videos.
   const burstMax = tab === "video" ? MAX_BURST.video : tab === "image" ? MAX_BURST.image : 1;
@@ -2078,7 +2091,7 @@ export default function WebStudio() {
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
   const createFee = (isCreate || isEdit) ? createModelSurcharge(createModel) : 0;
-  const facelessFee = isFaceless ? facelessQualitySurcharge(facelessQuality) : 0;
+  const facelessFee = isFaceless ? facelessQualitySurcharge(facelessQuality) * CREATOR_SURCHARGE_MULT : 0;
   const cost = baseCost + engineFee + createFee + facelessFee;
 
   // ── THE EASEL, PHASE 2: live result on the Stage (casual only) ──────────────
@@ -2761,6 +2774,15 @@ export default function WebStudio() {
     clearUpload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+  // Casual tabs (Make / Edit / Music / Faceless) toggle in place too, and the
+  // Edit tab shares hasFile with the Marketing upload — a photo left on one tab
+  // would mis-gate another, enabling Create/Edit with no real photo. Clear the
+  // upload AND the source so the submit gate starts honest on every tab switch.
+  useEffect(() => {
+    clearUpload();
+    setProdSource(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (variantRef.current) variantRef.current.value = nextVariant();
     // A photo picked via the Stage "+" lives in state (editFile) but may not be
@@ -3082,7 +3104,7 @@ export default function WebStudio() {
                 <div className="ws-engines">
                   {VIDEO_ENGINES.map((e) => (
                     <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={t(e.blurb)} onClick={() => setVideoEngine(e.key)}>
-                      <b>{t(e.name)}</b><span>{e.surcharge > 0 ? `+${e.surcharge}` : t("included")}</span>
+                      <b>{t(e.name)}</b><span>{e.surcharge > 0 ? `+${e.surcharge * (casual ? CREATOR_SURCHARGE_MULT : 1)}` : t("included")}</span>
                     </button>
                   ))}
                 </div>
@@ -3138,15 +3160,15 @@ export default function WebStudio() {
             {imageMode === "product" && !service && !casual && (
               <>
                 <div className="ws-lbl">{t("Ad format")} <span className="ws-opt">{t("proven structures, not filters")}</span></div>
-                <div className="ws-fmtcats" role="tablist" aria-label={t("Ad format categories")}>
+                <div className="ws-fmtcats" role="radiogroup" aria-label={t("Ad format categories")}>
                   {FORMAT_GROUPS.map((g) => (
-                    <button type="button" key={g.key} role="tab" aria-selected={fmtGroup === g.key}
+                    <button type="button" key={g.key} role="radio" aria-checked={fmtGroup === g.key}
                       className={`ws-fmtcat${fmtGroup === g.key ? " sel" : ""}`} title={t(g.blurb)}
                       onClick={() => setFmtGroup(g.key)}>
                       <span aria-hidden="true">{g.emoji}</span> {t(g.name)}
                     </button>
                   ))}
-                  <button type="button" role="tab" aria-selected={fmtGroup === "all"}
+                  <button type="button" role="radio" aria-checked={fmtGroup === "all"}
                     className={`ws-fmtcat${fmtGroup === "all" ? " sel" : ""}`} title={t("Every format")}
                     onClick={() => setFmtGroup("all")}>{t("All {n}", { n: AD_FORMATS.length })}</button>
                 </div>
@@ -3908,9 +3930,9 @@ export default function WebStudio() {
                 {tab === "music" && !casual && (
                   <>
                     <div className="ws-lbl">{t("Genre / mood")} <span className="ws-opt">{t("optional")}</span></div>
-                    <div className="ws-fmtcats" role="tablist" aria-label={t("Music style")}>
+                    <div className="ws-fmtcats" role="radiogroup" aria-label={t("Music style")}>
                       {MUSIC_STYLES.map((s) => (
-                        <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
+                        <button type="button" key={s.key} role="radio" aria-checked={musicStyle === s.key}
                           className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
                           <Ico n={s.icon} /> {t(s.name)}
                         </button>
@@ -3922,16 +3944,16 @@ export default function WebStudio() {
                 {tab === "faceless" && !casual && (
                   <>
                     <div className="ws-lbl">{t("Format")}</div>
-                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Video format")}>
+                    <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Video format")}>
                       {([["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]] as [string, string][]).map(([k, label]) => (
-                        <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
+                        <button type="button" key={k} role="radio" aria-checked={facelessFormat === k}
                           className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{t(label)}</button>
                       ))}
                     </div>
                     <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Voice")}</div>
-                    <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Voice")}>
+                    <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Voice")}>
                       {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
-                        <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
+                        <button type="button" key={k} role="radio" aria-checked={voiceKey === k}
                           className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
                       ))}
                     </div>
@@ -4015,9 +4037,9 @@ export default function WebStudio() {
             {isCreate && casual && (
               <div className="ws-genopts">
                 <div className="ws-lbl">{t("Frame")}</div>
-                <div className="ws-frames" role="tablist" aria-label={t("Output frame")}>
+                <div className="ws-frames" role="radiogroup" aria-label={t("Output frame")}>
                   {CREATE_ASPECTS.map((a) => (
-                    <button type="button" key={a.value} role="tab" aria-selected={createAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
+                    <button type="button" key={a.value} role="radio" aria-checked={createAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
                       className={`ws-frame${createAspect === a.value ? " sel" : ""}`} onClick={() => setCreateAspect(a.value)}>
                       <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
                       <span className="ws-frame-nm">{t(a.name)}</span>
@@ -4025,9 +4047,9 @@ export default function WebStudio() {
                   ))}
                 </div>
                 <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Model")}</div>
-                <div className="ws-models" role="tablist" aria-label={t("AI model")}>
+                <div className="ws-models" role="radiogroup" aria-label={t("AI model")}>
                   {CREATE_MODELS.map((m) => (
-                    <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
+                    <button type="button" key={m.key} role="radio" aria-checked={createModel === m.key}
                       className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
                       {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
                     </button>
@@ -4062,9 +4084,9 @@ export default function WebStudio() {
                 {showStyle && (
                   <>
                     <p className="ws-note" style={{ marginTop: 8 }}>{t("Pick an art style, or skip for a natural photo.")}</p>
-                    <div className="ws-stylegrid" role="tablist" aria-label={t("Art style")}>
+                    <div className="ws-stylegrid" role="radiogroup" aria-label={t("Art style")}>
                       {CREATE_STYLES.map((s) => (
-                        <button type="button" key={s.key} role="tab" aria-selected={createStyle === s.key} title={t(s.name)}
+                        <button type="button" key={s.key} role="radio" aria-checked={createStyle === s.key} title={t(s.name)}
                           className={`ws-styletile${createStyle === s.key ? " sel" : ""}`} onClick={() => setCreateStyle(createStyle === s.key ? null : s.key)}>
                           <span className="ws-styletile-face" style={{ background: STYLE_SWATCH[s.key] || "linear-gradient(135deg,#EAF6EF,#F4F1E6)" }}>
                             <span className="ws-styletile-emoji" aria-hidden="true"><Ico n={s.icon} size={24} /></span>
@@ -4086,9 +4108,9 @@ export default function WebStudio() {
             {isEdit && casual && (
               <div className="ws-genopts">
                 <div className="ws-lbl">{t("Model")}</div>
-                <div className="ws-models" role="tablist" aria-label={t("AI model")}>
+                <div className="ws-models" role="radiogroup" aria-label={t("AI model")}>
                   {CREATE_MODELS.map((m) => (
-                    <button type="button" key={m.key} role="tab" aria-selected={createModel === m.key}
+                    <button type="button" key={m.key} role="radio" aria-checked={createModel === m.key}
                       className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
                       {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
                     </button>
@@ -4113,9 +4135,9 @@ export default function WebStudio() {
                   {showEditOps && (
                     <>
                       <p className="ws-note" style={{ marginTop: 8 }}>{t("One-tap transforms — or just describe your edit above.")}</p>
-                      <div className="ws-fmtcats" role="tablist" aria-label={t("Photo edit")}>
+                      <div className="ws-fmtcats" role="radiogroup" aria-label={t("Photo edit")}>
                         {EDIT_QUICK_ACTIONS.map(([k, label]) => (
-                          <button type="button" key={k} role="tab" aria-selected={editOp === k}
+                          <button type="button" key={k} role="radio" aria-checked={editOp === k}
                             className={`ws-fmtcat${editOp === k ? " sel" : ""}`} onClick={() => setEditOp(editOp === k ? null : k)}>{t(label)}</button>
                         ))}
                       </div>
@@ -4132,9 +4154,9 @@ export default function WebStudio() {
             {isMusic && (
               <div className="ws-genopts">
                 <div className="ws-lbl">{t("Genre / mood")} <span className="ws-opt">{t("optional")}</span></div>
-                <div className="ws-fmtcats" role="tablist" aria-label={t("Music style")}>
+                <div className="ws-fmtcats" role="radiogroup" aria-label={t("Music style")}>
                   {MUSIC_STYLES.map((s) => (
-                    <button type="button" key={s.key} role="tab" aria-selected={musicStyle === s.key}
+                    <button type="button" key={s.key} role="radio" aria-checked={musicStyle === s.key}
                       className={`ws-fmtcat${musicStyle === s.key ? " sel" : ""}`} onClick={() => setMusicStyle(musicStyle === s.key ? null : s.key)}>
                       <Ico n={s.icon} /> {t(s.name)}
                     </button>
@@ -4150,25 +4172,25 @@ export default function WebStudio() {
             {isFaceless && (
               <div className="ws-genopts">
                 <div className="ws-lbl">{t("Format")}</div>
-                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Video format")}>
+                <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Video format")}>
                   {([["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]] as [string, string][]).map(([k, label]) => (
-                    <button type="button" key={k} role="tab" aria-selected={facelessFormat === k}
+                    <button type="button" key={k} role="radio" aria-checked={facelessFormat === k}
                       className={`ws-fmtcat${facelessFormat === k ? " sel" : ""}`} onClick={() => setFacelessFormat(k)}>{t(label)}</button>
                   ))}
                 </div>
                 <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Voice")}</div>
-                <div className="ws-fmtcats ws-pills2" role="tablist" aria-label={t("Voice")}>
+                <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Voice")}>
                   {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
-                    <button type="button" key={k} role="tab" aria-selected={voiceKey === k}
+                    <button type="button" key={k} role="radio" aria-checked={voiceKey === k}
                       className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
                   ))}
                 </div>
                 <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Quality")}</div>
-                <div className="ws-models" role="tablist" aria-label={t("B-roll quality")}>
+                <div className="ws-models" role="radiogroup" aria-label={t("B-roll quality")}>
                   {FACELESS_QUALITIES.map((q) => (
-                    <button type="button" key={q.key} role="tab" aria-selected={facelessQuality === q.key}
+                    <button type="button" key={q.key} role="radio" aria-checked={facelessQuality === q.key}
                       className={`ws-model${facelessQuality === q.key ? " sel" : ""}`} onClick={() => setFacelessQuality(q.key)}>
-                      {t(q.name)}{q.surcharge > 0 && <span className="ws-model-up">+{q.surcharge}</span>}
+                      {t(q.name)}{q.surcharge > 0 && <span className="ws-model-up">+{q.surcharge * CREATOR_SURCHARGE_MULT}</span>}
                     </button>
                   ))}
                 </div>
@@ -4629,7 +4651,7 @@ const WS_STYLE = `
 .ws-face-create>span:last-child{color:var(--green,#0C7A46);font-weight:700}
 /* The forge modal (opened from the picker). Sits in the shared .ws-scrim. */
 .ws-forgem{position:relative;width:min(400px,92vw);background:var(--card,#FDFCF7);border-radius:18px;padding:22px 20px 20px;box-shadow:0 24px 70px rgba(8,12,10,.4);animation:ws-lb-in .16s ease}
-.ws-forgem-x{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:var(--paper,#F4F1E6);color:var(--ink2,#4A554E);cursor:pointer;display:grid;place-items:center;padding:0}
+.ws-forgem-x{position:absolute;top:12px;inset-inline-end:12px;width:32px;height:32px;border-radius:50%;border:0;background:var(--paper,#F4F1E6);color:var(--ink2,#4A554E);cursor:pointer;display:grid;place-items:center;padding:0}
 .ws-forgem-h{display:flex;gap:12px;align-items:flex-start;margin:2px 26px 16px 0}
 .ws-forgem-crest{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:#F3F9F4;color:var(--green,#0C7A46)}
 .ws-forgem-h b{display:block;font-size:15px;color:var(--ink,#14201A)}
@@ -4695,7 +4717,7 @@ const WS_STYLE = `
 .ws-vscrim{position:fixed;inset:0;z-index:10600;background:rgba(12,18,14,.6);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px}
 .ws-vbox{position:relative;width:min(420px,92vw)}
 .ws-video{width:100%;border-radius:16px;display:block;background:#000;box-shadow:0 18px 60px rgba(0,0,0,.4)}
-.ws-vx{position:absolute;top:-10px;right:-10px;width:30px;height:30px;border-radius:50%;border:0;background:var(--card);color:var(--ink);font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.ws-vx{position:absolute;top:-10px;inset-inline-end:-10px;width:30px;height:30px;border-radius:50%;border:0;background:var(--card);color:var(--ink);font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .ws-setbf{display:inline-block;margin:2px 0 6px;padding:8px 14px;border-radius:999px;border:1px solid #E7C879;background:#FFFBEF;color:var(--gold-deep);font-weight:700;font-size:12.5px;cursor:pointer}
 .ws-seg{display:flex;gap:8px;flex-wrap:wrap}
 .ws-seg button{padding:9px 14px;border-radius:11px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-weight:700;font-size:12.5px;cursor:pointer}
@@ -4779,7 +4801,7 @@ const WS_STYLE = `
    bars — the box is the photo's size, centered, on a light card ground. */
 .ws-uppreview{position:relative;margin:9px auto 0;width:fit-content;max-width:100%;border-radius:12px;overflow:hidden;background:var(--card,#FDFCF7);border:1px solid var(--line,#E4DFCF)}
 .ws-uppreview img{display:block;width:auto;max-width:100%;max-height:260px;object-fit:contain}
-.ws-upclear{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
+.ws-upclear{position:absolute;top:8px;inset-inline-end:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
 .ws-upclear:hover{background:rgba(11,18,14,.9)}
 @media (max-width:420px){.ws-srccard span{font-size:11px}}
 /* Avatar-video hub — presenter + product as two tap-tiles; each picker reveals
@@ -4942,7 +4964,7 @@ const WS_STYLE = `
 .ws-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(8,12,10,.86);display:grid;place-items:center;padding:24px;cursor:zoom-out;animation:ws-lb-in .15s ease}
 @keyframes ws-lb-in{from{opacity:0}to{opacity:1}}
 .ws-lightbox img{max-width:min(96vw,760px);max-height:88vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default}
-.ws-lightbox-x{position:fixed;top:16px;right:16px;width:44px;height:44px;border-radius:999px;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:20px;cursor:pointer}
+.ws-lightbox-x{position:fixed;top:16px;inset-inline-end:16px;width:44px;height:44px;border-radius:999px;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:20px;cursor:pointer}
 .ws-lightbox-x:hover{background:rgba(255,255,255,.28)}
 @media (max-width:420px){.ws-combine-src{width:74px;height:74px}.ws-combine-stage{min-height:180px}}
 .ws-tok{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding:12px 16px;border-radius:14px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF)}

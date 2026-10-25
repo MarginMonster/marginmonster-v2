@@ -163,11 +163,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       catch (e) { return json({ error: (e as Error).message }); }
     }
     let newPayload: string | undefined;
+    // Hoisted so the losing side of the claim below can give back exactly
+    // what this request charged.
+    let spent = 0;
+    let retryFromExtra = 0;
     if (payload.refunded) {
       // Re-charge what the original run charged (engine surcharges included).
       const flat = job.type === "GENERATE_VIDEO_AD" ? TOKEN_COST.video : job.type === "GENERATE_IMAGE_AD" ? TOKEN_COST.image : TOKEN_COST.blog;
       const cost = typeof payload.chargedTokens === "number" && payload.chargedTokens > 0 ? (payload.chargedTokens as number) : flat;
-      try { await spendTokens(shop.id, cost); }
+      spent = cost;
+      // Capture WHICH bucket paid. The refund that preceded this put tokens
+      // back into whichever bucket paid the first time, but the wallet has
+      // moved on since — a period roll, a top-up, other spends — so the second
+      // charge can come out of the other bucket. Carry the fresh split so a
+      // later failure refunds a purchased token as purchased, not as expiring.
+      try { retryFromExtra = (await spendTokens(shop.id, cost)).fromExtra; }
       catch (e) { return json({ error: e instanceof Error ? e.message : "Not enough tokens to retry." }); }
       // START CLEAN. A re-run is a fresh render the merchant is paying for
       // again, so it must not inherit the previous run's stage checkpoints:
@@ -177,9 +187,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const fresh = Object.fromEntries(
         Object.entries(payload as Record<string, unknown>).filter(([k]) => !k.startsWith("ck"))
       );
-      newPayload = JSON.stringify({ ...fresh, prePaid: true, refunded: false });
+      newPayload = JSON.stringify({ ...fresh, prePaid: true, refunded: false, chargedTokens: cost, chargedFromExtra: retryFromExtra });
     }
-    await db.job.update({ where: { id: job.id }, data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date(), ...(newPayload ? { payload: newPayload } : {}) } });
+    // CLAIM THE RETRY, AND REFUND THE LOSER. This was a bare update: two
+    // overlapping clicks — a double-tap, a resubmitted form — both read
+    // payload.refunded as true, both charged, and both wrote the row back to
+    // PENDING: one render, two charges, and the second write also reset
+    // attempts on a job the first had already made runnable. The status the row
+    // was READ with is the guard, exactly as the worker does it.
+    const claimed = await db.job.updateMany({
+      where: { id: job.id, status: job.status },
+      data: { status: "PENDING", attempts: 0, lastError: null, runAt: new Date(), ...(newPayload ? { payload: newPayload } : {}) },
+    });
+    if (claimed.count !== 1) {
+      // Someone else got there first. Give back what this request charged — to
+      // the bucket it actually came out of — or the merchant pays twice for the
+      // one retry that is now running.
+      if (spent > 0) {
+        const { refundTokens } = await import("../lib/tokens.server");
+        await refundTokens(shop.id, spent, retryFromExtra).catch((e) => console.error("[retry] losing click refund failed:", e));
+      }
+      return json({ error: "Already retrying — hang tight." });
+    }
     return json({ jobRetried: true });
   }
   if (intent === "dismissJob") {

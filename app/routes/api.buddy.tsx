@@ -1410,7 +1410,9 @@ export async function action({ request }: ActionFunctionArgs) {
     let url = "";
     if (asset) { try { const b = JSON.parse(asset.bodyJson || "{}") as { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string }; url = b.videoUrl || b.imageUrl || b.audioUrl || b.url || ""; } catch { /* */ } }
     if (url) return json({ done: true, media: [{ url, type, title: asset?.title || "" }] });
-    const job = jobId ? await db.job.findUnique({ where: { id: jobId }, select: { status: true, lastError: true } }) : null;
+    // Scope the status lookup to THIS shop, so a guessed jobId can't leak another
+    // shop's status/error (an Asset-free job row is otherwise globally addressable).
+    const job = jobId ? await db.job.findFirst({ where: { id: jobId, shopId: id.shop.id }, select: { status: true, lastError: true } }) : null;
     if (job?.status === "FAILED") return json({ failed: true, error: job.lastError || "It didn't finish — your tokens were refunded." });
     // Don't spin forever: if it's been several minutes with no media and the job
     // isn't marked failed (a stuck worker, a lost row, a silent non-persist), say
@@ -1428,14 +1430,14 @@ export async function action({ request }: ActionFunctionArgs) {
   // silence (no caption, ok). Images only; a video URL isn't a still to inspect.
   if (body.intent === "review") {
     if (!id) return json({ error: "auth" }, { status: 401 });
-    let imageUrl = typeof body.imageUrl === "string" ? body.imageUrl : "";
-    // The asset's media URL is stored RELATIVE ("/renders/…"), and the widget
-    // sends it as-is. Absolutize it against this request's origin so the guard
-    // passes and the HTTP fallback in renderAsDataUrl can fetch it. (The combine
-    // flow hit the same "absolutize /renders for a server fetch" gotcha.)
-    if (imageUrl.startsWith("/")) { try { imageUrl = externalOrigin(request) + imageUrl; } catch { /* keep as-is */ } }
+    const rawImageUrl = typeof body.imageUrl === "string" ? body.imageUrl : "";
     const product = typeof body.product === "string" ? body.product.trim().slice(0, 120) : "";
-    if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ caption: "", ok: true });
+    // SSRF guard: NEVER fetch an arbitrary client URL. Resolve what the widget sent
+    // (its own finished /renders asset, or an attached /uploads photo) through the
+    // SAME ownership check the edit path uses — so the vision fetch below can only
+    // ever hit THIS shop's own media on our origin, never an attacker-chosen host.
+    const imageUrl = await resolveEditSource(rawImageUrl, id.shop.id, externalOrigin(request));
+    if (!imageUrl) return json({ caption: "", ok: true });
     try {
       // Inline the render as base64 (disk-first, HTTP-with-retries) so the
       // just-written piece is always readable — the public URL can lag.
