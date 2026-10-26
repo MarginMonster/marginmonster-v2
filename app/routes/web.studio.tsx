@@ -2962,7 +2962,7 @@ export default function WebStudio() {
   // of the number they were short by and where to get it.
   // A video edit is always a single flat-cost op — never multiplied by the
   // image/video burst that may be left over from a prior session.
-  const effBurst = isVideoEdit ? 1 : burst;
+  const effBurst = isVideoEdit || (casual && tab === "video") ? 1 : burst;
   const shortBy = d.hasPlan ? Math.max(0, cost * effBurst - d.tokens) : 0;
   // Casual video is describe-first (no name field): it needs a description, not
   // a productTitle — same as create/music/faceless. (A loaded video to EDIT is
@@ -4450,7 +4450,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && !isVideoEdit && (
+            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && !isVideoEdit && !(casual && tab === "video") && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">{t("How many")}</span>
                 <div className="ws-burst-steps">
@@ -5262,8 +5262,8 @@ const WS_STYLE = `
 .ws-easel-mark{position:relative;display:grid;place-items:center}
 .ws-dropplus{position:absolute;inset:0;margin:auto;width:46px;height:46px;display:grid;place-items:center;border-radius:999px;background:var(--green);color:#fff;border:2.5px solid #fff;box-shadow:0 6px 16px rgba(12,122,70,.32);transition:transform .14s}
 .ws-easelph-drop:hover .ws-dropplus{transform:scale(1.07)}
-.ws-rose{width:112px;height:112px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.85;animation:wsrose 3.8s ease-in-out infinite}
-@keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.05) rotate(4deg);opacity:1}}
+.ws-rose{width:160px;height:160px;background:#FFD24A;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.92;animation:wsrose 3.8s ease-in-out infinite}
+@keyframes wsrose{0%,100%{transform:scale(1) rotate(0);opacity:.92}50%{transform:scale(1.06) rotate(4deg);opacity:1}}
 .ws-easelph.making .ws-rose{background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D);opacity:1;animation:wsrosespin 2.4s linear infinite}
 @keyframes wsrosespin{to{transform:rotate(360deg)}}
 .ws-easel-cap{font-size:14px;font-weight:700;color:var(--ink,#14201A)}
