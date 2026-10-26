@@ -846,12 +846,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       // A Studio-approved "presenter holding the product" frame (the Combine
       // step) seeds the video directly — the pipeline uses exactly what the
-      // merchant approved and skips its own internal compose. Forwarded for a
-      // presenter+product video so avatar/review ANIMATE from it. Cartoon does
-      // NOT consume a composed frame any more (it's character-only with a real-
-      // product endcard, and its Combine step is hidden), so this value is
-      // simply absent for cartoon. Gated to a real presenter + not-service so a
-      // stray value can never ride a service clip; with no product none is sent.
+      // merchant approved and skips its own internal compose. Forwarded for any
+      // presenter+product video so avatar/review/CARTOON animate from it (cartoon
+      // rejoined the hub 2026-10-26: its Combine renders the STYLED keyframe and
+      // the video seeds from it via resume.keyframeUrl). Gated to a real presenter
+      // + not-service so a stray value can never ride a service clip; no product → none.
       const composedFrameUrl = !!avatarId && !service
         ? (((form.get("composedFrameUrl") as string) || "").trim() || undefined)
         : undefined;
@@ -1086,6 +1085,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Presenter-holding frame or nothing — a product-only still is not what
         // Combine asked for, so a miss FAILS (and refunds) instead of charging.
         presenterOnly: true,
+        // CARTOON combine → the frame the merchant approves must BE the cartoon
+        // look, so run the cartoon keyframe (compose → cartoonize in the chosen
+        // style → product-in-hand gate) instead of the photoreal compose; the
+        // approved frame then seeds the video. Non-cartoon stays photoreal.
+        ...(((form.get("contentType") as string) || "").trim() === "cartoon"
+          ? { cartoonKeyframe: true, cartoonStyle: ((form.get("cartoonStyle") as string) || "").trim() || "dreamanime", contentType: "cartoon" }
+          : {}),
         prePaid: true, chargedTokens: TOKEN_COST.combine, chargedFromExtra: cFromExtra,
       });
       backed(TOKEN_COST.combine, cFromExtra);
@@ -2156,7 +2162,12 @@ export default function WebStudio() {
   const importErr = actionData && "importError" in actionData ? (actionData as { importError: string }).importError : null;
 
   const styleChar = avatarId ?? d.cast[0]?.id ?? "ingrid";
-  const styleCover = (key: string) => `/style-tiles/${styleChar}-${key}.jpg?v=5`;
+  // Generic style samples (a fixed default presenter per style) instead of the
+  // selected avatar re-rendered per tile — the per-avatar tiles changed as you
+  // switched presenters, which read as confusing (owner). These are the SAME
+  // generic tiles the Shopify app uses. (styleChar still backs the jingle
+  // "Photoreal" tile below, which shows the actual chosen singer.)
+  const styleCover = (key: string) => `/style-tiles/${key}.jpg?v=5`;
 
   // Mirror the server: no presenter → the engine renders the video and its
   // surcharge is real. With a presenter the lipsync engine does the work, so
@@ -2688,14 +2699,15 @@ export default function WebStudio() {
   // Content types that use the compact Combine Hub: avatar/review (base avatar)
   // Only AVATAR video and JINGLE use the combine hub (presenter holds the real
   // product → combine → stylize/animate). Commercial has no presenter;
-  // talkinghead is product-free (serviceForced). CARTOON was moved OUT of the
-  // hub (2026-10-21): it never animates from a presenter-holding-product frame
-  // (the presenter is redrawn as a character; the real product only closes the
-  // ad as a sharp endcard), and shoe-horning it into the hub HID the presenter
-  // picker and offered a pointless paid Combine step. Cartoon now uses the
-  // simple classic flow below — pick a presenter (optional) + style, then the
-  // product — so the character picker is right where the style grid references it.
-  const hubType = baseOf(contentType) === "avatar" || contentType === "jingle";
+  // talkinghead is product-free (serviceForced). CARTOON rejoined the hub
+  // (2026-10-26, owner): it now ANIMATES from the approved Combine frame — the
+  // Combine renders the presenter holding the product REDRAWN in the chosen
+  // cartoon style (the styled keyframe, cartoon-ad-pipeline keyframeOnly), the
+  // merchant approves that exact look, and the video is seeded from it. The
+  // style grid stays above the hub (cfgReady gates the hub on a picked style),
+  // so the flow is: pick style → Your scene (presenter + product) → Combine →
+  // generate — matching Avatar AI, which the owner wanted for its viral appeal.
+  const hubType = baseOf(contentType) === "avatar" || contentType === "jingle" || contentType === "cartoon";
   const showCombine = tab === "video" && hubType && !!avatarId && !serviceOn && hasMarketingProduct;
   const combineCost = d.costs.combine;
   // The avatar-VIDEO "Combine hub": presenter + product + size/wear + combine
@@ -3223,7 +3235,7 @@ export default function WebStudio() {
             {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
             {showCartoonGrid && (
               <>
-                <div className="ws-lbl">{contentType === "jingle" ? t("Singer style") : t("Pick a cartoon avatar style")} <span className="ws-opt">{contentType === "jingle" ? t("previews show your chosen singer") : t("previews show your chosen presenter")}</span></div>
+                <div className="ws-lbl">{contentType === "jingle" ? t("Singer style") : t("Pick a cartoon avatar style")} <span className="ws-opt">{contentType === "jingle" ? t("previews show your chosen singer") : t("sample looks — your presenter stars in yours")}</span></div>
                 <div className="ws-tiles styles ws-scrollbox">
                   {contentType === "jingle" && (
                     <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}

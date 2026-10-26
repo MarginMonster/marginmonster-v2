@@ -519,6 +519,35 @@ async function runJob(
         });
         break;
       }
+      // CARTOON COMBINE → the styled "presenter holding product" keyframe. Runs
+      // the cartoon pipeline in keyframeOnly mode (compose → cartoonize in the
+      // chosen style → product-in-hand vision gate), saved as a LOCAL IMAGE_AD
+      // asset the Studio Combine step shows; the video later re-animates it.
+      // Charged as a Combine (TOKEN_COST.combine, prePaid) at the enqueue site.
+      if (payload.cartoonKeyframe) {
+        if (!shop?.brandProfile || !shop?.activePlan) throw new Error("Shop missing brand profile or active plan");
+        if (!payload.freeGen) {
+          const { assertCapability } = await import("./capabilities.server");
+          assertCapability(shop.activePlan, "image");
+        }
+        const { generateCartoonAd } = await import("./cartoon-ad-pipeline.server");
+        const kfId = await generateCartoonAd({
+          shopId,
+          brandProfile: shop.brandProfile,
+          productTitle: (payload.productTitle as string) || "product",
+          productImageUrl: payload.productImageUrl as string | undefined,
+          styleKey: (payload.cartoonStyle as string) || "dreamanime",
+          avatarId: payload.avatarId as string | undefined,
+          avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
+          productSize: payload.productSize as string | undefined,
+          jobId: payload.__jobId as string | undefined,
+          keyframeOnly: true,
+        });
+        // Marketing-tag the intermediate frame so it never clutters the creator
+        // gallery (same as the photoreal Combine presenter image).
+        await tagAssetSection(typeof kfId === "string" ? kfId : undefined, payload.section as string | undefined);
+        break;
+      }
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");
       }
@@ -706,9 +735,11 @@ async function runJob(
           jobId: payload.__jobId as string | undefined,
           resume: {
             script: payload.ckScript as string | undefined,
-            // (cartoon never composes a presenter-holding-product frame, so it
-            //  has no composedUrl to resume — that checkpoint is avatar-only.)
-            keyframeUrl: payload.ckKeyframeUrl as string | undefined,
+            // Seed from the Studio-approved Combine frame when present (cartoon
+            // rejoined the hub 2026-10-26: its Combine renders the STYLED keyframe
+            // and the merchant approves it), else the checkpointed keyframe. A
+            // local /renders URL survives the approve→generate gap + the expiry probe.
+            keyframeUrl: (payload.composedFrameUrl as string | undefined) || (payload.ckKeyframeUrl as string | undefined),
             klingPredictionId: payload.ckKlingId as string | undefined,
             animUrl: payload.ckAnimUrl as string | undefined,
             // Which MODEL animated it, so a resumed run can still reconcile a

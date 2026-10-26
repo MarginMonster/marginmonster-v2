@@ -333,6 +333,12 @@ interface CartoonAdParams {
   productSize?: string; // merchant's explicit size class — beats inference
   origin?: string; // provenance label for the finished card
   jobId?: string; // enables stage checkpointing
+  /** COMBINE step: forge + persist ONLY the styled "presenter holding product"
+   *  keyframe (compose → cartoonize in the chosen style → product-in-hand gate),
+   *  save it as a LOCAL IMAGE_AD asset the Studio Combine poller can show, and
+   *  return its id early. The video run then re-animates the approved frame
+   *  (passed back in as resume.keyframeUrl), skipping its own keyframe gen. */
+  keyframeOnly?: boolean;
   resume?: {
     script?: string;
     keyframeUrl?: string;
@@ -566,7 +572,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
 
   // 1) SCRIPT — cartoon ads earn their keep with playful, jingle-adjacent VO.
   let script = resume.script || "";
-  if (!script) {
+  // keyframeOnly (the Combine step) produces just the image — the VO script is
+  // written at the video step, so don't spend a writer call here.
+  if (!script && !params.keyframeOnly) {
     script = await writeCartoonScript({
       productTitle: params.productTitle,
       productDescription: params.productDescription,
@@ -825,6 +833,36 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     await ckpt({ ckKeyframeUrl: "" });
   }
   if (!keyframeUrl) keyframeUrl = await forgeKeyframe();
+
+  // COMBINE step stops here: the merchant approves this styled keyframe BEFORE
+  // committing to the (150-token) video. Persist it as a LOCAL image asset — it
+  // must outlive the approve→generate gap (a provider URL expires in ~1h), and
+  // the Studio combine poller finds it by avatarId + productImageUrl (metaJson)
+  // then reads bodyJson.imageUrl. The video re-animates it via resume.keyframeUrl.
+  if (params.keyframeOnly) {
+    let frameUrl = keyframeUrl;
+    try {
+      const kfBuf = await downloadBuffer(keyframeUrl);
+      const kfName = `cartoon-kf-${params.jobId || Math.random().toString(36).slice(2)}-${Date.now()}.jpg`;
+      await mirrorRender(kfName, kfBuf);
+      frameUrl = `/renders/${kfName}`;
+    } catch { /* keep the provider URL — a short-lived frame still beats none */ }
+    const kfAsset = await db.asset.create({
+      data: {
+        shopId: params.shopId,
+        type: "IMAGE_AD",
+        status: "PENDING",
+        title: `${recipe.name} cartoon frame — ${params.productTitle}`,
+        bodyJson: JSON.stringify({ imageUrl: frameUrl, url: frameUrl, style: "CARTOON", cartoonStyle: recipe.name, method: "cartoon-keyframe" }),
+        metaJson: JSON.stringify({
+          style: "CARTOON", cartoonStyle: params.styleKey, productTitle: params.productTitle,
+          avatarId: params.avatarId || null, avatarVariant: params.avatarId ? (params.avatarVariant ?? 0) : null,
+          productImageUrl: params.productImageUrl || null, combineKeyframe: true,
+        }),
+      },
+    });
+    return kfAsset.id;
+  }
 
   // 3) VOICE — moved AHEAD of the animation because the lipsync step needs
   // the audio to sync to. Style-cast narrator reads the script (cheap; regen
