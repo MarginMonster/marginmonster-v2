@@ -3051,7 +3051,7 @@ export default function WebStudio() {
           (the only explanation used to be a hover-only title tooltip) and it names
           the cost gap, which was invisible until the make step. */}
       <p className="ws-ms-hint">
-        <b>{t("Create")}</b>{t(" — images, video & music just for you (from 5 tokens). ")}<b>{t("Social Marketing")}</b>{t(" — product ads that auto-post to TikTok, IG & FB (video 150).")}
+        <b>{t("Create")}</b>{t(" — images, video & music just for you. ")}<b>{t("Social Marketing")}</b>{t(" — product ads that auto-post to TikTok, IG & FB.")}
       </p>
       {socialLockOpen && !socialUnlocked && (
         <div className="ws-upsell ws-ms-upsell">
@@ -3090,7 +3090,6 @@ export default function WebStudio() {
         {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless video"]] : [["video", "Video"], ["image", "Image"], ["import", "Import your store"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{t(label)}
-            {(() => { const c = k === "image" ? d.costs.createImage : k === "video" ? (casual ? d.costs.casualVideo : d.costs.video) : k === "music" ? d.costs.music : k === "faceless" ? d.costs.faceless : null; return c != null ? <span className="ws-tab-cost" title={t("about {n} tokens each", { n: c })}><Ico n="coin" size={11} />{c}</span> : null; })()}
           </button>
         ))}
       </div>
@@ -3189,7 +3188,10 @@ export default function WebStudio() {
                 // which lives in the Music tab; commercial = an ad). Keep the
                 // ones a creator makes from an idea or a photo: a cartoon, a
                 // cinematic showcase, and satisfying macro loops.
-                ? true
+                // Cartoon removed from the Social Marketing picker — it now lives
+                // inside the Avatar AI hub's style card (Realistic ↔ cartoon), so a
+                // separate card is redundant. (Creator keeps its cartoon tile.)
+                ? ct.key !== "cartoon"
                 : (ct.key === "cartoon" || ct.key === "highlight"))
                 // Flagships lead so they fill the top row (they span 2 columns).
                 .sort((a, b) => (casual ? 0 : (FLAGSHIP_KEYS.has(b.key) ? 1 : 0) - (FLAGSHIP_KEYS.has(a.key) ? 1 : 0)))
@@ -3504,7 +3506,13 @@ export default function WebStudio() {
               <div className={`ws-combine ws-scene${combining ? " combining" : ""}${combineUrl ? " done" : ""}`}>
                 {/* Ingredients = two tap-tiles; tap to pick/upload inline. */}
                 <div className="ws-hubtiles" role="group" aria-label={t("Your presenter and product")}>
-                  <div className={`ws-hubtile ws-hubhero${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set ws-isgood" : ""}`}>
+                  {/* The hero is a DIV (its image holds the intro video + sound
+                      toggle, which can't nest in a button), so the whole tile gets
+                      an onClick — otherwise tapping the NAME/"Tap to change" label
+                      below the image did nothing (owner). The inner face/sound
+                      buttons stopPropagation so they don't double-toggle. */}
+                  <div className={`ws-hubtile ws-hubhero${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set ws-isgood" : ""}`}
+                    onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}>
                     <span className="ws-hubtile-img" style={!heroDesigned && avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
                       {heroDesigned && (
                         <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=2`}
@@ -3517,7 +3525,7 @@ export default function WebStudio() {
                           }} />
                       )}
                       <button type="button" className="ws-hubtile-face" aria-expanded={hubPick === "presenter"}
-                        onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}
+                        onClick={(e) => { e.stopPropagation(); setHubPick((p) => (p === "presenter" ? null : "presenter")); }}
                         aria-label={avatarId ? t("Change presenter") : t("Pick a presenter")} />
                       {heroDesigned && (
                         <button type="button" className={`ws-hubtile-sound${heroMuted ? "" : " on"}`} onClick={(e) => { e.stopPropagation(); toggleHeroSound(); }}
@@ -3584,10 +3592,10 @@ export default function WebStudio() {
                       {/* Realistic AI = the Avatar-AI pipeline (photoreal + lipsync); a
                           cartoon style = the cartoon pipeline. Switching clears any
                           combined frame so a cartoon frame never seeds a realistic video. */}
-                      <button type="button" className={`ws-tile small ws-tile-real${contentType === "avatar" ? " sel" : ""}`}
+                      <button type="button" className={`ws-tile small${contentType === "avatar" ? " sel" : ""}`}
                         onClick={() => { if (contentType !== "avatar") clearCombineFrame(); setContentType("avatar"); setCartoonStyle(null); setStyleSet(true); setHubPick(null); }}>
-                        <span className="ws-tile-img" style={{ backgroundImage: `url(/style-tiles/avatarcover.jpg?v=4)` }}>{contentType === "avatar" && <span className="ws-chk">✓</span>}</span>
-                        <span className="ws-tile-real-txt"><b><Ico n="camera" /> {t("Realistic AI")}</b><em>{t("A real-looking presenter — photoreal")}</em></span>
+                        <span className="ws-tile-img" style={{ backgroundImage: `url(/style-tiles/avatarcover.jpg?v=4)`, backgroundPosition: "center 22%" }}>{contentType === "avatar" && <span className="ws-chk">✓</span>}</span>
+                        <b><Ico n="camera" /> {t("Realistic AI")}</b>
                       </button>
                       {CARTOON_STYLES.map((cs) => (
                         <button type="button" key={cs.key} className={`ws-tile small${contentType === "cartoon" && cartoonStyle === cs.key ? " sel" : ""}`}
@@ -5574,13 +5582,6 @@ const WS_STYLE = `
    which read as off-centre. 6 styles -> a clean 3x2. Mobile keeps 2-up. */
 .ws-tiles.ws-styles3{grid-template-columns:repeat(3,minmax(0,210px));justify-content:center}
 @media(max-width:620px){.ws-tiles.ws-styles3{grid-template-columns:repeat(2,minmax(0,1fr))}}
-/* "Realistic AI" = a full-width banner above the cartoon-style tiles, so the
-   cartoon grid stays a clean 3-wide and realistic reads as the distinct path. */
-.ws-tiles.ws-styles3 .ws-tile-real{grid-column:1/-1;flex-direction:column;align-items:center;text-align:center;gap:0;padding:12px 0 11px}
-.ws-tile-real .ws-tile-img{width:96px;height:96px;aspect-ratio:auto;flex:none;border-radius:14px;background-position:center 22%}
-.ws-tile-real-txt{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 12px 0}
-.ws-tile-real-txt b{padding:0;font-size:14.5px;display:flex;align-items:center;justify-content:center;gap:6px}
-.ws-tile-real-txt em{font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
 /* Setting = visual cards (emoji in a tinted square + name), "Where this takes place". */
 .ws-setcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 6px}
 .ws-setcard{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}

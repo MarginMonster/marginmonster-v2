@@ -493,7 +493,6 @@ export default function WebDashboard() {
                 <span className="wd-path-eyebrow">{t("Free roam")}</span>
                 <b>{t("Create anything")}</b>
                 <i>{t("Images, video & music")}</i>
-                <span className="wd-path-cost">{t("Just for you · from 5 tokens")}</span>
                 <span className="wd-path-cue">{t("Open Create")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
@@ -503,7 +502,6 @@ export default function WebDashboard() {
                 <span className="wd-path-eyebrow">{t("Social Marketing")}</span>
                 <b>{t("Grow on social")}</b>
                 <i>{t("Product ads & auto-posting")}</i>
-                <span className="wd-path-cost">{t("For your store · video 150 tokens")}</span>
                 <span className="wd-path-cue">{t("Open Social Marketing")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
