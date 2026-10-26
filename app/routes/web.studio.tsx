@@ -160,6 +160,20 @@ const CARTOON_STYLES = [
   // in one of those styles still remixes. Re-enable here if we harden them.
 ];
 
+// Scene SETTING presets for the Combine step — each maps to a `scene` string the
+// composer already understands (the SAME field the Edit box's "put them in an
+// office" writes). Works for Realistic + cartoon. "Auto" = presenter's own backdrop.
+const COMBINE_SETTINGS: { key: string; name: string; scene: string }[] = [
+  { key: "auto", name: "Auto", scene: "" },
+  { key: "studio", name: "Studio", scene: "in a clean photo studio with soft, even lighting" },
+  { key: "kitchen", name: "Kitchen", scene: "in a bright, modern kitchen" },
+  { key: "outdoors", name: "Outdoors", scene: "outdoors in natural daylight, softly blurred greenery behind" },
+  { key: "living", name: "Cozy room", scene: "in a cozy living room with warm lighting" },
+  { key: "gym", name: "Gym", scene: "in a modern fitness gym" },
+  { key: "cafe", name: "Café", scene: "in a stylish coffee shop, softly blurred background" },
+  { key: "office", name: "Office", scene: "in a bright, modern office" },
+];
+
 // Wearable products should be modeled (worn) by the presenter, not held.
 const APPAREL_RE = /\b(shirt|tee|t-shirt|top|blouse|hoodie|sweat(er|shirt)?|jacket|coat|dress|skirt|pant|trouser|jean|short|legging|activewear|apparel|clothing|clothes|hat|cap|beanie|scarf|sock|jersey|uniform|robe|gown|cardigan|blazer|vest|romper|jumpsuit|swimsuit|bikini|lingerie|underwear|bra|glove|wear|outfit|garment|tank|polo)\b/i;
 function isApparel(text: string): boolean { return APPAREL_RE.test(text); }
@@ -1929,6 +1943,9 @@ export default function WebStudio() {
   // re-runs the compose (a fresh image charge), which is why it's affordable —
   // the merchant chose the spend.
   const [combineScene, setCombineScene] = useState("");
+  // Which SETTING preset is active (drives combineScene + the chip selection).
+  // The Edit box can still override the scene with free text.
+  const [settingKey, setSettingKey] = useState("auto");
   const [combineEdit, setCombineEdit] = useState("");
   // Did THIS frame come from a generate (Combine/Edit/Retry) or from an upload /
   // reused archive shot? Edit/Retry re-compose, so they only make sense for a
@@ -2636,7 +2653,7 @@ export default function WebStudio() {
   // Clear the current frame (the ✕ on the photo) — back to the empty state to
   // combine, upload or reuse a different one. The edit context goes with it.
   const clearCombineFrame = () => {
-    setCombineUrl(null); setCombineGenerated(false); setCombineScene(""); setCombineEdit(""); setCombineErr(null);
+    setCombineUrl(null); setCombineGenerated(false); setCombineScene(""); setCombineEdit(""); setCombineErr(null); setSettingKey("auto");
   };
   // The uploaded frame came back — use it as the seed, or surface an error.
   useEffect(() => {
@@ -3602,6 +3619,23 @@ export default function WebStudio() {
                     </div>
                   </>
                 )}
+                {/* SETTING — where the scene happens. Feeds the composer's `scene`
+                    field (the same one the Edit box uses). Shown for the presenter
+                    combine (Realistic + cartoon), once a presenter's picked. */}
+                {(contentType === "avatar" || contentType === "cartoon") && !!avatarId && (
+                  <>
+                    <div className="ws-lbl"><span>{t("Setting")}</span> <span className="ws-opt">{t("where the scene happens")}</span></div>
+                    <div className="ws-setseg">
+                      {COMBINE_SETTINGS.map((s) => (
+                        <button type="button" key={s.key} className={settingKey === s.key ? "sel" : ""}
+                          onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); }}>{t(s.name)}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {/* The combine's SETTING rides the form as `scene`; doCombine uses it
+                    unless an Edit overrides. Empty (Auto) = the presenter's own backdrop. */}
+                <input type="hidden" name="combineScene" value={combineScene} />
                 {/* The big output — the payoff, right under the inputs. Tap to enlarge. */}
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
@@ -5498,6 +5532,11 @@ const WS_STYLE = `
 .ws-tile-real-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
 .ws-tile-real-txt b{padding:0;font-size:14px;display:flex;align-items:center;gap:6px}
 .ws-tile-real-txt em{font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
+/* Setting chips in the Combine step — wrapping pills (8 presets). */
+.ws-setseg{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 4px}
+.ws-setseg button{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);cursor:pointer;transition:border-color .14s,background .14s,color .14s}
+.ws-setseg button:hover{border-color:#9CCBB1}
+.ws-setseg button.sel{border-color:var(--green,#0C7A46);background:#EAF6EF;color:var(--ink,#14201A)}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the
    default 4-column .ws-ctgrid squeezed the 2 casual video tiles to ~65px and
    clipped their labels to "Show…" / "Carto…". Two columns fills the rail
