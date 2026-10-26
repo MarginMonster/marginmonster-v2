@@ -3504,7 +3504,7 @@ export default function WebStudio() {
               <div className={`ws-combine ws-scene${combining ? " combining" : ""}${combineUrl ? " done" : ""}`}>
                 {/* Ingredients = two tap-tiles; tap to pick/upload inline. */}
                 <div className="ws-hubtiles" role="group" aria-label={t("Your presenter and product")}>
-                  <div className={`ws-hubtile ws-hubhero${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set" : ""}`}>
+                  <div className={`ws-hubtile ws-hubhero${hubPick === "presenter" ? " open" : ""}${avatarThumb ? " set ws-isgood" : ""}`}>
                     <span className="ws-hubtile-img" style={!heroDesigned && avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
                       {heroDesigned && (
                         <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=2`}
@@ -3530,7 +3530,7 @@ export default function WebStudio() {
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
                     <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
                   </div>
-                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set" : " ws-needsel"}`}
+                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
                     aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
                     <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
                       <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
@@ -3545,7 +3545,7 @@ export default function WebStudio() {
                       (Shown for both avatar + cartoon — they're one combine flow now.) */}
                   {(contentType === "avatar" || contentType === "cartoon") && (
                     <div className="ws-stylecombo">
-                      <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}${styleSet ? "" : " ws-needsel"}`}
+                      <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}${styleSet ? " ws-isgood" : " ws-needsel"}`}
                         aria-expanded={hubPick === "style"} aria-label={styleSet ? t("Change the style") : t("Pick a style")}
                         onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
                         <span className="ws-stylecard-img" style={styleSet ? { backgroundImage: `url(${contentType === "avatar" ? "/style-tiles/avatarcover.jpg?v=4" : styleCover(cartoonStyle || "dreamanime")})` } : undefined}>
@@ -5197,6 +5197,8 @@ const WS_STYLE = `
 /* "needs selection" — a slight red glow on the style card + product tile until
    each is picked, so it's obvious one still needs choosing. */
 .ws-needsel{border-color:#E08A72!important;box-shadow:0 0 0 2px rgba(214,98,70,.26),0 0 14px rgba(214,98,70,.22)!important;animation:ws-needpulse 1.9s ease-in-out infinite}
+/* "all good" — a faint green glow once a slot IS filled (presenter/product/style). */
+.ws-isgood{box-shadow:0 0 0 1.5px rgba(18,168,94,.3),0 0 12px rgba(18,168,94,.2)!important}
 @keyframes ws-needpulse{0%,100%{box-shadow:0 0 0 2px rgba(214,98,70,.22),0 0 11px rgba(214,98,70,.17)}50%{box-shadow:0 0 0 2px rgba(214,98,70,.4),0 0 18px rgba(214,98,70,.3)}}
 @media(prefers-reduced-motion:reduce){.ws-needsel{animation:none}}
 .ws-stylecard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--green,#0C7A46)}
@@ -5547,8 +5549,8 @@ const WS_STYLE = `
 @media(max-width:620px){.ws-tiles.ws-styles3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* "Realistic AI" = a full-width banner above the cartoon-style tiles, so the
    cartoon grid stays a clean 3-wide and realistic reads as the distinct path. */
-.ws-tiles.ws-styles3 .ws-tile-real{grid-column:1/-1;flex-direction:column;align-items:stretch;text-align:center;gap:0;padding:0 0 10px;overflow:hidden}
-.ws-tile-real .ws-tile-img{width:100%;height:116px;aspect-ratio:auto;flex:none;border-radius:14px 14px 0 0;background-position:center 28%}
+.ws-tiles.ws-styles3 .ws-tile-real{grid-column:1/-1;flex-direction:column;align-items:center;text-align:center;gap:0;padding:12px 0 11px}
+.ws-tile-real .ws-tile-img{width:96px;height:96px;aspect-ratio:auto;flex:none;border-radius:14px;background-position:center 22%}
 .ws-tile-real-txt{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 12px 0}
 .ws-tile-real-txt b{padding:0;font-size:14.5px;display:flex;align-items:center;justify-content:center;gap:6px}
 .ws-tile-real-txt em{font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
