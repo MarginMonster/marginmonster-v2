@@ -652,7 +652,7 @@ const CREATE_STYLE = `
 .cc-chat{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;height:min(78vh,760px);position:relative;isolation:isolate}
 /* Engine-turned brand rosette drifting behind the card — same figure + wbDrift
    keyframe as the Studio's .ws-card::after (defined in the web.tsx shell). */
-.cc-chat::before{content:"";position:absolute;z-index:-1;bottom:-150px;right:-140px;width:360px;height:360px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.06;pointer-events:none;animation:wbDrift 250s linear infinite}
+.cc-chat::before{content:"";position:absolute;z-index:-1;bottom:-150px;right:-140px;width:360px;height:360px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.1;pointer-events:none;animation:wbDrift 250s linear infinite}
 /* Shell (mount-gate) reserves the column heights so there's no layout jump. */
 .cc-chat:empty{display:block;height:min(78vh,760px)}
 .cc-stage:empty{display:block;min-height:470px;border:1px dashed #DED7C2;border-radius:20px;background:radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
@@ -741,7 +741,7 @@ const CREATE_STYLE = `
 .cc-stage-frame{position:relative;width:100%;min-height:470px;display:grid;place-items:center;border-radius:20px;overflow:hidden;isolation:isolate;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
 .cc-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
 /* The easel gets the prominent drifting rosette (like the Studio card field). */
-.cc-stage-frame::before{content:"";position:absolute;z-index:-1;bottom:-170px;right:-150px;width:440px;height:440px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.1;pointer-events:none;animation:wbDrift 240s linear infinite}
+.cc-stage-frame::before{content:"";position:absolute;z-index:-1;bottom:-150px;right:-130px;width:460px;height:460px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.16;pointer-events:none;animation:wbDrift 240s linear infinite}
 .cc-stage-frame.has-result{border-style:solid;border-color:var(--line);background:var(--ink);min-height:0;width:100%;max-width:min(100%,620px);margin-inline:auto}
 .cc-stage-frame.has-result::after{display:none}
 .cc-stage-frame.has-result::before{display:none}
