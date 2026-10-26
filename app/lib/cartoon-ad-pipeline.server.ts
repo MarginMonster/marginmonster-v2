@@ -851,12 +851,23 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // then reads bodyJson.imageUrl. The video re-animates it via resume.keyframeUrl.
   if (params.keyframeOnly) {
     let frameUrl = keyframeUrl;
-    try {
-      const kfBuf = await downloadBuffer(keyframeUrl);
-      const kfName = `cartoon-kf-${params.jobId || Math.random().toString(36).slice(2)}-${Date.now()}.jpg`;
-      await mirrorRender(kfName, kfBuf);
-      frameUrl = `/renders/${kfName}`;
-    } catch { /* keep the provider URL — a short-lived frame still beats none */ }
+    // A "/renders/..." path the forge already wrote is served as-is; an EXTERNAL
+    // (provider) URL must be localized to the data/renders persistent disk that
+    // /renders serves from. mirrorRender ALONE only writes object storage (a
+    // no-op when S3 is off, as in prod) — so without the local write the
+    // approved frame 404'd and the combine showed a "black line" (the video then
+    // saw a dead URL and silently re-forged, ignoring the approved frame).
+    if (!frameUrl.startsWith("/")) {
+      try {
+        const kfBuf = await downloadBuffer(keyframeUrl);
+        const kfName = `cartoon-kf-${params.jobId || Math.random().toString(36).slice(2)}-${Date.now()}.jpg`;
+        const dir = path.join(process.cwd(), "data", "renders");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, kfName), kfBuf);
+        await mirrorRender(kfName, kfBuf); // + durable S3 copy when configured
+        frameUrl = `/renders/${kfName}`;
+      } catch { /* keep the provider URL — a short-lived frame still beats none */ }
+    }
     const kfAsset = await db.asset.create({
       data: {
         shopId: params.shopId,
