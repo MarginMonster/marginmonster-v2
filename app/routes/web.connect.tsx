@@ -62,6 +62,12 @@ export default function WebConnect() {
       <style dangerouslySetInnerHTML={{ __html: CONNECT_CSS }} />
       <h1 className="wb-h1">{t("Auto-posting")}</h1>
       <p className="wb-sub">{t("Link your socials once — then every piece can post itself with an AI caption (and the #EasyModeAi disclosure) in one tap from the Archive.")}</p>
+      <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
+        <b style={{ color: "#0C7A46" }}>{t("Social")}</b>{t(" posts three ways — ")}
+        <Link to="/web/campaigns" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Campaigns")}</Link>{t(" (a one-month push)")}{" · "}
+        <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Channels")}</Link>{t(" (always-on)")}{" · "}
+        <b style={{ color: "#14201A" }}>{t("Auto-posting")}</b>{t(" (connect accounts)")}
+      </p>
       {!enabled && <div className="wb-info">{t("Social posting is coming online — check back shortly.")}</div>}
       {actionError && <div className="wb-err">{actionError}</div>}
       <div className="wb-card wc-card">

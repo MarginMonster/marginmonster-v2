@@ -138,7 +138,7 @@ export default function WebLayout() {
               {/* Dashboard = the unified home — the Helpurr hero + the two intent
                   cards (Create anything / Grow on social). */}
               <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
-              <Link className={tab("/web/studio")} to="/web/studio">{t("Studio")}</Link>
+              <Link className={tab("/web/studio")} to="/web/studio">{t("Create")}</Link>
               {/* Helpurr as a dedicated section: opens the chat maximized (full
                   surface), not just the floating bubble. Works in both modes. */}
               {authed && <button type="button" className="wb-tab wb-tab-btn wb-tab-helpurr" onClick={() => window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true } }))}>{t("Helpurr")}</button>}

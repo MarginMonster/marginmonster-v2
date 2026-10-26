@@ -2977,7 +2977,7 @@ export default function WebStudio() {
   return (
     <div className={casual ? "ws-casual" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
-      <h1 className="wb-h1">{casual ? t("Create") : t("Content Studio")}</h1>
+      <h1 className="wb-h1">{casual ? t("Create") : t("Social")}</h1>
       <p className="wb-sub">
         {casual
           ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</>
@@ -2994,8 +2994,8 @@ export default function WebStudio() {
         </button>
         <button type="button" className={`ws-ms-opt${!casual ? " on" : ""}${socialUnlocked ? "" : " locked"}`} aria-pressed={!casual}
           onClick={() => (socialUnlocked ? (setMode("marketing"), setContentType(null), setImageMode(null), setUpsell(null), setSocialLockOpen(false)) : setSocialLockOpen(true))}
-          title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch the Studio into social mode")}>
-          <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social media")}
+          title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch into Social mode")}>
+          <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social")}
           {!socialUnlocked && <span className="ws-ms-badge">{t("Starter")}</span>}
         </button>
       </div>
@@ -3007,8 +3007,8 @@ export default function WebStudio() {
       </p>
       {socialLockOpen && !socialUnlocked && (
         <div className="ws-upsell ws-ms-upsell">
-          <b><Ico n="lock" size={15} /> {t("Social media is a Starter feature")}</b>
-          <p>{t("Upgrade to Starter ($19/mo) to switch the Studio into social mode — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
+          <b><Ico n="lock" size={15} /> {t("Social is a Starter feature")}</b>
+          <p>{t("Upgrade to Starter ($19/mo) to switch into Social mode — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
           <div><Link to="/web#plans" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>{t("See plans")}</Link>
             <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setSocialLockOpen(false)}>{t("Not now")}</button></div>
         </div>
@@ -3030,6 +3030,7 @@ export default function WebStudio() {
         {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless video"]] : [["video", "Video"], ["image", "Image"], ["import", "Import your store"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{t(label)}
+            {(() => { const c = k === "image" ? d.costs.createImage : k === "video" ? (casual ? d.costs.casualVideo : d.costs.video) : k === "music" ? d.costs.music : k === "faceless" ? d.costs.faceless : null; return c != null ? <span className="ws-tab-cost" title={t("about {n} tokens each", { n: c })}><Ico n="coin" size={11} />{c}</span> : null; })()}
           </button>
         ))}
       </div>
@@ -5216,6 +5217,10 @@ const WS_STYLE = `
 .ws-ms-hint{max-width:600px;margin:-8px 0 18px;font-size:12px;line-height:1.5;color:var(--ink2,#6A756E)}
 .ws-ms-hint b{color:var(--ink,#14201A)}
 .ws-casual .ws-ms-hint{margin:-12px auto 20px;text-align:center}
+/* Per-tab token-cost badge — shows the price gap (image 5 · video 50/150 · etc.)
+   before you enter a flow, not just on the make button. */
+.ws-tab-cost{display:inline-flex;align-items:center;gap:2px;margin-left:1px;font-size:10.5px;font-weight:800;color:var(--ink2,#8A968E);opacity:.85}
+.ws-tab.on .ws-tab-cost{color:#eafff4;opacity:1}
 .ws-ms-upsell{margin:0 0 18px}
 .ws-casual .ws-ms-upsell{max-width:520px;margin-left:auto;margin-right:auto;margin-bottom:20px}
 .ws-casual .ws-tabs{justify-content:center;gap:8px;margin-bottom:18px}

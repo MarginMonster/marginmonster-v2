@@ -172,6 +172,12 @@ export default function ProductChannels() {
         <div>
           <h1 className="pc-title">{t("Product Channels")}</h1>
           <p className="pc-sub">{t("Your store, on autopilot — we turn each product into a short video & post it on repeat.")} <span className="pc-accent">{t("Hands off.")}</span></p>
+          <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
+            <b style={{ color: "#0C7A46" }}>{t("Social")}</b>{t(" posts three ways — ")}
+            <Link to="/web/campaigns" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Campaigns")}</Link>{t(" (a one-month push)")}{" · "}
+            <b style={{ color: "#14201A" }}>{t("Channels")}</b>{t(" (always-on)")}{" · "}
+            <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Auto-posting")}</Link>{t(" (connect accounts)")}
+          </p>
         </div>
         {series.length > 0 && canUse && productCount > 0 && (
           <button className="pc-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : <><span className="pc-plus" aria-hidden="true">+</span> {t("New channel")}</>}</button>

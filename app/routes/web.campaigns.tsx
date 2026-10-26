@@ -478,6 +478,12 @@ export default function WebCampaigns() {
         <div>
           <h1>{t("Campaigns")}</h1>
           <p>{t("A month of content, created and posted for you. Pick a plan once — it runs itself from there.")}</p>
+          <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
+            <b style={{ color: "#0C7A46" }}>{t("Social")}</b>{t(" posts three ways — ")}
+            <b style={{ color: "#14201A" }}>{t("Campaigns")}</b>{t(" (a one-month push)")}{" · "}
+            <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Channels")}</Link>{t(" (always-on)")}{" · "}
+            <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Auto-posting")}</Link>{t(" (connect accounts)")}
+          </p>
         </div>
         {d.campaigns.length > 0 && (
           <button type="button" className="wb-btn wc-newbtn" onClick={() => setShowLaunch((s) => !s)}>
