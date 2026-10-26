@@ -106,6 +106,12 @@ export default function Create() {
   // are Helpurr's job); we still read the context for parity.
   useOutletContext<{ mode: "marketing" | "casual"; setMode: (m: "marketing" | "casual") => void }>();
   const CHAT_MODE: "casual" = "casual";
+  // Client-only mount gate: this JS-heavy chat surface renders a stable shell on
+  // the server + the first client paint, then swaps in the live UI after mount —
+  // so server and client render the SAME thing during hydration (kills the
+  // "Root did not complete" bail this new route was hitting).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const [msgs, setMsgs] = useState<CMsg[]>([]);
   const [input, setInput] = useState("");
@@ -398,6 +404,18 @@ export default function Create() {
 
   const busyOrMaking = busy || making;
 
+  // SSR + first client paint = this deterministic shell (no browser APIs, same
+  // strings both sides), so hydration matches exactly; the full UI mounts next.
+  if (!mounted) {
+    return (
+      <div className="cc-wrap">
+        <style dangerouslySetInnerHTML={{ __html: CREATE_STYLE }} />
+        <h1 className="wb-h1">{t("Create")}</h1>
+        <p className="wb-sub">{t("Chat with Helpurr to make and edit images — the latest one shows on the canvas. It all lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</p>
+        <div className="cc-grid"><section className="cc-chat" aria-label={t("Chat with Helpurr")} /><section className="cc-stage" aria-label={t("Canvas")} /></div>
+      </div>
+    );
+  }
   return (
     <div className="cc-wrap">
       <style dangerouslySetInnerHTML={{ __html: CREATE_STYLE }} />
