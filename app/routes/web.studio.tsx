@@ -3270,7 +3270,7 @@ export default function WebStudio() {
             {showCartoonGrid && !(avatarVideoHub && contentType === "cartoon") && (
               <>
                 <div className="ws-lbl">{contentType === "jingle" ? t("Singer style") : t("Pick a cartoon avatar style")} <span className="ws-opt">{contentType === "jingle" ? t("previews show your chosen singer") : t("sample looks — your presenter stars in yours")}</span></div>
-                <div className="ws-tiles styles ws-styles3 ws-scrollbox">
+                <div className="ws-tiles styles ws-stylestrip">
                   {contentType === "jingle" && (
                     <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(null)}>
@@ -3588,7 +3588,7 @@ export default function WebStudio() {
                     open right under the scene; picking one restyles + collapses. */}
                 {(contentType === "avatar" || contentType === "cartoon") && hubPick === "style" && (
                   <div className="ws-hub-reveal open">
-                    <div className="ws-tiles styles ws-styles3 ws-scrollbox">
+                    <div className="ws-tiles styles ws-stylestrip">
                       {/* Realistic AI = the Avatar-AI pipeline (photoreal + lipsync); a
                           cartoon style = the cartoon pipeline. Switching clears any
                           combined frame so a cartoon frame never seeds a realistic video. */}
@@ -5577,11 +5577,13 @@ const WS_STYLE = `
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
 .ws-tile-emoji{font-size:34px;line-height:1;filter:saturate(1.05)}
-/* Cartoon/jingle style picker: a CENTERED, fixed 3-wide grid (owner) — the
-   shared .ws-tiles.styles auto-fill grid packed 4+1 on the wide Studio column,
-   which read as off-centre. 6 styles -> a clean 3x2. Mobile keeps 2-up. */
-.ws-tiles.ws-styles3{grid-template-columns:repeat(3,minmax(0,210px));justify-content:center}
-@media(max-width:620px){.ws-tiles.ws-styles3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Cartoon/jingle style picker: ONE sideways-scroll strip you flick through
+   (owner: "like the avatar picker"). Was a 3-wide grid that stacked the 7 styles
+   (Realistic/Photoreal + 6) into 3 rows; the horizontal strip matches the .ws-cast
+   presenter row's feel — flex, overflow-x, fixed-width cards. */
+.ws-tiles.ws-stylestrip{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 12px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;justify-content:flex-start}
+.ws-tiles.ws-stylestrip .ws-tile{flex:0 0 auto;width:146px;scroll-snap-align:start}
+@media(max-width:620px){.ws-tiles.ws-stylestrip .ws-tile{width:128px}}
 /* Setting = visual cards (emoji in a tinted square + name), "Where this takes place". */
 .ws-setcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 6px}
 .ws-setcard{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
