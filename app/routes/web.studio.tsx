@@ -2981,7 +2981,7 @@ export default function WebStudio() {
   const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
 
   return (
-    <div className={casual ? "ws-casual" : undefined}>
+    <div className={casual ? "ws-casual" : "ws-mkt"}>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
       <h1 className="wb-h1">{casual ? t("Create") : t("Social Marketing")}</h1>
       <p className="wb-sub">
@@ -5249,6 +5249,13 @@ const WS_STYLE = `
 .ws-ms-hint{max-width:600px;margin:-8px 0 18px;font-size:12px;line-height:1.5;color:var(--ink2,#6A756E)}
 .ws-ms-hint b{color:var(--ink,#14201A)}
 .ws-casual .ws-ms-hint{margin:-12px auto 20px;text-align:center}
+/* Social Marketing header centered to match Create (owner ask, IMG_3389 was
+   left-heavy vs IMG_3390). Mirrors the .ws-casual header centering; the
+   marketing tools + flow below the header are untouched. */
+.ws-mkt .wb-h1{text-align:center}
+.ws-mkt .wb-sub{text-align:center;max-width:520px;margin:0 auto 20px}
+.ws-mkt .ws-modeswitch{display:flex;width:max-content;margin:0 auto 18px}
+.ws-mkt .ws-ms-hint{margin:-12px auto 18px;text-align:center}
 /* Per-tab token-cost badge — shows the price gap (image 5 · video 50/150 · etc.)
    before you enter a flow, not just on the make button. */
 .ws-tab-cost{display:inline-flex;align-items:center;gap:2px;margin-left:1px;font-size:10.5px;font-weight:800;color:var(--ink2,#8A968E);opacity:.85}

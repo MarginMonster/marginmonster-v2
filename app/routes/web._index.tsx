@@ -497,7 +497,7 @@ export default function WebDashboard() {
                 <span className="wd-path-cue">{t("Open Create")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
-            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/studio"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Social Marketing")}</span>
