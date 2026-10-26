@@ -36,9 +36,11 @@ export const links: LinksFunction = () => [
   // without the file Remix logged a full router stack trace for every page
   // view ("No route matches URL /favicon.ico") while the tab stayed blank in
   // anything that ignores the PNG hint. 32px, made from helpurr-icon.png.
-  { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
-  { rel: "icon", type: "image/png", href: "/helpurr-icon.png" },
-  { rel: "apple-touch-icon", href: "/helpurr-icon.png" },
+  // ?v= busts the 1-year `immutable` static cache: favicon.ico was overwritten
+  // at the same URL, so without a new query browsers hold the old icon for a year.
+  { rel: "icon", href: "/favicon.ico?v=2", sizes: "32x32" },
+  { rel: "icon", type: "image/png", href: "/helpurr-icon.png?v=2" },
+  { rel: "apple-touch-icon", href: "/helpurr-icon.png?v=2" },
   // Open the font connections before the CSS that needs them is parsed.
   // These were @import-ed from inside an injected <style>, which cost
   // three sequential round trips before any text rendered in Poppins.
