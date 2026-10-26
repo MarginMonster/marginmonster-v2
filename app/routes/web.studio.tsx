@@ -3022,6 +3022,18 @@ export default function WebStudio() {
       {/* THE EASEL (casual) — a left instrument rail + controls beside a Stage,
           with a creations shelf below. Marketing is untouched: its wrappers are
           display:contents (.ws-flow), so tabs + Form render in the old flow. */}
+      {/* Persistent "you are here" — mode + what you're making. Sticky so it
+          never scrolls away mid-config (the title + mode toggle do), which is
+          exactly how a tester ended up deep in Social Marketing not knowing it. */}
+      <div className="ws-crumb" aria-label={t("Where you are")}>
+        <span className={`ws-crumb-mode${casual ? "" : " mk"}`}><Ico n={casual ? "palette" : "trend"} size={13} /> {casual ? t("Create") : t("Social Marketing")}</span>
+        {(() => {
+          const what = tab === "music" ? t("Music") : tab === "faceless" ? t("Faceless video") : tab === "import" ? t("Your store")
+            : tab === "image" ? (casual ? (imageMode === "product" ? t("Edit a photo") : t("Make an image")) : (imageMode === "presenter" ? t("With a presenter") : imageMode === "product" ? t("Product ad") : imageMode === "create" ? t("Make an image") : null))
+            : (casual ? t("Video") : (contentType ? t(CONTENT_TYPES.find((c) => c.key === baseOf(contentType))?.name || "Video") : null));
+          return what ? <><span className="ws-crumb-sep" aria-hidden="true">›</span><span className="ws-crumb-what">{what}</span></> : null;
+        })()}
+      </div>
       <div className={casual ? "ws-easel" : "ws-flow"}>
        <div className={casual ? "ws-easel-left" : "ws-flow"}>
       <div className="ws-tabs">
@@ -5235,6 +5247,14 @@ const WS_STYLE = `
    before you enter a flow, not just on the make button. */
 .ws-tab-cost{display:inline-flex;align-items:center;gap:2px;margin-left:1px;font-size:10.5px;font-weight:800;color:var(--ink2,#8A968E);opacity:.85}
 .ws-tab.on .ws-tab-cost{color:#eafff4;opacity:1}
+/* "You are here" — a sticky mode+step breadcrumb so nobody gets lost mid-config
+   (the title + mode toggle scroll away; this doesn't). */
+.ws-crumb{position:sticky;top:6px;z-index:6;display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:7px 14px;border-radius:999px;background:#fff;border:1px solid var(--line,#E4DFCF);box-shadow:0 3px 14px rgba(20,32,26,.1);font-family:Poppins,sans-serif;font-size:12.5px;font-weight:700;width:max-content;max-width:100%}
+.ws-casual .ws-crumb{margin-left:auto;margin-right:auto}
+.ws-crumb-mode{display:inline-flex;align-items:center;gap:5px;color:var(--green,#0C7A46);white-space:nowrap}
+.ws-crumb-mode.mk{color:var(--gold-deep,#7E5E13)}
+.ws-crumb-sep{color:var(--ink2,#8A968E);font-weight:400}
+.ws-crumb-what{color:var(--ink,#14201A);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ws-ms-upsell{margin:0 0 18px}
 .ws-casual .ws-ms-upsell{max-width:520px;margin-left:auto;margin-right:auto;margin-bottom:20px}
 .ws-casual .ws-tabs{justify-content:center;gap:8px;margin-bottom:18px}
