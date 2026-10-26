@@ -1626,6 +1626,25 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
     ? ordered.filter((c) => c.name.toLowerCase().includes(needle) || c.id === avatarId)
     : ordered;
 
+  // The faces are little talking-head CLIPS now. Autoplaying ~20 at once would
+  // decode the whole cast, so an IntersectionObserver rooted on the scroll strip
+  // plays only the cards actually in view and pauses the rest (a card scrolled
+  // off the side counts as off-screen because the root IS the strip).
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = stripRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((ents) => {
+      for (const en of ents) {
+        const v = en.target as HTMLVideoElement;
+        if (en.isIntersecting) { v.play().catch(() => { /* autoplay race / no source */ }); }
+        else { v.pause(); }
+      }
+    }, { root, threshold: 0.35 });
+    root.querySelectorAll("video").forEach((v) => io.observe(v));
+    return () => io.disconnect();
+  }, [shown.length, needle]);
+
   return (
     <>
       <div className="ws-lbl">{t("Presenter")}{optional ? <span className="ws-opt">{t("optional")}</span> : null}</div>
@@ -1635,7 +1654,7 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
         {needle && <button type="button" className="ws-cs-clr" onClick={() => setQ("")} aria-label={t("Clear search")}>✕</button>}
       </div>
       {needle && shown.length === 0 && <p className="ws-offernote">{t("No presenter called “{q}”.", { q: q.trim() })}</p>}
-      <div className="ws-cast">
+      <div className="ws-cast" ref={stripRef}>
         {onCreateOwn && !needle && (
           <button type="button" className="ws-face ws-face-create" onClick={onCreateOwn} aria-label={t("Create your own presenter")}>
             <span className="ws-face-img create"><Ico n="upload" size={23} /></span>
@@ -1659,7 +1678,17 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
           return (
             <div key={c.id} className={`ws-face${sel ? " sel" : ""}${bf ? " bf" : ""}`}>
               <button type="button" className="ws-face-pick" onClick={() => setAvatarId(c.id)} aria-label={t("Cast {name}", { name: c.name })}>
-                <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>{sel && <b>✓</b>}</span>
+                <span className="ws-face-img" style={{ backgroundImage: `url(${c.img})` }}>
+                  {/* Designed presenters have an intro clip; it plays muted-on-loop
+                      (IO-gated above). The still (c.img / poster) is the fallback,
+                      and onError hides a dead <video> so the still shows through. */}
+                  {c.designed && (
+                    <video className="ws-face-vid" muted loop playsInline preload="metadata"
+                      poster={`/voice-videos/${c.id}.jpg?v=2`} src={`/voice-videos/${c.id}.mp4?v=2`}
+                      onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  )}
+                  {sel && <b>✓</b>}
+                </span>
               </button>
               <span>{bf ? <><Ico n="star" size={12} /> {t("Brand face")}</> : c.name}</span>
             </div>
@@ -5584,15 +5613,17 @@ const WS_STYLE = `
 .ws-tiles.ws-stylestrip{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 12px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;justify-content:flex-start}
 .ws-tiles.ws-stylestrip .ws-tile{flex:0 0 auto;width:146px;scroll-snap-align:start}
 @media(max-width:620px){.ws-tiles.ws-stylestrip .ws-tile{width:128px}}
-/* Setting = visual cards (emoji in a tinted square + name), "Where this takes place". */
-.ws-setcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 6px}
-.ws-setcard{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
+/* Setting = visual cards (emoji in a tinted square + name), "Where this takes
+   place" — ONE sideways-scroll strip (owner: match the style picker), same
+   flex+overflow-x feel as .ws-stylestrip / .ws-cast. Was a 4-wide grid. */
+.ws-setcards{display:flex;gap:9px;margin:0 0 6px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.ws-setcard{flex:0 0 auto;width:116px;scroll-snap-align:start;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
 .ws-setcard:hover{border-color:#9CCBB1;transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(20,32,26,.3)}
 .ws-setcard.sel{border-color:var(--green,#0C7A46);background:#EAF6EF}
 .ws-setcard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:10px;background-size:cover;background-position:center;display:grid;place-items:center}
 .ws-setcard-emoji{font-size:26px;line-height:1}
 .ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
-@media(max-width:620px){.ws-setcards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.ws-setcard{width:104px}}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the
    default 4-column .ws-ctgrid squeezed the 2 casual video tiles to ~65px and
    clipped their labels to "Show…" / "Carto…". Two columns fills the rail

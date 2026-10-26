@@ -1719,13 +1719,18 @@ const CSS = `
 .ws-back{border:0;background:none;color:var(--green);font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-bottom:6px;}
 .ws-note{font-size:13px;color:var(--ink2);background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:8px 0;}
 .ws-cast{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scrollbar-gutter:stable;}
-.ws-face{flex:0 0 auto;width:76px;border:0;background:none;cursor:pointer;text-align:center;font-size:11px;color:var(--ink2);font-weight:600;}
-.ws-face-img{position:relative;display:block;width:68px;height:68px;margin:0 auto 5px;border-radius:50%;background-size:cover;background-position:center 20%;
+.ws-face{flex:0 0 auto;width:84px;border:0;background:none;cursor:pointer;text-align:center;font-size:11px;color:var(--ink2);font-weight:600;}
+/* Talking-head CARDS (were circles): a portrait tile that plays the presenter's
+   intro clip muted-on-loop, so the row reads as a wall of living faces. */
+.ws-face-img{position:relative;display:block;width:84px;aspect-ratio:3/4;margin:0 auto 5px;border-radius:13px;overflow:hidden;background-size:cover;background-position:center 20%;
   border:2px solid var(--line);}
-.ws-face-img.none{display:grid;place-items:center;font-size:18px;color:var(--ink2);background:var(--paper);}
+.ws-face-img.none{display:grid;place-items:center;font-size:20px;color:var(--ink2);background:var(--paper);}
 .ws-face.sel .ws-face-img{border-color:var(--green2);box-shadow:0 0 0 2px rgba(18,168,94,.25);}
-.ws-face-img b{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
-  background:var(--green2);color:#fff;font-size:11px;}
+.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;border-radius:inherit;display:block;background:#EAF6EF;z-index:0;}
+/* Selected check: sits INSIDE the card (overflow:hidden clips the old overflow
+   placement) and above the clip. */
+.ws-face-img b{position:absolute;top:5px;right:5px;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;z-index:2;
+  background:var(--green2);color:#fff;font-size:11px;box-shadow:0 1px 3px rgba(0,0,0,.3);}
 .ws-engines{display:flex;gap:8px;flex-wrap:wrap;}
 /* Dimmed, not hidden: the merchant should still see the engines exist and
    why they aren't in play, rather than the row silently vanishing. */
