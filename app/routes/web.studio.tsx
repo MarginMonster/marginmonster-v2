@@ -1870,11 +1870,9 @@ export default function WebStudio() {
   // You can still pick None after (this won't re-fire and override it) — entering
   // cartoon just STARTS with a presenter so the product lands in-hand by default.
   useEffect(() => { if (tab === "video" && contentType === "cartoon" && avatarId === null) { const def = d.brandFaceId ?? d.cast[0]?.id ?? null; if (def) setAvatarId(def); } }, [tab, contentType]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The cartoon animation style now lives in the CENTER CARD of the scene hub
-  // (not a top grid), so the scene must open immediately — seed a default style,
-  // else cfgReady would keep the whole hub hidden until a grid pick. Restyle via
-  // the center card (this won't re-fire to override your choice).
-  useEffect(() => { if (tab === "video" && contentType === "cartoon" && cartoonStyle === null) setCartoonStyle("dreamanime"); }, [tab, contentType]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Cartoon no longer auto-picks a style — the style card starts UNSELECTED (a
+  // required field with a needs-selection glow), chosen explicitly in the hub.
+  // (cfgReady no longer gates the hub on cartoonStyle, so the scene still opens.)
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   // Seeded from ?src= so an imported Gallery creation shows on the Stage the
@@ -1946,6 +1944,10 @@ export default function WebStudio() {
   // Which SETTING preset is active (drives combineScene + the chip selection).
   // The Edit box can still override the scene with free text.
   const [settingKey, setSettingKey] = useState("auto");
+  // Has the user EXPLICITLY picked a style yet (Realistic or a cartoon style)?
+  // Starts false so the style card reads "Pick a style" with a needs-selection
+  // glow — a required field, enforced at combine + generate.
+  const [styleSet, setStyleSet] = useState(false);
   const [combineEdit, setCombineEdit] = useState("");
   // Did THIS frame come from a generate (Combine/Edit/Retry) or from an upload /
   // reused archive shot? Edit/Retry re-compose, so they only make sense for a
@@ -2442,7 +2444,7 @@ export default function WebStudio() {
   }, [isEdit, pendingPhoto]);
   const needsPresenter = tab === "video" ? baseOf(contentType) === "avatar" : tab === "image" && imageMode === "presenter";
   const showCartoonGrid = tab === "video" && (contentType === "cartoon" || contentType === "jingle");
-  const cfgReady = tab === "blog" || tab === "music" || tab === "faceless" || (tab === "video" && !!contentType && (contentType !== "cartoon" || !!cartoonStyle)) || (tab === "image" && imageMode !== null);
+  const cfgReady = tab === "blog" || tab === "music" || tab === "faceless" || (tab === "video" && !!contentType) || (tab === "image" && imageMode !== null);
   // The Service/offer toggle only EXISTS on two of the four surfaces, but its
   // state survived a tab or mode change and the hidden field was submitted
   // regardless. So a merchant who tried Service on the product screen, backed
@@ -3018,7 +3020,7 @@ export default function WebStudio() {
   const casualVideoMake = casualVideo && !isVideoEdit;
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && contentType === "cartoon" && !cartoonStyle) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
 
   return (
     <div className={casual ? "ws-casual" : "ws-mkt"}>
@@ -3528,7 +3530,7 @@ export default function WebStudio() {
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
                     <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
                   </div>
-                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set" : ""}`}
+                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set" : " ws-needsel"}`}
                     aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
                     <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
                       <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
@@ -3543,14 +3545,15 @@ export default function WebStudio() {
                       (Shown for both avatar + cartoon — they're one combine flow now.) */}
                   {(contentType === "avatar" || contentType === "cartoon") && (
                     <div className="ws-stylecombo">
-                      <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}`}
-                        aria-expanded={hubPick === "style"} aria-label={t("Change the style")}
+                      <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}${styleSet ? "" : " ws-needsel"}`}
+                        aria-expanded={hubPick === "style"} aria-label={styleSet ? t("Change the style") : t("Pick a style")}
                         onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
-                        <span className="ws-stylecard-img" style={{ backgroundImage: `url(${contentType === "avatar" ? "/style-tiles/avatarcover.jpg?v=4" : styleCover(cartoonStyle || "dreamanime")})` }}>
-                          <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
+                        <span className="ws-stylecard-img" style={styleSet ? { backgroundImage: `url(${contentType === "avatar" ? "/style-tiles/avatarcover.jpg?v=4" : styleCover(cartoonStyle || "dreamanime")})` } : undefined}>
+                          {!styleSet && <span className="ws-stylecard-ph" aria-hidden="true"><Ico n="palette" size={22} /></span>}
+                          <span className="ws-stylecard-badge" aria-hidden="true">{styleSet ? "✎" : "＋"}</span>
                         </span>
-                        <b>{contentType === "avatar" ? t("Realistic AI") : t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime")}</b>
-                        <span>{t("Tap to change")}</span>
+                        <b>{!styleSet ? t("Pick a style") : (contentType === "avatar" ? t("Realistic AI") : t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime"))}</b>
+                        <span>{styleSet ? t("Tap to change") : t("Realistic or cartoon")}</span>
                       </button>
                       {/* "+" reads the scene as an equation — presenter + product
                           combine (in this style) into the output. */}
@@ -3567,13 +3570,13 @@ export default function WebStudio() {
                           cartoon style = the cartoon pipeline. Switching clears any
                           combined frame so a cartoon frame never seeds a realistic video. */}
                       <button type="button" className={`ws-tile small ws-tile-real${contentType === "avatar" ? " sel" : ""}`}
-                        onClick={() => { if (contentType !== "avatar") clearCombineFrame(); setContentType("avatar"); setCartoonStyle(null); setHubPick(null); }}>
+                        onClick={() => { if (contentType !== "avatar") clearCombineFrame(); setContentType("avatar"); setCartoonStyle(null); setStyleSet(true); setHubPick(null); }}>
                         <span className="ws-tile-img" style={{ backgroundImage: `url(/style-tiles/avatarcover.jpg?v=4)` }}>{contentType === "avatar" && <span className="ws-chk">✓</span>}</span>
                         <span className="ws-tile-real-txt"><b><Ico n="camera" /> {t("Realistic AI")}</b><em>{t("A real-looking presenter — photoreal")}</em></span>
                       </button>
                       {CARTOON_STYLES.map((cs) => (
                         <button type="button" key={cs.key} className={`ws-tile small${contentType === "cartoon" && cartoonStyle === cs.key ? " sel" : ""}`}
-                          onClick={() => { if (contentType !== "cartoon" || cartoonStyle !== cs.key) clearCombineFrame(); setContentType("cartoon"); setCartoonStyle(cs.key); setHubPick(null); }}>
+                          onClick={() => { if (contentType !== "cartoon" || cartoonStyle !== cs.key) clearCombineFrame(); setContentType("cartoon"); setCartoonStyle(cs.key); setStyleSet(true); setHubPick(null); }}>
                           <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{contentType === "cartoon" && cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
                           <b>{t(cs.name)}</b>
                         </button>
@@ -3711,7 +3714,15 @@ export default function WebStudio() {
                   </>
                 ) : (
                   <>
-                    <button type="button" className="wb-btn ws-combine-btn" onClick={() => doCombine()} disabled={combining || busy || !hasMarketingProduct}>
+                    <button type="button" className="wb-btn ws-combine-btn" disabled={combining || busy}
+                      onClick={() => {
+                        const miss: string[] = [];
+                        if (!styleSet) miss.push(t("pick a style"));
+                        if (!hasMarketingProduct) miss.push(t("add a product"));
+                        if (!avatarId) miss.push(t("pick a presenter"));
+                        if (miss.length) { setCombineErr(t("Before combining: ") + miss.join(t(", ")) + "."); return; }
+                        doCombine();
+                      }}>
                       {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
                     </button>
                     {/* ALREADY HAVE A FRAME? Skip the generate. Upload your own
@@ -5182,6 +5193,12 @@ const WS_STYLE = `
 .ws-stylecard{width:112px;display:flex;flex-direction:column;align-items:stretch;gap:7px;text-align:center;padding:8px 8px 10px;border-radius:16px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 9px 24px rgba(20,32,26,.22);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s,transform .14s}
 .ws-stylecard:hover{border-color:#9CCBB1;background:#F3F9F4;transform:scale(1.04);box-shadow:0 13px 30px rgba(20,32,26,.26)}
 .ws-stylecard.open{border-color:var(--green,#0C7A46);background:#EAF6EF}
+.ws-stylecard-ph{position:absolute;inset:0;display:grid;place-items:center;color:#C98A6E;background:linear-gradient(145deg,#FBEDE8,#F6E3DA);border-radius:inherit}
+/* "needs selection" — a slight red glow on the style card + product tile until
+   each is picked, so it's obvious one still needs choosing. */
+.ws-needsel{border-color:#E08A72!important;box-shadow:0 0 0 2px rgba(214,98,70,.26),0 0 14px rgba(214,98,70,.22)!important;animation:ws-needpulse 1.9s ease-in-out infinite}
+@keyframes ws-needpulse{0%,100%{box-shadow:0 0 0 2px rgba(214,98,70,.22),0 0 11px rgba(214,98,70,.17)}50%{box-shadow:0 0 0 2px rgba(214,98,70,.4),0 0 18px rgba(214,98,70,.3)}}
+@media(prefers-reduced-motion:reduce){.ws-needsel{animation:none}}
 .ws-stylecard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--green,#0C7A46)}
 .ws-stylecard-badge{position:absolute;right:5px;bottom:5px;width:24px;height:24px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;font-size:13px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .ws-stylecard b{font-size:13px;font-weight:800;color:var(--ink,#14201A);line-height:1.15}
