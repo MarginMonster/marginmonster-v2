@@ -309,6 +309,10 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const deletedIdsRef = useRef<Set<string>>(new Set());
   // A queued "ask + go" from the /web home hero, sent once the panel is ready.
   const pendingAskRef = useRef<string | null>(null);
+  // Set when Helpurr is opened as its full surface (nav / dashboard / phone FAB):
+  // land on a FRESH new-chat hub (Claude-style), never scrolled into the last
+  // conversation. An effect consumes it once history has loaded.
+  const wantFreshRef = useRef(false);
   // The full-page (max) chat has a Claude-style left sidebar of chats; on phones
   // it's a drawer this toggles.
   const [sideOpen, setSideOpen] = useState(false);
@@ -416,11 +420,13 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         if (detail?.max) setShowHome(true);
         setInput(prefill);
       } else if (detail?.max) {
-        // The nav "Helpurr" entry opens the full-screen surface straight into the
-        // chat workspace (last thread, or a fresh composer) — the DASHBOARD hero
-        // is the landing now, so re-showing an identical Helpurr home splash here
-        // just duplicated it. 🏠 / Home is the explicit way to the chat list.
-        setShowHome(false);
+        // "Open Helpurr" (nav tab / dashboard) lands on a FRESH new-chat hub —
+        // the clean centered surface (crest + greeting + composer), never scrolled
+        // into the last conversation. Your chats live behind the ☰ sidebar. The
+        // fresh-thread swap (so sending starts a new chat, not the old one) happens
+        // in the effect below once history has loaded.
+        setShowHome(true);
+        wantFreshRef.current = true;
       }
     };
     window.addEventListener("helpurr:open", h);
@@ -431,6 +437,16 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   useEffect(() => {
     if (open && histReady && !busy && pendingAskRef.current) { const text = pendingAskRef.current; pendingAskRef.current = null; void send(text); }
   }, [open, histReady, busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Open-as-fresh-hub: when the surface was opened fresh (wantFreshRef) and the
+  // current thread already holds a real conversation, spin up a NEW chat so the
+  // hub's composer starts clean. Self-limiting — a fresh thread has only the
+  // proactive opener (no user turns), so re-opening it won't spawn another empty.
+  useEffect(() => {
+    if (!open || !histReady || !wantFreshRef.current) return;
+    wantFreshRef.current = false;
+    if (msgs.some((m) => m.role === "user")) void newThread(); // leave the old convo behind
+    else if (max) setShowHome(true); // already-blank thread → just show the hub
+  }, [open, histReady, max]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Upload a picked photo to the FREE, tested frameUpload endpoint and hold the
   // returned /uploads URL so the next message carries it to Helpurr. No tokens.
@@ -779,7 +795,13 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   return (
     <>
       {!(open && max) && (
-        <button type="button" className={`mm-fab${open ? " open" : ""}${onHome ? " mm-fab-min" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={t("Chat with Helpurr, your AI helper")}>
+        <button type="button" className={`mm-fab${open ? " open" : ""}${onHome ? " mm-fab-min" : ""}`} onClick={() => {
+          const next = !open;
+          setOpen(next);
+          // On phones the little corner card is cramped — open Helpurr as the full
+          // hub (same as the nav entry), landing on a fresh new chat.
+          if (next && typeof window !== "undefined" && window.matchMedia("(max-width: 620px)").matches) { setMax(true); setShowHome(true); wantFreshRef.current = true; }
+        }} aria-label={t("Chat with Helpurr, your AI helper")}>
           <Familiar />
           {!open && !onHome && <span className="mm-fab-dot" aria-hidden="true" />}
         </button>
@@ -852,76 +874,30 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           )}
           {atHome && (
             <div className="mm-home">
-              {perfMake && (
-                <div className="mm-home-perf">
-                  <p className="mm-home-perf-tx">{renderRich(perfMake.content)}</p>
-                  <button type="button" className="mm-make mm-make-go mm-home-perf-btn" disabled={making} onClick={() => { setShowHome(false); void runMakes(perfMake.makes!); }}>
-                    {(() => { const specs = perfMake.makes!; const tot = specs.reduce((s, x) => s + (x.cost || 0), 0); const n = specs.length; return <><span>{making ? t("Working…") : (n > 1 ? t("✨ Make all {n}", { n }) : t("✨ {label}", { label: specs[0].label }))}</span><b>{tot > 0 ? t("{n} tokens →", { n: tot }) : t("Free →")}</b></>; })()}
-                  </button>
-                </div>
-              )}
-              <div className="mm-home-hero">
-                {/* No EasyMode crest/wordmark splash here — the dashboard hero is the
-                    branded front door; this surface (reached via 🏠 / Home) is the
-                    chat workspace, so it leads straight with the composer + your chats. */}
-                <p className="mm-home-sub mm-home-greet">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
-                <form className="mm-home-ask" onSubmit={(e) => { e.preventDefault(); void send(input); }}>
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => pickPhoto(e.target.files)} />
-                  <button type="button" className="mm-home-clip" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={t("Attach a photo")} title={t("Attach a photo")}><Ico n="clip" size={17} /></button>
-                  <textarea ref={inputRef} rows={1} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={taKeyDown} placeholder={t("Ask Helpurr anything…")} aria-label={t("Message Helpurr")} />
-                  <button type="submit" className="mm-home-send" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}><Ico n="bolt" size={18} /></button>
-                </form>
-                {(attach.length > 0 || uploading) && (
-                  <div className="mm-home-attach">
-                    {attach.map((p) => (
-                      <span key={p.url} className="mm-home-attach-item"><img src={p.url} alt={p.name} /><button type="button" onClick={() => removeAttach(p.url)} aria-label={t("Remove photo")}>×</button></span>
-                    ))}
-                    {uploading && <span className="mm-attach-up">{t("Uploading…")}</span>}
+              {/* Claude-style CENTRAL hub: the mark + greeting float in the middle,
+                  the composer is the shared bar pinned at the bottom, and your chats
+                  live behind the ☰ sidebar. A fresh new chat lands here. */}
+              <div className="mm-hub-center">
+                {perfMake && (
+                  <div className="mm-home-perf">
+                    <p className="mm-home-perf-tx">{renderRich(perfMake.content)}</p>
+                    <button type="button" className="mm-make mm-make-go mm-home-perf-btn" disabled={making} onClick={() => { setShowHome(false); void runMakes(perfMake.makes!); }}>
+                      {(() => { const specs = perfMake.makes!; const tot = specs.reduce((s, x) => s + (x.cost || 0), 0); const n = specs.length; return <><span>{making ? t("Working…") : (n > 1 ? t("✨ Make all {n}", { n }) : t("✨ {label}", { label: specs[0].label }))}</span><b>{tot > 0 ? t("{n} tokens →", { n: tot }) : t("Free →")}</b></>; })()}
+                    </button>
                   </div>
                 )}
-                <div className="mm-home-cards">
-                  {homeCards.map((c) => (
-                    <button key={c.label} type="button" className="mm-home-card" onClick={c.act} disabled={busy || uploading}>
-                      <span className="mm-home-card-ic" aria-hidden="true">{c.icon}</span>
-                      <span className="mm-home-card-tx"><b>{c.label}</b><i>{c.sub}</i></span>
-                    </button>
-                  ))}
+                <div className="mm-home-hero">
+                  <span className="mm-home-crest"><Familiar think={busy} /></span>
+                  <p className="mm-home-greet">{hud.name ? t("Hey {name} — what are we making today?", { name: hud.name.split(" ")[0] }) : t("What are we making today?")}</p>
+                  <div className="mm-home-cards">
+                    {homeCards.map((c) => (
+                      <button key={c.label} type="button" className="mm-home-card" onClick={c.act} disabled={busy || uploading}>
+                        <span className="mm-home-card-ic" aria-hidden="true">{c.icon}</span>
+                        <span className="mm-home-card-tx"><b>{c.label}</b><i>{c.sub}</i></span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="mm-home-recent">
-                <div className="mm-home-recent-h"><span>{t("Your chats")}</span><button type="button" onClick={newThread}>+ {t("New chat")}</button></div>
-                <div className="mm-home-chats">
-                  {threads.map((th) => (
-                    <div key={th.id} className={`mm-home-chat${th.id === activeThreadId ? " on" : ""}`}>
-                      {renamingThreadId === th.id ? (
-                        <input className="mm-home-chat-rename" value={renameText} autoFocus maxLength={42}
-                          onChange={(e) => setRenameText(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") void commitRename(th.id); else if (e.key === "Escape") setRenamingThreadId(null); }}
-                          onBlur={() => void commitRename(th.id)} aria-label={t("Rename chat")} />
-                      ) : (
-                        <>
-                          <button type="button" className="mm-home-chat-main" onClick={() => { if (!busy) { setActiveThreadId(th.id); setShowHome(false); setAttach([]); setLastPhoto(null); } }} title={dispTitle(th.title)}>
-                            <span className="mm-home-chat-ic" aria-hidden="true">💬</span>
-                            <span className="mm-home-chat-tx">{dispTitle(th.title)}</span>
-                          </button>
-                          {th.id !== "main" && (
-                            <span className="mm-home-chat-acts">
-                              <button type="button" className="mm-chat-act" onClick={() => { setRenamingThreadId(th.id); setRenameText(dispTitle(th.title)); setArmedDeleteId(null); }} title={t("Rename")} aria-label={t("Rename chat")}>✎</button>
-                              {armedDeleteId === th.id
-                                ? <button type="button" className="mm-chat-act mm-chat-del" onClick={() => void deleteThread(th.id)} title={t("Tap to confirm")}>{t("Delete?")}</button>
-                                : <button type="button" className="mm-chat-act" onClick={() => armDelete(th.id)} title={t("Delete")} aria-label={t("Delete chat")}>🗑</button>}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="mm-home-links">
-                <button type="button" onClick={() => go("/web/studio")}>{t("Create")}</button>
-                <button type="button" onClick={() => go("/web/archive")}>{t("Gallery")}</button>
-                <button type="button" onClick={() => go(mode === "casual" ? "/web" : "/web/channels")}>{mode === "casual" ? t("Home") : t("Social Marketing")}</button>
               </div>
             </div>
           )}
@@ -1028,6 +1004,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
           <div className="mm-sr-live" aria-live="polite" aria-atomic="true">
             {!busy && msgs.length > 0 && msgs[msgs.length - 1].role === "assistant" ? msgs[msgs.length - 1].content : ""}
           </div>
+          </>)}
+          {/* Shared composer — the bottom bar for BOTH the hub and the chat view,
+              so the hub's input is pinned at the bottom (Claude-style). */}
           {(attach.length > 0 || uploading) && (
             <div className="mm-attach">
               {attach.map((p) => (
@@ -1047,7 +1026,6 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
               ? <button type="button" className="mm-stop" onClick={() => abortRef.current?.abort()} aria-label={t("Stop")} title={t("Stop")}>■</button>
               : <button type="submit" disabled={uploading || (!input.trim() && !attach.length)} aria-label={t("Send")}><Ico n="bolt" size={17} /></button>}
           </form>
-          </>)}
           </div>
         </div>
       )}
@@ -1950,22 +1928,24 @@ const CSS = `
   .mm-side-toggle{display:inline-grid;place-items:center;}
   .mm-panel.mm-max .mm-maincol .mm-list,.mm-panel.mm-max .mm-maincol .mm-input{padding-left:14px;padding-right:14px;}
 }
-/* HOME — the dedicated Helpurr landing surface (Google-homepage energy, EasyMode
-   skin): centered wordmark + big ask bar + quick-start cards + your saved chats.
-   Fills the maximized panel under the header and scrolls if it needs to. */
-.mm-home{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:22px;
-  padding:clamp(20px,5vh,46px) clamp(16px,6%,56px) 28px;background:radial-gradient(130% 78% at 50% 0,#FEFDF9,#F2EFE4 80%);}
+/* HOME — the Claude-style CENTRAL hub: the mark + greeting + a few starter cards
+   float in the vertical middle; the composer is the shared bar at the bottom; your
+   chats live in the ☰ sidebar. .mm-hub-center gets margin:auto so it sits centred
+   but still scrolls (not clips) if the content is taller than the panel. */
+.mm-home{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;
+  padding:clamp(16px,4vh,40px) clamp(16px,6%,56px);background:radial-gradient(130% 78% at 50% 0,#FEFDF9,#F2EFE4 80%);}
+.mm-hub-center{margin:auto 0;width:100%;display:flex;flex-direction:column;align-items:center;gap:20px;}
 .mm-home-perf{width:min(560px,100%);align-self:center;display:flex;flex-direction:column;gap:10px;
   background:linear-gradient(135deg,rgba(18,168,94,.1),rgba(176,133,38,.1));border:1px solid rgba(12,122,70,.28);
   border-radius:16px;padding:14px 15px;box-shadow:0 6px 20px rgba(12,122,70,.1);}
 .mm-home-perf-tx{margin:0;font-size:13.5px;line-height:1.4;color:var(--ink);font-weight:600;}
 .mm-home-perf-btn{width:100%;}
-.mm-home-hero{display:flex;flex-direction:column;align-items:center;text-align:center;}
-.mm-home-crest{width:74px;height:74px;display:grid;place-items:center;filter:drop-shadow(0 7px 15px rgba(12,122,70,.22));}
+.mm-home-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;}
+.mm-home-crest{width:84px;height:84px;display:grid;place-items:center;filter:drop-shadow(0 7px 15px rgba(12,122,70,.22));}
 .mm-home-word{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,6vw,44px);color:var(--ink);margin:6px 0 2px;letter-spacing:-.01em;line-height:1;}
 .mm-home-word b{color:var(--gold);font-weight:800;}
 .mm-home-sub{font-size:14px;color:var(--ink2);margin:0 0 20px;}
-.mm-home-greet{font-family:Poppins,sans-serif;font-size:18px;font-weight:600;color:var(--ink);margin:2px 0 16px;}
+.mm-home-greet{font-family:Poppins,sans-serif;font-size:20px;font-weight:600;color:var(--ink);margin:0;}
 .mm-home-ask{display:flex;align-items:flex-end;gap:8px;width:min(560px,100%);background:var(--card);
   border:1.5px solid var(--line2);border-radius:24px;padding:6px 7px 6px 15px;
   box-shadow:0 8px 26px rgba(12,122,70,.1),0 2px 6px rgba(20,32,26,.05);transition:border-color .14s,box-shadow .14s;}
@@ -1984,7 +1964,7 @@ const CSS = `
 /* inset-inline-end (not right) so the remove-x rides the trailing corner under
    Urdu dir=rtl instead of sitting on the wrong side of the thumbnail. */
 .mm-home-attach-item button{position:absolute;top:-6px;inset-inline-end:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.3);}
-.mm-home-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(560px,100%);margin-top:22px;}
+.mm-home-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(560px,100%);margin-top:6px;}
 .mm-home-card{display:flex;align-items:center;gap:11px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2);border-radius:15px;padding:12px 13px;transition:border-color .14s,transform .12s,box-shadow .14s;}
 .mm-home-card:hover:not(:disabled){border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 20px rgba(12,122,70,.12);}
