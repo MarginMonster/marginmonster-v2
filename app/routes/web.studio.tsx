@@ -3632,7 +3632,10 @@ export default function WebStudio() {
                       {COMBINE_SETTINGS.map((s) => (
                         <button type="button" key={s.key} className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
                           onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); }}>
-                          <span className="ws-setcard-emoji" style={{ background: s.tint }}>{s.emoji}</span>
+                          <span className="ws-setcard-img" style={{ backgroundColor: s.tint, backgroundImage: s.key !== "auto" ? `url(/style-tiles/${s.key}.jpg?v=1)` : undefined }}>
+                            {s.key === "auto" && <span className="ws-setcard-emoji">{s.emoji}</span>}
+                            {settingKey === s.key && <span className="ws-chk">✓</span>}
+                          </span>
                           <b>{t(s.name)}</b>
                         </button>
                       ))}
@@ -5556,10 +5559,11 @@ const WS_STYLE = `
 .ws-tile-real-txt em{font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
 /* Setting = visual cards (emoji in a tinted square + name), "Where this takes place". */
 .ws-setcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 6px}
-.ws-setcard{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:10px 6px 9px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
+.ws-setcard{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
 .ws-setcard:hover{border-color:#9CCBB1;transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(20,32,26,.3)}
 .ws-setcard.sel{border-color:var(--green,#0C7A46);background:#EAF6EF}
-.ws-setcard-emoji{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;font-size:26px;line-height:1}
+.ws-setcard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:10px;background-size:cover;background-position:center;display:grid;place-items:center}
+.ws-setcard-emoji{font-size:26px;line-height:1}
 .ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
 @media(max-width:620px){.ws-setcards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the

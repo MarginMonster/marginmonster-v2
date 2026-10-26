@@ -8,7 +8,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import { merchantBusy } from "../lib/art-throttle.server";
-import { DEFAULT_TILE_CHARACTER, ensureAllStyleTiles, ensureStyleTile, isPickerKey, portraitFile, styleTilePath } from "../lib/style-tiles.server";
+import { DEFAULT_TILE_CHARACTER, ensureAllStyleTiles, ensureStyleTile, isPickerKey, isSceneKey, portraitFile, styleTilePath } from "../lib/style-tiles.server";
 
 function serveFile(p: string, cache: string): Response {
   return new Response(new Uint8Array(fs.readFileSync(p)), {
@@ -48,6 +48,10 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   // at the picker wants all 8 anyway.
   // Public route: never compete with a paying merchant's render.
   if (!(await merchantBusy())) ensureStyleTile(character, key);
+  // SCENE backdrops have no presenter — serving the character portrait as a
+  // fallback would show a face where a place belongs, so 404 until it's rendered
+  // (the setting card shows its tint/emoji meanwhile).
+  if (isSceneKey(key)) return new Response("Generating", { status: 404, headers: { "Cache-Control": "no-store" } });
   ensureAllStyleTiles(character);
   const fb = portraitFile(character);
   return fb ? serveFile(fb, "no-store") : new Response("Not ready", { status: 404 });

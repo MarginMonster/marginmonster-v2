@@ -48,6 +48,20 @@ const SPECIAL_PROMPTS: Record<string, string> = {
     "Image 1 is a person; image 2 is a product bottle. Create a photorealistic shot of the exact same person from image 1 — identical face and hairstyle — enthusiastically presenting to the camera like a friendly creator filming a product review, warm genuine smile, holding up the exact bottle from image 2 (same shape, colors and label, its wordmark reading exactly EASYMODE, never redrawn or warped, the label facing the camera and right-side-up), the hand holding the bottle anatomically correct with four fingers and one thumb, five digits and never six, and a natural grip. Bright airy daylight room softly blurred behind them, natural skin texture, centered on them from the chest up, no other text, no watermark.",
 };
 
+// Scene BACKDROPS for the Combine "Where this takes place" setting cards — empty
+// places (no people), plain text-to-image (no portrait/product compose, no label
+// QA). Keys match web.studio COMBINE_SETTINGS; served at /style-tiles/<key>.jpg.
+const SCENE_PROMPTS: Record<string, string> = {
+  studio: "A clean, empty professional photo studio: a seamless soft-grey backdrop, a stool and a softbox light stand to one side, soft even studio lighting, photorealistic, advertising quality, no people, no text, no watermark",
+  kitchen: "A bright, modern empty kitchen interior: clean white counters, tasteful decor, warm natural daylight from a window, photorealistic lifestyle interior photography, no people, no text, no watermark",
+  outdoors: "A sunny outdoor park: green grass and softly blurred trees, a clear walking path, warm natural daylight, photorealistic, advertising quality, no people, no text, no watermark",
+  living: "A cozy, stylish living room: a soft sofa, warm lamp light, plants and tasteful decor, inviting, photorealistic interior photography, no people, no text, no watermark",
+  gym: "A modern fitness gym interior: a rack of dumbbells and sleek equipment, bright clean lighting, motivational, photorealistic, no people, no text, no watermark",
+  cafe: "A stylish coffee shop interior: a wooden counter, warm ambient light, plants and cozy seating, inviting, photorealistic lifestyle photography, no people, no text, no watermark",
+  office: "A bright, modern open-plan office: clean desks, large windows with daylight, plants, professional and airy, photorealistic, no people, no text, no watermark",
+};
+export function isSceneKey(key: string): boolean { return key in SCENE_PROMPTS; }
+
 const inFlight = new Set<string>();
 
 export function portraitFile(character: string): string | null {
@@ -72,7 +86,7 @@ function currentTileExists(character: string, key: string): boolean {
 }
 
 export function isPickerKey(key: string): boolean {
-  return (PICKER_KEYS as string[]).includes(key) || key in SPECIAL_PROMPTS;
+  return (PICKER_KEYS as string[]).includes(key) || key in SPECIAL_PROMPTS || key in SCENE_PROMPTS;
 }
 
 /** Fire-and-forget: render one character×style tile if missing. Never throws —
@@ -80,6 +94,29 @@ export function isPickerKey(key: string): boolean {
 export function ensureStyleTile(character: string, key: string): void {
   if (!isPickerKey(key)) return;
   const flightKey = `${character}:${key}`;
+  // SCENE backdrop (a setting card) — plain text-to-image under the DEFAULT
+  // character prefix, no portrait/product compose and no label QA.
+  if (key in SCENE_PROMPTS) {
+    const sk = `${DEFAULT_TILE_CHARACTER}:${key}`;
+    if (currentTileExists(DEFAULT_TILE_CHARACTER, key) || inFlight.has(sk)) return;
+    if (!process.env.REPLICATE_API_TOKEN) { artLog("style-tiles", `scene:${key}: skipped — REPLICATE_API_TOKEN not set`); return; }
+    if (!takeArtSlot()) return;
+    inFlight.add(sk);
+    (async () => {
+      try {
+        const { repCreate, repPoll, download } = await import("./ugc-ad-pipeline.server");
+        const id = await repCreate("black-forest-labs/flux-dev", { prompt: SCENE_PROMPTS[key], aspect_ratio: "1:1", output_format: "jpg", num_inference_steps: 28, guidance: 3 });
+        const url = await repPoll(id, 5 * 60_000, `scene:${key}`);
+        fs.mkdirSync(TILE_DIR, { recursive: true });
+        const tmp = path.join(TILE_DIR, `.${DEFAULT_TILE_CHARACTER}-${key}.part`);
+        await download(url, tmp);
+        if (fs.statSync(tmp).size > 10_000) { fs.renameSync(tmp, path.join(TILE_DIR, `${DEFAULT_TILE_CHARACTER}-v${tileVersion(key)}-${key}.jpg`)); artLog("style-tiles", `scene:${key}: rendered OK`); }
+        else { fs.rmSync(tmp, { force: true }); artLog("style-tiles", `scene:${key}: too small — discarded`); }
+      } catch (e) { artLog("style-tiles", `scene:${key}: FAILED — ${e instanceof Error ? e.message : String(e)}`); }
+      finally { inFlight.delete(sk); releaseArtSlot(); }
+    })();
+    return;
+  }
   if (!portraitFile(character) || currentTileExists(character, key) || inFlight.has(flightKey)) return;
   if (!process.env.REPLICATE_API_TOKEN) { artLog("style-tiles", `${flightKey}: skipped — REPLICATE_API_TOKEN not set`); return; }
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
