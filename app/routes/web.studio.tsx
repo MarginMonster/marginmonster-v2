@@ -2008,6 +2008,9 @@ export default function WebStudio() {
   // while one of those is active, fall back to a visible tab so the user never
   // stares at a tab with no button. Runs after mount, when `casual` resolves.
   useEffect(() => { if (casual && (tab === "blog" || tab === "import")) { setTab("image"); setUpsell(null); } }, [casual, tab]);
+  // Marketing has no Music/Faceless tab — if you toggle to Social from one of
+  // those Creator-only tabs, land on Image rather than an orphaned tab.
+  useEffect(() => { if (!casual && (tab === "music" || tab === "faceless")) { setTab("image"); setUpsell(null); } }, [casual, tab]);
   // A plan that can't do social must never sit in the (fully locked) marketing
   // Studio — keep locked users in Create; the Social toggle then upsells them.
   useEffect(() => { if (!socialUnlocked && mode !== "casual") { setMode("casual"); setSocialLockOpen(false); } }, [socialUnlocked, mode]);
@@ -2986,11 +2989,11 @@ export default function WebStudio() {
           Creator ($6.99) / free users see it locked with an upgrade prompt. */}
       <div className="ws-modeswitch" role="group" aria-label={t("What are you making?")}>
         <button type="button" className={`ws-ms-opt${casual ? " on" : ""}`} aria-pressed={casual}
-          onClick={() => { setMode("casual"); setUpsell(null); setSocialLockOpen(false); }}>
+          onClick={() => { setMode("casual"); setContentType(null); setImageMode(null); setUpsell(null); setSocialLockOpen(false); }}>
           <Ico n="palette" size={15} />{t("Create")}
         </button>
         <button type="button" className={`ws-ms-opt${!casual ? " on" : ""}${socialUnlocked ? "" : " locked"}`} aria-pressed={!casual}
-          onClick={() => (socialUnlocked ? (setMode("marketing"), setUpsell(null), setSocialLockOpen(false)) : setSocialLockOpen(true))}
+          onClick={() => (socialUnlocked ? (setMode("marketing"), setContentType(null), setImageMode(null), setUpsell(null), setSocialLockOpen(false)) : setSocialLockOpen(true))}
           title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch the Studio into social mode")}>
           <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social media")}
           {!socialUnlocked && <span className="ws-ms-badge">{t("Starter")}</span>}
@@ -3018,7 +3021,7 @@ export default function WebStudio() {
       <div className="ws-tabs">
         {/* Casual drops Article (every blog angle is sell-coded) and Import (a
             store-catalogue concept) — it's about making & editing, not merchandising. */}
-        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless"]] : [["video", "Video"], ["image", "Image"], ["blog", "Article"], ["import", "Import"]]) as [Tab, string][]).map(([k, label]) => (
+        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless"]] : [["video", "Video"], ["image", "Image"], ["import", "Import your store"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{t(label)}
           </button>
