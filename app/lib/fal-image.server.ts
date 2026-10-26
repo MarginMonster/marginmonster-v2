@@ -207,9 +207,15 @@ export async function submitCompose(
   // talks about hands and fingers, which for a WORN garment pulled the item
   // back into the presenter's grip — the relight clause was quietly arguing
   // with the word "wearing".
+  // STRONGER SPLIT (2026-10-25): nano-banana-pro reproduces the reference so
+  // faithfully (razor-sharp label text) that it carries the pack-shot's flat,
+  // even studio LIGHTING along with the design — so the product reads as a pasted
+  // sticker even though nothing is pasted. Lead the clause by naming the two
+  // apart: copy the DESIGN exactly, but explicitly DISCARD the reference lighting
+  // and relight for this scene, before describing what "relit" looks like.
   const relight = mode === "wear"
-    ? ` The garment is really being worn, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — falling and creasing naturally over their shoulders and torso with soft shadow in the folds, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`
-    : ` The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
+    ? ` Copy the garment's exact design — its colours, pattern, print, text and cut — but RELIGHT it for this scene: discard the flat, even studio lighting of the reference photo, do not carry it over. The garment is really being worn, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — falling and creasing naturally over their shoulders and torso with soft shadow in the folds, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`
+    : ` Copy the product's exact design — its shape, colours, logos and text — but RELIGHT it for this scene: discard the flat, even studio lighting of the reference pack-shot, do not carry it over. The product is really there in the room, not pasted on: it is lit by the same light as the person — matching direction, softness and colour temperature — casting a soft contact shadow where it meets their hands and body, its colour bouncing faintly onto their fingers, sitting at the same depth of field and carrying the same grain as the rest of the frame, its edges catching the room light instead of reading as a cut-out.`;
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
   // their top instead of being clutched on a hanger.
