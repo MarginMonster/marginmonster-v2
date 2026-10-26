@@ -3523,13 +3523,20 @@ export default function WebStudio() {
                       over the gap between presenter + product so it stays visible and
                       attached to the scene (replaces the top grid that scrolled away). */}
                   {contentType === "cartoon" && (
-                    <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}`}
-                      aria-expanded={hubPick === "style"} aria-label={t("Change the animation style")}
-                      onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
-                      <span className="ws-stylecard-img" style={{ backgroundImage: `url(${styleCover(cartoonStyle || "dreamanime")})` }} aria-hidden="true" />
-                      <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime")}</b>
-                      <span className="ws-stylecard-cue">{t("Tap to restyle")}</span>
-                    </button>
+                    <div className="ws-stylecombo">
+                      <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}`}
+                        aria-expanded={hubPick === "style"} aria-label={t("Change the animation style")}
+                        onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
+                        <span className="ws-stylecard-img" style={{ backgroundImage: `url(${styleCover(cartoonStyle || "dreamanime")})` }}>
+                          <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
+                        </span>
+                        <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime")}</b>
+                        <span>{t("Tap to change")}</span>
+                      </button>
+                      {/* "+" reads the scene as an equation — presenter + product
+                          combine (in this style) into the output photo. */}
+                      <span className="ws-stylecombo-plus" aria-hidden="true">+</span>
+                    </div>
                   )}
                 </div>
                 {/* Center-card style picker reveal (cartoon) — the 6 styles slide
@@ -5122,12 +5129,18 @@ const WS_STYLE = `
 /* Center style card (cartoon) — the picked animation style, overlapping the gap
    between the presenter + product tiles so it's always in view (replaces the
    top style grid). Tap it to slide the 6 styles open under the scene. */
-.ws-stylecard{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);z-index:6;width:104px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px;border-radius:15px;border:2px solid var(--gold-deep,#B08526);background:var(--card,#FDFCF7);box-shadow:0 10px 26px rgba(20,32,26,.28);cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s}
-.ws-stylecard:hover{transform:translate(-50%,-50%) scale(1.05);box-shadow:0 14px 32px rgba(20,32,26,.32)}
-.ws-stylecard.open{border-color:var(--green,#0C7A46)}
-.ws-stylecard-img{width:100%;aspect-ratio:1/1;border-radius:10px;background:#EAF6EF center/cover no-repeat;border:1px solid rgba(20,32,26,.08)}
-.ws-stylecard b{font-size:11.5px;font-weight:800;color:var(--ink,#14201A);line-height:1.1;text-align:center}
-.ws-stylecard-cue{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--gold-deep,#7E5E13)}
+.ws-stylecombo{position:absolute;left:50%;top:43%;transform:translate(-50%,-50%);z-index:6;display:flex;flex-direction:column;align-items:center;gap:7px}
+/* Matches the presenter/product hub tiles (same border, green-bordered image +
+   ✎ badge, "Tap to change" subtitle) — just smaller, and floating over the gap. */
+.ws-stylecard{width:112px;display:flex;flex-direction:column;align-items:stretch;gap:7px;text-align:center;padding:8px 8px 10px;border-radius:16px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 9px 24px rgba(20,32,26,.22);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s,transform .14s}
+.ws-stylecard:hover{border-color:#9CCBB1;background:#F3F9F4;transform:scale(1.04);box-shadow:0 13px 30px rgba(20,32,26,.26)}
+.ws-stylecard.open{border-color:var(--green,#0C7A46);background:#EAF6EF}
+.ws-stylecard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--green,#0C7A46)}
+.ws-stylecard-badge{position:absolute;right:5px;bottom:5px;width:24px;height:24px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;font-size:13px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.ws-stylecard b{font-size:13px;font-weight:800;color:var(--ink,#14201A);line-height:1.15}
+.ws-stylecard>span:last-child{font-size:11px;color:var(--ink2,#4A554E);line-height:1.2}
+/* the equation "+" under the card: presenter + product -> combined output */
+.ws-stylecombo-plus{width:30px;height:30px;border-radius:50%;background:var(--gold-deep,#B08526);color:#fff;font-size:21px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 4px 12px rgba(20,32,26,.3)}
 @media(max-width:420px){.ws-stylecard{width:84px}}
 /* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
    nowrap <b> product name sets a large min-content width and 1fr can't shrink →
