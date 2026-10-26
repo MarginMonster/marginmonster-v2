@@ -198,7 +198,7 @@ type MMAction = { label: string; to: string };
 type MMPending = { label: string; to: string; cost: number; kind: string };
 type MMMedia = { url: string; type: string; title?: string };
 type MMPendingMake = { kind: "image" | "video" | "faceless" | "music" | "edit" | "create"; product: string; topic?: string; format?: string; voice?: string; sourceImageUrl?: string; editOp?: string; presenter: boolean; direction: string; cost: number; clean?: boolean; label: string };
-type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; makes?: MMPendingMake[]; followups?: string[] };
+type MMMsg = { role: "user" | "assistant"; content: string; actions?: MMAction[]; pending?: MMPending; media?: MMMedia[]; makes?: MMPendingMake[]; makeSpec?: MMPendingMake; followups?: string[] };
 
 // Render a SAFE light-markdown subset — **bold**, •-bullets, `inline code`,
 // ```fenced code```, and clickable http(s) links — as React nodes (NEVER
@@ -552,7 +552,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         }
         if (s.done && Array.isArray(s.media) && s.media.length) {
           const media = s.media;
-          setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Open it to see it full-size."), media }]);
+          setMsgs((m) => [...m, { role: "assistant", content: t("Here it is! 🎉 Open it to see it full-size."), media, makeSpec: spec }]);
           // Helpurr takes an actual LOOK (images only) and gives one honest, grounded
           // line — the "views it like you do" pass. Only for a single make (a batch
           // would spam N reviews + N Redo buttons). Any failure just means no line.
@@ -955,6 +955,20 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                     ))}
                   </div>
                 )}
+                {/* Result actions — iterate on what you just made in ONE tap
+                    instead of re-typing: edit it, make a fresh variation (same
+                    prompt), or jump to the Archive to post it. */}
+                {m.role === "assistant" && m.media && m.media.length > 0 && !busy && !making && (() => {
+                  const imgUrl = m.media!.find((x) => x.type !== "VIDEO_AD" && x.type !== "AUDIO")?.url;
+                  if (!imgUrl && !m.makeSpec) return null;
+                  return (
+                    <div className="mm-chips mm-reschips">
+                      {imgUrl && <button type="button" onClick={() => { setLastPhoto(imgUrl); setAttach([]); window.setTimeout(() => inputRef.current?.focus(), 30); }}>{t("✎ Edit this")}</button>}
+                      {m.makeSpec && <button type="button" onClick={() => runMakes([{ ...m.makeSpec! }])}>{t("↻ Make another")}</button>}
+                      <button type="button" onClick={() => go("/web/archive")}>{t("↗ Share")}</button>
+                    </div>
+                  );
+                })()}
                 {m.pending && (
                   <button type="button" className="mm-make" onClick={() => go(m.pending!.to)}>
                     <span>✨ {m.pending.label}</span>
