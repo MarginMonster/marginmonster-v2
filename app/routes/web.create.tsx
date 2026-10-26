@@ -25,6 +25,8 @@ import { readUiLang } from "../lib/ui-i18n";
 import { useT } from "../lib/ui-lang";
 import { tokensRemainingLive } from "../lib/tokens.server";
 import { resolveTierKey, PLAN_BY_KEY } from "../lib/plan-config";
+import { Familiar } from "../components/Familiar";
+import { Ico } from "../lib/icons";
 
 export const meta = () => [{ title: "Create · EasyMode" }];
 
@@ -129,6 +131,7 @@ export default function Create() {
   // switch. (Rename/delete are deferred for v1; the floating Buddy owns those.)
   const [threads, setThreads] = useState<Array<{ id: string; title: string; ts?: number }>>([{ id: "main", title: "Main" }]);
   const [activeThreadId, setActiveThreadId] = useState("main");
+  const [threadsOpen, setThreadsOpen] = useState(false); // the tidy chats dropdown
 
   // Photo attach — reuses the SAME free, token-less upload endpoint the Buddy
   // widget uses (/api/buddy-upload → { frameUrl }). Single photo for v1.
@@ -140,6 +143,22 @@ export default function Create() {
   const listRef = useRef<HTMLDivElement>(null);
 
   const dispTitle = (title: string) => (title === "Main" ? t("Main") : title === "New chat" ? t("New chat") : title);
+  const activeThread = threads.find((x) => x.id === activeThreadId);
+
+  // This surface IS the Creator — strip any assistant link that would bounce the
+  // user OUT to the old Studio/Create route (e.g. the proactive "Open the Studio"
+  // button). Plan/gallery/other links are kept. Everything happens right here.
+  const keepLink = (to?: string) => !!to && !/^\/web\/(studio|create)\b/.test(to);
+
+  // Concrete starters shown on a fresh thread — these ARE the instructions. A
+  // "make" starter sends a complete prompt (Helpurr then proposes a priced
+  // "Make it" button — no surprise spend); "Edit a photo" opens the picker.
+  const STARTERS: Array<{ ico: string; label: string; send?: string; pick?: boolean }> = [
+    { ico: "image", label: t("Make an image"), send: t("Make an image of a cozy minimalist coffee shop with warm morning light") },
+    { ico: "video", label: t("Make a video"), send: t("Make a short 9:16 video of ocean waves rolling in at sunset") },
+    { ico: "scissors", label: t("Edit a photo"), pick: true },
+    { ico: "bulb", label: t("What can you do?"), send: t("What can you make for me — images, videos, edits?") },
+  ];
 
   // Promote a media array's first IMAGE to the Stage hero. Videos/audio stay in
   // chat only (the canvas is an IMAGE hero). Aspect is captured on <img> load.
@@ -404,6 +423,9 @@ export default function Create() {
 
   const busyOrMaking = busy || making;
 
+  // The page subtitle (shared by the shell + the live UI so they match).
+  const SUB = t("Chat with Helpurr — make images & videos, edit photos or clips. The newest shows on the canvas, and it all lands in your ");
+
   // SSR + first client paint = this deterministic shell (no browser APIs, same
   // strings both sides), so hydration matches exactly; the full UI mounts next.
   if (!mounted) {
@@ -411,7 +433,7 @@ export default function Create() {
       <div className="cc-wrap">
         <style dangerouslySetInnerHTML={{ __html: CREATE_STYLE }} />
         <h1 className="wb-h1">{t("Create")}</h1>
-        <p className="wb-sub">{t("Chat with Helpurr to make and edit images — the latest one shows on the canvas. It all lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</p>
+        <p className="wb-sub">{SUB}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</p>
         <div className="cc-grid"><section className="cc-chat" aria-label={t("Chat with Helpurr")} /><section className="cc-stage" aria-label={t("Canvas")} /></div>
       </div>
     );
@@ -420,10 +442,7 @@ export default function Create() {
     <div className="cc-wrap">
       <style dangerouslySetInnerHTML={{ __html: CREATE_STYLE }} />
       <h1 className="wb-h1">{t("Create")}</h1>
-      <p className="wb-sub">
-        {t("Chat with Helpurr to make and edit images — the latest one shows on the canvas. It all lands in your ")}
-        <Link to="/web/archive?section=creator">{t("gallery")}</Link>.
-      </p>
+      <p className="wb-sub">{SUB}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</p>
       {!d.hasPlan && (
         <div className="wb-err">{t("You're on the free tier — a few makes a day are on the house. Pick a ")}<Link to="/web#plans">{t("plan")}</Link>{t(" for more.")}</div>
       )}
@@ -431,18 +450,43 @@ export default function Create() {
       <div className="cc-grid">
         {/* ── CHAT COLUMN (left) ─────────────────────────────────────────── */}
         <section className="cc-chat" aria-label={t("Chat with Helpurr")}>
-          {/* Thread rail — new chat + switch. Minimal list for v1. */}
-          <div className="cc-threads" role="tablist" aria-label={t("Your chats")}>
-            <button type="button" className="cc-thread-new" onClick={() => void newThread()} disabled={busy}>+ {t("New chat")}</button>
-            <div className="cc-thread-list">
-              {threads.map((th) => (
-                <button key={th.id} type="button" role="tab" aria-selected={th.id === activeThreadId}
-                  className={`cc-thread${th.id === activeThreadId ? " on" : ""}`}
-                  onClick={() => { if (!busy && th.id !== activeThreadId) { setActiveThreadId(th.id); setAttach(null); setLastPhoto(null); } }}
-                  title={dispTitle(th.title)}>
-                  <span aria-hidden="true">💬</span> {dispTitle(th.title)}
-                </button>
-              ))}
+          {/* Helpurr hero — the stationary mascot + a plain-language pitch of what
+              it can do (the old thread-chip wall lived here and read as debug
+              output). Threads now live in a tidy dropdown on the right. */}
+          <div className="cc-hero">
+            <span className="cc-hero-fam"><Familiar think={busyOrMaking} /></span>
+            <div className="cc-hero-say">
+              <div className="cc-hero-top">
+                <b className="cc-hero-name">Helpurr</b>
+                <div className="cc-hero-threads">
+                  <button type="button" className="cc-thread-new" onClick={() => void newThread()} disabled={busy}>+ {t("New chat")}</button>
+                  <div className="cc-threadwrap">
+                    <button type="button" className="cc-threadbtn" aria-haspopup="listbox" aria-expanded={threadsOpen}
+                      onClick={() => setThreadsOpen((o) => !o)} title={t("Your chats")}>
+                      <Ico n="paw" size={13} />
+                      <span className="cc-threadbtn-t">{dispTitle(activeThread?.title || "Main")}</span>
+                      <svg className="cc-threadcaret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9.5 12 15l6-5.5" /></svg>
+                    </button>
+                    {threadsOpen && (
+                      <>
+                        <button type="button" className="cc-threadback" aria-label={t("Close")} onClick={() => setThreadsOpen(false)} />
+                        <div className="cc-threadpop" role="listbox" aria-label={t("Your chats")}>
+                          {threads.map((th) => (
+                            <button key={th.id} type="button" role="option" aria-selected={th.id === activeThreadId}
+                              className={`cc-threadopt${th.id === activeThreadId ? " on" : ""}`}
+                              onClick={() => { setThreadsOpen(false); if (!busy && th.id !== activeThreadId) { setActiveThreadId(th.id); setAttach(null); setLastPhoto(null); } }}
+                              title={dispTitle(th.title)}>
+                              <span className="cc-threadopt-t">{dispTitle(th.title)}</span>
+                              {th.id === activeThreadId && <Ico n="check" size={14} />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <p className="cc-hero-pitch">{t("Make images & videos, edit photos, even trim & caption clips — all from chat. Just tell me what you want. 🐾")}</p>
             </div>
           </div>
 
@@ -465,7 +509,7 @@ export default function Create() {
                     ))}
                   </div>
                 )}
-                {m.pending && (
+                {m.pending && keepLink(m.pending.to) && (
                   <a className="cc-make" href={m.pending.to}>
                     <span>✨ {m.pending.label}</span>
                     <b>{m.pending.cost > 0 ? t("~{n} tokens →", { n: m.pending.cost }) : "→"}</b>
@@ -488,14 +532,29 @@ export default function Create() {
                     </button>
                   </div>
                 )}
-                {m.actions && m.actions.length > 0 && (
-                  <div className="cc-acts">{m.actions.map((a) => <a key={a.to + a.label} className="cc-act" href={a.to}>{a.label}</a>)}</div>
+                {m.actions && m.actions.filter((a) => keepLink(a.to)).length > 0 && (
+                  <div className="cc-acts">{m.actions.filter((a) => keepLink(a.to)).map((a) => <a key={a.to + a.label} className="cc-act" href={a.to}>{a.label}</a>)}</div>
                 )}
                 {m.followups && m.followups.length > 0 && i === msgs.length - 1 && !busyOrMaking && (
                   <div className="cc-chips">{m.followups.map((f) => <button key={f} type="button" onClick={() => void send(f)}>{f}</button>)}</div>
                 )}
               </div>
             ))}
+            {/* Empty-state starters — concrete, clickable examples that double as
+                the instructions. Shown only on a fresh thread (just the opener). */}
+            {histReady && !busyOrMaking && msgs.length <= 1 && (
+              <div className="cc-starts">
+                <div className="cc-starts-h">{t("Try one of these")}</div>
+                <div className="cc-starts-grid">
+                  {STARTERS.map((s) => (
+                    <button key={s.label} type="button" className="cc-start"
+                      onClick={() => { if (s.pick) fileRef.current?.click(); else if (s.send) void send(s.send); }}>
+                      <Ico n={s.ico} size={16} /> {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {streamStatus && <div className="cc-status">{streamStatus}</div>}
             {busy && !streamStatus && <div className="cc-status">{t("Helpurr is thinking…")}</div>}
           </div>
@@ -510,7 +569,7 @@ export default function Create() {
             )}
             <div className="cc-composer-row">
               <button type="button" className="cc-attach-btn" onClick={() => fileRef.current?.click()} disabled={uploading || busy} title={t("Attach a photo")} aria-label={t("Attach a photo")}>
-                {uploading ? "…" : "📎"}
+                {uploading ? <span className="cc-attach-load" aria-hidden="true" /> : <Ico n="image" size={19} />}
               </button>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files)} />
               <textarea
@@ -533,26 +592,43 @@ export default function Create() {
           </div>
         </section>
 
-        {/* ── CANVAS / STAGE (right) ─────────────────────────────────────── */}
+        {/* ── CANVAS / STAGE (right) — the proper easel (echoes web.studio.tsx's
+            .ws-stage-frame): a dashed easel that doubles as a tap/drop target to
+            edit a photo, a rose spinner while making, and a dark frame on a
+            result. The newest image lands here, big. ───────────────────────── */}
         <section className="cc-stage" aria-label={t("Canvas")}>
           <div className={`cc-stage-frame${hero && !making ? " has-result" : ""}`}
             style={hero?.aspect ? ({ ["--stage-ar" as string]: hero.aspect } as React.CSSProperties) : undefined}>
             {making ? (
-              <div className="cc-ph cc-making">
-                <div className="cc-rose" aria-hidden="true" />
-                <div className="cc-ph-cap">{t("Making…")}</div>
-                <div className="cc-ph-sub">{t("This takes a minute — keep chatting if you like.")}</div>
+              <div className="cc-easelph making">
+                <span className="cc-easel-mark" aria-hidden="true"><span className="cc-rose" /></span>
+                <div className="cc-easel-cap">{t("Making…")}</div>
+                <div className="cc-easel-sub">{t("This takes a minute — keep chatting if you like, it'll land right here.")}</div>
               </div>
             ) : hero ? (
               <a className="cc-heromedia" href={hero.url} target="_blank" rel="noreferrer" title={t("Open full-size")}>
                 <img src={hero.url} alt={hero.title || ""}
                   onLoad={(e) => { const el = e.currentTarget; if (el.naturalWidth && el.naturalHeight) setHero((h) => (h && h.url === hero.url && !h.aspect ? { ...h, aspect: `${el.naturalWidth} / ${el.naturalHeight}` } : h)); }} />
               </a>
+            ) : attach ? (
+              <div className="cc-easel-photo">
+                <img src={attach.url} alt="" />
+                <button type="button" className="cc-easel-clear" onClick={() => setAttach(null)} aria-label={t("Remove photo")}><Ico n="x" size={15} /></button>
+                <div className="cc-easel-photocap">{t("Tell Helpurr how to edit this")} →</div>
+              </div>
             ) : (
-              <div className="cc-ph">
-                <div className="cc-mark" aria-hidden="true">🎨</div>
-                <div className="cc-ph-cap">{t("What should we make?")}</div>
-                <div className="cc-ph-sub">{t("Ask Helpurr in the chat — your newest image shows here, big.")}</div>
+              <div className="cc-easelph cc-easelph-drop" role="button" tabIndex={0}
+                aria-label={t("Upload a photo to edit")}
+                onClick={() => { if (!uploading) fileRef.current?.click(); }}
+                onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !uploading) { e.preventDefault(); fileRef.current?.click(); } }}
+                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("drag"); }}
+                onDragLeave={(e) => e.currentTarget.classList.remove("drag")}
+                onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("drag"); void pickPhoto(e.dataTransfer.files); }}>
+                <span className="cc-easel-mark" aria-hidden="true">
+                  <span className="cc-dropplus"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5.4v13.2M5.4 12h13.2" /></svg></span>
+                </span>
+                <div className="cc-easel-cap">{t("Your canvas")}</div>
+                <div className="cc-easel-sub">{t("Make something in chat and it shows here, big — or tap to drop a photo to edit.")}</div>
               </div>
             )}
           </div>
@@ -569,19 +645,38 @@ export default function Create() {
 // result). Two columns on desktop, stacked (canvas on top) on mobile.
 const CREATE_STYLE = `
 .cc-wrap{--green:#0C7A46;--green2:#12A85E;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--card:#FDFCF7;--paper:#F4F1E6;--gold:#B08526;}
-.cc-grid{display:grid;grid-template-columns:360px minmax(0,1fr);gap:18px;align-items:start;margin-top:8px}
+.cc-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:18px;align-items:start;margin-top:8px}
 @media (max-width:900px){.cc-grid{grid-template-columns:1fr}.cc-stage{order:-1}}
 
 /* CHAT COLUMN */
-.cc-chat{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;height:min(76vh,720px)}
-.cc-threads{display:flex;flex-direction:column;gap:8px;padding:12px 12px 10px;border-bottom:1px solid var(--line);background:rgba(12,122,70,.03)}
-.cc-thread-new{align-self:flex-start;font:inherit;font-weight:700;font-size:13px;color:var(--green);background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 13px;cursor:pointer}
-.cc-thread-new:hover{background:rgba(12,122,70,.06)}
+.cc-chat{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;height:min(78vh,760px)}
+/* Shell (mount-gate) reserves the column heights so there's no layout jump. */
+.cc-chat:empty{display:block;height:min(78vh,760px)}
+.cc-stage:empty{display:block;min-height:470px;border:1px dashed #DED7C2;border-radius:20px;background:radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
+
+/* HELPURR HERO — stationary mascot + capability pitch + tidy thread control */
+.cc-hero{display:flex;align-items:center;gap:13px;padding:13px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(12,122,70,.055),rgba(12,122,70,.015))}
+.cc-hero-fam{flex:none;width:58px;height:58px;display:grid;place-items:center;filter:drop-shadow(0 5px 11px rgba(12,122,70,.20))}
+.cc-hero-say{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.cc-hero-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.cc-hero-name{font-family:Poppins,system-ui,sans-serif;font-weight:800;font-size:16px;color:var(--ink);line-height:1}
+.cc-hero-pitch{margin:0;font-size:12.5px;line-height:1.5;color:var(--ink2)}
+.cc-hero-threads{margin-left:auto;display:flex;align-items:center;gap:7px}
+.cc-thread-new{font:inherit;font-weight:700;font-size:12px;color:var(--green);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+.cc-thread-new:hover{background:rgba(12,122,70,.07);border-color:var(--green)}
 .cc-thread-new:disabled{opacity:.5;cursor:default}
-.cc-thread-list{display:flex;flex-wrap:wrap;gap:6px}
-.cc-thread{font:inherit;font-size:12.5px;color:var(--ink2);background:transparent;border:1px solid transparent;border-radius:8px;padding:5px 9px;cursor:pointer;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-thread:hover{background:rgba(0,0,0,.04)}
-.cc-thread.on{color:var(--ink);background:#fff;border-color:var(--line);font-weight:700}
+.cc-threadwrap{position:relative;display:flex}
+.cc-threadbtn{display:inline-flex;align-items:center;gap:6px;max-width:150px;font:inherit;font-weight:600;font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 10px;cursor:pointer}
+.cc-threadbtn:hover{border-color:var(--green);color:var(--green)}
+.cc-threadbtn-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:86px}
+.cc-threadcaret{flex:none;opacity:.7}
+.cc-threadback{position:fixed;inset:0;z-index:40;background:transparent;border:0;cursor:default}
+.cc-threadpop{position:absolute;top:calc(100% + 6px);right:0;z-index:41;width:236px;max-width:calc(100vw - 40px);max-height:306px;overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 36px rgba(20,32,26,.17);padding:6px}
+.cc-threadopt{display:flex;align-items:center;gap:8px;width:100%;font:inherit;font-size:13px;color:var(--ink);background:transparent;border:0;border-radius:8px;padding:8px 10px;cursor:pointer;text-align:left}
+.cc-threadopt:hover{background:rgba(12,122,70,.07)}
+.cc-threadopt.on{color:var(--green)}
+.cc-threadopt .svg,.cc-threadopt svg{flex:none;color:var(--green)}
+.cc-threadopt-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .cc-list{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 .cc-row{display:flex;flex-direction:column;gap:7px;max-width:100%}
@@ -611,14 +706,24 @@ const CREATE_STYLE = `
 .cc-act:hover,.cc-chips button:hover{background:rgba(12,122,70,.06)}
 .cc-status{font-size:12.5px;color:var(--ink2);font-style:italic;padding:2px 4px}
 
+/* EMPTY-STATE STARTERS — the instructions, as tappable examples */
+.cc-starts{margin-top:4px;display:flex;flex-direction:column;gap:9px}
+.cc-starts-h{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);opacity:.72}
+.cc-starts-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cc-start{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:600;font-size:13px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 12px;cursor:pointer;text-align:left;line-height:1.2}
+.cc-start:hover{border-color:var(--green);background:rgba(12,122,70,.05);color:var(--green)}
+.cc-start svg{flex:none;color:var(--green)}
+
 /* COMPOSER */
 .cc-composer{border-top:1px solid var(--line);padding:11px 12px;background:var(--card)}
 .cc-attach{position:relative;width:64px;height:64px;margin-bottom:9px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
 .cc-attach img{width:100%;height:100%;object-fit:cover;display:block}
 .cc-attach button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(20,32,26,.8);color:#fff;font-size:14px;line-height:1;cursor:pointer}
 .cc-composer-row{display:flex;align-items:flex-end;gap:8px}
-.cc-attach-btn{flex:none;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:17px;cursor:pointer}
+.cc-attach-btn{flex:none;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink2);cursor:pointer;display:grid;place-items:center}
+.cc-attach-btn:hover{border-color:var(--green);color:var(--green)}
 .cc-attach-btn:disabled{opacity:.5;cursor:default}
+.cc-attach-load{width:16px;height:16px;border-radius:50%;border:2px solid rgba(12,122,70,.25);border-top-color:var(--green);animation:ccspin .7s linear infinite}
 .cc-input{flex:1;resize:none;font:inherit;font-size:14px;line-height:1.45;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;max-height:140px;min-height:40px}
 .cc-input:focus{outline:2px solid var(--green2);outline-offset:-1px}
 .cc-input:disabled{opacity:.6}
@@ -634,14 +739,27 @@ const CREATE_STYLE = `
 .cc-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
 .cc-stage-frame.has-result{border-style:solid;border-color:var(--line);background:var(--ink);min-height:0;width:100%;max-width:min(100%,620px);margin-inline:auto}
 .cc-stage-frame.has-result::after{display:none}
-.cc-ph{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:28px}
-.cc-mark{font-size:42px;line-height:1}
-.cc-ph-cap{font-size:17px;font-weight:700;color:var(--ink);font-family:Poppins,system-ui,sans-serif}
-.cc-ph-sub{font-size:13px;color:var(--ink2);max-width:30ch;line-height:1.5}
+/* Easel placeholder — mirrors .ws-easelph / .ws-easelph-drop in the Studio. */
+.cc-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:26px}
+.cc-easelph-drop{cursor:pointer;width:100%;height:100%;justify-content:center;border-radius:20px;transition:background .14s}
+.cc-easelph-drop:hover{background:rgba(12,122,70,.04)}
+.cc-easelph-drop:focus-visible{outline:2px solid var(--green2);outline-offset:-8px}
+.cc-easelph-drop.drag{background:rgba(12,122,70,.08);outline:2px dashed var(--green2);outline-offset:-12px}
+.cc-easel-mark{position:relative;display:grid;place-items:center;width:62px;height:62px}
+.cc-rose{position:absolute;inset:0;width:62px;height:62px;border-radius:50%;opacity:0;background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D)}
+.cc-easelph.making .cc-rose{opacity:1;animation:ccspin 2.4s linear infinite}
+.cc-dropplus{display:grid;place-items:center;width:62px;height:62px;border-radius:50%;color:var(--green);background:rgba(12,122,70,.08);border:1.5px solid rgba(12,122,70,.25);transition:transform .14s}
+.cc-easelph-drop:hover .cc-dropplus{transform:scale(1.07)}
+.cc-easel-cap{font-size:15px;font-weight:700;color:var(--ink);font-family:Poppins,system-ui,sans-serif}
+.cc-easel-sub{font-size:12.5px;color:var(--ink2);max-width:32ch;line-height:1.5}
+.cc-easel-photo{position:relative;width:100%;display:flex;flex-direction:column;align-items:center;padding:14px}
+.cc-easel-photo img{display:block;width:100%;height:auto;max-height:64vh;object-fit:contain;border-radius:14px}
+.cc-easel-clear{position:absolute;top:22px;right:22px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(20,32,26,.72);color:#fff;cursor:pointer;display:grid;place-items:center}
+.cc-easel-clear:hover{background:rgba(20,32,26,.9)}
+.cc-easel-photocap{margin-top:12px;font-size:13px;font-weight:700;color:var(--green)}
 .cc-heromedia{display:block;width:100%}
 .cc-heromedia img{display:block;width:100%;height:auto;max-height:74vh;object-fit:contain}
-.cc-making .cc-rose{width:54px;height:54px;border-radius:50%;background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D);animation:ccspin 2.4s linear infinite}
 @keyframes ccspin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.cc-making .cc-rose{animation:none}}
-@media (max-width:900px){.cc-stage{position:static}.cc-stage-frame{min-height:300px}.cc-stage-frame.has-result{aspect-ratio:var(--stage-ar,1/1);max-height:min(62vh,460px)}.cc-chat{height:min(70vh,620px)}}
+@media (prefers-reduced-motion:reduce){.cc-easelph.making .cc-rose,.cc-attach-load{animation:none}}
+@media (max-width:900px){.cc-stage{position:static}.cc-stage-frame{min-height:300px}.cc-stage-frame.has-result{aspect-ratio:var(--stage-ar,1/1);max-height:min(62vh,460px)}.cc-chat{height:min(74vh,660px)}.cc-chat:empty{height:min(74vh,660px)}.cc-starts-grid{grid-template-columns:1fr}.cc-hero-threads{width:100%;margin-left:0;margin-top:2px;justify-content:flex-start}}
 `;
