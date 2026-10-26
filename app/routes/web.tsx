@@ -811,7 +811,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         <div className={`mm-panel${max ? " mm-max" : ""}${sideOpen ? " mm-side-open" : ""}`} role="dialog" aria-modal={max ? true : undefined} aria-label={t("Helpurr chat")} onKeyDown={(e) => { if (e.key === "Escape") { if (sideOpen) setSideOpen(false); else if (max) setMax(false); else setOpen(false); } }}>
           {max && authed && (
             <aside className="mm-side">
-              <div className="mm-side-brand"><span className="mm-side-crest"><Familiar /></span><span className="mm-side-word">Easy<b>Mode</b></span></div>
+              <div className="mm-side-brand"><Crest size={30} /><span className="mm-side-word">Easy<b>Mode</b></span></div>
               <button type="button" className="mm-side-new" onClick={() => { void newThread(); setSideOpen(false); }}>{t("+ New chat")}</button>
               <div className="mm-side-list">
                 {recencyGroups.map((group) => (

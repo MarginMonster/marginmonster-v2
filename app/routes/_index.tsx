@@ -40,7 +40,7 @@ const DESCRIPTION =
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const origin = data?.origin || "https://easymodeapp.com";
-  const image = origin + "/easymode-head.png?v=2";
+  const image = origin + "/helpurr-icon.png?v=2";
   return [
     { title: TITLE },
     { name: "description", content: DESCRIPTION },
@@ -196,7 +196,7 @@ export default function Index() {
         <header className="lz-nav">
           <div className="lz-brand">
             <span className="lz-crest" style={{ width: 34, height: 34 }} aria-hidden="true">
-              <img src="/easymode-head.png?v=2" alt="" />
+              <img src="/helpurr-icon.png?v=2" alt="" />
             </span>
             <span>Easy<b>Mode</b></span>
           </div>
@@ -536,7 +536,7 @@ export default function Index() {
         <footer className="lz-foot">
           <div className="lz-brand small">
             <span className="lz-crest" style={{ width: 26, height: 26 }} aria-hidden="true">
-              <img src="/easymode-head.png?v=2" alt="" />
+              <img src="/helpurr-icon.png?v=2" alt="" />
             </span>
             {/* was ".io" — a domain we do not own, sitting two elements away
                 from mailto:hello@easymodeapp.com. The header wordmark carries

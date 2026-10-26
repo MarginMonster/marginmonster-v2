@@ -225,12 +225,12 @@ export default function App() {
             title={`LVL ${hud.level} · ${hud.tokens.toLocaleString()} tokens — tap to expand`}
             aria-label="Expand player HUD"
           >
-            <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
+            <img src="/helpurr-icon.png?v=2" className="mm-hud-head" alt="" />
           </button>
         ) : (
           <div className="mm-hud-body">
             <div className="mm-hud-top">
-              <img src="/easymode-head.png?v=2" className="mm-hud-head" alt="" />
+              <img src="/helpurr-icon.png?v=2" className="mm-hud-head" alt="" />
               <span className="mm-hud-name">{hud.name}</span>
               <span className="mm-hud-lvl" title={`Level ${hud.level} — your store's level`}>LVL {hud.level}</span>
               <button

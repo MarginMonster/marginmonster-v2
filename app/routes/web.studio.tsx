@@ -4981,7 +4981,7 @@ export default function WebStudio() {
                 the one thing on screen that isn't ours — this is the moment
                 the merchant just paid for, so put our name on it. */}
             <div className="ws-flex" aria-hidden="true">
-              <span className="ws-flex-crest"><img src="/easymode-head.png?v=2" alt="" /></span>
+              <span className="ws-flex-crest"><img src="/helpurr-icon.png?v=2" alt="" /></span>
               <span className="ws-flex-word">Easy<b>Mode</b></span>
               <span className="ws-flex-rule" />
             </div>

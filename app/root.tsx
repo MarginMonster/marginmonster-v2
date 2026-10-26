@@ -35,10 +35,10 @@ export const links: LinksFunction = () => [
   // uptime checkers request the bare path regardless of any <link>, and
   // without the file Remix logged a full router stack trace for every page
   // view ("No route matches URL /favicon.ico") while the tab stayed blank in
-  // anything that ignores the PNG hint. 32px, made from easymode-head.png.
+  // anything that ignores the PNG hint. 32px, made from helpurr-icon.png.
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
-  { rel: "icon", type: "image/png", href: "/easymode-head.png" },
-  { rel: "apple-touch-icon", href: "/easymode-head.png" },
+  { rel: "icon", type: "image/png", href: "/helpurr-icon.png" },
+  { rel: "apple-touch-icon", href: "/helpurr-icon.png" },
   // Open the font connections before the CSS that needs them is parsed.
   // These were @import-ed from inside an injected <style>, which cost
   // three sequential round trips before any text rendered in Poppins.
@@ -170,7 +170,7 @@ export function ErrorBoundary() {
       <body style={{ margin: 0, background: "#F4F1E6", color: "#14201A", fontFamily: "Inter, -apple-system, sans-serif" }}>
         <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
           <div style={{ maxWidth: 460, textAlign: "center", background: "#FDFCF7", border: "1px solid #E1DECD", borderRadius: 18, padding: "36px 28px" }}>
-            <img src="/easymode-head.png" alt="" width={56} height={56} style={{ borderRadius: 14 }} />
+            <img src="/helpurr-icon.png" alt="" width={56} height={56} style={{ borderRadius: 14 }} />
             <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: 22, margin: "14px 0 8px" }}>{title}</h1>
             <p style={{ fontSize: 14, lineHeight: 1.55, color: "#4A554E", margin: "0 0 22px" }}>{body}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
