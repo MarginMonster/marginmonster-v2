@@ -1856,6 +1856,11 @@ export default function WebStudio() {
   // You can still pick None after (this won't re-fire and override it) — entering
   // cartoon just STARTS with a presenter so the product lands in-hand by default.
   useEffect(() => { if (tab === "video" && contentType === "cartoon" && avatarId === null) { const def = d.brandFaceId ?? d.cast[0]?.id ?? null; if (def) setAvatarId(def); } }, [tab, contentType]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The cartoon animation style now lives in the CENTER CARD of the scene hub
+  // (not a top grid), so the scene must open immediately — seed a default style,
+  // else cfgReady would keep the whole hub hidden until a grid pick. Restyle via
+  // the center card (this won't re-fire to override your choice).
+  useEffect(() => { if (tab === "video" && contentType === "cartoon" && cartoonStyle === null) setCartoonStyle("dreamanime"); }, [tab, contentType]); // eslint-disable-line react-hooks/exhaustive-deps
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   // Seeded from ?src= so an imported Gallery creation shows on the Stage the
@@ -2727,7 +2732,7 @@ export default function WebStudio() {
   // the pick handlers (store-catalogue tap, presenter tap) — NOT an effect keyed
   // on hasMarketingProduct/avatarId, which would slam the drawer shut the instant
   // you reopened it to CHANGE an already-set pick.
-  const [hubPick, setHubPick] = useState<"presenter" | "product" | null>(null);
+  const [hubPick, setHubPick] = useState<"presenter" | "product" | "style" | null>(null);
   // Leaving the hub entirely (tab→Image, contentType→cartoon/commercial, Service
   // on) must reset hubPick, or a drawer left open would re-open EXPANDED on
   // return — defeating collapse-by-default. Keyed on avatarVideoHub so it only
@@ -3239,7 +3244,9 @@ export default function WebStudio() {
             {!avatarVideoHub && (showCartoonGrid || (!casual && baseOf(contentType) === "avatar")) && <Presenters cast={d.cast} avatarId={avatarId} setAvatarId={setAvatarId} optional={baseOf(contentType) !== "avatar"} brandFaceId={d.brandFaceId} onCreateOwn={() => setForgeOpen(true)} onManage={() => setManageOpen(true)} />}
             {contentType === "cartoon" && !avatarId && <p className="ws-note">{casual ? t("No presenter? We'll animate a fun scene in the picked style from your idea.") : t("No presenter? We'll animate a fun scene in the picked style, then close on your real product.")}</p>}
             {contentType === "jingle" && !avatarId && <p className="ws-note">{t("No singer picked — the anthem plays over a hero shot of your product instead.")}</p>}
-            {showCartoonGrid && (
+            {/* Cartoon's style picker moved INTO the scene hub (the center card);
+                only jingle (and the rare non-hub cartoon/service) keeps it up top. */}
+            {showCartoonGrid && !(avatarVideoHub && contentType === "cartoon") && (
               <>
                 <div className="ws-lbl">{contentType === "jingle" ? t("Singer style") : t("Pick a cartoon avatar style")} <span className="ws-opt">{contentType === "jingle" ? t("previews show your chosen singer") : t("sample looks — your presenter stars in yours")}</span></div>
                 <div className="ws-tiles styles ws-styles3 ws-scrollbox">
@@ -3512,7 +3519,35 @@ export default function WebStudio() {
                     <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
                     <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
                   </button>
+                  {/* CENTER STYLE CARD (cartoon) — the picked animation style, sitting
+                      over the gap between presenter + product so it stays visible and
+                      attached to the scene (replaces the top grid that scrolled away). */}
+                  {contentType === "cartoon" && (
+                    <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}`}
+                      aria-expanded={hubPick === "style"} aria-label={t("Change the animation style")}
+                      onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
+                      <span className="ws-stylecard-img" style={{ backgroundImage: `url(${styleCover(cartoonStyle || "dreamanime")})` }} aria-hidden="true" />
+                      <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime")}</b>
+                      <span className="ws-stylecard-cue">{t("Tap to restyle")}</span>
+                    </button>
+                  )}
                 </div>
+                {/* Center-card style picker reveal (cartoon) — the 6 styles slide
+                    open right under the scene; picking one restyles + collapses. */}
+                {contentType === "cartoon" && hubPick === "style" && (
+                  <div className="ws-hub-reveal open">
+                    <div className="ws-tiles styles ws-styles3 ws-scrollbox">
+                      {CARTOON_STYLES.map((cs) => (
+                        <button type="button" key={cs.key} className={`ws-tile small${cartoonStyle === cs.key ? " sel" : ""}`}
+                          onClick={() => { setCartoonStyle(cs.key); setHubPick(null); }}>
+                          <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
+                          <b>{t(cs.name)}</b>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {contentType === "cartoon" && cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
                 {/* Presenter picker reveal — picking selects + plays the intro in
                     the hero above (with sound), and collapses this. */}
                 {hubPick === "presenter" && (
@@ -5083,7 +5118,17 @@ const WS_STYLE = `
 .ws-hub-reveal[hidden]{display:none}
 .ws-hub-reveal.open{display:block;animation:ws-hub-slide .22s ease}
 @keyframes ws-hub-slide{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
-.ws-hubtiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 14px}
+.ws-hubtiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 14px;position:relative}
+/* Center style card (cartoon) — the picked animation style, overlapping the gap
+   between the presenter + product tiles so it's always in view (replaces the
+   top style grid). Tap it to slide the 6 styles open under the scene. */
+.ws-stylecard{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);z-index:6;width:104px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px;border-radius:15px;border:2px solid var(--gold-deep,#B08526);background:var(--card,#FDFCF7);box-shadow:0 10px 26px rgba(20,32,26,.28);cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s}
+.ws-stylecard:hover{transform:translate(-50%,-50%) scale(1.05);box-shadow:0 14px 32px rgba(20,32,26,.32)}
+.ws-stylecard.open{border-color:var(--green,#0C7A46)}
+.ws-stylecard-img{width:100%;aspect-ratio:1/1;border-radius:10px;background:#EAF6EF center/cover no-repeat;border:1px solid rgba(20,32,26,.08)}
+.ws-stylecard b{font-size:11.5px;font-weight:800;color:var(--ink,#14201A);line-height:1.1;text-align:center}
+.ws-stylecard-cue{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--gold-deep,#7E5E13)}
+@media(max-width:420px){.ws-stylecard{width:84px}}
 /* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
    nowrap <b> product name sets a large min-content width and 1fr can't shrink →
    horizontal overflow + the ellipsis never engages. min-width:0 lets it clip. */
