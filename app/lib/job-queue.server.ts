@@ -540,6 +540,9 @@ async function runJob(
           avatarId: payload.avatarId as string | undefined,
           avatarVariant: payload.avatarVariant != null ? Number(payload.avatarVariant) : 0,
           productSize: payload.productSize as string | undefined,
+          // The Combine's SETTING rides the payload as `scene`; feed it as the
+          // keyframe's scene direction (was MISSING — the setting was ignored).
+          direction: payload.scene as string | undefined,
           jobId: payload.__jobId as string | undefined,
           keyframeOnly: true,
         });
