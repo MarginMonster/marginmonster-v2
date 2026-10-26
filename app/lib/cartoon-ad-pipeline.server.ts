@@ -407,6 +407,7 @@ async function writeCartoonScriptOnce(o: {
     `TOTAL (about 11 seconds spoken). Playful, warm, a little witty — like a`,
     `beloved animated commercial. Ground every line in the REAL, specific`,
     `details above — never invent a feature, number, ingredient, or claim.`,
+    `Make it unmistakably about THIS product and its specific benefit — a viewer who has never heard of it should grasp what it is and why they'd want it. Avoid vague problem/solution filler ("tired of X? we fixed it") that could describe anything.`,
     // The ad ENDS on the merchant's real product shown sharp (an endcard), so
     // the voice-over must hand off to it: the final line names the product and
     // points the viewer at it, rather than a generic "shop now."

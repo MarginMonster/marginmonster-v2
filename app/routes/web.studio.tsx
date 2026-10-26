@@ -1838,6 +1838,12 @@ export default function WebStudio() {
   // describe box; default to the cinematic "highlight" path (describe -> make, or
   // upload a video to edit it). Uploading a video switches to the edit flow.
   useEffect(() => { if (casual && tab === "video" && contentType === null) setContentType("highlight"); }, [casual, tab, contentType]);
+  // Cartoon defaults to a PRESENTER (Brand Face) so it runs the "presenter holds
+  // your product" path, not the product-free scene + bolted-on endcard. A tester
+  // left it on None and got a generic clip with the product only at the very end.
+  // You can still pick None after (this won't re-fire and override it) — entering
+  // cartoon just STARTS with a presenter so the product lands in-hand by default.
+  useEffect(() => { if (tab === "video" && contentType === "cartoon" && avatarId === null) { const def = d.brandFaceId ?? d.cast[0]?.id ?? null; if (def) setAvatarId(def); } }, [tab, contentType]); // eslint-disable-line react-hooks/exhaustive-deps
   // Photo-editor drag-and-drop: a preview of the dropped/chosen photo + the file
   // input it drives. Cleared when the preview changes so blob URLs don't leak.
   // Seeded from ?src= so an imported Gallery creation shows on the Stage the
