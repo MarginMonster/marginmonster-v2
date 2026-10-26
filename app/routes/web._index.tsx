@@ -500,11 +500,11 @@ export default function WebDashboard() {
             <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/channels"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
               <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Social")}</span>
+                <span className="wd-path-eyebrow">{t("Social Marketing")}</span>
                 <b>{t("Grow on social")}</b>
                 <i>{t("Product ads & auto-posting")}</i>
                 <span className="wd-path-cost">{t("For your store · video 150 tokens")}</span>
-                <span className="wd-path-cue">{t("Open Social")} <Ico n="arrow" size={15} /></span>
+                <span className="wd-path-cue">{t("Open Social Marketing")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
           </div>

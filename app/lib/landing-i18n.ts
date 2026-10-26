@@ -79,7 +79,7 @@ const EN: LandingCopy = {
   paths: {
     eyebrow: "Two sides, one login",
     create: { h: "Create", p: "Turn a prompt into images, videos, songs and faceless social clips. No store needed.", cta: "Start creating" },
-    market: { h: "Social", p: "Turn your store's products into ads, campaigns and auto-posts that sell.", cta: "Market my store" },
+    market: { h: "Social Marketing", p: "Turn your store's products into ads, campaigns and auto-posts that sell.", cta: "Market my store" },
   },
   stats: { types: "ways to create", channels: "auto-post to TikTok, IG & FB", start: "to start · no store needed", tap: "1-tap", free: "Free" },
   features: [

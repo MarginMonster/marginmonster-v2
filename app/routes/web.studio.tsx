@@ -2977,7 +2977,7 @@ export default function WebStudio() {
   return (
     <div className={casual ? "ws-casual" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
-      <h1 className="wb-h1">{casual ? t("Create") : t("Social")}</h1>
+      <h1 className="wb-h1">{casual ? t("Create") : t("Social Marketing")}</h1>
       <p className="wb-sub">
         {casual
           ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</>
@@ -2994,8 +2994,8 @@ export default function WebStudio() {
         </button>
         <button type="button" className={`ws-ms-opt${!casual ? " on" : ""}${socialUnlocked ? "" : " locked"}`} aria-pressed={!casual}
           onClick={() => (socialUnlocked ? (setMode("marketing"), setContentType(null), setImageMode(null), setUpsell(null), setSocialLockOpen(false)) : setSocialLockOpen(true))}
-          title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch into Social mode")}>
-          <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social")}
+          title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch into Social Marketing mode")}>
+          <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social Marketing")}
           {!socialUnlocked && <span className="ws-ms-badge">{t("Starter")}</span>}
         </button>
       </div>
@@ -3003,12 +3003,12 @@ export default function WebStudio() {
           (the only explanation used to be a hover-only title tooltip) and it names
           the cost gap, which was invisible until the make step. */}
       <p className="ws-ms-hint">
-        <b>{t("Create")}</b>{t(" — images, video & music just for you (from 5 tokens). ")}<b>{t("Social")}</b>{t(" — product ads that auto-post to TikTok, IG & FB (video 150).")}
+        <b>{t("Create")}</b>{t(" — images, video & music just for you (from 5 tokens). ")}<b>{t("Social Marketing")}</b>{t(" — product ads that auto-post to TikTok, IG & FB (video 150).")}
       </p>
       {socialLockOpen && !socialUnlocked && (
         <div className="ws-upsell ws-ms-upsell">
-          <b><Ico n="lock" size={15} /> {t("Social is a Starter feature")}</b>
-          <p>{t("Upgrade to Starter ($19/mo) to switch into Social mode — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
+          <b><Ico n="lock" size={15} /> {t("Social Marketing is a Starter feature")}</b>
+          <p>{t("Upgrade to Starter ($19/mo) to switch into Social Marketing mode — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
           <div><Link to="/web#plans" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>{t("See plans")}</Link>
             <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setSocialLockOpen(false)}>{t("Not now")}</button></div>
         </div>

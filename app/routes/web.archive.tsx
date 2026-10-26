@@ -1229,13 +1229,13 @@ export default function WebArchive() {
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
-      <h1 className="wb-h1">{isCreator ? t("Creator Archive") : t("Social Archive")}</h1>
+      <h1 className="wb-h1">{isCreator ? t("Creator Archive") : t("Social Marketing Archive")}</h1>
       {/* Section toggle — the two stores stay SEPARATE (by design) but read as
           parallel places you can hop between, instead of a Gallery/Archive name
           mismatch. Pure ?section= links; no mode coupling. */}
       <div className="wa-sections" role="tablist" aria-label={t("Which section")}>
         <Link to="/web/archive?section=creator" role="tab" aria-selected={isCreator} className={`wa-sectab${isCreator ? " on" : ""}`} preventScrollReset>{t("Creator")}</Link>
-        <Link to="/web/archive" role="tab" aria-selected={!isCreator} className={`wa-sectab${!isCreator ? " on" : ""}`} preventScrollReset>{t("Social")}</Link>
+        <Link to="/web/archive" role="tab" aria-selected={!isCreator} className={`wa-sectab${!isCreator ? " on" : ""}`} preventScrollReset>{t("Social Marketing")}</Link>
       </div>
       <p className="wb-sub">
         {isCreator ? t("Everything you've made in Creator") : t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (isCreator ? (linkedCount > 1 ? t(", or share it to your {n} linked accounts", { n: linkedCount }) : t(", or share it to your {n} linked account", { n: linkedCount })) : (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount }))) : ""}.

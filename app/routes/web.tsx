@@ -919,9 +919,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 </div>
               </div>
               <div className="mm-home-links">
-                <button type="button" onClick={() => go("/web/studio")}>{t("Studio")}</button>
+                <button type="button" onClick={() => go("/web/studio")}>{t("Create")}</button>
                 <button type="button" onClick={() => go("/web/archive")}>{t("Gallery")}</button>
-                <button type="button" onClick={() => go(mode === "casual" ? "/web" : "/web/channels")}>{mode === "casual" ? t("Home") : t("Social")}</button>
+                <button type="button" onClick={() => go(mode === "casual" ? "/web" : "/web/channels")}>{mode === "casual" ? t("Home") : t("Social Marketing")}</button>
               </div>
             </div>
           )}

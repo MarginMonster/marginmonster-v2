@@ -479,7 +479,7 @@ export default function WebCampaigns() {
           <h1>{t("Campaigns")}</h1>
           <p>{t("A month of content, created and posted for you. Pick a plan once — it runs itself from there.")}</p>
           <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
-            <b style={{ color: "#0C7A46" }}>{t("Social")}</b>{t(" posts three ways — ")}
+            <b style={{ color: "#0C7A46" }}>{t("Social Marketing")}</b>{t(" posts three ways — ")}
             <b style={{ color: "#14201A" }}>{t("Campaigns")}</b>{t(" (a one-month push)")}{" · "}
             <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Channels")}</Link>{t(" (always-on)")}{" · "}
             <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Auto-posting")}</Link>{t(" (connect accounts)")}
@@ -685,7 +685,7 @@ export default function WebCampaigns() {
               {d.archive.length === 0 ? (
                 <p className="wc-hint">
                   {t("Nothing unscheduled in your Archive yet — anything you make in the")}{" "}
-                  <Link to="/web/studio">{t("Studio")}</Link> {t("shows up here to schedule for free.")}
+                  <Link to="/web/studio">{t("Create")}</Link> {t("shows up here to schedule for free.")}
                 </p>
               ) : (
                 <>
