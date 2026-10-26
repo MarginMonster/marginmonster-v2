@@ -3253,7 +3253,26 @@ export default function WebStudio() {
                 ads and commercials ignore it, so showing 8 greyed-out engines + a
                 "doesn't apply" note was pure chore. Hidden there; the videoEngine
                 value still rides along for the pipeline. */}
-            {engineApplies && !isVideoEdit && (
+            {engineApplies && !isVideoEdit && (casual ? (
+              /* Creator video: just Pro vs Ultra (owner call) — the 8-engine menu
+                 is for Social Marketing. Pro = Auto (Kling 3 Pro, included); Ultra
+                 = Veo 3.1 Fast (the margin-safe premium per video-engines.ts). The
+                 videoEngine value still rides the hidden input + server fallback. */
+              <>
+                <div className="ws-lbl">{t("Quality")} <span className="ws-opt">{t("Ultra adds tokens")}</span></div>
+                <div className="ws-models" role="radiogroup" aria-label={t("Video quality")}>
+                  <button type="button" role="radio" aria-checked={videoEngine !== "veo31"}
+                    className={`ws-model${videoEngine !== "veo31" ? " sel" : ""}`} onClick={() => setVideoEngine("auto")}>
+                    {t("Pro")}
+                  </button>
+                  <button type="button" role="radio" aria-checked={videoEngine === "veo31"}
+                    className={`ws-model${videoEngine === "veo31" ? " sel" : ""}`} onClick={() => setVideoEngine("veo31")}>
+                    {t("Ultra")}<span className="ws-model-up">+{engineSurcharge("veo31") * CREATOR_SURCHARGE_MULT}</span>
+                  </button>
+                </div>
+                <p className="ws-note" style={{ marginTop: 6 }}>{videoEngine === "veo31" ? t("Ultra — Google Veo, premium cinematic realism. Adds tokens.") : t("Pro — Kling 3 Pro: top motion & product fidelity. Included.")}</p>
+              </>
+            ) : (
               <>
                 <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
                 <div className="ws-engines">
@@ -3264,7 +3283,7 @@ export default function WebStudio() {
                   ))}
                 </div>
               </>
-            )}
+            ))}
             <input type="hidden" name="videoEngine" value={videoEngine} />
           </>
         )}
@@ -4259,56 +4278,49 @@ export default function WebStudio() {
                 sets aspect_ratio (so no more square-in-a-black-box); Model picks
                 the Replicate model (default "Best" = premium, legible text).
                 Both ride hidden inputs and are re-validated server-side. */}
-            {isCreate && casual && (
-              <div className="ws-genopts">
-                <div className="ws-lbl">{t("Frame")}</div>
-                <div className="ws-frames" role="radiogroup" aria-label={t("Output frame")}>
-                  {CREATE_ASPECTS.map((a) => (
-                    <button type="button" key={a.value} role="radio" aria-checked={createAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
-                      className={`ws-frame${createAspect === a.value ? " sel" : ""}`} onClick={() => setCreateAspect(a.value)}>
-                      <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
-                      <span className="ws-frame-nm">{t(a.name)}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Model")}</div>
-                <div className="ws-models" role="radiogroup" aria-label={t("AI model")}>
-                  {CREATE_MODELS.map((m) => (
-                    <button type="button" key={m.key} role="radio" aria-checked={createModel === m.key}
-                      className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
-                      {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
-                    </button>
-                  ))}
-                </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === createModel)?.blurb || "")}</p>
-                <input type="hidden" name="createModel" value={createModel} />
-                <input type="hidden" name="createAspect" value={createAspect} />
-              </div>
-            )}
-
-            {/* Optional art-style picker — a COLLAPSED disclosure under the
-                describe box (reveal on click) so it never competes with the
-                prompt. Sits below the box so, on casual create, the box stays
-                directly under the Stage. The hidden input lives outside the
-                open/closed gate so a chosen style still submits when collapsed. */}
+            {/* Everything the describe box doesn't need lives behind ONE collapsed
+                "Options" disclosure — Frame, Model, and Art style — so casual Create
+                reads as a clean canvas (describe → Make). The summary shows the
+                current choices; hidden inputs sit OUTSIDE the open/closed gate so a
+                choice still submits when collapsed. */}
             {isCreate && casual && (
               <div className="ws-styledisc">
                 <button type="button" className={`ws-styletoggle${showStyle ? " open" : ""}`}
                   aria-expanded={showStyle} onClick={() => setShowStyle((v) => !v)}>
                   <span className="ws-styletoggle-l">
-                    <span aria-hidden="true"><Ico n="palette" /></span>
-                    {createStyle
-                      ? <>{t("Style:")} <b>{t(CREATE_STYLES.find((s) => s.key === createStyle)?.name || "")}</b></>
-                      : t("Steer the look")}
+                    <span aria-hidden="true"><Ico n="sliders" /></span>
+                    {t("Options")}
+                    <span style={{ marginLeft: 7, fontSize: "11.5px", fontWeight: 600, color: "#8A968E" }}>
+                      {t(CREATE_ASPECTS.find((a) => a.value === createAspect)?.name || "")} · {t(CREATE_MODELS.find((m) => m.key === createModel)?.name || "")}{createStyle ? ` · ${t(CREATE_STYLES.find((s) => s.key === createStyle)?.name || "")}` : ""}
+                    </span>
                   </span>
                   <span className="ws-styletoggle-r">
-                    {!createStyle && <span className="ws-opt">{t("optional")}</span>}
                     <span className="ws-chev" aria-hidden="true">⌄</span>
                   </span>
                 </button>
                 {showStyle && (
-                  <>
-                    <p className="ws-note" style={{ marginTop: 8 }}>{t("Pick an art style, or skip for a natural photo.")}</p>
+                  <div style={{ marginTop: 10 }}>
+                    <div className="ws-lbl">{t("Frame")}</div>
+                    <div className="ws-frames" role="radiogroup" aria-label={t("Output frame")}>
+                      {CREATE_ASPECTS.map((a) => (
+                        <button type="button" key={a.value} role="radio" aria-checked={createAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
+                          className={`ws-frame${createAspect === a.value ? " sel" : ""}`} onClick={() => setCreateAspect(a.value)}>
+                          <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
+                          <span className="ws-frame-nm">{t(a.name)}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Model")}</div>
+                    <div className="ws-models" role="radiogroup" aria-label={t("AI model")}>
+                      {CREATE_MODELS.map((m) => (
+                        <button type="button" key={m.key} role="radio" aria-checked={createModel === m.key}
+                          className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
+                          {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === createModel)?.blurb || "")}</p>
+                    <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Art style")} <span className="ws-opt">{t("optional")}</span></div>
                     <div className="ws-stylegrid" role="radiogroup" aria-label={t("Art style")}>
                       {CREATE_STYLES.map((s) => (
                         <button type="button" key={s.key} role="radio" aria-checked={createStyle === s.key} title={t(s.name)}
@@ -4320,8 +4332,10 @@ export default function WebStudio() {
                         </button>
                       ))}
                     </div>
-                  </>
+                  </div>
                 )}
+                <input type="hidden" name="createModel" value={createModel} />
+                <input type="hidden" name="createAspect" value={createAspect} />
                 {createStyle && <input type="hidden" name="createStyle" value={createStyle} />}
               </div>
             )}
