@@ -493,6 +493,7 @@ export default function WebDashboard() {
                 <span className="wd-path-eyebrow">{t("Free roam")}</span>
                 <b>{t("Create anything")}</b>
                 <i>{t("Images, video & music")}</i>
+                <span className="wd-path-cost">{t("Just for you · from 5 tokens")}</span>
                 <span className="wd-path-cue">{t("Open the Studio")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
@@ -502,6 +503,7 @@ export default function WebDashboard() {
                 <span className="wd-path-eyebrow">{t("Social")}</span>
                 <b>{t("Grow on social")}</b>
                 <i>{t("Product ads & auto-posting")}</i>
+                <span className="wd-path-cost">{t("For your store · video 150 tokens")}</span>
                 <span className="wd-path-cue">{t("Open Social")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
@@ -511,7 +513,7 @@ export default function WebDashboard() {
       <p className="wb-sub wd-plan-line">
         {d.tierName
           ? <>{t("You're on")} <b>{d.tierName}</b>{d.trialing ? ` ${t("(free trial)")}` : ""} {t("with")} <b>{d.tokens.toLocaleString("en-US")}</b> {t("tokens ready.")}</>
-          : t("Two steps to your first AI content drop: set your brand voice, pick a plan.")}
+          : <>{t("Heads up — making anything runs on a plan. Start your ")}<Link to="/web#plans">{t("free 7-day trial")}</Link>{t(" to make your first piece.")}</>}
       </p>
 
       {success && (
@@ -916,6 +918,8 @@ const DASH_CSS = `
 .wd-hero-paths-row .wd-path-img:first-child .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
 .wd-path-body b{font-weight:800;font-size:16px;line-height:1.2;color:var(--ink);font-family:Poppins,sans-serif;}
 .wd-path-body i{font-style:normal;font-size:12.5px;color:var(--ink2);line-height:1.4;}
+.wd-path-cost{font-size:11.5px;font-weight:700;color:var(--ink);margin-top:2px;}
+.wd-path-img:first-child .wd-path-cost{color:var(--gold-deep,#7E5E13);}
 /* Subtle cue that these cards FLIP the app's mode — shows "Current mode" with a
    dot when already active, or a "Switch to …" hint (with a swap glyph) otherwise. */
 .wd-path-cue{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-weight:800;font-size:12px;letter-spacing:.01em;color:var(--green);}

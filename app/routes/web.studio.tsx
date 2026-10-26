@@ -2999,6 +2999,12 @@ export default function WebStudio() {
           {!socialUnlocked && <span className="ws-ms-badge">{t("Starter")}</span>}
         </button>
       </div>
+      {/* Plain-English guidance for the Create vs Social choice — always visible
+          (the only explanation used to be a hover-only title tooltip) and it names
+          the cost gap, which was invisible until the make step. */}
+      <p className="ws-ms-hint">
+        <b>{t("Create")}</b>{t(" — images, video & music just for you (from 5 tokens). ")}<b>{t("Social")}</b>{t(" — product ads that auto-post to TikTok, IG & FB (video 150).")}
+      </p>
       {socialLockOpen && !socialUnlocked && (
         <div className="ws-upsell ws-ms-upsell">
           <b><Ico n="lock" size={15} /> {t("Social media is a Starter feature")}</b>
@@ -3021,7 +3027,7 @@ export default function WebStudio() {
       <div className="ws-tabs">
         {/* Casual drops Article (every blog angle is sell-coded) and Import (a
             store-catalogue concept) — it's about making & editing, not merchandising. */}
-        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless"]] : [["video", "Video"], ["image", "Image"], ["import", "Import your store"]]) as [Tab, string][]).map(([k, label]) => (
+        {((casual ? [["video", "Video"], ["image", "Image"], ["music", "Music"], ["faceless", "Faceless video"]] : [["video", "Video"], ["image", "Image"], ["import", "Import your store"]]) as [Tab, string][]).map(([k, label]) => (
           <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setUpsell(null); }}>
             <TabIcon kind={k} />{t(label)}
           </button>
@@ -5207,6 +5213,9 @@ const WS_STYLE = `
 .ws-ms-opt.on{background:#fff;color:var(--ink,#14201A);box-shadow:0 2px 6px rgba(20,32,26,.08)}
 .ws-ms-opt.locked{color:var(--ink2,#9AA39C)}
 .ws-ms-badge{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#8a5a12;background:#FDF4E3;border:1px solid #E8D3A6;border-radius:6px;padding:2px 6px}
+.ws-ms-hint{max-width:600px;margin:-8px 0 18px;font-size:12px;line-height:1.5;color:var(--ink2,#6A756E)}
+.ws-ms-hint b{color:var(--ink,#14201A)}
+.ws-casual .ws-ms-hint{margin:-12px auto 20px;text-align:center}
 .ws-ms-upsell{margin:0 0 18px}
 .ws-casual .ws-ms-upsell{max-width:520px;margin-left:auto;margin-right:auto;margin-bottom:20px}
 .ws-casual .ws-tabs{justify-content:center;gap:8px;margin-bottom:18px}
