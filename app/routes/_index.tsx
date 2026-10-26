@@ -307,7 +307,7 @@ export default function Index() {
             <div className="lz-chat-stream" ref={chatScrollRef}>
               {chatMsgs.length === 0 ? (
                 <div className="lz-chat-empty">
-                  <span className="lz-chat-ava"><img src="/helpurr-head.png?v=4" alt="Helpurr" /></span>
+                  <span className="lz-chat-ava"><img src="/helpurr-head.png?v=5" alt="Helpurr" /></span>
                   <p>{C.greeting}</p>
                   <div className="lz-chat-chips">
                     {C.chips.map((q) => (
@@ -320,7 +320,7 @@ export default function Index() {
                   const typing = m.role === "assistant" && !m.content && chatBusy && i === chatMsgs.length - 1;
                   return (
                     <div className={`lz-cmsg ${m.role}`} key={i}>
-                      {m.role === "assistant" && <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=4" alt="" /></span>}
+                      {m.role === "assistant" && <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=5" alt="" /></span>}
                       <span className="lz-cmsg-tx">
                         {m.content ? renderChat(m.content) : (typing ? (
                           <span className="lz-typing" aria-label="Helpurr is typing"><i /><i /><i /></span>
@@ -334,7 +334,7 @@ export default function Index() {
                   one-tap Retry that resends the exact same messages. */}
               {chatErr && !chatBusy && (
                 <div className="lz-cmsg assistant">
-                  <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=4" alt="" /></span>
+                  <span className="lz-chat-ava sm" aria-hidden="true"><img src="/helpurr-head.png?v=5" alt="" /></span>
                   <span className="lz-cmsg-tx">
                     {C.error}
                     <button type="button" className="lz-chat-retry" onClick={retryChat}>↻ {C.retry}</button>

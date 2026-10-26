@@ -1047,7 +1047,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
 function Crest({ size }: { size: number }) {
   return (
     <span className="wb-crest" style={{ width: size, height: size }} aria-hidden="true">
-      <img src="/helpurr-head.png?v=4" alt="" />
+      <img src="/helpurr-head.png?v=5" alt="" />
     </span>
   );
 }
