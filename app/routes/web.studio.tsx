@@ -3519,35 +3519,45 @@ export default function WebStudio() {
                     <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
                     <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
                   </button>
-                  {/* CENTER STYLE CARD (cartoon) — the picked animation style, sitting
-                      over the gap between presenter + product so it stays visible and
-                      attached to the scene (replaces the top grid that scrolled away). */}
-                  {contentType === "cartoon" && (
+                  {/* CENTER STYLE CARD — the picked STYLE, sitting over the gap
+                      between presenter + product so it stays visible and attached to
+                      the scene. It's the Realistic↔Cartoon switch: "Realistic AI" runs
+                      the Avatar-AI pipeline, a cartoon style runs the cartoon pipeline.
+                      (Shown for both avatar + cartoon — they're one combine flow now.) */}
+                  {(contentType === "avatar" || contentType === "cartoon") && (
                     <div className="ws-stylecombo">
                       <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}`}
-                        aria-expanded={hubPick === "style"} aria-label={t("Change the animation style")}
+                        aria-expanded={hubPick === "style"} aria-label={t("Change the style")}
                         onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
-                        <span className="ws-stylecard-img" style={{ backgroundImage: `url(${styleCover(cartoonStyle || "dreamanime")})` }}>
+                        <span className="ws-stylecard-img" style={{ backgroundImage: `url(${contentType === "avatar" ? "/style-tiles/avatarcover.jpg?v=4" : styleCover(cartoonStyle || "dreamanime")})` }}>
                           <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
                         </span>
-                        <b>{t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime")}</b>
+                        <b>{contentType === "avatar" ? t("Realistic AI") : t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime")}</b>
                         <span>{t("Tap to change")}</span>
                       </button>
                       {/* "+" reads the scene as an equation — presenter + product
-                          combine (in this style) into the output photo. */}
+                          combine (in this style) into the output. */}
                       <span className="ws-stylecombo-plus" aria-hidden="true">+</span>
                     </div>
                   )}
                 </div>
                 {/* Center-card style picker reveal (cartoon) — the 6 styles slide
                     open right under the scene; picking one restyles + collapses. */}
-                {contentType === "cartoon" && hubPick === "style" && (
+                {(contentType === "avatar" || contentType === "cartoon") && hubPick === "style" && (
                   <div className="ws-hub-reveal open">
                     <div className="ws-tiles styles ws-styles3 ws-scrollbox">
+                      {/* Realistic AI = the Avatar-AI pipeline (photoreal + lipsync); a
+                          cartoon style = the cartoon pipeline. Switching clears any
+                          combined frame so a cartoon frame never seeds a realistic video. */}
+                      <button type="button" className={`ws-tile small ws-tile-real${contentType === "avatar" ? " sel" : ""}`}
+                        onClick={() => { if (contentType !== "avatar") clearCombineFrame(); setContentType("avatar"); setCartoonStyle(null); setHubPick(null); }}>
+                        <span className="ws-tile-img" style={{ backgroundImage: `url(/style-tiles/avatarcover.jpg?v=4)` }}>{contentType === "avatar" && <span className="ws-chk">✓</span>}</span>
+                        <span className="ws-tile-real-txt"><b><Ico n="camera" /> {t("Realistic AI")}</b><em>{t("A real-looking presenter — photoreal")}</em></span>
+                      </button>
                       {CARTOON_STYLES.map((cs) => (
-                        <button type="button" key={cs.key} className={`ws-tile small${cartoonStyle === cs.key ? " sel" : ""}`}
-                          onClick={() => { setCartoonStyle(cs.key); setHubPick(null); }}>
-                          <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
+                        <button type="button" key={cs.key} className={`ws-tile small${contentType === "cartoon" && cartoonStyle === cs.key ? " sel" : ""}`}
+                          onClick={() => { if (contentType !== "cartoon" || cartoonStyle !== cs.key) clearCombineFrame(); setContentType("cartoon"); setCartoonStyle(cs.key); setHubPick(null); }}>
+                          <span className="ws-tile-img" style={{ backgroundImage: `url(${styleCover(cs.key)})`, backgroundColor: cs.tint }}>{contentType === "cartoon" && cartoonStyle === cs.key && <span className="ws-chk">✓</span>}</span>
                           <b>{t(cs.name)}</b>
                         </button>
                       ))}
@@ -5481,6 +5491,13 @@ const WS_STYLE = `
    which read as off-centre. 6 styles -> a clean 3x2. Mobile keeps 2-up. */
 .ws-tiles.ws-styles3{grid-template-columns:repeat(3,minmax(0,210px));justify-content:center}
 @media(max-width:620px){.ws-tiles.ws-styles3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* "Realistic AI" = a full-width banner above the cartoon-style tiles, so the
+   cartoon grid stays a clean 3-wide and realistic reads as the distinct path. */
+.ws-tiles.ws-styles3 .ws-tile-real{grid-column:1/-1;flex-direction:row;align-items:center;text-align:left;gap:12px;padding:8px}
+.ws-tile-real .ws-tile-img{width:60px;height:60px;aspect-ratio:auto;flex:0 0 60px;border-radius:12px}
+.ws-tile-real-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ws-tile-real-txt b{padding:0;font-size:14px;display:flex;align-items:center;gap:6px}
+.ws-tile-real-txt em{font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the
    default 4-column .ws-ctgrid squeezed the 2 casual video tiles to ~65px and
    clipped their labels to "Show…" / "Carto…". Two columns fills the rail
