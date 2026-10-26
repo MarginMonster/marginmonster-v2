@@ -649,7 +649,10 @@ const CREATE_STYLE = `
 @media (max-width:900px){.cc-grid{grid-template-columns:1fr}.cc-stage{order:-1}}
 
 /* CHAT COLUMN */
-.cc-chat{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;height:min(78vh,760px)}
+.cc-chat{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;height:min(78vh,760px);position:relative;isolation:isolate}
+/* Engine-turned brand rosette drifting behind the card — same figure + wbDrift
+   keyframe as the Studio's .ws-card::after (defined in the web.tsx shell). */
+.cc-chat::before{content:"";position:absolute;z-index:-1;bottom:-150px;right:-140px;width:360px;height:360px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.06;pointer-events:none;animation:wbDrift 250s linear infinite}
 /* Shell (mount-gate) reserves the column heights so there's no layout jump. */
 .cc-chat:empty{display:block;height:min(78vh,760px)}
 .cc-stage:empty{display:block;min-height:470px;border:1px dashed #DED7C2;border-radius:20px;background:radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
@@ -735,10 +738,13 @@ const CREATE_STYLE = `
 
 /* CANVAS / STAGE — echoes .ws-stage-frame */
 .cc-stage{position:sticky;top:14px;min-width:0}
-.cc-stage-frame{position:relative;width:100%;min-height:470px;display:grid;place-items:center;border-radius:20px;overflow:hidden;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
+.cc-stage-frame{position:relative;width:100%;min-height:470px;display:grid;place-items:center;border-radius:20px;overflow:hidden;isolation:isolate;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
 .cc-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
+/* The easel gets the prominent drifting rosette (like the Studio card field). */
+.cc-stage-frame::before{content:"";position:absolute;z-index:-1;bottom:-170px;right:-150px;width:440px;height:440px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.1;pointer-events:none;animation:wbDrift 240s linear infinite}
 .cc-stage-frame.has-result{border-style:solid;border-color:var(--line);background:var(--ink);min-height:0;width:100%;max-width:min(100%,620px);margin-inline:auto}
 .cc-stage-frame.has-result::after{display:none}
+.cc-stage-frame.has-result::before{display:none}
 /* Easel placeholder — mirrors .ws-easelph / .ws-easelph-drop in the Studio. */
 .cc-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:26px}
 .cc-easelph-drop{cursor:pointer;width:100%;height:100%;justify-content:center;border-radius:20px;transition:background .14s}
@@ -760,6 +766,6 @@ const CREATE_STYLE = `
 .cc-heromedia{display:block;width:100%}
 .cc-heromedia img{display:block;width:100%;height:auto;max-height:74vh;object-fit:contain}
 @keyframes ccspin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.cc-easelph.making .cc-rose,.cc-attach-load{animation:none}}
+@media (prefers-reduced-motion:reduce){.cc-easelph.making .cc-rose,.cc-attach-load,.cc-stage-frame::before,.cc-chat::before{animation:none}}
 @media (max-width:900px){.cc-stage{position:static}.cc-stage-frame{min-height:300px}.cc-stage-frame.has-result{aspect-ratio:var(--stage-ar,1/1);max-height:min(62vh,460px)}.cc-chat{height:min(74vh,660px)}.cc-chat:empty{height:min(74vh,660px)}.cc-starts-grid{grid-template-columns:1fr}.cc-hero-threads{width:100%;margin-left:0;margin-top:2px;justify-content:flex-start}}
 `;
