@@ -163,15 +163,15 @@ const CARTOON_STYLES = [
 // Scene SETTING presets for the Combine step — each maps to a `scene` string the
 // composer already understands (the SAME field the Edit box's "put them in an
 // office" writes). Works for Realistic + cartoon. "Auto" = presenter's own backdrop.
-const COMBINE_SETTINGS: { key: string; name: string; scene: string }[] = [
-  { key: "auto", name: "Auto", scene: "" },
-  { key: "studio", name: "Studio", scene: "in a clean photo studio with soft, even lighting" },
-  { key: "kitchen", name: "Kitchen", scene: "in a bright, modern kitchen" },
-  { key: "outdoors", name: "Outdoors", scene: "outdoors in natural daylight, softly blurred greenery behind" },
-  { key: "living", name: "Cozy room", scene: "in a cozy living room with warm lighting" },
-  { key: "gym", name: "Gym", scene: "in a modern fitness gym" },
-  { key: "cafe", name: "Café", scene: "in a stylish coffee shop, softly blurred background" },
-  { key: "office", name: "Office", scene: "in a bright, modern office" },
+const COMBINE_SETTINGS: { key: string; name: string; scene: string; emoji: string; tint: string }[] = [
+  { key: "auto", name: "Auto", scene: "", emoji: "✨", tint: "#EAF2EC" },
+  { key: "studio", name: "Studio", scene: "in a clean photo studio with soft, even lighting", emoji: "🎬", tint: "#E9EEF6" },
+  { key: "kitchen", name: "Kitchen", scene: "in a bright, modern kitchen", emoji: "🍳", tint: "#FBEEDF" },
+  { key: "outdoors", name: "Outdoors", scene: "outdoors in natural daylight, softly blurred greenery behind", emoji: "🌳", tint: "#E6F2E3" },
+  { key: "living", name: "Cozy room", scene: "in a cozy living room with warm lighting", emoji: "🛋️", tint: "#F3EBE2" },
+  { key: "gym", name: "Gym", scene: "in a modern fitness gym", emoji: "🏋️", tint: "#E8EDF2" },
+  { key: "cafe", name: "Café", scene: "in a stylish coffee shop, softly blurred background", emoji: "☕", tint: "#F0E7DE" },
+  { key: "office", name: "Office", scene: "in a bright, modern office", emoji: "🏢", tint: "#E9EDF1" },
 ];
 
 // Wearable products should be modeled (worn) by the presenter, not held.
@@ -3624,11 +3624,14 @@ export default function WebStudio() {
                     combine (Realistic + cartoon), once a presenter's picked. */}
                 {(contentType === "avatar" || contentType === "cartoon") && !!avatarId && (
                   <>
-                    <div className="ws-lbl"><span>{t("Setting")}</span> <span className="ws-opt">{t("where the scene happens")}</span></div>
-                    <div className="ws-setseg">
+                    <div className="ws-lbl"><span>{t("Where this takes place")}</span></div>
+                    <div className="ws-setcards">
                       {COMBINE_SETTINGS.map((s) => (
-                        <button type="button" key={s.key} className={settingKey === s.key ? "sel" : ""}
-                          onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); }}>{t(s.name)}</button>
+                        <button type="button" key={s.key} className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
+                          onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); }}>
+                          <span className="ws-setcard-emoji" style={{ background: s.tint }}>{s.emoji}</span>
+                          <b>{t(s.name)}</b>
+                        </button>
                       ))}
                     </div>
                   </>
@@ -5527,16 +5530,19 @@ const WS_STYLE = `
 @media(max-width:620px){.ws-tiles.ws-styles3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* "Realistic AI" = a full-width banner above the cartoon-style tiles, so the
    cartoon grid stays a clean 3-wide and realistic reads as the distinct path. */
-.ws-tiles.ws-styles3 .ws-tile-real{grid-column:1/-1;flex-direction:row;align-items:center;text-align:left;gap:12px;padding:8px}
-.ws-tile-real .ws-tile-img{width:60px;height:60px;aspect-ratio:auto;flex:0 0 60px;border-radius:12px}
-.ws-tile-real-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
-.ws-tile-real-txt b{padding:0;font-size:14px;display:flex;align-items:center;gap:6px}
+.ws-tiles.ws-styles3 .ws-tile-real{grid-column:1/-1;flex-direction:column;align-items:stretch;text-align:center;gap:0;padding:0 0 10px;overflow:hidden}
+.ws-tile-real .ws-tile-img{width:100%;height:116px;aspect-ratio:auto;flex:none;border-radius:14px 14px 0 0;background-position:center 28%}
+.ws-tile-real-txt{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 12px 0}
+.ws-tile-real-txt b{padding:0;font-size:14.5px;display:flex;align-items:center;justify-content:center;gap:6px}
 .ws-tile-real-txt em{font-style:normal;font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.3}
-/* Setting chips in the Combine step — wrapping pills (8 presets). */
-.ws-setseg{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 4px}
-.ws-setseg button{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);cursor:pointer;transition:border-color .14s,background .14s,color .14s}
-.ws-setseg button:hover{border-color:#9CCBB1}
-.ws-setseg button.sel{border-color:var(--green,#0C7A46);background:#EAF6EF;color:var(--ink,#14201A)}
+/* Setting = visual cards (emoji in a tinted square + name), "Where this takes place". */
+.ws-setcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 6px}
+.ws-setcard{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:10px 6px 9px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
+.ws-setcard:hover{border-color:#9CCBB1;transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(20,32,26,.3)}
+.ws-setcard.sel{border-color:var(--green,#0C7A46);background:#EAF6EF}
+.ws-setcard-emoji{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;font-size:26px;line-height:1}
+.ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
+@media(max-width:620px){.ws-setcards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the
    default 4-column .ws-ctgrid squeezed the 2 casual video tiles to ~65px and
    clipped their labels to "Show…" / "Carto…". Two columns fills the rail
