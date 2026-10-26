@@ -2751,7 +2751,7 @@ export default function WebStudio() {
   // the pick handlers (store-catalogue tap, presenter tap) — NOT an effect keyed
   // on hasMarketingProduct/avatarId, which would slam the drawer shut the instant
   // you reopened it to CHANGE an already-set pick.
-  const [hubPick, setHubPick] = useState<"presenter" | "product" | "style" | null>(null);
+  const [hubPick, setHubPick] = useState<"presenter" | "product" | "style" | "setting" | null>(null);
   // Leaving the hub entirely (tab→Image, contentType→cartoon/commercial, Service
   // on) must reset hubPick, or a drawer left open would re-open EXPANDED on
   // return — defeating collapse-by-default. Keyed on avatarVideoHub so it only
@@ -3555,9 +3555,24 @@ export default function WebStudio() {
                         <b>{!styleSet ? t("Pick a style") : (contentType === "avatar" ? t("Realistic AI") : t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime"))}</b>
                         <span>{styleSet ? t("Tap to change") : t("Realistic or cartoon")}</span>
                       </button>
-                      {/* "+" reads the scene as an equation — presenter + product
-                          combine (in this style) into the output. */}
+                      {/* "+" connects the look (above) to WHERE it happens (below). */}
                       <span className="ws-stylecombo-plus" aria-hidden="true">+</span>
+                      {/* SETTING hero — the picked scene, directly under the style. */}
+                      {(() => {
+                        const cur = COMBINE_SETTINGS.find((s) => s.key === settingKey) || COMBINE_SETTINGS[0];
+                        return (
+                          <button type="button" className={`ws-stylecard ws-isgood${hubPick === "setting" ? " open" : ""}`}
+                            aria-expanded={hubPick === "setting"} aria-label={t("Change the setting")}
+                            onClick={() => setHubPick((p) => (p === "setting" ? null : "setting"))}>
+                            <span className="ws-stylecard-img" style={{ backgroundColor: cur.tint, backgroundImage: cur.key !== "auto" ? `url(/style-tiles/${cur.key}.jpg?v=1)` : undefined }}>
+                              {cur.key === "auto" && <span className="ws-setemoji" aria-hidden="true">{cur.emoji}</span>}
+                              <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
+                            </span>
+                            <b>{t(cur.name)}</b>
+                            <span>{t("The setting")}</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -3585,6 +3600,25 @@ export default function WebStudio() {
                   </div>
                 )}
                 {contentType === "cartoon" && cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
+                {/* Setting picker reveal — opens from the center setting hero;
+                    "Where this takes place" scene cards. */}
+                {(contentType === "avatar" || contentType === "cartoon") && hubPick === "setting" && (
+                  <div className="ws-hub-reveal open">
+                    <div className="ws-lbl"><span>{t("Where this takes place")}</span></div>
+                    <div className="ws-setcards">
+                      {COMBINE_SETTINGS.map((s) => (
+                        <button type="button" key={s.key} className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
+                          onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); setHubPick(null); }}>
+                          <span className="ws-setcard-img" style={{ backgroundColor: s.tint, backgroundImage: s.key !== "auto" ? `url(/style-tiles/${s.key}.jpg?v=1)` : undefined }}>
+                            {s.key === "auto" && <span className="ws-setcard-emoji">{s.emoji}</span>}
+                            {settingKey === s.key && <span className="ws-chk">✓</span>}
+                          </span>
+                          <b>{t(s.name)}</b>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {/* Presenter picker reveal — picking selects + plays the intro in
                     the hero above (with sound), and collapses this. */}
                 {hubPick === "presenter" && (
@@ -3622,26 +3656,8 @@ export default function WebStudio() {
                     </div>
                   </>
                 )}
-                {/* SETTING — where the scene happens. Feeds the composer's `scene`
-                    field (the same one the Edit box uses). Shown for the presenter
-                    combine (Realistic + cartoon), once a presenter's picked. */}
-                {(contentType === "avatar" || contentType === "cartoon") && !!avatarId && (
-                  <>
-                    <div className="ws-lbl"><span>{t("Where this takes place")}</span></div>
-                    <div className="ws-setcards">
-                      {COMBINE_SETTINGS.map((s) => (
-                        <button type="button" key={s.key} className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
-                          onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); }}>
-                          <span className="ws-setcard-img" style={{ backgroundColor: s.tint, backgroundImage: s.key !== "auto" ? `url(/style-tiles/${s.key}.jpg?v=1)` : undefined }}>
-                            {s.key === "auto" && <span className="ws-setcard-emoji">{s.emoji}</span>}
-                            {settingKey === s.key && <span className="ws-chk">✓</span>}
-                          </span>
-                          <b>{t(s.name)}</b>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
+                {/* (The "Where this takes place" setting grid moved into the center
+                    setting-hero's reveal above.) */}
                 {/* The combine's SETTING rides the form as `scene`; doCombine uses it
                     unless an Edit overrides. Empty (Auto) = the presenter's own backdrop. */}
                 <input type="hidden" name="combineScene" value={combineScene} />
@@ -5204,7 +5220,15 @@ const WS_STYLE = `
 .ws-isgood{box-shadow:0 0 0 1.5px rgba(18,168,94,.3),0 0 12px rgba(18,168,94,.2)!important}
 @keyframes ws-needpulse{0%,100%{box-shadow:0 0 0 2px rgba(214,98,70,.22),0 0 11px rgba(214,98,70,.17)}50%{box-shadow:0 0 0 2px rgba(214,98,70,.4),0 0 18px rgba(214,98,70,.3)}}
 @media(prefers-reduced-motion:reduce){.ws-needsel{animation:none}}
-.ws-stylecard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--green,#0C7A46)}
+.ws-stylecard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--green,#0C7A46);display:grid;place-items:center}
+.ws-setemoji{font-size:30px;line-height:1}
+/* MOBILE: the center combo stops OVERLAPPING the tiles (busy on small screens) —
+   it flows below them as a compact style + "+" + setting row spanning both cols. */
+@media(max-width:620px){
+  .ws-stylecombo{position:static;transform:none;grid-column:1/-1;display:flex;flex-direction:row;justify-content:center;align-items:center;margin:9px 0 0;gap:8px}
+  .ws-stylecombo .ws-stylecard{width:auto;flex:1 1 0;min-width:0;max-width:150px}
+  .ws-stylecombo-plus{flex:0 0 auto;width:24px;height:24px;font-size:17px}
+}
 .ws-stylecard-badge{position:absolute;right:5px;bottom:5px;width:24px;height:24px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;font-size:13px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .ws-stylecard b{font-size:13px;font-weight:800;color:var(--ink,#14201A);line-height:1.15}
 .ws-stylecard>span:last-child{font-size:11px;color:var(--ink2,#4A554E);line-height:1.2}
