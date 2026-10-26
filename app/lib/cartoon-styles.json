@@ -52,5 +52,11 @@
     "look": "handcrafted claymation stop-motion still: visibly hand-molded plasticine with subtle fingerprints and tool marks, miniature practical set with tiny handmade props, warm studio key light, charming slightly imperfect handmade shapes, cozy stop-motion film quality",
     "motion": "stop-motion claymation movement, subtle frame-step charm, squishy clay bounce",
     "voice": "English_Kind-heartedGirl"
+  },
+  "plushie": {
+    "name": "Plushie",
+    "look": "adorable soft plush-toy version: the character remade as a cuddly stuffed animal — fuzzy minky fabric, visible stitched seams, embroidered felt facial features, shiny safety-eye buttons, plump squishy rounded proportions, a tiny sewn-in fabric tag, warm cozy soft-focus lighting on a bedroom shelf",
+    "motion": "soft squishy plush bounce, huggable wobble, gentle toy-come-to-life sway, cozy wholesome energy",
+    "voice": "English_PlayfulGirl"
   }
 }

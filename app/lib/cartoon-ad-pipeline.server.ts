@@ -249,7 +249,7 @@ export async function gateStylizedFrame(
  * legally clean. Voices come from the render-tested MiniMax stock list. */
 export type CartoonStyleKey =
   | "dreamanime" | "retroanime" | "pixar" | "toyfigure"
-  | "brick" | "vintagetoon" | "papercut" | "puppet" | "clay";
+  | "brick" | "vintagetoon" | "papercut" | "puppet" | "clay" | "plushie";
 // NOTE: cartoon-styles.json is the shareable single source of these recipes
 // (scripts/generate-style-tiles.mjs reads it on GitHub Actions to render
 // previews). Keep this literal and the JSON in sync when tuning styles.
@@ -312,6 +312,16 @@ export const CARTOON_RECIPES: Record<
     look: "handcrafted claymation stop-motion still: visibly hand-molded plasticine with subtle fingerprints and tool marks, miniature practical set with tiny handmade props, warm studio key light, charming slightly imperfect handmade shapes, cozy stop-motion film quality",
     motion: "stop-motion claymation movement, subtle frame-step charm, squishy clay bounce",
     voice: "English_Kind-heartedGirl",
+  },
+  // Plushie — the viral "turn X into a plush toy" trend. 2026-10-26 (owner: a
+  // new viral 6th style). Fits the product-in-hand combine model (a plushie
+  // holding the product reads naturally), like clay it's texture-heavy but
+  // survives the product-exact constraint the same way.
+  plushie: {
+    name: "Plushie",
+    look: "adorable soft plush-toy version: the character remade as a cuddly stuffed animal — fuzzy minky fabric, visible stitched seams, embroidered felt facial features, shiny safety-eye buttons, plump squishy rounded proportions, a tiny sewn-in fabric tag, warm cozy soft-focus lighting on a bedroom shelf",
+    motion: "soft squishy plush bounce, huggable wobble, gentle toy-come-to-life sway, cozy wholesome energy",
+    voice: "English_PlayfulGirl",
   },
 };
 

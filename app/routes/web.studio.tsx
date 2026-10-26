@@ -150,6 +150,7 @@ const CARTOON_STYLES = [
   { key: "retroanime", name: "Retro Anime", tint: "#E5397D", blurb: "90s VHS anime — sunset palettes and speed lines" },
   { key: "vintagetoon", name: "Vintage Toon", tint: "#E7A33C", blurb: "Playful vintage 2D — hand-inked, storybook warmth" },
   { key: "clay", name: "Claymation", tint: "#B08526", blurb: "Hand-molded stop-motion, cozy and tactile" },
+  { key: "plushie", name: "Plushie", tint: "#E59AB8", blurb: "You as a huggable plush toy holding your product — the trend feeds can't stop sharing" },
   // Hidden from the picker 2026-10-22 (owner call) — the product-in-hand change
   // keeps the real product photo-exact, which pulls the whole frame photoreal:
   //   toyfigure  → character stays un-stylized + the card header garbles
@@ -733,7 +734,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // a name isn't needed to combine — it's collected at the video step. (The old
   // per-branch check at the combine handler was removed; THIS global one also had
   // to let combine through, which was the real "name required before combine" bug.)
-  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && intent !== "combine" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
+  // frameEdit (editing an uploaded/reused Combine shot) and videoedit (an ffmpeg
+  // edit of an uploaded clip) are EDITS of a file the user supplied — like
+  // combine, they identify the subject from the photo/clip, NOT a typed name
+  // (that's collected later, for the video script). Excluding them fixes the
+  // "give the product a name" wall the OG avatar flow hit on upload-then-edit.
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && intent !== "combine" && intent !== "frameEdit" && intent !== "videoedit" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: tr(lang, "The product image must be a full https:// URL.") });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
@@ -3236,7 +3242,7 @@ export default function WebStudio() {
             {showCartoonGrid && (
               <>
                 <div className="ws-lbl">{contentType === "jingle" ? t("Singer style") : t("Pick a cartoon avatar style")} <span className="ws-opt">{contentType === "jingle" ? t("previews show your chosen singer") : t("sample looks — your presenter stars in yours")}</span></div>
-                <div className="ws-tiles styles ws-scrollbox">
+                <div className="ws-tiles styles ws-styles3 ws-scrollbox">
                   {contentType === "jingle" && (
                     <button type="button" className={`ws-tile small${cartoonStyle === null ? " sel" : ""}`}
                       onClick={() => setCartoonStyle(null)}>
@@ -5412,6 +5418,11 @@ const WS_STYLE = `
 .ws-casual .ws-tile-casual{background:linear-gradient(145deg,#EAF6EF 0%,#F4F1E6 70%);display:grid;place-items:center;position:relative}
 .ws-casual .ws-tile-casual::after{content:"";position:absolute;inset:0;background:url(/gstyle-rosette.svg) center/120% no-repeat;opacity:.06}
 .ws-tile-emoji{font-size:34px;line-height:1;filter:saturate(1.05)}
+/* Cartoon/jingle style picker: a CENTERED, fixed 3-wide grid (owner) — the
+   shared .ws-tiles.styles auto-fill grid packed 4+1 on the wide Studio column,
+   which read as off-centre. 6 styles -> a clean 3x2. Mobile keeps 2-up. */
+.ws-tiles.ws-styles3{grid-template-columns:repeat(3,minmax(0,210px));justify-content:center}
+@media(max-width:620px){.ws-tiles.ws-styles3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the
    default 4-column .ws-ctgrid squeezed the 2 casual video tiles to ~65px and
    clipped their labels to "Show…" / "Carto…". Two columns fills the rail

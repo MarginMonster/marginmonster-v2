@@ -33,7 +33,7 @@ const tileVersion = (key: string) => TILE_KEY_VERSIONS[key] ?? TILE_VERSION;
 // "papercut" replaced "brick" (Block Build read as cheap); the brick recipe
 // stays in CARTOON_RECIPES so old assets still remix.
 const PICKER_KEYS: CartoonStyleKey[] = [
-  "dreamanime", "toyfigure", "papercut", "pixar", "retroanime", "vintagetoon", "puppet", "clay",
+  "dreamanime", "toyfigure", "papercut", "pixar", "retroanime", "vintagetoon", "puppet", "clay", "plushie",
 ];
 
 // Special non-style tiles: the Avatar AI / Anthem covers. These composite the
