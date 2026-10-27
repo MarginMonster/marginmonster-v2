@@ -1443,17 +1443,17 @@ function ArtistTip({ tips }: { tips: string[] }) {
     const id = window.setInterval(() => setPage((p) => (p + 1) % tips.length), 8000);
     return () => window.clearInterval(id);
   }, [tips.length]);
+  const go = (d: number) => setPage((p) => (p + d + tips.length) % tips.length);
   return (
     <div className="ws-artip">
       <ArtistMascot />
       <span className="ws-artip-bub">
         <span className="ws-artip-tx">{tips[page]}</span>
         {tips.length > 1 && (
-          <span className="ws-artip-dots">
-            {tips.map((_, i) => (
-              <button key={i} type="button" className={`ws-artip-dot${i === page ? " on" : ""}`}
-                onClick={() => setPage(i)} aria-label={`Tip ${i + 1} of ${tips.length}`} aria-current={i === page} />
-            ))}
+          <span className="ws-artip-nav">
+            <button type="button" className="ws-artip-arw" onClick={() => go(-1)} aria-label="Previous tip">‹</button>
+            <span className="ws-artip-pg">{page + 1}/{tips.length}</span>
+            <button type="button" className="ws-artip-arw" onClick={() => go(1)} aria-label="Next tip">›</button>
           </span>
         )}
       </span>
@@ -4480,12 +4480,12 @@ export default function WebStudio() {
                   <>
                   {!(isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")) && (() => {
                     const tips = isMusic
-                      ? [t("Genre, mood, tempo — that's all I need."), t("Name a vibe — lo-fi, cinematic, upbeat…"), t("I compose an original clip — no samples.")]
+                      ? [t("Describe a track — I'll compose it from scratch."), t("Genre, mood, tempo — that's all I need."), t("Name a vibe — lo-fi, cinematic, upbeat…"), t("It's an original clip — no samples."), t("Great for an intro, a background, or a hook.")]
                       : isFaceless
-                      ? [t("Just give me a topic — I'll do the rest."), t("I script it, voice it, and caption it."), t("Great for facts, a tip, or a quick story.")]
+                      ? [t("Give me a topic — I'll make the whole video."), t("I script it, voice it, and caption it."), t("Great for facts, a tip, or a quick story."), t("Pick a format & voice below to set the style."), t("It comes out 9:16, ready to post.")]
                       : isEdit
-                      ? [t("Describe one change — like “add a hat”."), t("Swap the background, recolor, or cut it out — just ask."), t("One change at a time works best.")]
-                      : [t("Tell me a subject, a style & a mood."), t("Name a look — watercolor, 3D, pixel art, photo…"), t("The more detail you give me, the better it comes out."), t("No photo needed — I paint it from scratch.")];
+                      ? [t("Add a photo, then tell me what to change."), t("Describe one change — like “add a hat”."), t("Swap the background, recolor, or cut it out — just ask."), t("One change at a time works best."), t("Or try the one-tap transforms above.")]
+                      : [t("Type what you want to create — I'll make it."), t("Tell me a subject, a style & a mood."), t("Name a look — watercolor, 3D, pixel art, photo…"), t("The more detail you give me, the better it comes out."), t("No photo needed — I paint it from scratch."), t("Fine-tune Frame & Model in Options below.")];
                     const tkey = isMusic ? "m" : isFaceless ? "f" : isEdit ? "e" : "c";
                     return <ArtistTip key={tkey} tips={tips} />;
                   })()}
@@ -5243,10 +5243,10 @@ const WS_STYLE = `
 @media(prefers-reduced-motion:reduce){.ws-artip-pet img{animation:none}}
 .ws-artip-bub{position:relative;background:#F0F7F2;border:1px solid #D4E8DC;border-radius:12px;border-bottom-left-radius:3px;padding:8px 12px;font-size:12px;line-height:1.35;color:#38473E;max-width:360px}
 .ws-artip-tx{display:block}
-.ws-artip-dots{display:flex;gap:5px;margin-top:6px}
-.ws-artip-dot{width:5px;height:5px;padding:0;border:0;border-radius:50%;background:#C3D6CA;cursor:pointer;transition:background .15s,transform .15s}
-.ws-artip-dot.on{background:var(--green,#0C7A46);transform:scale(1.18)}
-.ws-artip-dot:hover{background:#9CC3AC}
+.ws-artip-nav{display:flex;align-items:center;gap:7px;margin-top:7px}
+.ws-artip-arw{width:20px;height:20px;border:1px solid #CFE2D6;background:#fff;border-radius:6px;color:var(--green,#0C7A46);font-size:14px;line-height:1;cursor:pointer;padding:0;display:grid;place-items:center;transition:background .14s,border-color .14s}
+.ws-artip-arw:hover{background:#E6F3EC;border-color:#9CC3AC}
+.ws-artip-pg{font-size:10.5px;font-weight:700;color:#6D8578;min-width:26px;text-align:center;font-variant-numeric:tabular-nums}
 .ws-artip-bub::after{content:"";position:absolute;left:-6px;bottom:8px;width:0;height:0;border:6px solid transparent;border-right-color:#F0F7F2;border-left:0}
 .ws-artip-bub::before{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#D4E8DC;border-left:0}
 @media(max-width:560px){.ws-artip-pet{width:48px;height:48px}}
