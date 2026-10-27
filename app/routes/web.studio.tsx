@@ -2890,12 +2890,17 @@ export default function WebStudio() {
   // on hasMarketingProduct/avatarId, which would slam the drawer shut the instant
   // you reopened it to CHANGE an already-set pick.
   const [hubPick, setHubPick] = useState<"presenter" | "product" | "style" | "setting" | null>(null);
+  // No-product toggle in the Combine hub: the presenter talks about a topic, no
+  // product. Routes the submit through the already-tested talking-head path
+  // (contentType="talkinghead" + service=1); all gated on this flag so the normal
+  // product-combine flow is byte-for-byte unchanged when it's off.
+  const [noProduct, setNoProduct] = useState(false);
   // Leaving the hub entirely (tab→Image, contentType→cartoon/commercial, Service
   // on) must reset hubPick, or a drawer left open would re-open EXPANDED on
   // return — defeating collapse-by-default. Keyed on avatarVideoHub so it only
   // fires on the true→false leave, never mid-pick (the old slam-shut bug).
   useEffect(() => {
-    if (!avatarVideoHub) setHubPick(null);
+    if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); }
   }, [avatarVideoHub]);
   // ── Hero presenter video ────────────────────────────────────────────────
   // The selected presenter's intro plays in the big hub tile. It autoplays
@@ -3134,7 +3139,7 @@ export default function WebStudio() {
   // VIDEO is the same deal: a "describe anything, no photo" text-to-video
   // generator, so a photo is optional there too (add one to feature a real
   // product; without one we create the whole thing from the words).
-  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !isCreate && !(casual && tab === "video")
+  const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !noProduct && !isCreate && !(casual && tab === "video")
     // Casual uses its own photo flow (no source chooser); marketing must have a
     // product that actually matches its mounted source input.
     && (casual ? (!hasFile && !imageUrl.trim()) : !hasMarketingProduct);
@@ -3158,7 +3163,7 @@ export default function WebStudio() {
   const casualVideoMake = casualVideo && !isVideoEdit;
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
   // The three casual "make" flows with a Pro/Ultra quality choice show TWO generate
   // CTAs (one per model) at the bottom instead of a buried toggle + one button.
   const showTwoCta = isCreate || isFaceless || (casualVideoMake && engineApplies);
@@ -3388,7 +3393,7 @@ export default function WebStudio() {
             {!avatarVideoHub && !isVideoEdit && !(casual && tab === "video") && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
-            <input type="hidden" name="contentType" value={contentType} />
+            <input type="hidden" name="contentType" value={noProduct ? "talkinghead" : contentType} />
             {contentType === "jingle" && (
               <p className="ws-note"><Ico n="music" /> <b>Anthem</b>{t(" — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter ")}<i>{t("sings it on camera")}</i>{t(", lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.")}</p>
             )}
@@ -3668,20 +3673,41 @@ export default function WebStudio() {
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
                     <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
                   </div>
-                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
-                    aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
-                    <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
-                      <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
-                    </span>
-                    <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
-                    <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
-                  </button>
+                  <div className="ws-prodslot">
+                    {noProduct ? (
+                      /* No-product mode: the slot shows the TOPIC intent (the actual
+                         topic is typed in the direction box below). Non-interactive. */
+                      <div className="ws-hubtile set ws-isgood" aria-label={t("Presenter talks about a topic — no product")}>
+                        <span className="ws-hubtile-img prod" style={{ background: "#F3F9F4", borderStyle: "dashed" }}>
+                          <span aria-hidden="true" style={{ fontSize: "30px" }}>🎙</span>
+                        </span>
+                        <b>{t("What do they talk about?")}</b>
+                        <span>{t("Type the topic below — no product")}</span>
+                      </div>
+                    ) : (
+                      <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
+                        aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
+                        <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
+                          <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
+                        </span>
+                        <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
+                        <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
+                      </button>
+                    )}
+                    {/* "No product" toggle — bottom-right of the product tile (owner ask):
+                        presenter-only, talks about a topic. */}
+                    <button type="button" className={`ws-noprod${noProduct ? " on" : ""}`}
+                      onClick={() => { setNoProduct((v) => !v); setHubPick(null); }}
+                      aria-pressed={noProduct} title={t("Presenter only — no product")}>
+                      <span className="ws-noprod-sw" aria-hidden="true" />{t("No product")}
+                    </button>
+                  </div>
                   {/* CENTER STYLE CARD — the picked STYLE, sitting over the gap
                       between presenter + product so it stays visible and attached to
                       the scene. It's the Realistic↔Cartoon switch: "Realistic AI" runs
                       the Avatar-AI pipeline, a cartoon style runs the cartoon pipeline.
                       (Shown for both avatar + cartoon — they're one combine flow now.) */}
-                  {(contentType === "avatar" || contentType === "cartoon") && (
+                  {(contentType === "avatar" || contentType === "cartoon") && !noProduct && (
                     <div className="ws-stylecombo">
                       <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}${styleSet ? " ws-isgood" : " ws-needsel"}`}
                         aria-expanded={hubPick === "style"} aria-label={styleSet ? t("Change the style") : t("Pick a style")}
@@ -4773,7 +4799,7 @@ export default function WebStudio() {
             <input type="hidden" name="mode" value={mode} />
             <input type="hidden" name="direction" value={finalDirection} />
             {finalScene ? <input type="hidden" name="scene" value={finalScene} /> : null}
-            {serviceOn ? <input type="hidden" name="service" value="1" /> : null}
+            {(serviceOn || noProduct) ? <input type="hidden" name="service" value="1" /> : null}
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 
@@ -5516,6 +5542,14 @@ const WS_STYLE = `
 .ws-hubtile-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:14px;background:#EAF6EF center/cover no-repeat;border:1.5px dashed #9CCBB1;display:grid;place-items:center}
 .ws-hubtile.set .ws-hubtile-img{border-style:solid;border-color:var(--green)}
 .ws-hubtile-badge{position:absolute;right:7px;bottom:7px;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:16px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+/* No-product toggle on the Combine hub product tile (presenter-only / talking head) */
+.ws-prodslot{position:relative}
+.ws-noprod{position:absolute;right:8px;bottom:-11px;display:inline-flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:999px;padding:4px 10px 4px 9px;box-shadow:0 3px 9px rgba(20,32,26,.14);font:inherit;font-size:11px;font-weight:800;color:var(--ink2,#4A554E);cursor:pointer;z-index:4}
+.ws-noprod.on{border-color:var(--green2,#1FA463);color:var(--green,#0C7A46)}
+.ws-noprod-sw{width:28px;height:16px;border-radius:999px;background:#CFD8D1;position:relative;transition:background .15s;flex:0 0 auto}
+.ws-noprod-sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
+.ws-noprod.on .ws-noprod-sw{background:var(--green2,#1FA463)}
+.ws-noprod.on .ws-noprod-sw::after{left:14px}
 .ws-hubtile b{width:100%;font-size:14.5px;color:var(--ink,#14201A);font-weight:800;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ws-hubtile>span:last-child{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.25}
 @media (max-width:420px){.ws-hubtile b{font-size:13.5px}.ws-hubtiles{gap:10px}}
