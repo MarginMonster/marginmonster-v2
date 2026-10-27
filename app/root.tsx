@@ -38,9 +38,9 @@ export const links: LinksFunction = () => [
   // anything that ignores the PNG hint. 32px, made from helpurr-icon.png.
   // ?v= busts the 1-year `immutable` static cache: favicon.ico was overwritten
   // at the same URL, so without a new query browsers hold the old icon for a year.
-  { rel: "icon", href: "/favicon.ico?v=2", sizes: "32x32" },
-  { rel: "icon", type: "image/png", href: "/helpurr-icon.png?v=2" },
-  { rel: "apple-touch-icon", href: "/helpurr-icon.png?v=2" },
+  { rel: "icon", href: "/favicon.ico?v=3", sizes: "32x32" },
+  { rel: "icon", type: "image/png", href: "/helpurr-icon.png?v=3" },
+  { rel: "apple-touch-icon", href: "/helpurr-icon.png?v=3" },
   // Open the font connections before the CSS that needs them is parsed.
   // These were @import-ed from inside an injected <style>, which cost
   // three sequential round trips before any text rendered in Poppins.
@@ -172,7 +172,7 @@ export function ErrorBoundary() {
       <body style={{ margin: 0, background: "#F4F1E6", color: "#14201A", fontFamily: "Inter, -apple-system, sans-serif" }}>
         <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
           <div style={{ maxWidth: 460, textAlign: "center", background: "#FDFCF7", border: "1px solid #E1DECD", borderRadius: 18, padding: "36px 28px" }}>
-            <img src="/helpurr-icon.png" alt="" width={56} height={56} style={{ borderRadius: 14 }} />
+            <img src="/helpurr-icon.png?v=3" alt="" width={56} height={56} style={{ borderRadius: 14 }} />
             <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: 22, margin: "14px 0 8px" }}>{title}</h1>
             <p style={{ fontSize: 14, lineHeight: 1.55, color: "#4A554E", margin: "0 0 22px" }}>{body}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>

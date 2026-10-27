@@ -63,7 +63,7 @@ export const LEGAL_UPDATED = "24 October 2026";
 export function LegalMast() {
   return (
     <a className="lg-mast" href="/" aria-label="EasyMode home">
-      <span className="lg-crest" aria-hidden="true"><img src="/helpurr-icon.png?v=2" alt="" /></span>
+      <span className="lg-crest" aria-hidden="true"><img src="/helpurr-icon.png?v=3" alt="" /></span>
       <span>Easy<b>Mode</b></span>
     </a>
   );
