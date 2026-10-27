@@ -4460,10 +4460,10 @@ export default function WebStudio() {
                     <div className="ws-artip">
                       <ArtistMascot />
                       <span className="ws-artip-bub">
-                        {isMusic ? t("Tell me the vibe — a genre, a mood, a tempo.")
-                          : isFaceless ? t("Give me a topic — I'll script it, voice it, and caption it.")
-                          : isEdit ? t("Tell me one change at a time — like “add a hat” or “blue background”.")
-                          : t("Tell me what to picture — a subject, a style, and a mood. The more detail, the better it turns out.")}
+                        {isMusic ? t("Genre, mood, tempo — that's all I need.")
+                          : isFaceless ? t("Just give me a topic — I'll do the rest.")
+                          : isEdit ? t("Describe one change — like “add a hat”.")
+                          : t("Tell me a subject, a style & a mood.")}
                         <button type="button" className="ws-artip-x" onClick={dismissArtistTip} aria-label={t("Dismiss")}>×</button>
                       </span>
                     </div>
@@ -5215,14 +5215,14 @@ const WS_STYLE = `
 .ws-hero::placeholder{color:#9AA69E}
 /* Creator ARTIST HELPURR tip by the describe box — small mascot (bobs + blinks)
    beside a soft explainer bubble. Subtle, dismissible. */
-.ws-artip{display:flex;align-items:flex-end;gap:9px;margin:2px 0 11px}
-.ws-artip-pet{flex:0 0 auto;width:58px;height:58px;display:block}
-.ws-artip-pet img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 3px 5px rgba(12,122,70,.18));transform-origin:50% 92%;animation:ws-artbob 5s ease-in-out infinite}
+.ws-artip{display:flex;align-items:center;gap:8px;margin:4px 0 12px}
+.ws-artip-pet{flex:0 0 auto;width:56px;height:56px;display:block}
+.ws-artip-pet img{width:100%;height:100%;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 2px 4px rgba(12,122,70,.16));transform-origin:50% 92%;animation:ws-artbob 5s ease-in-out infinite}
 @keyframes ws-artbob{0%,100%{transform:translateY(0) rotate(-0.4deg)}50%{transform:translateY(-1.2px) rotate(0.4deg)}}
 @media(prefers-reduced-motion:reduce){.ws-artip-pet img{animation:none}}
-.ws-artip-bub{position:relative;background:#EDF6F0;border:1px solid #CBE6D6;border-radius:13px;border-bottom-left-radius:4px;padding:8px 28px 8px 12px;font-size:12.5px;line-height:1.4;color:#2C3B33;max-width:400px}
-.ws-artip-bub::after{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#EDF6F0;border-left:0}
-.ws-artip-bub::before{content:"";position:absolute;left:-8px;bottom:6px;width:0;height:0;border:8px solid transparent;border-right-color:#CBE6D6;border-left:0}
+.ws-artip-bub{position:relative;background:#F0F7F2;border:1px solid #D4E8DC;border-radius:12px;border-bottom-left-radius:3px;padding:8px 26px 8px 11px;font-size:12px;line-height:1.35;color:#38473E;max-width:360px}
+.ws-artip-bub::after{content:"";position:absolute;left:-6px;bottom:8px;width:0;height:0;border:6px solid transparent;border-right-color:#F0F7F2;border-left:0}
+.ws-artip-bub::before{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#D4E8DC;border-left:0}
 .ws-artip-x{position:absolute;top:3px;right:4px;width:18px;height:18px;border:0;background:none;color:#8AA396;font-size:15px;line-height:1;cursor:pointer;border-radius:50%;display:grid;place-items:center;padding:0}
 .ws-artip-x:hover{background:rgba(12,122,70,.1);color:#2C3B33}
 @media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-bub{font-size:12px}}
