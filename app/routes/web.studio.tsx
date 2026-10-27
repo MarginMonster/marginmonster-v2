@@ -1680,6 +1680,9 @@ function ManagePresenters({ presenters, onClose }: { presenters: MyPresenter[]; 
   );
 }
 
+// Presenter idle clips in the picker strip: OFF until we ship uniform, premium
+// ones (the old talking-head clips were inconsistently framed). Flip to true then.
+const PRESENTER_CLIPS = false;
 function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCreateOwn, onManage }: {
   cast: CastItem[];
   avatarId: string | null;
@@ -1762,7 +1765,12 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
                   {/* Designed presenters have an intro clip; it plays muted-on-loop
                       (IO-gated above). The still (c.img / poster) is the fallback,
                       and onError hides a dead <video> so the still shows through. */}
-                  {c.designed && (
+                  {/* Presenter idle clips are DISABLED until we have uniform, premium
+                      ones — the old talking-head clips were inconsistently framed
+                      (some far, some close) with white studio tops. The card shows
+                      the clean, uniform still (c.img = /avatars/{id}_0.jpg) meanwhile.
+                      Flip PRESENTER_CLIPS to re-enable once the new clips ship. */}
+                  {PRESENTER_CLIPS && c.designed && (
                     <video className="ws-face-vid" muted loop playsInline preload="metadata"
                       poster={`/voice-videos/${c.id}.jpg?v=2`} src={`/voice-videos/${c.id}.mp4?v=2`}
                       onError={(e) => { e.currentTarget.style.display = "none"; }} />
