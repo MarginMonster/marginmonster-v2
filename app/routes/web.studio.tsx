@@ -2903,6 +2903,12 @@ export default function WebStudio() {
   useEffect(() => {
     if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); }
   }, [avatarVideoHub]);
+  // Realistic is the ONLY avatar style, so pre-select it on entering the avatar
+  // video hub — no red "Pick a style" wall for a one-option choice. Scoped to
+  // contentType "avatar" so cartoon still prompts for a style pick.
+  useEffect(() => {
+    if (tab === "video" && contentType === "avatar") setStyleSet(true);
+  }, [tab, contentType]);
   // ── Hero presenter video ────────────────────────────────────────────────
   // The selected presenter's intro plays in the big hub tile. It autoplays
   // MUTED on first load (no gesture yet), and plays WITH SOUND the moment you
