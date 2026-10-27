@@ -40,7 +40,9 @@ export const links: LinksFunction = () => [
   // at the same URL, so without a new query browsers hold the old icon for a year.
   { rel: "icon", href: "/favicon.ico?v=3", sizes: "32x32" },
   { rel: "icon", type: "image/png", href: "/helpurr-icon.png?v=3" },
-  { rel: "apple-touch-icon", href: "/helpurr-icon.png?v=3" },
+  // iOS home-screen tiles are always opaque (transparent -> black fill), so the
+  // apple-touch icon is the cat on a cream tile (not the transparent favicon).
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=1" },
   // Open the font connections before the CSS that needs them is parsed.
   // These were @import-ed from inside an injected <style>, which cost
   // three sequential round trips before any text rendered in Poppins.
