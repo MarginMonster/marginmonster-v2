@@ -38,11 +38,11 @@ export const links: LinksFunction = () => [
   // anything that ignores the PNG hint. 32px, made from helpurr-icon.png.
   // ?v= busts the 1-year `immutable` static cache: favicon.ico was overwritten
   // at the same URL, so without a new query browsers hold the old icon for a year.
-  { rel: "icon", href: "/favicon.ico?v=3", sizes: "32x32" },
-  { rel: "icon", type: "image/png", href: "/helpurr-icon.png?v=3" },
-  // iOS home-screen tiles are always opaque (transparent -> black fill), so the
-  // apple-touch icon is the cat on a cream tile (not the transparent favicon).
-  { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=1" },
+  // Helpurr on a clean WHITE tile (owner: "looks iconic"). White, not transparent,
+  // so iOS doesn't black-fill the home-screen tile and the tab icon has an edge.
+  { rel: "icon", href: "/favicon.ico?v=4", sizes: "32x32" },
+  { rel: "icon", type: "image/png", href: "/apple-touch-icon.png?v=2" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=2" },
   // Open the font connections before the CSS that needs them is parsed.
   // These were @import-ed from inside an injected <style>, which cost
   // three sequential round trips before any text rendered in Poppins.
