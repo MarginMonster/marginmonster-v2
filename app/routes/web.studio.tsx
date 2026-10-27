@@ -3721,7 +3721,7 @@ export default function WebStudio() {
                       the scene. It's the Realistic↔Cartoon switch: "Realistic AI" runs
                       the Avatar-AI pipeline, a cartoon style runs the cartoon pipeline.
                       (Shown for both avatar + cartoon — they're one combine flow now.) */}
-                  {(contentType === "avatar" || contentType === "cartoon") && !noProduct && (
+                  {(contentType === "avatar" || contentType === "cartoon") && (
                     <div className="ws-stylecombo">
                       <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}${styleSet ? " ws-isgood" : " ws-needsel"}`}
                         aria-expanded={hubPick === "style"} aria-label={styleSet ? t("Change the style") : t("Pick a style")}
@@ -4337,7 +4337,13 @@ export default function WebStudio() {
                 because it drives the SCRIPT, not the combine (owner-noted). The
                 combine already identifies the product from its photo, so a name
                 isn't needed to combine — only to generate the video. */}
-            {avatarVideoHub && (
+            {avatarVideoHub && (noProduct ? (
+              /* No product: there's no product to name. But the server requires a
+                 productTitle for a video intent (and interpolates it into the
+                 script), so send the TOPIC as the title — sensible for a talking
+                 head, and never an unrelated product. No visible field. */
+              <input type="hidden" name="productTitle" value={direction.slice(0, 60)} />
+            ) : (
               <>
                 <div className="ws-lbl"><span>{t("Product name")}</span>
                   <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
@@ -4357,7 +4363,7 @@ export default function WebStudio() {
                 )}
                 <input className="wb-in" name="productTitle" required maxLength={120} value={productTitle} onChange={(e) => { setProductTitle(e.target.value); setPickedUrl(""); }} placeholder={t("Midnight Roast — whole bean coffee")} />
               </>
-            )}
+            ))}
             {tab === "image" && !casual && (
               <>
                 <div className="ws-lbl"><span>{t("Running a promo?")}</span> <span className="ws-opt">{t("optional")}</span></div>
@@ -4494,7 +4500,7 @@ export default function WebStudio() {
                     </>
                   )}
                 </>
-              ) : (
+              ) : noProduct ? null : (
               <>
                 <div className="ws-lbl"><span>{t("Prompting")}</span>
                   <button type="button" className="ws-addurl" onClick={() => setAdvanced((a) => !a)}>{advanced ? t("Use auto") : <>{t("Advanced")} ▾</>}</button>
@@ -5560,7 +5566,11 @@ const WS_STYLE = `
 .ws-hubtile.set .ws-hubtile-img{border-style:solid;border-color:var(--green)}
 .ws-hubtile-badge{position:absolute;right:7px;bottom:7px;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:16px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 /* No-product toggle on the Combine hub product tile (presenter-only / talking head) */
-.ws-prodslot{position:relative;align-self:start}
+.ws-prodslot{position:relative;display:flex;flex-direction:column}
+/* The tile FILLS the slot (which stretches to the taller presenter tile), so the
+   product/topic card matches the presenter's height and the toggle drops into the
+   empty space below the text instead of landing on it. */
+.ws-prodslot>.ws-hubtile{flex:1}
 .ws-noprod{position:absolute;right:8px;bottom:-11px;display:inline-flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:999px;padding:4px 10px 4px 9px;box-shadow:0 3px 9px rgba(20,32,26,.14);font:inherit;font-size:11px;font-weight:800;color:var(--ink2,#4A554E);cursor:pointer;z-index:4}
 .ws-noprod.on{border-color:var(--green2,#1FA463);color:var(--green,#0C7A46)}
 .ws-noprod-sw{width:28px;height:16px;border-radius:999px;background:#CFD8D1;position:relative;transition:background .15s;flex:0 0 auto}
@@ -5571,7 +5581,7 @@ const WS_STYLE = `
 .ws-topictile{justify-content:flex-start;gap:8px;background:#F3F9F4}
 .ws-topictile.ws-needsel{border-color:#9CCBB1}
 .ws-topic-head{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:800;color:var(--green,#0C7A46);line-height:1.2}
-.ws-topic-ta{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:8px 9px;font:inherit;font-size:12px;line-height:1.35;color:var(--ink,#14201A);background:#fff;outline:none;resize:none;min-height:78px;text-align:left}
+.ws-topic-ta{flex:1;width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:8px 9px;font:inherit;font-size:12px;line-height:1.35;color:var(--ink,#14201A);background:#fff;outline:none;resize:none;min-height:78px;text-align:left}
 .ws-topic-ta:focus{border-color:var(--green,#0C7A46)}
 .ws-topic-ta::placeholder{color:#9AA69E}
 .ws-hubtile b{width:100%;font-size:14.5px;color:var(--ink,#14201A);font-weight:800;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
