@@ -1412,9 +1412,9 @@ function CharCount({ value, max }: { value: string; max: number }) {
  *  filmmaker (video), DJ (music). A variant with no asset yet falls back to the
  *  artist cat, so the plumbing can ship before the art does. */
 const MASCOT_ART: Record<string, string> = {
-  artist: "helpurr-artist",
-  // film: "helpurr-film",  // ← enable once the filmmaker asset + blink frame ship
-  // dj: "helpurr-dj",      // ← enable once the DJ asset + blink frame ship
+  artist: "helpurr-artist", // Create image / edit — beret + palette
+  film: "helpurr-film",     // Video — director: beret + clapperboard
+  dj: "helpurr-dj",         // Music — DJ: headphones + controller deck
 };
 function mascotBase(variant?: string) { return MASCOT_ART[variant || "artist"] || MASCOT_ART.artist; }
 
@@ -5288,10 +5288,11 @@ const WS_STYLE = `
 .ws-cta2{display:flex;gap:11px;align-items:flex-start}
 .ws-ctacol{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
 .ws-cta{position:relative;overflow:hidden;width:100%;border-radius:12px;padding:13px 14px;font:inherit;cursor:pointer;text-align:center;border:0;display:block;transition:filter .12s,transform .12s,box-shadow .12s;box-shadow:0 2px 7px rgba(20,32,26,.13),inset 0 1px 0 rgba(255,255,255,.18)}
-.ws-cta::after{content:"";position:absolute;top:50%;right:-48px;transform:translateY(-50%);width:124px;height:124px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.18;animation:ws-ctaspin 140s linear infinite;pointer-events:none}
-@keyframes ws-ctaspin{to{transform:translateY(-50%) rotate(360deg)}}
+.ws-cta::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:118px;height:118px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.17;animation:ws-ctaspin 90s linear infinite;pointer-events:none}
+@keyframes ws-ctaspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.ws-cta::after{animation:none}}
 .ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 5px 13px rgba(20,32,26,.2),inset 0 1px 0 rgba(255,255,255,.18)}
+.ws-cta:hover:not(:disabled)::after{animation-duration:3.5s}
 .ws-cta:active:not(:disabled){transform:translateY(0);box-shadow:0 1px 4px rgba(20,32,26,.16),inset 0 1px 0 rgba(255,255,255,.18)}
 .ws-cta:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 .ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;line-height:1}
