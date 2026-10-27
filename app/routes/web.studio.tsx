@@ -3369,7 +3369,10 @@ export default function WebStudio() {
             {!casual && <button type="button" className="ws-back" onClick={() => setContentType(null)}>‹ {t("Content type")}</button>}
             {/* Avatar video folds step 1 away — its only control (Commercial look)
                 moves into the scene hub, which then becomes step 1. */}
-            {!avatarVideoHub && !isVideoEdit && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
+            {/* Casual video skips this header too (like step 2/3 below) — the
+                "Describe your video" label names the box and the Options ▾ sits
+                under it, so "Set the look" floated above an empty section. */}
+            {!avatarVideoHub && !isVideoEdit && !(casual && tab === "video") && <StepHead n={1} title={casual ? t("Set the look") : t("Pick the look")} hint={casual ? t("the style, and what it's about") : t("who stars in it, and how it's shot")} />}
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={contentType} />
@@ -3460,52 +3463,8 @@ export default function WebStudio() {
                 </div>
               </>
             )}
-            {/* CASUAL creative video — Frame + Length behind an Options ▾, like the
-                image tab. Hidden inputs ride the Form (and the two-CTA submit). */}
-            {casualVideoMake && (
-              <div className="ws-styledisc" style={{ marginTop: 4 }}>
-                <button type="button" className={`ws-styletoggle${showVideoOpts ? " open" : ""}`}
-                  aria-expanded={showVideoOpts} onClick={() => setShowVideoOpts((v) => !v)}>
-                  <span className="ws-styletoggle-l">
-                    <span aria-hidden="true"><Ico n="sliders" /></span>
-                    {t("Options")}
-                    <span style={{ marginLeft: 7, fontSize: "11.5px", fontWeight: 600, color: "#8A968E" }}>
-                      {t(CREATE_ASPECTS.find((a) => a.value === videoAspect)?.name || "")}{` · ${videoDurationSec}s`}
-                    </span>
-                  </span>
-                  <span className="ws-styletoggle-r">
-                    <span className="ws-chev" aria-hidden="true">⌄</span>
-                  </span>
-                </button>
-                {showVideoOpts && (
-                  <div style={{ marginTop: 10 }}>
-                    <div className="ws-lbl">{t("Frame")}</div>
-                    <div className="ws-frames" role="radiogroup" aria-label={t("Output frame")}>
-                      {CREATE_ASPECTS.filter((a) => ["9:16", "1:1", "16:9"].includes(a.value)).map((a) => (
-                        <button type="button" key={a.value} role="radio" aria-checked={videoAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
-                          className={`ws-frame${videoAspect === a.value ? " sel" : ""}`} onClick={() => setVideoAspect(a.value)}>
-                          <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
-                          <span className="ws-frame-nm">{t(a.name)}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Length")}</div>
-                    <div className="ws-frames" role="radiogroup" aria-label={t("Clip length")}>
-                      {([5, 10] as const).map((sec) => (
-                        <button type="button" key={sec} role="radio" aria-checked={videoDurationSec === sec}
-                          className={`ws-frame${videoDurationSec === sec ? " sel" : ""}`} onClick={() => setVideoDurationSec(sec)}>
-                          <span className="ws-frame-nm" style={{ fontWeight: 800, fontSize: "14px" }}>{sec}s</span>
-                          <span className="ws-frame-nm" style={{ fontSize: "10.5px", color: "#8A968E" }}>{sec === 5 ? t("default") : `+${DURATION_SURCHARGE_10S} tok`}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="ws-note" style={{ marginTop: 6 }}>{t("10s renders on Pro. Ultra makes a fixed short clip.")}</p>
-                  </div>
-                )}
-                <input type="hidden" name="videoAspect" value={videoAspect} />
-                <input type="hidden" name="videoDurationSec" value={String(videoDurationSec)} />
-              </div>
-            )}
+            {/* Video Options ▾ (Frame + Length) render BELOW the describe box — see
+                the casual describe branch. Its hidden inputs live there too. */}
             <input type="hidden" name="videoEngine" value={videoEngine} />
           </>
         )}
@@ -4432,6 +4391,50 @@ export default function WebStudio() {
                       <button type="button" className="ws-vedit-entry" onClick={() => editVideoUploadRef.current?.click()}>
                         <Ico n="video" size={14} /> {t("Or upload a video to edit it")} →
                       </button>
+                      {/* Frame + Length behind an Options ▾, like the image tab — UNDER
+                          the describe box. Hidden inputs ride the Form (+ two-CTA submit). */}
+                      <div className="ws-styledisc" style={{ marginTop: 12 }}>
+                        <button type="button" className={`ws-styletoggle${showVideoOpts ? " open" : ""}`}
+                          aria-expanded={showVideoOpts} onClick={() => setShowVideoOpts((v) => !v)}>
+                          <span className="ws-styletoggle-l">
+                            <span aria-hidden="true"><Ico n="sliders" /></span>
+                            {t("Options")}
+                            <span style={{ marginLeft: 7, fontSize: "11.5px", fontWeight: 600, color: "#8A968E" }}>
+                              {t(CREATE_ASPECTS.find((a) => a.value === videoAspect)?.name || "")}{` · ${videoDurationSec}s`}
+                            </span>
+                          </span>
+                          <span className="ws-styletoggle-r">
+                            <span className="ws-chev" aria-hidden="true">⌄</span>
+                          </span>
+                        </button>
+                        {showVideoOpts && (
+                          <div style={{ marginTop: 10 }}>
+                            <div className="ws-lbl">{t("Frame")}</div>
+                            <div className="ws-frames" role="radiogroup" aria-label={t("Output frame")}>
+                              {CREATE_ASPECTS.filter((a) => ["9:16", "1:1", "16:9"].includes(a.value)).map((a) => (
+                                <button type="button" key={a.value} role="radio" aria-checked={videoAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
+                                  className={`ws-frame${videoAspect === a.value ? " sel" : ""}`} onClick={() => setVideoAspect(a.value)}>
+                                  <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
+                                  <span className="ws-frame-nm">{t(a.name)}</span>
+                                </button>
+                              ))}
+                            </div>
+                            <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Length")}</div>
+                            <div className="ws-frames" role="radiogroup" aria-label={t("Clip length")}>
+                              {([5, 10] as const).map((sec) => (
+                                <button type="button" key={sec} role="radio" aria-checked={videoDurationSec === sec}
+                                  className={`ws-frame${videoDurationSec === sec ? " sel" : ""}`} onClick={() => setVideoDurationSec(sec)}>
+                                  <span className="ws-frame-nm" style={{ fontWeight: 800, fontSize: "14px" }}>{sec}s</span>
+                                  <span className="ws-frame-nm" style={{ fontSize: "10.5px", color: "#8A968E" }}>{sec === 5 ? t("default") : `+${DURATION_SURCHARGE_10S} tok`}</span>
+                                </button>
+                              ))}
+                            </div>
+                            <p className="ws-note" style={{ marginTop: 6 }}>{t("10s renders on Pro. Ultra makes a fixed short clip.")}</p>
+                          </div>
+                        )}
+                        <input type="hidden" name="videoAspect" value={videoAspect} />
+                        <input type="hidden" name="videoDurationSec" value={String(videoDurationSec)} />
+                      </div>
                     </>
                   )}
                 </>
