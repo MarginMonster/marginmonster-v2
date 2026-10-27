@@ -1939,6 +1939,11 @@ export default function WebStudio() {
     : doParam === "faceless" ? "faceless"
     : (doParam === "edit" || doParam === "image" || doParam === "presenter" || doParam === "create") ? "image"
     : (["video", "image", "music", "faceless", "blog", "import"] as const).find((t) => t === searchParams.get("tab"));
+  // Deep-link from the Presenter Hub (/web/presenters): ?avatar=<id> pre-selects
+  // that presenter in the avatar-video flow; ?forge=1 opens the "create your own
+  // presenter" modal. Both arrive paired with ?do=video so initTab is already set.
+  const wantAvatar = searchParams.get("avatar");
+  const avatarDeepLink = wantAvatar && d.cast.some((c) => c.id === wantAvatar) ? wantAvatar : null;
   // Creator is now the single create surface (Home merged in): it opens
   // prompt-first on "Make an image" (describe box) instead of the video tiles.
   const [tab, setTab] = useState<Tab>(initTab || (casual ? "image" : "video"));
@@ -1949,12 +1954,12 @@ export default function WebStudio() {
   // with the image already on the Stage (see editPreview below + onFormSubmit).
   const [imageUrl, setImageUrl] = useState(searchParams.get("src") || "");
   const [hasFile, setHasFile] = useState(false);
-  const [contentType, setContentType] = useState<CType | null>(null);
+  const [contentType, setContentType] = useState<CType | null>(avatarDeepLink ? "avatar" : null);
   const [cartoonStyle, setCartoonStyle] = useState<string | null>(null);
   // Talking Head: the WHERE (setting) + seated/standing, which build its direction.
   const [thSetting, setThSetting] = useState<string>("home");
   const [thPose, setThPose] = useState<"standing" | "seated">("standing");
-  const [avatarId, setAvatarId] = useState<string | null>(d.brandFaceId ?? d.cast[0]?.id ?? null);
+  const [avatarId, setAvatarId] = useState<string | null>(avatarDeepLink ?? d.brandFaceId ?? d.cast[0]?.id ?? null);
   const [imageMode, setImageMode] = useState<"product" | "presenter" | "create" | null>(
     doParam === "edit" || doParam === "image" ? "product" : doParam === "presenter" ? "presenter" : doParam === "create" ? "create" : (casual ? "create" : null),
   );
@@ -2270,7 +2275,7 @@ export default function WebStudio() {
   // a confirmation instead of silently closing (the merchant hit Forge and saw
   // nothing). `forging` flips the modal from the form to the progress view;
   // reset on close so reopening is a fresh form.
-  const [forgeOpen, setForgeOpen] = useState(false);
+  const [forgeOpen, setForgeOpen] = useState(searchParams.get("forge") === "1");
   const [forging, setForging] = useState(false);
   const forgeFetcher = useFetcher<{ avatarQueued?: string; avatarError?: string }>();
   // Escape-to-close + focus-trap + focus-return for the overlays. Each dialog
