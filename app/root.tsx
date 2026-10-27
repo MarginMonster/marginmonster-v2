@@ -38,10 +38,10 @@ export const links: LinksFunction = () => [
   // anything that ignores the PNG hint. 32px, made from helpurr-icon.png.
   // ?v= busts the 1-year `immutable` static cache: favicon.ico was overwritten
   // at the same URL, so without a new query browsers hold the old icon for a year.
-  // Helpurr on a clean WHITE tile (owner: "looks iconic"). White, not transparent,
-  // so iOS doesn't black-fill the home-screen tile and the tab icon has an edge.
-  { rel: "icon", href: "/favicon.ico?v=4", sizes: "32x32" },
-  { rel: "icon", type: "image/png", href: "/apple-touch-icon.png?v=2" },
+  // Browser tab = the TRANSPARENT cut-out cat (no white box in the tab). The iOS
+  // home-screen tile must be opaque, so apple-touch is the cat on a WHITE tile.
+  { rel: "icon", href: "/favicon.ico?v=5", sizes: "32x32" },
+  { rel: "icon", type: "image/png", href: "/helpurr-icon.png?v=3" },
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png?v=2" },
   // Open the font connections before the CSS that needs them is parsed.
   // These were @import-ed from inside an injected <style>, which cost
