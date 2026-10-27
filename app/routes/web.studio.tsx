@@ -5217,8 +5217,8 @@ const WS_STYLE = `
    beside a soft explainer bubble. Subtle, dismissible. */
 .ws-artip{display:flex;align-items:flex-end;gap:9px;margin:2px 0 11px}
 .ws-artip-pet{flex:0 0 auto;width:58px;height:58px;display:block}
-.ws-artip-pet img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 3px 5px rgba(12,122,70,.18));transform-origin:50% 92%;animation:ws-artbob 3.6s ease-in-out infinite}
-@keyframes ws-artbob{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-2.5px) rotate(1.5deg)}}
+.ws-artip-pet img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 3px 5px rgba(12,122,70,.18));transform-origin:50% 92%;animation:ws-artbob 5s ease-in-out infinite}
+@keyframes ws-artbob{0%,100%{transform:translateY(0) rotate(-0.4deg)}50%{transform:translateY(-1.2px) rotate(0.4deg)}}
 @media(prefers-reduced-motion:reduce){.ws-artip-pet img{animation:none}}
 .ws-artip-bub{position:relative;background:#EDF6F0;border:1px solid #CBE6D6;border-radius:13px;border-bottom-left-radius:4px;padding:8px 28px 8px 12px;font-size:12.5px;line-height:1.4;color:#2C3B33;max-width:400px}
 .ws-artip-bub::after{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#EDF6F0;border-left:0}
