@@ -4347,6 +4347,7 @@ export default function WebStudio() {
                   ) : (
                     <>
                       <div className="ws-lbl">{t("Describe your video")} <span className="ws-opt">{t("required")}</span></div>
+                      <ArtistTip key="v" tips={[t("Describe the motion — I'll bring it to life."), t("Camera move, speed, mood — set the vibe."), t("Add a photo to animate, or make it from scratch."), t("Try cinematic slow-mo, a pan, or a zoom."), t("One clear shot gives the best result.")]} />
                       <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
                         placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
                         onChange={(e) => setDirection(e.target.value)} />
