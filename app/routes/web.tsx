@@ -1700,11 +1700,11 @@ const CSS = `
 .ws-face{flex:0 0 auto;width:84px;border:0;background:none;cursor:pointer;text-align:center;font-size:11px;color:var(--ink2);font-weight:600;}
 /* Talking-head CARDS (were circles): a portrait tile that plays the presenter's
    intro clip muted-on-loop, so the row reads as a wall of living faces. */
-.ws-face-img{position:relative;display:block;width:84px;aspect-ratio:3/4;margin:0 auto 5px;border-radius:13px;overflow:hidden;background-size:cover;background-position:center 20%;
+.ws-face-img{position:relative;display:block;width:84px;aspect-ratio:3/4;margin:0 auto 5px;border-radius:13px;overflow:hidden;background-size:cover;background-position:center 32%;
   border:2px solid var(--line);}
 .ws-face-img.none{display:grid;place-items:center;font-size:20px;color:var(--ink2);background:var(--paper);}
 .ws-face.sel .ws-face-img{border-color:var(--green2);box-shadow:0 0 0 2px rgba(18,168,94,.25);}
-.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;border-radius:inherit;display:block;background:#EAF6EF;z-index:0;}
+.ws-face-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 45%;border-radius:inherit;display:block;background:#EAF6EF;z-index:0;}
 /* Selected check: sits INSIDE the card (overflow:hidden clips the old overflow
    placement) and above the clip. */
 .ws-face-img b{position:absolute;top:5px;right:5px;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;z-index:2;
