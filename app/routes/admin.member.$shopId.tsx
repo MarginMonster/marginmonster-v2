@@ -54,10 +54,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!(await isOwner(request))) throw new Response("Not Found", { status: 404 });
   const shopId = params.shopId || "";
 
-  const [conn, shop, assets] = await Promise.all([
+  const [conn, shop, assets, threads, messages] = await Promise.all([
     db.connection.findFirst({ where: { externalId: shopId, kind: "web" }, include: { account: { select: { email: true, name: true } } } }),
     db.shop.findUnique({ where: { id: shopId }, select: { storeUrl: true, domain: true, level: true } }),
     db.asset.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: 240, select: { id: true, type: true, status: true, title: true, bodyJson: true, metaJson: true, createdAt: true } }),
+    db.buddyThread.findMany({ where: { shopId }, orderBy: { updatedAt: "desc" } }),
+    db.buddyMessage.findMany({ where: { shopId }, orderBy: { createdAt: "asc" }, take: 500, select: { id: true, role: true, content: true, mode: true, threadId: true, createdAt: true } }),
   ]);
   if (!shop) throw new Response("Not Found", { status: 404 });
 
@@ -98,17 +100,49 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   for (const tInfo of tiles) counts[tInfo.label] = (counts[tInfo.label] || 0) + 1;
   const breakdown = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([label, n]) => `${n} ${label.toLowerCase()}${n === 1 ? "" : "s"}`);
 
+  // Helpurr chat transcripts (read-only, for QA) — grouped by thread. Messages
+  // whose threadId is null belong to the default "Main" thread. Each group keeps
+  // its own last-message time so we can surface the most-recently-active first.
+  type ChatGroup = { id: string; title: string; mode: string; count: number; messages: { role: string; content: string; when: string }[]; lastAt: number };
+  const groups = new Map<string, ChatGroup>();
+  const threadTitle = new Map<string, string>();
+  const threadMode = new Map<string, string>();
+  for (const t of threads) { threadTitle.set(t.id, t.title || "New chat"); threadMode.set(t.id, t.mode); }
+  for (const m of messages) {
+    const key = m.threadId || "__main__";
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        id: key,
+        title: m.threadId ? (threadTitle.get(m.threadId) || "New chat") : "Main",
+        mode: m.threadId ? (threadMode.get(m.threadId) || m.mode) : m.mode,
+        count: 0,
+        messages: [],
+        lastAt: 0,
+      };
+      groups.set(key, g);
+    }
+    g.messages.push({ role: m.role, content: m.content, when: fmtWhen(m.createdAt) });
+    g.count += 1;
+    g.lastAt = Math.max(g.lastAt, m.createdAt.getTime());
+  }
+  // Newest-active group first; drop the per-group sort key from the payload.
+  const chats = [...groups.values()]
+    .sort((a, b) => b.lastAt - a.lastAt)
+    .map(({ lastAt: _lastAt, ...g }) => g);
+
   return json({
     member: { email: conn?.account.email || "(unknown)", name: conn?.account.name || "—", store: shop.storeUrl || null, domain: shop.domain || null, level: shop.level },
     tiles,
     total: tiles.length,
     breakdown,
+    chats,
     generatedAt: fmtWhen(new Date()),
   });
 };
 
 export default function AdminMemberGenerations() {
-  const { member, tiles, total, breakdown } = useLoaderData<typeof loader>();
+  const { member, tiles, total, breakdown, chats } = useLoaderData<typeof loader>();
   // Lightbox — the clicked creation, shown full-size in an overlay.
   const [active, setActive] = useState<null | (typeof tiles)[number]>(null);
   return (
@@ -123,6 +157,34 @@ export default function AdminMemberGenerations() {
         </p>
         {breakdown.length > 0 && <p className="mg-breakdown">{breakdown.join(" · ")}</p>}
       </header>
+
+      <section className="mc-chat-sec">
+        <h2 className="mc-chat-h">Helpurr chats</h2>
+        {chats.length === 0 ? (
+          <p className="mc-chat-empty">No Helpurr chats yet.</p>
+        ) : (
+          chats.map((c) => (
+            <div key={c.id} className="mc-chat-thread">
+              <div className="mc-chat-head">
+                <span className="mc-chat-title" title={c.title}>{c.title}</span>
+                <span className={"mc-chat-mode mc-chat-mode-" + c.mode}>{c.mode}</span>
+                <span className="mc-chat-count">{c.count} {c.count === 1 ? "message" : "messages"}</span>
+              </div>
+              <div className="mc-chat-log">
+                {c.messages.map((m, i) => (
+                  <div key={i} className={"mc-chat-row mc-chat-" + (m.role === "assistant" ? "assistant" : "user")}>
+                    <div className="mc-chat-meta">
+                      <span className="mc-chat-role">{m.role === "assistant" ? "Helpurr" : "user"}</span>
+                      <span className="mc-chat-when">{m.when}</span>
+                    </div>
+                    <div className="mc-chat-body">{m.content}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
 
       {tiles.length === 0 ? (
         <p className="mg-empty">This member hasn't generated anything yet.</p>
@@ -230,4 +292,22 @@ const CSS = `
 .mg-lb-prompt{margin:8px 0 0;font-size:13px;font-style:italic;color:#cfe0d6;line-height:1.5}
 .mg-lb-raw{display:inline-block;margin-top:8px;color:#5fd39a;font-size:12px;font-weight:600;text-decoration:none}
 .mg-lb-raw:hover{text-decoration:underline}
+.mc-chat-sec{margin:0 0 30px}
+.mc-chat-h{font-size:19px;font-weight:700;margin:0 0 12px;letter-spacing:-.01em}
+.mc-chat-empty{color:#5a6b61;font-size:14px;margin:0}
+.mc-chat-thread{background:#fff;border:1px solid #e3e9e4;border-radius:14px;overflow:hidden;margin-bottom:14px}
+.mc-chat-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid #eef2ee;background:#f7faf8}
+.mc-chat-title{font-size:13.5px;font-weight:700;color:#14201A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.mc-chat-mode{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:#eef4ef;color:#0C7A46}
+.mc-chat-mode-casual{background:#f3e9fd;color:#7a3fb8}
+.mc-chat-count{margin-left:auto;font-size:11px;color:#8a9a90;white-space:nowrap}
+.mc-chat-log{max-height:420px;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.mc-chat-row{max-width:85%;border-radius:12px;padding:8px 11px}
+.mc-chat-user{align-self:flex-end;background:#eef4ef;border:1px solid #dfeae2}
+.mc-chat-assistant{align-self:flex-start;background:#f3e9fd;border:1px solid #ecdcfb}
+.mc-chat-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:3px}
+.mc-chat-role{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#5a6b61}
+.mc-chat-assistant .mc-chat-role{color:#7a3fb8}
+.mc-chat-when{font-size:10px;color:#9fb0a6;white-space:nowrap}
+.mc-chat-body{font-size:13px;line-height:1.5;color:#2a3b33;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto}
 `;
