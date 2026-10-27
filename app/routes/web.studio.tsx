@@ -2072,7 +2072,7 @@ export default function WebStudio() {
   // Has the user EXPLICITLY picked a style yet (Realistic or a cartoon style)?
   // Starts false so the style card reads "Pick a style" with a needs-selection
   // glow — a required field, enforced at combine + generate.
-  const [styleSet, setStyleSet] = useState(false);
+  const [styleSet, setStyleSet] = useState(avatarDeepLink ? true : false);
   const [combineEdit, setCombineEdit] = useState("");
   // Did THIS frame come from a generate (Combine/Edit/Retry) or from an upload /
   // reused archive shot? Edit/Retry re-compose, so they only make sense for a
@@ -3839,7 +3839,9 @@ export default function WebStudio() {
                 {/* The combine's SETTING rides the form as `scene`; doCombine uses it
                     unless an Edit overrides. Empty (Auto) = the presenter's own backdrop. */}
                 <input type="hidden" name="combineScene" value={combineScene} />
-                {/* The big output — the payoff, right under the inputs. Tap to enlarge. */}
+                {/* The big output — the payoff, right under the inputs. Tap to enlarge.
+                    Hidden in no-product mode — nothing to compose (it's a talking head). */}
+                {!noProduct && (
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
                     <div className="ws-combine-frame">
@@ -3861,6 +3863,7 @@ export default function WebStudio() {
                     </div>
                   )}
                 </div>
+                )}
                 {combineErr && <p className="ws-note ws-err" style={{ marginTop: 8 }}>{combineErr}</p>}
                 {combineUrl ? (
                   <>
@@ -3909,7 +3912,7 @@ export default function WebStudio() {
                     )}
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
-                ) : (
+                ) : noProduct ? null : (
                   <>
                     <button type="button" className="wb-btn ws-combine-btn" disabled={combining || busy}
                       onClick={() => {
