@@ -564,7 +564,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ avatarError: tr(lang, "Your last presenter is still being forged — give it a minute.") });
     }
     const MAX_CUSTOM_PRESENTERS = 12;
-    const owned = await db.customAvatar.count({ where: { shopId: shop.id } });
+    // A FAILED forge produced nothing usable, so it must not eat one of the twelve
+    // slots — count only presenters that are forging or ready. (The failed row
+    // still shows in the gallery with a one-tap remove; it just never blocks.)
+    const owned = await db.customAvatar.count({ where: { shopId: shop.id, status: { not: "failed" } } });
     if (owned >= MAX_CUSTOM_PRESENTERS) {
       return json({ avatarError: tr(lang, "You already have {n} presenters — delete one to forge another.", { n: MAX_CUSTOM_PRESENTERS }) });
     }
@@ -5079,36 +5082,37 @@ export default function WebStudio() {
                 <div className="ws-forgem-h">
                   <span className="ws-forgem-crest"><Ico n="wand" size={20} /></span>
                   <div>
-                    <b>{t("Create your own presenter")}</b>
-                    <span>{t("Upload your logo, mascot or spokesperson — we forge them into a presenter with four outfits, ready to star in your videos. Yours alone.")}</span>
+                    <b>{t("Create your presenter")}</b>
+                    <span>{t("Be the face of your brand — add a photo of you, a model, or your mascot, and we forge them into your on-camera presenter with four outfits, ready to star in your videos. Yours alone.")}</span>
                   </div>
                 </div>
-                <input className="wb-in ws-forgem-nm" placeholder={t("Presenter name (e.g. your mascot)")}
-                  value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
-                <label className={`ws-forgem-up${avatarPreview ? " has" : ""}`}>
+                <label className={`ws-forgem-up hero${avatarPreview ? " has" : ""}`}>
                   <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} hidden />
                   {avatarPreview
-                    ? <><span className="ws-forgem-thumb" style={{ backgroundImage: `url(${avatarPreview})` }} aria-hidden="true" /><span>{t("Photo added — tap to change")}</span></>
-                    : <><Ico n="upload" size={18} /><span>{t("Upload a photo")}</span></>}
+                    ? <><span className="ws-forgem-thumb big" style={{ backgroundImage: `url(${avatarPreview})` }} aria-hidden="true" /><span className="ws-forgem-up-t">{t("Photo added — tap to change")}</span></>
+                    : <><Ico n="camera" size={26} /><span className="ws-forgem-up-t">{t("Add a photo")}</span><span className="ws-forgem-up-s">{t("You · a model · your mascot — front-facing works best")}</span></>}
                 </label>
+                <input className="wb-in ws-forgem-nm" placeholder={t("Presenter name (e.g. Alex, or your brand)")}
+                  value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
+                <div className="ws-forgem-lbl">{t("Describe them")}<span>{t("the more you say, the more it's them")}</span></div>
+                <textarea className="wb-in ws-forgem-desc" rows={2} maxLength={200}
+                  placeholder={t("e.g. warm smile, early 30s, short dark curls, smart-casual — or 'a friendly green monster mascot'")}
+                  value={avatarDesc} onChange={(e) => setAvatarDesc(e.target.value)} />
+                <CharCount value={avatarDesc} max={200} />
+                <div className="ws-forgem-lbl" style={{ marginTop: 10 }}>{t("Gender & voice")}<span>{t("tap ▶ to hear it")}</span></div>
                 <div className="ws-seg ws-forgem-seg">
                   {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
                     <button type="button" key={g} className={avatarGender === g ? "sel" : ""}
                       onClick={() => { setAvatarGender(g); setAvatarVoice(DEFAULT_AVATAR_VOICE[g as "f" | "m"]); }}>{t(label)}</button>
                   ))}
                 </div>
-                <div className="ws-forgem-lbl">{t("Voice")}<span>{t("tap ▶ to hear it")}</span></div>
                 <VoicePicker gender={avatarGender === "f" ? "f" : "m"} value={avatarVoice} onChange={setAvatarVoice} />
-                <div className="ws-forgem-lbl">{t("Vibe")}</div>
+                <div className="ws-forgem-lbl" style={{ marginTop: 10 }}>{t("Vibe")}</div>
                 <div className="ws-seg ws-forgem-seg">
                   {([["warm", "Warm"], ["hype", "Energetic"], ["calm", "Chill"]] as [string, string][]).map(([e, label]) => (
                     <button type="button" key={e} className={avatarEnergy === e ? "sel" : ""} onClick={() => setAvatarEnergy(e)}>{t(label)}</button>
                   ))}
                 </div>
-                <textarea className="wb-in ws-forgem-desc" rows={2} maxLength={200}
-                  placeholder={t("Describe your character (optional) — e.g. a friendly green monster mascot")}
-                  value={avatarDesc} onChange={(e) => setAvatarDesc(e.target.value)} />
-                <CharCount value={avatarDesc} max={200} />
                 {!d.caps.includes("video") && (
                   <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
                 )}
@@ -5127,6 +5131,7 @@ export default function WebStudio() {
                   }}>
                   <Ico n="wand" size={16} /> {t("Forge my presenter")} · {d.costs.avatarForge} {t("tokens")}
                 </button>
+                <p className="ws-forgem-note">{t("You'll see all four outfits when they're ready — keep them, or delete any, free.")}</p>
               </>
             )}
           </div>
@@ -5261,6 +5266,12 @@ const WS_STYLE = `
 .ws-forgem,.ws-managem{max-height:90vh;overflow:auto}
 .ws-forgem-thumb{flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:#fff center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(12,18,14,.12)}
 .ws-forgem-up.has{border-style:solid;border-color:var(--green2,#1FA463);background:#EFF8F1}
+/* Photo as the HERO of the forge — a tall, inviting dropzone (be-the-face-of-your-brand). */
+.ws-forgem-up.hero{flex-direction:column;gap:6px;padding:20px 14px;text-align:center}
+.ws-forgem-up-t{font-size:14px;font-weight:800}
+.ws-forgem-up .ws-forgem-up-s{font-size:11px;font-weight:600;color:var(--ink2,#4A554E);white-space:normal}
+.ws-forgem-thumb.big{width:46px;height:46px;border-radius:11px}
+.ws-forgem-note{font-size:11.5px;color:var(--ink2,#4A554E);text-align:center;margin:9px 2px 0;line-height:1.4}
 .ws-forgem-lbl{display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:12px;color:var(--ink,#14201A);margin:4px 0 7px}
 .ws-forgem-lbl span{font-weight:500;font-size:11px;color:var(--ink2,#4A554E)}
 .ws-forgem-desc{width:100%;margin:10px 0 2px;resize:vertical;min-height:40px;font-family:inherit}

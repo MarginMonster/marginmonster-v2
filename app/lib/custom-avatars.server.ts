@@ -115,13 +115,17 @@ export async function forgeCustomAvatar(customAvatarId: string): Promise<void> {
   }
 }
 
-async function forgePortraits(row: { id: string; refFile: string | null }, base: string): Promise<void> {
+async function forgePortraits(row: { id: string; refFile: string | null; desc?: string | null }, base: string): Promise<void> {
   // references are merchant uploads: data/renders/uploads, served at /uploads
   const refUrl = `${base}/uploads/${row.refFile}`;
   const KEEP = `The reference image shows a brand character or spokesperson. Recreate the EXACT same character — identical face, colours, features and style — as a clean professional presenter photo.`;
   const HALF = `Half-body presenter framing (waist up, facing camera, arms relaxed and visible), soft even studio light on a plain warm neutral backdrop, sharp focus. No text anywhere.`;
+  // The merchant's own "describe them" RIDES every outfit render (it was stored and
+  // never used). Layered ON TOP of the reference photo — "warm smile, early 30s,
+  // short dark curls" shapes the presenter rather than replacing the uploaded face.
+  const look = row.desc && row.desc.trim() ? ` Keep these traits: ${row.desc.trim().slice(0, 200)}.` : "";
   const files = await Promise.all(OUTFITS.map(async (o, i) => {
-    const url = await brandStill(`${KEEP} The character wears ${o.desc}. ${HALF}`, refUrl, true);
+    const url = await brandStill(`${KEEP}${look} The character wears ${o.desc}. ${HALF}`, refUrl, true);
     const res = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
     if (!res.ok) throw new Error(`portrait ${i} fetch ${res.status}`);
     const name = `cav-${row.id}_${i}.jpg`;
