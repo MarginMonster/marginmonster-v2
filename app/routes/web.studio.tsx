@@ -2609,19 +2609,21 @@ export default function WebStudio() {
     try { n = ((parseInt(localStorage.getItem(pair) || "0", 10) || 0) + 1); localStorage.setItem(pair, String(n)); } catch { /* private mode */ }
     return String(n % 4);
   };
-  // Create → the Pro/Ultra generate buttons each carry their own model. Build the
-  // form's FormData, override createModel, and submit — the server re-derives the
-  // cost and charges. Mirror onFormSubmit's variant bump so repeat makes vary.
-  const makeWith = (model: string) => {
+  // The Pro/Ultra generate buttons (Create image, Creator video, Faceless) each
+  // carry their own model/quality. Build the form's FormData, override the field +
+  // intent, and submit — the SERVER re-derives the cost and charges (money-safe).
+  // Mirror onFormSubmit's variant bump so repeat makes vary.
+  const makeSubmit = (overrides: Record<string, string>) => {
     const f = formRef.current;
     if (!f || busy) return;
     if (variantRef.current) variantRef.current.value = nextVariant();
-    setCreateModel(model);
     const fd = new FormData(f);
-    fd.set("intent", "create");
-    fd.set("createModel", model);
+    for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
     submit(fd, { method: "post", encType: "multipart/form-data" });
   };
+  const makeWith = (model: string) => { setCreateModel(model); makeSubmit({ intent: "create", createModel: model }); };
+  const makeVideoQ = (engine: string) => { setVideoEngine(engine); makeSubmit({ intent: "video", videoEngine: engine }); };
+  const makeFacelessQ = (q: "pro" | "ultra") => { setFacelessQuality(q); makeSubmit({ intent: "faceless", facelessQuality: q }); };
   // Product-source chooser handlers. Upload stashes a preview + marks hasFile so
   // the Generate gate clears; switching source clears the OTHER path so a stale
   // store link or an orphaned file can't ride the submit.
@@ -3117,6 +3119,9 @@ export default function WebStudio() {
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
   const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !productTitle.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
+  // The three casual "make" flows with a Pro/Ultra quality choice show TWO generate
+  // CTAs (one per model) at the bottom instead of a buried toggle + one button.
+  const showTwoCta = isCreate || isFaceless || (casualVideoMake && engineApplies);
 
   return (
     <div className={casual ? "ws-casual" : "ws-mkt"}>
@@ -3413,26 +3418,10 @@ export default function WebStudio() {
                 ads and commercials ignore it, so showing 8 greyed-out engines + a
                 "doesn't apply" note was pure chore. Hidden there; the videoEngine
                 value still rides along for the pipeline. */}
-            {engineApplies && !isVideoEdit && (casual ? (
-              /* Creator video: just Pro vs Ultra (owner call) — the 8-engine menu
-                 is for Social Marketing. Pro = Auto (Kling 3 Pro, included); Ultra
-                 = Veo 3.1 Fast (the margin-safe premium per video-engines.ts). The
-                 videoEngine value still rides the hidden input + server fallback. */
-              <>
-                <div className="ws-lbl">{t("Quality")} <span className="ws-opt">{t("Ultra adds tokens")}</span></div>
-                <div className="ws-models" role="radiogroup" aria-label={t("Video quality")}>
-                  <button type="button" role="radio" aria-checked={videoEngine !== "veo31"}
-                    className={`ws-model${videoEngine !== "veo31" ? " sel" : ""}`} onClick={() => setVideoEngine("auto")}>
-                    {t("Pro")}
-                  </button>
-                  <button type="button" role="radio" aria-checked={videoEngine === "veo31"}
-                    className={`ws-model${videoEngine === "veo31" ? " sel" : ""}`} onClick={() => setVideoEngine("veo31")}>
-                    {t("Ultra")}<span className="ws-model-up">+{engineSurcharge("veo31") * CREATOR_SURCHARGE_MULT}</span>
-                  </button>
-                </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{videoEngine === "veo31" ? t("Ultra — Google Veo, premium cinematic realism. Adds tokens.") : t("Pro — Kling 3 Pro: top motion & product fidelity. Included.")}</p>
-              </>
-            ) : (
+            {/* Creator video quality (Pro/Ultra) moved OUT to the two generate
+                buttons below. The full 8-engine menu stays for Social Marketing.
+                The videoEngine value still rides the hidden input + server fallback. */}
+            {engineApplies && !isVideoEdit && !casual && (
               <>
                 <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
                 <div className="ws-engines">
@@ -3443,7 +3432,7 @@ export default function WebStudio() {
                   ))}
                 </div>
               </>
-            ))}
+            )}
             <input type="hidden" name="videoEngine" value={videoEngine} />
           </>
         )}
@@ -4686,16 +4675,7 @@ export default function WebStudio() {
                       className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
                   ))}
                 </div>
-                <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Quality")}</div>
-                <div className="ws-models" role="radiogroup" aria-label={t("B-roll quality")}>
-                  {FACELESS_QUALITIES.map((q) => (
-                    <button type="button" key={q.key} role="radio" aria-checked={facelessQuality === q.key}
-                      className={`ws-model${facelessQuality === q.key ? " sel" : ""}`} onClick={() => setFacelessQuality(q.key)}>
-                      {t(q.name)}{q.surcharge > 0 && <span className="ws-model-up">+{q.surcharge * CREATOR_SURCHARGE_MULT}</span>}
-                    </button>
-                  ))}
-                </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{t(FACELESS_QUALITIES.find((q) => q.key === facelessQuality)?.blurb || "")}</p>
+                {/* Faceless quality (Pro/Ultra) moved OUT to the two generate buttons below. */}
                 <input type="hidden" name="facelessFormat" value={facelessFormat} />
                 <input type="hidden" name="voiceKey" value={voiceKey} />
                 <input type="hidden" name="facelessQuality" value={facelessQuality} />
@@ -4767,31 +4747,43 @@ export default function WebStudio() {
               </div>
             )}
             <div className="ws-makebar" style={{ marginTop: 10 }}>
-              {/* Create → two generate CTAs, one per model (Pro / Ultra). Each carries
-                  its own cost + affordability; the server re-prices on submit. */}
-              {isCreate && (() => {
+              {/* Two generate CTAs, one per model/quality (Pro / Ultra) — for Create
+                  image, Creator video, and Faceless. Clean tiles (name + cost); the
+                  description sits BELOW each as a caption. Each submits its own
+                  model; the SERVER re-prices + charges (money-safe). */}
+              {showTwoCta && (() => {
                 const base = busy || !d.hasPlan || combining || !direction.trim();
-                const mk = (model: string, name: string, desc: string, cls: string) => {
-                  const c = d.costs.createImage + createModelSurcharge(model);
+                const mk = (key: string, name: string, desc: string, cls: string, c: number, onPick: () => void) => {
                   const afford = d.tokens >= c;
                   return (
-                    <button type="button" className={`ws-cta ${cls}`} disabled={base || !afford} onClick={() => makeWith(model)}>
-                      <b>{t(name)}</b>
+                    <div className="ws-ctacol" key={key}>
+                      <button type="button" className={`ws-cta ${cls}`} disabled={base || !afford} onClick={onPick}>
+                        <b>{t(name)}</b>
+                        <span className="ws-cta-c">{busy ? t("Working…") : !d.hasPlan ? t("Pick a plan") : !afford ? t("Need {n} more", { n: (c - d.tokens).toLocaleString("en-US") }) : t("Make · {n} tokens", { n: c.toLocaleString("en-US") })}</span>
+                      </button>
                       <span className="ws-cta-d">{t(desc)}</span>
-                      <span className="ws-cta-c">{busy ? t("Working…") : !d.hasPlan ? t("Pick a plan") : !afford ? t("Need {n} more", { n: (c - d.tokens).toLocaleString("en-US") }) : t("Make · {n} tokens", { n: c })}</span>
-                    </button>
+                    </div>
                   );
                 };
-                return (
-                  <div className="ws-cta2">
-                    {mk("pro", "Pro", "Premium quality & crisp, readable text — our default", "ws-cta-pro")}
-                    {mk("ultra", "Ultra", "Our flagship — the sharpest detail & flawless text", "ws-cta-ultra")}
-                  </div>
-                );
+                const pair = isCreate
+                  ? [
+                      mk("pro", "Pro", "Premium quality and crisp, readable text — our default", "ws-cta-pro", d.costs.createImage + createModelSurcharge("pro"), () => makeWith("pro")),
+                      mk("ultra", "Ultra", "Our flagship — the sharpest detail and flawless text", "ws-cta-ultra", d.costs.createImage + createModelSurcharge("ultra"), () => makeWith("ultra")),
+                    ]
+                  : isFaceless
+                  ? [
+                      mk("pro", "Pro", "Premium cinematic b-roll — crisp and clean", "ws-cta-pro", d.costs.faceless + facelessQualitySurcharge("pro") * CREATOR_SURCHARGE_MULT, () => makeFacelessQ("pro")),
+                      mk("ultra", "Ultra", "Flagship b-roll — the sharpest, most cinematic look", "ws-cta-ultra", d.costs.faceless + facelessQualitySurcharge("ultra") * CREATOR_SURCHARGE_MULT, () => makeFacelessQ("ultra")),
+                    ]
+                  : [
+                      mk("pro", "Pro", "Fast, high-quality motion — our default", "ws-cta-pro", d.costs.casualVideo + engineSurcharge("auto") * CREATOR_SURCHARGE_MULT, () => makeVideoQ("auto")),
+                      mk("ultra", "Ultra", "Premium realism & finer detail — our flagship", "ws-cta-ultra", d.costs.casualVideo + engineSurcharge("veo31") * CREATOR_SURCHARGE_MULT, () => makeVideoQ("veo31")),
+                    ];
+                return <div className="ws-cta2">{pair}</div>;
               })()}
-              {/* The single button stays (hidden for Create) so "↻ Make another" can
-                  re-fire it via makeBtnRef with the last-used model. */}
-              <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled} style={isCreate ? { display: "none" } : undefined}>
+              {/* The single button stays (hidden when the two CTAs show) so "↻ Make
+                  another" can re-fire it via makeBtnRef with the last-used model. */}
+              <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled} style={showTwoCta ? { display: "none" } : undefined}>
                 {busy
                   ? t("Sending to the studio…")
                   : !d.hasPlan
@@ -4803,7 +4795,7 @@ export default function WebStudio() {
                     : t("{verb} {noun}", { verb: t(verb), noun: t(noun) })}
               </button>
               <p className="ws-wallet">
-                {isCreate
+                {showTwoCta
                   ? (!d.hasPlan
                       ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
                       : <>{t("Balance: {n} tokens", { n: d.tokens.toLocaleString("en-US") })} · <Link to="/web#plans">{t("Add tokens")}</Link></>)
@@ -5285,16 +5277,17 @@ const WS_STYLE = `
 @media(max-width:560px){.ws-artip-pet{width:48px;height:48px}}
 /* Create → two generate CTAs (Pro gold / Ultra green), each with a slowly
    spinning gold rosette and the model's description + cost. */
-.ws-cta2{display:flex;gap:11px}
-.ws-cta{position:relative;overflow:hidden;flex:1;min-width:0;border-radius:14px;padding:13px 13px 12px;font:inherit;cursor:pointer;text-align:left;border:0;display:block;transition:filter .12s,transform .12s}
-.ws-cta::after{content:"";position:absolute;top:50%;right:-42px;transform:translateY(-50%);width:132px;height:132px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.28;animation:ws-ctaspin 140s linear infinite;pointer-events:none}
+.ws-cta2{display:flex;gap:11px;align-items:flex-start}
+.ws-ctacol{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.ws-cta{position:relative;overflow:hidden;width:100%;border-radius:14px;padding:14px 14px 13px;font:inherit;cursor:pointer;text-align:left;border:0;display:block;transition:filter .12s,transform .12s}
+.ws-cta::after{content:"";position:absolute;top:50%;right:-40px;transform:translateY(-50%);width:128px;height:128px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.26;animation:ws-ctaspin 140s linear infinite;pointer-events:none}
 @keyframes ws-ctaspin{to{transform:translateY(-50%) rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.ws-cta::after{animation:none}}
 .ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04)}
 .ws-cta:disabled{opacity:.5;cursor:not-allowed}
-.ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px}
-.ws-cta-d{position:relative;display:block;font-size:11px;line-height:1.3;margin:3px 0 7px;opacity:.9}
-.ws-cta-c{position:relative;display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px}
+.ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:17px;line-height:1}
+.ws-cta-c{position:relative;display:inline-block;margin-top:9px;font-size:12px;font-weight:800;border-radius:999px;padding:3px 10px}
+.ws-cta-d{display:block;font-size:11.5px;line-height:1.35;color:var(--ink2,#5A665E);padding:0 3px}
 .ws-cta-pro{background:linear-gradient(158deg,#F0D98A,#D3A63A);color:#3A2C06}
 .ws-cta-pro .ws-cta-c{background:rgba(58,44,6,.16)}
 .ws-cta-ultra{background:linear-gradient(158deg,#13A95E,#0A5F38);color:#FBF6E6}
