@@ -1681,9 +1681,10 @@ function ManagePresenters({ presenters, onClose }: { presenters: MyPresenter[]; 
   );
 }
 
-// Presenter idle clips: the uniform, premium Seedance idle loops (regenerated from
-// the clean stills — consistent framing, no bars, silent). ON. (Voice preview on
-// the hero tile is now silent — restore via a ▶ voice-sample follow-up.)
+// Presenter cards play the ORIGINAL talking-head clips — the real flex (the avatars
+// actually performing, with voice). The subtle-idle regen was REVERTED (it traded
+// the performance for motion = a step back). White-top framing is handled by the
+// center-45% crop in .ws-face-vid; the baked-in distance variance is accepted.
 const PRESENTER_CLIPS = true;
 function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCreateOwn, onManage }: {
   cast: CastItem[];
@@ -1774,7 +1775,7 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
                       Flip PRESENTER_CLIPS to re-enable once the new clips ship. */}
                   {PRESENTER_CLIPS && c.designed && (
                     <video className="ws-face-vid" muted loop playsInline preload="metadata"
-                      poster={`/voice-videos/${c.id}.jpg?v=3`} src={`/voice-videos/${c.id}.mp4?v=3`}
+                      poster={`/voice-videos/${c.id}.jpg?v=4`} src={`/voice-videos/${c.id}.mp4?v=4`}
                       onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   )}
                   {sel && <b>✓</b>}
@@ -2916,7 +2917,7 @@ export default function WebStudio() {
   const heroDesigned = !!d.cast.find((c) => c.id === avatarId)?.designed;
   const applyHero = (id: string, withSound: boolean) => {
     const v = heroVid.current; if (!v || !id) return;
-    if (heroShown.current !== id) { v.src = `/voice-videos/${id}.mp4?v=3`; heroShown.current = id; try { v.load(); } catch { /* noop */ } }
+    if (heroShown.current !== id) { v.src = `/voice-videos/${id}.mp4?v=4`; heroShown.current = id; try { v.load(); } catch { /* noop */ } }
     v.loop = true; v.muted = !withSound; setHeroMuted(!withSound);
     const p = v.play(); if (p && typeof (p as Promise<void>).catch === "function") (p as Promise<void>).catch(() => {});
   };
@@ -3650,7 +3651,7 @@ export default function WebStudio() {
                     onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}>
                     <span className="ws-hubtile-img" style={!heroDesigned && avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
                       {heroDesigned && (
-                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=3`}
+                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=4`}
                           onError={(e) => {
                             // A missing intro/poster would otherwise leave a black
                             // tile — hide the dead video and paint the avatar still.
