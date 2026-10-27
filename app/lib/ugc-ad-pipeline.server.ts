@@ -202,7 +202,7 @@ function animateModelFor(engineKey: string | undefined): string {
   }
 }
 
-function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string }): Record<string, unknown> {
+function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number }): Record<string, unknown> {
   const neg = opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur";
   // 9:16 explicitly: Veo defaults to 16:9 landscape, and a landscape clip
   // cover-cropped into our vertical assembler loses two-thirds of the frame.
@@ -216,7 +216,7 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
   // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it.
-  if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 5 };
+  if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: opts.durationSec ?? 5 };
   return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 10, cfg_scale: 0.5 };
 }
 
@@ -225,7 +225,7 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
  *  which model ACTUALLY ran (for honest asset metadata). */
 export async function animateCreate(
   engineKey: string | undefined,
-  opts: { startImage: string; prompt: string; negativePrompt?: string }
+  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number }
 ): Promise<{ id: string; model: string }> {
   // fal first when the engine lives there (kling 2.6 pro is fal-only).
   const falModel = falAnimateModelFor(engineKey);

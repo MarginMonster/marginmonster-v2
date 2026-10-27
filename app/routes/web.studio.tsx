@@ -20,7 +20,7 @@ import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
-import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT } from "../lib/plan-config";
+import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, DURATION_SURCHARGE_10S } from "../lib/plan-config";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
@@ -885,12 +885,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // no surcharge billed, default-engine COGS stays inside the flat price.
       const engineDrivesRender = !avatarId && contentType !== "commercial";
       const effectiveEngine = engineDrivesRender ? videoEngine : "auto";
+      // Casual creative Frame (free) + Length. Both are casual-only; a marketing
+      // POST yields the defaults so the price + payload are unchanged. 10s only
+      // applies on engines that HONOUR duration (Kling/default, Seedance) — Veo
+      // renders a fixed short clip, so clamp to 5s there and never charge for it
+      // (keeps the client quote == the server charge).
+      const CASUAL_ASPECTS = ["9:16", "1:1", "16:9"];
+      const rawVideoAspect = ((form.get("videoAspect") as string) || "").trim();
+      const videoAspect = casualMode && CASUAL_ASPECTS.includes(rawVideoAspect) ? rawVideoAspect : "9:16";
+      const durationHonored = ["auto", "kling", "kling26", "kling25fal", "seedance"].includes(effectiveEngine || "auto");
+      const videoDurationSec = (casualMode && (form.get("videoDurationSec") as string) === "10" && durationHonored) ? 10 : 5;
+      const lengthFee = (casualMode && videoDurationSec === 10) ? DURATION_SURCHARGE_10S : 0;
       // Casual (Creator) video is a single clip — priced well below a full
       // marketing video ad (presenter/multi-scene). Engine surcharge still rides.
       const videoBase = casualMode ? TOKEN_COST.casualVideo : TOKEN_COST.video;
       // Creator floor: a premium engine's surcharge was sized for Studio tokens,
       // so scale it up on casual video (creatorvideo cap) — see CREATOR_SURCHARGE_MULT.
-      const each = videoBase + engineSurcharge(effectiveEngine) * (casualMode ? CREATOR_SURCHARGE_MULT : 1);
+      const each = videoBase + engineSurcharge(effectiveEngine) * (casualMode ? CREATOR_SURCHARGE_MULT : 1) + lengthFee;
       // Video bursts cap lower than image bursts — one video is 60+ tokens, so
       // a ten-pack would empty most wallets on a single tap. Three is enough
       // to pick from without being a decision the merchant regrets.
@@ -921,7 +932,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           productSize: ((form.get("productSize") as string) || "").trim() || undefined,
           wearProduct: !!avatarId && wear && !service,
           serviceMode: service, scene,
-          videoEngine: effectiveEngine, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra + (i < rem ? 1 : 0), prePaid: true, initiator: "web",
+          videoEngine: effectiveEngine, videoAspect, videoDurationSec, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra + (i < rem ? 1 : 0), prePaid: true, initiator: "web",
         }, burstRunAt(i));
         backed(each, perPieceFromExtra + (i < rem ? 1 : 0));
       }
@@ -2119,6 +2130,10 @@ export default function WebStudio() {
   // first thing a merchant sees is eight strong choices, not forty.
   const [fmtGroup, setFmtGroup] = useState<string>("popular");
   const [videoEngine, setVideoEngine] = useState("auto");
+  // Casual creative video Frame + Length (Options ▾). Ride hidden inputs in the Form.
+  const [videoAspect, setVideoAspect] = useState<string>("9:16");
+  const [videoDurationSec, setVideoDurationSec] = useState<5 | 10>(5);
+  const [showVideoOpts, setShowVideoOpts] = useState(false);
   const [commercial, setCommercial] = useState(false);
   const [breakout, setBreakout] = useState(false);
   const [upsell, setUpsell] = useState<{ name: string; tier: string; price: number } | null>(null);
@@ -3444,6 +3459,52 @@ export default function WebStudio() {
                   ))}
                 </div>
               </>
+            )}
+            {/* CASUAL creative video — Frame + Length behind an Options ▾, like the
+                image tab. Hidden inputs ride the Form (and the two-CTA submit). */}
+            {casualVideoMake && (
+              <div className="ws-styledisc" style={{ marginTop: 4 }}>
+                <button type="button" className={`ws-styletoggle${showVideoOpts ? " open" : ""}`}
+                  aria-expanded={showVideoOpts} onClick={() => setShowVideoOpts((v) => !v)}>
+                  <span className="ws-styletoggle-l">
+                    <span aria-hidden="true"><Ico n="sliders" /></span>
+                    {t("Options")}
+                    <span style={{ marginLeft: 7, fontSize: "11.5px", fontWeight: 600, color: "#8A968E" }}>
+                      {t(CREATE_ASPECTS.find((a) => a.value === videoAspect)?.name || "")}{` · ${videoDurationSec}s`}
+                    </span>
+                  </span>
+                  <span className="ws-styletoggle-r">
+                    <span className="ws-chev" aria-hidden="true">⌄</span>
+                  </span>
+                </button>
+                {showVideoOpts && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="ws-lbl">{t("Frame")}</div>
+                    <div className="ws-frames" role="radiogroup" aria-label={t("Output frame")}>
+                      {CREATE_ASPECTS.filter((a) => ["9:16", "1:1", "16:9"].includes(a.value)).map((a) => (
+                        <button type="button" key={a.value} role="radio" aria-checked={videoAspect === a.value} title={t("{name} ({value})", { name: a.name, value: a.value })}
+                          className={`ws-frame${videoAspect === a.value ? " sel" : ""}`} onClick={() => setVideoAspect(a.value)}>
+                          <span className="ws-frame-shape" style={{ aspectRatio: a.css }} aria-hidden="true" />
+                          <span className="ws-frame-nm">{t(a.name)}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Length")}</div>
+                    <div className="ws-frames" role="radiogroup" aria-label={t("Clip length")}>
+                      {([5, 10] as const).map((sec) => (
+                        <button type="button" key={sec} role="radio" aria-checked={videoDurationSec === sec}
+                          className={`ws-frame${videoDurationSec === sec ? " sel" : ""}`} onClick={() => setVideoDurationSec(sec)}>
+                          <span className="ws-frame-nm" style={{ fontWeight: 800, fontSize: "14px" }}>{sec}s</span>
+                          <span className="ws-frame-nm" style={{ fontSize: "10.5px", color: "#8A968E" }}>{sec === 5 ? t("default") : `+${DURATION_SURCHARGE_10S} tok`}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="ws-note" style={{ marginTop: 6 }}>{t("10s renders on Pro. Ultra makes a fixed short clip.")}</p>
+                  </div>
+                )}
+                <input type="hidden" name="videoAspect" value={videoAspect} />
+                <input type="hidden" name="videoDurationSec" value={String(videoDurationSec)} />
+              </div>
             )}
             <input type="hidden" name="videoEngine" value={videoEngine} />
           </>
@@ -4784,7 +4845,7 @@ export default function WebStudio() {
                       mk("ultra", "Ultra", "Flagship b-roll — the sharpest, most cinematic look", "ws-cta-ultra", d.costs.faceless + facelessQualitySurcharge("ultra") * CREATOR_SURCHARGE_MULT, () => makeFacelessQ("ultra")),
                     ]
                   : [
-                      mk("pro", "Pro", "Fast, high-quality motion — our default", "ws-cta-pro", d.costs.casualVideo + engineSurcharge("auto") * CREATOR_SURCHARGE_MULT, () => makeVideoQ("auto")),
+                      mk("pro", "Pro", "Fast, high-quality motion — our default", "ws-cta-pro", d.costs.casualVideo + engineSurcharge("auto") * CREATOR_SURCHARGE_MULT + (videoDurationSec === 10 ? DURATION_SURCHARGE_10S : 0), () => makeVideoQ("auto")),
                       mk("ultra", "Ultra", "Premium realism & finer detail — our flagship", "ws-cta-ultra", d.costs.casualVideo + engineSurcharge("veo31") * CREATOR_SURCHARGE_MULT, () => makeVideoQ("veo31")),
                     ];
                 return <div className="ws-cta2">{pair}</div>;

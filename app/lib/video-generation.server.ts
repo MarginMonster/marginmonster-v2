@@ -97,9 +97,13 @@ async function toVerticalFrame(buf: Buffer, dir: string, outPath: string): Promi
  *  Needs a public base URL the provider can fetch; returns undefined without one
  *  or on any failure, so the caller falls back to the bare photo (then
  *  toVerticalFrame still pads it — a banded clip beats no clip). */
-async function prepareVerticalSeed(imageUrl: string): Promise<string | undefined> {
+async function prepareVerticalSeed(imageUrl: string, aspect = "9:16"): Promise<string | undefined> {
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   if (!base) return undefined;
+  // Target pixel dims per chosen frame. 9:16 (default) keeps the exact legacy
+  // 720x1280 so the product/marketing path is byte-for-byte unchanged.
+  const [TW, TH] = aspect === "1:1" ? [1024, 1024] : aspect === "16:9" ? [1280, 720] : [720, 1280];
+  const dim = `${TW}:${TH}`;
   const rendersDir = path.join(process.cwd(), "data", "renders");
   const tmp = path.join(rendersDir, `.seed-src-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`);
   try {
@@ -116,9 +120,9 @@ async function prepareVerticalSeed(imageUrl: string): Promise<string | undefined
       "-filter_complex",
       // sigma 55: a near-solid blurred wash, so the model has no detail to
       // hallucinate motion into behind the product as it animates.
-      "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280," +
+      `[0:v]scale=${dim}:force_original_aspect_ratio=increase,crop=${dim},` +
         "gblur=sigma=55,eq=brightness=-0.05:saturation=0.9[bg];" +
-        "[0:v]scale=720:1280:force_original_aspect_ratio=decrease[fg];" +
+        `[0:v]scale=${dim}:force_original_aspect_ratio=decrease[fg];` +
         "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuvj420p[v]",
       "-map", "[v]", "-frames:v", "1", "-q:v", "3",
       outPath,
@@ -143,7 +147,7 @@ async function prepareVerticalSeed(imageUrl: string): Promise<string | undefined
  *  URL is already dead, so returning it would mint a COMPLETED, fully-charged
  *  asset pointing at a broken link no healer can repair. That throws instead,
  *  and the queue retries or refunds. */
-async function persistRemoteVideo(url: string): Promise<string> {
+async function persistRemoteVideo(url: string, aspect = "9:16"): Promise<string> {
   try {
     if (url.startsWith("/renders/")) return url; // already ours
     const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
@@ -171,8 +175,15 @@ async function persistRemoteVideo(url: string): Promise<string> {
     // storage. So a disk failure only costs us the local copy.
     let onDisk = false;
     try {
-      const framed = await toVerticalFrame(buf, rendersDir, finalPath);
-      if (!framed) fs.writeFileSync(finalPath, buf); // normalisation failed — ship what we paid for
+      // 9:16 (default + ALL product/marketing) pads to vertical exactly as before.
+      // A 1:1 / 16:9 creative clip already carries its chosen shape from the seed,
+      // so padding it back to vertical would destroy it — write the bytes straight.
+      if (aspect === "9:16") {
+        const framed = await toVerticalFrame(buf, rendersDir, finalPath);
+        if (!framed) fs.writeFileSync(finalPath, buf); // normalisation failed — ship what we paid for
+      } else {
+        fs.writeFileSync(finalPath, buf);
+      }
       onDisk = true;
     } catch (diskErr) {
       console.warn(`[video] local write failed, trying durable storage: ${diskErr instanceof Error ? diskErr.message : String(diskErr)}`);
@@ -239,6 +250,13 @@ interface GenerateVideoParams {
    *  product here, so "keep the label crisp" was hijacking creative prompts into
    *  generic product beauty-shots. Marketing/product video leaves this unset. */
   creative?: boolean;
+  /** Casual creative OUTPUT frame — "9:16" (default) | "1:1" | "16:9". Drives the
+   *  seed image's aspect; the i2v engine follows the seed's shape (it takes no
+   *  aspect flag of its own). Only honoured when `creative`. */
+  aspect?: string;
+  /** Casual creative clip length (seconds) — 5 (default) | 10. Only engines that
+   *  honour duration (Kling/default, Seedance) use it; Veo renders a fixed length. */
+  durationSec?: number;
   jobId?: string; // enables prediction checkpointing (see resume)
   /** How much of THIS piece's charge came out of the purchased top-up bucket
    *  rather than the monthly allowance. Needed by the engine-downgrade refund:
@@ -246,6 +264,10 @@ interface GenerateVideoParams {
    *  unwind in the opposite order or tokens the merchant paid cash for come
    *  back as allowance tokens that the next period roll deletes. */
   chargedFromExtra?: number;
+  /** The EXACT tokens charged for this piece (casualVideo + length/engine
+   *  surcharges). The aspect-refund below refunds THIS, not a hardcoded
+   *  TOKEN_COST.video (150) — a casual creative video only cost ~50-65. */
+  chargedTokens?: number;
   resume?: {
     /** A prediction that a previous attempt already CREATED — and therefore
      *  already paid for. Without this, a restart (or any retry) mid-poll bought
@@ -420,6 +442,10 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     ? ` Product context: ${trimToWord(productDescription, 200)}.`
     : "";
   const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}`;
+  // Casual creative OUTPUT frame — only `creative` honours it; everything else
+  // stays "9:16" so the product/marketing path's seed, QA and framing are byte-
+  // for-byte unchanged.
+  const aspect = (params.creative && params.aspect && ["9:16", "1:1", "16:9"].includes(params.aspect)) ? params.aspect : "9:16";
 
   // Seed frame: the product photo (PRODUCT_HIGHLIGHT is the only style here).
   let seedImage: string | undefined;
@@ -463,9 +489,9 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // above still drives the i2v MOTION.
       const scene = (params.productDescription || direction || cleanTitle || "").trim();
       const seedPrompt = `${scene}. Cinematic, richly detailed, dramatic lighting, high quality.`;
-      const seed = await renderCreativeSeed(seedPrompt, "9:16");
+      const seed = await renderCreativeSeed(seedPrompt, aspect);
       if (seed) {
-        const vseed = await prepareVerticalSeed(seed);
+        const vseed = await prepareVerticalSeed(seed, aspect);
         seedImage = vseed || seed;
       }
     } catch (e) {
@@ -524,7 +550,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     // animateCreate already treats undefined as "the default engine", so
     // passing it through is all this needs.
     if (seedImage) {
-      const created = await animateCreate(params.videoEngine, { startImage: seedImage, prompt });
+      const created = await animateCreate(params.videoEngine, { startImage: seedImage, prompt, durationSec: params.durationSec });
       predictionId = created.id;
       ranModel = created.model;
     } else {
@@ -549,7 +575,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // "kling25" forces the Replicate path: retrying the default would go
       // straight back to the fal engine that just failed at inference.
       console.error(`[video] ${ranModel} failed at inference — retrying on ${DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
-      const retry = await animateCreate("kling25", { startImage: seedImage, prompt });
+      const retry = await animateCreate("kling25", { startImage: seedImage, prompt, durationSec: params.durationSec });
       // The default engine is what actually renders from here. Leaving
       // ranModel on the premium engine made the asset metadata claim a
       // model that never ran, and hid the downgrade from the refund below.
@@ -579,7 +605,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       if (!fid.ok && !fid.degraded) {
         console.log(`[video] product-fidelity gate failed (${fid.why}) — re-rolling once on ${ranModel || "the engine"}`);
         try {
-          const rr = await animateCreate(params.videoEngine, { startImage: seedImage, prompt });
+          const rr = await animateCreate(params.videoEngine, { startImage: seedImage, prompt, durationSec: params.durationSec });
           await ckpt({ ckVideoPredId: rr.id });
           ranModel = rr.model;
           videoUrl = await animatePoll(rr.id, VIDEO_POLL_MS, "video(fidelity-reroll)");
@@ -646,35 +672,43 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     }
   }
 
-  const storedUrl = await persistRemoteVideo(videoUrl);
+  const storedUrl = await persistRemoteVideo(videoUrl, params.creative ? aspect : "9:16");
 
-  // OUTPUT QA (v1): ASPECT RATIO. toVerticalFrame pads to 720x1280, but it FALLS
-  // BACK to the raw provider bytes when ffmpeg is unavailable or errors, and an
-  // image-to-video model returns the shape of its SEED FRAME — so a square
-  // product photo can ship a square clip that auto-posts as a "vertical" ad.
-  // That shipped silently, charged in full. Probe the file we actually serve;
-  // a probe we cannot run leaves the default assumption alone.
+  // OUTPUT QA (v1): ASPECT RATIO. An image-to-video model returns the shape of its
+  // SEED FRAME, and toVerticalFrame falls back to raw bytes on ffmpeg error — so a
+  // clip can ship a shape it shouldn't and auto-post as the wrong format. Probe the
+  // file we actually serve and validate against the CHOSEN frame (9:16 for all
+  // product/marketing + default creative; 1:1 / 16:9 for a creative pick). A probe
+  // we cannot run leaves the default assumption alone.
   let qaAspect: { ok: boolean; w: number; h: number } | null = null;
   if (storedUrl.startsWith("/renders/")) {
     try {
       const dims = probeVideoDims(path.join(process.cwd(), "data", "renders", path.basename(storedUrl)));
-      // 9:16 = 0.5625; 0.9 tolerates a near-square portrait but fails a true
-      // square (1.0) or landscape — the shapes that are actually wrong.
-      if (dims) qaAspect = { ok: dims.w / dims.h <= 0.9, w: dims.w, h: dims.h };
+      if (dims) {
+        const r = dims.w / dims.h;
+        // 9:16≈0.5625 (<=0.9 keeps the exact legacy predicate), 1:1=1.0, 16:9≈1.78.
+        const ok = aspect === "1:1" ? (r >= 0.9 && r <= 1.15)
+                 : aspect === "16:9" ? (r >= 1.4)
+                 : (r <= 0.9);
+        qaAspect = { ok, w: dims.w, h: dims.h };
+      }
     } catch { /* probe unavailable — assume fine */ }
   }
-  // Refund the shape failure ONCE, modelled exactly on the engine-downgrade
-  // refund above: CLAIM before crediting, record the amount AFTER. The job still
-  // COMPLETES (we ship the usable, honestly-labelled asset), so refundPrepaidOnce
-  // never runs for it; the ckpt guard stops a RESUMED attempt paying twice.
+  // Refund the shape failure ONCE, modelled exactly on the engine-downgrade refund
+  // above: CLAIM before crediting, record the amount AFTER. The job still COMPLETES
+  // (we ship the usable, honestly-labelled asset); the ckpt guard stops a RESUMED
+  // attempt paying twice. Refund the ACTUAL charge (chargedTokens) — a casual video
+  // cost ~50-65, not the 150 a marketing video did (ASPECT_REFUND is the legacy
+  // fallback used when chargedTokens wasn't passed, i.e. the marketing path).
   if (qaAspect && !qaAspect.ok && !params.resume?.aspectRefunded) {
+    const refundAmt = params.chargedTokens ?? ASPECT_REFUND;
     await ckpt({ ckAspectRefunded: true });
     try {
-      await refundTokens(shopId, ASPECT_REFUND, params.chargedFromExtra);
-      await ckpt({ ckAspectRefundedAmount: ASPECT_REFUND });
-      console.warn(`[video] shipped ${qaAspect.w}x${qaAspect.h} (not vertical) — refunded ${ASPECT_REFUND} and labelled it honestly`);
+      await refundTokens(shopId, refundAmt, params.chargedFromExtra);
+      await ckpt({ ckAspectRefundedAmount: refundAmt });
+      console.warn(`[video] shipped ${qaAspect.w}x${qaAspect.h} (off-spec for ${aspect}) — refunded ${refundAmt} and labelled it honestly`);
     } catch (e) {
-      console.error(`[video] ASPECT REFUND FAILED after claim — shop ${shopId} is owed ${ASPECT_REFUND}:`, e instanceof Error ? e.message.slice(0, 200) : e);
+      console.error(`[video] ASPECT REFUND FAILED after claim — shop ${shopId} is owed ${refundAmt}:`, e instanceof Error ? e.message.slice(0, 200) : e);
     }
   }
 
@@ -689,7 +723,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // productImageUrl is what a REMIX rebuilds from. Without it the remix
       // regenerates the product from its name — 150 tokens of something else.
       metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null, productImageUrl: params.productImageUrl || null, serviceMode: !!params.serviceMode,
-        aspect: qaAspect ? (qaAspect.ok ? "vertical" : "nonvertical") : "unverified", qa: qaAspect ? { aspect: qaAspect } : undefined }),
+        aspect: qaAspect ? (qaAspect.ok ? (aspect === "9:16" ? "vertical" : aspect) : "offspec") : "unverified", qa: qaAspect ? { aspect: qaAspect } : undefined }),
     },
   });
   return asset.id;

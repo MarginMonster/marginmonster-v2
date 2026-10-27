@@ -342,6 +342,15 @@ export type TokenAction = keyof typeof TOKEN_COST;
 // → 3 (whole-token surcharges; Studio margins have headroom).
 export const CREATOR_SURCHARGE_MULT = 3;
 
+// Casual creative video LENGTH surcharge. 5s is free (the default); a 10s clip
+// roughly doubles the per-second render COGS (one extra ~5s Kling-3-Pro increment,
+// est. $0.15–0.35 on fal). 15 tokens = $0.21 at the CREATOR floor ($0.0140/tok):
+// a 65-token (50+15) 10s video keeps ≥40% margin even at the pessimistic COGS.
+// Flat (NOT ×CREATOR_SURCHARGE_MULT) — it already clears the floor. LEVER: raise if
+// a live 10s prod gen shows higher per-second fal billing. Veo ignores duration, so
+// the route never charges this when the Ultra/Veo engine is picked.
+export const DURATION_SURCHARGE_10S = 15;
+
 export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   description: "Product description",
   adCopy: "Ad copy",

@@ -876,6 +876,11 @@ async function runJob(
           // product showcase — flip the prompt builder to scene mode. Marketing
           // (section !== "creator") stays on the product-showcase brief.
           creative: payload.section === "creator" && payload.serviceMode !== true && payload.commercial !== true && payload.breakout !== true,
+          // Casual creative Frame + Length (ignored unless `creative`); chargedTokens
+          // lets the aspect-refund repay the ACTUAL casual price, not 150.
+          aspect: typeof payload.videoAspect === "string" ? payload.videoAspect : undefined,
+          durationSec: typeof payload.videoDurationSec === "number" ? payload.videoDurationSec : (payload.videoDurationSec ? Number(payload.videoDurationSec) : undefined),
+          chargedTokens: typeof payload.chargedTokens === "number" ? payload.chargedTokens : undefined,
           // jobId + resume: without these the prediction id is never
           // checkpointed, so each of the 3 attempts bought a BRAND-NEW video
           jobId: payload.__jobId as string | undefined,
