@@ -2609,6 +2609,19 @@ export default function WebStudio() {
     try { n = ((parseInt(localStorage.getItem(pair) || "0", 10) || 0) + 1); localStorage.setItem(pair, String(n)); } catch { /* private mode */ }
     return String(n % 4);
   };
+  // Create → the Pro/Ultra generate buttons each carry their own model. Build the
+  // form's FormData, override createModel, and submit — the server re-derives the
+  // cost and charges. Mirror onFormSubmit's variant bump so repeat makes vary.
+  const makeWith = (model: string) => {
+    const f = formRef.current;
+    if (!f || busy) return;
+    if (variantRef.current) variantRef.current.value = nextVariant();
+    setCreateModel(model);
+    const fd = new FormData(f);
+    fd.set("intent", "create");
+    fd.set("createModel", model);
+    submit(fd, { method: "post", encType: "multipart/form-data" });
+  };
   // Product-source chooser handlers. Upload stashes a preview + marks hasFile so
   // the Generate gate clears; switching source clears the OTHER path so a stale
   // store link or an orphaned file can't ride the submit.
@@ -4549,7 +4562,7 @@ export default function WebStudio() {
                     <span aria-hidden="true"><Ico n="sliders" /></span>
                     {t("Options")}
                     <span style={{ marginLeft: 7, fontSize: "11.5px", fontWeight: 600, color: "#8A968E" }}>
-                      {t(CREATE_ASPECTS.find((a) => a.value === createAspect)?.name || "")} · {t(CREATE_MODELS.find((m) => m.key === createModel)?.name || "")}{createStyle ? ` · ${t(CREATE_STYLES.find((s) => s.key === createStyle)?.name || "")}` : ""}
+                      {t(CREATE_ASPECTS.find((a) => a.value === createAspect)?.name || "")}{createStyle ? ` · ${t(CREATE_STYLES.find((s) => s.key === createStyle)?.name || "")}` : ""}
                     </span>
                   </span>
                   <span className="ws-styletoggle-r">
@@ -4568,16 +4581,7 @@ export default function WebStudio() {
                         </button>
                       ))}
                     </div>
-                    <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Model")}</div>
-                    <div className="ws-models" role="radiogroup" aria-label={t("AI model")}>
-                      {CREATE_MODELS.map((m) => (
-                        <button type="button" key={m.key} role="radio" aria-checked={createModel === m.key}
-                          className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
-                          {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === createModel)?.blurb || "")}</p>
+                    {/* Model (Pro/Ultra) moved OUT to the two generate buttons below. */}
                     <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Art style")} <span className="ws-opt">{t("optional")}</span></div>
                     <div className="ws-stylegrid" role="radiogroup" aria-label={t("Art style")}>
                       {CREATE_STYLES.map((s) => (
@@ -4763,7 +4767,31 @@ export default function WebStudio() {
               </div>
             )}
             <div className="ws-makebar" style={{ marginTop: 10 }}>
-              <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled}>
+              {/* Create → two generate CTAs, one per model (Pro / Ultra). Each carries
+                  its own cost + affordability; the server re-prices on submit. */}
+              {isCreate && (() => {
+                const base = busy || !d.hasPlan || combining || !direction.trim();
+                const mk = (model: string, name: string, desc: string, cls: string) => {
+                  const c = d.costs.createImage + createModelSurcharge(model);
+                  const afford = d.tokens >= c;
+                  return (
+                    <button type="button" className={`ws-cta ${cls}`} disabled={base || !afford} onClick={() => makeWith(model)}>
+                      <b>{t(name)}</b>
+                      <span className="ws-cta-d">{t(desc)}</span>
+                      <span className="ws-cta-c">{busy ? t("Working…") : !d.hasPlan ? t("Pick a plan") : !afford ? t("Need {n} more", { n: (c - d.tokens).toLocaleString("en-US") }) : t("Make · {n} tokens", { n: c })}</span>
+                    </button>
+                  );
+                };
+                return (
+                  <div className="ws-cta2">
+                    {mk("pro", "Pro", "Premium quality & crisp, readable text — our default", "ws-cta-pro")}
+                    {mk("ultra", "Ultra", "Our flagship — the sharpest detail & flawless text", "ws-cta-ultra")}
+                  </div>
+                );
+              })()}
+              {/* The single button stays (hidden for Create) so "↻ Make another" can
+                  re-fire it via makeBtnRef with the last-used model. */}
+              <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled} style={isCreate ? { display: "none" } : undefined}>
                 {busy
                   ? t("Sending to the studio…")
                   : !d.hasPlan
@@ -4775,7 +4803,11 @@ export default function WebStudio() {
                     : t("{verb} {noun}", { verb: t(verb), noun: t(noun) })}
               </button>
               <p className="ws-wallet">
-                {!d.hasPlan
+                {isCreate
+                  ? (!d.hasPlan
+                      ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
+                      : <>{t("Balance: {n} tokens", { n: d.tokens.toLocaleString("en-US") })} · <Link to="/web#plans">{t("Add tokens")}</Link></>)
+                  : !d.hasPlan
                   ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
                   : shortBy > 0
                     ? <>{t("{total} tokens · ", { total: (cost * effBurst).toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{effBurst > 1 ? t(" or make fewer") : ""}</>
@@ -5251,6 +5283,23 @@ const WS_STYLE = `
 .ws-artip-bub::after{content:"";position:absolute;left:-6px;bottom:8px;width:0;height:0;border:6px solid transparent;border-right-color:#F0F7F2;border-left:0}
 .ws-artip-bub::before{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#D4E8DC;border-left:0}
 @media(max-width:560px){.ws-artip-pet{width:48px;height:48px}}
+/* Create → two generate CTAs (Pro gold / Ultra green), each with a slowly
+   spinning gold rosette and the model's description + cost. */
+.ws-cta2{display:flex;gap:11px}
+.ws-cta{position:relative;overflow:hidden;flex:1;min-width:0;border-radius:14px;padding:13px 13px 12px;font:inherit;cursor:pointer;text-align:left;border:0;display:block;transition:filter .12s,transform .12s}
+.ws-cta::after{content:"";position:absolute;top:50%;right:-42px;transform:translateY(-50%);width:132px;height:132px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.28;animation:ws-ctaspin 140s linear infinite;pointer-events:none}
+@keyframes ws-ctaspin{to{transform:translateY(-50%) rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.ws-cta::after{animation:none}}
+.ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04)}
+.ws-cta:disabled{opacity:.5;cursor:not-allowed}
+.ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px}
+.ws-cta-d{position:relative;display:block;font-size:11px;line-height:1.3;margin:3px 0 7px;opacity:.9}
+.ws-cta-c{position:relative;display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px}
+.ws-cta-pro{background:linear-gradient(158deg,#F0D98A,#D3A63A);color:#3A2C06}
+.ws-cta-pro .ws-cta-c{background:rgba(58,44,6,.16)}
+.ws-cta-ultra{background:linear-gradient(158deg,#13A95E,#0A5F38);color:#FBF6E6}
+.ws-cta-ultra .ws-cta-c{background:rgba(0,0,0,.22)}
+@media(max-width:560px){.ws-cta2{flex-direction:column}}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
    stack three rows deep above the tiles. */
