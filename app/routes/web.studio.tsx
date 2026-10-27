@@ -3685,14 +3685,37 @@ export default function WebStudio() {
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
                     <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
                   </div>
-                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
-                    aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
-                    <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
-                      <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
-                    </span>
-                    <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
-                    <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
-                  </button>
+                  <div className="ws-prodslot">
+                    {noProduct ? (
+                      /* No-product mode: the slot becomes the TOPIC input itself — the
+                         presenter talks to camera about whatever's typed here. The server
+                         prepends the talking-head template (videoDirection = presetDir +
+                         direction, line ~848), so a short topic is all that's needed.
+                         Self-contained so it never depends on another box rendering. */
+                      <div className={`ws-hubtile ws-topictile${direction.trim() ? " set ws-isgood" : " ws-needsel"}`}>
+                        <div className="ws-topic-head"><span aria-hidden="true">🎙</span> {t("What do they talk about?")}</div>
+                        <textarea className="ws-topic-ta" value={direction} maxLength={300} rows={3}
+                          onChange={(e) => setDirection(e.target.value)}
+                          placeholder={t("a quick tip · your story · why you started…")} />
+                      </div>
+                    ) : (
+                      <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
+                        aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
+                        <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
+                          <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
+                        </span>
+                        <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
+                        <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
+                      </button>
+                    )}
+                    {/* "No product" toggle — bottom-right of the product tile (owner ask):
+                        flips to a presenter-only talking head about the typed topic. */}
+                    <button type="button" className={`ws-noprod${noProduct ? " on" : ""}`}
+                      onClick={() => { setNoProduct((v) => !v); setHubPick(null); }}
+                      aria-pressed={noProduct} title={t("Presenter only — no product")}>
+                      <span className="ws-noprod-sw" aria-hidden="true" />{t("No product")}
+                    </button>
+                  </div>
                   {/* CENTER STYLE CARD — the picked STYLE, sitting over the gap
                       between presenter + product so it stays visible and attached to
                       the scene. It's the Realistic↔Cartoon switch: "Realistic AI" runs
@@ -5534,13 +5557,20 @@ const WS_STYLE = `
 .ws-hubtile.set .ws-hubtile-img{border-style:solid;border-color:var(--green)}
 .ws-hubtile-badge{position:absolute;right:7px;bottom:7px;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;font-size:16px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 /* No-product toggle on the Combine hub product tile (presenter-only / talking head) */
-.ws-prodslot{position:relative}
+.ws-prodslot{position:relative;align-self:start}
 .ws-noprod{position:absolute;right:8px;bottom:-11px;display:inline-flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:999px;padding:4px 10px 4px 9px;box-shadow:0 3px 9px rgba(20,32,26,.14);font:inherit;font-size:11px;font-weight:800;color:var(--ink2,#4A554E);cursor:pointer;z-index:4}
 .ws-noprod.on{border-color:var(--green2,#1FA463);color:var(--green,#0C7A46)}
 .ws-noprod-sw{width:28px;height:16px;border-radius:999px;background:#CFD8D1;position:relative;transition:background .15s;flex:0 0 auto}
 .ws-noprod-sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
 .ws-noprod.on .ws-noprod-sw{background:var(--green2,#1FA463)}
 .ws-noprod.on .ws-noprod-sw::after{left:14px}
+/* No-product ON: the product slot becomes the talking-head TOPIC input. */
+.ws-topictile{justify-content:flex-start;gap:8px;background:#F3F9F4}
+.ws-topictile.ws-needsel{border-color:#9CCBB1}
+.ws-topic-head{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:800;color:var(--green,#0C7A46);line-height:1.2}
+.ws-topic-ta{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:8px 9px;font:inherit;font-size:12px;line-height:1.35;color:var(--ink,#14201A);background:#fff;outline:none;resize:none;min-height:78px;text-align:left}
+.ws-topic-ta:focus{border-color:var(--green,#0C7A46)}
+.ws-topic-ta::placeholder{color:#9AA69E}
 .ws-hubtile b{width:100%;font-size:14.5px;color:var(--ink,#14201A);font-weight:800;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ws-hubtile>span:last-child{font-size:11.5px;color:var(--ink2,#4A554E);line-height:1.25}
 @media (max-width:420px){.ws-hubtile b{font-size:13.5px}.ws-hubtiles{gap:10px}}
