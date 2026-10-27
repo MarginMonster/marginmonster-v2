@@ -872,6 +872,10 @@ async function runJob(
           videoEngine: payload.videoEngine as string | undefined,
           commercial: payload.commercial === true,
           breakout: payload.breakout === true,
+          // Creator (casual) video is a CREATIVE SCENE the user described, not a
+          // product showcase — flip the prompt builder to scene mode. Marketing
+          // (section !== "creator") stays on the product-showcase brief.
+          creative: payload.section === "creator" && payload.serviceMode !== true && payload.commercial !== true && payload.breakout !== true,
           // jobId + resume: without these the prediction id is never
           // checkpointed, so each of the 3 attempts bought a BRAND-NEW video
           jobId: payload.__jobId as string | undefined,

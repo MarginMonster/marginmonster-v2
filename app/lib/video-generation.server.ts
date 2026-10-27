@@ -233,6 +233,12 @@ interface GenerateVideoParams {
   videoEngine?: string; // engine-picker key (video-engines.ts); undefined = default
   commercial?: boolean; // big-budget studio-commercial look (color-block cyc, hero lighting)
   breakout?: boolean; // the product bursts OUT of a mock social post card, in motion
+  /** Creator (casual) "from scratch" video: a SCENE the user described, not a
+   *  product to showcase. Switches the brief from "product showcase/reveal" to a
+   *  cinematic-scene prompt and drops all product-fidelity language — there is no
+   *  product here, so "keep the label crisp" was hijacking creative prompts into
+   *  generic product beauty-shots. Marketing/product video leaves this unset. */
+  creative?: boolean;
   jobId?: string; // enables prediction checkpointing (see resume)
   /** How much of THIS piece's charge came out of the purchased top-up bucket
    *  rather than the monthly allowance. Needed by the engine-downgrade refund:
@@ -395,7 +401,12 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // presenters lip-sync via generateUgcAd). The old AI_AVATAR "does NOT speak"
   // prompt branches were dead code that would have shipped a mute presenter.
   const basePrompt =
-    params.breakout
+    params.creative
+      // Creator "from scratch": a scene the user DESCRIBED, not a product. No
+      // "product showcase/reveal", no brand-style imposition, no productTruth —
+      // the user's Direction (appended below) fully drives the subject & style.
+      ? `Cinematic short video. Bring the described subject to life as a striking, dynamic scene with smooth, confident camera motion and rich detail; professional cinematic quality; vertical 9:16, full-frame.${noInventedText}`
+      : params.breakout
       ? `${breakoutLook} The product: ${cleanTitle}.`
       : params.commercial
       ? `${commercialLook} The product: ${cleanTitle}.`
@@ -405,7 +416,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // Bounded for the same reason the image pipeline bounds its brief: this is
   // appended AFTER the fidelity clause, so an unbounded paste buries it.
   const direction = trimToWord(params.customPrompt, 500) || undefined;
-  const context = productDescription?.trim()
+  const context = (!params.creative && productDescription?.trim())
     ? ` Product context: ${trimToWord(productDescription, 200)}.`
     : "";
   const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}`;
@@ -646,7 +657,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `Product video — ${productTitle}`,
+      title: `${params.creative ? "Video" : "Product video"} — ${productTitle}`,
       // sourceUrl keeps the provider link for debugging/remix; videoUrl is ours.
       bodyJson: JSON.stringify({ style, videoUrl: storedUrl, sourceUrl: videoUrl, prompt }),
       // productImageUrl is what a REMIX rebuilds from. Without it the remix
