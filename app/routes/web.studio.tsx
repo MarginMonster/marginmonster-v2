@@ -1407,6 +1407,32 @@ function CharCount({ value, max }: { value: string; max: number }) {
   );
 }
 
+/** The Creator artist Helpurr by the describe box — gently bobs (CSS) and blinks
+ *  on its own by swapping to a closed-eye frame (the two PNGs are registered to
+ *  the same canvas so the swap doesn't jump). Honours prefers-reduced-motion. */
+function ArtistMascot() {
+  const [blink, setBlink] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    try { const im = new Image(); im.src = "/helpurr-artist-blink.png?v=1"; } catch { /* preload the blink frame */ }
+    let t1 = 0, t2 = 0, alive = true;
+    const loop = () => {
+      t1 = window.setTimeout(() => {
+        if (!alive) return;
+        setBlink(true);
+        t2 = window.setTimeout(() => { if (alive) { setBlink(false); loop(); } }, 150);
+      }, 2600 + Math.random() * 3400);
+    };
+    loop();
+    return () => { alive = false; window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, []);
+  return (
+    <span className="ws-artip-pet" aria-hidden="true">
+      <img src={blink ? "/helpurr-artist-blink.png?v=1" : "/helpurr-artist.png?v=1"} alt="" />
+    </span>
+  );
+}
+
 /** The forge takes a minute or two of silence, and a line of text reading
  *  "forging…" makes that look like nothing is happening. So show the shape of
  *  what's coming: four placeholder character cards — one per outfit — shimmering
@@ -2061,6 +2087,12 @@ export default function WebStudio() {
   // ?prompt= lets the Creator home's prompt-first box prefill the describe/
   // topic field when it deep-links into a mode (image/edit/video/music).
   const [direction, setDirection] = useState(searchParams.get("prompt") || "");
+  // The Creator artist-Helpurr tip by the describe box. Client-only (starts
+  // false so SSR + first client render match), shown until the merchant
+  // dismisses it once per browser.
+  const [artistTip, setArtistTip] = useState(false);
+  useEffect(() => { try { setArtistTip(localStorage.getItem("hp-artist-tip") !== "0"); } catch { setArtistTip(true); } }, []);
+  const dismissArtistTip = () => { setArtistTip(false); try { localStorage.setItem("hp-artist-tip", "0"); } catch { /* private mode */ } };
   // Advanced prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
   const [saySomething, setSaySomething] = useState("");
@@ -4424,6 +4456,18 @@ export default function WebStudio() {
                     Edit / blog / marketing keep the compact single-line input. */}
                 {(isCreate || isMusic || isFaceless || (isEdit && casual)) ? (
                   <>
+                  {artistTip && !(isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")) && (
+                    <div className="ws-artip">
+                      <ArtistMascot />
+                      <span className="ws-artip-bub">
+                        {isMusic ? t("Tell me the vibe — a genre, a mood, a tempo.")
+                          : isFaceless ? t("Give me a topic — I'll script it, voice it, and caption it.")
+                          : isEdit ? t("Tell me one change at a time — like “add a hat” or “blue background”.")
+                          : t("Tell me what to picture — a subject, a style, and a mood. The more detail, the better it turns out.")}
+                        <button type="button" className="ws-artip-x" onClick={dismissArtistTip} aria-label={t("Dismiss")}>×</button>
+                      </span>
+                    </div>
+                  )}
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
                     placeholder={
                       isMusic ? t("e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat")
@@ -5169,6 +5213,19 @@ const WS_STYLE = `
 .ws-hero{min-height:112px;font-size:16px;line-height:1.45;padding:14px 15px;border-radius:14px;border:1.5px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.05);transition:border-color .12s,box-shadow .12s}
 .ws-hero:focus{outline:none;border-color:var(--green2);box-shadow:0 0 0 3px rgba(18,168,94,.16)}
 .ws-hero::placeholder{color:#9AA69E}
+/* Creator ARTIST HELPURR tip by the describe box — small mascot (bobs + blinks)
+   beside a soft explainer bubble. Subtle, dismissible. */
+.ws-artip{display:flex;align-items:flex-end;gap:9px;margin:2px 0 11px}
+.ws-artip-pet{flex:0 0 auto;width:58px;height:58px;display:block}
+.ws-artip-pet img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 3px 5px rgba(12,122,70,.18));transform-origin:50% 92%;animation:ws-artbob 3.6s ease-in-out infinite}
+@keyframes ws-artbob{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-2.5px) rotate(1.5deg)}}
+@media(prefers-reduced-motion:reduce){.ws-artip-pet img{animation:none}}
+.ws-artip-bub{position:relative;background:#EDF6F0;border:1px solid #CBE6D6;border-radius:13px;border-bottom-left-radius:4px;padding:8px 28px 8px 12px;font-size:12.5px;line-height:1.4;color:#2C3B33;max-width:400px}
+.ws-artip-bub::after{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#EDF6F0;border-left:0}
+.ws-artip-bub::before{content:"";position:absolute;left:-8px;bottom:6px;width:0;height:0;border:8px solid transparent;border-right-color:#CBE6D6;border-left:0}
+.ws-artip-x{position:absolute;top:3px;right:4px;width:18px;height:18px;border:0;background:none;color:#8AA396;font-size:15px;line-height:1;cursor:pointer;border-radius:50%;display:grid;place-items:center;padding:0}
+.ws-artip-x:hover{background:rgba(12,122,70,.1);color:#2C3B33}
+@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-bub{font-size:12px}}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
    stack three rows deep above the tiles. */
