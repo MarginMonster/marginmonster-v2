@@ -1463,6 +1463,7 @@ function ArtistMascot({ variant }: { variant?: string }) {
  *  (arrows to jump; gently auto-advances). Mount it with a `key` per section so
  *  switching Create tabs resets to the first tip. Permanent (no dismiss). */
 function ArtistTip({ tips, variant }: { tips: string[]; variant?: string }) {
+  const t = useT();
   const [page, setPage] = useState(0);
   useEffect(() => {
     if (tips.length <= 1) return;
@@ -1477,9 +1478,9 @@ function ArtistTip({ tips, variant }: { tips: string[]; variant?: string }) {
         <span className="ws-artip-tx">{tips[page]}</span>
         {tips.length > 1 && (
           <span className="ws-artip-nav">
-            <button type="button" className="ws-artip-arw" onClick={() => go(-1)} aria-label="Previous tip">‹</button>
+            <button type="button" className="ws-artip-arw" onClick={() => go(-1)} aria-label={t("Previous tip")}>‹</button>
             <span className="ws-artip-pg">{page + 1}/{tips.length}</span>
-            <button type="button" className="ws-artip-arw" onClick={() => go(1)} aria-label="Next tip">›</button>
+            <button type="button" className="ws-artip-arw" onClick={() => go(1)} aria-label={t("Next tip")}>›</button>
           </span>
         )}
       </span>
@@ -1680,9 +1681,10 @@ function ManagePresenters({ presenters, onClose }: { presenters: MyPresenter[]; 
   );
 }
 
-// Presenter idle clips in the picker strip: OFF until we ship uniform, premium
-// ones (the old talking-head clips were inconsistently framed). Flip to true then.
-const PRESENTER_CLIPS = false;
+// Presenter idle clips: the uniform, premium Seedance idle loops (regenerated from
+// the clean stills — consistent framing, no bars, silent). ON. (Voice preview on
+// the hero tile is now silent — restore via a ▶ voice-sample follow-up.)
+const PRESENTER_CLIPS = true;
 function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCreateOwn, onManage }: {
   cast: CastItem[];
   avatarId: string | null;
@@ -1772,7 +1774,7 @@ function Presenters({ cast, avatarId, setAvatarId, optional, brandFaceId, onCrea
                       Flip PRESENTER_CLIPS to re-enable once the new clips ship. */}
                   {PRESENTER_CLIPS && c.designed && (
                     <video className="ws-face-vid" muted loop playsInline preload="metadata"
-                      poster={`/voice-videos/${c.id}.jpg?v=2`} src={`/voice-videos/${c.id}.mp4?v=2`}
+                      poster={`/voice-videos/${c.id}.jpg?v=3`} src={`/voice-videos/${c.id}.mp4?v=3`}
                       onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   )}
                   {sel && <b>✓</b>}
@@ -2909,7 +2911,7 @@ export default function WebStudio() {
   const heroDesigned = !!d.cast.find((c) => c.id === avatarId)?.designed;
   const applyHero = (id: string, withSound: boolean) => {
     const v = heroVid.current; if (!v || !id) return;
-    if (heroShown.current !== id) { v.src = `/voice-videos/${id}.mp4?v=2`; heroShown.current = id; try { v.load(); } catch { /* noop */ } }
+    if (heroShown.current !== id) { v.src = `/voice-videos/${id}.mp4?v=3`; heroShown.current = id; try { v.load(); } catch { /* noop */ } }
     v.loop = true; v.muted = !withSound; setHeroMuted(!withSound);
     const p = v.play(); if (p && typeof (p as Promise<void>).catch === "function") (p as Promise<void>).catch(() => {});
   };
@@ -3643,7 +3645,7 @@ export default function WebStudio() {
                     onClick={() => setHubPick((p) => (p === "presenter" ? null : "presenter"))}>
                     <span className="ws-hubtile-img" style={!heroDesigned && avatarThumb ? { backgroundImage: `url(${avatarThumb})` } : undefined}>
                       {heroDesigned && (
-                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=2`}
+                        <video ref={heroVidRef} className="ws-hubtile-vid" playsInline loop preload="metadata" poster={`/voice-videos/${avatarId}.jpg?v=3`}
                           onError={(e) => {
                             // A missing intro/poster would otherwise leave a black
                             // tile — hide the dead video and paint the avatar still.
@@ -4391,7 +4393,7 @@ export default function WebStudio() {
                     </div>
                   ) : (
                     <>
-                      <div className="ws-lbl">{t("Describe your video")} <span className="ws-opt">{t("required")}</span></div>
+                      <div className="ws-lbl">{t("Describe your video")} <span className="ws-req">{t("required")}</span></div>
                       <ArtistTip key="v" variant="film" tips={[t("Describe your video and I'll bring it to life!"), t("Camera move, speed, mood — set the vibe."), t("Add a photo to animate, or make it from scratch."), t("Try cinematic slow-mo, a pan, or a zoom."), t("One clear shot gives the best result.")]} />
                       <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
                         placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
@@ -4554,7 +4556,7 @@ export default function WebStudio() {
                     : tab === "music" ? t("Describe your music")
                     : tab === "faceless" ? t("What's your video about?")
                     : t("Topic")}{" "}
-                  <span className="ws-opt">{isCreate || isMusic || isFaceless ? t("required") : isEdit && (editOp === "replace" || !editOp) ? t("required") : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? t("nothing to add") : t("optional")}</span>
+                  <span className={(isCreate || isMusic || isFaceless || (isEdit && (editOp === "replace" || !editOp))) ? "ws-req" : "ws-opt"}>{isCreate || isMusic || isFaceless ? t("required") : isEdit && (editOp === "replace" || !editOp) ? t("required") : isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale") ? t("nothing to add") : t("optional")}</span>
                 </div>
                 {/* The text-to-create instruments (Make an image / Make music /
                     Faceless) lead with a BIG "describe anything" box — the
@@ -4970,6 +4972,18 @@ export default function WebStudio() {
                    )}
                  </div>
                </div>
+             ) : (isMusic || isFaceless) ? (
+               /* Music + Faceless take NO photo — show a non-interactive placeholder,
+                  not the "drop a photo to edit" dropzone (which also wrongly yanked
+                  the user into the image editor on drop). */
+               <div className="ws-easelph">
+                 <span className="ws-easel-mark" aria-hidden="true"><span className="ws-rose" /></span>
+                 <div className="ws-easel-cap">{(making || busy) ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) }) : isMusic ? t("Your track will appear here") : t("Your video will appear here")}</div>
+                 <div className="ws-easel-sub">{(making || busy) ? t("This takes a few minutes — it'll land right here.") : t("Describe it below and hit Make.")}</div>
+                 {!d.hasPlan && !(making || busy) && (
+                   <div className="ws-easel-lock"><Ico n="lock" size={13} /> {t("Your free trial unlocks every maker — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to make this.")}</div>
+                 )}
+               </div>
              ) : (
                <div className={`ws-easelph ws-easelph-drop${(making || busy) ? " making" : ""}`}
                  role="button" tabIndex={0} aria-label={(casual && tab === "video") ? t("Drop or upload a photo to animate") : t("Drop or upload a photo to edit")}
@@ -5124,7 +5138,7 @@ export default function WebStudio() {
                 {!d.caps.includes("video") && (
                   <p className="ws-forgem-gate">{t("Custom presenters need a plan with video — Studio and up.")}</p>
                 )}
-                <button type="button" className="wb-btn ws-forgem-go" disabled={forgeFetcher.state !== "idle" || !avatarName.trim() || !avatarFile}
+                <button type="button" className="wb-btn ws-forgem-go" disabled={forgeFetcher.state !== "idle" || !avatarName.trim() || !avatarFile || !d.caps.includes("video")}
                   onClick={() => {
                     const fd = new FormData();
                     fd.set("intent", "forgeAvatar");
@@ -5139,7 +5153,7 @@ export default function WebStudio() {
                   }}>
                   <Ico n="wand" size={16} /> {t("Forge my presenter")} · {d.costs.avatarForge} {t("tokens")}
                 </button>
-                <p className="ws-forgem-note">{t("You'll see all four outfits when they're ready — keep them, or delete any, free.")}</p>
+                <p className="ws-forgem-note">{t("You'll see all four outfits when they're ready — keep them, or remove any you don't need (it won't cost a token).")}</p>
               </>
             )}
           </div>
@@ -5365,7 +5379,8 @@ const WS_STYLE = `
 .ws-artip-pg{font-size:10.5px;font-weight:700;color:#6D8578;min-width:26px;text-align:center;font-variant-numeric:tabular-nums}
 .ws-artip-bub::after{content:"";position:absolute;left:-6px;bottom:8px;width:0;height:0;border:6px solid transparent;border-right-color:#F0F7F2;border-left:0}
 .ws-artip-bub::before{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#D4E8DC;border-left:0}
-@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}}
+.ws-req{font-weight:700;font-size:11px;color:var(--green,#0C7A46)}
+@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-arw{min-width:30px;min-height:30px}}
 /* Create → two generate CTAs (Pro gold / Ultra green), each with a slowly
    spinning gold rosette and the model's description + cost. */
 .ws-cta2{display:flex;gap:11px;align-items:flex-start}
