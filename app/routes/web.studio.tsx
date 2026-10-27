@@ -5279,15 +5279,16 @@ const WS_STYLE = `
    spinning gold rosette and the model's description + cost. */
 .ws-cta2{display:flex;gap:11px;align-items:flex-start}
 .ws-ctacol{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
-.ws-cta{position:relative;overflow:hidden;width:100%;border-radius:14px;padding:14px 14px 13px;font:inherit;cursor:pointer;text-align:left;border:0;display:block;transition:filter .12s,transform .12s}
-.ws-cta::after{content:"";position:absolute;top:50%;right:-40px;transform:translateY(-50%);width:128px;height:128px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.26;animation:ws-ctaspin 140s linear infinite;pointer-events:none}
+.ws-cta{position:relative;overflow:hidden;width:100%;border-radius:12px;padding:13px 14px;font:inherit;cursor:pointer;text-align:center;border:0;display:block;transition:filter .12s,transform .12s,box-shadow .12s;box-shadow:0 2px 7px rgba(20,32,26,.13),inset 0 1px 0 rgba(255,255,255,.18)}
+.ws-cta::after{content:"";position:absolute;top:50%;right:-48px;transform:translateY(-50%);width:124px;height:124px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.18;animation:ws-ctaspin 140s linear infinite;pointer-events:none}
 @keyframes ws-ctaspin{to{transform:translateY(-50%) rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.ws-cta::after{animation:none}}
-.ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04)}
-.ws-cta:disabled{opacity:.5;cursor:not-allowed}
-.ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:17px;line-height:1}
-.ws-cta-c{position:relative;display:inline-block;margin-top:9px;font-size:12px;font-weight:800;border-radius:999px;padding:3px 10px}
-.ws-cta-d{display:block;font-size:11.5px;line-height:1.35;color:var(--ink2,#5A665E);padding:0 3px}
+.ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 5px 13px rgba(20,32,26,.2),inset 0 1px 0 rgba(255,255,255,.18)}
+.ws-cta:active:not(:disabled){transform:translateY(0);box-shadow:0 1px 4px rgba(20,32,26,.16),inset 0 1px 0 rgba(255,255,255,.18)}
+.ws-cta:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;line-height:1}
+.ws-cta-c{position:relative;display:inline-block;margin-top:7px;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 11px}
+.ws-cta-d{display:block;font-size:11.5px;line-height:1.35;color:var(--ink2,#5A665E);padding:0 3px;text-align:center}
 .ws-cta-pro{background:linear-gradient(158deg,#F0D98A,#D3A63A);color:#3A2C06}
 .ws-cta-pro .ws-cta-c{background:rgba(58,44,6,.16)}
 .ws-cta-ultra{background:linear-gradient(158deg,#13A95E,#0A5F38);color:#FBF6E6}
