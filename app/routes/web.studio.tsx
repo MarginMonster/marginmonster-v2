@@ -3638,7 +3638,7 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
-            <StepHead n={avatarVideoHub ? 1 : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? t("your presenter, holding your product") : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
+            <StepHead n={avatarVideoHub ? 1 : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? (noProduct ? t("who · what they say · the look · the scene") : t("your presenter, holding your product")) : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
             {/* ======================================================================
                 AVATAR-VIDEO COMBINE PANEL — ONE immersive flow (owner-requested).
@@ -3651,6 +3651,7 @@ export default function WebStudio() {
                 ====================================================================== */}
             {avatarVideoHub && (
               <div className={`ws-combine ws-scene${combining ? " combining" : ""}${combineUrl ? " done" : ""}`}>
+                <ArtistTip variant="film" tips={[t("Tap any card to change it — the ✎ means it's editable."), t("Pick who stars, their look, and where they are."), t("No product? Flip the switch — they'll talk straight to camera."), t("Combine makes the exact frame you approve — then I bring it to life.")]} />
                 {/* Ingredients = two tap-tiles; tap to pick/upload inline. */}
                 <div className="ws-hubtiles" role="group" aria-label={t("Your presenter and product")}>
                   {/* The hero is a DIV (its image holds the intro video + sound
@@ -3683,7 +3684,7 @@ export default function WebStudio() {
                       <span className="ws-hubtile-badge" aria-hidden="true">{avatarThumb ? "✎" : "＋"}</span>
                     </span>
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
-                    <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
+                    <span>{avatarId ? t("Who stars") : t("Who stars in your video")}</span>
                   </div>
                   <div className="ws-prodslot">
                     {noProduct ? (
@@ -3731,7 +3732,7 @@ export default function WebStudio() {
                           <span className="ws-stylecard-badge" aria-hidden="true">{styleSet ? "✎" : "＋"}</span>
                         </span>
                         <b>{!styleSet ? t("Pick a style") : (contentType === "avatar" ? t("Realistic AI") : t(CARTOON_STYLES.find((c) => c.key === cartoonStyle)?.name || "Dream Anime"))}</b>
-                        <span>{styleSet ? t("Tap to change") : t("Realistic or cartoon")}</span>
+                        <span>{styleSet ? t("The look") : t("Realistic or cartoon")}</span>
                       </button>
                       {/* "+" connects the look (above) to WHERE it happens (below). */}
                       <span className="ws-stylecombo-plus" aria-hidden="true">+</span>
@@ -3747,7 +3748,7 @@ export default function WebStudio() {
                               <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
                             </span>
                             <b>{t(cur.name)}</b>
-                            <span>{t("The setting")}</span>
+                            <span>{t("Where they are")}</span>
                           </button>
                         );
                       })()}
