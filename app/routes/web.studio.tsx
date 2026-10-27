@@ -1433,6 +1433,34 @@ function ArtistMascot() {
   );
 }
 
+/** The artist Helpurr + its tip bubble — the bubble pages through several tips
+ *  (dots to jump; gently auto-advances). Mount it with a `key` per section so
+ *  switching Create tabs resets to the first tip. Permanent (no dismiss). */
+function ArtistTip({ tips }: { tips: string[] }) {
+  const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (tips.length <= 1) return;
+    const id = window.setInterval(() => setPage((p) => (p + 1) % tips.length), 8000);
+    return () => window.clearInterval(id);
+  }, [tips.length]);
+  return (
+    <div className="ws-artip">
+      <ArtistMascot />
+      <span className="ws-artip-bub">
+        <span className="ws-artip-tx">{tips[page]}</span>
+        {tips.length > 1 && (
+          <span className="ws-artip-dots">
+            {tips.map((_, i) => (
+              <button key={i} type="button" className={`ws-artip-dot${i === page ? " on" : ""}`}
+                onClick={() => setPage(i)} aria-label={`Tip ${i + 1} of ${tips.length}`} aria-current={i === page} />
+            ))}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 /** The forge takes a minute or two of silence, and a line of text reading
  *  "forging…" makes that look like nothing is happening. So show the shape of
  *  what's coming: four placeholder character cards — one per outfit — shimmering
@@ -2087,12 +2115,6 @@ export default function WebStudio() {
   // ?prompt= lets the Creator home's prompt-first box prefill the describe/
   // topic field when it deep-links into a mode (image/edit/video/music).
   const [direction, setDirection] = useState(searchParams.get("prompt") || "");
-  // The Creator artist-Helpurr tip by the describe box. Client-only (starts
-  // false so SSR + first client render match), shown until the merchant
-  // dismisses it once per browser.
-  const [artistTip, setArtistTip] = useState(false);
-  useEffect(() => { try { setArtistTip(localStorage.getItem("hp-artist-tip") !== "0"); } catch { setArtistTip(true); } }, []);
-  const dismissArtistTip = () => { setArtistTip(false); try { localStorage.setItem("hp-artist-tip", "0"); } catch { /* private mode */ } };
   // Advanced prompting — default: EasyMode decides. Advanced reveals the 3 W's.
   const [advanced, setAdvanced] = useState(false);
   const [saySomething, setSaySomething] = useState("");
@@ -3367,11 +3389,11 @@ export default function WebStudio() {
                 <span><b><Ico n="video" /> {t("Commercial look")}</b>{t(" — big-budget studio spot: color-block set matched to your product, hero-lit")}</span>
               </label>
             )}
-            {contentType === "highlight" && !isVideoEdit && (
+            {!casual && contentType === "highlight" && !isVideoEdit && (
               <label className="ws-commercial">
                 <input type="checkbox" name="breakout" value="1" checked={breakout}
                   onChange={(e) => { setBreakout(e.target.checked); if (e.target.checked) setCommercial(false); }} />
-                <span><b><Ico n="burst" /> {t("Breakout")}</b>{" — "}{casual ? t("your subject bursts out of the frame in 3D — the scroll-stopper") : t("your product bursts out of a social post frame in 3D, the scroll-stopper")}</span>
+                <span><b><Ico n="burst" /> {t("Breakout")}</b>{" — "}{t("your product bursts out of a social post frame in 3D, the scroll-stopper")}</span>
               </label>
             )}
             {/* The engine picker only MATTERS when it applies — presenter/lip-sync
@@ -4456,18 +4478,17 @@ export default function WebStudio() {
                     Edit / blog / marketing keep the compact single-line input. */}
                 {(isCreate || isMusic || isFaceless || (isEdit && casual)) ? (
                   <>
-                  {artistTip && !(isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")) && (
-                    <div className="ws-artip">
-                      <ArtistMascot />
-                      <span className="ws-artip-bub">
-                        {isMusic ? t("Genre, mood, tempo — that's all I need.")
-                          : isFaceless ? t("Just give me a topic — I'll do the rest.")
-                          : isEdit ? t("Describe one change — like “add a hat”.")
-                          : t("Tell me a subject, a style & a mood.")}
-                        <button type="button" className="ws-artip-x" onClick={dismissArtistTip} aria-label={t("Dismiss")}>×</button>
-                      </span>
-                    </div>
-                  )}
+                  {!(isEdit && (editOp === "bgremove" || editOp === "colorize" || editOp === "upscale")) && (() => {
+                    const tips = isMusic
+                      ? [t("Genre, mood, tempo — that's all I need."), t("Name a vibe — lo-fi, cinematic, upbeat…"), t("I compose an original clip — no samples.")]
+                      : isFaceless
+                      ? [t("Just give me a topic — I'll do the rest."), t("I script it, voice it, and caption it."), t("Great for facts, a tip, or a quick story.")]
+                      : isEdit
+                      ? [t("Describe one change — like “add a hat”."), t("Swap the background, recolor, or cut it out — just ask."), t("One change at a time works best.")]
+                      : [t("Tell me a subject, a style & a mood."), t("Name a look — watercolor, 3D, pixel art, photo…"), t("The more detail you give me, the better it comes out."), t("No photo needed — I paint it from scratch.")];
+                    const tkey = isMusic ? "m" : isFaceless ? "f" : isEdit ? "e" : "c";
+                    return <ArtistTip key={tkey} tips={tips} />;
+                  })()}
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
                     placeholder={
                       isMusic ? t("e.g. upbeat lo-fi hip-hop with mellow piano and a soft beat")
@@ -5220,12 +5241,15 @@ const WS_STYLE = `
 .ws-artip-pet img{width:100%;height:100%;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 2px 4px rgba(12,122,70,.16));transform-origin:50% 92%;animation:ws-artbob 5s ease-in-out infinite}
 @keyframes ws-artbob{0%,100%{transform:translateY(0) rotate(-0.4deg)}50%{transform:translateY(-1.2px) rotate(0.4deg)}}
 @media(prefers-reduced-motion:reduce){.ws-artip-pet img{animation:none}}
-.ws-artip-bub{position:relative;background:#F0F7F2;border:1px solid #D4E8DC;border-radius:12px;border-bottom-left-radius:3px;padding:8px 26px 8px 11px;font-size:12px;line-height:1.35;color:#38473E;max-width:360px}
+.ws-artip-bub{position:relative;background:#F0F7F2;border:1px solid #D4E8DC;border-radius:12px;border-bottom-left-radius:3px;padding:8px 12px;font-size:12px;line-height:1.35;color:#38473E;max-width:360px}
+.ws-artip-tx{display:block}
+.ws-artip-dots{display:flex;gap:5px;margin-top:6px}
+.ws-artip-dot{width:5px;height:5px;padding:0;border:0;border-radius:50%;background:#C3D6CA;cursor:pointer;transition:background .15s,transform .15s}
+.ws-artip-dot.on{background:var(--green,#0C7A46);transform:scale(1.18)}
+.ws-artip-dot:hover{background:#9CC3AC}
 .ws-artip-bub::after{content:"";position:absolute;left:-6px;bottom:8px;width:0;height:0;border:6px solid transparent;border-right-color:#F0F7F2;border-left:0}
 .ws-artip-bub::before{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#D4E8DC;border-left:0}
-.ws-artip-x{position:absolute;top:3px;right:4px;width:18px;height:18px;border:0;background:none;color:#8AA396;font-size:15px;line-height:1;cursor:pointer;border-radius:50%;display:grid;place-items:center;padding:0}
-.ws-artip-x:hover{background:rgba(12,122,70,.1);color:#2C3B33}
-@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-bub{font-size:12px}}
+@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
    stack three rows deep above the tiles. */
