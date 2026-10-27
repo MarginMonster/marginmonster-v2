@@ -1407,14 +1407,26 @@ function CharCount({ value, max }: { value: string; max: number }) {
   );
 }
 
-/** The Creator artist Helpurr by the describe box — gently bobs (CSS) and blinks
- *  on its own by swapping to a closed-eye frame (the two PNGs are registered to
- *  the same canvas so the swap doesn't jump). Honours prefers-reduced-motion. */
-function ArtistMascot() {
+/** Section-specific Helpurr mascots by the describe box. Each is the same cat in
+ *  a different wardrobe so the tool feels tailored: artist (Create image/edit),
+ *  filmmaker (video), DJ (music). A variant with no asset yet falls back to the
+ *  artist cat, so the plumbing can ship before the art does. */
+const MASCOT_ART: Record<string, string> = {
+  artist: "helpurr-artist",
+  // film: "helpurr-film",  // ← enable once the filmmaker asset + blink frame ship
+  // dj: "helpurr-dj",      // ← enable once the DJ asset + blink frame ship
+};
+function mascotBase(variant?: string) { return MASCOT_ART[variant || "artist"] || MASCOT_ART.artist; }
+
+/** The Creator Helpurr by the describe box — gently bobs (CSS) and blinks on its
+ *  own by swapping to a closed-eye frame (the two PNGs are registered to the same
+ *  canvas so the swap doesn't jump). Honours prefers-reduced-motion. */
+function ArtistMascot({ variant }: { variant?: string }) {
+  const base = mascotBase(variant);
   const [blink, setBlink] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    try { const im = new Image(); im.src = "/helpurr-artist-blink.png?v=1"; } catch { /* preload the blink frame */ }
+    try { const im = new Image(); im.src = `/${base}-blink.png?v=1`; } catch { /* preload the blink frame */ }
     let t1 = 0, t2 = 0, alive = true;
     const loop = () => {
       t1 = window.setTimeout(() => {
@@ -1425,18 +1437,18 @@ function ArtistMascot() {
     };
     loop();
     return () => { alive = false; window.clearTimeout(t1); window.clearTimeout(t2); };
-  }, []);
+  }, [base]);
   return (
     <span className="ws-artip-pet" aria-hidden="true">
-      <img src={blink ? "/helpurr-artist-blink.png?v=1" : "/helpurr-artist.png?v=1"} alt="" />
+      <img src={blink ? `/${base}-blink.png?v=1` : `/${base}.png?v=1`} alt="" />
     </span>
   );
 }
 
-/** The artist Helpurr + its tip bubble — the bubble pages through several tips
- *  (dots to jump; gently auto-advances). Mount it with a `key` per section so
+/** The Helpurr mascot + its tip bubble — the bubble pages through several tips
+ *  (arrows to jump; gently auto-advances). Mount it with a `key` per section so
  *  switching Create tabs resets to the first tip. Permanent (no dismiss). */
-function ArtistTip({ tips }: { tips: string[] }) {
+function ArtistTip({ tips, variant }: { tips: string[]; variant?: string }) {
   const [page, setPage] = useState(0);
   useEffect(() => {
     if (tips.length <= 1) return;
@@ -1446,7 +1458,7 @@ function ArtistTip({ tips }: { tips: string[] }) {
   const go = (d: number) => setPage((p) => (p + d + tips.length) % tips.length);
   return (
     <div className="ws-artip">
-      <ArtistMascot />
+      <ArtistMascot variant={variant} />
       <span className="ws-artip-bub">
         <span className="ws-artip-tx">{tips[page]}</span>
         {tips.length > 1 && (
@@ -3395,7 +3407,7 @@ export default function WebStudio() {
                 {cartoonStyle && <input type="hidden" name="cartoonStyle" value={cartoonStyle} />}
               </>
             )}
-            {contentType === "highlight" && !isVideoEdit && <p className="ws-note"><Ico n="video" /> <b>{casual ? t("Showcase") : t("Product Highlight")}</b>{" — "}{casual ? t("cinematic motion from your idea or a photo.") : t("cinematic motion built around your product. No presenter needed.")}</p>}
+            {contentType === "highlight" && !isVideoEdit && !casual && <p className="ws-note"><Ico n="video" /> <b>{t("Product Highlight")}</b>{t(" — cinematic motion built around your product. No presenter needed.")}</p>}
             {contentType === "commercial" && <p className="ws-note"><Ico n="film" /> <b>{t("Commercial")}</b>{t(" — a multi-scene cinematic story ad that ends on your product, like a big-budget TV spot. No presenter needed; give direction below to steer the story.")}</p>}
             {contentType === "review" && <p className="ws-note"><Ico n="camera" /> <b>{t("Creator Demo")}</b>{t(" — your presenter demos the product like a creator would: phone-shot, casual, straight to camera. Organic UGC energy without faking a customer review.")}</p>}
             {contentType === "asmr" && <p className="ws-note"><Ico n="wave" /> <b>{t("Satisfying Close-Up")}</b>{t(" — extreme macro, slow luxurious motion, textures and light. No presenter — just the loop nobody scrolls past.")}</p>}
@@ -4349,16 +4361,11 @@ export default function WebStudio() {
                   ) : (
                     <>
                       <div className="ws-lbl">{t("Describe your video")} <span className="ws-opt">{t("required")}</span></div>
-                      <ArtistTip key="v" tips={[t("Describe the motion — I'll bring it to life."), t("Camera move, speed, mood — set the vibe."), t("Add a photo to animate, or make it from scratch."), t("Try cinematic slow-mo, a pan, or a zoom."), t("One clear shot gives the best result.")]} />
+                      <ArtistTip key="v" variant="film" tips={[t("Describe your video and I'll bring it to life!"), t("Camera move, speed, mood — set the vibe."), t("Add a photo to animate, or make it from scratch."), t("Try cinematic slow-mo, a pan, or a zoom."), t("One clear shot gives the best result.")]} />
                       <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={400} rows={3}
                         placeholder={t("e.g. a red fox running through a snowy forest at dawn, cinematic slow motion")}
                         onChange={(e) => setDirection(e.target.value)} />
                       <CharCount value={direction} max={400} />
-                      <div className="ws-chips" style={{ marginTop: 8 }}>
-                        {["a red panda surfing a giant wave at sunset, cinematic", "neon jellyfish drifting through deep space", "coffee pouring in slow-mo, macro close-up"].map((ex) => (
-                          <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
-                        ))}
-                      </div>
                       {/* The alternative path — subtle but discoverable, right under
                           the describe box: upload a clip to trim / caption / speed it. */}
                       <button type="button" className="ws-vedit-entry" onClick={() => editVideoUploadRef.current?.click()}>
@@ -4488,9 +4495,10 @@ export default function WebStudio() {
                       ? [t("Give me a topic — I'll make the whole video."), t("I script it, voice it, and caption it."), t("Great for facts, a tip, or a quick story."), t("Pick a format & voice below to set the style."), t("It comes out 9:16, ready to post.")]
                       : isEdit
                       ? [t("Add a photo, then tell me what to change."), t("Describe one change — like “add a hat”."), t("Swap the background, recolor, or cut it out — just ask."), t("One change at a time works best."), t("Or try the one-tap transforms above.")]
-                      : [t("Type what you want to create — I'll make it."), t("Tell me a subject, a style & a mood."), t("Name a look — watercolor, 3D, pixel art, photo…"), t("The more detail you give me, the better it comes out."), t("No photo needed — I paint it from scratch."), t("Fine-tune Frame & Model in Options below.")];
+                      : [t("Type what you want to create — I'll make it."), t("Tell me a subject, a style & a mood."), t("Name a look — watercolor, 3D, pixel art, photo…"), t("The more detail you give me, the better it comes out."), t("No photo needed — I paint it from scratch."), t("Fine-tune the Frame & style in Options below.")];
                     const tkey = isMusic ? "m" : isFaceless ? "f" : isEdit ? "e" : "c";
-                    return <ArtistTip key={tkey} tips={tips} />;
+                    const tvar = isMusic ? "dj" : isFaceless ? "film" : "artist";
+                    return <ArtistTip key={tkey} variant={tvar} tips={tips} />;
                   })()}
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={isCreate ? 500 : 300} rows={3}
                     placeholder={
