@@ -4572,6 +4572,36 @@ export async function renderFormatFrame(
   }
 }
 
+/** A text-to-image SEED for a Creator "from scratch" video: render the described
+ *  scene as a still at the chosen aspect, which the i2v engine then animates. Gives
+ *  a native-aspect clip (no letterbox bars) that follows the description — the
+ *  no-seed path falls to landscape text-to-video. Mirrors createImage's safety
+ *  fallback (nano-banana refuses legit horror/gore a creator may want → flux-dev).
+ *  Returns a durable /renders URL, or null so the caller falls back to t2v. Creates
+ *  no Asset and charges no tokens — the seed's COGS rides the video's price. */
+export async function renderCreativeSeed(prompt: string, aspect = "9:16"): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN) return null;
+    const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
+    const full = `${(prompt || "").trim().slice(0, 500)}. No watermark, no signature.`;
+    let url: string;
+    try {
+      url = await repRun("google/nano-banana", { prompt: full, aspect_ratio: ar, output_format: "jpg" });
+    } catch (e) {
+      const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+      if (!/safet|flag|sensitive|nsfw|content|blocked|moderat|prohibit|violat|e005|not allowed/.test(msg)) throw e;
+      // Legal horror/gore a creator has every right to make — flux-dev is lenient.
+      url = await repRun("black-forest-labs/flux-dev", { prompt: full, num_inference_steps: 30, guidance: 3, aspect_ratio: ar, output_format: "jpg", output_quality: 92 });
+    }
+    const durable = await persistRemote(url, "jpg");
+    artLog("image-ad", `creative video seed rendered (${ar})`);
+    return durable;
+  } catch (e) {
+    artLog("image-ad", `creative video seed failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,

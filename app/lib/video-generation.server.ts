@@ -449,6 +449,30 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     }
   }
 
+  // CREATOR "from scratch" (no product photo): render a vertical SEED IMAGE of the
+  // described scene, then animate it through the SAME proven i2v path (Kling) — a
+  // native-vertical clip that follows the description, instead of the landscape
+  // text-to-video fallback that toVerticalFrame can only letterbox with dark bars.
+  // Fail-open: if the seed can't render, seedImage stays undefined and we fall
+  // through to the existing text-to-video path below (today's behavior, no crash).
+  if (params.creative && !productImageUrl) {
+    try {
+      const { renderCreativeSeed } = await import("./image-generation.server");
+      // Seed the STILL from the raw scene text (productDescription is the clean
+      // user description; direction can carry preset framing). The video `prompt`
+      // above still drives the i2v MOTION.
+      const scene = (params.productDescription || direction || cleanTitle || "").trim();
+      const seedPrompt = `${scene}. Cinematic, richly detailed, dramatic lighting, high quality.`;
+      const seed = await renderCreativeSeed(seedPrompt, "9:16");
+      if (seed) {
+        const vseed = await prepareVerticalSeed(seed);
+        seedImage = vseed || seed;
+      }
+    } catch (e) {
+      console.error("[video] creative seed failed — falling back to text-to-video:", e instanceof Error ? e.message.slice(0, 160) : e);
+    }
+  }
+
   // Create + poll go through the shared Replicate helpers (repCreate/repPoll):
   // the hand-rolled versions here threw on ANY non-2xx — including a 429 — and
   // polled with no res.ok check at all, so one bad poll response killed a paid,
@@ -546,8 +570,10 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   // COGS-only (never a double charge); the new prediction id is checkpointed so
   // a restart re-attaches instead of re-buying. A restart mid-gate could cost
   // one extra re-roll's COGS — bounded to one per execution, fail-open, rare.
-  // Skipped with no seed (text-to-video / service mode have nothing to match).
-  if (seedImage) {
+  // Skipped with no seed (text-to-video / service mode have nothing to match), and
+  // for CREATIVE seeds — there is no real product to hold faithful, so comparing a
+  // clip to a synthetic scene seed would only risk a spurious re-roll.
+  if (seedImage && !params.creative) {
     try {
       const fid = await productMotionGate(videoUrl, seedImage);
       if (!fid.ok && !fid.degraded) {
