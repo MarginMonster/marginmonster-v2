@@ -3674,35 +3674,14 @@ export default function WebStudio() {
                     <b>{avatarId ? (d.cast.find((c) => c.id === avatarId)?.name || t("Presenter")) : t("Pick a presenter")}</b>
                     <span>{avatarId ? t("Tap to change") : t("Who stars in your video")}</span>
                   </div>
-                  <div className="ws-prodslot">
-                    {noProduct ? (
-                      /* No-product mode: the slot shows the TOPIC intent (the actual
-                         topic is typed in the direction box below). Non-interactive. */
-                      <div className="ws-hubtile set ws-isgood" aria-label={t("Presenter talks about a topic — no product")}>
-                        <span className="ws-hubtile-img prod" style={{ background: "#F3F9F4", borderStyle: "dashed" }}>
-                          <span aria-hidden="true" style={{ fontSize: "30px" }}>🎙</span>
-                        </span>
-                        <b>{t("What do they talk about?")}</b>
-                        <span>{t("Type the topic below — no product")}</span>
-                      </div>
-                    ) : (
-                      <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
-                        aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
-                        <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
-                          <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
-                        </span>
-                        <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
-                        <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
-                      </button>
-                    )}
-                    {/* "No product" toggle — bottom-right of the product tile (owner ask):
-                        presenter-only, talks about a topic. */}
-                    <button type="button" className={`ws-noprod${noProduct ? " on" : ""}`}
-                      onClick={() => { setNoProduct((v) => !v); setHubPick(null); }}
-                      aria-pressed={noProduct} title={t("Presenter only — no product")}>
-                      <span className="ws-noprod-sw" aria-hidden="true" />{t("No product")}
-                    </button>
-                  </div>
+                  <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
+                    aria-expanded={hubPick === "product"} onClick={() => setHubPick((p) => (p === "product" ? null : "product"))}>
+                    <span className="ws-hubtile-img prod" style={hasMarketingProduct && productThumb ? { backgroundImage: `url(${productThumb})` } : undefined}>
+                      <span className="ws-hubtile-badge" aria-hidden="true">{hasMarketingProduct && productThumb ? "✎" : "＋"}</span>
+                    </span>
+                    <b>{hasMarketingProduct ? (productTitle.trim() || t("Your product")) : t("Add your product")}</b>
+                    <span>{hasMarketingProduct ? t("Tap to change") : t("What they'll hold")}</span>
+                  </button>
                   {/* CENTER STYLE CARD — the picked STYLE, sitting over the gap
                       between presenter + product so it stays visible and attached to
                       the scene. It's the Realistic↔Cartoon switch: "Realistic AI" runs
